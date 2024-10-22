@@ -30,11 +30,9 @@
     <servers>
         <server>
             <id>github</id>
-
             <configuration>
                 <httpHeaders>
                     <property>
-
                     </property>
                 </httpHeaders>
             </configuration>

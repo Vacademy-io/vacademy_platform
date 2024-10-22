@@ -95,7 +95,7 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
-                    <mainClass>labor.link.media_service.MediaServiceApplication</mainClass>
+                    <mainClass>vacademy.io.media_service.MediaServiceApplication</mainClass>
                 </configuration>
             </plugin>
         </plugins>

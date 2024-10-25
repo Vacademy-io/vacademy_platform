@@ -28,10 +28,8 @@ public class FileMetadata {
     private String source;
     @NonNull
     private String sourceId;
-
     @Column(name = "updated_on", insertable = false, updatable = false)
     private Date updatedOn;
-
     @Column(name = "created_on", insertable = false, updatable = false)
     private Date createdOn;
 }

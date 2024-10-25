@@ -11,7 +11,29 @@
     <modules>
         <module>common_service</module>
         <module>media_service</module>
+        <module>auth_service</module>
+        <module>admin_core_service</module>
+        <module>student_service</module>
     </modules>
+
+    <profiles>
+        <profile>
+            <id>stage</id>
+            <properties>
+                <environment>stage</environment>
+            </properties>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
+        </profile>
+        <profile>
+            <id>prod</id>
+            <properties>
+                <environment>prod</environment>
+            </properties>
+        </profile>
+    </profiles>
+
 </project>
 
 

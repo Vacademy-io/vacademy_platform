@@ -23,7 +23,7 @@ WORKDIR /app
 COPY --from=build /build/target/media_service.jar media_service.jar
 
 # Expose the port the application runs on
-EXPOSE 8081
+EXPOSE 8075
 
 # Define the command to run the application
 CMD ["java", "-jar", "-Dspring.profiles.active=stage", "media_service.jar"]

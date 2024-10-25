@@ -19,7 +19,7 @@
     <dependencies>
         <dependency>
             <groupId>vacademy.io</groupId>
-            <artifactId>vacademy_common</artifactId>
+            <artifactId>common_service</artifactId>
             <version>0.0.1-SNAPSHOT</version>
         </dependency>
         <dependency>

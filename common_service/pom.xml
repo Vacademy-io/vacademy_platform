@@ -51,7 +51,7 @@
             <artifactId>spring-boot-starter-data-jpa</artifactId>
         </dependency>
     </dependencies>
-    <artifactId>vacademy_common</artifactId>
+    <artifactId>common_service</artifactId>
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>

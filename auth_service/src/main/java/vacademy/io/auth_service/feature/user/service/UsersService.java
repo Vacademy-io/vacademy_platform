@@ -2,18 +2,15 @@ package vacademy.io.auth_service.feature.user.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import vacademy.io.auth_service.feature.user.dto.PermissionDTO;
-import vacademy.io.auth_service.feature.user.dto.RoleDTO;
 import vacademy.io.auth_service.feature.user.dto.UserDTO;
-import vacademy.io.auth_service.feature.user.enums.Gender;
+import vacademy.io.auth_service.feature.user.entity.Users;
 import vacademy.io.auth_service.feature.user.exception.UserWithPermissionNotFoundException;
 import vacademy.io.auth_service.feature.user.exception.UserWithRoleNotFoundException;
 import vacademy.io.auth_service.feature.user.repository.UsersRepository;
 import vacademy.io.auth_service.feature.user.exception.UserNotFoundException;
 import vacademy.io.auth_service.feature.user.exception.RoleNotFoundException;
 
-import java.time.LocalDate;
-import java.util.ArrayList;
+
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -22,45 +19,6 @@ public class UsersService {
 
     @Autowired
     UsersRepository userRepository;
-
-    public List<PermissionDTO> getPermissionsByUserId(String userId) {
-
-        if(!ifUserExist(userId)) {
-            throw new UserNotFoundException("User with Id "+ userId + " not found");
-        }
-        List<Object[]> results = userRepository.findPermissionsByUserId(userId);
-        return results.stream()
-                .map(result -> new PermissionDTO((String) result[0], (String) result[1], (String) result[2]))
-                .collect(Collectors.toList());
-    }
-
-    public List<RoleDTO> getRolesByUserId(String userId) {
-
-        if(!ifUserExist(userId)) {
-            throw new UserNotFoundException("User with Id "+ userId + " not found");
-        }
-        List<Object[]> results = userRepository.findRolesByUserId(userId);
-        return results.stream()
-                .map(result -> new RoleDTO((String) result[0], (String) result[1]))
-                .collect(Collectors.toList());
-    }
-
-    public List<PermissionDTO> getPermissionsByListOfRoleId(List<String> roleId) {
-
-        if(roleId.size()==0) {
-            return new ArrayList<>();
-        }
-        for(String role : roleId) {
-            if(!ifRoleExist(role)) {
-                throw new RoleNotFoundException("Role with Id "+ role + " not found");
-            }
-        }
-        List<Object[]> results = userRepository.findPermissionsByListOfRoleId(roleId);
-        return results.stream()
-                .map(result -> new PermissionDTO((String) result[0], (String) result[1], (String) result[2]))
-                .collect(Collectors.toList());
-
-    }
 
     public void addRoleToUser(String userId, String roleId) {
 
@@ -89,21 +47,11 @@ public class UsersService {
         if(!ifUserExist(userId)) {
             throw new UserNotFoundException("User with Id " + userId + " not found");
         }
-        List<Object[]> results = userRepository.findUserDetailsById(userId);
+        List<Users> results = userRepository.findUserDetailsById(userId);
 
-        Object[] result = results.get(0);
+        Users user = results.get(0);
         return new UserDTO(
-                (String) result[0],
-                (String) result[1],
-                (String) result[2],
-                (String) result[3],
-                (String) result[4],
-                (String) result[5],
-                (String) result[6],
-                (String) result[7],
-                (LocalDate) result[8],
-                Gender.valueOf((String) result[9]),
-                (Boolean) result[10]
+               user.getId(), user.getUsername(), user.getEmail(), user.getFullName(), user.getAddressLine(), user.getCity(), user.getPinCode(), user.getMobileNumber(), user.getDateOfBirth(), user.getGender(), user.isRootUser()
         );
     }
 
@@ -114,21 +62,11 @@ public class UsersService {
                 throw new UserNotFoundException("User with Id " + user + " not found");
             }
         }
-        List<Object[]> results = userRepository.findUserDetailsByIds(userIds);
+        List<Users> users = userRepository.findUserDetailsByIds(userIds);
 
-        return results.stream()
-                .map(result -> new UserDTO(
-                        (String) result[0],
-                        (String) result[1],
-                        (String) result[2],
-                        (String) result[3],
-                        (String) result[4],
-                        (String) result[5],
-                        (String) result[6],
-                        (String) result[7],
-                        (LocalDate) result[8],
-                        Gender.valueOf((String) result[9]),
-                        (Boolean) result[10]
+        return users.stream()
+                .map(user -> new UserDTO(
+                        user.getId(), user.getUsername(), user.getEmail(), user.getFullName(), user.getAddressLine(), user.getCity(), user.getPinCode(), user.getMobileNumber(), user.getDateOfBirth(), user.getGender(), user.isRootUser()
                 ))
                 .collect(Collectors.toList());
     }
@@ -138,21 +76,10 @@ public class UsersService {
         if(!ifUserExistByUserName(username)) {
             throw new UserNotFoundException("User with user name " + username + " not found");
         }
-        List<Object[]> results = userRepository.findUserDetailsByUsername(username);
-        Object[] result = results.get(0);
-
+        List<Users> results = userRepository.findUserDetailsByUsername(username);
+        Users user = results.get(0);
         return new UserDTO(
-                (String) result[0],
-                (String) result[1],
-                (String) result[2],
-                (String) result[3],
-                (String) result[4],
-                (String) result[5],
-                (String) result[6],
-                (String) result[7],
-                (LocalDate) result[8],
-                Gender.valueOf((String) result[9]),
-                (Boolean) result[10]
+                user.getId(), user.getUsername(), user.getEmail(), user.getFullName(), user.getAddressLine(), user.getCity(), user.getPinCode(), user.getMobileNumber(), user.getDateOfBirth(), user.getGender(), user.isRootUser()
         );
     }
 

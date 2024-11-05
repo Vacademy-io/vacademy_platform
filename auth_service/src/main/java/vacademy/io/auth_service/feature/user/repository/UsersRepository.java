@@ -1,54 +1,19 @@
 package vacademy.io.auth_service.feature.user.repository;
 
+import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.CrudRepository;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
-import vacademy.io.auth_service.feature.user.dto.PermissionDTO;
-import vacademy.io.auth_service.feature.user.dto.UserDTO;
 import vacademy.io.auth_service.feature.user.entity.Users;
 
+
 import java.util.List;
-import java.util.Optional;
 
 
 @Repository
-public interface UsersRepository extends CrudRepository<Users, String> {
-
-
-    @Query(value = "SELECT DISTINCT p.id AS permissionId, p.permission_name AS permissionName, p.tag AS tag " +
-            "FROM users u " +
-            "JOIN user_role ur ON u.id = ur.user_id " +
-            "JOIN role_permission rp ON ur.role_id = rp.role_id " +
-            "JOIN permissions p ON rp.permission_id = p.id " +
-            "WHERE u.id = :userId " +
-            "UNION " +
-            "SELECT DISTINCT p.id AS permissionId, p.permission_name AS permissionName, p.tag AS tag " +
-            "FROM users u " +
-            "JOIN user_permission up ON u.id = up.user_id " +
-            "JOIN permissions p ON up.permission_id = p.id " +
-            "WHERE u.id = :userId",
-            nativeQuery = true)
-    List<Object[]> findPermissionsByUserId(@Param("userId") String userId);
-
-
-    @Query(value = "SELECT DISTINCT r.id AS id, r.role_name AS roleName " +
-            "FROM users u " +
-            "JOIN user_role ur ON u.id = ur.user_id " +
-            "JOIN roles r ON ur.role_id = r.id " +
-            "WHERE u.id = :userId",
-            nativeQuery = true)
-    List<Object[]> findRolesByUserId(@Param("userId") String userId);
-
-    @Query(value = "SELECT DISTINCT p.id AS permissionId, p.permission_name AS permissionName, p.tag AS tag " +
-            "FROM role_permission rp " +
-            "JOIN permissions p ON rp.permission_id = p.id " +
-            "JOIN roles r ON rp.role_id = r.id " +
-            "WHERE r.id IN :roleId",
-            nativeQuery = true)
-    List<Object[]> findPermissionsByListOfRoleId(@Param("roleId") List<String> roleId);
+public interface UsersRepository extends JpaRepository<Users, String> {
 
 
     @Modifying
@@ -62,23 +27,20 @@ public interface UsersRepository extends CrudRepository<Users, String> {
     @Query(value = "INSERT INTO user_permission (user_id, permission_id) VALUES (:userId, :permissionId)", nativeQuery = true)
     void addPermissionToUser(@Param("userId") String userId, @Param("permissionId") String permissionId);
 
-    @Query(value = "SELECT u.id, u.username, u.email, u.full_name, u.address_line, u.city, " +
-            "u.pin_code, u.mobile_number, u.date_of_birth, u.gender, u.is_root_user " +
+    @Query(value = "SELECT u.* " +
             "FROM users u WHERE u.id = :userId", nativeQuery = true)
-    List<Object[]> findUserDetailsById(@Param("userId") String userId);
+    List<Users> findUserDetailsById(@Param("userId") String userId);
 
 
-    @Query(value = "SELECT u.id, u.username, u.email, u.full_name, u.address_line, u.city, " +
-            "u.pin_code, u.mobile_number, u.date_of_birth, u.gender, u.is_root_user " +
+    @Query(value = "SELECT u.* " +
             "FROM users u WHERE u.id IN (:userIds)",
             nativeQuery = true)
-    List<Object[]> findUserDetailsByIds(@Param("userIds") List<String> userIds);
+    List<Users> findUserDetailsByIds(@Param("userIds") List<String> userIds);
 
-    @Query(value = "SELECT u.id, u.username, u.email, u.full_name, u.address_line, u.city, " +
-            "u.pin_code, u.mobile_number, u.date_of_birth, u.gender, u.is_root_user " +
+    @Query(value = "SELECT u.* " +
             "FROM users u WHERE u.username = :username",
             nativeQuery = true)
-    List<Object[]> findUserDetailsByUsername(@Param("username") String username);
+    List<Users> findUserDetailsByUsername(@Param("username") String username);
 
 
 

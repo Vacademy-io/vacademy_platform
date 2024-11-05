@@ -1,5 +1,6 @@
 package vacademy.io.auth_service.feature.user.entity;
 
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -9,26 +10,23 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.UuidGenerator;
 
-
 import java.sql.Timestamp;
 
+
 @Entity
-@Table(name = "permissions")
+@Table(name = "users")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class Permission {
+public class Role {
 
     @Id
     @UuidGenerator
     @Column(name = "id")
     private String id;
 
-    @Column(name = "permission_name")
-    private String permissionName;
-
-    @Column(name = "tag")
-    private String tag;
+    @Column(name = "role_name")
+    private String roleName;
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private Timestamp createdAt;

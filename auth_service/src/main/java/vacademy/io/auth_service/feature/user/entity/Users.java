@@ -5,9 +5,10 @@ import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.UuidGenerator;
 import vacademy.io.auth_service.feature.user.enums.Gender;
 
-import java.security.Timestamp;
+import java.sql.Timestamp;
 import java.time.LocalDate;
 
 @Entity
@@ -18,6 +19,7 @@ import java.time.LocalDate;
 public class Users {
 
     @Id
+    @UuidGenerator
     private String id;
 
     @Column(name = "username")
@@ -54,9 +56,9 @@ public class Users {
     @Column(name = "is_root_user")
     private boolean isRootUser;
 
-    @Column(name = "created_at", updatable = false)
+    @Column(name = "created_at", insertable = false, updatable = false)
     private Timestamp createdAt;
 
-    @Column(name = "updated_at")
+    @Column(name = "updated_at", insertable = false, updatable = false)
     private Timestamp updatedAt;
 }

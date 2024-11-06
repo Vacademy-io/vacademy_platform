@@ -32,21 +32,21 @@ public class UsersController {
     }
 
     //API to fetch user details correspond to user id
-    @GetMapping("/v1/internal/details/{userId}")
+    @GetMapping("/internal/v1/details/{userId}")
     public ResponseEntity<UserDTO> getUserDetailsById(@PathVariable String userId) {
         UserDTO user = userService.getUserDetailsById(userId);
         return ResponseEntity.ok(user);
     }
 
     //API to fetch user details corresspond to List of user Id
-    @GetMapping("/v1/internal/user-details-list")
+    @GetMapping("/internal/v1/user-details-list")
     public ResponseEntity<List<UserDTO>> getUserDetailsByIds(@RequestBody List<String> userIds) {
         List<UserDTO> users = userService.getUserDetailsByIds(userIds);
         return ResponseEntity.ok(users);
     }
 
     //API to fetch user details by user name
-    @GetMapping("/v1/internal/user-details/{username}")
+    @GetMapping("/internal/v1/user-details/{username}")
     public ResponseEntity<UserDTO> getUserDetailsByUsername(@PathVariable String username) {
         UserDTO user = userService.getUserDetailsByUsername(username);
         return ResponseEntity.ok(user);

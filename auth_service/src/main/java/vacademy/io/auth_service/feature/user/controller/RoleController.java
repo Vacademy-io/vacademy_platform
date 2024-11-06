@@ -19,7 +19,7 @@ public class RoleController {
     RoleService roleService;
 
     //API to fetch all roles of user corresspond to user Id
-    @GetMapping("/v1/internal/roles/{userId}")
+    @GetMapping("/internal/v1/roles/{userId}")
     public ResponseEntity<List<RoleDTO>> getUserRoles(@PathVariable String userId) {
         List<RoleDTO> roles = roleService.getRolesByUserId(userId);
         return ResponseEntity.ok(roles);

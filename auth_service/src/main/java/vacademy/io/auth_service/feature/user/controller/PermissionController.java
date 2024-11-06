@@ -17,7 +17,7 @@ public class PermissionController {
 
 
     // API to fetch all permission of user correspond to user Id
-    @GetMapping("/v1/internal/permission/{userId}")
+    @GetMapping("/internal/v1/permission/{userId}")
     public ResponseEntity<List<PermissionDTO>> getPermissionsByUserId(@PathVariable String userId) {
         List<PermissionDTO> permissions = permissionService.getPermissionsByUserId(userId);
         return ResponseEntity.ok(permissions);
@@ -25,7 +25,7 @@ public class PermissionController {
 
 
     //API to fetch permission corresspond to list of roles ID
-    @GetMapping("/v1/internal/permissions-by-list-of-role-id")
+    @GetMapping("/internal/v1/permissions-by-list-of-role-id")
     public ResponseEntity<List<PermissionDTO>> getPermissionsByListOfRoleId(@RequestBody List<String> roleId) {
         List<PermissionDTO> permissions = permissionService.getPermissionsByListOfRoleId(roleId);
         return ResponseEntity.ok(permissions);

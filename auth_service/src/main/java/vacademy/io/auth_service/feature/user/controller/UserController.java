@@ -4,8 +4,6 @@ package vacademy.io.auth_service.feature.user.controller;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import vacademy.io.auth_service.feature.user.dto.UserDTO;
-import vacademy.io.auth_service.feature.user.service.UsersService;
 
 
 import java.util.List;

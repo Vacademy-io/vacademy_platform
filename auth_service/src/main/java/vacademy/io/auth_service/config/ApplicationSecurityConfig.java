@@ -16,6 +16,7 @@ import org.springframework.security.crypto.password.NoOpPasswordEncoder;  // Not
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import vacademy.io.auth_service.feature.auth.filter.InternalAuthFilter;
 import vacademy.io.common.auth.filter.JwtAuthFilter;
 
 @Configuration
@@ -29,9 +30,13 @@ public class ApplicationSecurityConfig {
     private static final String[] ALLOWED_PATHS = {};
 
     @Autowired
-    private JwtAuthFilter jwtAuthFilter;
+    JwtAuthFilter jwtAuthFilter;
     @Autowired
-    private UserDetailsService userDetailsService;
+    UserDetailsService userDetailsService;
+
+    @Autowired
+    InternalAuthFilter internalAuthFilter;
+
 
 
     @Bean
@@ -47,8 +52,7 @@ public class ApplicationSecurityConfig {
                 .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 .and()
                 .authenticationProvider(authenticationProvider())
-                .httpBasic()
-                .and()
+                .addFilterBefore(internalAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }

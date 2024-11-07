@@ -4,15 +4,17 @@ package vacademy.io.auth_service.feature.user.controller;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.common.auth.dto.UserDTO;
+import vacademy.io.common.auth.service.UserService;
 
 
 import java.util.List;
 
 @RestController
-public class UsersController {
+public class UserController {
 
     @Autowired
-    UsersService userService;
+    UserService userService;
 
 
     //API to add role to a user

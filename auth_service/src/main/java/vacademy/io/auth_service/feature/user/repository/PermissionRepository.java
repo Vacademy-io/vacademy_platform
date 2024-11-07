@@ -1,15 +1,15 @@
 package vacademy.io.auth_service.feature.user.repository;
 
-import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.CrudRepository;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
-import vacademy.io.auth_service.feature.user.entity.Permission;
+import vacademy.io.common.auth.entity.UserAuthority;
 
 import java.util.List;
 
 @Repository
-public interface PermissionRepository extends JpaRepository<Permission, String> {
+public interface PermissionRepository extends CrudRepository<UserAuthority, String> {
 
 
     @Query(value = "SELECT DISTINCT p.* " +
@@ -25,13 +25,13 @@ public interface PermissionRepository extends JpaRepository<Permission, String> 
             "JOIN permissions p ON up.permission_id = p.id " +
             "WHERE u.id = :userId",
             nativeQuery = true)
-    List<Permission> findPermissionsByUserId(@Param("userId") String userId);
+    List<UserAuthority> findPermissionsByUserId(@Param("userId") String userId);
 
 
     @Query(value = "SELECT p.* " +
             "FROM permissions p",
             nativeQuery = true)
-    List<Permission> findAllPermissionsWithTag();
+    List<UserAuthority> findAllPermissionsWithTag();
 
     @Query(value = "SELECT DISTINCT p.* " +
             "FROM role_permission rp " +
@@ -39,7 +39,7 @@ public interface PermissionRepository extends JpaRepository<Permission, String> 
             "JOIN roles r ON rp.role_id = r.id " +
             "WHERE r.id IN :roleId",
             nativeQuery = true)
-    List<Permission> findPermissionsByListOfRoleId(@Param("roleId") List<String> roleId);
+    List<UserAuthority> findPermissionsByListOfRoleId(@Param("roleId") List<String> roleId);
 
     @Query(value = "SELECT COUNT(*) > 0 FROM users WHERE id = :userId", nativeQuery = true)
     boolean existsByUserId(@Param("userId") String userId);

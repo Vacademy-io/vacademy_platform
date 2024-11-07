@@ -5,7 +5,10 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.UuidGenerator;
+import vacademy.io.common.auth.enums.Gender;
 
+import java.sql.Timestamp;
+import java.time.LocalDate;
 import java.util.*;
 
 
@@ -15,24 +18,58 @@ import java.util.*;
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity
-@Table(name = "USERS")
+@Table(name = "users")
 public class User {
 
     @Id
     @UuidGenerator
     @Column(name = "id")
     private String id;
+    @Column(name = "username")
     private String username;
-    @JsonIgnore
+    @Column(name = "email")
+    private String email;
+    @Column(name = "password_hash")
     private String password;
-    private String firstname;
-    private String lastname;
+    @Column(name = "full_name")
+    private String fullName;
+
     @ManyToMany(fetch = FetchType.EAGER)
+    @JoinTable(
+            name = "user_role",
+            joinColumns = @JoinColumn(name = "user_id"),
+            inverseJoinColumns = @JoinColumn(name = "role_id")
+    )
     private Set<UserRole> roles = new HashSet<>();
-    private String type;
-    private String nickname;
-    private String faceFileId;
-    private Date lastLogin;
+
+    @Column(name = "address_line")
+    private String addressLine;
+
+    @Column(name = "city")
+    private String city;
+
+    @Column(name = "pin_code")
+    private String pinCode;
+
+    @Column(name = "mobile_number")
+    private String mobileNumber;
+
+    @Column(name = "date_of_birth")
+    private LocalDate dateOfBirth;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "gender")
+    private Gender gender;
+
+    @Column(name = "is_root_user")
+    private boolean isRootUser;
+
+    @Column(name = "created_at", insertable = false, updatable = false)
+    private Timestamp createdAt;
+
+    @Column(name = "updated_at", insertable = false, updatable = false)
+    private Timestamp updatedAt;
+
 
     public List<String> getAllAuth() {
         // Create a list to store GrantedAuthority objects
@@ -48,5 +85,7 @@ public class User {
         }
         return auths;
     }
+
+
 
 }

@@ -4,11 +4,10 @@ package vacademy.io.auth_service.feature.user.service;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import vacademy.io.auth_service.feature.user.dto.PermissionDTO;
-import vacademy.io.auth_service.feature.user.entity.Permission;
-import vacademy.io.auth_service.feature.user.exception.RoleNotFoundException;
-import vacademy.io.auth_service.feature.user.exception.UserNotFoundException;
 import vacademy.io.auth_service.feature.user.repository.PermissionRepository;
-import vacademy.io.auth_service.feature.user.repository.UsersRepository;
+import vacademy.io.common.auth.entity.UserAuthority;
+import vacademy.io.common.exceptions.RoleNotFoundException;
+import vacademy.io.common.exceptions.UserNotFoundException;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -21,18 +20,15 @@ public class PermissionService {
     @Autowired
     PermissionRepository permissionRepository;
 
-    @Autowired
-    UsersRepository usersRepository;
-
     public List<PermissionDTO> getPermissionsByUserId(String userId) {
 
         if(!ifUserExist(userId)) {
             throw new UserNotFoundException("User with Id "+ userId + " not found");
         }
-        List<Permission> permissions = permissionRepository.findPermissionsByUserId(userId);
+        List<UserAuthority> permissions = permissionRepository.findPermissionsByUserId(userId);
 
         return permissions.stream()
-                .map(permission -> new PermissionDTO( permission.getId(), permission.getPermissionName(), permission.getTag()
+                .map(permission -> new PermissionDTO( permission.getId(), permission.getName(), permission.getTag()
                 ))
                 .collect(Collectors.toList());
     }
@@ -47,19 +43,19 @@ public class PermissionService {
                 throw new RoleNotFoundException("Role with Id "+ role + " not found");
             }
         }
-        List<Permission> permissions = permissionRepository.findPermissionsByListOfRoleId(roleId);
+        List<UserAuthority> permissions = permissionRepository.findPermissionsByListOfRoleId(roleId);
 
         return permissions.stream()
-                .map(permission -> new PermissionDTO( permission.getId(), permission.getPermissionName(), permission.getTag()
+                .map(permission -> new PermissionDTO( permission.getId(), permission.getName(), permission.getTag()
                 ))
                 .collect(Collectors.toList());
     }
 
     public List<PermissionDTO> getAllPermissionsWithTag() {
-        List<Permission> permissions = permissionRepository.findAllPermissionsWithTag();
+        List<UserAuthority> permissions = permissionRepository.findAllPermissionsWithTag();
 
         return permissions.stream()
-                .map(permission -> new PermissionDTO( permission.getId(), permission.getPermissionName(), permission.getTag()
+                .map(permission -> new PermissionDTO( permission.getId(), permission.getName(), permission.getTag()
                 ))
                 .collect(Collectors.toList());
     }

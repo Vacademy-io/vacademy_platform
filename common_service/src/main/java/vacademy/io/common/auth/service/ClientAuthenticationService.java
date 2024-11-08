@@ -1,8 +1,8 @@
-package vacademy.io.auth_service.feature.auth.service;
+package vacademy.io.common.auth.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import vacademy.io.auth_service.feature.auth.repository.ClientAuthenticationRepository;
+import vacademy.io.common.auth.repository.ClientAuthenticationRepository;
 
 @Service
 public class ClientAuthenticationService {

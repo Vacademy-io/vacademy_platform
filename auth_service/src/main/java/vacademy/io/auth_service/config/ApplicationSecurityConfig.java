@@ -16,7 +16,7 @@ import org.springframework.security.crypto.password.NoOpPasswordEncoder;  // Not
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import vacademy.io.auth_service.feature.auth.filter.InternalAuthFilter;
+import vacademy.io.common.auth.filter.InternalAuthFilter;
 import vacademy.io.common.auth.filter.JwtAuthFilter;
 
 @Configuration

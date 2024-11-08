@@ -1,7 +1,6 @@
-package vacademy.io.auth_service.feature.auth.service;
+package vacademy.io.common.auth.service;
 
 import org.springframework.security.authentication.AbstractAuthenticationToken;
-
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 
 import java.util.Collections;

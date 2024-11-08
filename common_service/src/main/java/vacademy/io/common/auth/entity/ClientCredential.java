@@ -1,4 +1,4 @@
-package vacademy.io.auth_service.feature.auth.entity;
+package vacademy.io.common.auth.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

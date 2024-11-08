@@ -1,16 +1,15 @@
-package vacademy.io.auth_service.feature.auth.filter;
-
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.stereotype.Component;
-import org.springframework.web.filter.OncePerRequestFilter;
+package vacademy.io.common.auth.filter;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import vacademy.io.auth_service.feature.auth.service.ClientAuthentication;
-import vacademy.io.auth_service.feature.auth.service.ClientAuthenticationService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Component;
+import org.springframework.web.filter.OncePerRequestFilter;
+import vacademy.io.common.auth.service.ClientAuthentication;
+import vacademy.io.common.auth.service.ClientAuthenticationService;
 
 import java.io.IOException;
 import java.util.Base64;

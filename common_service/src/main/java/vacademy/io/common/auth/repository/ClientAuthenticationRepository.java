@@ -1,10 +1,10 @@
-package vacademy.io.auth_service.feature.auth.repository;
+package vacademy.io.common.auth.repository;
 
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.CrudRepository;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
-import vacademy.io.auth_service.feature.auth.entity.ClientCredential;
+import vacademy.io.common.auth.entity.ClientCredential;
 
 @Repository
 public interface ClientAuthenticationRepository extends CrudRepository<ClientCredential, String> {

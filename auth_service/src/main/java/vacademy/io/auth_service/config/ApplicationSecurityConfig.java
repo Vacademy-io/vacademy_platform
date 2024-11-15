@@ -16,6 +16,7 @@ import org.springframework.security.crypto.password.NoOpPasswordEncoder;  // Not
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.client.RestTemplate;
 import vacademy.io.common.auth.filter.InternalAuthFilter;
 import vacademy.io.common.auth.filter.JwtAuthFilter;
 
@@ -27,7 +28,7 @@ public class ApplicationSecurityConfig {
     private static final String[] INTERNAL_PATHS = {"internal/**"};
 
 
-    private static final String[] ALLOWED_PATHS = {};
+    private static final String[] ALLOWED_PATHS = {"auth/v1/**"};
 
     @Autowired
     JwtAuthFilter jwtAuthFilter;
@@ -55,6 +56,11 @@ public class ApplicationSecurityConfig {
                 .addFilterBefore(internalAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
+    }
+
+    @Bean
+    public RestTemplate restTemplate() {
+        return new RestTemplate();
     }
 
 

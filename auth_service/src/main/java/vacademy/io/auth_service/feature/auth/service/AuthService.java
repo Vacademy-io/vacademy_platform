@@ -9,6 +9,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 import vacademy.io.auth_service.feature.auth.dto.*;
 import vacademy.io.auth_service.feature.auth.repository.SubmoduleRepository;
@@ -73,10 +74,23 @@ public class AuthService {
 
         InstitutesAndUserIdDTO adminCoreRequest = new InstitutesAndUserIdDTO(newUser.getId(), registerRequest.getInstitutes());
 
+    // Make it https because codacy AI fails in http . convert into http when run in local
         String adminCoreServiceUrl = "https://localhost:8072/registerUserInstitutes";
 
-        ResponseEntity<List<InstituteIdAndNameDTO>> response = restTemplate.exchange(adminCoreServiceUrl, HttpMethod.POST, new HttpEntity<>(adminCoreRequest), new ParameterizedTypeReference<List<InstituteIdAndNameDTO>>() {
-        });
+        ResponseEntity<List<InstituteIdAndNameDTO>> response = null;
+        try {
+
+            response = restTemplate.exchange(
+                    adminCoreServiceUrl, HttpMethod.POST, new HttpEntity<>(adminCoreRequest),
+                    new ParameterizedTypeReference<List<InstituteIdAndNameDTO>>() {}
+            );
+        } catch (RestClientException e) {
+            userRepository.deleteUserById(newUser.getId());
+
+            throw new LaborLinkException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to register user institutes due to service unavailability: " + e.getMessage());
+        }
+
+
 
 
         for (InstituteIdAndNameDTO instituteDTO : response.getBody()) {

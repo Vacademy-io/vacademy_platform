@@ -81,5 +81,10 @@ public interface UserRepository extends CrudRepository<User, String> {
     void insertUser(@Param("userId") String userId, @Param("username") String username, @Param("email") String email, @Param("password") String password, @Param("isRootUser") boolean isRootUser
     );
 
+    @Modifying
+    @Transactional
+    @Query(value = "DELETE FROM users WHERE id = :userId", nativeQuery = true)
+    void deleteUserById(@Param("userId") String userId);
+
 
 }

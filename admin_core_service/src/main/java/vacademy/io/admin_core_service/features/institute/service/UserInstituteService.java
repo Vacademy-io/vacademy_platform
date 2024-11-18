@@ -13,6 +13,7 @@ import vacademy.io.admin_core_service.features.institute.repository.InstituteSub
 import vacademy.io.admin_core_service.features.institute.repository.StaffRepository;
 
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -29,18 +30,19 @@ public class UserInstituteService {
 
     @Transactional
     public List<InstituteIdAndNameDTO> saveInstitutesAndCreateStaff(String userId, List<InstituteInfoDTO> institutes) {
-        // Save the institutes
+
         for (InstituteInfoDTO instituteInfo : institutes) {
             Institute institute = getInstitute(instituteInfo);
-            instituteRepository.save(institute);
-
-            Staff staff = new Staff();
-            staff.setUserId(userId);
-            staff.setInstituteId(institute.getId());
-            staffRepository.save(staff);
+            if(institute.getInstituteName()!=null) {
+                String newId = UUID.randomUUID().toString();
+                instituteRepository.insertInstitute(newId, institute.getInstituteName(), institute.getCountry(), institute.getState(), institute.getCity(), institute.getAddress(), institute.getPinCode(), institute.getEmail(), institute.getMobileNumber(), institute.getWebsiteUrl());
+                Staff staff = new Staff();
+                staff.setUserId(userId);
+                staff.setInstituteId(newId);
+                staffRepository.save(staff);
+            }
         }
         List<Institute> instituteList = instituteRepository.findInstitutesByUserId(userId);
-
         return instituteList.stream()
                 .map(institute -> {
 

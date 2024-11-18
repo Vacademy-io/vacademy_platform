@@ -73,7 +73,7 @@ public class AuthService {
 
         InstitutesAndUserIdDTO adminCoreRequest = new InstitutesAndUserIdDTO(newUser.getId(), registerRequest.getInstitutes());
 
-        String adminCoreServiceUrl = "http://localhost:8072/registerUserInstitutes";
+        String adminCoreServiceUrl = "https://localhost:8072/registerUserInstitutes";
 
         ResponseEntity<List<InstituteIdAndNameDTO>> response = restTemplate.exchange(adminCoreServiceUrl, HttpMethod.POST, new HttpEntity<>(adminCoreRequest), new ParameterizedTypeReference<List<InstituteIdAndNameDTO>>() {
         });

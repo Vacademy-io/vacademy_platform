@@ -25,5 +25,14 @@ public interface InstituteRepository extends CrudRepository<Institute, String> {
     @Modifying
     @Query(value = "INSERT INTO institutes (id, name, country, state, city, address_line, pin_code, email, mobile_number, website_url) " +
             "VALUES (:newId, :instituteName, :country, :state, :city, :address, :pinCode, :email, :mobileNumber, :websiteUrl)", nativeQuery = true)
-    void insertInstitute(@Param("newId") String newId, @Param("instituteName") String instituteName, @Param("country") String country, @Param("state") String state, @Param("city") String city, @Param("address") String address, @Param("pinCode") String pinCode, @Param("email") String email, @Param("mobileNumber") String mobileNumber, @Param("websiteUrl") String websiteUrl);
+    void insertInstitute(@Param("newId") String newId,
+                         @Param("instituteName") String instituteName,
+                         @Param("country") String country,
+                         @Param("state") String state,
+                         @Param("city") String city,
+                         @Param("address") String address,
+                         @Param("pinCode") String pinCode,
+                         @Param("email") String email,
+                         @Param("mobileNumber") String mobileNumber,
+                         @Param("websiteUrl") String websiteUrl);
 }

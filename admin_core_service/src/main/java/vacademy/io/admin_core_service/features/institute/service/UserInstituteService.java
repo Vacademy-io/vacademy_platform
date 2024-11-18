@@ -35,7 +35,7 @@ public class UserInstituteService {
             Institute institute = getInstitute(instituteInfo);
             if(institute.getInstituteName()!=null) {
                 String newId = UUID.randomUUID().toString();
-                instituteRepository.insertInstitute(newId, institute.getInstituteName(), institute.getCountry(), institute.getState(), institute.getCity(), institute.getAddress(), institute.getPinCode(), institute.getEmail(), institute.getMobileNumber(), institute.getWebsiteUrl());
+                instituteRepository.insertInstitute(newId, institute);
                 Staff staff = new Staff();
                 staff.setUserId(userId);
                 staff.setInstituteId(newId);

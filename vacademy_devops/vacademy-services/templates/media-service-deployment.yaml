@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: media-service
+  namespace: media-service
+  labels:
+    app: media-service
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: media-service
+  template:
+    metadata:
+      labels:
+        app: media-service
+    spec:
+      containers:
+        - name: media-service
+          image: {{ .Values.services.media_service.image.repository }}:{{ .Values.services.media_service.image.tag }}
+          imagePullPolicy: Always
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "450Mi"
+            limits:
+              cpu: "250m"
+              memory: "600Mi"
+          livenessProbe:
+            httpGet:
+              path: /media_service/actuator/health
+              port: {{ .Values.services.media_service.port }}
+              scheme: HTTP
+            initialDelaySeconds: 180
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+            successThreshold: 1
+          startupProbe:
+            httpGet:
+              path: /media_service/actuator/health
+              port: {{ .Values.services.media_service.port }}
+              scheme: HTTP
+            initialDelaySeconds: 180
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 30
+            successThreshold: 1
+          readinessProbe:
+            httpGet:
+              path: /media_service/actuator/health
+              port: {{ .Values.services.media_service.port }}
+              scheme: HTTP
+            initialDelaySeconds: 180
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+            successThreshold: 1
+          ports:
+            - containerPort: {{ .Values.services.media_service.port }}

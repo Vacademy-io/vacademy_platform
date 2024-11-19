@@ -18,8 +18,8 @@ public class RoleService {
 
     public List<RoleDTO> getRolesByUserId(String userId) {
 
-        if(!ifUserExist(userId)) {
-            throw new UserNotFoundException("User with Id "+ userId + " not found");
+        if (!ifUserExist(userId)) {
+            throw new UserNotFoundException("User with Id " + userId + " not found");
         }
         List<UserRole> roles = roleRepository.findRolesByUserId(userId);
 

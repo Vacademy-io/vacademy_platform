@@ -22,31 +22,31 @@ public class PermissionService {
 
     public List<PermissionDTO> getPermissionsByUserId(String userId) {
 
-        if(!ifUserExist(userId)) {
-            throw new UserNotFoundException("User with Id "+ userId + " not found");
+        if (!ifUserExist(userId)) {
+            throw new UserNotFoundException("User with Id " + userId + " not found");
         }
         List<UserAuthority> permissions = permissionRepository.findPermissionsByUserId(userId);
 
         return permissions.stream()
-                .map(permission -> new PermissionDTO( permission.getId(), permission.getName(), permission.getTag()
+                .map(permission -> new PermissionDTO(permission.getId(), permission.getName(), permission.getTag()
                 ))
                 .collect(Collectors.toList());
     }
 
     public List<PermissionDTO> getPermissionsByListOfRoleId(List<String> roleId) {
 
-        if(roleId.size()==0) {
+        if (roleId.size() == 0) {
             return new ArrayList<>();
         }
-        for(String role : roleId) {
-            if(!ifRoleExist(role)) {
-                throw new RoleNotFoundException("Role with Id "+ role + " not found");
+        for (String role : roleId) {
+            if (!ifRoleExist(role)) {
+                throw new RoleNotFoundException("Role with Id " + role + " not found");
             }
         }
         List<UserAuthority> permissions = permissionRepository.findPermissionsByListOfRoleId(roleId);
 
         return permissions.stream()
-                .map(permission -> new PermissionDTO( permission.getId(), permission.getName(), permission.getTag()
+                .map(permission -> new PermissionDTO(permission.getId(), permission.getName(), permission.getTag()
                 ))
                 .collect(Collectors.toList());
     }
@@ -55,7 +55,7 @@ public class PermissionService {
         List<UserAuthority> permissions = permissionRepository.findAllPermissionsWithTag();
 
         return permissions.stream()
-                .map(permission -> new PermissionDTO( permission.getId(), permission.getName(), permission.getTag()
+                .map(permission -> new PermissionDTO(permission.getId(), permission.getName(), permission.getTag()
                 ))
                 .collect(Collectors.toList());
     }

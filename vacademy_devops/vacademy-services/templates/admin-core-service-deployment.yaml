@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: admin-core-service
+  namespace: admin-core-service
+  labels:
+    app: admin-core-service
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: admin-core-service
+  template:
+    metadata:
+      labels:
+        app: admin-core-service
+    spec:
+      containers:
+        - name: admin-core-service
+          image: {{ .Values.services.admin_core_service.image.repository }}:{{ .Values.services.admin_core_service.image.tag }}
+          imagePullPolicy: Always
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "450Mi"
+            limits:
+              cpu: "250m"
+              memory: "600Mi"
+          livenessProbe:
+            httpGet:
+              path: /admin_core_service/actuator/health
+              port: {{ .Values.services.admin_core_service.port }}
+              scheme: HTTP
+            initialDelaySeconds: 180

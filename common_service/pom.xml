@@ -11,7 +11,7 @@
         <relativePath/>
     </parent>
     <groupId>vacademy.io</groupId>
-    <version>0.0.1-SNAPSHOT</version>
+    <version>0.0.2-SNAPSHOT</version>
     <dependencies>
         <dependency>
             <groupId>org.apache.tomcat.embed</groupId>
@@ -62,7 +62,7 @@
         <repository>
             <id>github</id>
             <name>GitHub OWNER Apache Maven Packages</name>
-            <url>https://maven.pkg.github.com/Vacademy-io/backend-common</url>
+            <url>https://maven.pkg.github.com/Vacademy-io/services</url>
         </repository>
     </distributionManagement>
 

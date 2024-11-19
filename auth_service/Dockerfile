@@ -4,8 +4,8 @@ FROM maven:3.8.5-openjdk-17-slim AS build
 # Set the working directory
 WORKDIR /build
 
-# Copy the Maven settings file
-COPY settings.xml ./
+# Create the Maven settings file
+RUN echo "<settings><servers><server><id>github</id><username>shreyash-jain</username><password>${JAVA_TOKEN}</password></server></servers></settings>" > settings.xml
 
 # Copy the project files
 COPY . .

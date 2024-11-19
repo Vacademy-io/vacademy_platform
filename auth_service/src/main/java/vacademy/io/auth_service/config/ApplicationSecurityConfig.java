@@ -1,4 +1,3 @@
-
 package vacademy.io.auth_service.config;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,7 +11,7 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.crypto.password.NoOpPasswordEncoder;  // Not recommended for production
+import org.springframework.security.crypto.password.NoOpPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
@@ -30,6 +29,9 @@ public class ApplicationSecurityConfig {
 
     private static final String[] ALLOWED_PATHS = {"auth/v1/**"};
 
+    private static final String[] ALLOWED_PATHS = {"auth/v1/**", "/auth_service/actuator/**", "/auth_service/swagger-ui.html", "/auth_service/v1/report/alert/**", "/user/v3/api-docs/**", "/auth_service/swagger-ui/**", "/auth_service/webjars/swagger-ui/**", "/auth_service/api-docs/**"};
+
+
     @Autowired
     JwtAuthFilter jwtAuthFilter;
     @Autowired
@@ -37,8 +39,6 @@ public class ApplicationSecurityConfig {
 
     @Autowired
     InternalAuthFilter internalAuthFilter;
-
-
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {

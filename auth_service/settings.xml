@@ -31,12 +31,12 @@
         <server>
             <id>github</id>
             <username>shreyash-jain</username>
-            <password>${GITHUB_ACTOR}</password>
+            <password>${env.JAVA_TOKEN}</password>
             <configuration>
                 <httpHeaders>
                     <property>
                         <name>Authorization</name>
-                        <value>Bearer ${GITHUB_ACTOR}</value>
+                        <value>Bearer ${env.JAVA_TOKEN}</value>
                     </property>
                 </httpHeaders>
             </configuration>

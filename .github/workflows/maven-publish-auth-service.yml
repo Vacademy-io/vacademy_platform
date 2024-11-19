@@ -60,6 +60,7 @@ jobs:
           REPOSITORY: auth-service/auth-service-repo
           GITHUB_TOKEN: ${{ secrets.JAVA_TOKEN }}
           GITHUB_ACTOR: shreyash-jain
+          JAVA_TOKEN: ${{ secrets.JAVA_TOKEN }}
         run: |
           docker build -t $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG . --build-arg GITHUB_TOKEN=${GITHUB_TOKEN} --build-arg GITHUB_ACTOR=${GITHUB_ACTOR}
           docker push $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG

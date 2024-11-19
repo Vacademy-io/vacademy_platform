@@ -35,7 +35,6 @@ public class ApplicationSecurityConfig {
     @Autowired
     InternalAuthFilter internalAuthFilter;
 
-
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http

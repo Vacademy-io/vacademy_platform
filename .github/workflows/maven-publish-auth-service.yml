@@ -22,6 +22,8 @@ jobs:
 
       - name: Build Project
         working-directory: ./auth_service
+        env:
+          JAVA_TOKEN: ${{ secrets.JAVA_TOKEN }}
         run: mvn -s settings.xml clean install -DskipTests
 
       # To push to ECR you need to login through us-east-1

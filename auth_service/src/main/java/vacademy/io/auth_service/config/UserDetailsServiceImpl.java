@@ -10,7 +10,6 @@ import vacademy.io.common.auth.entity.User;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.auth.repository.UserRepository;
 
-
 import java.util.Optional;
 
 

@@ -22,7 +22,7 @@ jobs:
 
       - name: Build Project
         working-directory: ./auth_service
-        run: mvn -s auth_service/settings.xml clean install -DskipTests
+        run: mvn -s settings.xml clean install -DskipTests
 
       # To push to ECR you need to login through us-east-1
       # https://github.com/aws-actions/amazon-ecr-login/issues/587

@@ -10,7 +10,6 @@ import vacademy.io.common.auth.dto.UserRoleRequestDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.auth.service.UserService;
 
-
 import java.util.List;
 
 @RestController

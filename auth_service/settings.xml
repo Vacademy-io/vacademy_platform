@@ -30,13 +30,13 @@
     <servers>
         <server>
             <id>github</id>
-            <username>${env.GITHUB_USERNAME}</username>
-            <password>${env.GITHUB_TOKEN}</password>
+            <username>shreyash-jain</username>
+            <password>${env.JAVA_TOKEN}</password>
             <configuration>
                 <httpHeaders>
                     <property>
                         <name>Authorization</name>
-                        <value>Bearer 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</value>
+                        <value>Bearer ${env.JAVA_TOKEN}</value>
                     </property>
                 </httpHeaders>
             </configuration>

@@ -1,0 +1,78 @@
+name: Deploy Auth to LKE
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'auth_service/**'
+
+jobs:
+  build-and-deploy:
+    runs-on: [ ubuntu-latest ]
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v3
+
+      - name: Setup Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Change directory to auth-service
+        run: cd auth_service
+
+      - name: Build Project
+        run: mvn -s auth_service/settings.xml clean install -DskipTests
+
+      # To push to ECR you need to login through us-east-1
+      # https://github.com/aws-actions/amazon-ecr-login/issues/587
+      # https://github.com/aws-actions/amazon-ecr-login?tab=readme-ov-file#troubleshooting
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v3
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: "us-east-1"
+
+      - name: Login to Amazon ECR Public
+        id: login-ecr-public
+        uses: aws-actions/amazon-ecr-login@v2
+        with:
+          registry-type: public
+
+      - name: Build, tag, and push image to Amazon ECR
+        id: build-image
+        env:
+          ECR_REGISTRY: public.ecr.aws/e0x1f4p4
+          IMAGE_TAG: latest
+          REPOSITORY: auth-service/auth-service-repo
+        run: |
+          # Build a docker container and push it to ECR
+          docker build -t $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG
+          echo "Docker Image Link = $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG"
+
+      # Get the KUBECONFIG from : https://cloud.linode.com/kubernetes/clusters/189301/summary
+
+      # TODO: This kubeconfig is global kubeconfig with access to whole cluster
+      # In production refrain from using this and use k8s service account with limited access
+      # Each service account has permissions like IAM and each has its own kubeconfig
+      # replace global kubeconfig with service account's kubeconfig
+      # https://www.linode.com/content/terraforming-kubernetes-github-actions/
+      # https://nicwortel.nl/blog/2022/continuous-deployment-to-kubernetes-with-github-actions
+      - name: Connect to LKE kubernetes cluster
+        id: connect-to-k8s-cluster
+        uses: Azure/k8s-set-context@v4.0.0
+        with:
+          method: kubeconfig
+          kubeconfig: ${{ secrets.VACADEMY_STAGE_KUBECONFIG}}
+
+      - name: Restart deployment
+        id: restart-deployment
+        env:
+          DEPLOYMENT_NAME: auth-service
+          NAMESPACE: auth-service
+        run: |
+          kubectl rollout restart deployment $DEPLOYMENT_NAME --namespace $NAMESPACE

@@ -14,7 +14,7 @@ COPY . .
 RUN mvn -s settings.xml clean install -DskipTests
 
 # Stage 2: Package the application into the final image
-FROM eclipse-temurin:17-jdk-alpine
+FROM amazoncorretto:17-alpine
 
 # Set the working directory
 WORKDIR /app

@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service
+  namespace: auth-service
+  labels:
+    app: auth-service
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: auth-service
+  template:
+    metadata:
+      labels:
+        app: auth-service
+    spec:
+      containers:
+        - name: auth-service
+          image: {{ .Values.services.auth_service.image.repository }}:{{ .Values.services.auth_service.image.tag }}
+          imagePullPolicy: Always
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "450Mi"
+            limits:
+              cpu: "250m"
+              memory: "600Mi"
+          livenessProbe:
+            httpGet:
+              path: /media_service/actuator/health
+              port: {{ .Values.services.auth_service.port }}
+              scheme: HTTP
+            initialDelaySeconds: 180
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+            successThreshold: 1
+          startupProbe:
+            httpGet:
+              path: /auth_service/actuator/health
+              port: {{ .Values.services.auth_service.port }}
+              scheme: HTTP
+            initialDelaySeconds: 180
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 30
+            successThreshold: 1
+          readinessProbe:
+            httpGet:
+              path: /media_service/actuator/health
+              port: {{ .Values.services.auth_service.port }}
+              scheme: HTTP
+            initialDelaySeconds: 180
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+            successThreshold: 1
+          ports:
+            - containerPort: {{ .Values.services.auth_service.port }}

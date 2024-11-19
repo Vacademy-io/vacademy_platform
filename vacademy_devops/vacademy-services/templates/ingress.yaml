@@ -1,0 +1,49 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: vacademy-services-ingress
+  namespace: default
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "1800"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "1800"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "1800"
+    cert-manager.io/cluster-issuer: laborlink-stage-letsencrypt-prod-cert-issuer
+    certmanager.k8s.io/acme-challenge-type: http01
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - backend-stage.vacademy.io
+      secretName: vacademy-tls-secret
+  rules:
+    - host: backend-stage.vacademy.io
+      http:
+        paths:
+          - path: /student-service
+            pathType: Prefix
+            backend:
+              service:
+                name: student-service
+                port:
+                  number: {{ .Values.services.student_service.port }}
+          - path: /media-service
+            pathType: Prefix
+            backend:
+              service:
+                name: media-service
+                port:
+                  number: {{ .Values.services.media_service.port }}
+          - path: /auth-service
+            pathType: Prefix
+            backend:
+              service:
+                name: auth-service
+                port:
+                  number: {{ .Values.services.auth_service.port }}
+          - path: /admin-core-service
+            pathType: Prefix
+            backend:
+              service:
+                name: admin-core-service
+                port:
+                  number: {{ .Values.services.admin_core_service.port }}

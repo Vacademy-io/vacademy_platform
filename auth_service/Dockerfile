@@ -5,7 +5,8 @@ FROM maven:3.8.5-openjdk-17-slim AS build
 WORKDIR /build
 
 # Create the Maven settings file
-RUN echo "<settings><servers><server><id>github</id><username>shreyash-jain</username><password>${JAVA_TOKEN}</password></server></servers></settings>" > settings.xml
+ARG GITHUB_TOKEN
+RUN echo "<settings><servers><server><id>github</id><username>shreyash-jain</username><password>${GITHUB_TOKEN}</password></server></servers></settings>" > settings.xml
 
 # Copy the project files
 COPY . .

@@ -21,8 +21,14 @@ public class UserInstituteController {
 
     @PostMapping("/registerUserInstitutes")
     public ResponseEntity<List<InstituteIdAndNameDTO>> registerUserInstitutes(@RequestBody InstitutesAndUserIdDTO request) {
+        List<InstituteIdAndNameDTO> institutes=null;
+        if(request.getInstitutes()!=null) {
+            institutes = instituteService.saveInstitutesAndCreateStaff(request.getUserId(), request.getInstitutes());
+        }
+        else {
+            institutes = instituteService.getInstitutes(request.getUserId());
+        }
 
-        List<InstituteIdAndNameDTO> institutes =  instituteService.saveInstitutesAndCreateStaff(request.getUserId(), request.getInstitutes());
         return ResponseEntity.ok(institutes);
     }
 }

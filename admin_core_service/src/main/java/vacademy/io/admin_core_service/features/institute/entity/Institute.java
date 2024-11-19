@@ -51,11 +51,11 @@ public class Institute {
     private String description;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "institute_type")
+    @Column(name = "type")
     private InstituteType instituteType;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "held_by")
+    @Column(name = "held")
     private HeldBy heldBy;
 
     @Column(name = "founded_date")

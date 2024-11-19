@@ -6,6 +6,7 @@
 /Users/shreyash12/Documents/vacademy_services/common_service/src/main/java/vacademy/io/common/auth/service/JwtService.java
 /Users/shreyash12/Documents/vacademy_services/common_service/src/main/java/vacademy/io/common/auth/entity/RefreshToken.java
 /Users/shreyash12/Documents/vacademy_services/common_service/src/main/java/vacademy/io/common/exceptions/UserWithRoleNotFoundException.java
+/Users/shreyash12/Documents/vacademy_services/common_service/src/main/java/vacademy/io/common/auth/dto/UserRoleRequestDTO.java
 /Users/shreyash12/Documents/vacademy_services/common_service/src/main/java/vacademy/io/common/exceptions/SiteNotFoundException.java
 /Users/shreyash12/Documents/vacademy_services/common_service/src/main/java/vacademy/io/common/notification/service/OTPInternalService.java
 /Users/shreyash12/Documents/vacademy_services/common_service/src/main/java/vacademy/io/common/exceptions/UserWithPermissionNotFoundException.java
@@ -44,6 +45,7 @@
 /Users/shreyash12/Documents/vacademy_services/common_service/src/main/java/vacademy/io/common/auth/entity/User.java
 /Users/shreyash12/Documents/vacademy_services/common_service/src/main/java/vacademy/io/common/auth/utils/DateUtil.java
 /Users/shreyash12/Documents/vacademy_services/common_service/src/main/java/vacademy/io/common/exceptions/RoleNotFoundException.java
+/Users/shreyash12/Documents/vacademy_services/common_service/src/main/java/vacademy/io/common/auth/dto/UserPermissionRequestDTO.java
 /Users/shreyash12/Documents/vacademy_services/common_service/src/main/java/vacademy/io/common/auth/dto/RefreshTokenRequestDTO.java
 /Users/shreyash12/Documents/vacademy_services/common_service/src/main/java/vacademy/io/common/auth/provider/ServiceAuthProvider.java
 /Users/shreyash12/Documents/vacademy_services/common_service/src/main/java/vacademy/io/common/auth/utils/UrlUtils.java
@@ -55,6 +57,7 @@
 /Users/shreyash12/Documents/vacademy_services/common_service/src/main/java/vacademy/io/common/auth/config/SharedConfigurationReference.java
 /Users/shreyash12/Documents/vacademy_services/common_service/src/main/java/vacademy/io/common/notification/dto/GenericEmailRequest.java
 /Users/shreyash12/Documents/vacademy_services/common_service/src/main/java/vacademy/io/common/auth/repository/UserRepository.java
+/Users/shreyash12/Documents/vacademy_services/common_service/src/main/java/vacademy/io/common/exceptions/InvalidRequestException.java
 /Users/shreyash12/Documents/vacademy_services/common_service/src/main/java/vacademy/io/common/db_logging/entity/SystemAlertLog.java
 /Users/shreyash12/Documents/vacademy_services/common_service/src/main/java/vacademy/io/common/notification/service/AlertJsonService.java
 /Users/shreyash12/Documents/vacademy_services/common_service/src/main/java/vacademy/io/common/core/dto/bulk_csv_upload/CsvInitResponse.java

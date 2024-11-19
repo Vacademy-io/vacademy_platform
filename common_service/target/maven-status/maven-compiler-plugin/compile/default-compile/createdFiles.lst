@@ -15,6 +15,7 @@ vacademy/io/common/notification/service/AlertJsonService.class
 vacademy/io/common/auth/filter/JwtAuthFilter.class
 vacademy/io/common/payment/enums/PaymentStatusEnum.class
 vacademy/io/common/auth/model/CustomUserDetails.class
+vacademy/io/common/exceptions/InvalidRequestException.class
 vacademy/io/common/exceptions/RoleNotFoundException.class
 vacademy/io/common/auth/filter/InternalAuthFilter.class
 vacademy/io/common/auth/enums/Gender.class
@@ -29,6 +30,7 @@ vacademy/io/common/auth/utils/NumberUtil.class
 vacademy/io/common/auth/entity/RefreshToken.class
 vacademy/io/common/notification/dto/Media.class
 vacademy/io/common/notification/service/HtmlEmailService$1.class
+vacademy/io/common/auth/dto/UserPermissionRequestDTO.class
 vacademy/io/common/auth/entity/UserAuthority.class
 vacademy/io/common/core/dto/bulk_csv_upload/CsvSubmitApi.class
 vacademy/io/common/auth/service/ClientAuthentication.class
@@ -95,3 +97,4 @@ vacademy/io/common/notification/service/HtmlEmailService.class
 vacademy/io/common/auth/dto/JwtResponseDTO$JwtResponseDTOBuilder.class
 vacademy/io/common/auth/utils/CaseHandlerUserClient.class
 vacademy/io/common/notification/service/AlertInternalService$2.class
+vacademy/io/common/auth/dto/UserRoleRequestDTO.class

@@ -20,10 +20,8 @@ jobs:
           distribution: "temurin"
           java-version: "17"
 
-      - name: Change directory to auth-service
-        run: cd auth_service
-
       - name: Build Project
+        working-directory: ./auth_service
         run: mvn -s auth_service/settings.xml clean install -DskipTests
 
       # To push to ECR you need to login through us-east-1
@@ -44,6 +42,7 @@ jobs:
 
       - name: Build, tag, and push image to Amazon ECR
         id: build-image
+        working-directory: ./auth_service
         env:
           ECR_REGISTRY: public.ecr.aws/e0x1f4p4
           IMAGE_TAG: latest

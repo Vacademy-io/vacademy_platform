@@ -5,6 +5,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.common.auth.dto.UserDTO;
+import vacademy.io.common.auth.dto.UserPermissionRequestDTO;
+import vacademy.io.common.auth.dto.UserRoleRequestDTO;
+import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.auth.service.UserService;
 
 
@@ -18,18 +21,26 @@ public class UserController {
 
 
     //API to add role to a user
-    @PostMapping("/v1/user-to-role/{userId}/{roleId}")
-    public ResponseEntity<String> addRoleToUser(@PathVariable String userId, @PathVariable String roleId) {
-        userService.addRoleToUser(userId, roleId);
+    @PostMapping("/v1/user-to-role")
+    public ResponseEntity<String> addRoleToUser(@RequestBody UserRoleRequestDTO userRoleRequestDTO, @RequestAttribute("user") CustomUserDetails user) {
+
+        // Extract userId from CustomUserDetails for potential future business logic
+        String extractedUserId = user.getUserId();
+
+        userService.addRoleToUser(userRoleRequestDTO);
         return ResponseEntity.ok("Role added to user successfully.");
     }
 
-    //API to add permission to a user
-    @PostMapping("/v1/user-to-permission/{userId}/{permissionId}")
-    public ResponseEntity<String> addPermissionToUser(@PathVariable String userId, @PathVariable String permissionId) {
-        userService.addPermissionToUser(userId, permissionId);
+    @PostMapping("/v1/user-to-permission")
+    public ResponseEntity<String> addPermissionToUser(@RequestBody UserPermissionRequestDTO userPermissionRequestDTO, @RequestAttribute("user") CustomUserDetails user) {
+
+        // Use the userId extracted from the CustomUserDetails if needed for future logic
+        String extractedUserId = user.getUserId();
+
+        userService.addPermissionToUser(userPermissionRequestDTO);
         return ResponseEntity.ok("Permission added to user successfully.");
     }
+
 
     //API to fetch user details correspond to user id
     @GetMapping("/internal/v1/details/{userId}")
@@ -54,17 +65,25 @@ public class UserController {
     }
 
     //API to remove role from user
-    @DeleteMapping("/v1/user-role/{userId}/{roleId}")
-    public ResponseEntity<String> removeRoleFromUser(@PathVariable String userId, @PathVariable String roleId) {
-        userService.removeRoleFromUser(userId, roleId);
+    @DeleteMapping("/v1/user-role")
+    public ResponseEntity<String> removeRoleFromUser(@RequestBody UserRoleRequestDTO userRoleRequestDTO, @RequestAttribute("user") CustomUserDetails user) {
+
+        // Extract userId from CustomUserDetails if needed for further business logic
+        String extractedUserId = user.getUserId();
+
+        userService.removeRoleFromUser(userRoleRequestDTO);
         return ResponseEntity.ok("Role removed from user successfully.");
     }
 
-    //API to remove permission from user
-    @DeleteMapping("/v1/user-permission/{userId}/{permissionId}")
-    public ResponseEntity<String> removePermissionFromUser(@PathVariable String userId, @PathVariable String permissionId) {
 
-        userService.removePermissionFromUser(userId, permissionId);
+    //API to remove permission from user
+    @DeleteMapping("/v1/user-permission")
+    public ResponseEntity<String> removePermissionFromUser(@RequestBody UserPermissionRequestDTO userPermissionRequestDTO, @RequestAttribute("user") CustomUserDetails user) {
+
+        // Extract userId from CustomUserDetails if needed for further business logic
+        String extractedUserId = user.getUserId();
+
+        userService.removePermissionFromUser(userPermissionRequestDTO);
         return ResponseEntity.ok("Permission removed from user successfully.");
     }
 

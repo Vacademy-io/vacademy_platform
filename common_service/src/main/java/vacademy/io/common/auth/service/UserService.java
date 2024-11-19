@@ -2,8 +2,9 @@ package vacademy.io.common.auth.service;
 
 
 import vacademy.io.common.auth.dto.UserDTO;
+import vacademy.io.common.auth.dto.UserPermissionRequestDTO;
+import vacademy.io.common.auth.dto.UserRoleRequestDTO;
 import vacademy.io.common.auth.entity.User;
-import vacademy.io.common.auth.enums.UserTypesEnum;
 import vacademy.io.common.auth.repository.UserRepository;
 
 import vacademy.io.common.exceptions.*;
@@ -51,7 +52,14 @@ public class UserService {
         return userRepository.save(user);
     }
 
-    public void addRoleToUser(String userId, String roleId) {
+    public void addRoleToUser(UserRoleRequestDTO userRoleRequestDTO) {
+
+        String userId = userRoleRequestDTO.getUserId();
+        String roleId = userRoleRequestDTO.getRoleId();
+
+        if (userId == null || roleId == null) {
+            throw new InvalidRequestException("userId and roleId are required.");
+        }
 
         if(!ifRoleExist(roleId)) {
             throw new RoleNotFoundException("Role with Id " + roleId + " not found");
@@ -62,7 +70,14 @@ public class UserService {
         userRepository.addRoleToUser(userId, roleId);
     }
 
-    public void addPermissionToUser(String userId, String permissionId) {
+    public void addPermissionToUser(UserPermissionRequestDTO userPermissionRequestDTO) {
+
+        String userId=userPermissionRequestDTO.getUserId();
+        String permissionId=userPermissionRequestDTO.getPermissionId();
+
+        if(userId==null || permissionId ==null) {
+            throw new InvalidRequestException("userId and permissionId are required");
+        }
 
         if(!ifUserExist(userId)) {
             throw new UserNotFoundException("User with Id " + userId + " not found");
@@ -117,15 +132,27 @@ public class UserService {
         );
     }
 
-    public void removeRoleFromUser(String userId, String roleId) {
+    public void removeRoleFromUser(UserRoleRequestDTO userRoleRequestDTO) {
 
+        String userId=userRoleRequestDTO.getUserId();
+        String roleId=userRoleRequestDTO.getRoleId();
+
+        if(userId==null || roleId==null) {
+            throw new InvalidRequestException("userId and RoleId are Required");
+        }
         if(!ifRoleAndUserExist(userId, roleId)) {
             throw new UserWithRoleNotFoundException("User with Id " + userId + " and role Id " + roleId + " not found");
         }
         userRepository.removeRoleFromUser(userId, roleId);
     }
 
-    public void removePermissionFromUser(String userId, String permissionId) {
+    public void removePermissionFromUser(UserPermissionRequestDTO userPermissionRequestDTO) {
+
+        String userId=userPermissionRequestDTO.getUserId();
+        String permissionId=userPermissionRequestDTO.getPermissionId();
+        if(userId==null || permissionId==null) {
+            throw new InvalidRequestException("userId and permissionId are Required");
+        }
 
         if(!ifPermissionAndUserExist(userId, permissionId)) {
             throw new UserWithPermissionNotFoundException("User with Id " + userId + " and Permission Id " + permissionId + " not found");

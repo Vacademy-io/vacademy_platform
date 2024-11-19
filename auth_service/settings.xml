@@ -30,8 +30,8 @@
     <servers>
         <server>
             <id>github</id>
-            <username>shreyash-jain</username>
-            <password>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</password>
+            <username>${env.GITHUB_USERNAME}</username>
+            <password>${env.GITHUB_TOKEN}</password>
             <configuration>
                 <httpHeaders>
                     <property>

@@ -70,7 +70,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 CustomUserDetails userDetails = (CustomUserDetails) userDetailsService.loadUserByUsername(userEmail);
 
                 // Pass User ID with request
-                request.setAttribute("userId", userDetails.getUserId());
+                request.setAttribute("user", userDetails);
+
 
                 addUserActivity(userDetails.getUserId(), request.getServerName(), request.getRequestURI(), request.getRemoteAddr());
                 // Validate the JWT token using user details and JwtService

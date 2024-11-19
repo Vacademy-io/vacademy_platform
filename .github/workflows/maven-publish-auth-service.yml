@@ -61,10 +61,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.JAVA_TOKEN }}
           GITHUB_ACTOR: shreyash-jain
         run: |
-          mkdir -p ~/.m2
-          echo "<settings><servers><server><id>github</id><username>shreyash-jain</username><password>${GITHUB_TOKEN}</password></server></servers></settings>" > ~/.m2/settings.xml
-          cp ~/.m2/settings.xml ./.m2/settings.xml
-          docker build -t $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG . --build-arg GITHUB_TOKEN=${GITHUB_TOKEN} --build-arg GITHUB_ACTOR=${GITHUB_ACTOR} --build-arg MAVEN_OPTS=-s./settings.xml
+          docker build -t $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG . --build-arg GITHUB_TOKEN=${GITHUB_TOKEN} --build-arg GITHUB_ACTOR=${GITHUB_ACTOR}
           docker push $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG
           echo "Docker Image Link = $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG"
 

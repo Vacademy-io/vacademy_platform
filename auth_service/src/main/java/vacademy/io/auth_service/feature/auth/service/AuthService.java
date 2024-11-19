@@ -2,11 +2,16 @@ package vacademy.io.auth_service.feature.auth.service;
 
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestClientException;
@@ -19,7 +24,6 @@ import vacademy.io.common.auth.entity.RefreshToken;
 import vacademy.io.common.auth.entity.User;
 import vacademy.io.common.auth.entity.UserAuthority;
 import vacademy.io.common.auth.entity.UserRole;
-import vacademy.io.common.auth.enums.Gender;
 import vacademy.io.common.auth.repository.UserRepository;
 import vacademy.io.common.auth.service.JwtService;
 import vacademy.io.common.auth.service.RefreshTokenService;
@@ -27,14 +31,21 @@ import vacademy.io.common.exceptions.LaborLinkException;
 import vacademy.io.common.auth.dto.SubmoduleDTO;
 import vacademy.io.common.auth.dto.OrgDTO;
 
+
 import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
 public class AuthService {
 
+    @Value("${admin.core.service.url}")
+    private String adminCoreServiceUrl;
+
     @Autowired
     UserRepository userRepository;
+
+    @Autowired
+    AuthenticationManager authenticationManager;
 
     @Autowired
     JwtService jwtService;
@@ -75,7 +86,6 @@ public class AuthService {
         InstitutesAndUserIdDTO adminCoreRequest = new InstitutesAndUserIdDTO(newUser.getId(), registerRequest.getInstitutes());
 
     // Make it https because codacy AI fails in http . convert into http when run in local
-        String adminCoreServiceUrl = "https://localhost:8072/registerUserInstitutes";
 
         ResponseEntity<List<InstituteIdAndNameDTO>> response = null;
         try {
@@ -188,7 +198,60 @@ public class AuthService {
     }
 
 
+    public JwtResponseDto loginUser(AuthRequestDto authRequestDTO) {
+
+        Authentication authentication = authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(authRequestDTO.getUsername(), authRequestDTO.getPassword()));
+        if (authentication.isAuthenticated()) {
+
+            String username = authRequestDTO.getUsername();
+
+            Optional<User> userOptional = userRepository.findByUsername(username);
+            if (userOptional.isEmpty() || !userOptional.get().isRootUser()) {
+                throw new UsernameNotFoundException("invalid user request..!!");
+            }
+
+            refreshTokenService.deleteAllRefreshToken(userOptional.get());
+
+            User user= userOptional.get();
 
 
+            InstitutesAndUserIdDTO adminCoreRequest = new InstitutesAndUserIdDTO(user.getId(), null);
 
+            // Make it https because codacy AI fails in http . convert into http when run in local
+            String adminCoreServiceUrl = "https://localhost:8072/registerUserInstitutes";
+
+            ResponseEntity<List<InstituteIdAndNameDTO>> response = null;
+            try {
+
+                response = restTemplate.exchange(
+                        adminCoreServiceUrl, HttpMethod.POST, new HttpEntity<>(adminCoreRequest),
+                        new ParameterizedTypeReference<List<InstituteIdAndNameDTO>>() {}
+                );
+            } catch (RestClientException e) {
+
+                throw new LaborLinkException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to register user institutes due to service unavailability: " + e.getMessage());
+            }
+
+            List<OrgDTO> orgs = new ArrayList<>();
+            for (InstituteIdAndNameDTO instituteDTO : response.getBody()) {
+                List<SubmoduleDTO> submodules = getSubmoduleDetails(instituteDTO.getSubmoduleIds());
+                List<String> roles = getRolesForUserAndInstitute(user.getId(), instituteDTO.getInstituteId());
+                List<String> permissions = getPermissionsForRoles(user.getId(), instituteDTO.getInstituteId());
+
+                orgs.add(new OrgDTO(
+                        instituteDTO.getInstituteName(),
+                        instituteDTO.getInstituteId(),
+                        submodules,
+                        roles,
+                        permissions
+                ));
+            }
+
+            RefreshToken refreshToken = refreshTokenService.createRefreshToken(authRequestDTO.getUsername(), authRequestDTO.getClientName());
+            return JwtResponseDto.builder().accessToken(jwtService.generateTokenForRoot(user,orgs)).refreshToken(refreshToken.getToken()).build();
+
+        } else {
+            throw new UsernameNotFoundException("invalid user request..!!");
+        }
+    }
 }

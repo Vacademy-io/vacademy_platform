@@ -60,6 +60,15 @@ public class AuthController {
 
     }
 
+    @PostMapping("/login-root")
+    public JwtResponseDto AuthenticateAndGetToken(@RequestBody AuthRequestDto authRequestDTO) {
+
+        return authService.loginUser(authRequestDTO);
+
+
+    }
+
+
 
 
 

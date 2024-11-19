@@ -75,4 +75,17 @@ public class UserInstituteService {
                 .collect(Collectors.toList());
 
     }
+
+    public List<InstituteIdAndNameDTO> getInstitutes(String userId) {
+
+        List<Institute> instituteList = instituteRepository.findInstitutesByUserId(userId);
+        return instituteList.stream()
+                .map(institute -> {
+
+                    List<String> submoduleIds = getSubmoduleIdsForInstitute(institute.getId());
+
+                    return new InstituteIdAndNameDTO(institute.getId(), institute.getInstituteName(), submoduleIds);
+                })
+                .collect(Collectors.toList());
+    }
 }

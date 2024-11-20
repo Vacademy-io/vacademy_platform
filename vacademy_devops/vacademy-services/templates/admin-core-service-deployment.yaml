@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: admin-core-service
-  namespace: admin-core-service
+  namespace: default
   labels:
     app: admin-core-service
 spec:
@@ -28,7 +28,33 @@ spec:
               memory: "600Mi"
           livenessProbe:
             httpGet:
-              path: /admin_core_service/actuator/health
+              path: /admin-core-service/actuator/health
               port: {{ .Values.services.admin_core_service.port }}
               scheme: HTTP
             initialDelaySeconds: 180
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+            successThreshold: 1
+          startupProbe:
+            httpGet:
+              path: /admin-core-service/actuator/health
+              port: {{ .Values.services.admin_core_service.port }}
+              scheme: HTTP
+            initialDelaySeconds: 180
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 30
+            successThreshold: 1
+          readinessProbe:
+            httpGet:
+              path: /admin-core-service/actuator/health
+              port: {{ .Values.services.admin_core_service.port }}
+              scheme: HTTP
+            initialDelaySeconds: 180
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+            successThreshold: 1
+          ports:
+            - containerPort: {{ .Values.services.admin_core_service.port }}

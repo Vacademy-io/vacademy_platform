@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: student-service
-  namespace: student-service
+  namespace: default
   labels:
     app: student-service
 spec:
@@ -28,7 +28,7 @@ spec:
               memory: "600Mi"
           livenessProbe:
             httpGet:
-              path: /student_service/actuator/health
+              path: /student-service/actuator/health
               port: {{ .Values.services.student_service.port }}
               scheme: HTTP
             initialDelaySeconds: 180
@@ -38,7 +38,7 @@ spec:
             successThreshold: 1
           startupProbe:
             httpGet:
-              path: /student_service/actuator/health
+              path: /student-service/actuator/health
               port: {{ .Values.services.student_service.port }}
               scheme: HTTP
             initialDelaySeconds: 180
@@ -48,7 +48,7 @@ spec:
             successThreshold: 1
           readinessProbe:
             httpGet:
-              path: /student_service/actuator/health
+              path: /student-service/actuator/health
               port: {{ .Values.services.student_service.port }}
               scheme: HTTP
             initialDelaySeconds: 180

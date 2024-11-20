@@ -6,6 +6,8 @@ import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
 import vacademy.io.common.auth.constants.AuthConstant;
+import vacademy.io.common.auth.dto.OrgDTO;
+import vacademy.io.common.auth.dto.SubmoduleDTO;
 import vacademy.io.common.auth.entity.User;
 
 import org.springframework.security.core.userdetails.UserDetails;
@@ -88,5 +90,50 @@ public class JwtService {
     private Key getSignInKey() {
         byte[] keyBytes = Decoders.BASE64.decode(secretKey);
         return Keys.hmacShaKeyFor(keyBytes);
+    }
+
+    public String generateTokenForRoot(User userDetails) {
+        // Create a map to hold extra claims (payload for the JWT)
+        Map<String, Object> extraClaims = new HashMap<>();
+
+        // Add user details to the claims
+        extraClaims.put("user", userDetails.getId());               // User ID
+        extraClaims.put("is_root_user", userDetails.isRootUser());  // Indicate if it's a root user
+
+        // Call to build the JWT token with the provided claims and user details
+        return buildToken(extraClaims, userDetails, AuthConstant.jwtTokenExpiryInMillis);
+    }
+
+    public String generateTokenForRoot(User userDetails, List<OrgDTO> orgs)  {
+        // Create a map to hold extra claims (payload for the JWT)
+        Map<String, Object> extraClaims = new HashMap<>();
+
+        // Add user details to the claims
+        extraClaims.put("user", userDetails.getId());
+        extraClaims.put("username", userDetails.getUsername());
+        extraClaims.put("email", userDetails.getEmail());
+
+        List<Map<String, Object>> orgDetails = new ArrayList<>();
+        for (OrgDTO org : orgs) {
+            Map<String, Object> orgMap = new HashMap<>();
+            orgMap.put("name", org.getName());
+            orgMap.put("id", org.getId());
+            List<Map<String, Object>> subModules = new ArrayList<>();
+            for (SubmoduleDTO subModule : org.getSubModules()) {
+                Map<String, Object> subModuleMap = new HashMap<>();
+                subModuleMap.put("name", subModule.getName());
+                subModuleMap.put("module", subModule.getModule());
+                subModules.add(subModuleMap);
+            }
+            orgMap.put("sub_modules", subModules);
+            orgMap.put("roles", org.getRoles());
+            orgMap.put("permissions", org.getPermissions());
+
+            orgDetails.add(orgMap);
+        }
+
+        extraClaims.put("org", orgDetails);
+
+        return buildToken(extraClaims, userDetails, AuthConstant.jwtTokenExpiryInMillis);
     }
 }

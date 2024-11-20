@@ -47,4 +47,13 @@ public interface PermissionRepository extends CrudRepository<UserAuthority, Stri
     @Query(value = "SELECT COUNT(*) > 0 FROM roles WHERE id = :roleId", nativeQuery = true)
     boolean existsByRoleId(@Param("roleId") String roleId);
 
+
+    @Query(value = "SELECT DISTINCT p.* " +
+            "FROM user_role ur " +
+            "JOIN role_permission rp ON ur.role_id = rp.role_id " +
+            "JOIN permissions p ON rp.permission_id = p.id " +
+            "WHERE ur.user_id = :userId AND ur.institute_id = :instituteId",
+            nativeQuery = true)
+    List<UserAuthority> findPermissionsByUserIdAndInstituteId(@Param("userId") String userId, @Param("instituteId") String instituteId);
+
 }

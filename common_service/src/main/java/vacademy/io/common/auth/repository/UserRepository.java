@@ -75,5 +75,16 @@ public interface UserRepository extends CrudRepository<User, String> {
     @Query(value="SELECT COUNT(*) > 0 FROM user_permission WHERE user_id = :userId AND permission_id = :permissionId", nativeQuery = true)
     boolean existsByUserIdAndPermissionId(@Param("userId") String userId, @Param("permissionId") String permissionId);
 
+    @Modifying
+    @Transactional
+    @Query(value = "INSERT INTO users (id,username, email, password_hash, is_root_user) VALUES (:userId, :username, :email, :password, :isRootUser)", nativeQuery = true)
+    void insertUser(@Param("userId") String userId, @Param("username") String username, @Param("email") String email, @Param("password") String password, @Param("isRootUser") boolean isRootUser
+    );
+
+    @Modifying
+    @Transactional
+    @Query(value = "DELETE FROM users WHERE id = :userId", nativeQuery = true)
+    void deleteUserById(@Param("userId") String userId);
+
 
 }

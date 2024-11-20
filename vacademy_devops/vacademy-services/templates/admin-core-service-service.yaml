@@ -2,6 +2,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: admin-core-service
+  namespace: default
 spec:
   selector:
     app: admin-core-service
@@ -9,4 +10,4 @@ spec:
     - name: http
       port: {{ .Values.services.admin_core_service.port }}
       targetPort: {{ .Values.services.admin_core_service.port }}
-  type: ClusterIP
+  type: NodePort

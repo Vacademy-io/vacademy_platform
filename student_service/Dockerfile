@@ -4,6 +4,13 @@ FROM maven:3.8.5-openjdk-17-slim AS build
 # Set the working directory
 WORKDIR /build
 
+# Declare the build arguments
+ARG GITHUB_TOKEN
+ARG JAVA_TOKEN
+
+# Set environment variables
+ENV JAVA_TOKEN=$JAVA_TOKEN
+
 # Copy the Maven settings file
 COPY settings.xml ./
 

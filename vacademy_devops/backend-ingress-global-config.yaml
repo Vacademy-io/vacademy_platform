@@ -1,0 +1,17 @@
+# Nginx Ingress automatically picks this up (with name ingress-nginx-controller in ingress-nginx namespace)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ingress-nginx-controller
+  namespace: ingress-nginx
+  labels:
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+data:
+  enable-underscores-in-headers: "true"
+  proxy-body-size: "0"
+
+  # Global timeout settings
+  proxy-connect-timeout: "1800" # 30 minutes connection timeout
+  proxy-send-timeout: "1800" # 30 minutes send timeout
+  proxy-read-timeout: "1800" # 30 minutes read timeout

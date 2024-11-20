@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: media-service
-  namespace: media-service
+  namespace: default
   labels:
     app: media-service
 spec:

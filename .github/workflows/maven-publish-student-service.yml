@@ -84,7 +84,7 @@ jobs:
       - name: Restart deployment
         id: restart-deployment
         env:
-          DEPLOYMENT_NAME: student_service
+          DEPLOYMENT_NAME: student-service
           NAMESPACE: default
         run: |
           kubectl rollout restart deployment $DEPLOYMENT_NAME --namespace $NAMESPACE

@@ -7,7 +7,7 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-connect-timeout: "1800"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "1800"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "1800"
-    cert-manager.io/cluster-issuer: laborlink-stage-letsencrypt-prod-cert-issuer
+    cert-manager.io/cluster-issuer: vacademy-stage-letsencrypt-prod-cert-issuer
     certmanager.k8s.io/acme-challenge-type: http01
 spec:
   ingressClassName: nginx

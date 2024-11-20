@@ -28,7 +28,7 @@ spec:
               memory: "600Mi"
           livenessProbe:
             httpGet:
-              path: /auth_service/actuator/health
+              path: /auth-service/actuator/health
               port: {{ .Values.services.auth_service.port }}
               scheme: HTTP
             initialDelaySeconds: 180
@@ -38,7 +38,7 @@ spec:
             successThreshold: 1
           startupProbe:
             httpGet:
-              path: /auth_service/actuator/health
+              path: /auth-service/actuator/health
               port: {{ .Values.services.auth_service.port }}
               scheme: HTTP
             initialDelaySeconds: 180
@@ -48,7 +48,7 @@ spec:
             successThreshold: 1
           readinessProbe:
             httpGet:
-              path: /auth_service/actuator/health
+              path: /auth-service/actuator/health
               port: {{ .Values.services.auth_service.port }}
               scheme: HTTP
             initialDelaySeconds: 180

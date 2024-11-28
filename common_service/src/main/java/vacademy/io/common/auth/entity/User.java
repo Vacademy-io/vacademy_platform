@@ -34,13 +34,8 @@ public class User {
     @Column(name = "full_name")
     private String fullName;
 
-    @ManyToMany(fetch = FetchType.EAGER)
-    @JoinTable(
-            name = "user_role",
-            joinColumns = @JoinColumn(name = "user_id"),
-            inverseJoinColumns = @JoinColumn(name = "role_id")
-    )
-    private Set<UserRole> roles = new HashSet<>();
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY) // Adjust mapping as necessary
+    private Set<UserRole> roles;
 
     @Column(name = "address_line")
     private String addressLine;
@@ -57,9 +52,8 @@ public class User {
     @Column(name = "date_of_birth")
     private LocalDate dateOfBirth;
 
-    @Enumerated(EnumType.STRING)
     @Column(name = "gender")
-    private Gender gender;
+    private String gender;
 
     @Column(name = "is_root_user")
     private boolean isRootUser;
@@ -69,23 +63,5 @@ public class User {
 
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Timestamp updatedAt;
-
-
-    public List<String> getAllAuth() {
-        // Create a list to store GrantedAuthority objects
-        List<String> auths = new ArrayList<>();
-
-        // Iterate through each UserRole for the user
-        for (UserRole role : roles) {
-            // Get individual authorities from the role and convert them to uppercase GrantedAuthority objects
-            role.getAuthorities().forEach(userAuthority -> auths.add(userAuthority.getName().toUpperCase()));
-
-            // Add the role name itself as a GrantedAuthority (also in uppercase)
-            auths.add(role.getName().toUpperCase());
-        }
-        return auths;
-    }
-
-
 
 }

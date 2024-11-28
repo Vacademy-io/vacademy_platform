@@ -38,12 +38,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
         // Retrieve Authorization header from the request
 
-        if (request.getRequestURI().startsWith("/internal/")) {
-            filterChain.doFilter(request, response);
-            return;
-        }
-
         final String authHeader = request.getHeader("Authorization");
+        final String instituteId = request.getHeader("clientId");
 
         // If header is missing or doesn't start with "Bearer ", skip filter
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
@@ -56,18 +52,18 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             final String jwt = authHeader.substring(7);
 
             // Extract user email from the JWT using JwtService
-            final String userEmail = jwtService.extractUsername(jwt);
+            final String usernameWithInstituteId = instituteId + "@" + jwtService.extractUsername(jwt);
 
             // Get current authentication object from SecurityContextHolder
             Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 
             // If user email is present and no authentication exists
-            if (userEmail != null && authentication == null) {
+            if (usernameWithInstituteId != null && authentication == null) {
 
                 boolean isTokenExpired = jwtService.isTokenExpired(jwt);
                 if (isTokenExpired) throw new ExpiredTokenException("Expired Token");
                 // Load user details using user email
-                CustomUserDetails userDetails = (CustomUserDetails) userDetailsService.loadUserByUsername(userEmail);
+                CustomUserDetails userDetails = (CustomUserDetails) userDetailsService.loadUserByUsername(usernameWithInstituteId);
 
                 // Pass User ID with request
                 request.setAttribute("user", userDetails);

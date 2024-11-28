@@ -3,7 +3,7 @@ package vacademy.io.common.exceptions;
 import org.springframework.http.HttpStatus;
 
 // your custom exception class
-public class EventNotFoundException extends LaborLinkException {
+public class EventNotFoundException extends VacademyException {
     public EventNotFoundException(String message) {
         super(HttpStatus.EXPECTATION_FAILED, message);
     }

@@ -14,7 +14,6 @@ import org.springframework.stereotype.Component;
 import vacademy.io.common.auth.constants.AuthConstant;
 import vacademy.io.common.auth.dto.UserServiceDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
-import vacademy.io.common.auth.utils.HmacClientUtils;
 
 @Component
 @Slf4j

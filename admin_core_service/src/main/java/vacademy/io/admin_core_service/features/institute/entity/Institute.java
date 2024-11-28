@@ -3,11 +3,10 @@ package vacademy.io.admin_core_service.features.institute.entity;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.UuidGenerator;
-import vacademy.io.admin_core_service.features.institute.enums.HeldBy;
 import vacademy.io.admin_core_service.features.institute.enums.InstituteType;
-import vacademy.io.common.auth.enums.Gender;
 
 import java.sql.Timestamp;
+import java.util.Date;
 
 @Data
 @Builder
@@ -50,22 +49,14 @@ public class Institute {
     @Column(name = "description")
     private String description;
 
-    @Enumerated(EnumType.STRING)
     @Column(name = "type")
-    private InstituteType instituteType;
+    private String instituteType;
 
-    @Enumerated(EnumType.STRING)
     @Column(name = "held")
-    private HeldBy heldBy;
+    private String heldBy;
 
     @Column(name = "founded_date")
     private Timestamp foundedData;
-
-    @Column(name = "created_at")
-    private Timestamp createdAt;
-
-    @Column(name = "updated_at")
-    private Timestamp updatedAt;
 
     @Column(name = "country")
     private  String country;
@@ -79,7 +70,9 @@ public class Institute {
     @Column(name = "email")
     private String email;
 
+    @Column(name = "updated_at", insertable = false, updatable = false)
+    private Date updatedAt;
 
-
-
+    @Column(name = "created_at", insertable = false, updatable = false)
+    private Date createdAt;
 }

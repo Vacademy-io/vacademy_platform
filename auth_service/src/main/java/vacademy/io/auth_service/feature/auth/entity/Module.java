@@ -20,5 +20,7 @@ public class Module {
 
     @Column(name = "module_name")
     private String moduleName;
+
+
 }
 

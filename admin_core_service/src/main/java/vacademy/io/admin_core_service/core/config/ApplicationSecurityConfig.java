@@ -1,4 +1,4 @@
-package vacademy.io.auth_service.core.config;
+package vacademy.io.admin_core_service.core.config;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
@@ -24,9 +24,9 @@ import vacademy.io.common.auth.filter.JwtAuthFilter;
 public class ApplicationSecurityConfig {
 
 
-    private static final String[] INTERNAL_PATHS = {"/auth-service/internal/**"};
+    private static final String[] INTERNAL_PATHS = {"/admin-core-service/internal/**"};
 
-    private static final String[] ALLOWED_PATHS = {"/auth-service/v1/signup-root", "/auth-service/actuator/**", "/auth-service/swagger-ui.html", "/auth-service/v1/report/alert/**", "/user/v3/api-docs/**", "/auth-service/swagger-ui/**", "/auth-service/webjars/swagger-ui/**", "/auth-service/api-docs/**"};
+    private static final String[] ALLOWED_PATHS = { "/admin-core-service/institute/v1/internal/create","/admin-core-service/actuator/**", "/admin-core-service/swagger-ui.html", "/admin-core-service/v1/report/alert/**", "/admin-core-service/v3/api-docs/**", "/admin-core-service/swagger-ui/**", "/admin-core-service/webjars/swagger-ui/**", "/admin-core-service/api-docs/**"};
 
     @Autowired
     JwtAuthFilter jwtAuthFilter;

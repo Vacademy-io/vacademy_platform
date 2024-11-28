@@ -1,4 +1,4 @@
-package vacademy.io.auth_service.core.config;
+package vacademy.io.admin_core_service.core.config;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,23 +23,7 @@ public class UserDetailsServiceImpl implements UserDetailsService {
 
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-        String usernameWithoutInstitute = username;
-        String instituteId = null;
-        String[] stringUsernameSplit = username.split("@");
-
-        if(stringUsernameSplit.length > 0) {
-            instituteId = stringUsernameSplit[0];
-            usernameWithoutInstitute = stringUsernameSplit[1];
-        }
-
-        Optional<User> user = userRepository.findByUsername(usernameWithoutInstitute);
-
-        if (user.isEmpty()) {
-            log.error("Username not found: " + usernameWithoutInstitute);
-            throw new UsernameNotFoundException("could not found user..!!");
-        }
-        log.info("User Authenticated Successfully..!!!");
-        return new CustomUserDetails(user.get(), instituteId);
+        return null;
     }
 
 }

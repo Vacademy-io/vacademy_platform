@@ -21,6 +21,6 @@ public class UserDTO {
     private String pinCode;
     private String mobileNumber;
     private LocalDate dateOfBirth;
-    private Gender gender;
+    private String gender;
     private boolean isRootUser;
 }

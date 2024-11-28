@@ -3,8 +3,8 @@ package vacademy.io.common.media.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import vacademy.io.common.auth.utils.HmacClientUtils;
-import vacademy.io.common.exceptions.LaborLinkException;
+import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
+import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.media.constant.MediaConstant;
 import vacademy.io.common.media.dto.FileDetailsDTO;
 import lombok.extern.slf4j.Slf4j;
@@ -29,7 +29,7 @@ import java.util.Map;
 public class FileService {
 
     @Autowired
-    HmacClientUtils hmacClientUtils;
+    InternalClientUtils internalClientUtils;
     @Value(value = "${spring.application.name}")
     String clientName;
 
@@ -39,7 +39,7 @@ public class FileService {
     public List<Map<String, String>> getUrlsForFileIds(List<String> fileIds) {
         log.debug("Entering in getUrlsForFileIds Method...");
 
-        ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(clientName, HttpMethod.GET.name(), mediaServerBaseUrl, MediaConstant.multiplePublicUrlGetRoute + "?fileIds=" + StringUtils.join(fileIds, ',') + "&expiryDays=1", null);
+        ResponseEntity<String> response = internalClientUtils.makeHmacRequest(clientName, HttpMethod.GET.name(), mediaServerBaseUrl, MediaConstant.multiplePublicUrlGetRoute + "?fileIds=" + StringUtils.join(fileIds, ',') + "&expiryDays=1", null);
 
         ObjectMapper objectMapper = new ObjectMapper();
         try {
@@ -60,12 +60,12 @@ public class FileService {
 
         MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
         body.add("file", file.getResource());
-        ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(clientName, HttpMethod.PUT.name(), mediaServerBaseUrl, MediaConstant.uploadFilePutRoute, body, headers);
+        ResponseEntity<String> response = internalClientUtils.makeHmacRequest(clientName, HttpMethod.PUT.name(), mediaServerBaseUrl, MediaConstant.uploadFilePutRoute, body, headers);
 
         try {
             return response.getBody();
         } catch (Exception e) {
-            throw new LaborLinkException(e.getMessage());
+            throw new VacademyException(e.getMessage());
         }
     }
 
@@ -76,7 +76,7 @@ public class FileService {
 
         log.debug("Entering in getFileDetailsForFileIds Method...");
 
-        ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(clientName, HttpMethod.GET.name(), mediaServerBaseUrl, MediaConstant.multipleFileDetailsGetRoute + "?fileIds=" + StringUtils.join(fileIds, ',') + "&expiryDays=1", null);
+        ResponseEntity<String> response = internalClientUtils.makeHmacRequest(clientName, HttpMethod.GET.name(), mediaServerBaseUrl, MediaConstant.multipleFileDetailsGetRoute + "?fileIds=" + StringUtils.join(fileIds, ',') + "&expiryDays=1", null);
 
         ObjectMapper objectMapper = new ObjectMapper();
         try {

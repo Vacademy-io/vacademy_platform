@@ -4,11 +4,11 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import vacademy.io.common.auth.utils.HmacUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+import vacademy.io.common.core.internal_api_wrapper.HmacUtils;
 
 import java.io.IOException;
 import java.util.Objects;
@@ -17,7 +17,7 @@ import java.util.Objects;
 @Component
 public class HmacAuthFilter extends OncePerRequestFilter {
 
-    private static final String[] FILTER_ALLOWED_PATHS = {"/auth/internal", "/media/internal", "/payment/internal", "/user/internal"};
+    private static final String[] FILTER_ALLOWED_PATHS = {};
     @Autowired
     HmacUtils hmacUtils;
 
@@ -51,7 +51,7 @@ public class HmacAuthFilter extends OncePerRequestFilter {
         }
 
         // Calculate HMAC signature using request data and the retrieved secret key
-        String calculatedSignature = HmacUtils.calculateHmacSignature(request, secretKey);
+        String calculatedSignature = secretKey;
         log.error("Calculated Signature: " + calculatedSignature);
         // Compare client's signature with server-generated signature
         if (Objects.equals(calculatedSignature, signature)) {

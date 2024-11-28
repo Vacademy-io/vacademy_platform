@@ -3,7 +3,7 @@ package vacademy.io.common.exceptions;
 import org.springframework.http.HttpStatus;
 
 // your custom exception class
-public class DatabaseException extends LaborLinkException {
+public class DatabaseException extends VacademyException {
     public DatabaseException(String message) {
         super(HttpStatus.NOT_EXTENDED, message);
     }

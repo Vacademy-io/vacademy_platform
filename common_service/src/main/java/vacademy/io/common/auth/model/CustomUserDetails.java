@@ -2,11 +2,12 @@ package vacademy.io.common.auth.model;
 
 import vacademy.io.common.auth.dto.UserServiceDTO;
 import vacademy.io.common.auth.entity.User;
-import vacademy.io.common.auth.entity.UserRole;
+import vacademy.io.common.auth.entity.Role;
 import lombok.Getter;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
+import vacademy.io.common.auth.entity.UserRole;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -27,24 +28,27 @@ public class CustomUserDetails extends User implements UserDetails {
      *
      * @param user The User object to extract details from.
      */
-    public CustomUserDetails(User user) {
+    public CustomUserDetails(User user, String instituteId, List<UserRole> userRoles) {
+
+        if(user == null || instituteId == null) {
+            throw new IllegalArgumentException("User or Institute cannot be null");
+        }
         // Set the username from the provided User object
         this.username = user.getUsername();
 
         // Set the password securely from the User object
         this.password = user.getPassword();
         this.userId = user.getId();
-
         // Create a list to store GrantedAuthority objects
         List<GrantedAuthority> auths = new ArrayList<>();
 
         // Iterate through each UserRole for the user
-        for (UserRole role : user.getRoles()) {
+        for (UserRole role : userRoles.stream().filter((role) -> role.getInstituteId().equals(instituteId)).toList()) {
             // Get individual authorities from the role and convert them to uppercase GrantedAuthority objects
-            role.getAuthorities().forEach(userAuthority -> auths.add(new SimpleGrantedAuthority(userAuthority.getName().toUpperCase())));
+            role.getRole().getAuthorities().forEach(userAuthority -> auths.add(new SimpleGrantedAuthority(userAuthority.getName().toUpperCase())));
 
             // Add the role name itself as a GrantedAuthority (also in uppercase)
-            auths.add(new SimpleGrantedAuthority(role.getName().toUpperCase()));
+            auths.add(new SimpleGrantedAuthority(role.getRole().getName().toUpperCase()));
         }
 
         // Assign the collected authorities to the this.authorities field

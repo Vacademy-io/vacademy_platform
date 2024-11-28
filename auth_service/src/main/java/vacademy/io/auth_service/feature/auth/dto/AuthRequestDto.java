@@ -15,7 +15,8 @@ import lombok.NoArgsConstructor;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class AuthRequestDto {
-    private String username;
+    private String userName;
     private String password;
     private String clientName;
+    private String instituteId;
 }

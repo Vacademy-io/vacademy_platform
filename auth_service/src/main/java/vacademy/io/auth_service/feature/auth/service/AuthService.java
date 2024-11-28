@@ -3,33 +3,21 @@ package vacademy.io.auth_service.feature.auth.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.ParameterizedTypeReference;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 import vacademy.io.auth_service.feature.auth.dto.*;
 import vacademy.io.auth_service.feature.auth.repository.SubmoduleRepository;
 import vacademy.io.auth_service.feature.user.repository.PermissionRepository;
-import vacademy.io.auth_service.feature.user.repository.RoleRepository;
-import vacademy.io.common.auth.entity.RefreshToken;
-import vacademy.io.common.auth.entity.User;
-import vacademy.io.common.auth.entity.UserAuthority;
-import vacademy.io.common.auth.entity.UserRole;
+import vacademy.io.common.auth.entity.*;
+import vacademy.io.common.auth.repository.RoleRepository;
 import vacademy.io.common.auth.repository.UserRepository;
 import vacademy.io.common.auth.service.JwtService;
 import vacademy.io.common.auth.service.RefreshTokenService;
-import vacademy.io.common.exceptions.LaborLinkException;
+import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.auth.dto.SubmoduleDTO;
-import vacademy.io.common.auth.dto.OrgDTO;
 
 
 import java.util.*;
@@ -38,118 +26,50 @@ import java.util.stream.Collectors;
 @Service
 public class AuthService {
 
-    @Value("${admin.core.service.url}")
-    private String adminCoreServiceUrl;
-
     @Autowired
     UserRepository userRepository;
-
     @Autowired
     AuthenticationManager authenticationManager;
-
     @Autowired
     JwtService jwtService;
-
     @Autowired
     RefreshTokenService refreshTokenService;
-
     @Autowired
     RestTemplate restTemplate;
-
     @Autowired
     SubmoduleRepository submoduleRepository;
-
     @Autowired
     RoleRepository roleRepository;
-
-
     @Autowired
     PermissionRepository permissionRepository;
-
-
-    public JwtResponseDto registerUser(RegisterRequest registerRequest) {
-
-        String userName = registerRequest.getUserName();
-
-        Optional<User> userOptional = userRepository.findByUsername(userName);
-        if (userOptional.isPresent()) {
-            throw new LaborLinkException(HttpStatus.BAD_REQUEST, "User already registered");
-        }
-
-
-        User newUser = createUser(registerRequest);
-
-        // Generate a refresh token
-        RefreshToken refreshToken = refreshTokenService.createRefreshToken(userName, "VACADEMY-WEB");
-
-
-        InstitutesAndUserIdDTO adminCoreRequest = new InstitutesAndUserIdDTO(newUser.getId(), registerRequest.getInstitutes());
-
-    // Make it https because codacy AI fails in http . convert into http when run in local
-
-        ResponseEntity<List<InstituteIdAndNameDTO>> response = null;
-        try {
-
-            response = restTemplate.exchange(
-                    adminCoreServiceUrl, HttpMethod.POST, new HttpEntity<>(adminCoreRequest),
-                    new ParameterizedTypeReference<List<InstituteIdAndNameDTO>>() {}
-            );
-        } catch (RestClientException e) {
-            userRepository.deleteUserById(newUser.getId());
-
-            throw new LaborLinkException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to register user institutes due to service unavailability: " + e.getMessage());
-        }
-
-
-
-
-        for (InstituteIdAndNameDTO instituteDTO : response.getBody()) {
-
-            saveUserRoleForInstitute(newUser.getId(), instituteDTO.getInstituteId());
-
-        }
-
-        List<OrgDTO> orgs = new ArrayList<>();
-        for (InstituteIdAndNameDTO instituteDTO : response.getBody()) {
-            List<SubmoduleDTO> submodules = getSubmoduleDetails(instituteDTO.getSubmoduleIds());
-            List<String> roles = getRolesForUserAndInstitute(newUser.getId(), instituteDTO.getInstituteId());
-            List<String> permissions = getPermissionsForRoles(newUser.getId(), instituteDTO.getInstituteId());
-
-            orgs.add(new OrgDTO(
-                    instituteDTO.getInstituteName(),
-                    instituteDTO.getInstituteId(),
-                    submodules,
-                    roles,
-                    permissions
-            ));
-        }
-
-        return generateJwtTokenForUser(newUser, refreshToken, orgs);
-    }
+    @Value("${admin.core.service.base_url}")
+    private String adminCoreServiceBaseUrl;
 
     @Transactional
-    private User createUser(RegisterRequest registerRequest) {
-        String newId = UUID.randomUUID().toString();
+    public User createUser(RegisterRequest registerRequest, Set<UserRole> roles) {
+
         User user = User.builder()
-                .id(newId)
                 .username(registerRequest.getUserName())
                 .email(registerRequest.getEmail())
                 .password(registerRequest.getPassword())
+                .roles(roles)
                 .isRootUser(true)
                 .build();
-        userRepository.insertUser(user.getId(),user.getUsername(), user.getEmail(), user.getPassword(), user.isRootUser());
+
+        for (UserRole role : roles) {
+            role.setUser(user);
+        }
+
+        userRepository.save(user);
 
         return user;
-
-
-
-
     }
 
-    private JwtResponseDto generateJwtTokenForUser(User user, RefreshToken refreshToken, List<OrgDTO> orgs) {
+    public JwtResponseDto generateJwtTokenForUser(User user, RefreshToken refreshToken, List<UserRole> userRoles) {
+
         // Check if the user is a root user
         if (user.isRootUser()) {
-            String accessToken = jwtService.generateTokenForRoot(user, orgs);
+            String accessToken = jwtService.generateToken(user, userRoles);
 
             // Return a JwtResponseDto with access token and refresh token
             return JwtResponseDto.builder()
@@ -159,99 +79,12 @@ public class AuthService {
         }
 
         // If the user is not a root user, you can handle other logic or throw an exception
-        throw new LaborLinkException(HttpStatus.BAD_REQUEST, "Non-root user is not allowed to generate token.");
+        throw new VacademyException(HttpStatus.BAD_REQUEST, "Non-root user is not allowed to generate token.");
     }
 
     private List<SubmoduleDTO> getSubmoduleDetails(List<String> submoduleIds) {
-
         return submoduleRepository.findSubmoduleDetailsByIds(submoduleIds);
-
     }
 
 
-    private List<String> getRolesForUserAndInstitute(String userId, String instituteId) {
-
-        List<UserRole> userRoles = roleRepository.findRoleNamesByUserIdAndInstituteId(userId, instituteId);
-
-        return userRoles.stream().map(UserRole::getName).collect(Collectors.toList());
-    }
-
-    // Example method to get permissions for roles
-    private List<String> getPermissionsForRoles(String userId, String instituteId) {
-
-        List<UserAuthority> permissions=permissionRepository.findPermissionsByUserIdAndInstituteId(userId,instituteId);
-        return permissions.stream().map(UserAuthority::getName).collect(Collectors.toList());
-
-
-    }
-
-    private void saveUserRoleForInstitute(String userId, String instituteId) {
-
-        List<UserRole> userRoles = roleRepository.findRolesByRoleName("ADMIN");
-        if(userRoles.size()>0) {
-            String roleId = userRoles.get(0).getId();
-            roleRepository.saveUserRole(userId, roleId, instituteId);
-        }
-        else {
-            throw new LaborLinkException(HttpStatus.INTERNAL_SERVER_ERROR, "Role 'ADMIN' not found");
-        }
-    }
-
-
-    public JwtResponseDto loginUser(AuthRequestDto authRequestDTO) {
-
-        Authentication authentication = authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(authRequestDTO.getUsername(), authRequestDTO.getPassword()));
-        if (authentication.isAuthenticated()) {
-
-            String username = authRequestDTO.getUsername();
-
-            Optional<User> userOptional = userRepository.findByUsername(username);
-            if (userOptional.isEmpty() || !userOptional.get().isRootUser()) {
-                throw new UsernameNotFoundException("invalid user request..!!");
-            }
-
-            refreshTokenService.deleteAllRefreshToken(userOptional.get());
-
-            User user= userOptional.get();
-
-
-            InstitutesAndUserIdDTO adminCoreRequest = new InstitutesAndUserIdDTO(user.getId(), null);
-
-            // Make it https because codacy AI fails in http . convert into http when run in local
-            String adminCoreServiceUrl = "https://localhost:8072/registerUserInstitutes";
-
-            ResponseEntity<List<InstituteIdAndNameDTO>> response = null;
-            try {
-
-                response = restTemplate.exchange(
-                        adminCoreServiceUrl, HttpMethod.POST, new HttpEntity<>(adminCoreRequest),
-                        new ParameterizedTypeReference<List<InstituteIdAndNameDTO>>() {}
-                );
-            } catch (RestClientException e) {
-
-                throw new LaborLinkException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to register user institutes due to service unavailability: " + e.getMessage());
-            }
-
-            List<OrgDTO> orgs = new ArrayList<>();
-            for (InstituteIdAndNameDTO instituteDTO : response.getBody()) {
-                List<SubmoduleDTO> submodules = getSubmoduleDetails(instituteDTO.getSubmoduleIds());
-                List<String> roles = getRolesForUserAndInstitute(user.getId(), instituteDTO.getInstituteId());
-                List<String> permissions = getPermissionsForRoles(user.getId(), instituteDTO.getInstituteId());
-
-                orgs.add(new OrgDTO(
-                        instituteDTO.getInstituteName(),
-                        instituteDTO.getInstituteId(),
-                        submodules,
-                        roles,
-                        permissions
-                ));
-            }
-
-            RefreshToken refreshToken = refreshTokenService.createRefreshToken(authRequestDTO.getUsername(), authRequestDTO.getClientName());
-            return JwtResponseDto.builder().accessToken(jwtService.generateTokenForRoot(user,orgs)).refreshToken(refreshToken.getToken()).build();
-
-        } else {
-            throw new UsernameNotFoundException("invalid user request..!!");
-        }
-    }
 }

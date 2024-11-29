@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.UuidGenerator;
 import vacademy.io.admin_core_service.features.institute.enums.InstituteType;
+import vacademy.io.common.institute.dto.InstituteInfoDTO;
 
 import java.sql.Timestamp;
 import java.util.Date;
@@ -75,4 +76,5 @@ public class Institute {
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;
+
 }

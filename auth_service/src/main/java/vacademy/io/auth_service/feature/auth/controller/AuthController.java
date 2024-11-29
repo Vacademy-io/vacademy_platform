@@ -8,9 +8,11 @@ import vacademy.io.auth_service.feature.auth.dto.AuthRequestDto;
 import vacademy.io.auth_service.feature.auth.dto.JwtResponseDto;
 import vacademy.io.auth_service.feature.auth.dto.RegisterRequest;
 import vacademy.io.auth_service.feature.auth.manager.AuthManager;
+import vacademy.io.common.auth.dto.RefreshTokenRequestDTO;
 import vacademy.io.common.auth.repository.UserRepository;
 import vacademy.io.common.auth.service.JwtService;
 import vacademy.io.common.auth.service.RefreshTokenService;
+import vacademy.io.common.exceptions.ExpiredTokenException;
 
 
 @RestController
@@ -44,17 +46,12 @@ public class AuthController {
     public JwtResponseDto authenticateAndGetToken(@RequestBody AuthRequestDto authRequestDTO) {
 
         return authManager.loginUser(authRequestDTO);
-
     }
 
 
-
-
-
-
-
-
-
+    @PostMapping("/refresh-token")
+    public JwtResponseDto refreshToken(@RequestBody RefreshTokenRequestDTO refreshTokenRequestDTO) {
+        return authManager.refreshToken(refreshTokenRequestDTO); }
 
 }
 

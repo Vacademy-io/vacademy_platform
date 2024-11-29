@@ -9,7 +9,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
 import vacademy.io.auth_service.feature.auth.dto.*;
-import vacademy.io.auth_service.feature.auth.repository.SubmoduleRepository;
 import vacademy.io.auth_service.feature.user.repository.PermissionRepository;
 import vacademy.io.common.auth.entity.*;
 import vacademy.io.common.auth.repository.RoleRepository;
@@ -21,7 +20,6 @@ import vacademy.io.common.auth.dto.SubmoduleDTO;
 
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 @Service
 public class AuthService {
@@ -36,8 +34,6 @@ public class AuthService {
     RefreshTokenService refreshTokenService;
     @Autowired
     RestTemplate restTemplate;
-    @Autowired
-    SubmoduleRepository submoduleRepository;
     @Autowired
     RoleRepository roleRepository;
     @Autowired
@@ -80,10 +76,6 @@ public class AuthService {
 
         // If the user is not a root user, you can handle other logic or throw an exception
         throw new VacademyException(HttpStatus.BAD_REQUEST, "Non-root user is not allowed to generate token.");
-    }
-
-    private List<SubmoduleDTO> getSubmoduleDetails(List<String> submoduleIds) {
-        return submoduleRepository.findSubmoduleDetailsByIds(submoduleIds);
     }
 
 

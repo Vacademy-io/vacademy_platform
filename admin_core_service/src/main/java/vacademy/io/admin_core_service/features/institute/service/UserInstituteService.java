@@ -43,5 +43,20 @@ public class UserInstituteService {
         return institute;
     }
 
+    public static InstituteInfoDTO getInstituteDetails(Institute institute) {
+        InstituteInfoDTO instituteInfoDTO = new InstituteInfoDTO();
+        instituteInfoDTO.setId(institute.getId());
+        instituteInfoDTO.setInstituteName(institute.getInstituteName());
+        instituteInfoDTO.setCountry(institute.getCountry());
+        instituteInfoDTO.setState(institute.getState());
+        instituteInfoDTO.setCity(institute.getCity());
+        instituteInfoDTO.setAddress(institute.getAddress());
+        instituteInfoDTO.setPinCode(institute.getPinCode());
+        instituteInfoDTO.setEmail(institute.getEmail());
+        instituteInfoDTO.setPhone(institute.getMobileNumber());
+        instituteInfoDTO.setWebsiteUrl(institute.getWebsiteUrl());
+        return instituteInfoDTO;
+    }
+
 
 }

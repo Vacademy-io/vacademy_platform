@@ -14,13 +14,14 @@ import org.springframework.stereotype.Component;
 import vacademy.io.common.auth.constants.AuthConstant;
 import vacademy.io.common.auth.dto.UserServiceDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
 
 @Component
 @Slf4j
 public class UserDetailsRestServiceImpl implements UserDetailsService {
 
     @Autowired
-    HmacClientUtils hmacClientUtils;
+    InternalClientUtils hmacClientUtils;
 
     @Value(value = "${auth.server.baseurl}")
     String authServerBaseUrl;

@@ -1,4 +1,4 @@
-package vacademy.io.auth_service.feature.institute.entity;
+package vacademy.io.admin_core_service.features.institute.entity;
 
 
 import jakarta.persistence.Column;

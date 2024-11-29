@@ -24,6 +24,7 @@ import vacademy.io.auth_service.feature.auth.dto.JwtResponseDto;
 import vacademy.io.auth_service.feature.auth.dto.RegisterRequest;
 import vacademy.io.auth_service.feature.auth.service.AuthService;
 import vacademy.io.common.auth.dto.OrgDTO;
+import vacademy.io.common.auth.dto.RefreshTokenRequestDTO;
 import vacademy.io.common.auth.dto.SubmoduleDTO;
 import vacademy.io.common.auth.entity.RefreshToken;
 import vacademy.io.common.auth.entity.Role;
@@ -35,6 +36,7 @@ import vacademy.io.common.auth.repository.UserRoleRepository;
 import vacademy.io.common.auth.service.JwtService;
 import vacademy.io.common.auth.service.RefreshTokenService;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
+import vacademy.io.common.exceptions.ExpiredTokenException;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.dto.InstituteIdAndNameDTO;
 import vacademy.io.common.institute.dto.InstituteInfoDTO;
@@ -144,4 +146,16 @@ public class AuthManager {
         }
     }
 
+    public JwtResponseDto refreshToken(RefreshTokenRequestDTO refreshTokenRequestDTO) {
+        return refreshTokenService.findByToken(refreshTokenRequestDTO.getToken()).map(refreshTokenService::verifyExpiration).map(RefreshToken::getUserInfo).map(userInfo -> {
+
+            List<UserRole> userRoles = userRoleRepository.findByUser(userInfo);
+
+            // Generate new access token
+            String accessToken = jwtService.generateToken(userInfo, userRoles);
+            // Return the new JWT token
+            return JwtResponseDto.builder().accessToken(accessToken).build();
+        }).orElseThrow(() -> new ExpiredTokenException(refreshTokenRequestDTO.getToken() + " Refresh token is. Please make a new login..!"));
+
+    }
 }

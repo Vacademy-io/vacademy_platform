@@ -71,6 +71,7 @@ public class Institute {
     @Column(name = "email")
     private String email;
 
+
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Date updatedAt;
 

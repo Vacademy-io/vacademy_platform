@@ -23,8 +23,9 @@ public class Submodule {
     @Column(name = "submodule_name")
     private String submoduleName;
 
-    @Column(name = "module_id")
-    private String moduleId;
+    @JoinColumn(name = "module_id", referencedColumnName = "id")
+    @ManyToOne
+    private Module module;
 
 
 }

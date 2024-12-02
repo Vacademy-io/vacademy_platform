@@ -6,6 +6,9 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.sql.Timestamp;
+import java.util.List;
+
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
@@ -21,4 +24,12 @@ public class InstituteInfoDTO {
     private String phone;
     private String email;
     private String websiteUrl;
+    private String instituteLogoFileId;
+    private String instituteThemeCode;
+    private String language;
+    private String description;
+    private String type;
+    private String heldBy;
+    private Timestamp foundedDate;
+    private List<InstituteSubModuleDTO> subModules;
 }

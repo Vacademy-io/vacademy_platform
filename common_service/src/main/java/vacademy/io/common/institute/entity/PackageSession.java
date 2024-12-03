@@ -6,15 +6,17 @@ import java.util.Date;
 
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.UuidGenerator;
 
 @Entity
-@Table(name = "package_session", schema = "public")
+@Table(name = "package_session")
 @Data
 @NoArgsConstructor
 public class PackageSession {
 
     @Id
     @Column(name = "id", length = 255)
+    @UuidGenerator
     private String id;
 
     @ManyToOne

@@ -13,7 +13,7 @@ import org.hibernate.annotations.UuidGenerator;
 import java.util.Date;
 
 @Entity
-@Table(name = "session", schema = "public")
+@Table(name = "session")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -29,11 +29,5 @@ public class Session {
 
     @Column(name = "status")
     private String status;
-
-    @Column(name = "updated_at", insertable = false, updatable = false)
-    private Date updatedAt;
-
-    @Column(name = "created_at", insertable = false, updatable = false)
-    private Date createdAt;
 
 }

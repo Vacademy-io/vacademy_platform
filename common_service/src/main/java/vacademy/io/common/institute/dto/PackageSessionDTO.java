@@ -8,8 +8,10 @@ import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import vacademy.io.common.institute.entity.PackageSession;
+import vacademy.io.common.institute.entity.SessionProjection;
 
 import java.time.LocalDate;
+import java.util.Date;
 
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -19,17 +21,23 @@ import java.time.LocalDate;
 @Builder
 public class PackageSessionDTO {
     private String id;
-    private String levelId; // Assuming you want to expose levelId as well
-    private String sessionId; // Assuming you want to expose sessionId as well
-    private LocalDate startTime;
+    private LevelDTO level; // Assuming you want to expose levelId as well
+    private SessionDTO session; // Assuming you want to expose sessionId as well
+    private Date startTime;
     private String status;
 
     // Constructor from PackageSession entity
     public PackageSessionDTO(PackageSession packageSession) {
         this.id = packageSession.getId();
-        this.levelId = packageSession.getLevel() != null ? packageSession.getLevel().getId() : null;
-        this.sessionId = packageSession.getSession() != null ? packageSession.getSession().getId() : null;
         this.startTime = packageSession.getStartTime();
         this.status = packageSession.getStatus();
+
+        if (packageSession.getLevel() != null) {
+            this.level = new LevelDTO(packageSession.getLevel());
+        }
+
+        if (packageSession.getSession() != null) {
+            this.session = new SessionDTO(packageSession.getSession());
+        }
     }
 }

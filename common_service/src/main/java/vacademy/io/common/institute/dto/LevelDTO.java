@@ -8,6 +8,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import vacademy.io.common.institute.entity.Level;
+import vacademy.io.common.institute.entity.LevelProjection;
 import vacademy.io.common.institute.entity.Session;
 import vacademy.io.common.institute.entity.SessionProjection;
 
@@ -23,6 +24,12 @@ public class LevelDTO {
     private Integer durationInDays;
 
     public LevelDTO(Level level) {
+        this.id = level.getId();
+        this.levelName = level.getLevelName();
+        this.durationInDays = level.getDurationInDays();
+    }
+
+    public LevelDTO(LevelProjection level) {
         this.id = level.getId();
         this.levelName = level.getLevelName();
         this.durationInDays = level.getDurationInDays();

@@ -10,6 +10,7 @@ import vacademy.io.common.auth.config.SharedConfigurationReference;
 @Import(SharedConfigurationReference.class)
 @EnableWebSecurity
 public class AdminCoreServiceApplication {
+
     public static void main(String[] args) {
         SpringApplication.run(AdminCoreServiceApplication.class, args);
     }

@@ -1,19 +1,20 @@
 package vacademy.io.common.institute.entity;
 
 
-import java.time.LocalDateTime;
 import java.util.Date;
 
 import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.UuidGenerator;
 
 @Entity
-@Table(name = "package", schema = "public")
+@Table(name = "package")
 @Data
 @NoArgsConstructor
-public class Package {
+@AllArgsConstructor
+public class PackageEntity {
 
     @Id
     @Column(name = "id", length = 255)
@@ -29,11 +30,4 @@ public class Package {
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;
 
-    // Additional constructors, if needed
-    public Package(String id, String packageName, Date createdAt, Date updatedAt) {
-        this.id = id;
-        this.packageName = packageName;
-        this.createdAt = createdAt;
-        this.updatedAt = updatedAt;
-    }
 }

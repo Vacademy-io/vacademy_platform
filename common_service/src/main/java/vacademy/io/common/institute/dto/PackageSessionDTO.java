@@ -8,9 +8,7 @@ import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import vacademy.io.common.institute.entity.PackageSession;
-import vacademy.io.common.institute.entity.SessionProjection;
 
-import java.time.LocalDate;
 import java.util.Date;
 
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
@@ -25,6 +23,7 @@ public class PackageSessionDTO {
     private SessionDTO session; // Assuming you want to expose sessionId as well
     private Date startTime;
     private String status;
+    private PackageDTO packageDTO;
 
     // Constructor from PackageSession entity
     public PackageSessionDTO(PackageSession packageSession) {
@@ -32,8 +31,13 @@ public class PackageSessionDTO {
         this.startTime = packageSession.getStartTime();
         this.status = packageSession.getStatus();
 
+
         if (packageSession.getLevel() != null) {
             this.level = new LevelDTO(packageSession.getLevel());
+        }
+
+        if (packageSession.getPackageEntity() != null) {
+            this.packageDTO = new PackageDTO(packageSession.getPackageEntity());
         }
 
         if (packageSession.getSession() != null) {

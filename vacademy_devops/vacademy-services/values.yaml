@@ -25,6 +25,11 @@ services:
     image:
       repository: public.ecr.aws/e0x1f4p4/admin-core-service/admin-core-service-repo
       tag: latest
+  assessment_service:
+    port: 8074
+    image:
+      repository: public.ecr.aws/e0x1f4p4/assessment-service/assessment-service-repo
+      tag: latest
 
 environment:
   stage: stage

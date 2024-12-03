@@ -1,15 +1,18 @@
 package vacademy.io.admin_core_service.features.institute.manager;
 
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import vacademy.io.admin_core_service.features.packages.repository.PackageRepository;
+import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
 import vacademy.io.common.auth.enums.Gender;
 import vacademy.io.common.institute.dto.*;
 import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.institute.service.InstituteModuleService;
 import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.common.institute.entity.PackageSession;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -27,13 +30,19 @@ public class InstituteInitManager {
     @Autowired
     PackageRepository packageRepository;
 
+    @Autowired
+    PackageSessionRepository packageSessionRepository;
+
     public InstituteInfoDTO getInstituteDetails(String instituteId) {
 
         Optional<Institute> institute = instituteRepository.findById(instituteId);
 
+        ObjectMapper objectMapper = new ObjectMapper();
         if(institute.isEmpty()) {
             throw new VacademyException("Invalid Institute Id");
         }
+
+        PackageSession packageSession = packageSessionRepository.findById("1").get();
 
         InstituteInfoDTO instituteInfoDTO = new InstituteInfoDTO();
         instituteInfoDTO.setInstituteName(institute.get().getInstituteName());
@@ -55,7 +64,10 @@ public class InstituteInitManager {
         instituteInfoDTO.setInstituteThemeCode(institute.get().getInstituteThemeCode());
         instituteInfoDTO.setSubModules(instituteModuleService.getSubmoduleIdsForInstitute(institute.get().getId()));
         instituteInfoDTO.setSessions(packageRepository.findDistinctSessionsByInstituteId(institute.get().getId()).stream().map((SessionDTO::new)).toList());
-        instituteInfoDTO.setBatchesForSessions(packageRepository.findPackageSessionsByInstituteId(institute.get().getId()));
+        instituteInfoDTO.setBatchesForSessions(packageSessionRepository.findPackageSessionsByInstituteId(institute.get().getId()).stream().map((obj) -> {
+
+            return new PackageSessionDTO(obj);
+        }).toList());
         instituteInfoDTO.setLevels(packageRepository.findDistinctLevelsByInstituteId(institute.get().getId()).stream().map((LevelDTO::new)).toList());
         instituteInfoDTO.setGenders((Stream.of(Gender.values()).map(Enum::name)).toList());
         instituteInfoDTO.setStudentStatuses(List.of("ACTIVE", "TERMINATED"));

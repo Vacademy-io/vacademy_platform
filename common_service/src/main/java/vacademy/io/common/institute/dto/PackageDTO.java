@@ -7,7 +7,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
-import vacademy.io.common.institute.entity.Package;
+import vacademy.io.common.institute.entity.PackageEntity;
 
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -20,7 +20,7 @@ public class PackageDTO {
     private String packageName;
 
     // Constructor from Package entity
-    public PackageDTO(Package packageEntity) {
+    public PackageDTO(PackageEntity packageEntity) {
         this.id = packageEntity.getId();
         this.packageName = packageEntity.getPackageName();
     }

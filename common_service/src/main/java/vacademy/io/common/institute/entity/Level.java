@@ -18,7 +18,7 @@ import org.hibernate.annotations.UuidGenerator;
 public class Level {
 
     @Id
-    @Column(name = "id", length = 255)
+    @Column(name = "id")
     @UuidGenerator
     private String id;
 

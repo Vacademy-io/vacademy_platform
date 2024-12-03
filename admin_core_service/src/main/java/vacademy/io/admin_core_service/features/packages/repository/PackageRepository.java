@@ -6,16 +6,12 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import vacademy.io.common.institute.entity.*;
-import vacademy.io.common.institute.entity.Package;
+import vacademy.io.common.institute.entity.PackageEntity;
 
 import java.util.List;
-import java.util.Map;
 
 @Repository
-public interface PackageRepository extends JpaRepository<Package, String> {
-
-
-
+public interface PackageRepository extends JpaRepository<PackageEntity, String> {
 
     // Get all distinct sessions of an institute_id
     @Query(value = "SELECT DISTINCT s.* FROM session s " +
@@ -40,16 +36,16 @@ public interface PackageRepository extends JpaRepository<Package, String> {
             "JOIN package_institute pi ON p.id = pi.package_id " +  // Ensure to join package_institute to filter by institute
             "WHERE pi.institute_id = :instituteId",
             nativeQuery = true)
-    List<Package> findDistinctPackagesByInstituteId(@Param("instituteId") String instituteId);
+    List<PackageEntity> findDistinctPackagesByInstituteId(@Param("instituteId") String instituteId);
 
     // Get all package sessions of an institute_id and of a session_id
-    @Query(value = "SELECT ps.* " +
+    @Query(value = "SELECT ps.id, ps.level_id, ps.session_id, ps.start_time, ps.updated_at, ps.created_at, ps.status, ps.package_id " +
             "FROM package_session ps " +
             "JOIN package p ON ps.package_id = p.id " +
             "JOIN package_institute pi ON p.id = pi.package_id " +
             "WHERE pi.institute_id = :instituteId",
             nativeQuery = true)
-    List<Map<String, String>> findPackageSessionsByInstituteId(
+    List<PackageSession> findPackageSessionsByInstituteId(
             @Param("instituteId") String instituteId);
 
 }

@@ -36,7 +36,7 @@ public class InstituteInfoDTO {
     private Timestamp foundedDate;
     private List<InstituteSubModuleDTO> subModules;
     private List<SessionDTO> sessions;
-    private List<Map<String, String>> batchesForSessions;
+    private List<PackageSessionDTO> batchesForSessions;
     private List<LevelDTO> levels;
     private List<String> genders;
     private List<String> studentStatuses;

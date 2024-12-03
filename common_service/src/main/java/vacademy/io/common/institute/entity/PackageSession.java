@@ -1,32 +1,37 @@
 package vacademy.io.common.institute.entity;
 
 import jakarta.persistence.*;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.util.Date;
+
 
 import lombok.AllArgsConstructor;
-import lombok.Data;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 import org.hibernate.annotations.UuidGenerator;
 
+import java.util.*;
+
+@AllArgsConstructor
+@NoArgsConstructor
+@Getter
+@Setter
 @Entity
 @Table(name = "package_session")
-@Data
+
 public class PackageSession {
 
     @Id
-    @Column(name = "id", length = 255)
+    @Column(name = "id")
     @UuidGenerator
     private String id;
 
+    @JoinColumn(name = "level_id")
     @ManyToOne
-    @JoinColumn(name = "level_id", referencedColumnName = "id")
-    private Level level; // Assuming Level is another entity representing the "level" table
+    private Level level;
 
+    @JoinColumn(name = "session_id")
     @ManyToOne
-    @JoinColumn(name = "session_id", referencedColumnName = "id")
-    private Session session; // Assuming Session is another entity representing the "session" table
+    private Session session;
 
     @Column(name = "start_time")
     private Date startTime;
@@ -40,11 +45,8 @@ public class PackageSession {
     @Column(name = "status")
     private String status;
 
+    @JoinColumn(name = "package_id")
     @ManyToOne
-    @JoinColumn(name = "package_id", referencedColumnName = "id")
-    private Package packageEntity; // Assuming Package is another entity representing the "package" table
-
-    public PackageSession(){
-    }
+    private PackageEntity packageEntity;
 
 }

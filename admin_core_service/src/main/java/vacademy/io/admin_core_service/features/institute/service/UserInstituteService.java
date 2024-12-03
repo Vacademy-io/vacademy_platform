@@ -5,7 +5,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.common.institute.dto.InstituteIdAndNameDTO;
 import vacademy.io.common.institute.dto.InstituteInfoDTO;
-import vacademy.io.admin_core_service.features.institute.entity.Institute;
+import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 
 

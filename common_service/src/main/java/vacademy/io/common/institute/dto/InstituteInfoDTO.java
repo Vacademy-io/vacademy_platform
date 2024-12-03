@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import vacademy.io.common.institute.entity.PackageSession;
+import vacademy.io.common.institute.entity.Session;
 
 import java.sql.Timestamp;
 import java.util.List;
@@ -32,4 +34,7 @@ public class InstituteInfoDTO {
     private String heldBy;
     private Timestamp foundedDate;
     private List<InstituteSubModuleDTO> subModules;
+    private List<SessionDTO> sessions;
+    private List<PackageDTO> packages;
+    private List<PackageSession> packageSessions;
 }

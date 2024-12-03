@@ -3,7 +3,10 @@ package vacademy.io.admin_core_service.features.institute.manager;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
-import vacademy.io.admin_core_service.features.institute.entity.Institute;
+import vacademy.io.admin_core_service.features.packages.repository.PackageRepository;
+import vacademy.io.common.institute.dto.PackageDTO;
+import vacademy.io.common.institute.dto.SessionDTO;
+import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.institute.service.InstituteModuleService;
 import vacademy.io.common.exceptions.VacademyException;
@@ -18,6 +21,9 @@ public class InstituteInitManager {
     InstituteModuleService instituteModuleService;
     @Autowired
     InstituteRepository instituteRepository;
+
+    @Autowired
+    PackageRepository packageRepository;
 
     public InstituteInfoDTO getInstituteDetails(String instituteId) {
 
@@ -46,6 +52,8 @@ public class InstituteInitManager {
         instituteInfoDTO.setLanguage(institute.get().getLanguage());
         instituteInfoDTO.setInstituteThemeCode(institute.get().getInstituteThemeCode());
         instituteInfoDTO.setSubModules(instituteModuleService.getSubmoduleIdsForInstitute(institute.get().getId()));
+        instituteInfoDTO.setSessions(packageRepository.findDistinctSessionsByInstituteId(institute.get().getId()).stream().map((SessionDTO::new)).toList());
+        instituteInfoDTO.setPackages(packageRepository.findDistinctPackagesByInstituteId(institute.get().getId()).stream().map((PackageDTO::new)).toList());
         return instituteInfoDTO;
     }
 }

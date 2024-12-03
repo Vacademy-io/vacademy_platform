@@ -7,7 +7,7 @@ import org.springframework.data.repository.CrudRepository;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
-import vacademy.io.admin_core_service.features.institute.entity.Institute;
+import vacademy.io.common.institute.entity.Institute;
 
 import java.util.List;
 

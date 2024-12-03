@@ -10,24 +10,29 @@
         <module name="common_service" />
         <module name="auth_service" />
         <module name="media_service" />
-        <module name="student_service" />
+        <module name="assessment_service" />
         <module name="admin_core_service" />
       </profile>
     </annotationProcessing>
     <bytecodeTargetLevel>
       <module name="admin_core_service (1)" target="17" />
       <module name="media_service (2)" target="17" />
+      <module name="student_service (1)" target="17" />
+      <module name="student_service (2)" target="17" />
     </bytecodeTargetLevel>
   </component>
   <component name="JavacSettings">
     <option name="ADDITIONAL_OPTIONS_OVERRIDE">
       <module name="admin_core_service" options="-parameters" />
       <module name="admin_core_service (1)" options="-parameters" />
+      <module name="assessment_service" options="-parameters" />
       <module name="auth_service" options="-parameters" />
       <module name="common_service" options="-parameters" />
       <module name="media_service" options="-parameters" />
       <module name="media_service (2)" options="-parameters" />
       <module name="student_service" options="-parameters" />
+      <module name="student_service (1)" options="-parameters" />
+      <module name="student_service (2)" options="-parameters" />
     </option>
   </component>
 </project>

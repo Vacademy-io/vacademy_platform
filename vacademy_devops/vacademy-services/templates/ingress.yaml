@@ -47,3 +47,10 @@ spec:
                 name: admin-core-service
                 port:
                   number: {{ .Values.services.admin_core_service.port }}
+          - path: /assessment-service
+            pathType: Prefix
+            backend:
+              service:
+                name: assessment-service
+                port:
+                  number: {{ .Values.services.assessment_service.port }}

@@ -36,5 +36,5 @@ public class InstituteInfoDTO {
     private List<InstituteSubModuleDTO> subModules;
     private List<SessionDTO> sessions;
     private List<PackageDTO> packages;
-    private List<PackageSession> packageSessions;
+    private List<LevelDTO> levels;
 }

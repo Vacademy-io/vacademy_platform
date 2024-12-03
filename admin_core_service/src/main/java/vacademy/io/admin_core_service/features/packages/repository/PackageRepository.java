@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import vacademy.io.common.institute.entity.Level;
 import vacademy.io.common.institute.entity.Package;
 import vacademy.io.common.institute.entity.PackageSession;
 import vacademy.io.common.institute.entity.SessionProjection;
@@ -25,6 +26,15 @@ public interface PackageRepository extends JpaRepository<Package, String> {
             "WHERE pi.institute_id = :instituteId",
             nativeQuery = true)
     List<SessionProjection> findDistinctSessionsByInstituteId(@Param("instituteId") String instituteId);
+
+
+    @Query(value = "SELECT DISTINCT l.* FROM level l " +
+            "JOIN package_session ps ON l.id = ps.level_id " +
+            "JOIN package p ON ps.package_id = p.id " +
+            "JOIN package_institute pi ON p.id = pi.package_id " +  // Ensure to join package_institute to filter by institute
+            "WHERE pi.institute_id = :instituteId",
+            nativeQuery = true)
+    List<Level> findDistinctLevelsByInstituteId(@Param("instituteId") String instituteId);
 
     // Get all distinct packages of an institute_id
     @Query(value = "SELECT DISTINCT p.* FROM package p " +

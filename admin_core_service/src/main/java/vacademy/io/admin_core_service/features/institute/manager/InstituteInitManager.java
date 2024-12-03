@@ -61,7 +61,7 @@ public class InstituteInitManager {
         instituteInfoDTO.setPackages(packageRepository.findDistinctPackagesByInstituteId(institute.get().getId()).stream().map((PackageDTO::new)).toList());
         instituteInfoDTO.setLevels(packageRepository.findDistinctLevelsByInstituteId(institute.get().getId()).stream().map((LevelDTO::new)).toList());
         instituteInfoDTO.setGenders((Stream.of(Gender.values()).map(Enum::name)).toList());
-        instituteInfoDTO.setStudentStatuses(List.of("Active", "TERMINATED"));
+        instituteInfoDTO.setStudentStatuses(List.of("ACTIVE", "TERMINATED"));
         return instituteInfoDTO;
     }
 }

@@ -25,14 +25,6 @@ public class StudentSessionInstituteGroupMapping {
     @Column(name = "user_id", length = 255)
     private String userId;
 
-    @Column(name = "package_session_id", length = 255)
-    private String packageSessionId;
-
-    @Column(name = "institute_id", length = 255)
-    private String instituteId;
-
-    @Column(name = "group_id", length = 255)
-    private String groupId;
 
     @Column(name = "enrolled_date")
     private Date enrolledDate;

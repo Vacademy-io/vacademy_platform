@@ -8,6 +8,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import vacademy.io.common.institute.entity.Session;
+import vacademy.io.common.institute.entity.SessionProjection;
 
 @Data
 @NoArgsConstructor
@@ -22,6 +23,12 @@ public class SessionDTO {
 
     // Constructor from Session entity
     public SessionDTO(Session session) {
+        this.id = session.getId();
+        this.sessionName = session.getSessionName();
+        this.status = session.getStatus();
+    }
+
+    public SessionDTO(SessionProjection session) {
         this.id = session.getId();
         this.sessionName = session.getSessionName();
         this.status = session.getStatus();

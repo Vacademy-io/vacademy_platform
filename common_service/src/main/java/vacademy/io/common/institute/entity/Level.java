@@ -9,6 +9,7 @@ import java.util.Date;
 
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.UuidGenerator;
 
 @Entity
 @Table(name = "level", schema = "public")
@@ -18,6 +19,7 @@ public class Level {
 
     @Id
     @Column(name = "id", length = 255)
+    @UuidGenerator
     private String id;
 
     @Column(name = "level_name", length = 255)

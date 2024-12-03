@@ -69,7 +69,6 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 request.setAttribute("user", userDetails);
 
 
-                addUserActivity(userDetails.getUserId(), request.getServerName(), request.getRequestURI(), request.getRemoteAddr());
                 // Validate the JWT token using user details and JwtService
                 if (jwtService.isTokenValid(jwt, userDetails)) {
                     // Create an authentication token with user details and authorities

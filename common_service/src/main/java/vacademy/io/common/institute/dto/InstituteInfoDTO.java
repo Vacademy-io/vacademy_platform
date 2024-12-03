@@ -37,4 +37,6 @@ public class InstituteInfoDTO {
     private List<SessionDTO> sessions;
     private List<PackageDTO> packages;
     private List<LevelDTO> levels;
+    private List<String> genders;
+    private List<String> studentStatuses;
 }

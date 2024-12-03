@@ -1,9 +1,8 @@
-package vacademy.io.admin_core_service.features.institute.entity;
+package vacademy.io.common.institute.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.UuidGenerator;
-import vacademy.io.admin_core_service.features.institute.enums.InstituteType;
 import vacademy.io.common.institute.dto.InstituteInfoDTO;
 
 import java.sql.Timestamp;

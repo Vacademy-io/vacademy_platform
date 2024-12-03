@@ -10,6 +10,7 @@ import vacademy.io.common.institute.entity.Session;
 
 import java.sql.Timestamp;
 import java.util.List;
+import java.util.Map;
 
 @Data
 @AllArgsConstructor
@@ -35,7 +36,7 @@ public class InstituteInfoDTO {
     private Timestamp foundedDate;
     private List<InstituteSubModuleDTO> subModules;
     private List<SessionDTO> sessions;
-    private List<PackageDTO> packages;
+    private List<Map<String, String>> batchesForSessions;
     private List<LevelDTO> levels;
     private List<String> genders;
     private List<String> studentStatuses;

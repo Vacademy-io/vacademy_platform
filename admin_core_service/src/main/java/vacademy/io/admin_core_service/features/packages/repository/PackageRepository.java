@@ -5,12 +5,11 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
-import vacademy.io.common.institute.entity.Level;
+import vacademy.io.common.institute.entity.*;
 import vacademy.io.common.institute.entity.Package;
-import vacademy.io.common.institute.entity.PackageSession;
-import vacademy.io.common.institute.entity.SessionProjection;
 
 import java.util.List;
+import java.util.Map;
 
 @Repository
 public interface PackageRepository extends JpaRepository<Package, String> {
@@ -34,7 +33,7 @@ public interface PackageRepository extends JpaRepository<Package, String> {
             "JOIN package_institute pi ON p.id = pi.package_id " +  // Ensure to join package_institute to filter by institute
             "WHERE pi.institute_id = :instituteId",
             nativeQuery = true)
-    List<Level> findDistinctLevelsByInstituteId(@Param("instituteId") String instituteId);
+    List<LevelProjection> findDistinctLevelsByInstituteId(@Param("instituteId") String instituteId);
 
     // Get all distinct packages of an institute_id
     @Query(value = "SELECT DISTINCT p.* FROM package p " +
@@ -44,13 +43,13 @@ public interface PackageRepository extends JpaRepository<Package, String> {
     List<Package> findDistinctPackagesByInstituteId(@Param("instituteId") String instituteId);
 
     // Get all package sessions of an institute_id and of a session_id
-    @Query(value = "SELECT ps.* FROM package_session ps " +
+    @Query(value = "SELECT ps.* " +
+            "FROM package_session ps " +
             "JOIN package p ON ps.package_id = p.id " +
-            "JOIN package_institute pi ON p.id = pi.package_id " +  // Ensure to join package_institute to filter by institute
-            "WHERE pi.institute_id = :instituteId AND ps.session_id = :sessionId",
+            "JOIN package_institute pi ON p.id = pi.package_id " +
+            "WHERE pi.institute_id = :instituteId",
             nativeQuery = true)
-    List<PackageSession> findPackageSessionsByInstituteIdAndSessionId(
-            @Param("instituteId") String instituteId,
-            @Param("sessionId") String sessionId);
+    List<Map<String, String>> findPackageSessionsByInstituteId(
+            @Param("instituteId") String instituteId);
 
 }

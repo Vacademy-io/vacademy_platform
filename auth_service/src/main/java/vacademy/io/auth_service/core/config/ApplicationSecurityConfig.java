@@ -16,6 +16,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.cors.CorsConfigurationSource;
 import vacademy.io.common.auth.filter.InternalAuthFilter;
 import vacademy.io.common.auth.filter.JwtAuthFilter;
 
@@ -36,10 +37,15 @@ public class ApplicationSecurityConfig {
     @Autowired
     InternalAuthFilter internalAuthFilter;
 
+    @Autowired
+    private CorsConfigurationSource corsConfigurationSource;
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .csrf().disable()
+                .cors()
+                .and()
                 .authorizeHttpRequests()
                 .requestMatchers(ALLOWED_PATHS).permitAll()
                 .requestMatchers(INTERNAL_PATHS).authenticated()

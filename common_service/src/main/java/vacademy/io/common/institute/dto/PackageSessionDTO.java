@@ -7,7 +7,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
-import vacademy.io.common.institute.entity.PackageSession;
+import vacademy.io.common.institute.entity.session.PackageSession;
 
 import java.util.Date;
 

@@ -1,4 +1,4 @@
-package vacademy.io.common.institute.entity;
+package vacademy.io.common.institute.entity.session;
 
 
 import jakarta.persistence.Column;

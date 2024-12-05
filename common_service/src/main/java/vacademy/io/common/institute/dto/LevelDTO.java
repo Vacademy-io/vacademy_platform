@@ -9,8 +9,6 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import vacademy.io.common.institute.entity.Level;
 import vacademy.io.common.institute.entity.LevelProjection;
-import vacademy.io.common.institute.entity.Session;
-import vacademy.io.common.institute.entity.SessionProjection;
 
 @Data
 @NoArgsConstructor

@@ -12,9 +12,8 @@ import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.institute.service.InstituteModuleService;
 import vacademy.io.common.exceptions.VacademyException;
-import vacademy.io.common.institute.entity.PackageSession;
+import vacademy.io.common.institute.entity.session.PackageSession;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
@@ -65,7 +64,6 @@ public class InstituteInitManager {
         instituteInfoDTO.setSubModules(instituteModuleService.getSubmoduleIdsForInstitute(institute.get().getId()));
         instituteInfoDTO.setSessions(packageRepository.findDistinctSessionsByInstituteId(institute.get().getId()).stream().map((SessionDTO::new)).toList());
         instituteInfoDTO.setBatchesForSessions(packageSessionRepository.findPackageSessionsByInstituteId(institute.get().getId()).stream().map((obj) -> {
-
             return new PackageSessionDTO(obj);
         }).toList());
         instituteInfoDTO.setLevels(packageRepository.findDistinctLevelsByInstituteId(institute.get().getId()).stream().map((LevelDTO::new)).toList());

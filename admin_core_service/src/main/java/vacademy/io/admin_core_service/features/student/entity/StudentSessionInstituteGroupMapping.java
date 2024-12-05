@@ -6,9 +6,8 @@ import lombok.NoArgsConstructor;
 import org.hibernate.annotations.UuidGenerator;
 import vacademy.io.common.institute.entity.Group;
 import vacademy.io.common.institute.entity.Institute;
-import vacademy.io.common.institute.entity.PackageSession;
+import vacademy.io.common.institute.entity.session.PackageSession;
 
-import java.time.LocalDateTime;
 import java.util.Date;
 
 @Entity

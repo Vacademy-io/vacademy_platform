@@ -1,11 +1,11 @@
-package vacademy.io.common.auth.entity;
+
+package vacademy.io.admin_core_service.features.student.entity;
 
 
 
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.UuidGenerator;
-import vacademy.io.common.auth.enums.Gender;
 
 import java.sql.Timestamp;
 import java.time.LocalDate;
@@ -18,8 +18,8 @@ import java.util.*;
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity
-@Table(name = "users")
-public class User {
+@Table(name = "student")
+public class Student {
 
     @Id
     @UuidGenerator
@@ -27,44 +27,36 @@ public class User {
     private String id;
     @Column(name = "username")
     private String username;
+    @Column(name = "user_id")
+    private String userId;
     @Column(name = "email")
     private String email;
-    @Column(name = "password_hash")
-    private String password;
     @Column(name = "full_name")
     private String fullName;
-
-    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY) // Adjust mapping as necessary
-    private Set<UserRole> roles;
-
     @Column(name = "address_line")
     private String addressLine;
-
+    @Column(name = "region")
+    private String region;
     @Column(name = "city")
     private String city;
-
     @Column(name = "pin_code")
     private String pinCode;
-
     @Column(name = "mobile_number")
     private String mobileNumber;
-
     @Column(name = "date_of_birth")
     private LocalDate dateOfBirth;
-
     @Column(name = "gender")
     private String gender;
-
-    @Column(name = "profile_pic_file_id")
-    private String profilePicFileId;
-
-    @Column(name = "is_root_user")
-    private boolean isRootUser;
-
-
+    @Column(name = "fathers_name")
+    private String fatherName;
+    @Column(name = "mothers_name")
+    private String motherName;
+    @Column(name = "parents_mobile_number")
+    private String parentsMobileNumber;
+    @Column(name = "parents_email")
+    private String parentsEmail;
     @Column(name = "created_at", insertable = false, updatable = false)
     private Timestamp createdAt;
-
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Timestamp updatedAt;
 

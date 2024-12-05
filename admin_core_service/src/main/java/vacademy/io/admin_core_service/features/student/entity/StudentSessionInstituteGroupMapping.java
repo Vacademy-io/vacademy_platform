@@ -24,6 +24,8 @@ public class StudentSessionInstituteGroupMapping {
     @Column(name = "user_id", length = 255)
     private String userId;
 
+    @Column(name = "institute_enrollment_number")
+    private String instituteEnrolledNumber;
 
     @Column(name = "enrolled_date")
     private Date enrolledDate;

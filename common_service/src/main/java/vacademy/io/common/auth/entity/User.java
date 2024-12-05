@@ -12,7 +12,8 @@ import java.time.LocalDate;
 import java.util.*;
 
 
-@Data
+@Getter
+@Setter
 @Builder
 @ToString
 @NoArgsConstructor
@@ -50,7 +51,7 @@ public class User {
     private String mobileNumber;
 
     @Column(name = "date_of_birth")
-    private LocalDate dateOfBirth;
+    private Date dateOfBirth;
 
     @Column(name = "gender")
     private String gender;

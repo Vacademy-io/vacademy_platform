@@ -3,6 +3,7 @@ package vacademy.io.auth_service.feature.user.controller;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.UserPermissionRequestDTO;
@@ -24,8 +25,10 @@ public class UserController {
 
     //API to create user
     @PostMapping("/internal/create-user")
+    @Transactional
     public ResponseEntity<UserDTO> createUser(@RequestBody UserDTO userDTO, @RequestParam("instituteId") String instituteId) {
         try {
+            // todo: handle if user already exists
             User user = userService.createUserFromUserDto(userDTO);
             userService.addUserRoles(instituteId, userDTO.getRoles(), user);
             return ResponseEntity.ok(new UserDTO(user));

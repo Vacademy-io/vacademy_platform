@@ -10,6 +10,7 @@ import vacademy.io.common.auth.entity.User;
 import vacademy.io.common.auth.enums.Gender;
 
 import java.time.LocalDate;
+import java.util.Date;
 import java.util.List;
 
 @Data
@@ -26,7 +27,7 @@ public class UserDTO {
     private String city;
     private String pinCode;
     private String mobileNumber;
-    private LocalDate dateOfBirth;
+    private Date dateOfBirth;
     private String gender;
     private boolean isRootUser;
     private String password;

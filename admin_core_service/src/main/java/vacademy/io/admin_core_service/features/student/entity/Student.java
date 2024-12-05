@@ -44,7 +44,7 @@ public class Student {
     @Column(name = "mobile_number")
     private String mobileNumber;
     @Column(name = "date_of_birth")
-    private LocalDate dateOfBirth;
+    private Date dateOfBirth;
     @Column(name = "gender")
     private String gender;
     @Column(name = "fathers_name")

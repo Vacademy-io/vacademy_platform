@@ -84,7 +84,7 @@ public class StudentRegistrationManager {
 
         try {
             UUID studentSessionId = UUID.randomUUID();
-            studentSessionRepository.addStudentToInstitute(studentSessionId.toString(), student.getUserId(), instituteStudentDetails.getEnrollmentDate() == null ? new Date() : instituteStudentDetails.getEnrollmentDate(), instituteStudentDetails.getEnrollmentStatus(), instituteStudentDetails.getGroupId(), instituteStudentDetails.getInstituteId(), instituteStudentDetails.getPackageSessionId());
+            studentSessionRepository.addStudentToInstitute(studentSessionId.toString(), student.getUserId(), instituteStudentDetails.getEnrollmentDate() == null ? new Date() : instituteStudentDetails.getEnrollmentDate(), instituteStudentDetails.getEnrollmentStatus(), instituteStudentDetails.getEnrollmentId(), instituteStudentDetails.getGroupId(), instituteStudentDetails.getInstituteId(), instituteStudentDetails.getPackageSessionId());
         }
         catch (Exception e) {
             throw new VacademyException(e.getMessage());

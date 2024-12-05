@@ -9,8 +9,10 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import vacademy.io.admin_core_service.features.student.entity.Student;
 
+
 import java.sql.Timestamp;
 import java.time.LocalDate;
+import java.util.Date;
 
 @Data
 @Builder
@@ -30,7 +32,7 @@ public class StudentDTO {
     private String city;
     private String pinCode;
     private String mobileNumber;
-    private LocalDate dateOfBirth;
+    private Date dateOfBirth;
     private String gender;
     private String fatherName;
     private String motherName;

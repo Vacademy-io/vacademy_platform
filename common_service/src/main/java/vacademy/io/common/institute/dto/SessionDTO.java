@@ -7,8 +7,8 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import vacademy.io.common.institute.entity.Session;
-import vacademy.io.common.institute.entity.SessionProjection;
+import vacademy.io.common.institute.entity.session.Session;
+import vacademy.io.common.institute.entity.session.SessionProjection;
 
 @Data
 @NoArgsConstructor

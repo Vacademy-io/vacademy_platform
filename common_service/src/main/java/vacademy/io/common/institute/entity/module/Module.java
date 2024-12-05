@@ -1,5 +1,4 @@
-package vacademy.io.common.institute.entity;
-
+package vacademy.io.common.institute.entity.module;
 
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -12,20 +11,16 @@ import lombok.ToString;
 @ToString
 @NoArgsConstructor
 @AllArgsConstructor
-@Table(name = "sub_modules")
-public class Submodule {
-
+@Table(name = "modules")
+public class Module {
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO)
     @Column(name = "id")
     private String id;
 
-    @Column(name = "submodule_name")
-    private String submoduleName;
-
-    @JoinColumn(name = "module_id", referencedColumnName = "id")
-    @ManyToOne
-    private Module module;
+    @Column(name = "module_name")
+    private String moduleName;
 
 
 }
+

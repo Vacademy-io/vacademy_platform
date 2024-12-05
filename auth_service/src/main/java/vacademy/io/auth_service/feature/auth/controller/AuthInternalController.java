@@ -49,8 +49,10 @@ public class AuthInternalController {
         }
 
         List<UserRole> userRoles = userRoleRepository.findByUser(user.get());
+        CustomUserDetails customUserDetails = new CustomUserDetails(user.get(), instituteId, userRoles);
+        customUserDetails.setPassword(null);
 
-        return ResponseEntity.ok(new CustomUserDetails(user.get(), instituteId, userRoles));
+        return ResponseEntity.ok(customUserDetails);
     }
 
 }

@@ -5,12 +5,9 @@ import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import vacademy.io.common.institute.entity.PackageSession;
-import vacademy.io.common.institute.entity.Session;
 
 import java.sql.Timestamp;
 import java.util.List;
-import java.util.Map;
 
 @Data
 @AllArgsConstructor

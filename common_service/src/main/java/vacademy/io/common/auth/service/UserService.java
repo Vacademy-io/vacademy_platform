@@ -4,7 +4,10 @@ package vacademy.io.common.auth.service;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.UserPermissionRequestDTO;
 import vacademy.io.common.auth.dto.UserRoleRequestDTO;
+import vacademy.io.common.auth.entity.Role;
 import vacademy.io.common.auth.entity.User;
+import vacademy.io.common.auth.entity.UserRole;
+import vacademy.io.common.auth.repository.RoleRepository;
 import vacademy.io.common.auth.repository.UserRepository;
 
 import vacademy.io.common.exceptions.*;
@@ -15,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -24,6 +28,9 @@ public class UserService {
 
     @Autowired
     UserRepository userRepository;
+
+    @Autowired
+    RoleRepository roleRepository;
 
     public List<User> getUsersFromUserIds(List<String> userIds) {
         List<User> users = new ArrayList<>();
@@ -61,10 +68,9 @@ public class UserService {
             throw new InvalidRequestException("userId and roleId are required.");
         }
 
-        if(!ifRoleExist(roleId)) {
+        if (!ifRoleExist(roleId)) {
             throw new RoleNotFoundException("Role with Id " + roleId + " not found");
-        }
-        else if(!ifUserExist(userId)) {
+        } else if (!ifUserExist(userId)) {
             throw new UserNotFoundException("User with Id" + userId + "not found");
         }
         userRepository.addRoleToUser(userId, roleId);
@@ -72,17 +78,17 @@ public class UserService {
 
     public void addPermissionToUser(UserPermissionRequestDTO userPermissionRequestDTO) {
 
-        String userId=userPermissionRequestDTO.getUserId();
-        String permissionId=userPermissionRequestDTO.getPermissionId();
+        String userId = userPermissionRequestDTO.getUserId();
+        String permissionId = userPermissionRequestDTO.getPermissionId();
 
-        if(userId==null || permissionId ==null) {
+        if (userId == null || permissionId == null) {
             throw new InvalidRequestException("userId and permissionId are required");
         }
 
-        if(!ifUserExist(userId)) {
+        if (!ifUserExist(userId)) {
             throw new UserNotFoundException("User with Id " + userId + " not found");
         } else if (!ifPermissionExist(permissionId)) {
-            throw new UserWithPermissionNotFoundException("Permission with Id "+ permissionId + "not found");
+            throw new UserWithPermissionNotFoundException("Permission with Id " + permissionId + "not found");
 
         }
         userRepository.addPermissionToUser(userId, permissionId);
@@ -97,24 +103,20 @@ public class UserService {
         }
 
         User user = results.get(0);
-        return new UserDTO(
-                user.getId(), user.getUsername(), user.getEmail(), user.getFullName(), user.getAddressLine(), user.getCity(), user.getPinCode(), user.getMobileNumber(), user.getDateOfBirth(), user.getGender(), user.isRootUser()
-        );
+        return new UserDTO(user);
     }
 
     public List<UserDTO> getUserDetailsByIds(List<String> userIds) {
 
-        for(String user : userIds) {
-            if(!ifUserExist(user)) {
+        for (String user : userIds) {
+            if (!ifUserExist(user)) {
                 throw new UserNotFoundException("User with Id " + user + " not found");
             }
         }
         List<User> users = userRepository.findUserDetailsByIds(userIds);
 
         return users.stream()
-                .map(user -> new UserDTO(
-                        user.getId(), user.getUsername(), user.getEmail(), user.getFullName(), user.getAddressLine(), user.getCity(), user.getPinCode(), user.getMobileNumber(), user.getDateOfBirth(), user.getGender(), user.isRootUser()
-                ))
+                .map(UserDTO::new)
                 .collect(Collectors.toList());
     }
 
@@ -127,20 +129,18 @@ public class UserService {
         }
 
         User user = results.get(0);
-        return new UserDTO(
-                user.getId(), user.getUsername(), user.getEmail(), user.getFullName(), user.getAddressLine(), user.getCity(), user.getPinCode(), user.getMobileNumber(), user.getDateOfBirth(), user.getGender(), user.isRootUser()
-        );
+        return new UserDTO(user);
     }
 
     public void removeRoleFromUser(UserRoleRequestDTO userRoleRequestDTO) {
 
-        String userId=userRoleRequestDTO.getUserId();
-        String roleId=userRoleRequestDTO.getRoleId();
+        String userId = userRoleRequestDTO.getUserId();
+        String roleId = userRoleRequestDTO.getRoleId();
 
-        if(userId==null || roleId==null) {
+        if (userId == null || roleId == null) {
             throw new InvalidRequestException("userId and RoleId are Required");
         }
-        if(!ifRoleAndUserExist(userId, roleId)) {
+        if (!ifRoleAndUserExist(userId, roleId)) {
             throw new UserWithRoleNotFoundException("User with Id " + userId + " and role Id " + roleId + " not found");
         }
         userRepository.removeRoleFromUser(userId, roleId);
@@ -148,13 +148,13 @@ public class UserService {
 
     public void removePermissionFromUser(UserPermissionRequestDTO userPermissionRequestDTO) {
 
-        String userId=userPermissionRequestDTO.getUserId();
-        String permissionId=userPermissionRequestDTO.getPermissionId();
-        if(userId==null || permissionId==null) {
+        String userId = userPermissionRequestDTO.getUserId();
+        String permissionId = userPermissionRequestDTO.getPermissionId();
+        if (userId == null || permissionId == null) {
             throw new InvalidRequestException("userId and permissionId are Required");
         }
 
-        if(!ifPermissionAndUserExist(userId, permissionId)) {
+        if (!ifPermissionAndUserExist(userId, permissionId)) {
             throw new UserWithPermissionNotFoundException("User with Id " + userId + " and Permission Id " + permissionId + " not found");
         }
         userRepository.removePermissionFromUser(userId, permissionId);
@@ -189,5 +189,46 @@ public class UserService {
     }
 
 
+    public User createUserFromUserDto(UserDTO userDTO) {
 
+        User user = new User();
+        user.setUsername(userDTO.getUsername());
+        user.setPassword(userDTO.getPassword());
+        user.setEmail(userDTO.getEmail());
+        user.setFullName(userDTO.getFullName());
+        user.setAddressLine(userDTO.getAddressLine());
+        user.setCity(userDTO.getCity());
+        user.setPinCode(userDTO.getPinCode());
+        user.setMobileNumber(userDTO.getMobileNumber());
+        user.setDateOfBirth(userDTO.getDateOfBirth());
+        user.setGender(userDTO.getGender());
+        user.setRootUser(userDTO.isRootUser());
+        User savedUser = userRepository.save(user);
+        userDTO.setId(savedUser.getId());
+
+        return savedUser;
+    }
+
+    public List<UserRole> addUserRoles(String instituteId, List<String> roles, User user) {
+
+        List<Role> rolesEntity = roleRepository.findByNameIn(roles);
+
+        List<UserRole> userRoles = new ArrayList<>();
+
+        if (user.getRoles() != null && !user.getRoles().isEmpty()) {
+            userRoles = new ArrayList<>(user.getRoles());
+        }
+
+        for (Role role : rolesEntity) {
+            UserRole userRole = new UserRole();
+            userRole.setRole(role);
+            userRole.setInstituteId(instituteId);
+            userRole.setUser(user);
+            userRoles.add(userRole);
+        }
+
+        user.setRoles(new HashSet<>(userRoles));
+        userRepository.save(user);
+        return userRoles;
+    }
 }

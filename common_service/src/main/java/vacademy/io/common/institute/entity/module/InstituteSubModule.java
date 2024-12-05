@@ -1,4 +1,4 @@
-package vacademy.io.common.institute.entity;
+package vacademy.io.common.institute.entity.module;
 
 
 import jakarta.persistence.*;

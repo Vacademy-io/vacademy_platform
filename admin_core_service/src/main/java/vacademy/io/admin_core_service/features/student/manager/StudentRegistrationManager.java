@@ -12,15 +12,13 @@ import vacademy.io.admin_core_service.features.student.dto.InstituteStudentDTO;
 import vacademy.io.admin_core_service.features.student.dto.InstituteStudentDetails;
 import vacademy.io.admin_core_service.features.student.dto.StudentExtraDetails;
 import vacademy.io.admin_core_service.features.student.entity.Student;
-import vacademy.io.admin_core_service.features.student.repository.StudentRepository;
+import vacademy.io.admin_core_service.features.student.repository.InstituteStudentRepository;
 import vacademy.io.admin_core_service.features.student.repository.StudentSessionRepository;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
 import vacademy.io.common.exceptions.VacademyException;
-import vacademy.io.common.institute.entity.Institute;
 
-import java.net.http.HttpClient;
 import java.util.Date;
 import java.util.UUID;
 
@@ -31,7 +29,7 @@ public class StudentRegistrationManager {
     InternalClientUtils internalClientUtils;
 
     @Autowired
-    StudentRepository studentRepository;
+    InstituteStudentRepository instituteStudentRepository;
 
     @Autowired
     StudentSessionRepository studentSessionRepository;
@@ -77,7 +75,7 @@ public class StudentRegistrationManager {
         student.setMotherName(studentExtraDetails.getMothersName());
         student.setParentsMobileNumber(studentExtraDetails.getParentsMobileNumber());
         student.setParentsEmail(studentExtraDetails.getParentsEmail());
-        return studentRepository.save(student);
+        return instituteStudentRepository.save(student);
     }
 
     private void linkStudentToInstitute(Student student, InstituteStudentDetails instituteStudentDetails) {

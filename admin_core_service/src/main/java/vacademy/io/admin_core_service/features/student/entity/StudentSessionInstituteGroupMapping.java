@@ -31,7 +31,7 @@ public class StudentSessionInstituteGroupMapping {
     private Date enrolledDate;
 
     @Column(name = "status")
-    private Boolean status;
+    private String status;
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;

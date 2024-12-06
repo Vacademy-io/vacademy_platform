@@ -43,27 +43,25 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             value = "SELECT DISTINCT s.* " +
                     "FROM student s " +
                     "JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id " +
-                    "JOIN institute i ON ssigm.institute_id = i.id " +
                     "WHERE ( " +
                     "to_tsvector('simple', concat(s.full_name, ' ', s.username)) @@ plainto_tsquery('simple', :name) " +
                     "OR s.full_name LIKE :name || '%' " +
                     "OR s.username LIKE :name || '%' " +
-                    "OR ssigm.institute_enrollment_number LIKE :name || '%' " +  // Search by enrollment number
-                    "OR s.user_id LIKE :name || '%' " +                       // Search by user ID
-                    "OR s.mobile_number LIKE :name || '%' " +                 // Search by mobile number
+                    "OR ssigm.institute_enrollment_number LIKE :name || '%' " +
+                    "OR s.user_id LIKE :name || '%' " +
+                    "OR s.mobile_number LIKE :name || '%' " +
                     ") " +
                     "AND (:instituteIds IS NULL OR ssigm.institute_id IN (:instituteIds))",
             countQuery = "SELECT COUNT(DISTINCT s.id) " +
                     "FROM student s " +
                     "JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id " +
-                    "JOIN institute i ON ssigm.institute_id = i.id " +
                     "WHERE ( " +
                     "to_tsvector('simple', concat(s.full_name, ' ', s.username)) @@ plainto_tsquery('simple', :name) " +
                     "OR s.full_name LIKE :name || '%' " +
                     "OR s.username LIKE :name || '%' " +
-                    "OR ssigm.institute_enrollment_number LIKE :name || '%'  " + // Count by enrollment number
-                    "OR s.user_id LIKE :name || '%'  " +                        // Count by user ID
-                    "OR s.mobile_number LIKE :name || '%'  " +                  // Count by mobile number
+                    "OR ssigm.institute_enrollment_number LIKE :name || '%' " +
+                    "OR s.user_id LIKE :name || '%' " +
+                    "OR s.mobile_number LIKE :name || '%' " +
                     ") " +
                     "AND (:instituteIds IS NULL OR ssigm.institute_id IN (:instituteIds))"
     )
@@ -72,8 +70,6 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             @Param("instituteIds") List<String> instituteIds,
             Pageable pageable
     );
-
-
 
 }
 

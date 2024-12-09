@@ -4,22 +4,25 @@ package vacademy.io.admin_core_service.features.student.manager;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.*;
 import org.springframework.stereotype.Component;
 import vacademy.io.admin_core_service.features.student.constants.StudentConstants;
 import vacademy.io.admin_core_service.features.student.dto.InstituteStudentDTO;
 import vacademy.io.admin_core_service.features.student.dto.InstituteStudentDetails;
 import vacademy.io.admin_core_service.features.student.dto.StudentExtraDetails;
+import vacademy.io.admin_core_service.features.student.dto.student_list_dto.StudentListFilter;
 import vacademy.io.admin_core_service.features.student.entity.Student;
 import vacademy.io.admin_core_service.features.student.repository.InstituteStudentRepository;
 import vacademy.io.admin_core_service.features.student.repository.StudentSessionRepository;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
+import vacademy.io.common.core.utils.DataToCsvConverter;
 import vacademy.io.common.exceptions.VacademyException;
 
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 import java.util.UUID;
 
 @Component
@@ -75,6 +78,7 @@ public class StudentRegistrationManager {
         student.setMotherName(studentExtraDetails.getMothersName());
         student.setParentsMobileNumber(studentExtraDetails.getParentsMobileNumber());
         student.setParentsEmail(studentExtraDetails.getParentsEmail());
+        student.setLinkedInstituteName(studentExtraDetails.getLinkedInstituteName());
         return instituteStudentRepository.save(student);
     }
 
@@ -88,4 +92,5 @@ public class StudentRegistrationManager {
             throw new VacademyException(e.getMessage());
         }
     }
+
 }

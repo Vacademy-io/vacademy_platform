@@ -1,4 +1,4 @@
-package vacademy.io.common.auth.utils;
+package vacademy.io.common.core.utils;
 
 import java.util.regex.Pattern;
 

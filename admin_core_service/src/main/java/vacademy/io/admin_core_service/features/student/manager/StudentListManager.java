@@ -20,6 +20,7 @@ import vacademy.io.admin_core_service.features.student.service.StudentFilterServ
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
 import vacademy.io.common.core.standard_classes.ListService;
+import vacademy.io.common.core.utils.DataToCsvConverter;
 
 import java.util.*;
 
@@ -75,4 +76,21 @@ public class StudentListManager {
         return AllStudentResponse.builder().totalPages(0).content(content).pageNo(0).totalPages(0).build();
     }
 
+    public ResponseEntity<byte[]> getStudentsCsvExport(CustomUserDetails user, StudentListFilter studentListFilter, int pageNo, int pageSize) {
+
+        // Get the total number of pages for the given filter
+        int totalPages = getLinkedStudents(user, studentListFilter, 0, 100).getBody().getTotalPages();
+
+        // List to store all employees
+        List<StudentDTO> allStudents = new ArrayList<>();
+
+        // Loop through all pages and append data
+        for (int page = 0; page < totalPages; page++) {
+            // Retrieve employees for the current page and add them to the list
+            List<StudentDTO> employees = getLinkedStudents(user, studentListFilter, page, 100).getBody().getContent();
+            allStudents.addAll(employees);
+        }
+
+        return DataToCsvConverter.convertListToCsv(allStudents);
+    }
 }

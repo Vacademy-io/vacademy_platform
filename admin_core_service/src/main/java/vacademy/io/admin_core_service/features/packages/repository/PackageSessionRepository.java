@@ -23,4 +23,14 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
     List<PackageSession> findPackageSessionsByInstituteId(
             @Param("instituteId") String instituteId);
 
+
+    @Query(value = "SELECT ps.id, ps.level_id, ps.session_id, ps.start_time, ps.updated_at, ps.created_at, ps.status, ps.package_id " +
+            "FROM package_session ps " +
+            "JOIN package p ON ps.package_id = p.id " +
+            "JOIN package_institute pi ON p.id = pi.package_id " +
+            "WHERE pi.institute_id = :instituteId AND ps.session_id = :sessionId",
+            nativeQuery = true)
+    List<PackageSession> findPackageSessionsByInstituteIdAndSessionId(
+            @Param("instituteId") String instituteId, @Param("sessionId") String sessionId);
+
 }

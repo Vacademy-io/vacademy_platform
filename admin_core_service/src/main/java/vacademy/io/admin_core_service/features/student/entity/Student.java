@@ -55,6 +55,8 @@ public class Student {
     private String parentsMobileNumber;
     @Column(name = "parents_email")
     private String parentsEmail;
+    @Column(name = "linked_institute_name")
+    private String linkedInstituteName;
     @Column(name = "created_at", insertable = false, updatable = false)
     private Timestamp createdAt;
     @Column(name = "updated_at", insertable = false, updatable = false)

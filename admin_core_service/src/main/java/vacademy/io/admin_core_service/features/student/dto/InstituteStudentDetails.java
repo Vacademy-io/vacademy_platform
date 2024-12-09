@@ -16,7 +16,6 @@ import java.util.Date;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class InstituteStudentDetails {
-
     private String instituteId;
     private String packageSessionId;
     private String enrollmentId;

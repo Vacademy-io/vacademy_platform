@@ -18,4 +18,5 @@ public class StudentExtraDetails {
     private String mothersName;
     private String parentsMobileNumber;
     private String parentsEmail;
+    private String linkedInstituteName;
 }

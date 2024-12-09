@@ -38,6 +38,7 @@ public class StudentDTO {
     private String motherName;
     private String parentsMobileNumber;
     private String parentsEmail;
+    private String linkedInstituteName;
     private Timestamp createdAt;
     private Timestamp updatedAt;
 
@@ -59,6 +60,7 @@ public class StudentDTO {
         this.motherName = student.getMotherName();
         this.parentsMobileNumber = student.getParentsMobileNumber();
         this.parentsEmail = student.getParentsEmail();
+        this.linkedInstituteName = student.getLinkedInstituteName();
         this.createdAt = student.getCreatedAt();
         this.updatedAt = student.getUpdatedAt();
     }

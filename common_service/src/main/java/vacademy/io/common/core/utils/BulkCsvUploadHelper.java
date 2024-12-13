@@ -29,6 +29,7 @@ public class BulkCsvUploadHelper {
         header.setType(type);
         header.setOrder(order);
         header.setOptional(optional);
+        header.setSend_option_id(true);
         header.setColumn_name(column_name);
         header.setOption_ids(options);
         header.setOptions(options.values().stream().toList());

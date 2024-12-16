@@ -5,6 +5,7 @@ import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 import org.springframework.stereotype.Service;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.multipart.MultipartFile;
 import vacademy.io.assessment_service.features.upload_docx.dto.OptionResponseFromDocx;
 import vacademy.io.assessment_service.features.upload_docx.dto.QuestionResponseFromDocx;
@@ -15,23 +16,26 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Service
 public class UploadDocxService {
 
-    public List<QuestionResponseFromDocx> extractQuestions(String htmlContent) {
+
+    public List<QuestionResponseFromDocx> extractQuestions(String htmlContent, String questionIdentifier, String optionIdentifier, String answerIdentifier, String explanationIdentifier) {
 
         Document doc = Jsoup.parse(htmlContent);
         Elements paragraphs = doc.select("p");
 
         List<QuestionResponseFromDocx> questions = new ArrayList<>();
 
-        String questionUpdateRegex = "^\\(\\d+\\.\\)\\s?";
+        String questionUpdateRegex = "^\\s*\\(\\d+\\.\\)\\s?";
 
-        String questionRegex = "^\\(\\d+\\.\\)\\s?.*";
-    ;
-        String optionRegex = "^\\([a-zA-Z]\\.\\)\\s?.*";
-        String optionUpdateRegex = "^\\([a-zA-Z]\\.\\)\\s?";
+        String questionRegex = "^\\s*\\(\\d+\\.\\)\\s?.*";
+
+        String optionRegex = "^\\s*\\([a-zA-Z]\\.\\)\\s?.*";
+        String optionUpdateRegex = "^\\s*\\([a-zA-Z]\\.\\)\\s?";
         String ansRegex = "Ans:";
         String explanationRegex = "Exp:";
 
@@ -47,7 +51,7 @@ public class UploadDocxService {
 
                 int questionNumber = extractQuestionNumber(text);
                 question = new QuestionResponseFromDocx(questionNumber);
-                 // Regex pattern to match
+                // Regex pattern to match
 
                 question.setQuestionHtml(cleanHtmlTags(paragraph.html(), questionUpdateRegex));
 
@@ -125,15 +129,49 @@ public class UploadDocxService {
         // Return combined data
         return questions;
     }
-
     private int extractQuestionNumber(String text) {
-        try {
-            String number = text.substring(1, text.indexOf('.')).trim();
-            return Integer.parseInt(number);
-        } catch (NumberFormatException | IndexOutOfBoundsException e) {
-            return -1;
+        // Define a regex pattern to match the question number formats
+        String regex = "(\\d+)|(?:Q(\\d+))";
+        Pattern pattern = Pattern.compile(regex);
+        Matcher matcher = pattern.matcher(text);
+
+        if (matcher.find()) {
+            // If a match is found, return the first capturing group as an integer
+            String numberStr = matcher.group(1); // This captures the number
+            if (numberStr != null) {
+                return Integer.parseInt(numberStr);
+            }
+
+            String qNumberStr = matcher.group(2); // This captures the Q number if present
+            if (qNumberStr != null) {
+                return Integer.parseInt(qNumberStr);
+            }
+        }
+
+        // Return -1 or throw an exception if no valid number is found
+        throw new IllegalArgumentException("Invalid question format: " + text);
+    }
+
+    private String cleanHtmlTags(String input, String regex) {
+        if (input == null) return null;
+        return input.replaceAll("(?i)</?(p|strong)>", "").replaceAll(regex, "");
+    }
+
+    private Integer getAnswerId(String text) {
+        switch (text.toLowerCase()) {
+            case "a":
+                return 0;
+            case "b":
+                return 1;
+            case "c":
+                return 2;
+            case "d":
+                return 3;
+            default:
+                return null;
         }
     }
+
 
     public File convertMultiPartToFile(MultipartFile file) throws IOException {
         File convFile = File.createTempFile("uploaded", ".docx");
@@ -144,25 +182,7 @@ public class UploadDocxService {
     }
 
 
-    // clean html
-    private String cleanHtmlTags(String input, String regex) {
-        if (input == null) return null;
-        return input.replaceAll("(?i)</?(p|strong)>", "").replaceAll(regex, "");
-    }
 
-
-    private Integer getAnswerId(String text) {
-        if (text.startsWith("a")) {
-            return 0;
-        } else if (text.startsWith("b")) {
-            return 1;
-        } else if (text.startsWith("c")) {
-            return 2;
-        } else if (text.startsWith("d")) {
-            return 3;
-        }
-        return null;
-    }
 }
 
 

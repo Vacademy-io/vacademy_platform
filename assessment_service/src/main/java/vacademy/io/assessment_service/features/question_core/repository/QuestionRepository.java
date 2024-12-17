@@ -9,6 +9,8 @@ import java.util.List;
 
 public interface QuestionRepository extends JpaRepository<Question, String> {
 
-    @Query("SELECT q FROM Question q JOIN QuestionQuestionPaperMapping qp ON q.id = qp.questionId WHERE qp.questionPaperId = :questionPaperId")
+    @Query(value = "SELECT q.* FROM question q " +
+            "JOIN question_question_paper_mapping qp ON q.id = qp.question_id " +
+            "WHERE qp.question_paper_id = :questionPaperId", nativeQuery = true)
     List<Question> findQuestionsByQuestionPaperId(@Param("questionPaperId") String questionPaperId);
 }

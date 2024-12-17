@@ -7,6 +7,8 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import vacademy.io.assessment_service.features.rich_text.dto.AssessmentRichTextDataDTO;
+import vacademy.io.assessment_service.features.rich_text.enums.TextType;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -19,10 +21,12 @@ import java.util.List;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class QuestionResponseFromDocx {
     private int questionId;
-    private String questionHtml;
+    private String sectionId;
+    private String sectionOrder;
+    private AssessmentRichTextDataDTO questionText;
     private List<OptionResponseFromDocx> optionsData = new ArrayList<>();
-    private List<String> answerOptionIds = new ArrayList<>();
-    private String explanationHtml;
+    private String evaluationJson;
+    private AssessmentRichTextDataDTO explanationHtml;
     private List<String> errors = new ArrayList<>();
     private List<String> warnings = new ArrayList<>();
 
@@ -30,16 +34,18 @@ public class QuestionResponseFromDocx {
         this.optionsData.add(option);
     }
 
-    public void setQuestionHtml(String html) {
-        this.questionHtml = html;
+    public void setQuestionHtml(AssessmentRichTextDataDTO html) {
+        this.questionText = html;
     }
 
     public void appendQuestionHtml(String html) {
-        this.questionHtml = (this.questionHtml == null ? "" : this.questionHtml) + html;
+        String updatedValue = (this.questionText == null ? "" : this.questionText) + html;
+        this.questionText = new AssessmentRichTextDataDTO(null, TextType.HTML.name(), updatedValue);
     }
 
     public void appendExplanationHtml(String html) {
-        this.explanationHtml = (this.explanationHtml == null ? "" : this.explanationHtml) + html;
+        String updatedValue =  (this.explanationHtml == null ? "" : this.explanationHtml) + html;
+        this.explanationHtml = new AssessmentRichTextDataDTO(null, TextType.HTML.name(), updatedValue);
     }
 
     public QuestionResponseFromDocx(int questionId) {

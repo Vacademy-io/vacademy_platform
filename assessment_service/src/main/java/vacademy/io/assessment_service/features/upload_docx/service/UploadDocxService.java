@@ -1,14 +1,22 @@
 package vacademy.io.assessment_service.features.upload_docx.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.multipart.MultipartFile;
+import vacademy.io.assessment_service.features.evaluation.service.QuestionEvaluationService;
+import vacademy.io.assessment_service.features.question_core.dto.MCQEvaluationDTO;
+import vacademy.io.assessment_service.features.question_core.enums.QuestionTypes;
+import vacademy.io.assessment_service.features.rich_text.dto.AssessmentRichTextDataDTO;
+import vacademy.io.assessment_service.features.rich_text.enums.TextType;
 import vacademy.io.assessment_service.features.upload_docx.dto.OptionResponseFromDocx;
 import vacademy.io.assessment_service.features.upload_docx.dto.QuestionResponseFromDocx;
+import vacademy.io.common.exceptions.VacademyException;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -21,6 +29,9 @@ import java.util.regex.Pattern;
 
 @Service
 public class UploadDocxService {
+
+    @Autowired
+    QuestionEvaluationService questionEvaluationService;
 
 
     public List<QuestionResponseFromDocx> extractQuestions(String htmlContent, String questionIdentifier, String optionIdentifier, String answerIdentifier, String explanationIdentifier) {
@@ -53,7 +64,7 @@ public class UploadDocxService {
                 question = new QuestionResponseFromDocx(questionNumber);
                 // Regex pattern to match
 
-                question.setQuestionHtml(cleanHtmlTags(paragraph.html(), questionUpdateRegex));
+                question.setQuestionHtml(new AssessmentRichTextDataDTO(null, TextType.HTML.name(), cleanHtmlTags(paragraph.html(), questionUpdateRegex)));
 
 
                 // Handle multi-line questions
@@ -95,7 +106,7 @@ public class UploadDocxService {
                     Element optionParagraph = paragraphs.get(i);
 
                     if (optionParagraph.text().startsWith("(a.)") || optionParagraph.text().startsWith("(b.)") || optionParagraph.text().startsWith("(c.)") || optionParagraph.text().startsWith("(d.)")) {
-                        question.getOptionsData().add(new OptionResponseFromDocx(question.getOptionsData().size(), cleanHtmlTags(optionParagraph.html(), optionUpdateRegex)));
+                        question.getOptionsData().add(new OptionResponseFromDocx(question.getOptionsData().size(), null, new AssessmentRichTextDataDTO(null, TextType.HTML.name(), cleanHtmlTags(optionParagraph.html(), optionUpdateRegex))));
                     }
                 }
 
@@ -104,7 +115,17 @@ public class UploadDocxService {
                     i++;
                     String answerText = paragraphs.get(i).text();
                     String contentAfterAns = answerText.substring(ansRegex.length()).trim();
-                    question.setAnswerOptionIds(List.of(Objects.requireNonNull(getAnswerId(contentAfterAns)).toString()));
+                    MCQEvaluationDTO mcqEvaluation = new MCQEvaluationDTO();
+                    mcqEvaluation.setType(QuestionTypes.MCQS.name());
+                    MCQEvaluationDTO.MCQData mcqData = new MCQEvaluationDTO.MCQData();
+
+                    try {
+                        mcqData.setCorrectOptionIds(List.of(getAnswerId(contentAfterAns).toString()));
+                        mcqEvaluation.setData(mcqData);
+                        question.setEvaluationJson(questionEvaluationService.setEvaluationJson(mcqEvaluation));
+                    } catch (JsonProcessingException e) {
+                        throw new VacademyException(e.getMessage());
+                    }
                 }
 
                 // Extract explanation
@@ -112,7 +133,7 @@ public class UploadDocxService {
                     i++;
 
                     String filteredText = paragraphs.get(i).html().replaceAll(explanationRegex, "").trim();
-                    question.setExplanationHtml(cleanHtmlTags(filteredText, explanationRegex));
+                    question.setExplanationHtml(new AssessmentRichTextDataDTO(null, TextType.HTML.name(), cleanHtmlTags(filteredText, explanationRegex)));
                     while (i + 1 < paragraphs.size() && !(paragraphs.get(i + 1).text().startsWith("(") && Character.isDigit(paragraphs.get(i + 1).text().charAt(1)))) {
                         i++;
                         String filteredInternalText = paragraphs.get(i).outerHtml().replaceAll(explanationRegex, "").trim();
@@ -122,13 +143,14 @@ public class UploadDocxService {
                 }
             }
 
-            if(question != null)
+            if (question != null)
                 questions.add(question);
         }
 
         // Return combined data
         return questions;
     }
+
     private int extractQuestionNumber(String text) {
         // Define a regex pattern to match the question number formats
         String regex = "(\\d+)|(?:Q(\\d+))";
@@ -180,7 +202,6 @@ public class UploadDocxService {
         }
         return convFile;
     }
-
 
 
 }

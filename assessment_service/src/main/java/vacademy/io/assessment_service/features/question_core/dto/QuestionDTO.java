@@ -23,6 +23,9 @@ import java.util.List;
 public class QuestionDTO {
 
     private String id;
+    private String previewId;
+    private String sectionId;
+    private String sectionOrder;
     private AssessmentRichTextDataDTO text;
     private String mediaId;
     private Date createdAt;
@@ -35,6 +38,8 @@ public class QuestionDTO {
     private AssessmentRichTextDataDTO explanationText;
     private Integer defaultQuestionTimeMins;
     private List<OptionDTO> options = new ArrayList<>();
+    private List<String> errors = new ArrayList<>();
+    private List<String> warnings = new ArrayList<>();
 
     // Default constructor
     public QuestionDTO() {
@@ -72,4 +77,17 @@ public class QuestionDTO {
     }
 
 
+    public QuestionDTO(String questionNumber) {
+        this.previewId = questionNumber;
+    }
+
+    public void appendQuestionHtml(String s) {
+        String updatedHtml = (this.text.getContent() == null) ? "" : this.text.getContent() + s;
+        this.text.setContent(updatedHtml);
+    }
+
+    public void appendExplanationHtml(String s) {
+        String updatedHtml = (this.explanationText.getContent() == null) ? "" : this.explanationText.getContent() + s;
+        this.explanationText.setContent(updatedHtml);
+    }
 }

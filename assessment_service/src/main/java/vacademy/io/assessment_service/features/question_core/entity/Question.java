@@ -60,7 +60,7 @@ public class Question {
     @JoinColumn(name = "explanation_text_id", referencedColumnName = "id", insertable = true, updatable = true)
     private AssessmentRichTextData explanationTextData;
 
-    @OneToMany(mappedBy = "question", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @OneToMany(mappedBy = "question", fetch = FetchType.LAZY)
     private List<Option> options;
 
     public Question(QuestionDTO questionDTO) {

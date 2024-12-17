@@ -24,7 +24,7 @@ public class Option {
     private String id;
 
     @ManyToOne
-    @JoinColumn(name = "question_id", nullable = false)
+    @JoinColumn(name = "question_id", nullable = true)
     private Question question; // Reference to the Question entity
 
     @OneToOne(cascade = CascadeType.ALL)

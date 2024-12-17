@@ -23,8 +23,8 @@ public interface QuestionPaperRepository extends JpaRepository<QuestionPaper, St
 
     @Modifying
     @Transactional
-    @Query(value = "INSERT INTO institute_question_paper (id, question_paper_id, institute_id, status) VALUES (:id, :questionPaperId, :instituteId, :status)", nativeQuery = true)
-    void linkInstituteToQuestionPaper(@Param("id") String id, @Param("questionPaperId") String questionPaperId, @Param("instituteId") String instituteId, @Param("status") String status);
+    @Query(value = "INSERT INTO institute_question_paper (id, question_paper_id, institute_id, status, level_id, subject_id) VALUES (:id, :questionPaperId, :instituteId, :status, :levelId, :subjectId)", nativeQuery = true)
+    void linkInstituteToQuestionPaper(@Param("id") String id, @Param("questionPaperId") String questionPaperId, @Param("instituteId") String instituteId, @Param("status") String status, @Param("levelId") String levelId, @Param("subjectId") String subjectId);
 
 
     @Query(

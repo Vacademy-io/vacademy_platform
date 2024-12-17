@@ -29,6 +29,7 @@ public class AssessmentRichTextDataDTO {
     }
 
     public AssessmentRichTextDataDTO(AssessmentRichTextData data) {
+        if(data == null) return;
         this.id = data.getId();
         this.type = data.getType();
         this.content = data.getContent();

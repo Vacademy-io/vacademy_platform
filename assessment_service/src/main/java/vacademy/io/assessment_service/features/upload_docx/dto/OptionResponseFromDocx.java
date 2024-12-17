@@ -7,6 +7,7 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import vacademy.io.assessment_service.features.rich_text.dto.AssessmentRichTextDataDTO;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -19,6 +20,7 @@ import java.util.List;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class OptionResponseFromDocx {
     private int optionId;
-    private String optionHtml;
+    private Integer optionOrder;
+    private AssessmentRichTextDataDTO optionText;
 
 }

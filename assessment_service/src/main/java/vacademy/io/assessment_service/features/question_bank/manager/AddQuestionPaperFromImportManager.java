@@ -73,18 +73,19 @@ public class AddQuestionPaperFromImportManager {
         // Todo: check Question Validation
 
         Question question = new Question();
-        question.setTextData(AssessmentRichTextData.builder().type(TextType.HTML.name()).content(questionRequest.getQuestionHtml()).build());
+        question.setTextData(AssessmentRichTextData.fromDTO(questionRequest.getQuestionText()));
         if (questionRequest.getExplanationHtml() != null)
-            question.setExplanationTextData(AssessmentRichTextData.builder().type(TextType.HTML.name()).content(questionRequest.getExplanationHtml()).build());
+            question.setExplanationTextData(AssessmentRichTextData.fromDTO(questionRequest.getExplanationHtml()));
 
         List<Option> options = new ArrayList<>();
         List<String> correctOptionIds = new ArrayList<>();
+        MCQEvaluationDTO requestEvaluation =  questionEvaluationService.getEvaluationJson(questionRequest.getEvaluationJson());
         for (int i = 0; i < questionRequest.getOptionsData().size(); i++) {
             Option option = new Option();
             UUID optionId = UUID.randomUUID();
             option.setId(optionId.toString());
-            option.setText(AssessmentRichTextData.builder().type(TextType.HTML.name()).content(questionRequest.getOptionsData().get(i).getOptionHtml()).build());
-            if (questionRequest.getAnswerOptionIds().contains(String.valueOf(questionRequest.getOptionsData().get(i).getOptionId())))
+            option.setText(AssessmentRichTextData.fromDTO(questionRequest.getOptionsData().get(i).getOptionText()));
+            if (requestEvaluation.getData().getCorrectOptionIds().contains(String.valueOf(questionRequest.getOptionsData().get(i).getOptionId())))
                 correctOptionIds.add(optionId.toString());
             options.add(option);
         }

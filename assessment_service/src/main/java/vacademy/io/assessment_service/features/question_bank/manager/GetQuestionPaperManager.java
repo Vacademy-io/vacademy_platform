@@ -49,7 +49,7 @@ public class GetQuestionPaperManager {
         makeFilterFieldEmptyArrayIfNull(questionPaperFilter);
 
         // Retrieve employees based on the filter criteria
-        Page<QuestionPaper> employeePage = questionPaperRepository.findQuestionPapersByFilters(questionPaperFilter.getName(), questionPaperFilter.getStatuses(), questionPaperFilter.getLevelIds(), questionPaperFilter.getSubjectIds(), null, List.of(instituteId), pageable);
+        Page<Object[]> employeePage = questionPaperRepository.findQuestionPapersByFilters(questionPaperFilter.getName(), questionPaperFilter.getStatuses(), questionPaperFilter.getLevelIds(), questionPaperFilter.getSubjectIds(), null, List.of(instituteId), pageable);
 
         return createAllQuestionPaperResponseFromPaginatedData(employeePage);
 
@@ -68,10 +68,19 @@ public class GetQuestionPaperManager {
         }
     }
 
-    private AllQuestionPaperResponse createAllQuestionPaperResponseFromPaginatedData(Page<QuestionPaper> questionPapers) {
+    private AllQuestionPaperResponse createAllQuestionPaperResponseFromPaginatedData(Page<Object[]> questionPapers) {
         List<QuestionPaperDTO> content = new ArrayList<>();
         if (!Objects.isNull(questionPapers)) {
-            content = questionPapers.getContent().stream().map((QuestionPaperDTO::new)).toList();
+            content = questionPapers.getContent().stream().map(object -> new QuestionPaperDTO(
+                    (String) object[0], // id
+                    (String) object[1], // title
+                    (String) object[2], // status
+                    (String) object[3], // levelId
+                    (String) object[4], // subjectId
+                    (Date) object[5], // createdOn
+                    (Date) object[6], // updatedOn
+                    (String) object[7]  // createdByUserId
+            )).toList();
             return AllQuestionPaperResponse.builder().content(content).pageNo(questionPapers.getNumber()).last(questionPapers.isLast()).pageSize(questionPapers.getSize()).totalPages(questionPapers.getTotalPages()).totalElements(questionPapers.getTotalElements()).build();
         }
         return AllQuestionPaperResponse.builder().totalPages(0).content(content).pageNo(0).totalPages(0).build();

@@ -13,7 +13,7 @@ import org.springframework.web.multipart.MultipartFile;
 import org.zwobble.mammoth.DocumentConverter;
 
 import org.zwobble.mammoth.Result;
-import vacademy.io.assessment_service.features.upload_docx.dto.QuestionResponseFromDocx;
+import vacademy.io.assessment_service.features.question_core.dto.QuestionDTO;
 import vacademy.io.assessment_service.features.upload_docx.service.UploadDocxService;
 
 
@@ -45,7 +45,7 @@ public class QuestionPaperDocxController {
     }
 
     @PostMapping("/convert-doc-to-html")
-    public List<QuestionResponseFromDocx> docToHtml(
+    public List<QuestionDTO> docToHtml(
             @RequestParam("file") MultipartFile file,
             @RequestParam(value = "questionIdentifier", required = false) String questionIdentifier,
             @RequestParam(value = "optionIdentifier", required = false) String optionIdentifier,
@@ -71,7 +71,7 @@ public class QuestionPaperDocxController {
         return "text/html".equals(file.getContentType());
     }
 
-    private List<QuestionResponseFromDocx> extractQuestionsFromHtml(MultipartFile file, String questionIdentifier, String optionIdentifier, String answerIdentifier, String explanationIdentifier) {
+    private List<QuestionDTO> extractQuestionsFromHtml(MultipartFile file, String questionIdentifier, String optionIdentifier, String answerIdentifier, String explanationIdentifier) {
         try {
             String html = new String(file.getBytes(), StandardCharsets.UTF_8);
             return docxService.extractQuestions(html, questionIdentifier, optionIdentifier, answerIdentifier, explanationIdentifier);

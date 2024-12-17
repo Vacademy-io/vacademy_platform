@@ -10,6 +10,7 @@ import vacademy.io.assessment_service.features.question_bank.dto.AddQuestionPape
 import vacademy.io.assessment_service.features.question_bank.entity.QuestionPaper;
 import vacademy.io.assessment_service.features.question_bank.repository.QuestionPaperRepository;
 import vacademy.io.assessment_service.features.question_core.dto.MCQEvaluationDTO;
+import vacademy.io.assessment_service.features.question_core.dto.QuestionDTO;
 import vacademy.io.assessment_service.features.question_core.entity.Option;
 import vacademy.io.assessment_service.features.question_core.entity.Question;
 import vacademy.io.assessment_service.features.question_core.enums.EvaluationTypes;
@@ -17,9 +18,7 @@ import vacademy.io.assessment_service.features.question_core.enums.QuestionRespo
 import vacademy.io.assessment_service.features.question_core.enums.QuestionTypes;
 import vacademy.io.assessment_service.features.question_core.repository.QuestionRepository;
 import vacademy.io.assessment_service.features.rich_text.entity.AssessmentRichTextData;
-import vacademy.io.assessment_service.features.rich_text.enums.TextType;
 import vacademy.io.assessment_service.features.rich_text.repository.AssessmentRichTextRepository;
-import vacademy.io.assessment_service.features.upload_docx.dto.QuestionResponseFromDocx;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 import java.util.ArrayList;
@@ -69,23 +68,23 @@ public class AddQuestionPaperFromImportManager {
 
     }
 
-    private Question makeQuestionAndOptionFromImportQuestion(QuestionResponseFromDocx questionRequest) throws JsonProcessingException {
+    private Question makeQuestionAndOptionFromImportQuestion(QuestionDTO questionRequest) throws JsonProcessingException {
         // Todo: check Question Validation
 
         Question question = new Question();
-        question.setTextData(AssessmentRichTextData.fromDTO(questionRequest.getQuestionText()));
-        if (questionRequest.getExplanationHtml() != null)
-            question.setExplanationTextData(AssessmentRichTextData.fromDTO(questionRequest.getExplanationHtml()));
+        question.setTextData(AssessmentRichTextData.fromDTO(questionRequest.getText()));
+        if (questionRequest.getText() != null)
+            question.setExplanationTextData(AssessmentRichTextData.fromDTO(questionRequest.getExplanationText()));
 
         List<Option> options = new ArrayList<>();
         List<String> correctOptionIds = new ArrayList<>();
-        MCQEvaluationDTO requestEvaluation =  questionEvaluationService.getEvaluationJson(questionRequest.getEvaluationJson());
-        for (int i = 0; i < questionRequest.getOptionsData().size(); i++) {
+        MCQEvaluationDTO requestEvaluation =  questionEvaluationService.getEvaluationJson(questionRequest.getAutoEvaluationJson());
+        for (int i = 0; i < questionRequest.getOptions().size(); i++) {
             Option option = new Option();
             UUID optionId = UUID.randomUUID();
             option.setId(optionId.toString());
-            option.setText(AssessmentRichTextData.fromDTO(questionRequest.getOptionsData().get(i).getOptionText()));
-            if (requestEvaluation.getData().getCorrectOptionIds().contains(String.valueOf(questionRequest.getOptionsData().get(i).getOptionId())))
+            option.setText(AssessmentRichTextData.fromDTO(questionRequest.getOptions().get(i).getText()));
+            if (requestEvaluation.getData().getCorrectOptionIds().contains(String.valueOf(questionRequest.getOptions().get(i).getPreviewId())))
                 correctOptionIds.add(optionId.toString());
             options.add(option);
         }

@@ -7,15 +7,14 @@ import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.multipart.MultipartFile;
 import vacademy.io.assessment_service.features.evaluation.service.QuestionEvaluationService;
 import vacademy.io.assessment_service.features.question_core.dto.MCQEvaluationDTO;
+import vacademy.io.assessment_service.features.question_core.dto.OptionDTO;
+import vacademy.io.assessment_service.features.question_core.dto.QuestionDTO;
 import vacademy.io.assessment_service.features.question_core.enums.QuestionTypes;
 import vacademy.io.assessment_service.features.rich_text.dto.AssessmentRichTextDataDTO;
 import vacademy.io.assessment_service.features.rich_text.enums.TextType;
-import vacademy.io.assessment_service.features.upload_docx.dto.OptionResponseFromDocx;
-import vacademy.io.assessment_service.features.upload_docx.dto.QuestionResponseFromDocx;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.io.File;
@@ -23,7 +22,6 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -34,12 +32,12 @@ public class UploadDocxService {
     QuestionEvaluationService questionEvaluationService;
 
 
-    public List<QuestionResponseFromDocx> extractQuestions(String htmlContent, String questionIdentifier, String optionIdentifier, String answerIdentifier, String explanationIdentifier) {
+    public List<QuestionDTO> extractQuestions(String htmlContent, String questionIdentifier, String optionIdentifier, String answerIdentifier, String explanationIdentifier) {
 
         Document doc = Jsoup.parse(htmlContent);
         Elements paragraphs = doc.select("p");
 
-        List<QuestionResponseFromDocx> questions = new ArrayList<>();
+        List<QuestionDTO> questions = new ArrayList<>();
 
         String questionUpdateRegex = "^\\s*\\(\\d+\\.\\)\\s?";
 
@@ -55,16 +53,16 @@ public class UploadDocxService {
             Element paragraph = paragraphs.get(i);
             String text = paragraph.text().trim();
             boolean isValidQuestion = true;
-            QuestionResponseFromDocx question = null;
+            QuestionDTO question = null;
 
             // Detect questions using "startsWith" for "(number.)" format
             if (text.matches(questionRegex)) {
 
                 int questionNumber = extractQuestionNumber(text);
-                question = new QuestionResponseFromDocx(questionNumber);
+                question = new QuestionDTO(String.valueOf(questionNumber));
                 // Regex pattern to match
 
-                question.setQuestionHtml(new AssessmentRichTextDataDTO(null, TextType.HTML.name(), cleanHtmlTags(paragraph.html(), questionUpdateRegex)));
+                question.setText(new AssessmentRichTextDataDTO(null, TextType.HTML.name(), cleanHtmlTags(paragraph.html(), questionUpdateRegex)));
 
 
                 // Handle multi-line questions
@@ -106,7 +104,7 @@ public class UploadDocxService {
                     Element optionParagraph = paragraphs.get(i);
 
                     if (optionParagraph.text().startsWith("(a.)") || optionParagraph.text().startsWith("(b.)") || optionParagraph.text().startsWith("(c.)") || optionParagraph.text().startsWith("(d.)")) {
-                        question.getOptionsData().add(new OptionResponseFromDocx(question.getOptionsData().size(), null, new AssessmentRichTextDataDTO(null, TextType.HTML.name(), cleanHtmlTags(optionParagraph.html(), optionUpdateRegex))));
+                        question.getOptions().add(new OptionDTO(String.valueOf(question.getOptions().size()), new AssessmentRichTextDataDTO(null, TextType.HTML.name(), cleanHtmlTags(optionParagraph.html(), optionUpdateRegex))));
                     }
                 }
 
@@ -122,7 +120,7 @@ public class UploadDocxService {
                     try {
                         mcqData.setCorrectOptionIds(List.of(getAnswerId(contentAfterAns).toString()));
                         mcqEvaluation.setData(mcqData);
-                        question.setEvaluationJson(questionEvaluationService.setEvaluationJson(mcqEvaluation));
+                        question.setAutoEvaluationJson(questionEvaluationService.setEvaluationJson(mcqEvaluation));
                     } catch (JsonProcessingException e) {
                         throw new VacademyException(e.getMessage());
                     }
@@ -133,7 +131,7 @@ public class UploadDocxService {
                     i++;
 
                     String filteredText = paragraphs.get(i).html().replaceAll(explanationRegex, "").trim();
-                    question.setExplanationHtml(new AssessmentRichTextDataDTO(null, TextType.HTML.name(), cleanHtmlTags(filteredText, explanationRegex)));
+                    question.setExplanationText(new AssessmentRichTextDataDTO(null, TextType.HTML.name(), cleanHtmlTags(filteredText, explanationRegex)));
                     while (i + 1 < paragraphs.size() && !(paragraphs.get(i + 1).text().startsWith("(") && Character.isDigit(paragraphs.get(i + 1).text().charAt(1)))) {
                         i++;
                         String filteredInternalText = paragraphs.get(i).outerHtml().replaceAll(explanationRegex, "").trim();

@@ -4,8 +4,7 @@ import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.Getter;
 import lombok.Setter;
-import vacademy.io.assessment_service.features.question_bank.entity.QuestionPaper;
-import vacademy.io.assessment_service.features.upload_docx.dto.QuestionResponseFromDocx;
+import vacademy.io.assessment_service.features.question_core.dto.QuestionDTO;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -21,6 +20,6 @@ public class AddQuestionPaperDTO {
     private String instituteId;
     private String descriptionId;
     private String createdByUserId;
-    private List<QuestionResponseFromDocx> questions = new ArrayList<>();
+    private List<QuestionDTO> questions = new ArrayList<>();
 
 }

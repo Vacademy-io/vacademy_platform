@@ -19,15 +19,22 @@ import vacademy.io.assessment_service.features.rich_text.entity.AssessmentRichTe
 public class OptionDTO {
 
     private String id;
+    private String previewId;
     private String questionId; // To reference back to the question
     private AssessmentRichTextDataDTO text;
     private String mediaId;
+    private Integer optionOrder;
     private String createdOn; // Consider using LocalDateTime for better date handling
     private String updatedOn; // Consider using LocalDateTime for better date handling
     private AssessmentRichTextDataDTO explanationText;
 
     // Default constructor
     public OptionDTO() {
+    }
+
+    public OptionDTO(String previewId, AssessmentRichTextDataDTO text) {
+        this.previewId = previewId;
+        this.text = text;
     }
 
     // Constructor from entity

@@ -36,6 +36,7 @@ public class AssessmentRichTextData {
 
     // Static method to create entity from DTO
     public static AssessmentRichTextData fromDTO(AssessmentRichTextDataDTO dto) {
+        if(dto == null) return null;
         return new AssessmentRichTextData(dto.getId(), dto.getType(), dto.getContent());
     }
 }

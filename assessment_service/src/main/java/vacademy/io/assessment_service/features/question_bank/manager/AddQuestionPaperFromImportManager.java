@@ -14,8 +14,10 @@ import vacademy.io.assessment_service.features.question_core.dto.QuestionDTO;
 import vacademy.io.assessment_service.features.question_core.entity.Option;
 import vacademy.io.assessment_service.features.question_core.entity.Question;
 import vacademy.io.assessment_service.features.question_core.enums.EvaluationTypes;
+import vacademy.io.assessment_service.features.question_core.enums.QuestionAccessLevel;
 import vacademy.io.assessment_service.features.question_core.enums.QuestionResponseTypes;
 import vacademy.io.assessment_service.features.question_core.enums.QuestionTypes;
+import vacademy.io.assessment_service.features.question_core.repository.OptionRepository;
 import vacademy.io.assessment_service.features.question_core.repository.QuestionRepository;
 import vacademy.io.assessment_service.features.rich_text.entity.AssessmentRichTextData;
 import vacademy.io.assessment_service.features.rich_text.repository.AssessmentRichTextRepository;
@@ -31,6 +33,9 @@ public class AddQuestionPaperFromImportManager {
 
     @Autowired
     QuestionRepository questionRepository;
+
+    @Autowired
+    OptionRepository optionRepository;
 
     @Autowired
     QuestionPaperRepository questionPaperRepository;
@@ -51,18 +56,21 @@ public class AddQuestionPaperFromImportManager {
         questionPaper = questionPaperRepository.save(questionPaper);
 
         List<Question> questions = new ArrayList<>();
+        List<Option> options = new ArrayList<>();
         for (int i = 0; i < questionRequestBody.getQuestions().size(); i++) {
             Question question = makeQuestionAndOptionFromImportQuestion(questionRequestBody.getQuestions().get(i));
-            question = questionRepository.save(question);
             questions.add(question);
+            options.addAll(question.getOptions());
         }
+
         questions = questionRepository.saveAll(questions);
+        options = optionRepository.saveAll(options);
 
         List<String> savedQuestionIds = questions.stream().map(Question::getId).toList();
         
         questionPaperRepository.bulkInsertQuestionsToQuestionPaper(questionPaper.getId(), savedQuestionIds);
         
-        questionPaperRepository.linkInstituteToQuestionPaper(UUID.randomUUID().toString(), questionPaper.getId(), questionRequestBody.getInstituteId(), "ACTIVE");
+        questionPaperRepository.linkInstituteToQuestionPaper(UUID.randomUUID().toString(), questionPaper.getId(), questionRequestBody.getInstituteId(), "ACTIVE", questionRequestBody.getLevelId(), questionRequestBody.getSubjectId());
         
         return true;
 
@@ -73,7 +81,7 @@ public class AddQuestionPaperFromImportManager {
 
         Question question = new Question();
         question.setTextData(AssessmentRichTextData.fromDTO(questionRequest.getText()));
-        if (questionRequest.getText() != null)
+        if (questionRequest.getExplanationText() != null)
             question.setExplanationTextData(AssessmentRichTextData.fromDTO(questionRequest.getExplanationText()));
 
         List<Option> options = new ArrayList<>();
@@ -84,6 +92,7 @@ public class AddQuestionPaperFromImportManager {
             UUID optionId = UUID.randomUUID();
             option.setId(optionId.toString());
             option.setText(AssessmentRichTextData.fromDTO(questionRequest.getOptions().get(i).getText()));
+            option.setQuestion(question);
             if (requestEvaluation.getData().getCorrectOptionIds().contains(String.valueOf(questionRequest.getOptions().get(i).getPreviewId())))
                 correctOptionIds.add(optionId.toString());
             options.add(option);
@@ -98,6 +107,7 @@ public class AddQuestionPaperFromImportManager {
 
         question.setAutoEvaluationJson(questionEvaluationService.setEvaluationJson(mcqEvaluation));
         question.setQuestionResponseType(QuestionResponseTypes.OPTION.name());
+        question.setAccessLevel(QuestionAccessLevel.PRIVATE.name());
         question.setQuestionType((options.size() > 1) ? QuestionTypes.MCQM.name() : QuestionTypes.MCQS.name());
         question.setEvaluationType(EvaluationTypes.AUTO.name());
         return question;

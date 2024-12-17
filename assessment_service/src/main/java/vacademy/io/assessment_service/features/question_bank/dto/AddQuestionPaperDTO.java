@@ -18,6 +18,9 @@ public class AddQuestionPaperDTO {
     private String title;
     private String commaSeparatedSubjectIds;
     private String instituteId;
+    private String levelId;
+    private String subjectId;
+    private List<String> tags;
     private String descriptionId;
     private String createdByUserId;
     private List<QuestionDTO> questions = new ArrayList<>();

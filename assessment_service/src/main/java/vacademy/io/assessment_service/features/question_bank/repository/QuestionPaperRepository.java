@@ -14,7 +14,7 @@ import vacademy.io.assessment_service.features.question_bank.entity.QuestionPape
 import java.util.List;
 import java.util.UUID;
 
-public interface QuestionPaperRepository extends JpaRepository<QuestionPaper, String> {
+public interface QuestionPaperRepository extends JpaRepository<QuestionPaper, String>, QuestionPaperCustomRepository {
 
     @Query(value = "SELECT qp.* FROM institute_question_paper iq INNER JOIN question_paper qp ON iq.question_paper_id = qp.id WHERE iq.institute_id = :instituteId",
             countQuery = "SELECT COUNT(qp.id) FROM institute_question_paper iq INNER JOIN question_paper qp ON iq.question_paper_id = qp.id WHERE iq.institute_id = :instituteId",
@@ -25,32 +25,6 @@ public interface QuestionPaperRepository extends JpaRepository<QuestionPaper, St
     @Transactional
     @Query(value = "INSERT INTO institute_question_paper (id, question_paper_id, institute_id, status) VALUES (:id, :questionPaperId, :instituteId, :status)", nativeQuery = true)
     void linkInstituteToQuestionPaper(@Param("id") String id, @Param("questionPaperId") String questionPaperId, @Param("instituteId") String instituteId, @Param("status") String status);
-
-    // Add custom method for bulk insert
-    @Modifying
-    @Transactional
-    default void bulkInsertQuestionsToQuestionPaper(String questionPaperId, List<String> questionIds) {
-        StringBuilder sql = new StringBuilder("INSERT INTO public.question_question_paper_mapping (id, question_id, question_paper_id) VALUES ");
-
-        for (int i = 0; i < questionIds.size(); i++) {
-            String mappingId = UUID.randomUUID().toString(); // Generate unique ID for each mapping
-            sql.append("('").append(mappingId).append("', '").append(questionIds.get(i)).append("', '").append(questionPaperId).append("')");
-            if (i < questionIds.size() - 1) {
-                sql.append(", ");
-            }
-        }
-
-        // Execute the constructed SQL statement
-        getEntityManager().createNativeQuery(sql.toString()).executeUpdate();
-    }
-
-    @PersistenceContext
-    EntityManager getEntityManager();
-
-
-    @Query("SELECT qp FROM QuestionPaper qp JOIN InstituteQuestionPaper iq ON qp.id = iq.questionPaperId " +
-            "WHERE iq.instituteId = :instituteId AND (:title IS NULL OR qp.title LIKE %:title%)")
-    Page<QuestionPaper> findByInstituteIdAndTitle(String instituteId, String title, Pageable pageable);
 
 
     @Query(

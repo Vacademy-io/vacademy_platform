@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import vacademy.io.admin_core_service.features.packages.repository.PackageRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
+import vacademy.io.admin_core_service.features.subject.repository.SubjectRepository;
 import vacademy.io.common.auth.enums.Gender;
 import vacademy.io.common.institute.dto.*;
 import vacademy.io.common.institute.entity.Institute;
@@ -30,6 +31,9 @@ public class InstituteInitManager {
     PackageRepository packageRepository;
 
     @Autowired
+    SubjectRepository subjectRepository;
+
+    @Autowired
     PackageSessionRepository packageSessionRepository;
 
     public InstituteInfoDTO getInstituteDetails(String instituteId) {
@@ -40,8 +44,6 @@ public class InstituteInitManager {
         if(institute.isEmpty()) {
             throw new VacademyException("Invalid Institute Id");
         }
-
-        PackageSession packageSession = packageSessionRepository.findById("1").get();
 
         InstituteInfoDTO instituteInfoDTO = new InstituteInfoDTO();
         instituteInfoDTO.setInstituteName(institute.get().getInstituteName());
@@ -69,6 +71,8 @@ public class InstituteInitManager {
         instituteInfoDTO.setLevels(packageRepository.findDistinctLevelsByInstituteId(institute.get().getId()).stream().map((LevelDTO::new)).toList());
         instituteInfoDTO.setGenders((Stream.of(Gender.values()).map(Enum::name)).toList());
         instituteInfoDTO.setStudentStatuses(List.of("ACTIVE", "TERMINATED"));
+        instituteInfoDTO.setSubjects(subjectRepository.findDistinctSubjectsByInstituteId(institute.get().getId()).stream().map((SubjectDTO::new)).toList());
+        instituteInfoDTO.setSessionExpiryDays(List.of(30, 180, 360));
         return instituteInfoDTO;
     }
 }

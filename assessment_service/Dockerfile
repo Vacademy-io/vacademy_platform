@@ -29,6 +29,10 @@ WORKDIR /app
 # Copy the built jar file from the previous stage
 COPY --from=build /build/target/assessment_service.jar assessment_service.jar
 
+RUN apk add --no-cache msttcorefonts-installer fontconfig
+
+RUN update-ms-fonts
+
 # Expose the port the application runs on
 EXPOSE 8074
 

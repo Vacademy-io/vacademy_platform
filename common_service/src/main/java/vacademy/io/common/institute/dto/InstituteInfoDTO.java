@@ -37,4 +37,6 @@ public class InstituteInfoDTO {
     private List<LevelDTO> levels;
     private List<String> genders;
     private List<String> studentStatuses;
+    private List<SubjectDTO> subjects;
+    private List<Integer> sessionExpiryDays;
 }

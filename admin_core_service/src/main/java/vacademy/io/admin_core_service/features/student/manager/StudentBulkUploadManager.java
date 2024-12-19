@@ -50,6 +50,9 @@ public class StudentBulkUploadManager {
         Header packageSessionHeader = createEnumHeaderWithIdResponse("enum", false, "PACKAGE_SESSION",
                 createPackageSessionMapForInstituteAndSession(instituteId, sessionId), order++);
         headers.add(packageSessionHeader);
+        headers.add(createHeader("integer", false, "ACCESS_DAYS", order++, List.of("30", "180", "365")));
+
+        // integer
 
         // Adding regex header for email validation
         Header emailHeader = createRegexHeader("regex", true, "EMAIL",

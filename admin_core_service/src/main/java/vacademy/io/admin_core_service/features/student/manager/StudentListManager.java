@@ -52,7 +52,7 @@ public class StudentListManager {
         Pageable pageable = PageRequest.of(pageNo, pageSize, thisSort);
 
         // Retrieve employees based on the filter criteria
-        Page<Student> studentPage = null;
+        Page<StudentDTO> studentPage = null;
 
         // Check if the filter contains a numeric name
         if (StringUtils.hasText(studentListFilter.getName())) {
@@ -67,10 +67,10 @@ public class StudentListManager {
 
     }
 
-    private AllStudentResponse createAllStudentResponseFromPaginatedData(Page<Student> studentPage) {
+    private AllStudentResponse createAllStudentResponseFromPaginatedData(Page<StudentDTO> studentPage) {
         List<StudentDTO> content = new ArrayList<>();
         if (!Objects.isNull(studentPage)) {
-            content = studentPage.getContent().stream().map(StudentDTO::new).toList();
+            content = studentPage.getContent();
             return AllStudentResponse.builder().content(content).pageNo(studentPage.getNumber()).last(studentPage.isLast()).pageSize(studentPage.getSize()).totalPages(studentPage.getTotalPages()).totalElements(studentPage.getTotalElements()).build();
         }
         return AllStudentResponse.builder().totalPages(0).content(content).pageNo(0).totalPages(0).build();

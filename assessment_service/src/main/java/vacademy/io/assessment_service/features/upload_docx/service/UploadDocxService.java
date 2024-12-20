@@ -13,6 +13,8 @@ import vacademy.io.assessment_service.features.evaluation.service.QuestionEvalua
 import vacademy.io.assessment_service.features.question_core.dto.MCQEvaluationDTO;
 import vacademy.io.assessment_service.features.question_core.dto.OptionDTO;
 import vacademy.io.assessment_service.features.question_core.dto.QuestionDTO;
+import vacademy.io.assessment_service.features.question_core.enums.QuestionAccessLevel;
+import vacademy.io.assessment_service.features.question_core.enums.QuestionResponseTypes;
 import vacademy.io.assessment_service.features.question_core.enums.QuestionTypes;
 import vacademy.io.assessment_service.features.rich_text.dto.AssessmentRichTextDataDTO;
 import vacademy.io.assessment_service.features.rich_text.enums.TextType;
@@ -62,10 +64,10 @@ public class UploadDocxService {
                 int questionNumber = extractQuestionNumber(text);
                 question = new QuestionDTO(String.valueOf(questionNumber));
                 // Regex pattern to match
-
+                question.setSectionId("1");
                 question.setText(new AssessmentRichTextDataDTO(null, TextType.HTML.name(), cleanHtmlTags(paragraph.html(), questionUpdateRegex)));
-
-
+                question.setAccessLevel(QuestionAccessLevel.PRIVATE.name());
+                question.setQuestionResponseType(QuestionResponseTypes.OPTION.name());
                 // Handle multi-line questions
                 while (i + 1 < paragraphs.size() && !paragraphs.get(i + 1).text().startsWith("(a.)")) {
                     i++;
@@ -116,11 +118,13 @@ public class UploadDocxService {
                     String contentAfterAns = answerText.substring(ansRegex.length()).trim();
                     MCQEvaluationDTO mcqEvaluation = new MCQEvaluationDTO();
                     mcqEvaluation.setType(QuestionTypes.MCQS.name());
+                    question.setQuestionType(QuestionTypes.MCQS.name());
                     MCQEvaluationDTO.MCQData mcqData = new MCQEvaluationDTO.MCQData();
 
                     try {
                         mcqData.setCorrectOptionIds(List.of(getAnswerId(contentAfterAns).toString()));
                         mcqEvaluation.setData(mcqData);
+
                         question.setAutoEvaluationJson(questionEvaluationService.setEvaluationJson(mcqEvaluation));
                         question.setParsedEvaluationObject(EvaluationJsonToMapConverter.convertJsonToMap(question.getAutoEvaluationJson()));
                     } catch (JsonProcessingException e) {

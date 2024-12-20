@@ -20,7 +20,6 @@ public class Option {
 
     @Id
     @Column(name = "id", nullable = false)
-    @UuidGenerator
     private String id;
 
     @ManyToOne

@@ -8,6 +8,7 @@ import org.jsoup.select.Elements;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import vacademy.io.assessment_service.features.evaluation.service.EvaluationJsonToMapConverter;
 import vacademy.io.assessment_service.features.evaluation.service.QuestionEvaluationService;
 import vacademy.io.assessment_service.features.question_core.dto.MCQEvaluationDTO;
 import vacademy.io.assessment_service.features.question_core.dto.OptionDTO;
@@ -121,6 +122,7 @@ public class UploadDocxService {
                         mcqData.setCorrectOptionIds(List.of(getAnswerId(contentAfterAns).toString()));
                         mcqEvaluation.setData(mcqData);
                         question.setAutoEvaluationJson(questionEvaluationService.setEvaluationJson(mcqEvaluation));
+                        question.setParsedEvaluationObject(EvaluationJsonToMapConverter.convertJsonToMap(question.getAutoEvaluationJson()));
                     } catch (JsonProcessingException e) {
                         throw new VacademyException(e.getMessage());
                     }

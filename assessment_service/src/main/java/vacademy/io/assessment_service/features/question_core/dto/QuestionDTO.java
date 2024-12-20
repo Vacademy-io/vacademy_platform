@@ -7,6 +7,7 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import vacademy.io.assessment_service.features.evaluation.service.EvaluationJsonToMapConverter;
 import vacademy.io.assessment_service.features.question_core.entity.Option;
 import vacademy.io.assessment_service.features.question_core.entity.Question;
 import vacademy.io.assessment_service.features.rich_text.dto.AssessmentRichTextDataDTO;
@@ -14,6 +15,7 @@ import vacademy.io.assessment_service.features.rich_text.dto.AssessmentRichTextD
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 
 @Getter
 @Setter
@@ -34,6 +36,7 @@ public class QuestionDTO {
     private String questionType;
     private String accessLevel;
     private String autoEvaluationJson;
+    private Map<String, Object> parsedEvaluationObject;
     private String evaluationType;
     private AssessmentRichTextDataDTO explanationText;
     private Integer defaultQuestionTimeMins;
@@ -57,6 +60,7 @@ public class QuestionDTO {
         if (provideSolution) {
             this.autoEvaluationJson = question.getAutoEvaluationJson();
             this.evaluationType = question.getEvaluationType();
+            this.parsedEvaluationObject = EvaluationJsonToMapConverter.convertJsonToMap(question.getAutoEvaluationJson());
         }
         this.defaultQuestionTimeMins = question.getDefaultQuestionTimeMins();
 

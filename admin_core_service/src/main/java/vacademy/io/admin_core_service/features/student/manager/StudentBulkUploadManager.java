@@ -1,15 +1,27 @@
 package vacademy.io.admin_core_service.features.student.manager;
 
 
+import org.apache.commons.csv.CSVFormat;
+import org.apache.commons.csv.CSVRecord;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.*;
 import org.springframework.stereotype.Component;
+import org.springframework.web.multipart.MultipartFile;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
+import vacademy.io.admin_core_service.features.student.dto.InstituteStudentDTO;
+import vacademy.io.admin_core_service.features.student.service.CsvToStudentDataMapper;
+import vacademy.io.admin_core_service.features.student.service.StudentDataToCsvWriter;
+import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.core.dto.bulk_csv_upload.CsvInitResponse;
 import vacademy.io.common.core.dto.bulk_csv_upload.CsvSubmitApi;
 import vacademy.io.common.core.dto.bulk_csv_upload.Header;
+import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.session.PackageSession;
 
+import java.io.ByteArrayOutputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.io.Reader;
 import java.util.*;
 
 import static vacademy.io.common.core.utils.BulkCsvUploadHelper.*;
@@ -18,74 +30,56 @@ import static vacademy.io.common.core.utils.BulkCsvUploadHelper.*;
 public class StudentBulkUploadManager {
 
     @Autowired
-    PackageSessionRepository packageSessionRepository;
-
-    public CsvInitResponse generateCsvUploadForStudents(String instituteId, String sessionId) {
-        String title = "Student Bulk CSV Upload";
-        List<String> instructions = Arrays.asList("Upload A Valid CSV", "Ensure all mandatory fields are filled.");
-        Map<String, String> requestMap = new HashMap<>();
-
-        requestMap.put("instituteId", instituteId);
-        CsvSubmitApi api = createSubmitApi("/user/v1/student/csv/upload", "STATUS", "ERROR", requestMap);
-
-        List<Header> headers = new ArrayList<>();
-
-        // Adding mandatory string headers one by one
-        int order = 1;
-        headers.add(createHeader("string", false, "FULL_NAME", order++, List.of("John Henry", "Doe Walker", "Smith Jones")));
-        headers.add(createHeader("string", false, "USERNAME", order++, List.of("johnhenry", "doewalker", "smithjones")));
-
-        Map<String, List<String>> enumValues = new HashMap<>();
-        enumValues.put("GENDER", Arrays.asList("MALE", "FEMALE", "OTHER"));
-        headers.add(createEnumHeader("enum", false, "GENDER",  Arrays.asList("MALE", "FEMALE", "OTHER"), order++, List.of("MALE", "FEMALE", "OTHER")));
-        headers.add(createHeader("string", false, "ENROLLMENT_NUMBER", order++, List.of("1234", "5678", "9012")));
-        headers.add(createHeader("string", false, "MOBILE_NUMBER", order++, List.of("911234567890", "91987654321", "91123456789")));
-
-        // Adding date header
-        Header dateHeader = createDateHeader("date", true, "DATE_OF_BIRTH", "dd-MM-yyyy", order++, List.of("01-11-2000", "21-01-2001", "11-12-2002"));
-        headers.add(dateHeader);
+    StudentRegistrationManager studentRegistrationManager;
 
 
-        // Adding package session header
-        Header packageSessionHeader = createEnumHeaderWithIdResponse("enum", false, "PACKAGE_SESSION",
-                createPackageSessionMapForInstituteAndSession(instituteId, sessionId), order++);
-        headers.add(packageSessionHeader);
-        headers.add(createHeader("integer", false, "ACCESS_DAYS", order++, List.of("30", "180", "365")));
+    public ResponseEntity<byte[]> uploadStudentCsv(MultipartFile file, String instituteId, CustomUserDetails user) {
 
-        // integer
 
-        // Adding regex header for email validation
-        Header emailHeader = createRegexHeader("regex", true, "EMAIL",
-                "^(?![\\s\\S])|^((?!\\.)[\\w\\-_.]*[^.])(@\\w+)(\\.\\w+(\\.\\w+)?[^.\\W])$",
-                "Invalid email format", order++, List.of("john@example.com", "doe@example.com", "smith@example.com"));
-        headers.add(emailHeader);
+        try (Reader reader = new InputStreamReader(file.getInputStream())) {
+            // Configure CSV format to parse the CSV file with headers and trimming options
+            CSVFormat csvFormat = CSVFormat.DEFAULT
+                    .withFirstRecordAsHeader()  // Treat the first line as headers
+                    .withIgnoreHeaderCase()     // Ignore case for headers
+                    .withIgnoreEmptyLines()      // Skip empty lines
+                    .withTrim();
 
-        // Adding optional string headers one by one
-        headers.add(createEnumHeader("string", true, "ENROLLMENT_STATUS", Arrays.asList("PENDING", "ACTIVE", "INACTIVE") ,order++, List.of("PENDING", "ACTIVE", "INACTIVE")));
-        headers.add(createHeader("string", true, "ADDRESS_LINE", order++, List.of("Street 1", "Street 2", "Street 3")));
-        headers.add(createHeader("string", true, "REGION", order++, List.of("MP", "UP", "AP")));
-        headers.add(createHeader("string", true, "CITY", order++, List.of("Indore", "Bhopal", "Jaipur")));
-        headers.add(createHeader("string", true, "PIN_CODE", order++, List.of("452001", "462001", "452002")));
-        headers.add(createHeader("string", true, "FATHER_NAME", order++, List.of("John Henry", "Doe Walker", "Smith Jones")));
-        headers.add(createHeader("string", true, "MOTHER_NAME", order++, List.of("John Henry", "Doe Walker", "Smith Jones")));
-        headers.add(createHeader("string", true, "PARENTS_MOBILE_NUMBER", order++, List.of("911234567890", "91987654321", "91123456789")));
-        headers.add(createHeader("string", true, "PARENTS_EMAIL", order++, List.of("johnhenry@gmail.com", "doewalker@gmail.com", "smithjones@gmail.com")));
-        headers.add(createHeader("string", true, "LINKED_INSTITUTE_NAME", order++, List.of("St. Joseph coed School", "St. Paul coed School", "St. Xavier coed School")));
+            // Parse the CSV file and retrieve records
+            Iterable<CSVRecord> records = csvFormat.parse(reader);
+            List<InstituteStudentDTO> students = CsvToStudentDataMapper.mapCsvRecordsToInstituteStudentDTOs(records, instituteId); // List to store parsed tenant entries// Trim whitespace from field
+            for (InstituteStudentDTO student : students) {
+                try {
+                    studentRegistrationManager.addStudentToInstitute(user, student);
+                    student.setStatus(true);
+                    student.setStatusMessage("Student added successfully with username : " + student.getUserDetails().getUsername());
+                } catch (Exception e) {
+                    student.setStatus(false);
+                    student.setErrorMessage(e.getMessage());
+                }
+            }
 
-        return new CsvInitResponse(title, instructions, api, headers);
-    }
 
-    private Map<String, String> createPackageSessionMapForInstituteAndSession(String instituteId, String sessionId) {
-        Map<String, String> packageSessionMap = new HashMap<>();
-        List<PackageSession> packageSessions = packageSessionRepository.findPackageSessionsByInstituteIdAndSessionId(instituteId, sessionId);
+            ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+            OutputStreamWriter writer = new OutputStreamWriter(byteArrayOutputStream);
 
-        for (PackageSession packageSession : packageSessions) {
-            String packageSessionId = packageSession.getId();
-            String name = packageSession.getLevel().getLevelName() + " - " + packageSession.getPackageEntity().getPackageName() + " - " + packageSession.getSession().getSessionName();
+            // 3. Write the processed tenant data to the CSV format
+            StudentDataToCsvWriter.writeInstituteStudentDTOsToCsv(students, writer);
 
-            packageSessionMap.put(packageSessionId, name);
+            // 4. Convert the written CSV data to a byte array for response
+            byte[] csvData = byteArrayOutputStream.toByteArray();
+
+            // 5. Set headers for the response to trigger a CSV download
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.parseMediaType("text/csv"));
+            headers.setContentDisposition(ContentDisposition.builder("attachment").filename("students.csv").build());
+
+            // 6. Return the CSV data in the ResponseEntity
+            return new ResponseEntity<>(csvData, headers, HttpStatus.OK);
+
+        } catch (Exception e) {
+            throw new VacademyException(e.getMessage());
         }
 
-        return packageSessionMap;
     }
+
 }

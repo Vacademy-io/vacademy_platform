@@ -20,10 +20,7 @@ import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
 import vacademy.io.common.core.utils.DataToCsvConverter;
 import vacademy.io.common.exceptions.VacademyException;
 
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 
 @Component
 public class StudentRegistrationManager {
@@ -44,9 +41,7 @@ public class StudentRegistrationManager {
 
 
     public ResponseEntity<String> addStudentToInstitute(CustomUserDetails user, InstituteStudentDTO instituteStudentDTO) {
-
-        UserDTO createdUser = createUserFromAuthService(instituteStudentDTO);
-        Student student = createStudentFromRequest(createdUser, instituteStudentDTO.getStudentExtraDetails());
+        Student student = checkAndCreateStudent(instituteStudentDTO);
         linkStudentToInstitute(student, instituteStudentDTO.getInstituteStudentDetails());
         return ResponseEntity.ok("Student added successfully");
     }
@@ -63,9 +58,22 @@ public class StudentRegistrationManager {
         }
     }
 
+    private Student checkAndCreateStudent(InstituteStudentDTO instituteStudentDTO) {
+        if (instituteStudentDTO.getUserDetails().getUsername() != null) {
+            Optional<Student> studentOptional = instituteStudentRepository.getRecentStudentByUsername(instituteStudentDTO.getUserDetails().getUsername());
+            if (studentOptional.isPresent()) {
+                return studentOptional.get();
+            }
+        }
+        instituteStudentDTO.getUserDetails().setRoles(getStudentRoles());
+        UserDTO createdUser = createUserFromAuthService(instituteStudentDTO);
+        return createStudentFromRequest(createdUser, instituteStudentDTO.getStudentExtraDetails());
+    }
+
     private Student createStudentFromRequest(UserDTO userDTO, StudentExtraDetails studentExtraDetails) {
         Student student = new Student();
         student.setUserId(userDTO.getId());
+        student.setUsername(userDTO.getUsername());
         student.setFullName(userDTO.getFullName());
         student.setEmail(userDTO.getEmail());
         student.setMobileNumber(userDTO.getMobileNumber());
@@ -86,11 +94,30 @@ public class StudentRegistrationManager {
 
         try {
             UUID studentSessionId = UUID.randomUUID();
-            studentSessionRepository.addStudentToInstitute(studentSessionId.toString(), student.getUserId(), instituteStudentDetails.getEnrollmentDate() == null ? new Date() : instituteStudentDetails.getEnrollmentDate(), instituteStudentDetails.getEnrollmentStatus(), instituteStudentDetails.getEnrollmentId(), instituteStudentDetails.getGroupId(), instituteStudentDetails.getInstituteId(), instituteStudentDetails.getPackageSessionId());
-        }
-        catch (Exception e) {
+
+            studentSessionRepository.addStudentToInstitute(studentSessionId.toString(), student.getUserId(), instituteStudentDetails.getEnrollmentDate() == null ? new Date() : instituteStudentDetails.getEnrollmentDate(), instituteStudentDetails.getEnrollmentStatus(), instituteStudentDetails.getEnrollmentId(), instituteStudentDetails.getGroupId(), instituteStudentDetails.getInstituteId(), makeExpiryDate(instituteStudentDetails.getEnrollmentDate(), instituteStudentDetails.getAccessDays()), instituteStudentDetails.getPackageSessionId());
+        } catch (Exception e) {
             throw new VacademyException(e.getMessage());
         }
+    }
+
+    private List<String> getStudentRoles() {
+        List<String> roles = new ArrayList<>();
+        roles.add(StudentConstants.studentRole);
+        return roles;
+    }
+
+    private Date makeExpiryDate(Date enrollmentDate, String accessDays) {
+        try {
+            if (enrollmentDate == null || accessDays == null) {
+                return null;
+            }
+            Date expiryDate = new Date();
+            expiryDate.setTime(enrollmentDate.getTime() + Long.parseLong(accessDays) * 24 * 60 * 60 * 1000);
+            return expiryDate;
+        } catch (Exception e) {
+        }
+        return null;
     }
 
 }

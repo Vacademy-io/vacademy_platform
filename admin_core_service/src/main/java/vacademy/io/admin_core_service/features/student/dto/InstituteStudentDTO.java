@@ -24,4 +24,7 @@ public class InstituteStudentDTO {
     private UserDTO userDetails;
     private StudentExtraDetails studentExtraDetails;
     private InstituteStudentDetails instituteStudentDetails;
+    private Boolean status;           // Status indicating if the tenant is active or inactive; logic may enforce certain status values
+    private String statusMessage;     // Status message providing details about the tenant's state
+    private String errorMessage;      // Error message, if any, related to tenant operations
 }

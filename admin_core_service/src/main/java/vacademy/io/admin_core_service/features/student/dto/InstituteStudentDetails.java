@@ -22,4 +22,5 @@ public class InstituteStudentDetails {
     private String enrollmentStatus;
     private Date enrollmentDate;
     private String groupId;
+    private String accessDays;
 }

@@ -10,7 +10,9 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import vacademy.io.admin_core_service.features.student.entity.Student;
 
+import javax.swing.text.html.Option;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface InstituteStudentRepository extends CrudRepository<Student, String> {
@@ -139,6 +141,10 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             @Param("instituteIds") List<String> instituteIds,
             Pageable pageable
     );
+
+    // get the recent one if more than pne student exist
+    @Query(value = "SELECT * FROM student where username = :username ORDER BY created_at DESC LIMIT 1", nativeQuery = true)
+    Optional<Student> getRecentStudentByUsername(@Param("username") String username);
 
 
 }

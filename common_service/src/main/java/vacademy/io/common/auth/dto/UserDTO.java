@@ -25,6 +25,7 @@ public class UserDTO {
     private String fullName;
     private String addressLine;
     private String city;
+    private String region;
     private String pinCode;
     private String mobileNumber;
     private Date dateOfBirth;

@@ -18,7 +18,7 @@ public class InstituteStudentOperationController {
     StudentSessionManager manager;
 
     @PostMapping("/update")
-    public void updateStudentStatus(@RequestBody StudentStatusUpdateRequestWrapper requestWrapper) {
+    public void updateStudentStatus(@RequestAttribute("user") CustomUserDetails user, @RequestBody StudentStatusUpdateRequestWrapper requestWrapper) {
         manager.updateStudentStatus(requestWrapper.getRequests(), requestWrapper.getOperation());
     }
 

@@ -59,12 +59,6 @@ public class StudentRegistrationManager {
     }
 
     private Student checkAndCreateStudent(InstituteStudentDTO instituteStudentDTO) {
-        if (instituteStudentDTO.getUserDetails().getUsername() != null) {
-            Optional<Student> studentOptional = instituteStudentRepository.getRecentStudentByUsername(instituteStudentDTO.getUserDetails().getUsername());
-            if (studentOptional.isPresent()) {
-                return studentOptional.get();
-            }
-        }
         instituteStudentDTO.getUserDetails().setRoles(getStudentRoles());
         UserDTO createdUser = createUserFromAuthService(instituteStudentDTO);
         return createStudentFromRequest(createdUser, instituteStudentDTO.getStudentExtraDetails());

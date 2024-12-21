@@ -30,4 +30,41 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
             @Param("instituteId") String instituteId,
             @Param("expiryDate") Date expiryDate,
             @Param("packageSessionId") String packageSessionId);
+
+    @Modifying
+    @Transactional
+    @Query(value = "UPDATE student_session_institute_group_mapping " +
+            "SET package_session_id = :newPackageSessionId " +
+            "WHERE user_id = :userId " +
+            "AND package_session_id = :oldPackageSessionId " +
+            "AND institute_id = :instituteId", nativeQuery = true)
+    int updatePackageSessionId(@Param("userId") String userId,
+                               @Param("oldPackageSessionId") String oldPackageSessionId,
+                               @Param("instituteId") String instituteId,
+                               @Param("newPackageSessionId") String newPackageSessionId);
+
+    @Modifying
+    @Transactional
+    @Query(value = "UPDATE student_session_institute_group_mapping " +
+            "SET expiry_date = :expiryDate " +
+            "WHERE user_id = :userId " +
+            "AND package_session_id = :packageSessionId " +
+            "AND institute_id = :instituteId", nativeQuery = true)
+    int updateExpiryDate(@Param("userId") String userId,
+                               @Param("packageSessionId") String packageSessionId,
+                               @Param("instituteId") String instituteId,
+                               @Param("expiryDate") Date expiryDate);
+
+    @Modifying
+    @Transactional
+    @Query(value = "UPDATE student_session_institute_group_mapping " +
+            "SET status = :status " +
+            "WHERE user_id = :userId " +
+            "AND package_session_id = :packageSessionId " +
+            "AND institute_id = :instituteId", nativeQuery = true)
+    int updateStatus(@Param("userId") String userId,
+                         @Param("packageSessionId") String packageSessionId,
+                         @Param("instituteId") String instituteId,
+                         @Param("status") String status);
+
 }

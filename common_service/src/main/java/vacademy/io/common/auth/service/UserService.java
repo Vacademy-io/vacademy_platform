@@ -120,7 +120,7 @@ public class UserService {
                 .collect(Collectors.toList());
     }
 
-    public UserDTO getUserDetailsByUsername(String username) {
+    public User getUserDetailsByUsername(String username) {
 
         List<User> results = userRepository.findUserDetailsByUsername(username);
 
@@ -129,7 +129,7 @@ public class UserService {
         }
 
         User user = results.get(0);
-        return new UserDTO(user);
+        return user;
     }
 
     public void removeRoleFromUser(UserRoleRequestDTO userRoleRequestDTO) {

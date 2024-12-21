@@ -38,6 +38,25 @@ public class UserController {
        }
     }
 
+
+    @PostMapping("/internal/create-user-or-get-existing")
+    @Transactional
+    public ResponseEntity<UserDTO> createUserOrGetExisting(@RequestBody UserDTO userDTO, @RequestParam("instituteId") String instituteId) {
+        try {
+            User user = userService.getUserDetailsByUsername(userDTO.getUsername());
+
+            if (user == null)
+                user = userService.createUserFromUserDto(userDTO);
+
+            userService.addUserRoles(instituteId, userDTO.getRoles(), user);
+            return ResponseEntity.ok(new UserDTO(user));
+        }
+        catch (Exception e) {
+            throw new VacademyException(e.getMessage());
+        }
+    }
+
+
     //API to fetch user details correspond to user id
     @GetMapping("/internal/v1/details/{userId}")
     public ResponseEntity<UserDTO> getUserDetailsById(@PathVariable String userId) {

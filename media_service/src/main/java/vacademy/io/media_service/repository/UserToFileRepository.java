@@ -13,9 +13,6 @@ public interface UserToFileRepository extends JpaRepository<UserToFile, String> 
     List<UserToFile> findByUserIdAndStatus(String userId, String status);
     Optional<UserToFile> findByFileIdAndStatus(String fileId,String status);
 
-    @Modifying
-    @Query("UPDATE UserToFile u SET u.status = :status WHERE u.file.id = :fileId AND u.status = :currentStatus")
-    int updateStatusByFileId(@Param("fileId") String fileId, @Param("status") String status, @Param("currentStatus") String currentStatus);
 
     @Query("SELECT u FROM UserToFile u WHERE u.folderName = :folderName AND u.userId = :userId AND u.status = :status")
     List<UserToFile> findByFolderAndUserIdAndStatus(@Param("folderName") String folderName,

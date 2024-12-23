@@ -54,10 +54,7 @@ public class UserToFileServiceImpl implements UserToFileService {
             throw new VacademyException("File not found!!!");
         }
         userToFile.setStatus(FileStatusEnum.DELETED.name());
-        Integer result = userToFileRepository.updateStatusByFileId(userToFile.getId(),FileStatusEnum.DELETED.name(),FileStatusEnum.ACTIVE.name());
-        if (result == 0) {
-            return "File status update failed!!!";
-        }
+        userToFileRepository.save(userToFile);
         return "File deleted successfully!!!";
     }
 

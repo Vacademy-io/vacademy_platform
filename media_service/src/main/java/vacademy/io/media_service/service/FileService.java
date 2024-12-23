@@ -1,6 +1,7 @@
 package vacademy.io.media_service.service;
 
 
+import vacademy.io.media_service.dto.AcknowledgeRequest;
 import vacademy.io.media_service.dto.PreSignedUrlResponse;
 import vacademy.io.media_service.exceptions.FileDownloadException;
 import vacademy.io.media_service.exceptions.FileUploadException;
@@ -22,7 +23,7 @@ public interface FileService {
 
     String getPublicUrlWithExpiryAndId(String id) throws FileDownloadException;
 
-    Boolean acknowledgeClientUpload(String fileId, Long fileSize);
+    Boolean acknowledgeClientUpload(AcknowledgeRequest acknowledgeRequest);
 
     boolean delete(String fileName);
 

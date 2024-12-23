@@ -1,5 +1,6 @@
 package vacademy.io.media_service.controller;
 
+import vacademy.io.media_service.dto.AcknowledgeRequest;
 import vacademy.io.media_service.dto.PreSignedUrlRequest;
 import vacademy.io.media_service.dto.PreSignedUrlResponse;
 import vacademy.io.media_service.exceptions.FileDownloadException;
@@ -32,8 +33,8 @@ public class FileController {
     }
 
     @PostMapping("/acknowledge")
-    public ResponseEntity<Boolean> acknowledgeUpload(@RequestParam String fileId, @RequestParam String fileSize) {
-        return ResponseEntity.ok(fileService.acknowledgeClientUpload(fileId, Long.valueOf(fileSize)));
+    public ResponseEntity<Boolean> acknowledgeUpload(@RequestBody AcknowledgeRequest acknowledgeRequest) {
+        return ResponseEntity.ok(fileService.acknowledgeClientUpload(acknowledgeRequest));
     }
 
     @GetMapping("/get-details/ids")

@@ -18,7 +18,7 @@ public class AssessmentInstituteMapping {
     @Id
     @UuidGenerator
     @Column(name = "id")
-    private Long id;
+    private String id;
 
     @Column(name = "assessment_id", nullable = false)
     private String assessmentId;

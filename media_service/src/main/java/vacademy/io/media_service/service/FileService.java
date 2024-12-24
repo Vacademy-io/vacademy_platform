@@ -1,6 +1,7 @@
 package vacademy.io.media_service.service;
 
 
+import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.media_service.dto.AcknowledgeRequest;
 import vacademy.io.media_service.dto.PreSignedUrlResponse;
 import vacademy.io.media_service.exceptions.FileDownloadException;
@@ -13,29 +14,29 @@ import java.util.List;
 import java.util.Map;
 
 public interface FileService {
-    String uploadFile(MultipartFile multipartFile) throws FileUploadException, IOException;
+    String uploadFile(CustomUserDetails userDetails, MultipartFile multipartFile) throws FileUploadException, IOException;
 
-    Object downloadFile(String fileName) throws FileDownloadException, IOException;
+    Object downloadFile(CustomUserDetails userDetails,String fileName) throws FileDownloadException, IOException;
 
-    PreSignedUrlResponse getPreSignedUrl(String fileName, String fileType, String source, String sourceId);
+    PreSignedUrlResponse getPreSignedUrl(CustomUserDetails userDetails,String fileName, String fileType, String source, String sourceId);
 
-    String getPublicUrlWithExpiry(String key, Integer days) throws FileDownloadException;
+    String getPublicUrlWithExpiry(CustomUserDetails userDetails,String key, Integer days) throws FileDownloadException;
 
-    String getPublicUrlWithExpiryAndId(String id) throws FileDownloadException;
+    String getPublicUrlWithExpiryAndId(CustomUserDetails userDetails,String id) throws FileDownloadException;
 
-    Boolean acknowledgeClientUpload(AcknowledgeRequest acknowledgeRequest);
+    Boolean acknowledgeClientUpload(CustomUserDetails userDetails,AcknowledgeRequest acknowledgeRequest);
 
-    boolean delete(String fileName);
+    boolean delete(CustomUserDetails userDetails,String fileName);
 
-    String getPublicUrlWithExpiryAndSource(String source, String sourceId, Integer expiryDays) throws FileDownloadException;
+    String getPublicUrlWithExpiryAndSource(CustomUserDetails userDetails,String source, String sourceId, Integer expiryDays) throws FileDownloadException;
 
-    List<Map<String, String>> getMultiplePublicUrlWithExpiryAndId(String fileIds);
+    List<Map<String, String>> getMultiplePublicUrlWithExpiryAndId(CustomUserDetails userDetails,String fileIds);
 
-    List<Map<String, String>> getMultipleUrlWithExpiryAndId(String fileIds, Integer expiryDays);
+    List<Map<String, String>> getMultipleUrlWithExpiryAndId(CustomUserDetails userDetails,String fileIds, Integer expiryDays);
 
-    String getUrlWithExpiryAndId(String id, Integer days) throws FileDownloadException;
+    String getUrlWithExpiryAndId(CustomUserDetails userDetails,String id, Integer days) throws FileDownloadException;
 
-    FileDetailsDTO getFileDetailsWithExpiryAndId(String id, Integer days) throws FileDownloadException;
+    FileDetailsDTO getFileDetailsWithExpiryAndId(CustomUserDetails userDetails,String id, Integer days) throws FileDownloadException;
 
-    List<FileDetailsDTO> getMultipleFileDetailsWithExpiryAndId(String ids, Integer days) throws FileDownloadException;
+    List<FileDetailsDTO> getMultipleFileDetailsWithExpiryAndId(CustomUserDetails userDetails,String ids, Integer days) throws FileDownloadException;
 }

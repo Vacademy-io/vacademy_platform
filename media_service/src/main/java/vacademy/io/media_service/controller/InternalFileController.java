@@ -14,52 +14,52 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/media_service/internal")
+@RequestMapping("/media-service/internal")
 public class InternalFileController {
     @Autowired
     private FileService fileService;
 
     @GetMapping("/get-url/id")
-    public ResponseEntity<String> getFileUrlById(@RequestAttribute("user") CustomUserDetails userDetails, @RequestParam String fileId, @RequestParam Integer expiryDays) throws FileDownloadException {
-        String url = fileService.getUrlWithExpiryAndId(userDetails,fileId, expiryDays);
+    public ResponseEntity<String> getFileUrlById(@RequestParam String fileId, @RequestParam Integer expiryDays) throws FileDownloadException {
+        String url = fileService.getUrlWithExpiryAndId(fileId, expiryDays);
         return ResponseEntity.ok(url);
     }
 
     @GetMapping("/get-details/id")
-    public ResponseEntity<FileDetailsDTO> getFileDetailsById(@RequestAttribute("user")CustomUserDetails userDetails,@RequestParam String fileId, @RequestParam Integer expiryDays) throws FileDownloadException {
-        FileDetailsDTO fileDetailsDTO = fileService.getFileDetailsWithExpiryAndId(userDetails,fileId, expiryDays);
+    public ResponseEntity<FileDetailsDTO> getFileDetailsById(@RequestParam String fileId, @RequestParam Integer expiryDays) throws FileDownloadException {
+        FileDetailsDTO fileDetailsDTO = fileService.getFileDetailsWithExpiryAndId(fileId, expiryDays);
         return ResponseEntity.ok(fileDetailsDTO);
     }
 
     @GetMapping("/get-details/ids")
-    public ResponseEntity<List<FileDetailsDTO>> getFileDetailsByIds(@RequestAttribute("user")CustomUserDetails userDetails,@RequestParam String fileIds, @RequestParam Integer expiryDays) throws FileDownloadException {
-        List<FileDetailsDTO> fileDetailsDTO = fileService.getMultipleFileDetailsWithExpiryAndId(userDetails,fileIds, expiryDays);
+    public ResponseEntity<List<FileDetailsDTO>> getFileDetailsByIds(@RequestParam String fileIds, @RequestParam Integer expiryDays) throws FileDownloadException {
+        List<FileDetailsDTO> fileDetailsDTO = fileService.getMultipleFileDetailsWithExpiryAndId(fileIds, expiryDays);
 
         return ResponseEntity.ok(fileDetailsDTO);
     }
 
     @GetMapping("/get-url/id/many")
-    public ResponseEntity<List<Map<String, String>>> getMultipleFileUrlById(@RequestAttribute("user")CustomUserDetails userDetails,@RequestParam String fileIds, @RequestParam Integer expiryDays) throws FileDownloadException {
-        List<Map<String, String>> url = fileService.getMultipleUrlWithExpiryAndId(userDetails,fileIds, expiryDays);
+    public ResponseEntity<List<Map<String, String>>> getMultipleFileUrlById(@RequestParam String fileIds, @RequestParam Integer expiryDays) throws FileDownloadException {
+        List<Map<String, String>> url = fileService.getMultipleUrlWithExpiryAndId(fileIds, expiryDays);
         return ResponseEntity.ok(url);
     }
 
     @GetMapping("/get-public-url/id/many")
-    public ResponseEntity<List<Map<String, String>>> getMultipleFilePublicUrlById(@RequestAttribute("user")CustomUserDetails userDetails,@RequestParam String fileIds) throws FileDownloadException {
-        List<Map<String, String>> url = fileService.getMultiplePublicUrlWithExpiryAndId(userDetails,fileIds);
+    public ResponseEntity<List<Map<String, String>>> getMultipleFilePublicUrlById(@RequestParam String fileIds) throws FileDownloadException {
+        List<Map<String, String>> url = fileService.getMultiplePublicUrlWithExpiryAndId(fileIds);
         return ResponseEntity.ok(url);
     }
 
     @GetMapping("/get-public-url/source")
-    public ResponseEntity<String> getFileUrlBySource(@RequestAttribute("user")CustomUserDetails userDetails,@RequestParam String source, @RequestParam String sourceId, @RequestParam Integer expiryDays) throws FileDownloadException {
-        String url = fileService.getPublicUrlWithExpiryAndSource(userDetails,source, sourceId, expiryDays);
+    public ResponseEntity<String> getFileUrlBySource(@RequestParam String source, @RequestParam String sourceId, @RequestParam Integer expiryDays) throws FileDownloadException {
+        String url = fileService.getPublicUrlWithExpiryAndSource(source, sourceId, expiryDays);
         return ResponseEntity.ok(url);
     }
 
     @PutMapping("/upload-file")
-    public ResponseEntity<String> uploadFile(@RequestAttribute("user")CustomUserDetails userDetails,@RequestParam("file") MultipartFile file) {
+    public ResponseEntity<String> uploadFile(@RequestParam("file") MultipartFile file) {
         try {
-            return ResponseEntity.ok(fileService.uploadFile(userDetails,file));
+            return ResponseEntity.ok(fileService.uploadFile(file));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Error uploading file: " + e.getMessage());

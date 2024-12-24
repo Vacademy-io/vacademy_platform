@@ -18,7 +18,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @RestController
-@RequestMapping("/media_service")
+@RequestMapping("/media-service")
 public class TemplateController {
     @Autowired
     private FileService fileService;
@@ -32,7 +32,7 @@ public class TemplateController {
         List<TemplatesDTO> templatesDTOS = new ArrayList<>();
         templates.forEach((template -> {
             try {
-                TemplatesDTO thisTemplate = new TemplatesDTO(template.getId(), fileService.getPublicUrlWithExpiryAndId(user,template.getFileId()), template.getTag());
+                TemplatesDTO thisTemplate = new TemplatesDTO(template.getId(), fileService.getPublicUrlWithExpiryAndId(template.getFileId()), template.getTag());
                 templatesDTOS.add(thisTemplate);
             } catch (FileDownloadException e) {
                 throw new RuntimeException(e);

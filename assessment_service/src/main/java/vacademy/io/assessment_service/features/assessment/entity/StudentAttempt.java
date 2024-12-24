@@ -18,10 +18,7 @@ public class StudentAttempt {
     @UuidGenerator
     @Column(name = "id")
     private String id;
-    
-    @Column(name = "registration_id", nullable = false)
-    private String registrationId;
-    
+
     @ManyToOne
     @JoinColumn(name = "registration_id")
     private AssessmentRegistration registration;

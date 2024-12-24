@@ -5,6 +5,7 @@ import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.model.GeneratePresignedUrlRequest;
 import com.amazonaws.services.s3.model.ListObjectsV2Result;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
+import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.media_service.constant.MediaConstant;
 import vacademy.io.media_service.dto.AcknowledgeRequest;
 import vacademy.io.media_service.dto.PreSignedUrlResponse;
@@ -47,7 +48,7 @@ public class FileServiceImpl implements FileService {
 
     private final UserToFileRepository userToFileRepository;
     @Override
-    public String uploadFile(MultipartFile multipartFile) throws IOException {
+    public String uploadFile(CustomUserDetails userDetails, MultipartFile multipartFile) throws IOException {
 
         String key = "SERVICE_UPLOAD/" + UUID.randomUUID() + "_" + multipartFile.getOriginalFilename();
         s3Client.putObject(bucketName, key, multipartFile.getInputStream(), null);
@@ -57,7 +58,7 @@ public class FileServiceImpl implements FileService {
     }
 
     @Override
-    public Object downloadFile(String fileName) throws FileDownloadException, IOException {
+    public Object downloadFile(CustomUserDetails userDetails,String fileName) throws FileDownloadException, IOException {
         return null;
     }
 
@@ -70,7 +71,7 @@ public class FileServiceImpl implements FileService {
      * @param sourceId The unique identifier of the source (e.g., user ID, system ID).
      * @return A pre-signed PreSignedUrlResponse for uploading the file.
      */
-    public PreSignedUrlResponse getPreSignedUrl(String fileName, String fileType, String source, String sourceId) {
+    public PreSignedUrlResponse getPreSignedUrl(CustomUserDetails userDetails,String fileName, String fileType, String source, String sourceId) {
         // Set the expiration time for the pre-signed URL (1 hour from now)
         Date expiration = new Date(System.currentTimeMillis() + 3600000);
 
@@ -95,7 +96,7 @@ public class FileServiceImpl implements FileService {
     }
 
     @Override
-    public String getPublicUrlWithExpiry(String key, Integer days) {
+    public String getPublicUrlWithExpiry(CustomUserDetails userDetails,String key, Integer days) {
 
         // Set the expiration time for the pre-signed URL
         Calendar c = Calendar.getInstance();
@@ -114,7 +115,7 @@ public class FileServiceImpl implements FileService {
     }
 
     @Override
-    public String getUrlWithExpiryAndId(String id, Integer days) throws FileDownloadException {
+    public String getUrlWithExpiryAndId(CustomUserDetails userDetails,String id, Integer days) throws FileDownloadException {
         Date expiryDate = addTime(days);
 
         Optional<FileMetadata> fileMetadata = fileMetadataRepository.findById(id);
@@ -144,7 +145,7 @@ public class FileServiceImpl implements FileService {
     }
 
     @Override
-    public String getPublicUrlWithExpiryAndId(String id) throws FileDownloadException {
+    public String getPublicUrlWithExpiryAndId(CustomUserDetails userDetails,String id) throws FileDownloadException {
 
         Optional<FileMetadata> fileMetadata = fileMetadataRepository.findById(id);
         if (fileMetadata.isEmpty()) throw new FileDownloadException("File Not Found");
@@ -154,7 +155,7 @@ public class FileServiceImpl implements FileService {
     }
 
     @Override
-    public Boolean acknowledgeClientUpload(AcknowledgeRequest request) {
+    public Boolean acknowledgeClientUpload(CustomUserDetails userDetails,AcknowledgeRequest request) {
         if (Objects.isNull(request.getFileId()) || Objects.isNull(request.getUserId())){
             return false;
         }
@@ -173,7 +174,7 @@ public class FileServiceImpl implements FileService {
     }
 
     @Override
-    public boolean delete(String fileName) {
+    public boolean delete(CustomUserDetails userDetails,String fileName) {
         File file = Paths.get(fileName).toFile();
         if (file.exists()) {
             file.delete();
@@ -183,7 +184,7 @@ public class FileServiceImpl implements FileService {
     }
 
     @Override
-    public String getPublicUrlWithExpiryAndSource(String source, String sourceId, Integer expiryDays) throws FileDownloadException {
+    public String getPublicUrlWithExpiryAndSource(CustomUserDetails userDetails,String source, String sourceId, Integer expiryDays) throws FileDownloadException {
         // Set the expiration time for the pre-signed URL
         Calendar c = Calendar.getInstance();
         c.setTime(new Date()); // Using today's date
@@ -204,12 +205,12 @@ public class FileServiceImpl implements FileService {
     }
 
     @Override
-    public List<Map<String, String>> getMultiplePublicUrlWithExpiryAndId(String fileIds) {
+    public List<Map<String, String>> getMultiplePublicUrlWithExpiryAndId(CustomUserDetails userDetails,String fileIds) {
         List<String> dividedFileIds = MediaUtil.getFileIdsFromParam(fileIds);
         List<Map<String, String>> fileIdAndUrlList = new ArrayList<>();
         dividedFileIds.forEach((fileId) -> {
             try {
-                fileIdAndUrlList.add(Map.of(fileId, getPublicUrlWithExpiryAndId(fileId)));
+                fileIdAndUrlList.add(Map.of(fileId, getPublicUrlWithExpiryAndId(userDetails,fileId)));
             } catch (FileDownloadException e) {
                 throw new RuntimeException(e);
             }
@@ -218,12 +219,12 @@ public class FileServiceImpl implements FileService {
     }
 
     @Override
-    public List<Map<String, String>> getMultipleUrlWithExpiryAndId(String fileIds, Integer expiryDays) {
+    public List<Map<String, String>> getMultipleUrlWithExpiryAndId(CustomUserDetails userDetails,String fileIds, Integer expiryDays) {
         List<String> dividedFileIds = MediaUtil.getFileIdsFromParam(fileIds);
         List<Map<String, String>> fileIdAndUrlList = new ArrayList<>();
         dividedFileIds.forEach((fileId) -> {
             try {
-                fileIdAndUrlList.add(Map.of(fileId, getUrlWithExpiryAndId(fileId, expiryDays)));
+                fileIdAndUrlList.add(Map.of(fileId, getUrlWithExpiryAndId(userDetails,fileId, expiryDays)));
             } catch (FileDownloadException e) {
                 throw new RuntimeException(e);
             }
@@ -244,7 +245,7 @@ public class FileServiceImpl implements FileService {
         return source + "/" + sourceId + "/" + UUID.randomUUID() + "-" + formatFileName(fileName);
     }
 
-    public FileDetailsDTO getFileDetailsWithExpiryAndId(String id, Integer days) {
+    public FileDetailsDTO getFileDetailsWithExpiryAndId(CustomUserDetails userDetails,String id, Integer days) {
 
         Optional<FileMetadata> fileMetadata = fileMetadataRepository.findById(id);
         if (fileMetadata.isEmpty()) throw new DatabaseException("File Not Found");
@@ -257,7 +258,7 @@ public class FileServiceImpl implements FileService {
                     .id(fileMetadata.get().getId())
                     .source(fileMetadata.get().getSource())
                     .sourceId(fileMetadata.get().getSourceId())
-                    .url(getUrlWithExpiryAndId(id, days))
+                    .url(getUrlWithExpiryAndId(userDetails,id, days))
                     .createdOn(fileMetadata.get().getCreatedOn())
                     .updatedOn(fileMetadata.get().getUpdatedOn())
                     .build();
@@ -267,13 +268,14 @@ public class FileServiceImpl implements FileService {
 
     }
 
-    public List<FileDetailsDTO> getMultipleFileDetailsWithExpiryAndId(String ids, Integer days) throws FileDownloadException {
+    @Override
+    public List<FileDetailsDTO> getMultipleFileDetailsWithExpiryAndId(CustomUserDetails userDetails,String ids, Integer days) throws FileDownloadException {
 
         List<String> dividedFileIds = MediaUtil.getFileIdsFromParam(ids);
         List<FileDetailsDTO> fileDetailsDTOS = new ArrayList<>();
         for (String fileId : dividedFileIds) {
             try {
-                fileDetailsDTOS.add(getFileDetailsWithExpiryAndId(fileId, days));
+                fileDetailsDTOS.add(getFileDetailsWithExpiryAndId(userDetails,fileId, days));
             } catch (Exception e) {
                 throw new FileDownloadException(e.getMessage());
             }

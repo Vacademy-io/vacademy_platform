@@ -3,6 +3,7 @@ package vacademy.io.media_service.service;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.media.utils.MediaUtil;
 import vacademy.io.media_service.dto.UserToFileDTO;
@@ -23,7 +24,7 @@ public class UserToFileServiceImpl implements UserToFileService {
     private UserToFileRepository userToFileRepository;
 
     @Override
-    public List<UserToFileDTO> getUserFilesByUserId(String userId) {
+    public List<UserToFileDTO> getUserFilesByUserId(CustomUserDetails userDetails, String userId) {
         if (Objects.isNull(userId)) {
             throw new VacademyException("userId cannot be null");
         }
@@ -32,9 +33,9 @@ public class UserToFileServiceImpl implements UserToFileService {
         if (Objects.nonNull(userFiles) && !userFiles.isEmpty()) {
             for(UserToFile userFile : userFiles) {
                 UserToFileDTO userToFileDTO = userFile.mapToUserToFileDTO();
-                userToFileDTO.setFileDetail(fileService.getFileDetailsWithExpiryAndId(userFile.getFile().getId(),1));
+                userToFileDTO.setFileDetail(fileService.getFileDetailsWithExpiryAndId(userDetails,userFile.getFile().getId(),1));
                 if (Objects.nonNull(userFile.getFolderIcon())){
-                    userToFileDTO.setFolderIconUrl(fileService.getPublicUrlWithExpiry(userFile.getFolderIcon().getId(),1));
+                    userToFileDTO.setFolderIconUrl(fileService.getPublicUrlWithExpiry(userDetails,userFile.getFolderIcon().getId(),1));
                 }
                 userToFileDTOS.add(userToFileDTO);
             }
@@ -44,7 +45,7 @@ public class UserToFileServiceImpl implements UserToFileService {
 
     @Override
     @Transactional
-    public String deleteFilesByFileIds(String fileIds) {
+    public String deleteFilesByFileIds(CustomUserDetails userDetails,String fileIds) {
         if (Objects.isNull(fileIds)) {
             throw new VacademyException("fileIds cannot be null");
         }
@@ -66,14 +67,14 @@ public class UserToFileServiceImpl implements UserToFileService {
 
 
     @Override
-    public Map<String, List<UserToFileDTO>> getUserFilesByFoldersAndUserId(String folderNames, String userId) {
+    public Map<String, List<UserToFileDTO>> getUserFilesByFoldersAndUserId(CustomUserDetails userDetails,String folderNames, String userId) {
         // Validate input parameters
         if (Objects.isNull(folderNames) || Objects.isNull(userId)) {
             throw new VacademyException("folderNames and userId cannot be null");
         }
 
         // Parse folder names into a list
-        List<String> folderNamesList = MediaUtil.getFolderNamesFromParam(folderNames);
+        List<String> folderNamesList = getFolderNamesFromParam(folderNames);
 
         // Prepare result map
         Map<String, List<UserToFileDTO>> result = new HashMap<>();
@@ -96,7 +97,7 @@ public class UserToFileServiceImpl implements UserToFileService {
                         // Set file details
                         if (Objects.nonNull(userFile.getFile())) {
                             userToFileDTO.setFileDetail(
-                                    fileService.getFileDetailsWithExpiryAndId(userFile.getFile().getId(), 1)
+                                    fileService.getFileDetailsWithExpiryAndId(userDetails,userFile.getFile().getId(), 1)
                             );
                         } else {
                             userToFileDTO.setFileDetail(null);
@@ -105,7 +106,7 @@ public class UserToFileServiceImpl implements UserToFileService {
                         // Set folder icon details
                         if (Objects.nonNull(userFile.getFolderIcon())) {
                             userToFileDTO.setFolderIconUrl(
-                                    fileService.getPublicUrlWithExpiry(userFile.getFolderIcon().getId(), 1)
+                                    fileService.getPublicUrlWithExpiry(userDetails,userFile.getFolderIcon().getId(), 1)
                             );
                         } else {
                             userToFileDTO.setFolderIconUrl(null);
@@ -123,7 +124,7 @@ public class UserToFileServiceImpl implements UserToFileService {
 
 
     @Override
-    public List<UserToFileDTO> getUserFiles(String userId, String fileId) {
+    public List<UserToFileDTO> getUserFiles(CustomUserDetails userDetails,String userId, String fileId) {
         // Validate input parameters
         if (Objects.isNull(userId) || Objects.isNull(fileId)) {
             throw new VacademyException("userId and fileId cannot be null");
@@ -145,7 +146,7 @@ public class UserToFileServiceImpl implements UserToFileService {
                 // Handle file details
                 if (Objects.nonNull(userFile.getFile())) {
                     userToFileDTO.setFileDetail(
-                            fileService.getFileDetailsWithExpiryAndId(userFile.getFile().getId(), 1)
+                            fileService.getFileDetailsWithExpiryAndId(userDetails,userFile.getFile().getId(), 1)
                     );
                 } else {
                     userToFileDTO.setFileDetail(null);
@@ -154,7 +155,7 @@ public class UserToFileServiceImpl implements UserToFileService {
                 // Handle folder icon details
                 if (Objects.nonNull(userFile.getFolderIcon())) {
                     userToFileDTO.setFolderIconUrl(
-                            fileService.getPublicUrlWithExpiry(userFile.getFolderIcon().getId(), 1)
+                            fileService.getPublicUrlWithExpiry(userDetails,userFile.getFolderIcon().getId(), 1)
                     );
                 } else {
                     userToFileDTO.setFolderIconUrl(null);
@@ -165,6 +166,10 @@ public class UserToFileServiceImpl implements UserToFileService {
         }
 
         return userToFileDTOS;
+    }
+
+    public static List<String> getFolderNamesFromParam(String folderNames) {
+        return new ArrayList<>(List.of(folderNames.split(",")));
     }
 
 }

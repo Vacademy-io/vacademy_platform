@@ -2,17 +2,16 @@ package vacademy.io.media_service.service;
 
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.common.media.utils.MediaUtil;
 import vacademy.io.media_service.dto.UserToFileDTO;
 import vacademy.io.media_service.entity.UserToFile;
 import vacademy.io.media_service.enums.FileStatusEnum;
 import vacademy.io.media_service.repository.UserToFileRepository;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 public class UserToFileServiceImpl implements UserToFileService {
@@ -35,7 +34,7 @@ public class UserToFileServiceImpl implements UserToFileService {
                 UserToFileDTO userToFileDTO = userFile.mapToUserToFileDTO();
                 userToFileDTO.setFileDetail(fileService.getFileDetailsWithExpiryAndId(userFile.getFile().getId(),1));
                 if (Objects.nonNull(userFile.getFolderIcon())){
-                    userToFileDTO.setFolderIconDetail(fileService.getFileDetailsWithExpiryAndId(userFile.getFolderIcon().getId(),1));
+                    userToFileDTO.setFolderIconUrl(fileService.getPublicUrlWithExpiry(userFile.getFolderIcon().getId(),1));
                 }
                 userToFileDTOS.add(userToFileDTO);
             }
@@ -45,73 +44,127 @@ public class UserToFileServiceImpl implements UserToFileService {
 
     @Override
     @Transactional
-    public String deleteFileByFileId(String fileId) {
-        if (Objects.isNull(fileId)) {
-            throw new VacademyException("file Id cannot be null");
+    public String deleteFilesByFileIds(String fileIds) {
+        if (Objects.isNull(fileIds)) {
+            throw new VacademyException("fileIds cannot be null");
         }
-        UserToFile userToFile = userToFileRepository.findByFileIdAndStatus(fileId,FileStatusEnum.ACTIVE.name()).orElse(null);
-        if (Objects.isNull(userToFile)) {
-            throw new VacademyException("File not found!!!");
-        }
-        userToFile.setStatus(FileStatusEnum.DELETED.name());
-        userToFileRepository.save(userToFile);
-        return "File deleted successfully!!!";
-    }
 
-    @Override
-    public List<UserToFileDTO> getUserFilesByFolderAndUserId(String folderName, String userId) {
-        if (Objects.isNull(folderName) || Objects.isNull(userId)) {
-            throw new VacademyException("folderName and userId cannot be null");
-        }
-        List<UserToFile> userFiles = userToFileRepository.findByFolderAndUserIdAndStatus(folderName,userId,FileStatusEnum.ACTIVE.name());
-        List<UserToFileDTO>userToFileDTOS = new ArrayList<>();
-        if (Objects.nonNull(userFiles) && !userFiles.isEmpty()) {
-            for(UserToFile userFile : userFiles) {
-                UserToFileDTO userToFileDTO = userFile.mapToUserToFileDTO();
-                userToFileDTO.setFileDetail(fileService.getFileDetailsWithExpiryAndId(userFile.getFile().getId(),1));
-                if (Objects.nonNull(userFile.getFolderIcon())){
-                    userToFileDTO.setFolderIconDetail(fileService.getFileDetailsWithExpiryAndId(userFile.getFolderIcon().getId(),1));
-                }
-                userToFileDTOS.add(userToFileDTO);
+        // Parse file IDs into a list
+        List<String> fileIdsList = MediaUtil.getFileIdsFromParam(fileIds);
+
+        for (String fileId : fileIdsList) {
+            UserToFile userToFile = userToFileRepository.findByFileIdAndStatus(fileId, FileStatusEnum.ACTIVE.name()).orElse(null);
+            if (Objects.isNull(userToFile)) {
+                throw new VacademyException("File with ID " + fileId + " not found!!!");
             }
+            userToFile.setStatus(FileStatusEnum.DELETED.name());
+            userToFileRepository.save(userToFile);
         }
-        return userToFileDTOS;
+
+        return fileIdsList.size() + " file(s) deleted successfully!!!";
     }
 
+
     @Override
-    public UserToFileDTO getUserFile(String userId, String fileId) {
+    public Map<String, List<UserToFileDTO>> getUserFilesByFoldersAndUserId(String folderNames, String userId) {
+        // Validate input parameters
+        if (Objects.isNull(folderNames) || Objects.isNull(userId)) {
+            throw new VacademyException("folderNames and userId cannot be null");
+        }
+
+        // Parse folder names into a list
+        List<String> folderNamesList = MediaUtil.getFolderNamesFromParam(folderNames);
+
+        // Prepare result map
+        Map<String, List<UserToFileDTO>> result = new HashMap<>();
+
+        for (String folderName : folderNamesList) {
+            // Fetch user files for the current folder
+            List<UserToFile> userFiles = userToFileRepository
+                    .findByFolderAndUserIdAndStatus(folderName, userId, FileStatusEnum.ACTIVE.name());
+
+            if (Objects.isNull(userFiles) || userFiles.isEmpty()) {
+                result.put(folderName, Collections.emptyList());
+                continue;
+            }
+
+            // Map user files to DTOs
+            List<UserToFileDTO> userToFileDTOS = userFiles.stream()
+                    .map(userFile -> {
+                        UserToFileDTO userToFileDTO = userFile.mapToUserToFileDTO();
+
+                        // Set file details
+                        if (Objects.nonNull(userFile.getFile())) {
+                            userToFileDTO.setFileDetail(
+                                    fileService.getFileDetailsWithExpiryAndId(userFile.getFile().getId(), 1)
+                            );
+                        } else {
+                            userToFileDTO.setFileDetail(null);
+                        }
+
+                        // Set folder icon details
+                        if (Objects.nonNull(userFile.getFolderIcon())) {
+                            userToFileDTO.setFolderIconUrl(
+                                    fileService.getPublicUrlWithExpiry(userFile.getFolderIcon().getId(), 1)
+                            );
+                        } else {
+                            userToFileDTO.setFolderIconUrl(null);
+                        }
+
+                        return userToFileDTO;
+                    })
+                    .collect(Collectors.toList());
+
+            result.put(folderName, userToFileDTOS);
+        }
+
+        return result;
+    }
+
+
+    @Override
+    public List<UserToFileDTO> getUserFiles(String userId, String fileId) {
         // Validate input parameters
         if (Objects.isNull(userId) || Objects.isNull(fileId)) {
             throw new VacademyException("userId and fileId cannot be null");
         }
 
-        // Fetch the user file record
-        UserToFile userFile = userToFileRepository.findByUserIdAndFileIdAndStatus(userId, fileId, FileStatusEnum.ACTIVE.name()).orElse(null);
+        List<String> dividedFileIds = MediaUtil.getFileIdsFromParam(fileId);
+        List<UserToFileDTO> userToFileDTOS = new ArrayList<>();
 
-        // If user file exists, map to DTO
-        if (Objects.nonNull(userFile)) {
-            UserToFileDTO userToFileDTO = userFile.mapToUserToFileDTO();
+        for (String file : dividedFileIds) {
+            // Fetch the user file record
+            UserToFile userFile = userToFileRepository
+                    .findByUserIdAndFileIdAndStatus(userId, file, FileStatusEnum.ACTIVE.name())
+                    .orElse(null);
 
-            // Handle null values in file or folderIcon and set the details if they are not null
-            if (Objects.nonNull(userFile.getFile())) {
-                userToFileDTO.setFileDetail(fileService.getFileDetailsWithExpiryAndId(userFile.getFile().getId(), 1));
-            } else {
-                // Optionally handle the case when file is null, e.g., log or set a default value
-                userToFileDTO.setFileDetail(null); // Or some default
+            // If user file exists, map to DTO
+            if (Objects.nonNull(userFile)) {
+                UserToFileDTO userToFileDTO = userFile.mapToUserToFileDTO();
+
+                // Handle file details
+                if (Objects.nonNull(userFile.getFile())) {
+                    userToFileDTO.setFileDetail(
+                            fileService.getFileDetailsWithExpiryAndId(userFile.getFile().getId(), 1)
+                    );
+                } else {
+                    userToFileDTO.setFileDetail(null);
+                }
+
+                // Handle folder icon details
+                if (Objects.nonNull(userFile.getFolderIcon())) {
+                    userToFileDTO.setFolderIconUrl(
+                            fileService.getPublicUrlWithExpiry(userFile.getFolderIcon().getId(), 1)
+                    );
+                } else {
+                    userToFileDTO.setFolderIconUrl(null);
+                }
+
+                userToFileDTOS.add(userToFileDTO);
             }
-
-            if (Objects.nonNull(userFile.getFolderIcon())) {
-                userToFileDTO.setFolderIconDetail(fileService.getFileDetailsWithExpiryAndId(userFile.getFolderIcon().getId(), 1));
-            } else {
-                // handle the case when folderIcon is null
-                userToFileDTO.setFolderIconDetail(null);
-            }
-
-            return userToFileDTO;
         }
 
-        // Return null if no user file is found
-        return null;
+        return userToFileDTOS;
     }
 
 }

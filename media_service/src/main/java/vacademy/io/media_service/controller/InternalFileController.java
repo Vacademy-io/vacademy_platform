@@ -1,5 +1,6 @@
 package vacademy.io.media_service.controller;
 
+import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.media_service.exceptions.FileDownloadException;
 import vacademy.io.media_service.service.FileService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -13,7 +14,7 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/media/internal")
+@RequestMapping("/media-service/internal")
 public class InternalFileController {
     @Autowired
     private FileService fileService;

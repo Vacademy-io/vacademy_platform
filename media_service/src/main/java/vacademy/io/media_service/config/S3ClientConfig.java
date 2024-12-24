@@ -20,12 +20,12 @@ public class S3ClientConfig {
     @Value("${aws.secretKey}")
     private String secretKey;
 
+
     @Bean
     public AmazonS3 initS3Client() {
         AWSCredentials credentials = new BasicAWSCredentials(this.accessKey, this.secretKey);
         return AmazonS3ClientBuilder.standard()
                 .withRegion(Regions.AP_SOUTH_1)
-                .withAccelerateModeEnabled(true)
                 .withCredentials(new AWSStaticCredentialsProvider(credentials))
                 .build();
     }

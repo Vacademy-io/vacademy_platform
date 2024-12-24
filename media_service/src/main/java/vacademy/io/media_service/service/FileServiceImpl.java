@@ -5,9 +5,13 @@ import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.model.GeneratePresignedUrlRequest;
 import com.amazonaws.services.s3.model.ListObjectsV2Result;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
+import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.media_service.constant.MediaConstant;
+import vacademy.io.media_service.dto.AcknowledgeRequest;
 import vacademy.io.media_service.dto.PreSignedUrlResponse;
 import vacademy.io.media_service.entity.FileMetadata;
+import vacademy.io.media_service.entity.UserToFile;
+import vacademy.io.media_service.enums.FileStatusEnum;
 import vacademy.io.media_service.exceptions.FileDownloadException;
 import vacademy.io.media_service.repository.FileMetadataRepository;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +24,7 @@ import org.springframework.web.multipart.MultipartFile;
 import vacademy.io.common.exceptions.DatabaseException;
 import vacademy.io.common.media.dto.FileDetailsDTO;
 import vacademy.io.common.media.utils.MediaUtil;
+import vacademy.io.media_service.repository.UserToFileRepository;
 
 import java.io.File;
 import java.io.IOException;
@@ -41,6 +46,7 @@ public class FileServiceImpl implements FileService {
     @Autowired
     private FileMetadataRepository fileMetadataRepository;
 
+    private final UserToFileRepository userToFileRepository;
     @Override
     public String uploadFile(MultipartFile multipartFile) throws IOException {
 
@@ -82,7 +88,8 @@ public class FileServiceImpl implements FileService {
         URL url = s3Client.generatePresignedUrl(generatePresignedUrlRequest);
 
         // Save file metadata (e.g. name, type, key) to the repository
-        FileMetadata metadata = new FileMetadata(fileName, fileType, key, source, sourceId);
+        FileMetadata metadata =  new FileMetadata(fileName, fileType, key, source, sourceId);
+
         fileMetadataRepository.save(metadata);
 
         return new PreSignedUrlResponse(metadata.getId(), url.toString());
@@ -148,11 +155,19 @@ public class FileServiceImpl implements FileService {
     }
 
     @Override
-    public Boolean acknowledgeClientUpload(String fileId, Long fileSize) {
-        Optional<FileMetadata> metadata = fileMetadataRepository.findById(fileId);
+    public Boolean acknowledgeClientUpload(AcknowledgeRequest request) {
+        if (Objects.isNull(request.getFileId()) || Objects.isNull(request.getUserId())){
+            return false;
+        }
+        Optional<FileMetadata> metadata = fileMetadataRepository.findById(request.getFileId());
         if (metadata.isPresent()) {
-            metadata.get().setFileSize(fileSize);
-            fileMetadataRepository.save(metadata.get());
+            metadata.get().setFileSize(request.getFileSize());
+            FileMetadata folderIcon = null;
+            if (!Objects.isNull(request.getFolderIconId())){
+                folderIcon  = fileMetadataRepository.findById(request.getFolderIconId()).orElse(null);
+            }
+            UserToFile userToFile = new UserToFile(metadata.get(),folderIcon,request.getFolderName(),request.getUserId(),request.getSourceType(),request.getSourceId(), FileStatusEnum.ACTIVE.name());
+            userToFileRepository.save(userToFile);
             return true;
         }
         return false;
@@ -253,6 +268,7 @@ public class FileServiceImpl implements FileService {
 
     }
 
+    @Override
     public List<FileDetailsDTO> getMultipleFileDetailsWithExpiryAndId(String ids, Integer days) throws FileDownloadException {
 
         List<String> dividedFileIds = MediaUtil.getFileIdsFromParam(ids);

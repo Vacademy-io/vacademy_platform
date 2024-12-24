@@ -32,6 +32,12 @@ public class StudentSessionManager {
                     case "MAKE_INACTIVE":
                         studentSessionRepository.updateStatus(request.getUserId(), request.getCurrentPackageSessionId(), request.getInstituteId(), request.getNewState());
                         break;
+                    case "MAKE_ACTIVE":
+                        studentSessionRepository.updateStatus(request.getUserId(), request.getCurrentPackageSessionId(), request.getInstituteId(), "ACTIVE");
+                        break;
+                    case "UPDATE_STATUS":
+                        studentSessionRepository.updateStatus(request.getUserId(), request.getCurrentPackageSessionId(), request.getInstituteId(), request.getNewState());
+                        break;
                     case "TERMINATE":
                         studentSessionRepository.updateStatus(request.getUserId(), request.getCurrentPackageSessionId(), request.getInstituteId(), "TERMINATED");
                         break;

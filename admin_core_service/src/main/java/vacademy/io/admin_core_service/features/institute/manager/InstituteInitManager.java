@@ -70,7 +70,7 @@ public class InstituteInitManager {
         }).toList());
         instituteInfoDTO.setLevels(packageRepository.findDistinctLevelsByInstituteId(institute.get().getId()).stream().map((LevelDTO::new)).toList());
         instituteInfoDTO.setGenders((Stream.of(Gender.values()).map(Enum::name)).toList());
-        instituteInfoDTO.setStudentStatuses(List.of("ACTIVE", "TERMINATED"));
+        instituteInfoDTO.setStudentStatuses(List.of("ACTIVE", "INACTIVE"));
         instituteInfoDTO.setSubjects(subjectRepository.findDistinctSubjectsByInstituteId(institute.get().getId()).stream().map((SubjectDTO::new)).toList());
         instituteInfoDTO.setSessionExpiryDays(List.of(30, 180, 360));
         return instituteInfoDTO;

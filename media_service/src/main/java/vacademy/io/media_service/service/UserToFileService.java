@@ -7,8 +7,8 @@ import java.util.List;
 import java.util.Map;
 
 public interface UserToFileService {
-    List<UserToFileDTO>getUserFilesByUserId(CustomUserDetails userDetails, String userId);
-    String deleteFilesByFileIds(CustomUserDetails userDetails,String fileIds);
-    Map<String, List<UserToFileDTO>>getUserFilesByFoldersAndUserId(CustomUserDetails userDetails,String folderNames, String userId);
-    List<UserToFileDTO> getUserFiles(CustomUserDetails userDetails,String userId, String fileIds);
+    List<UserToFileDTO>getUserFilesByUserId(String userId);
+    String deleteFilesByFileIds(String fileIds);
+    Map<String, List<UserToFileDTO>>getUserFilesByFoldersAndUserId(String folderNames, String userId);
+    List<UserToFileDTO> getUserFiles(String userId, String fileIds);
 }

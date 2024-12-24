@@ -14,29 +14,29 @@ import java.util.List;
 import java.util.Map;
 
 public interface FileService {
-    String uploadFile(CustomUserDetails userDetails, MultipartFile multipartFile) throws FileUploadException, IOException;
+    String uploadFile(MultipartFile multipartFile) throws FileUploadException, IOException;
 
-    Object downloadFile(CustomUserDetails userDetails,String fileName) throws FileDownloadException, IOException;
+    Object downloadFile(String fileName) throws FileDownloadException, IOException;
 
-    PreSignedUrlResponse getPreSignedUrl(CustomUserDetails userDetails,String fileName, String fileType, String source, String sourceId);
+    PreSignedUrlResponse getPreSignedUrl(String fileName, String fileType, String source, String sourceId);
 
-    String getPublicUrlWithExpiry(CustomUserDetails userDetails,String key, Integer days) throws FileDownloadException;
+    String getPublicUrlWithExpiry(String key, Integer days) throws FileDownloadException;
 
-    String getPublicUrlWithExpiryAndId(CustomUserDetails userDetails,String id) throws FileDownloadException;
+    String getPublicUrlWithExpiryAndId(String id) throws FileDownloadException;
 
-    Boolean acknowledgeClientUpload(CustomUserDetails userDetails,AcknowledgeRequest acknowledgeRequest);
+    Boolean acknowledgeClientUpload(AcknowledgeRequest acknowledgeRequest);
 
-    boolean delete(CustomUserDetails userDetails,String fileName);
+    boolean delete(String fileName);
 
-    String getPublicUrlWithExpiryAndSource(CustomUserDetails userDetails,String source, String sourceId, Integer expiryDays) throws FileDownloadException;
+    String getPublicUrlWithExpiryAndSource(String source, String sourceId, Integer expiryDays) throws FileDownloadException;
 
-    List<Map<String, String>> getMultiplePublicUrlWithExpiryAndId(CustomUserDetails userDetails,String fileIds);
+    List<Map<String, String>> getMultiplePublicUrlWithExpiryAndId(String fileIds);
 
-    List<Map<String, String>> getMultipleUrlWithExpiryAndId(CustomUserDetails userDetails,String fileIds, Integer expiryDays);
+    List<Map<String, String>> getMultipleUrlWithExpiryAndId(String fileIds, Integer expiryDays);
 
-    String getUrlWithExpiryAndId(CustomUserDetails userDetails,String id, Integer days) throws FileDownloadException;
+    String getUrlWithExpiryAndId(String id, Integer days) throws FileDownloadException;
 
-    FileDetailsDTO getFileDetailsWithExpiryAndId(CustomUserDetails userDetails,String id, Integer days) throws FileDownloadException;
+    FileDetailsDTO getFileDetailsWithExpiryAndId(String id, Integer days) throws FileDownloadException;
 
-    List<FileDetailsDTO> getMultipleFileDetailsWithExpiryAndId(CustomUserDetails userDetails,String ids, Integer days) throws FileDownloadException;
+    List<FileDetailsDTO> getMultipleFileDetailsWithExpiryAndId(String ids, Integer days) throws FileDownloadException;
 }

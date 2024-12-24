@@ -1,0 +1,81 @@
+package vacademy.io.assessment_service.features.assessment.entity;
+
+import jakarta.persistence.*;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import org.hibernate.annotations.UuidGenerator;
+
+import java.util.Date;
+import java.util.List;
+
+@Entity
+@Table(name = "assessment")
+@Data
+@EqualsAndHashCode(of = "id")
+public class Assessment {
+    
+    @Id
+    @UuidGenerator
+    @Column(name = "id")
+    private String id;
+    
+    @Column(name = "name", nullable = false)
+    private String name;
+    
+    @Column(name = "about_id")
+    private String aboutId;
+    
+    @Column(name = "instructions_id")
+    private String instructionsId;
+    
+    @Column(name = "play_mode", nullable = false)
+    private String playMode;
+    
+    @Column(name = "evaluation_type", nullable = false)
+    private String evaluationType;
+    
+    @Column(name = "duration")
+    private Integer duration;
+    
+    @Column(name = "duration_distribution", nullable = false)
+    private String durationDistribution;
+    
+    @Column(name = "can_switch_section", nullable = false)
+    private Boolean canSwitchSection;
+    
+    @Column(name = "assessment_visibility", nullable = false)
+    private String assessmentVisibility;
+    
+    @Column(name = "registration_close_date")
+    private Date registrationCloseDate;
+    
+    @Column(name = "registration_open_date")
+    private Date registrationOpenDate;
+    
+    @Column(name = "expected_participants")
+    private Integer expectedParticipants;
+    
+    @Column(name = "cover_file_id")
+    private Integer coverFileId;
+    
+    @Column(name = "bound_start_time")
+    private Date boundStartTime;
+    
+    @Column(name = "bound_end_time")
+    private Date boundEndTime;
+    
+    @OneToMany(mappedBy = "assessment")
+    private List<Section> sections;
+    
+    @OneToMany(mappedBy = "assessment", fetch = FetchType.LAZY)
+    private List<AssessmentRegistration> registrations;
+
+    @OneToMany(mappedBy = "assessment")
+    private List<AssessmentCustomField> assessmentCustomFields;
+    
+    @Column(name = "created_at", insertable = false, updatable = false)
+    private Date createdAt;
+    
+    @Column(name = "updated_at", insertable = false, updatable = false)
+    private Date updatedAt;
+}

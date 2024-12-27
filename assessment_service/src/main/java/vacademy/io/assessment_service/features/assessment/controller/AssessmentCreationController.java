@@ -32,7 +32,7 @@ public class AssessmentCreationController {
 
 
     @GetMapping("/status")
-    public List<StepResponseDto> createAssessment(@RequestAttribute("user") CustomUserDetails user, @RequestParam String assessmentId, @RequestParam String instituteId, @RequestParam String type) {
+    public List<StepResponseDto> createAssessment(@RequestAttribute("user") CustomUserDetails user, @RequestParam(name = "assessmentId", required = false) String assessmentId, @RequestParam(name = "instituteId", required = false) String instituteId, @RequestParam String type) {
         List<IStep> steps = List.of(assessmentAccessDetail, assessmentBasicDetail, assessmentAddQuestionDetail, assessmentAddParticipantsDetail);
         List<StepResponseDto> stepResponses = new ArrayList<>();
         for (IStep step : steps) {

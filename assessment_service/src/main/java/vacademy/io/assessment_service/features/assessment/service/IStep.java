@@ -5,9 +5,7 @@ import lombok.Setter;
 import vacademy.io.assessment_service.features.assessment.dto.StepResponseDto;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 
 public abstract class IStep {
 
@@ -29,19 +27,19 @@ public abstract class IStep {
 
     @Getter
     @Setter
-    private Map<String, Object> savedData;
+    private Map<String, Object> savedData = new HashMap<>();
 
     @Getter
     @Setter
-    private List<Map<String, String>> stepKeys;
+    private List<Map<String, String>> stepKeys = new ArrayList<>();
 
     @Getter
     @Setter
-    private Map<String, StepOption> defaultValues;
+    private Map<String, StepOption> defaultValues = new HashMap<>();
 
     @Getter
     @Setter
-    private Map<String, List<StepOption>> fieldOptions;
+    private Map<String, List<StepOption>> fieldOptions = new HashMap<>();
 
     public abstract void checkStatusAndFetchData(Optional<Assessment> assessment);
 

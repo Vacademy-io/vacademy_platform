@@ -1,0 +1,19 @@
+package vacademy.io.assessment_service.features.assessment.enums;
+
+public enum AssessmentCreationEnum {
+
+    SUBJECT_SELECTION,
+    BOUNDATION_START_DATE,
+    BOUNDATION_END_DATE,
+    DURATION,
+    DURATION_DISTRIBUTION,
+    CAN_SWITCH_SECTION,
+    ASSESSMENT_VISIBILITY,
+    EXPECTED_PARTICIPANTS,
+    OMR_MODE,
+    EVALUATION_TYPE,
+    ASSESSMENT_PREVIEW,
+    ADD_TIME_CONSENT,
+    REATTEMPT_CONSENT,
+    REATTEMPT_COUNT
+}

@@ -15,7 +15,6 @@ import vacademy.io.common.exceptions.VacademyException;
 
 @RestController
 @RequestMapping("/assessment-service/question-paper/manage/v1")
-
 public class AddQuestionPaperController {
 
     @Autowired

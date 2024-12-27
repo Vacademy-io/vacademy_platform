@@ -22,7 +22,7 @@ import vacademy.io.common.auth.provider.ServiceAuthProvider;
 @Configuration
 public class WebSecurityConfig {
 
-    private static final String[] ALLOWED_PATHS = {"/auth/**", "/media-service/actuator/**", "/media-service/internal/**", "/internal/**", "/verify/id", "/media-service/swagger-ui.html", "/media/api-docs/**", "/swagger-ui.html", "/media-service/swagger-ui/index.html", "/media-service/v3/api-docs/**", "/media-service/swagger-ui/**", "/media-service/webjars/swagger-ui/**"};
+    private static final String[] ALLOWED_PATHS = {"/auth/**", "/media-service/actuator/**", "/media-service/internal/**", "/internal/**", "/verify/id", "/media-service/swagger-ui.html", "/media-service/api-docs/**", "/swagger-ui.html", "/media-service/swagger-ui/index.html", "/media-service/v3/api-docs/**", "/media-service/swagger-ui/**", "/media-service/webjars/swagger-ui/**"};
     @Autowired
     private JwtAuthFilter jwtAuthFilter; // Inject JwtAuthFilter dependency
     @Autowired

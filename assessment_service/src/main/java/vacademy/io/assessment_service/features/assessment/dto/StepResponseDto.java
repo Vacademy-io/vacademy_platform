@@ -8,6 +8,8 @@ import lombok.Getter;
 import lombok.Setter;
 import vacademy.io.assessment_service.features.assessment.service.StepOption;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -20,8 +22,8 @@ public class StepResponseDto {
     private String status;
     private String instituteId;
     private String type;
-    private Map<String, Object> savedData;
-    private List<Map<String, String>> stepKeys;
-    private Map<String, StepOption> defaultValues;
-    private Map<String, List<StepOption>> fieldOptions;
+    private Map<String, Object> savedData = new HashMap<>();
+    private List<Map<String, String>> stepKeys = new ArrayList<>();
+    private Map<String, StepOption> defaultValues = new HashMap<>();
+    private Map<String, List<StepOption>> fieldOptions = new HashMap<>();
 }

@@ -3,10 +3,10 @@ package vacademy.io.assessment_service.features.assessment.service.creation;
 import org.springframework.stereotype.Component;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.enums.*;
+import vacademy.io.assessment_service.features.assessment.enums.creationSteps.ParticipantsCreationEnum;
+import vacademy.io.assessment_service.features.assessment.enums.creationSteps.QuestionCreationEnum;
 import vacademy.io.assessment_service.features.assessment.service.IStep;
-import vacademy.io.assessment_service.features.assessment.service.StepOption;
 
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;

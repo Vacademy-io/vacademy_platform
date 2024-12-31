@@ -1,17 +1,20 @@
 package vacademy.io.assessment_service.features.assessment.entity;
 
 import jakarta.persistence.*;
-import lombok.Data;
-import lombok.EqualsAndHashCode;
+import lombok.*;
 import org.hibernate.annotations.UuidGenerator;
+import vacademy.io.assessment_service.features.rich_text.entity.AssessmentRichTextData;
 
 import java.util.Date;
 import java.util.List;
 
 @Entity
 @Table(name = "assessment")
+@Builder
 @Data
 @EqualsAndHashCode(of = "id")
+@NoArgsConstructor
+@AllArgsConstructor
 public class Assessment {
     
     @Id
@@ -24,27 +27,43 @@ public class Assessment {
     
     @Column(name = "about_id")
     private String aboutId;
-    
-    @Column(name = "instructions_id")
-    private String instructionsId;
+
+    @OneToOne(cascade = CascadeType.ALL)
+    @JoinColumn(name = "instructions_id", referencedColumnName = "id", insertable = true, updatable = true)
+    private AssessmentRichTextData instructions;
     
     @Column(name = "play_mode", nullable = false)
     private String playMode;
     
     @Column(name = "evaluation_type", nullable = false)
     private String evaluationType;
+
+    @Column(name = "submission_type", nullable = false)
+    private String submissionType;
     
     @Column(name = "duration")
     private Integer duration;
+
+    @Column(name = "preview_time")
+    private Integer previewTime;
     
     @Column(name = "duration_distribution", nullable = false)
     private String durationDistribution;
     
     @Column(name = "can_switch_section", nullable = false)
     private Boolean canSwitchSection;
+
+    @Column(name = "can_request_reattempt", nullable = false)
+    private Boolean canRequestReattempt;
+
+    @Column(name = "can_request_time_increase", nullable = false)
+    private Boolean canRequestTimeIncrease;
     
     @Column(name = "assessment_visibility", nullable = false)
     private String assessmentVisibility;
+
+    @Column(name = "status", nullable = true)
+    private String status;
     
     @Column(name = "registration_close_date")
     private Date registrationCloseDate;

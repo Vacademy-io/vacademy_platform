@@ -1,4 +1,4 @@
-package vacademy.io.assessment_service.features.assessment.enums;
+package vacademy.io.assessment_service.features.assessment.enums.creationSteps;
 
 public enum AccessControlEnum {
 

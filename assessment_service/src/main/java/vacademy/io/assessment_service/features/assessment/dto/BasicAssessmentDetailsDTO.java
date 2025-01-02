@@ -55,13 +55,4 @@ public class BasicAssessmentDetailsDTO {
         private String sectionWiseDuration;
     }
 
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public static class Duration {
-        private Integer hrs;
-        private Integer min;
-    }
 }

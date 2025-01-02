@@ -6,9 +6,7 @@ import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 import org.springframework.util.ObjectUtils;
 import org.springframework.util.StringUtils;
-import vacademy.io.assessment_service.features.assessment.dto.AssessmentSaveResponseDto;
-import vacademy.io.assessment_service.features.assessment.dto.BasicAssessmentDetailsDTO;
-import vacademy.io.assessment_service.features.assessment.dto.StepResponseDto;
+import vacademy.io.assessment_service.features.assessment.dto.*;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentInstituteMapping;
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentStatus;
@@ -117,5 +115,14 @@ public class AssessmentBasicDetailsManager {
             Optional.ofNullable(boundationData.getStartDate()).ifPresent((startDate) -> assessment.setBoundStartTime(convertStringToUTCDate(startDate)));
             Optional.ofNullable(boundationData.getEndDate()).ifPresent((endDate) -> assessment.setBoundEndTime(convertStringToUTCDate(endDate)));
         }
+    }
+
+    public ResponseEntity<AssessmentSaveResponseDto> saveQuestionsToAssessment(CustomUserDetails user, AddQuestionsAssessmentDetailsDTO basicAssessmentDetailsDTO, String assessmentId, String instituteId, String type) {
+            return null;
+    }
+
+    public ResponseEntity<AssessmentSaveResponseDto> saveParticipantsToAssessment(CustomUserDetails user, AssessmentRegistrationsDto basicAssessmentDetailsDTO, String assessmentId, String instituteId, String type) {
+        return null;
+
     }
 }

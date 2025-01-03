@@ -12,6 +12,5 @@ import lombok.Setter;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 @AllArgsConstructor
 public class AddedQuestionPaperResponseDto {
-
     private String savedQuestionPaperId;
 }

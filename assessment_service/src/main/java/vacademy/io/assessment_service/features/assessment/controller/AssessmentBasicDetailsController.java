@@ -17,6 +17,7 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/assessment-service/assessment/basic/create/v1")
@@ -32,5 +33,14 @@ public class AssessmentBasicDetailsController {
                                                                                 @RequestParam(name = "instituteId", required = false) String instituteId,
                                                                                 @RequestParam String type) {
         return assessmentBasicDetailsManager.saveBasicAssessmentDetails(user, basicAssessmentDetailsDTO, assessmentId, instituteId, type);
+    }
+
+    @PostMapping("/publish")
+    public ResponseEntity<AssessmentSaveResponseDto> publishAssessment(@RequestAttribute("user") CustomUserDetails user,
+                                                                                @RequestBody Map<String, String> data,
+                                                                                @RequestParam(name = "assessmentId", required = false) String assessmentId,
+                                                                                @RequestParam(name = "instituteId", required = false) String instituteId,
+                                                                                @RequestParam String type) {
+        return assessmentBasicDetailsManager.publishAssessment(user, data, assessmentId, instituteId, type);
     }
 }

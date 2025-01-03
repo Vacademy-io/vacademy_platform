@@ -21,6 +21,7 @@ import vacademy.io.common.exceptions.VacademyException;
 
 import java.time.ZoneId;
 import java.util.Date;
+import java.util.Map;
 import java.util.Optional;
 
 import static vacademy.io.common.core.utils.DateUtil.convertStringToUTCDate;
@@ -118,11 +119,28 @@ public class AssessmentBasicDetailsManager {
     }
 
     public ResponseEntity<AssessmentSaveResponseDto> saveQuestionsToAssessment(CustomUserDetails user, AddQuestionsAssessmentDetailsDTO basicAssessmentDetailsDTO, String assessmentId, String instituteId, String type) {
-            return null;
+        return ResponseEntity.ok(null);
     }
 
     public ResponseEntity<AssessmentSaveResponseDto> saveParticipantsToAssessment(CustomUserDetails user, AssessmentRegistrationsDto basicAssessmentDetailsDTO, String assessmentId, String instituteId, String type) {
-        return null;
+        return ResponseEntity.ok(null);
 
+    }
+
+    public ResponseEntity<AssessmentSaveResponseDto> publishAssessment(CustomUserDetails user, Map<String, String> data, String assessmentId, String instituteId, String type) {
+        if (!StringUtils.hasText(assessmentId))
+            throw new VacademyException("Assessment Id cannot be empty");
+        Optional<Assessment> assessmentOptional = assessmentRepository.findByAssessmentIdAndInstituteId(assessmentId, instituteId);
+        if (assessmentOptional.isEmpty())
+           throw new VacademyException("Assessment not found");
+
+        // Todo: Verify Assessment Details based on type
+        assessmentOptional.get().setStatus(AssessmentStatus.PUBLISHED.name());
+        assessmentRepository.save(assessmentOptional.get());
+        return ResponseEntity.ok(new AssessmentSaveResponseDto(assessmentOptional.get().getId(), AssessmentStatus.PUBLISHED.name()));
+    }
+
+    public ResponseEntity<AssessmentSaveResponseDto> saveAccessToAssessment(CustomUserDetails user, AddAccessAssessmentDetailsDTO addAccessAssessmentDetailsDTO, String assessmentId, String instituteId, String type) {
+        return ResponseEntity.ok(null);
     }
 }

@@ -21,8 +21,7 @@ public class StudentDataToCsvWriter {
         String[] headers = {"FULL_NAME", "USERNAME", "GENDER", "ENROLLMENT_DATE", "ENROLLMENT_NUMBER", "MOBILE_NUMBER",
                 "DATE_OF_BIRTH", "PACKAGE_SESSION", "ACCESS_DAYS", "EMAIL", "ENROLLMENT_STATUS",
                 "ADDRESS_LINE", "REGION", "CITY", "PIN_CODE", "FATHER_NAME", "MOTHER_NAME",
-                "PARENTS_MOBILE_NUMBER", "PARENTS_EMAIL", "LINKED_INSTITUTE_NAME", "INSTITUTE_ID",
-                "PACKAGE_SESSION_ID", "STATUS", "STATUS_MESSAGE", "ERROR"};
+                "PARENTS_MOBILE_NUMBER", "PARENTS_EMAIL", "LINKED_INSTITUTE_NAME", "INSTITUTE_ID", "STATUS", "STATUS_MESSAGE", "ERROR"};
 
         CSVFormat csvFormat = CSVFormat.DEFAULT
                 .withHeader(headers)
@@ -52,7 +51,6 @@ public class StudentDataToCsvWriter {
                         student.getStudentExtraDetails().getParentsEmail(),
                         student.getStudentExtraDetails().getLinkedInstituteName(),
                         student.getInstituteStudentDetails().getInstituteId(),
-                        student.getInstituteStudentDetails().getPackageSessionId(),
                         student.getStatus(),
                         student.getStatusMessage(),
                         student.getErrorMessage()

@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.assessment_service.features.evaluation.service.QuestionEvaluationService;
 import vacademy.io.assessment_service.features.question_bank.dto.AddQuestionPaperDTO;
+import vacademy.io.assessment_service.features.question_bank.dto.AddedQuestionPaperResponseDto;
 import vacademy.io.assessment_service.features.question_bank.entity.QuestionPaper;
 import vacademy.io.assessment_service.features.question_bank.repository.QuestionPaperRepository;
 import vacademy.io.assessment_service.features.question_core.dto.MCQEvaluationDTO;
@@ -48,7 +49,7 @@ public class AddQuestionPaperFromImportManager {
 
     
     @Transactional
-    public Boolean addQuestionPaper(CustomUserDetails user, AddQuestionPaperDTO questionRequestBody) throws JsonProcessingException {
+    public AddedQuestionPaperResponseDto addQuestionPaper(CustomUserDetails user, AddQuestionPaperDTO questionRequestBody) throws JsonProcessingException {
 
         QuestionPaper questionPaper = new QuestionPaper();
         questionPaper.setTitle(questionRequestBody.getTitle());
@@ -72,7 +73,7 @@ public class AddQuestionPaperFromImportManager {
         
         questionPaperRepository.linkInstituteToQuestionPaper(UUID.randomUUID().toString(), questionPaper.getId(), questionRequestBody.getInstituteId(), "ACTIVE", questionRequestBody.getLevelId(), questionRequestBody.getSubjectId());
         
-        return true;
+        return new AddedQuestionPaperResponseDto(questionPaper.getId());
 
     }
 

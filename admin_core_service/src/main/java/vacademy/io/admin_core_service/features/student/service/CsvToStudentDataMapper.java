@@ -52,7 +52,7 @@ public class CsvToStudentDataMapper {
 
             InstituteStudentDetails instituteStudentDetails = new InstituteStudentDetails(
                     instituteId,
-                    getFieldValue(record, "PACKAGE_SESSION_ID"),
+                    getFieldValue(record, "PACKAGE_SESSION"),
                     getFieldValue(record, "ENROLLMENT_NUMBER"),
                     getFieldValue(record, "ENROLLMENT_STATUS"),
                     parseDate(getFieldValue(record, "ENROLLMENT_DATE")),

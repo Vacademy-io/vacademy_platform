@@ -125,7 +125,7 @@ public class UserService {
         List<User> results = userRepository.findUserDetailsByUsername(username);
 
         if (results.isEmpty()) {
-            throw new UserNotFoundException("User with Name " + username + " not found");
+            return null;
         }
 
         User user = results.get(0);

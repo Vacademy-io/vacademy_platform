@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.student.constants.StudentConstants;
 import vacademy.io.admin_core_service.features.student.dto.InstituteStudentDTO;
 import vacademy.io.admin_core_service.features.student.dto.InstituteStudentDetails;
@@ -18,6 +19,7 @@ import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
 import vacademy.io.common.core.utils.DataToCsvConverter;
+import vacademy.io.common.core.utils.PasswordGenerator;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.*;
@@ -60,8 +62,15 @@ public class StudentRegistrationManager {
 
     private Student checkAndCreateStudent(InstituteStudentDTO instituteStudentDTO) {
         instituteStudentDTO.getUserDetails().setRoles(getStudentRoles());
+        setRandomPasswordIfNull(instituteStudentDTO.getUserDetails());
         UserDTO createdUser = createUserFromAuthService(instituteStudentDTO);
         return createStudentFromRequest(createdUser, instituteStudentDTO.getStudentExtraDetails());
+    }
+
+    private void setRandomPasswordIfNull(UserDTO userDTO) {
+        if (!StringUtils.hasText(userDTO.getPassword())) {
+            userDTO.setPassword(PasswordGenerator.generatePassword(6));
+        }
     }
 
     private Student createStudentFromRequest(UserDTO userDTO, StudentExtraDetails studentExtraDetails) {

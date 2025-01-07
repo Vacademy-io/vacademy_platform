@@ -1,5 +1,6 @@
 package vacademy.io.assessment_service.features.assessment.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Data;
 import org.hibernate.annotations.UuidGenerator;
@@ -27,6 +28,7 @@ public class AssessmentCustomField {
 
     @ManyToOne
     @JoinColumn(name = "assessment_id")
+    @JsonIgnore
     private Assessment assessment;
 
     @Column(name = "is_mandatory", nullable = false)

@@ -2,6 +2,7 @@ package vacademy.io.assessment_service.features.assessment.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
+import lombok.experimental.FieldNameConstants;
 import org.hibernate.annotations.UuidGenerator;
 import vacademy.io.assessment_service.features.rich_text.entity.AssessmentRichTextData;
 
@@ -11,7 +12,8 @@ import java.util.List;
 @Entity
 @Table(name = "assessment")
 @Builder
-@Data
+@Getter
+@Setter
 @EqualsAndHashCode(of = "id")
 @NoArgsConstructor
 @AllArgsConstructor
@@ -87,7 +89,10 @@ public class Assessment {
     private List<Section> sections;
     
     @OneToMany(mappedBy = "assessment", fetch = FetchType.LAZY)
-    private List<AssessmentRegistration> registrations;
+    private List<AssessmentUserRegistration> userRegistrations;
+
+    @OneToMany(mappedBy = "assessment", fetch = FetchType.LAZY)
+    private List<AssessmentBatchRegistration> batchRegistrations;
 
     @OneToMany(mappedBy = "assessment")
     private List<AssessmentCustomField> assessmentCustomFields;

@@ -9,10 +9,10 @@ import java.util.Date;
 import java.util.List;
 
 @Entity
-@Table(name = "assessment_registration")
+@Table(name = "assessment_batch_registration")
 @Data
 @EqualsAndHashCode(of = "id")
-public class AssessmentRegistration {
+public class AssessmentBatchRegistration {
 
     @Id
     @UuidGenerator
@@ -24,28 +24,16 @@ public class AssessmentRegistration {
     private Assessment assessment;
 
     @Column(name = "user_id", nullable = false)
-    private Integer userId;
+    private String userId;
 
-    @Column(name = "user_name", nullable = false)
-    private String userName;
-
-    @Column(name = "user_email", nullable = false)
-    private String userEmail;
-
-    @Column(name = "username", nullable = false)
-    private String username;
-
-    @Column(name = "phone_number", nullable = false)
-    private String phoneNumber;
+    @Column(name = "institute_id", nullable = false)
+    private String instituteId;
 
     @Column(name = "registration_time", nullable = false)
     private Date registrationTime;
 
     @Column(name = "status", nullable = false)
     private String status;
-
-    @OneToMany(mappedBy = "assessmentRegistration")
-    private List<AssessmentRegistrationCustomFieldResponse> assessmentRegistrationCustomFieldResponseList;
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;

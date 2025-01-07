@@ -9,19 +9,14 @@ import vacademy.io.assessment_service.features.question_core.entity.Question;
 import java.util.Date;
 
 @Entity
-@Table(name = "question_assessment_section_mapping")
+@Table(name = "assessment_section_mapping")
 @Data
-@EqualsAndHashCode(of = {"question", "assessment", "section"})
-public class QuestionAssessmentSectionMapping {
+public class AssessmentSectionMapping {
 
     @Id
     @UuidGenerator
     @Column(name = "id")
     private String id;
-
-    @ManyToOne
-    @JoinColumn(name = "question_id")
-    private Question question;
 
     @ManyToOne
     @JoinColumn(name = "assessment_id")
@@ -30,18 +25,15 @@ public class QuestionAssessmentSectionMapping {
     @Column(name = "marking_json", nullable = false)
     private String markingJson;
 
-    @Column(name = "status", nullable = false)
-    private String status;
-
-    @ManyToOne(cascade = CascadeType.ALL)
+    @ManyToOne
     @JoinColumn(name = "section_id")
     private Section section;
     
-    @Column(name = "question_order", nullable = false)
+    @Column(name = "section_order", nullable = false)
     private Integer questionOrder;
 
-    @Column(name = "question_duration_in_min", nullable = false)
-    private Integer questionDurationInMin;
+    @Column(name = "duration_in_min", nullable = false)
+    private Integer durationInMin;
     
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;

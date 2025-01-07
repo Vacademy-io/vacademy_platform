@@ -3,6 +3,7 @@ package vacademy.io.assessment_service.features.assessment.entity;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.FieldNameConstants;
+import org.hibernate.annotations.Filter;
 import org.hibernate.annotations.UuidGenerator;
 import vacademy.io.assessment_service.features.rich_text.entity.AssessmentRichTextData;
 
@@ -86,6 +87,7 @@ public class Assessment {
     private Date boundEndTime;
     
     @OneToMany(mappedBy = "assessment")
+    @Filter(name = "activeSections")
     private List<Section> sections;
     
     @OneToMany(mappedBy = "assessment", fetch = FetchType.LAZY)
@@ -96,6 +98,7 @@ public class Assessment {
 
     @OneToMany(mappedBy = "assessment")
     private List<AssessmentCustomField> assessmentCustomFields;
+
     
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;

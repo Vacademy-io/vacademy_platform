@@ -21,5 +21,4 @@ public class AddQuestionsAssessmentDetailsDTO {
     private List<SectionAddEditRequestDto> addedSections = new ArrayList<>();
     private List<SectionAddEditRequestDto> updatedSections = new ArrayList<>();
     private List<SectionAddEditRequestDto> deletedSections = new ArrayList<>();
-
 }

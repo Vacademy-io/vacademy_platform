@@ -40,13 +40,8 @@ public class AddQuestionPaperFromImportManager {
 
     @Autowired
     QuestionPaperRepository questionPaperRepository;
-
     @Autowired
     QuestionEvaluationService questionEvaluationService;
-
-    @Autowired
-    AssessmentRichTextRepository assessmentRichTextRepository;
-
     
     @Transactional
     public AddedQuestionPaperResponseDto addQuestionPaper(CustomUserDetails user, AddQuestionPaperDTO questionRequestBody) throws JsonProcessingException {

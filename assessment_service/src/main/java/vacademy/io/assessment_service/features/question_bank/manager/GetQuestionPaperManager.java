@@ -24,18 +24,9 @@ import static vacademy.io.common.core.standard_classes.ListService.createSortObj
 @Component
 public class GetQuestionPaperManager {
 
-    @Autowired
-    QuestionRepository questionRepository;
 
     @Autowired
     QuestionPaperRepository questionPaperRepository;
-
-    @Autowired
-    QuestionEvaluationService questionEvaluationService;
-
-    @Autowired
-    AssessmentRichTextRepository assessmentRichTextRepository;
-
 
     public AllQuestionPaperResponse getQuestionPapers(CustomUserDetails user, QuestionPaperFilter questionPaperFilter, String instituteId, int pageNo, int pageSize) {
         // Create a sorting object based on the provided sort columns

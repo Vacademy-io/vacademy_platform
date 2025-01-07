@@ -42,7 +42,7 @@ public class AdminAssessmentDto {
     private Integer coverFileId;
     private Date boundStartTime;
     private Date boundEndTime;
-    private List<Section> sections;
+    private List<SectionDto> sections;
     private Integer userRegistrations;
     private List<AssessmentCustomField> assessmentCustomFields;
     private Date createdAt;

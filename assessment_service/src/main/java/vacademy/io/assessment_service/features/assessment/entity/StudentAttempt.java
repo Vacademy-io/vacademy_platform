@@ -21,7 +21,7 @@ public class StudentAttempt {
 
     @ManyToOne
     @JoinColumn(name = "registration_id")
-    private AssessmentRegistration registration;
+    private AssessmentUserRegistration registration;
     
     @Column(name = "attempt_number", nullable = false)
     private Integer attemptNumber;

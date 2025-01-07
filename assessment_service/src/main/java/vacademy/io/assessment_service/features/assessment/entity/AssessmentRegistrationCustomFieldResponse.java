@@ -22,7 +22,7 @@ public class AssessmentRegistrationCustomFieldResponse {
 
     @ManyToOne
     @JoinColumn(name = "assessment_registration_id")
-    private AssessmentRegistration assessmentRegistration;
+    private AssessmentUserRegistration assessmentUserRegistration;
 
     @Column(name = "answer")
     private String answer;

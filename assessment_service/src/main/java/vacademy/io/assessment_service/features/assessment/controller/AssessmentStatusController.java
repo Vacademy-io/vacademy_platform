@@ -16,7 +16,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/assessment-service/assessment/create/v1")
-public class AssessmentCreationController {
+public class AssessmentStatusController {
 
     @Autowired
     AssessmentAccessDetail assessmentAccessDetail;

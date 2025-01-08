@@ -26,6 +26,9 @@ public class AssessmentCustomField {
     @Column(name = "comma_separated_options", nullable = true)
     private String commaSeparatedOptions;
 
+    @Column(name = "status", nullable = true)
+    private String status;
+
     @ManyToOne
     @JoinColumn(name = "assessment_id")
     @JsonIgnore

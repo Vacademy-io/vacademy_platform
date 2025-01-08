@@ -20,6 +20,7 @@ import vacademy.io.assessment_service.features.question_core.enums.EvaluationTyp
 import vacademy.io.assessment_service.features.rich_text.entity.AssessmentRichTextData;
 import vacademy.io.assessment_service.features.rich_text.enums.TextType;
 import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.core.utils.RandomGenerator;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.Map;
@@ -73,6 +74,7 @@ public class AssessmentBasicDetailsManager {
         Assessment assessment = new Assessment();
         AssessmentInstituteMapping assessmentInstituteMapping = new AssessmentInstituteMapping();
         assessmentInstituteMapping.setInstituteId(instituteId);
+        assessmentInstituteMapping.setAssessmentUrl(RandomGenerator.generateNumber(6));
         assessment.setStatus(AssessmentStatus.DRAFT.name());
         assessment.setPlayMode(type);
         assessment.setAssessmentVisibility(AssessmentVisibility.PRIVATE.name());

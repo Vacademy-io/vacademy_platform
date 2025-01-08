@@ -3,6 +3,7 @@ package vacademy.io.assessment_service.features.assessment.entity;
 
 import jakarta.persistence.*;
 import lombok.Data;
+import org.hibernate.annotations.UuidGenerator;
 
 import java.sql.Timestamp;
 
@@ -13,6 +14,7 @@ public class AssessmentInstituteMapping {
 
     @Id
     @Column(name = "id", nullable = false, length = 255)
+    @UuidGenerator
     private String id;
 
     @ManyToOne(cascade = CascadeType.ALL)
@@ -21,6 +23,9 @@ public class AssessmentInstituteMapping {
 
     @Column(name = "institute_id", nullable = false, length = 255)
     private String instituteId;
+
+    @Column(name = "assessment_url", nullable = false, length = 255)
+    private String assessmentUrl;
 
     @Column(name = "comma_separated_creation_roles", length = 255)
     private String commaSeparatedCreationRoles;

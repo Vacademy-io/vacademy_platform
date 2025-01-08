@@ -7,7 +7,9 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import vacademy.io.assessment_service.features.assessment.dto.RegistrationFieldDto;
+import vacademy.io.common.student.dto.BasicParticipantDTO;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Data
@@ -18,9 +20,11 @@ import java.util.List;
 public class AssessmentRegistrationsDto {
     private boolean closedTest;
     private OpenTestDetails openTestDetails;
-    private List<String> preRegisterBatchesDetails;
-    private List<StudentDetails> preRegisterStudentsDetails;
-    private String joinLink;
+    private List<String> addedPreRegisterBatchesDetails = new ArrayList<>();
+    private List<String> deletedPreRegisterBatchesDetails = new ArrayList<>();
+    private List<BasicParticipantDTO> addedPreRegisterStudentsDetails = new ArrayList<>();
+    private List<BasicParticipantDTO> deletedPreRegisterStudentsDetails = new ArrayList<>();
+    private String updatedJoinLink;
     private NotifyStudent notifyStudent;
     private NotifyParent notifyParent;
 
@@ -30,7 +34,6 @@ public class AssessmentRegistrationsDto {
     @AllArgsConstructor
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public static class OpenTestDetails {
-        private boolean checked;
         private String registrationStartDate;
         private String registrationEndDate;
         private String instructionsHtml;
@@ -42,35 +45,11 @@ public class AssessmentRegistrationsDto {
         @AllArgsConstructor
         @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
         public static class RegistrationFormDetails {
-            private String name;
-            private String email;
-            private String phone;
-            private List<RegistrationFieldDto> customAddedFields;
+            private List<RegistrationFieldDto> addedCustomAddedFields = new ArrayList<>();
+            private List<RegistrationFieldDto> removedCustomAddedFields = new ArrayList<>();
         }
 
-        // Getters and Setters
     }
-
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public static class SelectBatch {
-        private boolean checked;
-        private List<String> batchDetails;
-    }
-
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public static class StudentDetails {
-        private String userId;
-        private String batchId;
-    }
-
     @Data
     @Builder
     @NoArgsConstructor

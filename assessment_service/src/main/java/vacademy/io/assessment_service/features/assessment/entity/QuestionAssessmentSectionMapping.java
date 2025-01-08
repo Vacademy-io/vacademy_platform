@@ -11,7 +11,7 @@ import java.util.Date;
 @Entity
 @Table(name = "question_assessment_section_mapping")
 @Data
-@EqualsAndHashCode(of = {"question", "assessment", "section"})
+@EqualsAndHashCode(of = {"question", "assessment", "bulk_entry_services"})
 public class QuestionAssessmentSectionMapping {
 
     @Id

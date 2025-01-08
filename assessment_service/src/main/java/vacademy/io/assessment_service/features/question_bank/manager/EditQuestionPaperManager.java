@@ -3,10 +3,8 @@ package vacademy.io.assessment_service.features.question_bank.manager;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
-import vacademy.io.assessment_service.features.evaluation.service.QuestionEvaluationService;
 import vacademy.io.assessment_service.features.question_bank.dto.UpdateQuestionPaperStatus;
 import vacademy.io.assessment_service.features.question_bank.repository.QuestionPaperRepository;
-import vacademy.io.assessment_service.features.question_core.repository.QuestionRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 @Component

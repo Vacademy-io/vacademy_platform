@@ -55,13 +55,13 @@ public class AssessmentLinkQuestionsManager {
 
         for (SectionAddEditRequestDto sectionAddEditRequestDto : addQuestionsAssessmentDetailsDTO.getUpdatedSections()) {
             Optional<Section> thisSection = assessmentOptional.get().getSections().stream().filter((s) -> s.getId().equals(sectionAddEditRequestDto.getSectionId())).findFirst();
-            if(thisSection.isEmpty()) continue;
+            if (thisSection.isEmpty()) continue;
             updateSectionForAssessment(thisSection.get(), sectionAddEditRequestDto, assessmentId, instituteId, type);
         }
 
         for (SectionAddEditRequestDto sectionAddEditRequestDto : addQuestionsAssessmentDetailsDTO.getDeletedSections()) {
             Optional<Section> thisSection = assessmentOptional.get().getSections().stream().filter((s) -> s.getId().equals(sectionAddEditRequestDto.getSectionId())).findFirst();
-            if(thisSection.isEmpty()) continue;
+            if (thisSection.isEmpty()) continue;
             deleteSectionForAssessment(thisSection.get(), sectionAddEditRequestDto, assessmentId, instituteId, type);
         }
 

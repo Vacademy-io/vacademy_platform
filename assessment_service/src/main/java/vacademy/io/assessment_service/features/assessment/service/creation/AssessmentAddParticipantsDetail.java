@@ -2,7 +2,7 @@ package vacademy.io.assessment_service.features.assessment.service.creation;
 
 import org.springframework.stereotype.Component;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
-import vacademy.io.assessment_service.features.assessment.enums.*;
+import vacademy.io.assessment_service.features.assessment.enums.StepStatus;
 import vacademy.io.assessment_service.features.assessment.enums.creationSteps.ParticipantsCreationEnum;
 import vacademy.io.assessment_service.features.assessment.enums.creationSteps.QuestionCreationEnum;
 import vacademy.io.assessment_service.features.assessment.service.IStep;
@@ -84,7 +84,8 @@ public class AssessmentAddParticipantsDetail extends IStep {
                 Map.of(ParticipantsCreationEnum.NOTIFY_PARTICIPANTS.name().toLowerCase(), "REQUIRED"),
                 Map.of(ParticipantsCreationEnum.NOTIFY_PARENTS.name().toLowerCase(), "REQUIRED")
 
-        ); }
+        );
+    }
 
     private List<Map<String, String>> getStepsForSurvey() {
         // Todo: get steps based on saved assessment

@@ -3,16 +3,13 @@ package vacademy.io.admin_core_service.features.student.service;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVPrinter;
 import org.apache.commons.csv.CSVRecord;
-
 import vacademy.io.admin_core_service.features.student.dto.InstituteStudentDTO;
 
 import java.io.IOException;
-import java.io.PrintWriter;
 import java.io.Writer;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
-import java.util.ArrayList;
 import java.util.List;
 
 public class StudentDataToCsvWriter {

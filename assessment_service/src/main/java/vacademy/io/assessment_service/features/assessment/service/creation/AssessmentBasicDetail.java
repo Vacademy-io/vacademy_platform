@@ -2,9 +2,9 @@ package vacademy.io.assessment_service.features.assessment.service.creation;
 
 import org.springframework.stereotype.Component;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
-import vacademy.io.assessment_service.features.assessment.enums.creationSteps.AssessmentCreationEnum;
 import vacademy.io.assessment_service.features.assessment.enums.DurationDistributionEnum;
 import vacademy.io.assessment_service.features.assessment.enums.StepStatus;
+import vacademy.io.assessment_service.features.assessment.enums.creationSteps.AssessmentCreationEnum;
 import vacademy.io.assessment_service.features.assessment.service.IStep;
 import vacademy.io.assessment_service.features.assessment.service.StepOption;
 

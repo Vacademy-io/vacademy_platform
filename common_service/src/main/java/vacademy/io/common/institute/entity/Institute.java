@@ -1,9 +1,11 @@
 package vacademy.io.common.institute.entity;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 import lombok.*;
 import org.hibernate.annotations.UuidGenerator;
-import vacademy.io.common.institute.dto.InstituteInfoDTO;
 
 import java.sql.Timestamp;
 import java.util.Date;
@@ -59,7 +61,7 @@ public class Institute {
     private Timestamp foundedData;
 
     @Column(name = "country")
-    private  String country;
+    private String country;
 
     @Column(name = "state")
     private String state;

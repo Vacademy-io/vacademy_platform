@@ -82,22 +82,22 @@ public class AssessmentParticipantsManager {
     }
 
     private void handleOpenRegistration(AssessmentRegistrationsDto.OpenTestDetails openTestDetails, Assessment assessment) {
-        if(ObjectUtils.isEmpty(openTestDetails)) return;
+        if (ObjectUtils.isEmpty(openTestDetails)) return;
 
-        if(!ObjectUtils.isEmpty(openTestDetails.getRegistrationStartDate())){
+        if (!ObjectUtils.isEmpty(openTestDetails.getRegistrationStartDate())) {
             assessment.setRegistrationOpenDate(DateUtil.convertStringToUTCDate(openTestDetails.getRegistrationStartDate()));
         }
 
-        if(!ObjectUtils.isEmpty(openTestDetails.getRegistrationEndDate())){
+        if (!ObjectUtils.isEmpty(openTestDetails.getRegistrationEndDate())) {
             assessment.setRegistrationCloseDate(DateUtil.convertStringToUTCDate(openTestDetails.getRegistrationEndDate()));
         }
 
-        if(!ObjectUtils.isEmpty(openTestDetails.getInstructionsHtml())) {
+        if (!ObjectUtils.isEmpty(openTestDetails.getInstructionsHtml())) {
             assessment.setInstructions(new AssessmentRichTextData(null, TextType.HTML.name(), openTestDetails.getInstructionsHtml()));
             assessmentRepository.save(assessment);
         }
 
-        if(!ObjectUtils.isEmpty(openTestDetails.getRegistrationFormDetails())) {
+        if (!ObjectUtils.isEmpty(openTestDetails.getRegistrationFormDetails())) {
             addCustomRegistrationFieldsToAsessment(openTestDetails, assessment);
             removeAddedFieldsIfAny(openTestDetails, assessment);
         }
@@ -106,7 +106,7 @@ public class AssessmentParticipantsManager {
 
     private void removeAddedFieldsIfAny(AssessmentRegistrationsDto.OpenTestDetails openTestDetails, Assessment assessment) {
         List<String> deletedFieldKeys = openTestDetails.getRegistrationFormDetails().getRemovedCustomAddedFields().stream().map(RegistrationFieldDto::getKey).toList();
-        if(!deletedFieldKeys.isEmpty()) {
+        if (!deletedFieldKeys.isEmpty()) {
             assessmentCustomFieldRepository.softDeleteByAssessmentIdAndFieldKeys(assessment.getId(), deletedFieldKeys);
         }
     }

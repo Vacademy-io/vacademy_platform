@@ -11,7 +11,7 @@ import java.util.Date;
 @Table(name = "assessment_custom_fields")
 @Data
 public class AssessmentCustomField {
-    
+
     @Id
     @UuidGenerator
     @Column(name = "id")
@@ -36,13 +36,13 @@ public class AssessmentCustomField {
 
     @Column(name = "is_mandatory", nullable = false)
     private Boolean isMandatory;
-    
+
     @Column(name = "field_type", nullable = false)
     private String fieldType; // e.g. short_string, number, input_string
-    
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;
-    
+
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Date updatedAt;
 }

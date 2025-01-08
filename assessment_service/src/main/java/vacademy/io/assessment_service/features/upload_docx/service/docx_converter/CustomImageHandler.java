@@ -4,7 +4,6 @@ import org.apache.batik.transcoder.TranscoderException;
 import org.apache.batik.transcoder.TranscoderInput;
 import org.apache.batik.transcoder.TranscoderOutput;
 import org.apache.batik.transcoder.wmf.tosvg.WMFTranscoder;
-import org.docx4j.dml.CTBlip;
 import org.docx4j.model.images.AbstractWordXmlPicture;
 import org.docx4j.model.images.ConversionImageHandler;
 import org.docx4j.openpackaging.exceptions.Docx4JException;
@@ -15,7 +14,6 @@ import org.docx4j.relationships.Relationship;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.OutputStream;
 import java.util.Base64;
 
 // Custom Image Handler Class

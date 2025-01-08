@@ -1,10 +1,10 @@
 package vacademy.io.common.db_logging.service;
 
 
-import vacademy.io.common.db_logging.entity.SystemAlertLog;
-import vacademy.io.common.db_logging.repository.SystemAlertLogRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import vacademy.io.common.db_logging.entity.SystemAlertLog;
+import vacademy.io.common.db_logging.repository.SystemAlertLogRepository;
 
 @Service
 public class SystemAlertLogService {
@@ -12,7 +12,7 @@ public class SystemAlertLogService {
     SystemAlertLogRepository repository;
 
     public void createNewSystemAlert(String title, String description, String level, String userId, String siteId) {
-        try{
+        try {
             SystemAlertLog log = new SystemAlertLog();
             log.setUserId(userId);
             log.setSubject(title);
@@ -20,7 +20,7 @@ public class SystemAlertLogService {
             log.setMessage(description);
             log.setLevel(level);
             repository.save(log);
+        } catch (Exception e) {
         }
-        catch (Exception e) {  }
     }
 }

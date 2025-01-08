@@ -14,6 +14,6 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
             nativeQuery = true)
     Optional<Assessment> findByAssessmentIdAndInstituteId(
             @Param("assessmentId") String assessmentId,
-             @Param("instituteId") String instituteId);
+            @Param("instituteId") String instituteId);
 
 }

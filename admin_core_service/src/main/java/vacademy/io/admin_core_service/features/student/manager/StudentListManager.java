@@ -13,7 +13,6 @@ import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.student.dto.StudentDTO;
 import vacademy.io.admin_core_service.features.student.dto.student_list_dto.AllStudentResponse;
 import vacademy.io.admin_core_service.features.student.dto.student_list_dto.StudentListFilter;
-import vacademy.io.admin_core_service.features.student.entity.Student;
 import vacademy.io.admin_core_service.features.student.repository.InstituteStudentRepository;
 import vacademy.io.admin_core_service.features.student.repository.StudentSessionRepository;
 import vacademy.io.admin_core_service.features.student.service.StudentFilterService;
@@ -22,7 +21,9 @@ import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
 import vacademy.io.common.core.standard_classes.ListService;
 import vacademy.io.common.core.utils.DataToCsvConverter;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
 
 @Component
 public class StudentListManager {

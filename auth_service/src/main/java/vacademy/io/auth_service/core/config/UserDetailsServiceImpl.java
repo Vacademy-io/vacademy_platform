@@ -33,7 +33,7 @@ public class UserDetailsServiceImpl implements UserDetailsService {
         String instituteId = null;
         String[] stringUsernameSplit = username.split("@");
 
-        if(stringUsernameSplit.length > 1) {
+        if (stringUsernameSplit.length > 1) {
             instituteId = stringUsernameSplit[0];
             usernameWithoutInstitute = stringUsernameSplit[1];
         }

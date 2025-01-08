@@ -9,6 +9,6 @@ import vacademy.io.common.auth.entity.ClientCredential;
 @Repository
 public interface ClientAuthenticationRepository extends CrudRepository<ClientCredential, String> {
 
-    @Query(value="SELECT COUNT(*) > 0 FROM client_credentials WHERE client_name = :clientName AND token = :clientToken", nativeQuery = true)
+    @Query(value = "SELECT COUNT(*) > 0 FROM client_credentials WHERE client_name = :clientName AND token = :clientToken", nativeQuery = true)
     boolean validateClient(@Param("clientName") String clientName, @Param("clientToken") String clientToken);
 }

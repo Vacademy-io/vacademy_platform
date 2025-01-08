@@ -5,7 +5,6 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.hibernate.annotations.UuidGenerator;
 import vacademy.io.assessment_service.features.rich_text.entity.AssessmentRichTextData;
 
 import java.sql.Timestamp;

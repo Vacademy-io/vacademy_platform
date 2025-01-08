@@ -4,7 +4,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.transaction.annotation.Transactional;
-import vacademy.io.assessment_service.features.assessment.entity.AssessmentBatchRegistration;
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentUserRegistration;
 
 import java.util.List;

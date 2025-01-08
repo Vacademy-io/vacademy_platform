@@ -1,8 +1,6 @@
 package vacademy.io.common.institute.entity.session;
 
 import jakarta.persistence.*;
-
-
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -11,7 +9,7 @@ import org.hibernate.annotations.UuidGenerator;
 import vacademy.io.common.institute.entity.Level;
 import vacademy.io.common.institute.entity.PackageEntity;
 
-import java.util.*;
+import java.util.Date;
 
 @AllArgsConstructor
 @NoArgsConstructor

@@ -6,7 +6,6 @@ import lombok.EqualsAndHashCode;
 import org.hibernate.annotations.UuidGenerator;
 
 import java.util.Date;
-import java.util.List;
 
 @Entity
 @Table(name = "assessment_batch_registration")

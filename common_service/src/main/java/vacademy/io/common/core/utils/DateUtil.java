@@ -52,7 +52,7 @@ public class DateUtil {
         // Store the dateTime in UTC
         ZonedDateTime utcDateTime = zonedDateTime.withZoneSameInstant(ZoneId.of("UTC"));
         // Convert ZonedDateTime to Date
-       return Date.from(utcDateTime.toInstant());
+        return Date.from(utcDateTime.toInstant());
     }
 
 }

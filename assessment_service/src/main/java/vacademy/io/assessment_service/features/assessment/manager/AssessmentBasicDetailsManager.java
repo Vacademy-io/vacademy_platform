@@ -5,7 +5,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.util.ObjectUtils;
 import org.springframework.util.StringUtils;
-import vacademy.io.assessment_service.features.assessment.dto.*;
+import vacademy.io.assessment_service.features.assessment.dto.AssessmentSaveResponseDto;
 import vacademy.io.assessment_service.features.assessment.dto.create_assessment.AddAccessAssessmentDetailsDTO;
 import vacademy.io.assessment_service.features.assessment.dto.create_assessment.AddQuestionsAssessmentDetailsDTO;
 import vacademy.io.assessment_service.features.assessment.dto.create_assessment.AssessmentRegistrationsDto;
@@ -50,7 +50,7 @@ public class AssessmentBasicDetailsManager {
     }
 
     private ResponseEntity<AssessmentSaveResponseDto> handleExistingAssessment(CustomUserDetails user, BasicAssessmentDetailsDTO basicAssessmentDetailsDTO, Assessment assessment, String instituteId, String type) {
-        if(!assessment.getPlayMode().equals(type)) throw new VacademyException("Assessment type cannot be changed");
+        if (!assessment.getPlayMode().equals(type)) throw new VacademyException("Assessment type cannot be changed");
 
         Optional.ofNullable(basicAssessmentDetailsDTO.getAssessmentPreviewTime()).ifPresent(assessment::setPreviewTime);
         Optional.ofNullable(basicAssessmentDetailsDTO.getSwitchSections()).ifPresent(assessment::setCanSwitchSection);
@@ -135,7 +135,7 @@ public class AssessmentBasicDetailsManager {
             throw new VacademyException("Assessment Id cannot be empty");
         Optional<Assessment> assessmentOptional = assessmentRepository.findByAssessmentIdAndInstituteId(assessmentId, instituteId);
         if (assessmentOptional.isEmpty())
-           throw new VacademyException("Assessment not found");
+            throw new VacademyException("Assessment not found");
 
         // Todo: Verify Assessment Details based on type
         assessmentOptional.get().setStatus(AssessmentStatus.PUBLISHED.name());

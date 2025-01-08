@@ -7,10 +7,7 @@ import org.springframework.web.bind.annotation.*;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.AdminAssessmentFilter;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.AllAdminAssessmentResponse;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.AssessmentAdminListInitDto;
-import vacademy.io.assessment_service.features.assessment.dto.create_assessment.AssessmentRegistrationsDto;
-import vacademy.io.assessment_service.features.assessment.dto.AssessmentSaveResponseDto;
 import vacademy.io.assessment_service.features.assessment.manager.AdminAssessmentGetManager;
-import vacademy.io.assessment_service.features.assessment.manager.AssessmentBasicDetailsManager;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 @RestController
@@ -29,7 +26,7 @@ public class AdminAssessmentGetController {
     @PostMapping("/assessment-admin-list-filter")
     public ResponseEntity<AllAdminAssessmentResponse> assessmentAdminListFilter(@RequestAttribute("user") CustomUserDetails user,
                                                                                 @RequestBody AdminAssessmentFilter adminAssessmentFilter,
-                                                                              @RequestParam(name = "instituteId", required = false) String instituteId) {
+                                                                                @RequestParam(name = "instituteId", required = false) String instituteId) {
         return adminAssessmentGetManager.assessmentAdminListFilter(user, adminAssessmentFilter, instituteId);
     }
 }

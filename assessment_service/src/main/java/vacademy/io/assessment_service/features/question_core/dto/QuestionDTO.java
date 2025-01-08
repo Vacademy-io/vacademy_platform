@@ -5,7 +5,6 @@ import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
-import lombok.NoArgsConstructor;
 import lombok.Setter;
 import vacademy.io.assessment_service.features.evaluation.service.EvaluationJsonToMapConverter;
 import vacademy.io.assessment_service.features.question_core.entity.Option;

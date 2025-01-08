@@ -77,7 +77,8 @@ public class Question {
         this.textData = AssessmentRichTextData.fromDTO(questionDTO.getText());
         this.explanationTextData = AssessmentRichTextData.fromDTO(questionDTO.getExplanationText());
     }
-    public Question(String id){
+
+    public Question(String id) {
         this.id = id;
     }
 }

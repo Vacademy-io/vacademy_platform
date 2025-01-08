@@ -11,15 +11,13 @@ import vacademy.io.admin_core_service.features.student.constants.StudentConstant
 import vacademy.io.admin_core_service.features.student.dto.InstituteStudentDTO;
 import vacademy.io.admin_core_service.features.student.dto.InstituteStudentDetails;
 import vacademy.io.admin_core_service.features.student.dto.StudentExtraDetails;
-import vacademy.io.admin_core_service.features.student.dto.student_list_dto.StudentListFilter;
 import vacademy.io.admin_core_service.features.student.entity.Student;
 import vacademy.io.admin_core_service.features.student.repository.InstituteStudentRepository;
 import vacademy.io.admin_core_service.features.student.repository.StudentSessionRepository;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
-import vacademy.io.common.core.utils.DataToCsvConverter;
-import vacademy.io.common.core.utils.PasswordGenerator;
+import vacademy.io.common.core.utils.RandomGenerator;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.*;
@@ -69,7 +67,7 @@ public class StudentRegistrationManager {
 
     private void setRandomPasswordIfNull(UserDTO userDTO) {
         if (!StringUtils.hasText(userDTO.getPassword())) {
-            userDTO.setPassword(PasswordGenerator.generatePassword(6));
+            userDTO.setPassword(RandomGenerator.generatePassword(6));
         }
     }
 

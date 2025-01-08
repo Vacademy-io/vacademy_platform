@@ -26,7 +26,7 @@ public class SectionDto {
     private AssessmentRichTextDataDTO description;
     private String sectionType;
     private Integer duration;
-    private Integer totalMarks;
+    private Double totalMarks;
     private Integer sectionOrder;
     private Date createdAt;
     private Date updatedAt;
@@ -34,7 +34,7 @@ public class SectionDto {
     public SectionDto(Section section) {
         this.id = section.getId();
         this.name = section.getName();
-        this.description = section.getDescriptionId() == null ? null : section.getDescriptionId().toDTO();
+        this.description = section.getDescription() == null ? null : section.getDescription().toDTO();
         this.sectionType = section.getSectionType();
         this.duration = section.getDuration();
         this.totalMarks = section.getTotalMarks();

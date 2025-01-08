@@ -29,13 +29,28 @@ public class AssessmentUserRegistration {
     private Assessment assessment;
 
     @Column(name = "user_id", nullable = false)
-    private Integer userId;
+    private String userId;
+
+    @Column(name = "institute_id", nullable = false)
+    private String instituteId;
 
     @Column(name = "user_email", nullable = false)
     private String userEmail;
 
     @Column(name = "username", nullable = false)
     private String username;
+
+    @Column(name = "participant_name", nullable = false)
+    private String participantName;
+
+    @Column(name = "face_file_id", nullable = false)
+    private String faceFileId;
+
+    @Column(name = "source", nullable = false)
+    private String source;
+
+    @Column(name = "source_id", nullable = false)
+    private String sourceId;
 
     @Column(name = "phone_number", nullable = false)
     private String phoneNumber;

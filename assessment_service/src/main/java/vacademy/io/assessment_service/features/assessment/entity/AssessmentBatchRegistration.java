@@ -23,8 +23,8 @@ public class AssessmentBatchRegistration {
     @JoinColumn(name = "assessment_id")
     private Assessment assessment;
 
-    @Column(name = "user_id", nullable = false)
-    private String userId;
+    @Column(name = "batch_id", nullable = false)
+    private String batchId;
 
     @Column(name = "institute_id", nullable = false)
     private String instituteId;

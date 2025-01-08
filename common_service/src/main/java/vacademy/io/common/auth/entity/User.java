@@ -1,15 +1,13 @@
 package vacademy.io.common.auth.entity;
 
 
-
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.UuidGenerator;
-import vacademy.io.common.auth.enums.Gender;
 
 import java.sql.Timestamp;
-import java.time.LocalDate;
-import java.util.*;
+import java.util.Date;
+import java.util.Set;
 
 
 @Getter

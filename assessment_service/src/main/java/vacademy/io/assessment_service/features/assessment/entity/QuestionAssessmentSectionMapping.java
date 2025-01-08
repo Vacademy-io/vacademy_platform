@@ -36,16 +36,16 @@ public class QuestionAssessmentSectionMapping {
     @ManyToOne(cascade = CascadeType.ALL)
     @JoinColumn(name = "section_id")
     private Section section;
-    
+
     @Column(name = "question_order", nullable = false)
     private Integer questionOrder;
 
     @Column(name = "question_duration_in_min", nullable = false)
     private Integer questionDurationInMin;
-    
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;
-    
+
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Date updatedAt;
 }

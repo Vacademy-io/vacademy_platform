@@ -4,12 +4,6 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import vacademy.io.common.auth.entity.UserActivity;
-import vacademy.io.common.auth.model.CustomUserDetails;
-import vacademy.io.common.auth.repository.UserActivityRepository;
-import vacademy.io.common.auth.service.JwtService;
-import vacademy.io.common.exceptions.ExpiredTokenException;
-import vacademy.io.common.exceptions.InvalidTokenException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -19,6 +13,12 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+import vacademy.io.common.auth.entity.UserActivity;
+import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.auth.repository.UserActivityRepository;
+import vacademy.io.common.auth.service.JwtService;
+import vacademy.io.common.exceptions.ExpiredTokenException;
+import vacademy.io.common.exceptions.InvalidTokenException;
 
 import java.io.IOException;
 
@@ -101,8 +101,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             userActivity.setRoute(route);
             userActivity.setClientIp(clientIp);
             userActivityRepository.save(userActivity);
-        }
-        catch (Exception e) {
+        } catch (Exception e) {
             log.error(e.getMessage());
         }
     }

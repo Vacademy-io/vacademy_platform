@@ -8,6 +8,6 @@ spec:
     app: auth-service
   ports:
     - name: http
-      port: {{ .Values.services.auth_service.port }}
-      targetPort: {{ .Values.services.auth_service.port }}
+      port: { { .Values.services.auth_service.port } }
+      targetPort: { { .Values.services.auth_service.port } }
   type: NodePort

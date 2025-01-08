@@ -1,8 +1,8 @@
 package vacademy.io.media_service.repository;
 
-import vacademy.io.media_service.entity.FileMetadata;
 import org.springframework.data.repository.CrudRepository;
 import org.springframework.stereotype.Repository;
+import vacademy.io.media_service.entity.FileMetadata;
 
 import java.util.Optional;
 

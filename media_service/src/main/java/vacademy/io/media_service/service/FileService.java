@@ -1,13 +1,12 @@
 package vacademy.io.media_service.service;
 
 
-import vacademy.io.common.auth.model.CustomUserDetails;
+import org.springframework.web.multipart.MultipartFile;
+import vacademy.io.common.media.dto.FileDetailsDTO;
 import vacademy.io.media_service.dto.AcknowledgeRequest;
 import vacademy.io.media_service.dto.PreSignedUrlResponse;
 import vacademy.io.media_service.exceptions.FileDownloadException;
 import vacademy.io.media_service.exceptions.FileUploadException;
-import org.springframework.web.multipart.MultipartFile;
-import vacademy.io.common.media.dto.FileDetailsDTO;
 
 import java.io.IOException;
 import java.util.List;

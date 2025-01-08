@@ -7,10 +7,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentCustomField;
-import vacademy.io.assessment_service.features.assessment.entity.AssessmentUserRegistration;
-import vacademy.io.assessment_service.features.assessment.entity.Section;
 import vacademy.io.assessment_service.features.rich_text.dto.AssessmentRichTextDataDTO;
-import vacademy.io.assessment_service.features.rich_text.entity.AssessmentRichTextData;
 
 import java.util.Date;
 import java.util.List;

@@ -50,6 +50,7 @@ public class AssessmentRegistrationsDto {
         }
 
     }
+
     @Data
     @Builder
     @NoArgsConstructor

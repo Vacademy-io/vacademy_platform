@@ -4,7 +4,8 @@ package vacademy.io.admin_core_service.features.student.manager;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.*;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.student.constants.StudentConstants;
@@ -20,7 +21,10 @@ import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
 import vacademy.io.common.core.utils.RandomGenerator;
 import vacademy.io.common.exceptions.VacademyException;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.UUID;
 
 @Component
 public class StudentRegistrationManager {

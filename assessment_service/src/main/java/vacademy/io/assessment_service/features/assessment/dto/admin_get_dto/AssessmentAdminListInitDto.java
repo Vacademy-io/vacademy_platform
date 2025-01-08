@@ -17,5 +17,5 @@ public class AssessmentAdminListInitDto {
     private List<String> assessmentAccessStatuses;
     private List<String> assessmentModeTypes;
     private List<String> evaluationTypes;
-    private Map<String,String> tagAndIds;
+    private Map<String, String> tagAndIds;
 }

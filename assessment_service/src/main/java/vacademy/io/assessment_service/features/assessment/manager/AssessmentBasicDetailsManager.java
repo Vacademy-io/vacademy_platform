@@ -57,11 +57,15 @@ public class AssessmentBasicDetailsManager {
         Optional.ofNullable(basicAssessmentDetailsDTO.getHasOmrMode()).ifPresent(assessment::setOmrMode);
         Optional.ofNullable(basicAssessmentDetailsDTO.getDefaultReattemptCount()).ifPresent(assessment::setReattemptCount);
         if (!ObjectUtils.isEmpty(basicAssessmentDetailsDTO.getSubmissionType())) {
-            assessment.setEvaluationType(EvaluationTypes.MANUAL.name());
             assessment.setSubmissionType(basicAssessmentDetailsDTO.getSubmissionType());
         } else {
-            assessment.setEvaluationType(EvaluationTypes.AUTO.name());
             assessment.setSubmissionType(EvaluationTypes.AUTO.name());
+        }
+
+        if (!ObjectUtils.isEmpty(basicAssessmentDetailsDTO.getEvaluationType())) {
+            assessment.setEvaluationType(basicAssessmentDetailsDTO.getEvaluationType());
+        } else {
+            assessment.setEvaluationType(EvaluationTypes.AUTO.name());
         }
         Optional.ofNullable(basicAssessmentDetailsDTO.getRaiseReattemptRequest()).ifPresent(assessment::setCanRequestReattempt);
         Optional.ofNullable(basicAssessmentDetailsDTO.getRaiseTimeIncreaseRequest()).ifPresent(assessment::setCanRequestTimeIncrease);

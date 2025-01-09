@@ -13,7 +13,7 @@ import vacademy.io.assessment_service.features.rich_text.entity.AssessmentRichTe
 import java.util.Date;
 
 @Entity
-@Table(name = "bulk_entry_services")
+@Table(name = "section")
 @Data
 @EqualsAndHashCode(of = "id")
 @FilterDef(name = "activeSections", parameters = @ParamDef(name = "status", type = String.class))

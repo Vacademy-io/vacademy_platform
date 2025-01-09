@@ -45,10 +45,10 @@ public class Assessment {
     @Column(name = "submission_type", nullable = false)
     private String submissionType;
 
-    @Column(name = "source", nullable = false)
+    @Column(name = "source")
     private String source;
 
-    @Column(name = "sourceId", nullable = false)
+    @Column(name = "sourceId")
     private String sourceId;
 
     @Column(name = "duration")

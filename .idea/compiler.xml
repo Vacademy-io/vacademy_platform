@@ -11,6 +11,7 @@
         <module name="auth_service" />
         <module name="media_service" />
         <module name="assessment_service" />
+        <module name="student_service" />
         <module name="admin_core_service" />
       </profile>
     </annotationProcessing>

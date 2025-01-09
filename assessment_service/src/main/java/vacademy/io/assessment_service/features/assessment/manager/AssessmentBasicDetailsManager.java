@@ -59,6 +59,9 @@ public class AssessmentBasicDetailsManager {
             assessment.setEvaluationType(EvaluationTypes.MANUAL.name());
             assessment.setSubmissionType(basicAssessmentDetailsDTO.getSubmissionType());
         }
+        else {
+            assessment.setEvaluationType(EvaluationTypes.AUTO.name());
+        }
         Optional.ofNullable(basicAssessmentDetailsDTO.getRaiseReattemptRequest()).ifPresent(assessment::setCanRequestReattempt);
         Optional.ofNullable(basicAssessmentDetailsDTO.getRaiseTimeIncreaseRequest()).ifPresent(assessment::setCanRequestTimeIncrease);
         addOrUpdateTestCreationData(assessment, null, basicAssessmentDetailsDTO.getTestCreation());
@@ -83,6 +86,10 @@ public class AssessmentBasicDetailsManager {
         if (!ObjectUtils.isEmpty(basicAssessmentDetailsDTO.getSubmissionType())) {
             assessment.setEvaluationType(EvaluationTypes.MANUAL.name());
             assessment.setSubmissionType(basicAssessmentDetailsDTO.getSubmissionType());
+        }
+        else{
+            assessment.setEvaluationType(EvaluationTypes.AUTO.name());
+            assessment.setSubmissionType(EvaluationTypes.AUTO.name());
         }
         Optional.ofNullable(basicAssessmentDetailsDTO.getRaiseReattemptRequest()).ifPresent(assessment::setCanRequestReattempt);
         Optional.ofNullable(basicAssessmentDetailsDTO.getRaiseTimeIncreaseRequest()).ifPresent(assessment::setCanRequestTimeIncrease);

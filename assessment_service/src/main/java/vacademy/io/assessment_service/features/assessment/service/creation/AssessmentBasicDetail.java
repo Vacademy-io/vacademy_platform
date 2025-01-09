@@ -40,6 +40,7 @@ public class AssessmentBasicDetail extends IStep {
         savedData.put(AssessmentCreationEnum.ADD_TIME_CONSENT.name().toLowerCase(), assessment.get().getCanRequestTimeIncrease());
         savedData.put(AssessmentCreationEnum.REATTEMPT_CONSENT.name().toLowerCase(), assessment.get().getCanRequestReattempt());
         savedData.put(AssessmentCreationEnum.SUBJECT_SELECTION.name().toLowerCase(), Pair.of(assessment.get().getSource(), assessment.get().getSourceId()));
+        setSavedData(savedData);
         updateStatusForStep();
     }
 

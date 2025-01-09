@@ -32,13 +32,13 @@ public class Section {
     @JoinColumn(name = "description_id")
     private AssessmentRichTextData description;
 
-    @Column(name = "section_type", nullable = false)
+    @Column(name = "section_type")
     private String sectionType;
 
     @Column(name = "status", nullable = false)
     private String status;
 
-    @Column(name = "cut_off_marks", nullable = false)
+    @Column(name = "cut_off_marks")
     private Double cutOffMarks;
 
     @Column(name = "problem_random_type")

@@ -18,6 +18,8 @@ public class AssessmentService {
     private AssessmentRepository assessmentRepository;
 
     public Optional<Assessment> getAssessmentWithActiveSections(String assessmentId, String instituteId) {
+        if(assessmentId == null) return Optional.empty();
+
         Session session = sessionFactory.openSession();
         session.enableFilter("activeSections").setParameter("status", "ACTIVE");
         // Fetch the assessment with active sections

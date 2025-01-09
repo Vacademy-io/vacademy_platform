@@ -1,5 +1,6 @@
 package vacademy.io.assessment_service.features.assessment.enums.creationSteps;
 
+
 public enum AssessmentCreationEnum {
 
     SUBJECT_SELECTION,
@@ -16,5 +17,10 @@ public enum AssessmentCreationEnum {
     ASSESSMENT_PREVIEW,
     ADD_TIME_CONSENT,
     REATTEMPT_CONSENT,
-    REATTEMPT_COUNT
+    NAME,
+
+    ASSESSMENT_ID,
+    ASSESSMENT_MODE,
+    INSTRUCTIONS,
+    REATTEMPT_COUNT;
 }

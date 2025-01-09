@@ -54,13 +54,15 @@ public class AssessmentBasicDetailsManager {
 
         Optional.ofNullable(basicAssessmentDetailsDTO.getAssessmentPreviewTime()).ifPresent(assessment::setPreviewTime);
         Optional.ofNullable(basicAssessmentDetailsDTO.getSwitchSections()).ifPresent(assessment::setCanSwitchSection);
-
+        Optional.ofNullable(basicAssessmentDetailsDTO.getHasOmrMode()).ifPresent(assessment::setOmrMode);
+        Optional.ofNullable(basicAssessmentDetailsDTO.getDefaultReattemptCount()).ifPresent(assessment::setReattemptCount);
         if (!ObjectUtils.isEmpty(basicAssessmentDetailsDTO.getSubmissionType())) {
             assessment.setEvaluationType(EvaluationTypes.MANUAL.name());
             assessment.setSubmissionType(basicAssessmentDetailsDTO.getSubmissionType());
         }
         else {
             assessment.setEvaluationType(EvaluationTypes.AUTO.name());
+            assessment.setSubmissionType(EvaluationTypes.AUTO.name());
         }
         Optional.ofNullable(basicAssessmentDetailsDTO.getRaiseReattemptRequest()).ifPresent(assessment::setCanRequestReattempt);
         Optional.ofNullable(basicAssessmentDetailsDTO.getRaiseTimeIncreaseRequest()).ifPresent(assessment::setCanRequestTimeIncrease);
@@ -79,6 +81,8 @@ public class AssessmentBasicDetailsManager {
         assessmentInstituteMapping.setInstituteId(instituteId);
         assessmentInstituteMapping.setAssessmentUrl(RandomGenerator.generateNumber(6));
         assessment.setStatus(AssessmentStatus.DRAFT.name());
+        Optional.ofNullable(basicAssessmentDetailsDTO.getDefaultReattemptCount()).ifPresent(assessment::setReattemptCount);
+        Optional.ofNullable(basicAssessmentDetailsDTO.getHasOmrMode()).ifPresent(assessment::setOmrMode);
         assessment.setPlayMode(type);
         assessment.setAssessmentVisibility(AssessmentVisibility.PRIVATE.name());
         Optional.ofNullable(basicAssessmentDetailsDTO.getAssessmentPreviewTime()).ifPresent(assessment::setPreviewTime);

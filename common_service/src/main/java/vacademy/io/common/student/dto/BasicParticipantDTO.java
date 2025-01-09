@@ -23,4 +23,5 @@ public class BasicParticipantDTO {
     private String fileId;
     private String guardianEmail;
     private String guardianMobileNumber;
+    private Integer reattemptCount;
 }

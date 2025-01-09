@@ -1,6 +1,7 @@
 package vacademy.io.assessment_service.features.assessment.service.assessment_get;
 
 import org.hibernate.Session;
+import org.hibernate.SessionFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
@@ -11,13 +12,13 @@ import java.util.Optional;
 @Service
 public class AssessmentService {
 
-    @Autowired
-    private Session session;
+    @Autowired private SessionFactory sessionFactory;
 
     @Autowired
     private AssessmentRepository assessmentRepository;
 
     public Optional<Assessment> getAssessmentWithActiveSections(String assessmentId, String instituteId) {
+        Session session = sessionFactory.openSession();
         session.enableFilter("activeSections").setParameter("status", "ACTIVE");
         // Fetch the assessment with active sections
         // Assuming you have a repository method to find an assessment by ID

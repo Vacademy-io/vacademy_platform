@@ -60,7 +60,7 @@ public class AssessmentUserRegistration {
     @Column(name = "status", nullable = false)
     private String status;
 
-    @OneToMany(mappedBy = "assessmentRegistration")
+    @OneToMany(mappedBy = "assessmentUserRegistration")
     private List<AssessmentRegistrationCustomFieldResponse> assessmentRegistrationCustomFieldResponseList;
 
     @Column(name = "created_at", insertable = false, updatable = false)

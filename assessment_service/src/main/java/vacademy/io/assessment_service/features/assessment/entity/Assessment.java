@@ -86,7 +86,7 @@ public class Assessment {
     private Date boundEndTime;
 
     @OneToMany(mappedBy = "assessment")
-    @Filter(name = "activeSections")
+    @Filter(name = "activeSections", condition = "active = :active")
     private List<Section> sections;
 
     @OneToMany(mappedBy = "assessment", fetch = FetchType.LAZY)

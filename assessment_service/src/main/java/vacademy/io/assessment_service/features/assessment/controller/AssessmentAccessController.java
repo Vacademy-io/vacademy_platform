@@ -10,7 +10,7 @@ import vacademy.io.assessment_service.features.assessment.manager.AssessmentBasi
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 @RestController
-@RequestMapping("/assessment-service/assessment/add-participants/create/v1")
+@RequestMapping("/assessment-service/assessment/add-access/create/v1")
 public class AssessmentAccessController {
 
     @Autowired

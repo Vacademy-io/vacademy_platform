@@ -41,7 +41,7 @@ public class AssessmentBasicDetail extends IStep {
         savedData.put(AssessmentCreationEnum.CAN_SWITCH_SECTION.name().toLowerCase(), assessment.get().getCanSwitchSection());
         savedData.put(AssessmentCreationEnum.ADD_TIME_CONSENT.name().toLowerCase(), assessment.get().getCanRequestTimeIncrease());
         savedData.put(AssessmentCreationEnum.REATTEMPT_CONSENT.name().toLowerCase(), assessment.get().getCanRequestReattempt());
-        savedData.put(AssessmentCreationEnum.SUBJECT_SELECTION.name().toLowerCase(), (assessment.get().getSource() == null) ? null : Pair.of(assessment.get().getSource(), assessment.get().getSourceId()));
+        savedData.put(AssessmentCreationEnum.SUBJECT_SELECTION.name().toLowerCase(), getSubjectIdByInstituteId(this.getInstituteId(), assessment.get()));
         setSavedData(savedData);
         updateStatusForStep();
     }
@@ -59,6 +59,11 @@ public class AssessmentBasicDetail extends IStep {
     private String getAssessmentUrlByInstituteId(String instituteId,  Assessment assessment) {
         Optional<AssessmentInstituteMapping> assessmentInstituteMapping = getAssessmentUrlByInstituteIdAndAssessmentId(instituteId, assessment);
         return assessmentInstituteMapping.map(AssessmentInstituteMapping::getAssessmentUrl).orElse(null);
+    }
+
+    private String getSubjectIdByInstituteId(String instituteId,  Assessment assessment) {
+        Optional<AssessmentInstituteMapping> assessmentInstituteMapping = getAssessmentUrlByInstituteIdAndAssessmentId(instituteId, assessment);
+        return assessmentInstituteMapping.map(AssessmentInstituteMapping::getSubjectId).orElse(null);
     }
 
     @Override

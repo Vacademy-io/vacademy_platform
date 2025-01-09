@@ -59,8 +59,7 @@ public class AssessmentBasicDetailsManager {
         if (!ObjectUtils.isEmpty(basicAssessmentDetailsDTO.getSubmissionType())) {
             assessment.setEvaluationType(EvaluationTypes.MANUAL.name());
             assessment.setSubmissionType(basicAssessmentDetailsDTO.getSubmissionType());
-        }
-        else {
+        } else {
             assessment.setEvaluationType(EvaluationTypes.AUTO.name());
             assessment.setSubmissionType(EvaluationTypes.AUTO.name());
         }
@@ -88,12 +87,15 @@ public class AssessmentBasicDetailsManager {
         Optional.ofNullable(basicAssessmentDetailsDTO.getAssessmentPreviewTime()).ifPresent(assessment::setPreviewTime);
         Optional.ofNullable(basicAssessmentDetailsDTO.getSwitchSections()).ifPresent(assessment::setCanSwitchSection);
         if (!ObjectUtils.isEmpty(basicAssessmentDetailsDTO.getSubmissionType())) {
-            assessment.setEvaluationType(EvaluationTypes.MANUAL.name());
             assessment.setSubmissionType(basicAssessmentDetailsDTO.getSubmissionType());
-        }
-        else{
-            assessment.setEvaluationType(EvaluationTypes.AUTO.name());
+        } else {
             assessment.setSubmissionType(EvaluationTypes.AUTO.name());
+        }
+
+        if (!ObjectUtils.isEmpty(basicAssessmentDetailsDTO.getEvaluationType())) {
+            assessment.setEvaluationType(basicAssessmentDetailsDTO.getEvaluationType());
+        } else {
+            assessment.setEvaluationType(EvaluationTypes.AUTO.name());
         }
         Optional.ofNullable(basicAssessmentDetailsDTO.getRaiseReattemptRequest()).ifPresent(assessment::setCanRequestReattempt);
         Optional.ofNullable(basicAssessmentDetailsDTO.getRaiseTimeIncreaseRequest()).ifPresent(assessment::setCanRequestTimeIncrease);
@@ -121,7 +123,7 @@ public class AssessmentBasicDetailsManager {
     private void addOrUpdateTestDurationData(Assessment assessment, AssessmentInstituteMapping assessmentInstituteMapping, BasicAssessmentDetailsDTO.TestDuration testDuration) {
         if (!ObjectUtils.isEmpty(testDuration)) {
             Optional.ofNullable(testDuration.getEntireTestDuration()).ifPresent(assessment::setDuration);
-            Optional.ofNullable(testDuration.getSectionWiseDuration()).ifPresent(assessment::setDurationDistribution);
+            Optional.ofNullable(testDuration.getDistributionDuration()).ifPresent(assessment::setDurationDistribution);
         }
     }
 

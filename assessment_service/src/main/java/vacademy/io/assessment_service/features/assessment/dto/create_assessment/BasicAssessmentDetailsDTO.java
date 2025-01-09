@@ -20,6 +20,7 @@ public class BasicAssessmentDetailsDTO {
     private Integer assessmentPreviewTime;
     private Boolean switchSections;
     private String submissionType;
+    private String evaluationType;
     private Boolean raiseReattemptRequest;
     private Boolean raiseTimeIncreaseRequest;
     private Boolean hasOmrMode;
@@ -54,7 +55,7 @@ public class BasicAssessmentDetailsDTO {
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public static class TestDuration {
         private Integer entireTestDuration;
-        private String sectionWiseDuration;
+        private String distributionDuration;
     }
 
 }

@@ -169,6 +169,7 @@ public class AssessmentParticipantsManager {
         assessmentParticipantRegistration.setPhoneNumber(basicParticipantDTO.getMobileNumber());
         assessmentParticipantRegistration.setFaceFileId(basicParticipantDTO.getFileId());
         assessmentParticipantRegistration.setUserEmail(basicParticipantDTO.getEmail());
+        assessmentParticipantRegistration.setReattemptCount((basicParticipantDTO.getReattemptCount() == null) ? assessment.getReattemptCount() : basicParticipantDTO.getReattemptCount());
         assessmentParticipantRegistration.setInstituteId(instituteId);
         assessmentParticipantRegistration.setStatus(ACTIVE.name());
         assessmentParticipantRegistration.setSource("ADMIN_PRE_REGISTRATION");

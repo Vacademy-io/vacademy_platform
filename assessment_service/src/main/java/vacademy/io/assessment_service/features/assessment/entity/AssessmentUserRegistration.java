@@ -45,6 +45,9 @@ public class AssessmentUserRegistration {
     @Column(name = "face_file_id", nullable = false)
     private String faceFileId;
 
+    @Column(name = "reattempt_count", nullable = false)
+    private Integer reattemptCount;
+
     @Column(name = "source", nullable = false)
     private String source;
 

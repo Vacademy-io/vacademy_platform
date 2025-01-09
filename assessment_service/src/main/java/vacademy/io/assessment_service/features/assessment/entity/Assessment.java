@@ -43,6 +43,12 @@ public class Assessment {
     @Column(name = "submission_type", nullable = false)
     private String submissionType;
 
+    @Column(name = "source", nullable = false)
+    private String source;
+
+    @Column(name = "sourceId", nullable = false)
+    private String sourceId;
+
     @Column(name = "duration")
     private Integer duration;
 
@@ -84,6 +90,12 @@ public class Assessment {
 
     @Column(name = "bound_end_time")
     private Date boundEndTime;
+
+    @Column(name = "omr_mode")
+    private Boolean omrMode;
+
+    @Column(name = "reattempt_count")
+    private Integer reattemptCount;
 
     @OneToMany(mappedBy = "assessment")
     @Filter(name = "activeSections", condition = "active = :active")

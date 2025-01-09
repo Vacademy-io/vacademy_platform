@@ -22,7 +22,10 @@ public class BasicAssessmentDetailsDTO {
     private String submissionType;
     private Boolean raiseReattemptRequest;
     private Boolean raiseTimeIncreaseRequest;
-
+    private Boolean hasOmrMode;
+    private Integer defaultReattemptCount;
+    private String source;
+    private String sourceId;
     @Data
     @Builder
     @NoArgsConstructor

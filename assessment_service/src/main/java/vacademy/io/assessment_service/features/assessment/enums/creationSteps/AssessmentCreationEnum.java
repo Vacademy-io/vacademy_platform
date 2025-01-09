@@ -4,6 +4,8 @@ package vacademy.io.assessment_service.features.assessment.enums.creationSteps;
 public enum AssessmentCreationEnum {
 
     SUBJECT_SELECTION,
+
+    ASSESSMENT_URL,
     BOUNDATION_START_DATE,
     BOUNDATION_END_DATE,
     DURATION,

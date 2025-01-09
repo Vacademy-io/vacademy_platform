@@ -139,5 +139,4 @@ public class AssessmentLinkQuestionsManager {
         return sectionRepository.save(section);
     }
 
-
 }

@@ -3,6 +3,7 @@ package vacademy.io.assessment_service.features.assessment.service.creation;
 import org.springframework.data.util.Pair;
 import org.springframework.stereotype.Component;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
+import vacademy.io.assessment_service.features.assessment.entity.AssessmentInstituteMapping;
 import vacademy.io.assessment_service.features.assessment.enums.DurationDistributionEnum;
 import vacademy.io.assessment_service.features.assessment.enums.StepStatus;
 import vacademy.io.assessment_service.features.assessment.enums.creationSteps.AssessmentCreationEnum;
@@ -23,6 +24,7 @@ public class AssessmentBasicDetail extends IStep {
         if (assessment.isEmpty()) return;
 
         Map<String, Object> savedData = new HashMap<>();
+        savedData.put(AssessmentCreationEnum.ASSESSMENT_URL.name().toLowerCase(), getAssessmentUrlByInstituteId(this.getInstituteId(), assessment.get()));
         savedData.put(AssessmentCreationEnum.ASSESSMENT_ID.name().toLowerCase(), assessment.get().getId());
         savedData.put(AssessmentCreationEnum.ASSESSMENT_MODE.name().toLowerCase(), assessment.get().getPlayMode());
         savedData.put(AssessmentCreationEnum.NAME.name().toLowerCase(), assessment.get().getName());
@@ -39,7 +41,7 @@ public class AssessmentBasicDetail extends IStep {
         savedData.put(AssessmentCreationEnum.CAN_SWITCH_SECTION.name().toLowerCase(), assessment.get().getCanSwitchSection());
         savedData.put(AssessmentCreationEnum.ADD_TIME_CONSENT.name().toLowerCase(), assessment.get().getCanRequestTimeIncrease());
         savedData.put(AssessmentCreationEnum.REATTEMPT_CONSENT.name().toLowerCase(), assessment.get().getCanRequestReattempt());
-        savedData.put(AssessmentCreationEnum.SUBJECT_SELECTION.name().toLowerCase(), Pair.of(assessment.get().getSource(), assessment.get().getSourceId()));
+        savedData.put(AssessmentCreationEnum.SUBJECT_SELECTION.name().toLowerCase(), (assessment.get().getSource() == null) ? null : Pair.of(assessment.get().getSource(), assessment.get().getSourceId()));
         setSavedData(savedData);
         updateStatusForStep();
     }
@@ -47,6 +49,16 @@ public class AssessmentBasicDetail extends IStep {
     private void updateStatusForStep() {
         Boolean isComplete = isStepComplete(getSavedData());
         setStatus(isComplete ? StepStatus.COMPLETED.name() : StepStatus.INCOMPLETE.name());
+    }
+
+    private Optional<AssessmentInstituteMapping> getAssessmentUrlByInstituteIdAndAssessmentId(String instituteId, Assessment assessment) {
+        return assessment.getAssessmentInstituteMappings().stream().filter(
+                assessmentInstituteMapping -> assessmentInstituteMapping.getAssessment().equals(assessment) && assessmentInstituteMapping.getInstituteId().equals(instituteId)).findFirst();
+    }
+
+    private String getAssessmentUrlByInstituteId(String instituteId,  Assessment assessment) {
+        Optional<AssessmentInstituteMapping> assessmentInstituteMapping = getAssessmentUrlByInstituteIdAndAssessmentId(instituteId, assessment);
+        return assessmentInstituteMapping.map(AssessmentInstituteMapping::getAssessmentUrl).orElse(null);
     }
 
     @Override
@@ -163,7 +175,7 @@ public class AssessmentBasicDetail extends IStep {
 
         for (Map<String, String> entry : getStepKeys()) {
             for (Map.Entry<String, String> stepKey : entry.entrySet()) {
-                if(stepKey.getValue().equals("OPTIONAL")) continue;
+                if (stepKey.getValue().equals("OPTIONAL")) continue;
                 if (!savedData.containsKey(stepKey.getKey())) {
                     return false;
                 }

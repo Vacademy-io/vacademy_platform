@@ -7,7 +7,9 @@ import org.hibernate.annotations.UuidGenerator;
 import vacademy.io.assessment_service.features.rich_text.entity.AssessmentRichTextData;
 
 import java.util.Date;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @Entity
 @Table(name = "assessment")
@@ -99,17 +101,19 @@ public class Assessment {
 
     @OneToMany(mappedBy = "assessment")
     @Filter(name = "activeSections", condition = "active = :active")
-    private List<Section> sections;
+    private Set<Section> sections = new HashSet<>();
 
     @OneToMany(mappedBy = "assessment", fetch = FetchType.LAZY)
-    private List<AssessmentUserRegistration> userRegistrations;
+    private Set<AssessmentUserRegistration> userRegistrations = new HashSet<>();
 
     @OneToMany(mappedBy = "assessment", fetch = FetchType.LAZY)
-    private List<AssessmentBatchRegistration> batchRegistrations;
+    private Set<AssessmentBatchRegistration> batchRegistrations = new HashSet<>();
 
-    @OneToMany(mappedBy = "assessment")
-    private List<AssessmentCustomField> assessmentCustomFields;
+    @OneToMany(mappedBy = "assessment", fetch = FetchType.LAZY)
+    private Set<AssessmentCustomField> assessmentCustomFields = new HashSet<>();
 
+    @OneToMany(mappedBy = "assessment", fetch = FetchType.LAZY)
+    private Set<AssessmentInstituteMapping> assessmentInstituteMappings = new HashSet<>();
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;

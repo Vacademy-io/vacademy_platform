@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.assessment_service.features.assessment.dto.AssessmentSaveResponseDto;
 import vacademy.io.assessment_service.features.assessment.dto.create_assessment.AddAccessAssessmentDetailsDTO;
+import vacademy.io.assessment_service.features.assessment.manager.AssessmentAccessManager;
 import vacademy.io.assessment_service.features.assessment.manager.AssessmentBasicDetailsManager;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
@@ -14,7 +15,7 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 public class AssessmentAccessController {
 
     @Autowired
-    AssessmentBasicDetailsManager assessmentBasicDetailsManager;
+    AssessmentAccessManager assessmentAccessManager;
 
     @PostMapping("/submit")
     public ResponseEntity<AssessmentSaveResponseDto> saveAccessToAssessment(@RequestAttribute("user") CustomUserDetails user,
@@ -22,6 +23,6 @@ public class AssessmentAccessController {
                                                                             @RequestParam(name = "assessmentId", required = false) String assessmentId,
                                                                             @RequestParam(name = "instituteId", required = false) String instituteId,
                                                                             @RequestParam String type) {
-        return assessmentBasicDetailsManager.saveAccessToAssessment(user, addAccessAssessmentDetailsDTO, assessmentId, instituteId, type);
+        return assessmentAccessManager.saveAccessToAssessment(user, addAccessAssessmentDetailsDTO, assessmentId, instituteId, type);
     }
 }

@@ -5,15 +5,15 @@ import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import vacademy.io.assessment_service.features.assessment.dto.BatchesAndUsersDto;
+import vacademy.io.assessment_service.features.assessment.dto.RolesBatchesAndUsersDto;
 
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class AssessmentAccessDto {
-    private BatchesAndUsersDto assessmentCreationAccess;
-    private BatchesAndUsersDto liveAssessmentNotificationAccess;
-    private BatchesAndUsersDto assessmentSubmissionAndReportAccess;
-    private BatchesAndUsersDto evaluationProcessAccess;
+    private RolesBatchesAndUsersDto assessmentCreationAccess;
+    private RolesBatchesAndUsersDto liveAssessmentNotificationAccess;
+    private RolesBatchesAndUsersDto assessmentSubmissionAndReportAccess;
+    private RolesBatchesAndUsersDto evaluationProcessAccess;
 }

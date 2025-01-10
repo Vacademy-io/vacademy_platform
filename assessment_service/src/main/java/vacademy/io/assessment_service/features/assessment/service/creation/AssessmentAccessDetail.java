@@ -2,6 +2,8 @@ package vacademy.io.assessment_service.features.assessment.service.creation;
 
 import org.springframework.data.util.Pair;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
+import vacademy.io.assessment_service.features.assessment.dto.RolesBatchesAndUsersDto;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentInstituteMapping;
 import vacademy.io.assessment_service.features.assessment.enums.StepStatus;
@@ -31,11 +33,17 @@ public class AssessmentAccessDetail extends IStep {
         Optional<AssessmentInstituteMapping> assessmentInstituteMapping = getAssessmentUrlByInstituteIdAndAssessmentId(getInstituteId(), assessment.get());
         if (assessmentInstituteMapping.isEmpty()) return;
         Map<String, Object> savedData = new HashMap<>();
-        savedData.put(AccessControlEnum.CREATION_ACCESS.name().toLowerCase(), Pair.of(assessmentInstituteMapping.get().getCommaSeparatedCreationUserIds(), assessmentInstituteMapping.get().getCommaSeparatedCreationRoles()));
-        savedData.put(AccessControlEnum.EVALUATION_ACCESS.name().toLowerCase(), Pair.of(assessmentInstituteMapping.get().getCommaSeparatedEvaluationUserIds(), assessmentInstituteMapping.get().getCommaSeparatedEvaluationRoles()));
-        savedData.put(AccessControlEnum.LIVE_ASSESSMENT_ACCESS.name().toLowerCase(), Pair.of(assessmentInstituteMapping.get().getCommaSeparatedLiveViewUserIds(), assessmentInstituteMapping.get().getCommaSeparatedLiveViewRoles()));
-        savedData.put(AccessControlEnum.REPORT_AND_SUBMISSION_ACCESS.name().toLowerCase(), Pair.of(assessmentInstituteMapping.get().getCommaSeparatedSubmissionViewUserIds(), assessmentInstituteMapping.get().getCommaSeparatedSubmissionViewRoles()));
+
+        savedData.put(AccessControlEnum.CREATION_ACCESS.name().toLowerCase(), new RolesBatchesAndUsersDto(null, getDetailsFromCommaSeparatedString(assessmentInstituteMapping.get().getCommaSeparatedCreationRoles()), getDetailsFromCommaSeparatedString(assessmentInstituteMapping.get().getCommaSeparatedCreationUserIds())));
+        savedData.put(AccessControlEnum.EVALUATION_ACCESS.name().toLowerCase(), new RolesBatchesAndUsersDto(null, getDetailsFromCommaSeparatedString(assessmentInstituteMapping.get().getCommaSeparatedEvaluationRoles()), getDetailsFromCommaSeparatedString(assessmentInstituteMapping.get().getCommaSeparatedEvaluationUserIds())));
+        savedData.put(AccessControlEnum.LIVE_ASSESSMENT_ACCESS.name().toLowerCase(), new RolesBatchesAndUsersDto(null, getDetailsFromCommaSeparatedString(assessmentInstituteMapping.get().getCommaSeparatedLiveViewRoles()), getDetailsFromCommaSeparatedString(assessmentInstituteMapping.get().getCommaSeparatedLiveViewUserIds())));
+        savedData.put(AccessControlEnum.REPORT_AND_SUBMISSION_ACCESS.name().toLowerCase(), new RolesBatchesAndUsersDto(null, getDetailsFromCommaSeparatedString(assessmentInstituteMapping.get().getCommaSeparatedSubmissionViewRoles()), getDetailsFromCommaSeparatedString(assessmentInstituteMapping.get().getCommaSeparatedSubmissionViewUserIds())));
         setSavedData(savedData);
+    }
+
+    private List<String> getDetailsFromCommaSeparatedString(String value) {
+        if (!StringUtils.hasText(value)) return List.of();
+        return List.of(value.split(","));
     }
 
     private Optional<AssessmentInstituteMapping> getAssessmentUrlByInstituteIdAndAssessmentId(String instituteId, Assessment assessment) {

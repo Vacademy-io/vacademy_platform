@@ -16,6 +16,6 @@ import java.util.List;
 @AllArgsConstructor
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class AddAccessAssessmentDetailsDTO {
-    private List<AssessmentAccessDto> addedAccesses = new ArrayList<>();
-    private List<AssessmentAccessDto> deletedAccesses = new ArrayList<>();
+    private AssessmentAccessDto addedAccesses;
+    private AssessmentAccessDto deletedAccesses;
 }

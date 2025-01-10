@@ -11,7 +11,6 @@ import java.util.Date;
 @Entity
 @Table(name = "question_assessment_section_mapping")
 @Data
-@EqualsAndHashCode(of = {"question", "assessment", "bulk_entry_services"})
 public class QuestionAssessmentSectionMapping {
 
     @Id
@@ -22,10 +21,6 @@ public class QuestionAssessmentSectionMapping {
     @ManyToOne
     @JoinColumn(name = "question_id")
     private Question question;
-
-    @ManyToOne
-    @JoinColumn(name = "assessment_id")
-    private Assessment assessment;
 
     @Column(name = "marking_json", nullable = false)
     private String markingJson;

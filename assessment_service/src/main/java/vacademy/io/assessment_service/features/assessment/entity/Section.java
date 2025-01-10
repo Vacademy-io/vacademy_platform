@@ -11,6 +11,8 @@ import org.hibernate.annotations.UuidGenerator;
 import vacademy.io.assessment_service.features.rich_text.entity.AssessmentRichTextData;
 
 import java.util.Date;
+import java.util.HashSet;
+import java.util.Set;
 
 @Entity
 @Table(name = "section")
@@ -60,6 +62,9 @@ public class Section {
     @JoinColumn(name = "assessment_id")
     @JsonIgnore
     private Assessment assessment;
+
+    @OneToMany(mappedBy = "section", fetch = FetchType.LAZY)
+    private Set<QuestionAssessmentSectionMapping> questionAssessmentSectionMappings = new HashSet<>();
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;

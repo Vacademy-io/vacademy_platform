@@ -1,5 +1,6 @@
 package vacademy.io.assessment_service.features.assessment.service.creation;
 
+import org.hibernate.Hibernate;
 import org.springframework.stereotype.Component;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.enums.StepStatus;
@@ -29,6 +30,7 @@ public class AssessmentAddParticipantsDetail extends IStep {
         Map<String, Object> savedData = new HashMap<>();
         savedData.put(ParticipantsCreationEnum.PRE_BATCH_REGISTRATIONS.name().toLowerCase(), assessment.get().getBatchRegistrations());
         savedData.put(ParticipantsCreationEnum.PRE_USER_REGISTRATIONS.name().toLowerCase(), assessment.get().getUserRegistrations().size());
+        Hibernate.initialize(assessment.get().getAssessmentCustomFields());
         savedData.put(ParticipantsCreationEnum.REGISTRATION_FORM_FIELDS.name().toLowerCase(), assessment.get().getAssessmentCustomFields());
         savedData.put(ParticipantsCreationEnum.REGISTRATION_OPEN_DATE.name().toLowerCase(), assessment.get().getRegistrationOpenDate());
         savedData.put(ParticipantsCreationEnum.REGISTRATION_CLOSE_DATE.name().toLowerCase(), assessment.get().getRegistrationCloseDate());

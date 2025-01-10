@@ -87,6 +87,9 @@ public class AssessmentAccessManager {
     }
 
     Pair<List<String>, List<String>> updateAccessToAssessment(List<String> currentUserIds, List<String> currentRoles, List<String> newUserIds, List<String> newRoles) {
+        if(newUserIds.isEmpty()) newUserIds = List.of();
+        if(newRoles.isEmpty()) newRoles = List.of();
+
         Set<String> userIds = new HashSet<>(currentUserIds);
         userIds.addAll(newUserIds);
         newUserIds = userIds.stream().toList();
@@ -97,6 +100,9 @@ public class AssessmentAccessManager {
     }
 
     Pair<List<String>, List<String>> deleteAccessToAssessment(List<String> currentUserIds, List<String> currentRoles, List<String> toBeDeletedUserIds, List<String> toBeDeletedRoles) {
+        if (toBeDeletedUserIds.isEmpty()) toBeDeletedUserIds = List.of();
+        if (toBeDeletedRoles.isEmpty()) toBeDeletedRoles = List.of();
+
         Set<String> userIds = new HashSet<>(currentUserIds);
         toBeDeletedUserIds.forEach(userIds::remove);
         Set<String> roles = new HashSet<>(currentRoles);

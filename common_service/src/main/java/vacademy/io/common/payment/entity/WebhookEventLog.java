@@ -1,6 +1,9 @@
 package vacademy.io.common.payment.entity;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -22,7 +25,7 @@ public class WebhookEventLog {
     @Column(name = "id")
     private String id;
 
-    @Column(name="request")
+    @Column(name = "request")
     private String requestPayload;
 
     @Column(name = "created_on", updatable = false)

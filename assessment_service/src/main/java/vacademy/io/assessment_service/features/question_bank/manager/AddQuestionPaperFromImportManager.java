@@ -21,7 +21,6 @@ import vacademy.io.assessment_service.features.question_core.enums.QuestionTypes
 import vacademy.io.assessment_service.features.question_core.repository.OptionRepository;
 import vacademy.io.assessment_service.features.question_core.repository.QuestionRepository;
 import vacademy.io.assessment_service.features.rich_text.entity.AssessmentRichTextData;
-import vacademy.io.assessment_service.features.rich_text.repository.AssessmentRichTextRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 import java.util.ArrayList;
@@ -40,14 +39,9 @@ public class AddQuestionPaperFromImportManager {
 
     @Autowired
     QuestionPaperRepository questionPaperRepository;
-
     @Autowired
     QuestionEvaluationService questionEvaluationService;
 
-    @Autowired
-    AssessmentRichTextRepository assessmentRichTextRepository;
-
-    
     @Transactional
     public AddedQuestionPaperResponseDto addQuestionPaper(CustomUserDetails user, AddQuestionPaperDTO questionRequestBody) throws JsonProcessingException {
 
@@ -68,11 +62,11 @@ public class AddQuestionPaperFromImportManager {
         options = optionRepository.saveAll(options);
 
         List<String> savedQuestionIds = questions.stream().map(Question::getId).toList();
-        
+
         questionPaperRepository.bulkInsertQuestionsToQuestionPaper(questionPaper.getId(), savedQuestionIds);
-        
+
         questionPaperRepository.linkInstituteToQuestionPaper(UUID.randomUUID().toString(), questionPaper.getId(), questionRequestBody.getInstituteId(), "ACTIVE", questionRequestBody.getLevelId(), questionRequestBody.getSubjectId());
-        
+
         return new AddedQuestionPaperResponseDto(questionPaper.getId());
 
     }
@@ -87,7 +81,7 @@ public class AddQuestionPaperFromImportManager {
 
         List<Option> options = new ArrayList<>();
         List<String> correctOptionIds = new ArrayList<>();
-        MCQEvaluationDTO requestEvaluation =  questionEvaluationService.getEvaluationJson(questionRequest.getAutoEvaluationJson());
+        MCQEvaluationDTO requestEvaluation = questionEvaluationService.getEvaluationJson(questionRequest.getAutoEvaluationJson());
         for (int i = 0; i < questionRequest.getOptions().size(); i++) {
             Option option = new Option();
             UUID optionId = UUID.randomUUID();
@@ -117,7 +111,7 @@ public class AddQuestionPaperFromImportManager {
     public Boolean editQuestionPaper(CustomUserDetails user, AddQuestionPaperDTO questionRequestBody) {
         Optional<QuestionPaper> questionPaper = questionPaperRepository.findById(questionRequestBody.getId());
 
-        if(questionPaper.isEmpty())
+        if (questionPaper.isEmpty())
             return false;
 
         return true;

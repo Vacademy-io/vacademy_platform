@@ -1,15 +1,15 @@
-
 package vacademy.io.admin_core_service.features.student.entity;
 
 
-
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 import lombok.*;
 import org.hibernate.annotations.UuidGenerator;
 
 import java.sql.Timestamp;
-import java.time.LocalDate;
-import java.util.*;
+import java.util.Date;
 
 
 @Data

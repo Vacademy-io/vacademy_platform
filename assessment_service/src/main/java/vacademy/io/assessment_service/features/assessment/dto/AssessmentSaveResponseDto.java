@@ -5,12 +5,6 @@ import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.Setter;
-import vacademy.io.assessment_service.features.assessment.service.StepOption;
-
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 
 @Getter
 @Setter

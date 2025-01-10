@@ -4,25 +4,27 @@ package vacademy.io.admin_core_service.features.student.manager;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.*;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.student.constants.StudentConstants;
 import vacademy.io.admin_core_service.features.student.dto.InstituteStudentDTO;
 import vacademy.io.admin_core_service.features.student.dto.InstituteStudentDetails;
 import vacademy.io.admin_core_service.features.student.dto.StudentExtraDetails;
-import vacademy.io.admin_core_service.features.student.dto.student_list_dto.StudentListFilter;
 import vacademy.io.admin_core_service.features.student.entity.Student;
 import vacademy.io.admin_core_service.features.student.repository.InstituteStudentRepository;
 import vacademy.io.admin_core_service.features.student.repository.StudentSessionRepository;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
-import vacademy.io.common.core.utils.DataToCsvConverter;
-import vacademy.io.common.core.utils.PasswordGenerator;
+import vacademy.io.common.core.utils.RandomGenerator;
 import vacademy.io.common.exceptions.VacademyException;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.UUID;
 
 @Component
 public class StudentRegistrationManager {
@@ -69,7 +71,7 @@ public class StudentRegistrationManager {
 
     private void setRandomPasswordIfNull(UserDTO userDTO) {
         if (!StringUtils.hasText(userDTO.getPassword())) {
-            userDTO.setPassword(PasswordGenerator.generatePassword(6));
+            userDTO.setPassword(RandomGenerator.generatePassword(6));
         }
     }
 

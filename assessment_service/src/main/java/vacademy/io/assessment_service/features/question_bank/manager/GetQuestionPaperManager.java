@@ -7,35 +7,25 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Component;
-import vacademy.io.assessment_service.features.evaluation.service.QuestionEvaluationService;
 import vacademy.io.assessment_service.features.question_bank.dto.AllQuestionPaperResponse;
 import vacademy.io.assessment_service.features.question_bank.dto.QuestionPaperDTO;
 import vacademy.io.assessment_service.features.question_bank.dto.QuestionPaperFilter;
-import vacademy.io.assessment_service.features.question_bank.entity.QuestionPaper;
 import vacademy.io.assessment_service.features.question_bank.repository.QuestionPaperRepository;
-import vacademy.io.assessment_service.features.question_core.repository.QuestionRepository;
-import vacademy.io.assessment_service.features.rich_text.repository.AssessmentRichTextRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.Objects;
 
 import static vacademy.io.common.core.standard_classes.ListService.createSortObject;
 
 @Component
 public class GetQuestionPaperManager {
 
-    @Autowired
-    QuestionRepository questionRepository;
 
     @Autowired
     QuestionPaperRepository questionPaperRepository;
-
-    @Autowired
-    QuestionEvaluationService questionEvaluationService;
-
-    @Autowired
-    AssessmentRichTextRepository assessmentRichTextRepository;
-
 
     public AllQuestionPaperResponse getQuestionPapers(CustomUserDetails user, QuestionPaperFilter questionPaperFilter, String instituteId, int pageNo, int pageSize) {
         // Create a sorting object based on the provided sort columns

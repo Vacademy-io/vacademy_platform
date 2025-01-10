@@ -8,6 +8,6 @@ spec:
     app: student-service
   ports:
     - name: http
-      port: {{ .Values.services.student_service.port }}
-      targetPort: {{ .Values.services.student_service.port }}
+      port: { { .Values.services.student_service.port } }
+      targetPort: { { .Values.services.student_service.port } }
   type: NodePort

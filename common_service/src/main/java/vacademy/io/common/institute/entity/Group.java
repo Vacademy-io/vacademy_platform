@@ -1,12 +1,11 @@
 package vacademy.io.common.institute.entity;
 
 import jakarta.persistence.*;
-import java.time.LocalDateTime;
-import java.util.Date;
-
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.UuidGenerator;
+
+import java.util.Date;
 
 @Entity
 @Table(name = "groups", schema = "public") // Use "groups" as the table name

@@ -7,7 +7,6 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.CrudRepository;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
-import vacademy.io.admin_core_service.features.student.entity.Student;
 import vacademy.io.admin_core_service.features.student.entity.StudentSessionInstituteGroupMapping;
 
 import java.util.Date;
@@ -51,9 +50,9 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
             "AND package_session_id = :packageSessionId " +
             "AND institute_id = :instituteId", nativeQuery = true)
     int updateExpiryDate(@Param("userId") String userId,
-                               @Param("packageSessionId") String packageSessionId,
-                               @Param("instituteId") String instituteId,
-                               @Param("expiryDate") Date expiryDate);
+                         @Param("packageSessionId") String packageSessionId,
+                         @Param("instituteId") String instituteId,
+                         @Param("expiryDate") Date expiryDate);
 
     @Modifying
     @Transactional
@@ -63,8 +62,8 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
             "AND package_session_id = :packageSessionId " +
             "AND institute_id = :instituteId", nativeQuery = true)
     int updateStatus(@Param("userId") String userId,
-                         @Param("packageSessionId") String packageSessionId,
-                         @Param("instituteId") String instituteId,
-                         @Param("status") String status);
+                     @Param("packageSessionId") String packageSessionId,
+                     @Param("instituteId") String instituteId,
+                     @Param("status") String status);
 
 }

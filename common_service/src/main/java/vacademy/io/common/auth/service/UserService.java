@@ -1,6 +1,10 @@
 package vacademy.io.common.auth.service;
 
 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.UserPermissionRequestDTO;
 import vacademy.io.common.auth.dto.UserRoleRequestDTO;
@@ -9,13 +13,7 @@ import vacademy.io.common.auth.entity.User;
 import vacademy.io.common.auth.entity.UserRole;
 import vacademy.io.common.auth.repository.RoleRepository;
 import vacademy.io.common.auth.repository.UserRepository;
-
 import vacademy.io.common.exceptions.*;
-
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.HashSet;

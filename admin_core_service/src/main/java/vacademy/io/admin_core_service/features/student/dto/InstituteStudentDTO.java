@@ -7,13 +7,6 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import vacademy.io.common.auth.dto.UserDTO;
-import vacademy.io.common.institute.dto.InstituteSubModuleDTO;
-import vacademy.io.common.institute.dto.LevelDTO;
-import vacademy.io.common.institute.dto.PackageSessionDTO;
-import vacademy.io.common.institute.dto.SessionDTO;
-
-import java.sql.Timestamp;
-import java.util.List;
 
 @Data
 @AllArgsConstructor

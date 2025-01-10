@@ -2,11 +2,14 @@ package vacademy.io.assessment_service.features.assessment.manager;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
-import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 import org.springframework.util.ObjectUtils;
 import org.springframework.util.StringUtils;
-import vacademy.io.assessment_service.features.assessment.dto.*;
+import vacademy.io.assessment_service.features.assessment.dto.AssessmentSaveResponseDto;
+import vacademy.io.assessment_service.features.assessment.dto.create_assessment.AddAccessAssessmentDetailsDTO;
+import vacademy.io.assessment_service.features.assessment.dto.create_assessment.AddQuestionsAssessmentDetailsDTO;
+import vacademy.io.assessment_service.features.assessment.dto.create_assessment.AssessmentRegistrationsDto;
+import vacademy.io.assessment_service.features.assessment.dto.create_assessment.BasicAssessmentDetailsDTO;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentInstituteMapping;
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentStatus;
@@ -17,10 +20,9 @@ import vacademy.io.assessment_service.features.question_core.enums.EvaluationTyp
 import vacademy.io.assessment_service.features.rich_text.entity.AssessmentRichTextData;
 import vacademy.io.assessment_service.features.rich_text.enums.TextType;
 import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.core.utils.RandomGenerator;
 import vacademy.io.common.exceptions.VacademyException;
 
-import java.time.ZoneId;
-import java.util.Date;
 import java.util.Map;
 import java.util.Optional;
 
@@ -48,14 +50,22 @@ public class AssessmentBasicDetailsManager {
     }
 
     private ResponseEntity<AssessmentSaveResponseDto> handleExistingAssessment(CustomUserDetails user, BasicAssessmentDetailsDTO basicAssessmentDetailsDTO, Assessment assessment, String instituteId, String type) {
-        if(!assessment.getPlayMode().equals(type)) throw new VacademyException("Assessment type cannot be changed");
+        if (!assessment.getPlayMode().equals(type)) throw new VacademyException("Assessment type cannot be changed");
 
         Optional.ofNullable(basicAssessmentDetailsDTO.getAssessmentPreviewTime()).ifPresent(assessment::setPreviewTime);
         Optional.ofNullable(basicAssessmentDetailsDTO.getSwitchSections()).ifPresent(assessment::setCanSwitchSection);
-
+        Optional.ofNullable(basicAssessmentDetailsDTO.getHasOmrMode()).ifPresent(assessment::setOmrMode);
+        Optional.ofNullable(basicAssessmentDetailsDTO.getDefaultReattemptCount()).ifPresent(assessment::setReattemptCount);
         if (!ObjectUtils.isEmpty(basicAssessmentDetailsDTO.getSubmissionType())) {
-            assessment.setEvaluationType(EvaluationTypes.MANUAL.name());
             assessment.setSubmissionType(basicAssessmentDetailsDTO.getSubmissionType());
+        } else {
+            assessment.setSubmissionType(EvaluationTypes.AUTO.name());
+        }
+
+        if (!ObjectUtils.isEmpty(basicAssessmentDetailsDTO.getEvaluationType())) {
+            assessment.setEvaluationType(basicAssessmentDetailsDTO.getEvaluationType());
+        } else {
+            assessment.setEvaluationType(EvaluationTypes.AUTO.name());
         }
         Optional.ofNullable(basicAssessmentDetailsDTO.getRaiseReattemptRequest()).ifPresent(assessment::setCanRequestReattempt);
         Optional.ofNullable(basicAssessmentDetailsDTO.getRaiseTimeIncreaseRequest()).ifPresent(assessment::setCanRequestTimeIncrease);
@@ -72,14 +82,24 @@ public class AssessmentBasicDetailsManager {
         Assessment assessment = new Assessment();
         AssessmentInstituteMapping assessmentInstituteMapping = new AssessmentInstituteMapping();
         assessmentInstituteMapping.setInstituteId(instituteId);
+        assessmentInstituteMapping.setAssessmentUrl(RandomGenerator.generateNumber(6));
         assessment.setStatus(AssessmentStatus.DRAFT.name());
+        Optional.ofNullable(basicAssessmentDetailsDTO.getDefaultReattemptCount()).ifPresent(assessment::setReattemptCount);
+        Optional.ofNullable(basicAssessmentDetailsDTO.getHasOmrMode()).ifPresent(assessment::setOmrMode);
         assessment.setPlayMode(type);
         assessment.setAssessmentVisibility(AssessmentVisibility.PRIVATE.name());
         Optional.ofNullable(basicAssessmentDetailsDTO.getAssessmentPreviewTime()).ifPresent(assessment::setPreviewTime);
         Optional.ofNullable(basicAssessmentDetailsDTO.getSwitchSections()).ifPresent(assessment::setCanSwitchSection);
         if (!ObjectUtils.isEmpty(basicAssessmentDetailsDTO.getSubmissionType())) {
-            assessment.setEvaluationType(EvaluationTypes.MANUAL.name());
             assessment.setSubmissionType(basicAssessmentDetailsDTO.getSubmissionType());
+        } else {
+            assessment.setSubmissionType(EvaluationTypes.AUTO.name());
+        }
+
+        if (!ObjectUtils.isEmpty(basicAssessmentDetailsDTO.getEvaluationType())) {
+            assessment.setEvaluationType(basicAssessmentDetailsDTO.getEvaluationType());
+        } else {
+            assessment.setEvaluationType(EvaluationTypes.AUTO.name());
         }
         Optional.ofNullable(basicAssessmentDetailsDTO.getRaiseReattemptRequest()).ifPresent(assessment::setCanRequestReattempt);
         Optional.ofNullable(basicAssessmentDetailsDTO.getRaiseTimeIncreaseRequest()).ifPresent(assessment::setCanRequestTimeIncrease);
@@ -107,7 +127,7 @@ public class AssessmentBasicDetailsManager {
     private void addOrUpdateTestDurationData(Assessment assessment, AssessmentInstituteMapping assessmentInstituteMapping, BasicAssessmentDetailsDTO.TestDuration testDuration) {
         if (!ObjectUtils.isEmpty(testDuration)) {
             Optional.ofNullable(testDuration.getEntireTestDuration()).ifPresent(assessment::setDuration);
-            Optional.ofNullable(testDuration.getSectionWiseDuration()).ifPresent(assessment::setDurationDistribution);
+            Optional.ofNullable(testDuration.getDistributionDuration()).ifPresent(assessment::setDurationDistribution);
         }
     }
 
@@ -132,7 +152,7 @@ public class AssessmentBasicDetailsManager {
             throw new VacademyException("Assessment Id cannot be empty");
         Optional<Assessment> assessmentOptional = assessmentRepository.findByAssessmentIdAndInstituteId(assessmentId, instituteId);
         if (assessmentOptional.isEmpty())
-           throw new VacademyException("Assessment not found");
+            throw new VacademyException("Assessment not found");
 
         // Todo: Verify Assessment Details based on type
         assessmentOptional.get().setStatus(AssessmentStatus.PUBLISHED.name());

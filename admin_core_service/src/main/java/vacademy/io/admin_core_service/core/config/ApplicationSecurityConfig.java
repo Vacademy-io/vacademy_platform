@@ -27,7 +27,7 @@ public class ApplicationSecurityConfig {
 
     private static final String[] INTERNAL_PATHS = {"/admin-core-service/internal/**"};
 
-    private static final String[] ALLOWED_PATHS = { "/admin-core-service/institute/v1/internal/create","/admin-core-service/actuator/**", "/admin-core-service/swagger-ui.html", "/admin-core-service/v1/report/alert/**", "/admin-core-service/v3/api-docs/**", "/admin-core-service/swagger-ui/**", "/admin-core-service/webjars/swagger-ui/**", "/admin-core-service/api-docs/**"};
+    private static final String[] ALLOWED_PATHS = {"/admin-core-service/institute/v1/internal/create", "/admin-core-service/actuator/**", "/admin-core-service/swagger-ui.html", "/admin-core-service/v1/report/alert/**", "/admin-core-service/v3/api-docs/**", "/admin-core-service/swagger-ui/**", "/admin-core-service/webjars/swagger-ui/**", "/admin-core-service/api-docs/**"};
 
     @Autowired
     JwtAuthFilter jwtAuthFilter;

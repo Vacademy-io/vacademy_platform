@@ -7,9 +7,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import vacademy.io.common.auth.entity.User;
-import vacademy.io.common.auth.enums.Gender;
 
-import java.time.LocalDate;
 import java.util.Date;
 import java.util.List;
 

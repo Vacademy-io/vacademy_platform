@@ -14,4 +14,11 @@ public interface SubjectRepository extends JpaRepository<Subject, String> {
 
     List<Subject> findDistinctSubjectsByInstituteId(@Param("instituteId") String instituteId);
 
+    @Query(value = "SELECT DISTINCT s.* " +
+            "FROM subject s " +
+            "INNER JOIN subject_session ss ON s.id = ss.subject_id " +
+            "INNER JOIN package_session ps ON ss.session_id = ps.id " +
+            "WHERE ps.level_id = :levelId", nativeQuery = true)
+    List<Subject> findDistinctSubjectsByLevelId(@Param("levelId") String levelId);
+
 }

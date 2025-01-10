@@ -6,7 +6,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.common.auth.dto.UserDTO;
-import vacademy.io.common.auth.dto.UserPermissionRequestDTO;
 import vacademy.io.common.auth.dto.UserRoleRequestDTO;
 import vacademy.io.common.auth.entity.User;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -32,10 +31,9 @@ public class UserController {
             User user = userService.createUserFromUserDto(userDTO);
             userService.addUserRoles(instituteId, userDTO.getRoles(), user);
             return ResponseEntity.ok(new UserDTO(user));
-        }
-       catch (Exception e) {
+        } catch (Exception e) {
             throw new VacademyException(e.getMessage());
-       }
+        }
     }
 
 
@@ -50,8 +48,7 @@ public class UserController {
 
             userService.addUserRoles(instituteId, userDTO.getRoles(), user);
             return ResponseEntity.ok(new UserDTO(user));
-        }
-        catch (Exception e) {
+        } catch (Exception e) {
             throw new VacademyException(e.getMessage());
         }
     }

@@ -1,5 +1,6 @@
 package vacademy.io.assessment_service.features.assessment.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Data;
 import org.hibernate.annotations.UuidGenerator;
@@ -22,7 +23,8 @@ public class AssessmentRegistrationCustomFieldResponse {
 
     @ManyToOne
     @JoinColumn(name = "assessment_registration_id")
-    private AssessmentRegistration assessmentRegistration;
+    @JsonIgnore
+    private AssessmentUserRegistration assessmentUserRegistration;
 
     @Column(name = "answer")
     private String answer;

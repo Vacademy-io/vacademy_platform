@@ -2,11 +2,11 @@ package vacademy.io.common.auth.repository;
 
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.CrudRepository;
 import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.common.auth.entity.User;
-import org.springframework.data.repository.CrudRepository;
-import org.springframework.stereotype.Repository;
 
 import java.util.List;
 import java.util.Optional;
@@ -44,7 +44,6 @@ public interface UserRepository extends CrudRepository<User, String> {
     List<User> findUserDetailsByUsername(@Param("username") String username);
 
 
-
     @Modifying
     @Transactional
     @Query(value = "DELETE FROM user_role WHERE user_id = :userId AND role_id = :roleId", nativeQuery = true)
@@ -63,16 +62,16 @@ public interface UserRepository extends CrudRepository<User, String> {
     boolean existsByRoleId(@Param("roleId") String roleId);
 
 
-    @Query(value="SELECT COUNT(*) > 0 FROM permissions WHERE id = :permissionId", nativeQuery = true)
+    @Query(value = "SELECT COUNT(*) > 0 FROM permissions WHERE id = :permissionId", nativeQuery = true)
     boolean existsByPermissionId(@Param("permissionId") String permissionId);
 
-    @Query(value="SELECT COUNT(*) > 0 FROM users WHERE username = :user", nativeQuery = true)
+    @Query(value = "SELECT COUNT(*) > 0 FROM users WHERE username = :user", nativeQuery = true)
     boolean existsByUserName(@Param("user") String user);
 
-    @Query(value="SELECT COUNT(*) > 0 FROM user_role WHERE user_id = :userId AND role_id = :roleId", nativeQuery = true)
+    @Query(value = "SELECT COUNT(*) > 0 FROM user_role WHERE user_id = :userId AND role_id = :roleId", nativeQuery = true)
     boolean existsByUserIdAndRoleId(@Param("userId") String userId, @Param("roleId") String roleId);
 
-    @Query(value="SELECT COUNT(*) > 0 FROM user_permission WHERE user_id = :userId AND permission_id = :permissionId", nativeQuery = true)
+    @Query(value = "SELECT COUNT(*) > 0 FROM user_permission WHERE user_id = :userId AND permission_id = :permissionId", nativeQuery = true)
     boolean existsByUserIdAndPermissionId(@Param("userId") String userId, @Param("permissionId") String permissionId);
 
     @Modifying

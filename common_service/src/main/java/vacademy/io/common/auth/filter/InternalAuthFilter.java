@@ -49,8 +49,7 @@ public class InternalAuthFilter extends OncePerRequestFilter {
                 response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
                 response.getWriter().write("Authorization header missing or invalid");
             }
-        }
-        else {
+        } else {
             filterChain.doFilter(request, response);
             return;
         }

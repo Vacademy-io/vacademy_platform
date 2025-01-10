@@ -4,7 +4,7 @@ import org.apache.batik.transcoder.TranscoderException;
 import org.apache.batik.transcoder.TranscoderInput;
 import org.apache.batik.transcoder.TranscoderOutput;
 import org.apache.batik.transcoder.wmf.tosvg.WMFTranscoder;
-
+import org.docx4j.Docx4J;
 import org.docx4j.convert.out.HTMLSettings;
 import org.docx4j.openpackaging.contenttype.ContentType;
 import org.docx4j.openpackaging.packages.WordprocessingMLPackage;
@@ -15,8 +15,6 @@ import org.springframework.stereotype.Service;
 
 import java.io.*;
 import java.util.Base64;
-
-import org.docx4j.Docx4J;
 
 @Service
 public class DocxToHtmlService {

@@ -2,19 +2,12 @@ package vacademy.io.assessment_service.features.upload_docx.service.docx_convert
 
 import org.apache.poi.xwpf.usermodel.*;
 import org.apache.xmlbeans.XmlCursor;
-import org.apache.xmlbeans.XmlException;
-import org.docx4j.math.CTOMath;
-
 import org.springframework.stereotype.Service;
-import org.w3c.dom.Node;
 
-import javax.xml.transform.Transformer;
-import javax.xml.transform.TransformerFactory;
-import javax.xml.transform.dom.DOMSource;
-import javax.xml.transform.stream.StreamResult;
-import javax.xml.transform.stream.StreamSource;
-import java.io.*;
-import java.util.ArrayList;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.OutputStreamWriter;
 import java.util.List;
 
 @Service
@@ -29,12 +22,12 @@ public class DocxToHtmlConverter {
         //loop over all IBodyElements - should be self explained
         for (IBodyElement ibodyelement : document.getBodyElements()) {
             if (ibodyelement.getElementType().equals(BodyElementType.PARAGRAPH)) {
-                XWPFParagraph paragraph = (XWPFParagraph)ibodyelement;
+                XWPFParagraph paragraph = (XWPFParagraph) ibodyelement;
                 allHTML.append("<p>");
                 allHTML.append(getTextAndFormulas(paragraph));
                 allHTML.append("</p>");
             } else if (ibodyelement.getElementType().equals(BodyElementType.TABLE)) {
-                XWPFTable table = (XWPFTable)ibodyelement;
+                XWPFTable table = (XWPFTable) ibodyelement;
                 allHTML.append("<table border=1>");
                 for (XWPFTableRow row : table.getRows()) {
                     allHTML.append("<tr>");

@@ -37,7 +37,7 @@ public class AuthInternalController {
         String instituteId = null;
         String[] stringUsernameSplit = smallCaseUsername.split("@");
 
-        if(stringUsernameSplit.length > 1) {
+        if (stringUsernameSplit.length > 1) {
             instituteId = stringUsernameSplit[0];
             usernameWithoutInstitute = stringUsernameSplit[1];
         }

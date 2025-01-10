@@ -6,8 +6,6 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.ParameterizedTypeReference;
-import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -16,16 +14,13 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 import vacademy.io.auth_service.feature.auth.constants.AuthConstants;
 import vacademy.io.auth_service.feature.auth.dto.AuthRequestDto;
 import vacademy.io.auth_service.feature.auth.dto.JwtResponseDto;
 import vacademy.io.auth_service.feature.auth.dto.RegisterRequest;
 import vacademy.io.auth_service.feature.auth.service.AuthService;
-import vacademy.io.common.auth.dto.OrgDTO;
 import vacademy.io.common.auth.dto.RefreshTokenRequestDTO;
-import vacademy.io.common.auth.dto.SubmoduleDTO;
 import vacademy.io.common.auth.entity.RefreshToken;
 import vacademy.io.common.auth.entity.Role;
 import vacademy.io.common.auth.entity.User;
@@ -41,7 +36,6 @@ import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.dto.InstituteIdAndNameDTO;
 import vacademy.io.common.institute.dto.InstituteInfoDTO;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -92,7 +86,7 @@ public class AuthManager {
         InstituteIdAndNameDTO customUserDetails;
 
         try {
-            customUserDetails = objectMapper.readValue(response.getBody(), new TypeReference<InstituteIdAndNameDTO> () {
+            customUserDetails = objectMapper.readValue(response.getBody(), new TypeReference<InstituteIdAndNameDTO>() {
             });
 
         } catch (JsonProcessingException e) {

@@ -5,10 +5,8 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
-import org.hibernate.annotations.UuidGenerator;
 
 import java.sql.Timestamp;
-import java.util.Date;
 
 @Entity
 @Data

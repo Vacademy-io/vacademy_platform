@@ -18,5 +18,7 @@ public class RegistrationFieldDto {
     private String type;
     private String defaultValue;
     private String description;
+    private Boolean isMandatory;
+    private String key;
     private String commaSeparatedOptions;
 }

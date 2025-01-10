@@ -50,7 +50,7 @@ public class UserToFile {
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;
 
-    public UserToFile(FileMetadata file,FileMetadata folderIcon,String folderName,String userId,String sourceType,String sourceId,String status) {
+    public UserToFile(FileMetadata file, FileMetadata folderIcon, String folderName, String userId, String sourceType, String sourceId, String status) {
         this.file = file;
         this.folderIcon = folderIcon;
         this.folderName = folderName;

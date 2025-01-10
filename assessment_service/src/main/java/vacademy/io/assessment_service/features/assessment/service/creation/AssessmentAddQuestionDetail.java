@@ -1,14 +1,14 @@
 package vacademy.io.assessment_service.features.assessment.service.creation;
 
 import org.springframework.stereotype.Component;
+import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.SectionDto;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
-import vacademy.io.assessment_service.features.assessment.enums.creationSteps.QuestionCreationEnum;
+import vacademy.io.assessment_service.features.assessment.entity.Section;
 import vacademy.io.assessment_service.features.assessment.enums.StepStatus;
+import vacademy.io.assessment_service.features.assessment.enums.creationSteps.QuestionCreationEnum;
 import vacademy.io.assessment_service.features.assessment.service.IStep;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 
 @Component
 public class AssessmentAddQuestionDetail extends IStep {
@@ -23,6 +23,18 @@ public class AssessmentAddQuestionDetail extends IStep {
     @Override
     public void checkStatusAndFetchData(Optional<Assessment> assessment) {
         setStatus(StepStatus.INCOMPLETE.name());
+        if (assessment.isEmpty()) return;
+
+        Map<String, Object> savedData = new HashMap<>();
+        Set<Section> sections = assessment.get().getSections();
+        List<SectionDto> sectionDTOs = new ArrayList<>();
+        for (Section section : sections) {
+            sectionDTOs.add(new SectionDto(section));
+        }
+
+        if(!sectionDTOs.isEmpty()) setStatus(StepStatus.COMPLETED.name());
+        savedData.put(QuestionCreationEnum.SECTIONS.name().toLowerCase(), sectionDTOs);
+        setSavedData(savedData);
     }
 
     @Override

@@ -4,10 +4,9 @@ package vacademy.io.assessment_service.features.assessment.controller;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import vacademy.io.assessment_service.features.assessment.dto.AddQuestionsAssessmentDetailsDTO;
 import vacademy.io.assessment_service.features.assessment.dto.AssessmentSaveResponseDto;
-import vacademy.io.assessment_service.features.assessment.dto.BasicAssessmentDetailsDTO;
-import vacademy.io.assessment_service.features.assessment.manager.AssessmentBasicDetailsManager;
+import vacademy.io.assessment_service.features.assessment.dto.create_assessment.AddQuestionsAssessmentDetailsDTO;
+import vacademy.io.assessment_service.features.assessment.manager.AssessmentLinkQuestionsManager;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 @RestController
@@ -15,14 +14,14 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 public class AssessmentQuestionsController {
 
     @Autowired
-    AssessmentBasicDetailsManager assessmentBasicDetailsManager;
+    AssessmentLinkQuestionsManager assessmentLinkQuestionsManager;
 
     @PostMapping("/submit")
     public ResponseEntity<AssessmentSaveResponseDto> saveQuestionsToAssessment(@RequestAttribute("user") CustomUserDetails user,
-                                                                                @RequestBody AddQuestionsAssessmentDetailsDTO basicAssessmentDetailsDTO,
-                                                                                @RequestParam(name = "assessmentId", required = false) String assessmentId,
-                                                                                @RequestParam(name = "instituteId", required = false) String instituteId,
-                                                                                @RequestParam String type) {
-        return assessmentBasicDetailsManager.saveQuestionsToAssessment(user, basicAssessmentDetailsDTO, assessmentId, instituteId, type);
+                                                                               @RequestBody AddQuestionsAssessmentDetailsDTO basicAssessmentDetailsDTO,
+                                                                               @RequestParam(name = "assessmentId", required = false) String assessmentId,
+                                                                               @RequestParam(name = "instituteId", required = false) String instituteId,
+                                                                               @RequestParam String type) {
+        return assessmentLinkQuestionsManager.saveQuestionsToAssessment(user, basicAssessmentDetailsDTO, assessmentId, instituteId, type);
     }
 }

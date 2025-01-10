@@ -1,14 +1,13 @@
 package vacademy.io.media_service.controller;
 
-import vacademy.io.common.auth.model.CustomUserDetails;
-import vacademy.io.media_service.exceptions.FileDownloadException;
-import vacademy.io.media_service.service.FileService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import vacademy.io.common.media.dto.FileDetailsDTO;
+import vacademy.io.media_service.exceptions.FileDownloadException;
+import vacademy.io.media_service.service.FileService;
 
 import java.util.List;
 import java.util.Map;

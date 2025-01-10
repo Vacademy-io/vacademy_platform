@@ -5,7 +5,6 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import org.hibernate.annotations.UuidGenerator;
 
-
 import java.util.Date;
 
 @Entity
@@ -13,7 +12,7 @@ import java.util.Date;
 @Data
 @EqualsAndHashCode(of = "id")
 public class StudentAttempt {
-    
+
     @Id
     @UuidGenerator
     @Column(name = "id")
@@ -21,29 +20,29 @@ public class StudentAttempt {
 
     @ManyToOne
     @JoinColumn(name = "registration_id")
-    private AssessmentRegistration registration;
-    
+    private AssessmentUserRegistration registration;
+
     @Column(name = "attempt_number", nullable = false)
     private Integer attemptNumber;
-    
+
     @Column(name = "start_time", nullable = false)
     private Date startTime;
-    
+
     @Column(name = "submit_time")
     private Date submitTime;
-    
+
     @Column(name = "max_time", nullable = false)
     private Integer maxTime;
-    
+
     @Column(name = "status", nullable = false)
     private String status;
-    
+
     @Column(name = "responses")
     private String responses;
-    
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;
-    
+
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Date updatedAt;
 }

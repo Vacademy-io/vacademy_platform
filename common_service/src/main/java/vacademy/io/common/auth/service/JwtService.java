@@ -5,17 +5,17 @@ import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
-import vacademy.io.common.auth.constants.AuthConstant;
-import vacademy.io.common.auth.dto.OrgDTO;
-import vacademy.io.common.auth.dto.SubmoduleDTO;
-import vacademy.io.common.auth.entity.User;
-
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
+import vacademy.io.common.auth.constants.AuthConstant;
+import vacademy.io.common.auth.entity.User;
 import vacademy.io.common.auth.entity.UserRole;
 
 import java.security.Key;
-import java.util.*;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.function.Function;
 
 @Component

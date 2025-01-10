@@ -15,13 +15,15 @@ import java.util.List;
 @AllArgsConstructor
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class SectionAddEditRequestDto {
-    private String sectionDescription;
+    private String sectionDescriptionHtml;
+    private String sectionName;
+    private String sectionId;
     private Integer sectionDuration;
+    private Integer sectionOrder;
     private Double totalMarks;
     private Double cutoffMarks;
     private Boolean problemRandomization;
     private List<QuestionAndMarking> questionAndMarking;
-
 
     @Data
     @Builder
@@ -31,6 +33,9 @@ public class SectionAddEditRequestDto {
     public static class QuestionAndMarking {
         private String questionId;
         private String markingJson;
-        private Boolean isUpdated;
+        private Integer questionDurationInMin;
+        private Integer questionOrder;
+        private Boolean isAdded;
+        private Boolean isDeleted;
     }
 }

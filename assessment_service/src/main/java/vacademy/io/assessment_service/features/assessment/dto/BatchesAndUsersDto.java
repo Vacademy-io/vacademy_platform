@@ -16,6 +16,6 @@ import java.util.List;
 
 public class BatchesAndUsersDto {
     private List<String> batchIds = new ArrayList<>();
-    private List<String> emails  = new ArrayList<>();
+    private List<String> roles = new ArrayList<>();
     private List<String> userIds = new ArrayList<>();
 }

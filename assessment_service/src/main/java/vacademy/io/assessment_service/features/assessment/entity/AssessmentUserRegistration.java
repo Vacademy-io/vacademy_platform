@@ -8,7 +8,9 @@ import lombok.Setter;
 import org.hibernate.annotations.UuidGenerator;
 
 import java.util.Date;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @Entity
 @Table(name = "assessment_user_registration")
@@ -64,7 +66,7 @@ public class AssessmentUserRegistration {
     private String status;
 
     @OneToMany(mappedBy = "assessmentUserRegistration")
-    private List<AssessmentRegistrationCustomFieldResponse> assessmentRegistrationCustomFieldResponseList;
+    private Set<AssessmentRegistrationCustomFieldResponse> assessmentRegistrationCustomFieldResponseList= new HashSet<>();
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;

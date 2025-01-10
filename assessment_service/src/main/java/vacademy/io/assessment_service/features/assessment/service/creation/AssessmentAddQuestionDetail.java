@@ -32,6 +32,7 @@ public class AssessmentAddQuestionDetail extends IStep {
             sectionDTOs.add(new SectionDto(section));
         }
 
+        if(!sectionDTOs.isEmpty()) setStatus(StepStatus.COMPLETED.name());
         savedData.put(QuestionCreationEnum.SECTIONS.name().toLowerCase(), sectionDTOs);
         setSavedData(savedData);
     }

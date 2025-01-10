@@ -17,22 +17,7 @@ public class QuestionAssessmentSectionMappingService {
     private QuestionAssessmentSectionMappingRepository repository;
 
     public void addMultipleMappings(List<QuestionAssessmentSectionMapping> mappings) {
-        List<Object[]> batch = new ArrayList<>();
-        for (QuestionAssessmentSectionMapping mapping : mappings) {
-            batch.add(new Object[]{
-                    UUID.randomUUID().toString(),
-                    mapping.getQuestion().getId(),
-                    mapping.getAssessment().getId(),
-                    mapping.getMarkingJson(),
-                    mapping.getSection().getId(),
-                    mapping.getQuestionOrder(),
-                    mapping.getQuestionDurationInMin(),
-                    mapping.getStatus(),
-                    new Date(),
-                    new Date()
-            });
-        }
-        repository.bulkInsert(batch);
+        repository.saveAll(mappings);
     }
 
     public void softDeleteMappingsByQuestionIdsAndSectionId(List<String> questionIds, String sectionId) {

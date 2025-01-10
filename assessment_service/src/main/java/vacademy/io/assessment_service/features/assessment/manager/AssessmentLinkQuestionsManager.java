@@ -4,6 +4,7 @@ package vacademy.io.assessment_service.features.assessment.manager;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.ObjectUtils;
 import vacademy.io.assessment_service.features.assessment.dto.AssessmentSaveResponseDto;
 import vacademy.io.assessment_service.features.assessment.dto.SectionAddEditRequestDto;
@@ -41,6 +42,7 @@ public class AssessmentLinkQuestionsManager {
     @Autowired
     QuestionAssessmentSectionMappingService questionAssessmentSectionMappingService;
 
+    @Transactional
     public ResponseEntity<AssessmentSaveResponseDto> saveQuestionsToAssessment(CustomUserDetails user, AddQuestionsAssessmentDetailsDTO addQuestionsAssessmentDetailsDTO, String assessmentId, String instituteId, String type) {
 
         Optional<Assessment> assessmentOptional = assessmentService.getAssessmentWithActiveSections(assessmentId, instituteId);
@@ -50,13 +52,13 @@ public class AssessmentLinkQuestionsManager {
         }
 
         for (SectionAddEditRequestDto sectionAddEditRequestDto : addQuestionsAssessmentDetailsDTO.getAddedSections()) {
-            addSectionToAssessment(user, sectionAddEditRequestDto, assessmentId, instituteId, type);
+            addSectionToAssessment(user, sectionAddEditRequestDto, assessmentOptional.get(), instituteId, type);
         }
 
         for (SectionAddEditRequestDto sectionAddEditRequestDto : addQuestionsAssessmentDetailsDTO.getUpdatedSections()) {
             Optional<Section> thisSection = assessmentOptional.get().getSections().stream().filter((s) -> s.getId().equals(sectionAddEditRequestDto.getSectionId())).findFirst();
             if (thisSection.isEmpty()) continue;
-            updateSectionForAssessment(thisSection.get(), sectionAddEditRequestDto, assessmentId, instituteId, type);
+            updateSectionForAssessment(thisSection.get(), sectionAddEditRequestDto, assessmentOptional.get(), instituteId, type);
         }
 
         for (SectionAddEditRequestDto sectionAddEditRequestDto : addQuestionsAssessmentDetailsDTO.getDeletedSections()) {
@@ -73,23 +75,22 @@ public class AssessmentLinkQuestionsManager {
         //Todo: validate marking scheme
     }
 
-    void addSectionToAssessment(CustomUserDetails user, SectionAddEditRequestDto sectionAddEditRequestDto, String
-            assessmentId, String instituteId, String type) {
-        Section newSection = createUpdateSection(new Section(), sectionAddEditRequestDto, new Assessment(), ACTIVE.name());
+    void addSectionToAssessment(CustomUserDetails user, SectionAddEditRequestDto sectionAddEditRequestDto, Assessment
+            assessment, String instituteId, String type) {
+        Section newSection = createUpdateSection(new Section(), sectionAddEditRequestDto, assessment, ACTIVE.name());
         List<QuestionAssessmentSectionMapping> mappings = new ArrayList<>();
         for (int i = 0; i < sectionAddEditRequestDto.getQuestionAndMarking().size(); i++) {
-            mappings.add(createFromQuestionSectionAddEditRequestDto(sectionAddEditRequestDto.getQuestionAndMarking().get(i), newSection));
+            mappings.add(createFromQuestionSectionAddEditRequestDto(sectionAddEditRequestDto.getQuestionAndMarking().get(i), newSection, assessment));
         }
         questionAssessmentSectionMappingService.addMultipleMappings(mappings);
     }
 
     QuestionAssessmentSectionMapping createFromQuestionSectionAddEditRequestDto
-            (SectionAddEditRequestDto.QuestionAndMarking questionAndMarking, Section section) {
+            (SectionAddEditRequestDto.QuestionAndMarking questionAndMarking, Section section, Assessment assessment) {
         validateMarkingScheme(questionAndMarking);
 
         QuestionAssessmentSectionMapping mapping = new QuestionAssessmentSectionMapping();
         mapping.setId(UUID.randomUUID().toString());
-        mapping.setAssessment(new Assessment());
         mapping.setSection(section);
         mapping.setStatus(ACTIVE.name());
         mapping.setQuestion(new Question(questionAndMarking.getQuestionId()));
@@ -99,9 +100,9 @@ public class AssessmentLinkQuestionsManager {
         return mapping;
     }
 
-    void updateSectionForAssessment(Section section, SectionAddEditRequestDto sectionAddEditRequestDto, String
-            assessmentId, String instituteId, String type) {
-        Section updatedSection = createUpdateSection(section, sectionAddEditRequestDto, new Assessment(), ACTIVE.name());
+    void updateSectionForAssessment(Section section, SectionAddEditRequestDto sectionAddEditRequestDto, Assessment
+            assessment, String instituteId, String type) {
+        Section updatedSection = createUpdateSection(section, sectionAddEditRequestDto, assessment, ACTIVE.name());
         List<String> deletedQuestionIds = new ArrayList<>();
         List<QuestionAssessmentSectionMapping> addedQuestions = new ArrayList<>();
         for (int i = 0; i < sectionAddEditRequestDto.getQuestionAndMarking().size(); i++) {
@@ -109,7 +110,7 @@ public class AssessmentLinkQuestionsManager {
                 deletedQuestionIds.add(sectionAddEditRequestDto.getQuestionAndMarking().get(i).getQuestionId());
             }
             if (sectionAddEditRequestDto.getQuestionAndMarking().get(i).getIsAdded()) {
-                addedQuestions.add(createFromQuestionSectionAddEditRequestDto(sectionAddEditRequestDto.getQuestionAndMarking().get(i), updatedSection));
+                addedQuestions.add(createFromQuestionSectionAddEditRequestDto(sectionAddEditRequestDto.getQuestionAndMarking().get(i), updatedSection, assessment));
             }
         }
         questionAssessmentSectionMappingService.softDeleteMappingsByQuestionIdsAndSectionId(deletedQuestionIds, section.getId());

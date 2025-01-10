@@ -33,6 +33,12 @@ public class AssessmentAddParticipantsDetail extends IStep {
         savedData.put(ParticipantsCreationEnum.REGISTRATION_OPEN_DATE.name().toLowerCase(), assessment.get().getRegistrationOpenDate());
         savedData.put(ParticipantsCreationEnum.REGISTRATION_CLOSE_DATE.name().toLowerCase(), assessment.get().getRegistrationCloseDate());
         setSavedData(savedData);
+
+        if (assessment.get().getRegistrationOpenDate() != null && assessment.get().getRegistrationCloseDate() != null) {
+            setStatus(StepStatus.COMPLETED.name());
+        } else if (assessment.get().getUserRegistrations().size() + assessment.get().getBatchRegistrations().size() > 0) {
+            setStatus(StepStatus.COMPLETED.name());
+        }
     }
 
     @Override

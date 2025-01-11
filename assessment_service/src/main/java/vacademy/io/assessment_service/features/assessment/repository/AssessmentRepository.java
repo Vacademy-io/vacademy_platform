@@ -20,7 +20,13 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
             @Param("instituteId") String instituteId);
 
 
-    @Query(value = "SELECT a.* FROM public.assessment a " +
+    @Query(value = "SELECT a.id, a.name, a.play_mode, a.evaluation_type, a.submission_type, a.duration, " +
+            "a.assessment_visibility, a.status, a.registration_close_date, a.registration_open_date, " +
+            "a.expected_participants, a.cover_file_id, a.bound_start_time, a.bound_end_time, " +
+            "a.created_at, a.updated_at, " +
+            "(SELECT COUNT(*) FROM public.user_registration ur WHERE ur.assessment_id = a.id) AS user_registrations, " +
+            "(SELECT COUNT(*) FROM public.assessment_batch_registration abr WHERE abr.assessment_id = a.id) AS batch_registrations " +
+            "FROM public.assessment a " +
             "LEFT JOIN public.assessment_batch_registration abr ON a.id = abr.assessment_id " +
             "LEFT JOIN public.assessment_institute_mapping aim ON a.id = aim.assessment_id " +
             "WHERE (:name IS NULL OR :name = '' OR LOWER(a.name) LIKE LOWER(CONCAT('%', :name, '%'))) " +
@@ -41,12 +47,12 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
                     "AND (:assessLiveStatuses IS NULL OR a.status IN :assessLiveStatuses) " +
                     "AND (:assessmentModes IS NULL OR a.play_mode IN :assessmentModes)",
             nativeQuery = true)
-    Page<Assessment> filterAssessments(@Param("name") String name,
-                                       @Param("batchIds") List<String> batchIds,
-                                       @Param("subjectsIds") List<String> subjectsIds,
-                                       @Param("assessmentStatuses") List<String> assessmentStatuses,
-                                       @Param("accessStatuses") List<String> accessStatuses,
-                                       @Param("assessLiveStatuses") List<String> assessLiveStatuses,
-                                       @Param("assessmentModes") List<String> assessmentModes,
-                                       Pageable pageable);
+    Page<Object[]> filterAssessments(@Param("name") String name,
+                                     @Param("batchIds") List<String> batchIds,
+                                     @Param("subjectsIds") List<String> subjectsIds,
+                                     @Param("assessmentStatuses") List<String> assessmentStatuses,
+                                     @Param("assessLiveStatuses") List<String> assessLiveStatuses,
+                                     @Param("assessmentModes") List<String> assessmentModes,
+                                     Pageable pageable);
+
 }

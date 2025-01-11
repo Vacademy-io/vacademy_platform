@@ -1,6 +1,7 @@
 package vacademy.io.assessment_service.features.assessment.manager;
 
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -8,10 +9,13 @@ import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.AdminAssessmentFilter;
+import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.AdminBasicAssessmentListItemDto;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.AllAdminAssessmentResponse;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.AssessmentAdminListInitDto;
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentModeEnum;
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentVisibility;
+import vacademy.io.assessment_service.features.assessment.repository.AssessmentRepository;
+import vacademy.io.assessment_service.features.assessment.service.assessment_get.AssessmentMapper;
 import vacademy.io.assessment_service.features.question_core.enums.EvaluationTypes;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
@@ -19,11 +23,16 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import static vacademy.io.common.core.standard_classes.ListService.createSortObject;
 
 @Component
 public class AdminAssessmentGetManager {
+
+    @Autowired
+    AssessmentRepository assessmentRepository;
+
     public ResponseEntity<AssessmentAdminListInitDto> assessmentAdminListInit(CustomUserDetails user, String instituteId) {
         AssessmentAdminListInitDto assessmentAdminListInitDto = new AssessmentAdminListInitDto();
         assessmentAdminListInitDto.setAssessmentAccessStatuses(Arrays.stream(AssessmentVisibility.values()).map(AssessmentVisibility::name).toList());
@@ -36,7 +45,7 @@ public class AdminAssessmentGetManager {
     public ResponseEntity<AllAdminAssessmentResponse> assessmentAdminListFilter(CustomUserDetails user, AdminAssessmentFilter adminAssessmentFilter, String instituteId, int pageNo, int pageSize) {
         // Create a sorting object based on the provided sort columns
         Sort thisSort = createSortObject(adminAssessmentFilter.getSortColumns());
-
+        Page<Object[]> assessmentsPage;
         //TODO: Check user permission
 
         // Create a pageable instance for pagination
@@ -44,12 +53,16 @@ public class AdminAssessmentGetManager {
 
         makeFilterFieldEmptyArrayIfNull(adminAssessmentFilter);
 
-//        // Retrieve employees based on the filter criteria
-//        Page<Object[]> employeePage = questionPaperRepository.findQuestionPapersByFilters(questionPaperFilter.getName(), questionPaperFilter.getStatuses(), questionPaperFilter.getLevelIds(), questionPaperFilter.getSubjectIds(), null, List.of(instituteId), pageable);
-//
-//        return createAllQuestionPaperResponseFromPaginatedData(employeePage);
+        assessmentsPage = assessmentRepository.filterAssessments(adminAssessmentFilter.getName(), adminAssessmentFilter.getBatchIds(), adminAssessmentFilter.getSubjectsIds(), adminAssessmentFilter.getAssessmentStatuses(), adminAssessmentFilter.getAssessLiveStatuses(), adminAssessmentFilter.getAssessmentModes(), pageable);
+        List<AdminBasicAssessmentListItemDto> content = assessmentsPage.stream().map(AssessmentMapper::toDto).collect(Collectors.toList());
+        int queryPageNo = assessmentsPage.getNumber();
+        int queryPageSize = assessmentsPage.getSize();
+        long totalElements = assessmentsPage.getTotalElements();
+        int totalPages = assessmentsPage.getTotalPages();
+        boolean last = assessmentsPage.isLast();
+        AllAdminAssessmentResponse response = AllAdminAssessmentResponse.builder().content(content).pageNo(queryPageNo).pageSize(queryPageSize).totalElements(totalElements).totalPages(totalPages).last(last).build();
 
-        return null;
+        return ResponseEntity.ok(response);
     }
 
     private void makeFilterFieldEmptyArrayIfNull(AdminAssessmentFilter adminAssessmentFilter) {

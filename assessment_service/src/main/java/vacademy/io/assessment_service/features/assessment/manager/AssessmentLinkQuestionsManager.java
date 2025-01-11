@@ -144,11 +144,11 @@ public class AssessmentLinkQuestionsManager {
         List<QuestionAssessmentSectionMapping> mappings = questionAssessmentSectionMappingService.getQuestionAssessmentSectionMappingBySectionIds(sectionIdList);
 
         for (QuestionAssessmentSectionMapping mapping : mappings) {
-            if (response.get(mapping.getSection().getId()) == null) {
-                response.put(mapping.getSection().getId(), List.of(new AssessmentQuestionPreviewDto(mapping.getQuestion(), mapping)));
-            } else {
-                response.get(mapping.getSection().getId()).add(new AssessmentQuestionPreviewDto(mapping.getQuestion(), mapping));
+            String sectionId = mapping.getSection().getId();
+            if (!response.containsKey(sectionId)) {
+                response.put(sectionId, new ArrayList<>());
             }
+            response.get(sectionId).add(new AssessmentQuestionPreviewDto(mapping.getQuestion(), mapping));
         }
         return response;
     }

@@ -21,7 +21,6 @@ public class AdminAssessmentFilter {
     private List<String> subjectsIds = new ArrayList<>();
     private List<String> tagIds = new ArrayList<>();
     private List<String> assessmentStatuses = new ArrayList<>();
-    private List<String> accessStatuses = new ArrayList<>();
     private List<String> assessLiveStatuses = new ArrayList<>();
     private List<String> assessmentModes = new ArrayList<>();
     private Map<String, String> sortColumns = new HashMap<>();

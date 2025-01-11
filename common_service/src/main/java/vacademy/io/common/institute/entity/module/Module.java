@@ -21,6 +21,9 @@ public class Module {
     @Column(name = "module_name")
     private String moduleName;
 
+    @Column(name = "status")
+    private String status = "ACTIVE";
 
+    @Column(name = "description")
+    private String description;
 }
-

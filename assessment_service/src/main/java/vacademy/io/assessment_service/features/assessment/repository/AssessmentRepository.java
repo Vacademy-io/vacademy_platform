@@ -5,6 +5,7 @@ import org.springframework.data.repository.CrudRepository;
 import org.springframework.data.repository.query.Param;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 
+import java.util.List;
 import java.util.Optional;
 
 public interface AssessmentRepository extends CrudRepository<Assessment, String> {
@@ -15,5 +16,6 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
     Optional<Assessment> findByAssessmentIdAndInstituteId(
             @Param("assessmentId") String assessmentId,
             @Param("instituteId") String instituteId);
+
 
 }

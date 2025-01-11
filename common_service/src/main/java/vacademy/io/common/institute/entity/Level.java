@@ -33,12 +33,16 @@ public class Level {
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;
 
+    @Column(name = "status")
+    private String status = "ACTIVE";
+
     // Additional constructors, if needed
-    public Level(String id, String levelName, Integer durationInDays, Date createdAt, Date updatedAt) {
+    public Level(String id, String levelName, Integer durationInDays,String status, Date createdAt, Date updatedAt) {
         this.id = id;
         this.levelName = levelName;
         this.durationInDays = durationInDays;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
+        this.status = status;
     }
 }

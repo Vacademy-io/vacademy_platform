@@ -33,6 +33,9 @@ public class Subject {
     @Column(name = "credit")
     private Integer credit;
 
+    @Column(name = "status")
+    private String status = "ACTIVE";
+
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Date updatedAt;
 

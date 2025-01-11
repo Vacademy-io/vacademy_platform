@@ -29,8 +29,9 @@ public class Assessment {
     @Column(name = "name", nullable = false)
     private String name;
 
-    @Column(name = "about_id")
-    private String aboutId;
+    @OneToOne(cascade = CascadeType.ALL)
+    @JoinColumn(name = "about_id", referencedColumnName = "id", insertable = true, updatable = true)
+    private AssessmentRichTextData about;
 
     @OneToOne(cascade = CascadeType.ALL)
     @JoinColumn(name = "instructions_id", referencedColumnName = "id", insertable = true, updatable = true)

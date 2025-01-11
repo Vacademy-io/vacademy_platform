@@ -76,6 +76,7 @@ public class AssessmentAccessDetail extends IStep {
         }
     }
 
+
     private List<Map<String, String>> getStepsForExam() {
         // Todo: get steps based on saved assessment
         return List.of(Map.of(AccessControlEnum.CREATION_ACCESS.name().toLowerCase(), "REQUIRED"),

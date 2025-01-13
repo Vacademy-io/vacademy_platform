@@ -59,7 +59,7 @@ public class AssessmentRegistrationsDto {
     public static class NotifyStudent {
         private boolean whenAssessmentCreated;
         private boolean showLeaderboard;
-        private boolean beforeAssessmentGoesLive;
+        private Integer beforeAssessmentGoesLive;
         private boolean whenAssessmentLive;
         private boolean whenAssessmentReportGenerated;
 
@@ -72,7 +72,7 @@ public class AssessmentRegistrationsDto {
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public static class NotifyParent {
         private boolean whenAssessmentCreated;
-        private boolean beforeAssessmentGoesLive;
+        private Integer beforeAssessmentGoesLive;
         private boolean showLeaderboard;
         private boolean whenAssessmentLive;
         private boolean whenStudentAppears;

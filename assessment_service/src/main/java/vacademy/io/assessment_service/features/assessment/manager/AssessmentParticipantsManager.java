@@ -164,7 +164,7 @@ public class AssessmentParticipantsManager {
         AssessmentUserRegistration assessmentParticipantRegistration = new AssessmentUserRegistration();
         assessmentParticipantRegistration.setAssessment(assessment);
         assessmentParticipantRegistration.setUserId(basicParticipantDTO.getUserId());
-        assessmentParticipantRegistration.setUserEmail(basicParticipantDTO.getUsername());
+        assessmentParticipantRegistration.setUsername(basicParticipantDTO.getUsername());
         assessmentParticipantRegistration.setParticipantName(basicParticipantDTO.getFullName());
         assessmentParticipantRegistration.setPhoneNumber(basicParticipantDTO.getMobileNumber());
         assessmentParticipantRegistration.setFaceFileId(basicParticipantDTO.getFileId());

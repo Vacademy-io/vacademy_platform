@@ -34,7 +34,9 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
             "AND (:subjectsIds IS NULL OR aim.subject_id IN :subjectsIds) " +
             "AND (:assessmentStatuses IS NULL OR a.status IN :assessmentStatuses) " +
             "AND (:accessStatuses IS NULL OR a.assessment_visibility IN :accessStatuses) " +
-            "AND (:assessLiveStatuses IS NULL OR a.status IN :assessLiveStatuses) " +
+            "AND (:liveAssessments IS NULL OR :liveAssessments = 'false' OR (CURRENT_TIMESTAMP BETWEEN a.bound_start_time AND a.bound_end_time)) " +
+            "AND (:passedAssessments IS NULL OR :passedAssessments = 'false' OR (CURRENT_TIMESTAMP > a.bound_end_time)) " +
+            "AND (:upcomingAssessments IS NULL OR :upcomingAssessments = 'false' OR (CURRENT_TIMESTAMP < a.bound_start_time)) " +
             "AND (:assessmentModes IS NULL OR a.play_mode IN :assessmentModes)",
             countQuery = "SELECT COUNT(DISTINCT a.id) FROM public.assessment a " +
                     "LEFT JOIN public.assessment_batch_registration abr ON a.id = abr.assessment_id " +
@@ -44,14 +46,18 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
                     "AND (:subjectsIds IS NULL OR aim.subject_id IN :subjectsIds) " +
                     "AND (:assessmentStatuses IS NULL OR a.status IN :assessmentStatuses) " +
                     "AND (:accessStatuses IS NULL OR a.assessment_visibility IN :accessStatuses) " +
-                    "AND (:assessLiveStatuses IS NULL OR a.status IN :assessLiveStatuses) " +
+                    "AND (:liveAssessments IS NULL OR :liveAssessments = 'false' OR (CURRENT_TIMESTAMP BETWEEN a.bound_start_time AND a.bound_end_time)) " +
+                    "AND (:passedAssessments IS NULL OR :passedAssessments = 'false' OR (CURRENT_TIMESTAMP > a.bound_end_time)) " +
+                    "AND (:upcomingAssessments IS NULL OR :upcomingAssessments = 'false' OR (CURRENT_TIMESTAMP < a.bound_start_time)) " +
                     "AND (:assessmentModes IS NULL OR a.play_mode IN :assessmentModes)",
             nativeQuery = true)
     Page<Object[]> filterAssessments(@Param("name") String name,
                                      @Param("batchIds") List<String> batchIds,
                                      @Param("subjectsIds") List<String> subjectsIds,
                                      @Param("assessmentStatuses") List<String> assessmentStatuses,
-                                     @Param("assessLiveStatuses") List<String> assessLiveStatuses,
+                                     @Param("liveAssessments") Boolean liveAssessments,
+                                     @Param("passedAssessments") Boolean passedAssessments,
+                                     @Param("upcomingAssessments") Boolean upcomingAssessments,
                                      @Param("assessmentModes") List<String> assessmentModes,
                                      Pageable pageable);
 

@@ -36,7 +36,7 @@ public class AssessmentNotificationMetadata {
     private boolean participantShowLeaderboard;
 
     @Column(name = "participant_before_assessment_goes_live", nullable = false)
-    private boolean participantBeforeAssessmentGoesLive;
+    private Integer participantBeforeAssessmentGoesLive;
 
     @Column(name = "participant_when_assessment_live", nullable = false)
     private boolean participantWhenAssessmentLive;
@@ -48,7 +48,7 @@ public class AssessmentNotificationMetadata {
     private boolean parentShowLeaderboard;
 
     @Column(name = "parent_before_assessment_goes_live", nullable = false)
-    private boolean parentBeforeAssessmentGoesLive;
+    private Integer parentBeforeAssessmentGoesLive;
 
     @Column(name = "parent_when_assessment_live", nullable = false)
     private boolean parentWhenAssessmentLive;

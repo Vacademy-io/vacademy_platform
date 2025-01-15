@@ -3,6 +3,7 @@ package vacademy.io.assessment_service.features.assessment.manager;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.ObjectUtils;
 import vacademy.io.assessment_service.features.assessment.dto.AssessmentSaveResponseDto;
 import vacademy.io.assessment_service.features.assessment.dto.RegistrationFieldDto;
@@ -47,6 +48,7 @@ public class AssessmentParticipantsManager {
     @Autowired
     AssessmentCustomFieldRepository assessmentCustomFieldRepository;
 
+    @Transactional
     public ResponseEntity<AssessmentSaveResponseDto> saveParticipantsToAssessment(CustomUserDetails user, AssessmentRegistrationsDto assessmentRegistrationsDto, String assessmentId, String instituteId, String type) {
 
         Optional<Assessment> assessmentOptional = assessmentService.getAssessmentWithActiveSections(assessmentId, instituteId);
@@ -164,7 +166,7 @@ public class AssessmentParticipantsManager {
         AssessmentUserRegistration assessmentParticipantRegistration = new AssessmentUserRegistration();
         assessmentParticipantRegistration.setAssessment(assessment);
         assessmentParticipantRegistration.setUserId(basicParticipantDTO.getUserId());
-        assessmentParticipantRegistration.setUserEmail(basicParticipantDTO.getUsername());
+        assessmentParticipantRegistration.setUsername(basicParticipantDTO.getUsername());
         assessmentParticipantRegistration.setParticipantName(basicParticipantDTO.getFullName());
         assessmentParticipantRegistration.setPhoneNumber(basicParticipantDTO.getMobileNumber());
         assessmentParticipantRegistration.setFaceFileId(basicParticipantDTO.getFileId());

@@ -23,4 +23,8 @@ public class QuestionAssessmentSectionMappingService {
     public void softDeleteMappingsByQuestionIdsAndSectionId(List<String> questionIds, String sectionId) {
         repository.softDeleteByQuestionIdsAndSectionId(questionIds, sectionId);
     }
+
+    public List<QuestionAssessmentSectionMapping> getQuestionAssessmentSectionMappingBySectionIds(List<String> sectionIds) {
+        return repository.getQuestionAssessmentSectionMappingBySectionIds(sectionIds);
+    }
 }

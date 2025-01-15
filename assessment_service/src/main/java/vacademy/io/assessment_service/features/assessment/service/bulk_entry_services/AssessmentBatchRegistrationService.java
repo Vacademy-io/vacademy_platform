@@ -17,20 +17,7 @@ public class AssessmentBatchRegistrationService {
     private AssessmentBatchRegistrationRepository repository;
 
     public void addMultipleRegistrations(List<AssessmentBatchRegistration> registrations) {
-        List<Object[]> batch = new ArrayList<>();
-        for (AssessmentBatchRegistration registration : registrations) {
-            batch.add(new Object[]{
-                    UUID.randomUUID().toString(),
-                    registration.getAssessment().getId(),
-                    registration.getBatchId(),
-                    registration.getInstituteId(),
-                    registration.getRegistrationTime(),
-                    registration.getStatus(),
-                    new Date(),
-                    new Date()
-            });
-        }
-        repository.bulkInsert(batch);
+        repository.saveAll(registrations);
     }
 
     public void softDeleteRegistrationsByIds(List<String> ids, String instituteId, String assessmentId) {

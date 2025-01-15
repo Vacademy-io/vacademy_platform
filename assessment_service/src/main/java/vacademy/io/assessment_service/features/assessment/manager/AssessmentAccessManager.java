@@ -7,7 +7,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import vacademy.io.assessment_service.features.assessment.dto.AssessmentSaveResponseDto;
-import vacademy.io.assessment_service.features.assessment.dto.BatchesAndUsersDto;
 import vacademy.io.assessment_service.features.assessment.dto.create_assessment.AddAccessAssessmentDetailsDTO;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentInstituteMapping;
@@ -36,13 +35,43 @@ public class AssessmentAccessManager {
         if (assessmentInstituteMappingOptional.isEmpty())
             return ResponseEntity.ok(new AssessmentSaveResponseDto(assessmentId, assessmentOptional.get().getStatus()));
 
-        if(addAccessAssessmentDetailsDTO.getAddedAccesses()!=null) {
+        if (addAccessAssessmentDetailsDTO.getAddedAccesses() != null) {
 
-            if(addAccessAssessmentDetailsDTO.getAddedAccesses().getAssessmentCreationAccess() != null) {
+            if (addAccessAssessmentDetailsDTO.getAddedAccesses().getAssessmentCreationAccess() != null) {
+                List<String> currentUserIds = getDetailsFromCommaSeparatedString(assessmentInstituteMappingOptional.get().getCommaSeparatedCreationUserIds());
+                List<String> currentRoles = getDetailsFromCommaSeparatedString(assessmentInstituteMappingOptional.get().getCommaSeparatedCreationRoles());
+                Pair<List<String>, List<String>> userIdsAndRoles = updateAccessToAssessment(currentUserIds, currentRoles, addAccessAssessmentDetailsDTO.getAddedAccesses().getAssessmentCreationAccess().getUserIds(), addAccessAssessmentDetailsDTO.getAddedAccesses().getAssessmentCreationAccess().getRoles());
+                assessmentInstituteMappingOptional.get().setCommaSeparatedCreationUserIds(String.join(",", userIdsAndRoles.getFirst()));
+                assessmentInstituteMappingOptional.get().setCommaSeparatedCreationRoles(String.join(",", userIdsAndRoles.getSecond()));
+            }
 
+            if (addAccessAssessmentDetailsDTO.getAddedAccesses().getLiveAssessmentNotificationAccess() != null) {
+                List<String> currentUserIds = getDetailsFromCommaSeparatedString(assessmentInstituteMappingOptional.get().getCommaSeparatedLiveViewUserIds());
+                List<String> currentRoles = getDetailsFromCommaSeparatedString(assessmentInstituteMappingOptional.get().getCommaSeparatedLiveViewRoles());
+                Pair<List<String>, List<String>> userIdsAndRoles = updateAccessToAssessment(currentUserIds, currentRoles, addAccessAssessmentDetailsDTO.getAddedAccesses().getLiveAssessmentNotificationAccess().getUserIds(), addAccessAssessmentDetailsDTO.getAddedAccesses().getLiveAssessmentNotificationAccess().getRoles());
+                assessmentInstituteMappingOptional.get().setCommaSeparatedLiveViewUserIds(String.join(",", userIdsAndRoles.getFirst()));
+                assessmentInstituteMappingOptional.get().setCommaSeparatedLiveViewRoles(String.join(",", userIdsAndRoles.getSecond()));
+            }
+
+            if (addAccessAssessmentDetailsDTO.getAddedAccesses().getEvaluationProcessAccess() != null) {
+                List<String> currentUserIds = getDetailsFromCommaSeparatedString(assessmentInstituteMappingOptional.get().getCommaSeparatedEvaluationUserIds());
+                List<String> currentRoles = getDetailsFromCommaSeparatedString(assessmentInstituteMappingOptional.get().getCommaSeparatedEvaluationRoles());
+                Pair<List<String>, List<String>> userIdsAndRoles = updateAccessToAssessment(currentUserIds, currentRoles, addAccessAssessmentDetailsDTO.getAddedAccesses().getEvaluationProcessAccess().getUserIds(), addAccessAssessmentDetailsDTO.getAddedAccesses().getEvaluationProcessAccess().getRoles());
+                assessmentInstituteMappingOptional.get().setCommaSeparatedEvaluationUserIds(String.join(",", userIdsAndRoles.getFirst()));
+                assessmentInstituteMappingOptional.get().setCommaSeparatedEvaluationRoles(String.join(",", userIdsAndRoles.getSecond()));
+            }
+
+            if (addAccessAssessmentDetailsDTO.getAddedAccesses().getAssessmentSubmissionAndReportAccess() != null) {
+                List<String> currentUserIds = getDetailsFromCommaSeparatedString(assessmentInstituteMappingOptional.get().getCommaSeparatedSubmissionViewUserIds());
+                List<String> currentRoles = getDetailsFromCommaSeparatedString(assessmentInstituteMappingOptional.get().getCommaSeparatedSubmissionViewRoles());
+                Pair<List<String>, List<String>> userIdsAndRoles = updateAccessToAssessment(currentUserIds, currentRoles, addAccessAssessmentDetailsDTO.getAddedAccesses().getAssessmentSubmissionAndReportAccess().getUserIds(), addAccessAssessmentDetailsDTO.getAddedAccesses().getAssessmentSubmissionAndReportAccess().getRoles());
+                assessmentInstituteMappingOptional.get().setCommaSeparatedSubmissionViewUserIds(String.join(",", userIdsAndRoles.getFirst()));
+                assessmentInstituteMappingOptional.get().setCommaSeparatedSubmissionViewRoles(String.join(",", userIdsAndRoles.getSecond()));
             }
 
         }
+
+        // todo: handle deleted access
 
         return ResponseEntity.ok(new AssessmentSaveResponseDto(assessmentId, assessmentOptional.get().getStatus()));
 
@@ -52,26 +81,32 @@ public class AssessmentAccessManager {
         return assessment.getAssessmentInstituteMappings().stream().filter((am) -> am.getAssessment().getId().equals(assessmentId) && am.getInstituteId().equals(instituteId)).findFirst();
     }
 
-    private List<String> getDetailsFromCommaSeparatedString(String value){
-        if(!StringUtils.hasText(value)) return List.of();
+    private List<String> getDetailsFromCommaSeparatedString(String value) {
+        if (!StringUtils.hasText(value)) return List.of();
         return List.of(value.split(","));
     }
 
-    Pair<List<String>, List<String>> updateAccessToAssessment(BatchesAndUsersDto addAccessAssessmentDetailsDTO, List<String> currentUserIds, List<String> currentEmailIds, List<String> newUserIds, List<String> newEmailIds) {
+    Pair<List<String>, List<String>> updateAccessToAssessment(List<String> currentUserIds, List<String> currentRoles, List<String> newUserIds, List<String> newRoles) {
+        if(newUserIds.isEmpty()) newUserIds = List.of();
+        if(newRoles.isEmpty()) newRoles = List.of();
+
         Set<String> userIds = new HashSet<>(currentUserIds);
         userIds.addAll(newUserIds);
         newUserIds = userIds.stream().toList();
-        Set<String> emailIds = new HashSet<>(currentEmailIds);
-        emailIds.addAll(newEmailIds);
-        newEmailIds = emailIds.stream().toList();
-        return Pair.of(newUserIds, newEmailIds);
+        Set<String> roles = new HashSet<>(currentRoles);
+        roles.addAll(newRoles);
+        newRoles = roles.stream().toList();
+        return Pair.of(newUserIds, newRoles);
     }
 
-    Pair<List<String>, List<String>> deleteAccessToAssessment(BatchesAndUsersDto addAccessAssessmentDetailsDTO, List<String> currentUserIds, List<String> currentEmailIds, List<String> toBeDeletedUserIds, List<String> toBeDeletedEmailIds) {
+    Pair<List<String>, List<String>> deleteAccessToAssessment(List<String> currentUserIds, List<String> currentRoles, List<String> toBeDeletedUserIds, List<String> toBeDeletedRoles) {
+        if (toBeDeletedUserIds.isEmpty()) toBeDeletedUserIds = List.of();
+        if (toBeDeletedRoles.isEmpty()) toBeDeletedRoles = List.of();
+
         Set<String> userIds = new HashSet<>(currentUserIds);
         toBeDeletedUserIds.forEach(userIds::remove);
-        Set<String> emailIds = new HashSet<>(currentEmailIds);
-        toBeDeletedEmailIds.forEach(emailIds::remove);
-        return Pair.of(userIds.stream().toList(), emailIds.stream().toList());
+        Set<String> roles = new HashSet<>(currentRoles);
+        toBeDeletedRoles.forEach(roles::remove);
+        return Pair.of(userIds.stream().toList(), roles.stream().toList());
     }
 }

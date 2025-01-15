@@ -4,22 +4,21 @@ package vacademy.io.admin_core_service.features.student.manager;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.*;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.student.constants.StudentConstants;
 import vacademy.io.admin_core_service.features.student.dto.InstituteStudentDTO;
 import vacademy.io.admin_core_service.features.student.dto.InstituteStudentDetails;
 import vacademy.io.admin_core_service.features.student.dto.StudentExtraDetails;
-import vacademy.io.admin_core_service.features.student.dto.student_list_dto.StudentListFilter;
 import vacademy.io.admin_core_service.features.student.entity.Student;
 import vacademy.io.admin_core_service.features.student.repository.InstituteStudentRepository;
 import vacademy.io.admin_core_service.features.student.repository.StudentSessionRepository;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
-import vacademy.io.common.core.utils.DataToCsvConverter;
-import vacademy.io.common.core.utils.PasswordGenerator;
+import vacademy.io.common.core.utils.RandomGenerator;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.*;
@@ -69,12 +68,16 @@ public class StudentRegistrationManager {
 
     private void setRandomPasswordIfNull(UserDTO userDTO) {
         if (!StringUtils.hasText(userDTO.getPassword())) {
-            userDTO.setPassword(PasswordGenerator.generatePassword(6));
+            userDTO.setPassword(RandomGenerator.generatePassword(6));
         }
     }
 
     private Student createStudentFromRequest(UserDTO userDTO, StudentExtraDetails studentExtraDetails) {
         Student student = new Student();
+        Optional<Student> existingStudent = getExistingStudentByUserNameAndUserId(userDTO.getUsername(), userDTO.getId());
+        if (existingStudent.isPresent()) {
+            student = existingStudent.get();
+        }
         student.setUserId(userDTO.getId());
         student.setUsername(userDTO.getUsername());
         student.setFullName(userDTO.getFullName());
@@ -123,4 +126,13 @@ public class StudentRegistrationManager {
         return null;
     }
 
+    public ResponseEntity<String> addStudentToInstituteWithoutUserEntry(CustomUserDetails user, InstituteStudentDTO instituteStudentDTO) {
+        Student student = createStudentFromRequest(instituteStudentDTO.getUserDetails(), instituteStudentDTO.getStudentExtraDetails());
+        linkStudentToInstitute(student, instituteStudentDTO.getInstituteStudentDetails());
+        return ResponseEntity.ok("Student added successfully");
+    }
+
+    private Optional<Student> getExistingStudentByUserNameAndUserId(String username, String userId) {
+        return instituteStudentRepository.findByUsernameAndUserId(username, userId);
+    }
 }

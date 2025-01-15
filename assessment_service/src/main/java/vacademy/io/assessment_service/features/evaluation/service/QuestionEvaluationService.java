@@ -16,10 +16,10 @@ public class QuestionEvaluationService {
     public String setEvaluationJson(MCQEvaluationDTO mcqEvaluationDTO) throws JsonProcessingException {
         // Convert DTO to JSON string
         String jsonString = objectMapper.writeValueAsString(mcqEvaluationDTO);
-        
+
         // Here you would save jsonString to your database (not shown)
         // For example: question.setAutoEvaluationJson(jsonString);
-        
+
         return jsonString; // Return the JSON string for confirmation or further processing
     }
 

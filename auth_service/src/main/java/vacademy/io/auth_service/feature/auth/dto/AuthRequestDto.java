@@ -19,4 +19,6 @@ public class AuthRequestDto {
     private String password;
     private String clientName;
     private String instituteId;
+    private String email;
+    private String otp;
 }

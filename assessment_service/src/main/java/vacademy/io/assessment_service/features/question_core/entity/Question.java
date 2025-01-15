@@ -76,6 +76,9 @@ public class Question {
         this.defaultQuestionTimeMins = questionDTO.getDefaultQuestionTimeMins();
         this.textData = AssessmentRichTextData.fromDTO(questionDTO.getText());
         this.explanationTextData = AssessmentRichTextData.fromDTO(questionDTO.getExplanationText());
+    }
 
+    public Question(String id) {
+        this.id = id;
     }
 }

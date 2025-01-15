@@ -1,6 +1,9 @@
 package vacademy.io.common.institute.entity.student;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -29,6 +32,12 @@ public class Subject {
 
     @Column(name = "credit")
     private Integer credit;
+
+    @Column(name = "status")
+    private String status = "ACTIVE";
+
+    @Column(name = "thumbnail_id")
+    private String thumbnailId;
 
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Date updatedAt;

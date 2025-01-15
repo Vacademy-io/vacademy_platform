@@ -7,8 +7,8 @@ import lombok.Data;
 @Data
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "type")
 @JsonSubTypes({
-    @JsonSubTypes.Type(value = MediaContent.class, name = "VIEW_MEDIA_LINKS")
-    // Add more subtypes here as needed
+        @JsonSubTypes.Type(value = MediaContent.class, name = "VIEW_MEDIA_LINKS")
+        // Add more subtypes here as needed
 })
 public abstract class AlertData {
     // Common fields can be added here if necessary

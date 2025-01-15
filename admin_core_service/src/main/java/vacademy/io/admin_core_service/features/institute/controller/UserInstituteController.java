@@ -9,8 +9,6 @@ import vacademy.io.admin_core_service.features.institute.service.UserInstituteSe
 import vacademy.io.common.institute.dto.InstituteIdAndNameDTO;
 import vacademy.io.common.institute.dto.InstituteInfoDTO;
 
-import java.util.List;
-
 @RestController
 @RequestMapping("/admin-core-service/institute/v1")
 public class UserInstituteController {
@@ -24,7 +22,7 @@ public class UserInstituteController {
     @PostMapping("/internal/create")
     public ResponseEntity<InstituteIdAndNameDTO> registerUserInstitutes(@RequestBody InstituteInfoDTO request) {
 
-        InstituteIdAndNameDTO institutes =  instituteService.saveInstitute(request);
+        InstituteIdAndNameDTO institutes = instituteService.saveInstitute(request);
         return ResponseEntity.ok(institutes);
     }
 

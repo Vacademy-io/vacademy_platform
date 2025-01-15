@@ -1,12 +1,11 @@
 package vacademy.io.common.auth.model;
 
-import vacademy.io.common.auth.dto.UserServiceDTO;
-import vacademy.io.common.auth.entity.User;
-import vacademy.io.common.auth.entity.Role;
 import lombok.Getter;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
+import vacademy.io.common.auth.dto.UserServiceDTO;
+import vacademy.io.common.auth.entity.User;
 import vacademy.io.common.auth.entity.UserRole;
 
 import java.util.ArrayList;
@@ -30,7 +29,7 @@ public class CustomUserDetails extends User implements UserDetails {
      */
     public CustomUserDetails(User user, String instituteId, List<UserRole> userRoles) {
 
-        if(user == null || instituteId == null) {
+        if (user == null || instituteId == null) {
             throw new IllegalArgumentException("User or Institute cannot be null");
         }
         // Set the username from the provided User object

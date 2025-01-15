@@ -36,7 +36,7 @@ public class StudentBulkInitUploadManager {
 
         Map<String, List<String>> enumValues = new HashMap<>();
         enumValues.put("GENDER", Arrays.asList("MALE", "FEMALE", "OTHER"));
-        headers.add(createEnumHeader("enum", false, "GENDER",  Arrays.asList("MALE", "FEMALE", "OTHER"), order++, List.of("MALE", "FEMALE", "OTHER")));
+        headers.add(createEnumHeader("enum", false, "GENDER", Arrays.asList("MALE", "FEMALE", "OTHER"), order++, List.of("MALE", "FEMALE", "OTHER")));
         // Adding date header
         Header enrollmentDateHeader = createDateHeader("date", false, "ENROLLMENT_DATE", "dd-MM-yyyy", order++, List.of("01-11-2000", "21-01-2001", "11-12-2002"));
         headers.add(enrollmentDateHeader);
@@ -64,7 +64,7 @@ public class StudentBulkInitUploadManager {
         headers.add(emailHeader);
 
         // Adding optional string headers one by one
-        headers.add(createEnumHeader("string", true, "ENROLLMENT_STATUS", Arrays.asList("PENDING", "ACTIVE", "INACTIVE") ,order++, List.of("PENDING", "ACTIVE", "INACTIVE")));
+        headers.add(createEnumHeader("string", true, "ENROLLMENT_STATUS", Arrays.asList("ACTIVE", "ACTIVE", "INACTIVE"), order++, List.of("PENDING", "ACTIVE", "INACTIVE")));
         headers.add(createHeader("string", true, "ADDRESS_LINE", order++, List.of("Street 1", "Street 2", "Street 3")));
         headers.add(createHeader("string", true, "REGION", order++, List.of("MP", "UP", "AP")));
         headers.add(createHeader("string", true, "CITY", order++, List.of("Indore", "Bhopal", "Jaipur")));

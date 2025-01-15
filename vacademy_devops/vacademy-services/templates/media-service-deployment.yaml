@@ -6,7 +6,7 @@ metadata:
   labels:
     app: media-service
 spec:
-  replicas: {{ .Values.replicaCount }}
+  replicas: { { .Values.replicaCount } }
   selector:
     matchLabels:
       app: media-service
@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: media-service
-          image: {{ .Values.services.media_service.image.repository }}:{{ .Values.services.media_service.image.tag }}
+          image: { { .Values.services.media_service.image.repository } }:{{ .Values.services.media_service.image.tag }}
           imagePullPolicy: Always
           resources:
             requests:
@@ -29,7 +29,7 @@ spec:
           livenessProbe:
             httpGet:
               path: /media-service/actuator/health
-              port: {{ .Values.services.media_service.port }}
+              port: { { .Values.services.media_service.port } }
               scheme: HTTP
             initialDelaySeconds: 180
             periodSeconds: 30
@@ -39,7 +39,7 @@ spec:
           startupProbe:
             httpGet:
               path: /media-service/actuator/health
-              port: {{ .Values.services.media_service.port }}
+              port: { { .Values.services.media_service.port } }
               scheme: HTTP
             initialDelaySeconds: 180
             periodSeconds: 30
@@ -49,7 +49,7 @@ spec:
           readinessProbe:
             httpGet:
               path: /media-service/actuator/health
-              port: {{ .Values.services.media_service.port }}
+              port: { { .Values.services.media_service.port } }
               scheme: HTTP
             initialDelaySeconds: 180
             periodSeconds: 30
@@ -57,4 +57,4 @@ spec:
             failureThreshold: 5
             successThreshold: 1
           ports:
-            - containerPort: {{ .Values.services.media_service.port }}
+            - containerPort: { { .Values.services.media_service.port } }

@@ -17,7 +17,7 @@ public interface SubjectRepository extends JpaRepository<Subject, String> {
             "FROM subject s " +
             "INNER JOIN subject_session ss ON s.id = ss.subject_id " +
             "INNER JOIN package_session ps ON ss.session_id = ps.id " +
-            "WHERE ps.level_id = :levelId", nativeQuery = true)
+            "WHERE ps.level_id = :levelId AND s.status = 'ACTIVE' ", nativeQuery = true)
     List<Subject> findDistinctSubjectsByLevelId(@Param("levelId") String levelId);
 
 }

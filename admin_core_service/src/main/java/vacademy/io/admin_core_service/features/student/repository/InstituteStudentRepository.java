@@ -145,5 +145,6 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
     Optional<Student> getRecentStudentByUsername(@Param("username") String username);
 
 
+    Optional<Student> findByUsernameAndUserId(String username, String userId);
 }
 

@@ -21,10 +21,7 @@ import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
 import vacademy.io.common.core.utils.RandomGenerator;
 import vacademy.io.common.exceptions.VacademyException;
 
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 
 @Component
 public class StudentRegistrationManager {
@@ -77,6 +74,10 @@ public class StudentRegistrationManager {
 
     private Student createStudentFromRequest(UserDTO userDTO, StudentExtraDetails studentExtraDetails) {
         Student student = new Student();
+        Optional<Student> existingStudent = getExistingStudentByUserNameAndUserId(userDTO.getUsername(), userDTO.getId());
+        if (existingStudent.isPresent()) {
+            student = existingStudent.get();
+        }
         student.setUserId(userDTO.getId());
         student.setUsername(userDTO.getUsername());
         student.setFullName(userDTO.getFullName());
@@ -125,4 +126,13 @@ public class StudentRegistrationManager {
         return null;
     }
 
+    public ResponseEntity<String> addStudentToInstituteWithoutUserEntry(CustomUserDetails user, InstituteStudentDTO instituteStudentDTO) {
+        Student student = createStudentFromRequest(instituteStudentDTO.getUserDetails(), instituteStudentDTO.getStudentExtraDetails());
+        linkStudentToInstitute(student, instituteStudentDTO.getInstituteStudentDetails());
+        return ResponseEntity.ok("Student added successfully");
+    }
+
+    private Optional<Student> getExistingStudentByUserNameAndUserId(String username, String userId) {
+        return instituteStudentRepository.findByUsernameAndUserId(username, userId);
+    }
 }

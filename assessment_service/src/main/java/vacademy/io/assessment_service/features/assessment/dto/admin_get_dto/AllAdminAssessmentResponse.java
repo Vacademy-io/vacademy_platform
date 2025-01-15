@@ -16,7 +16,7 @@ import java.util.List;
 @Builder
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class AllAdminAssessmentResponse {
-    private List<AdminAssessmentDto> content = new ArrayList<>();
+    private List<AdminBasicAssessmentListItemDto> content = new ArrayList<>();
     private int pageNo;
     private int pageSize;
     private long totalElements;

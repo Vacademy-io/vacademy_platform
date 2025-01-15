@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.ObjectUtils;
+import vacademy.io.assessment_service.features.assessment.dto.AssessmentQuestionPreviewDto;
 import vacademy.io.assessment_service.features.assessment.dto.AssessmentSaveResponseDto;
 import vacademy.io.assessment_service.features.assessment.dto.SectionAddEditRequestDto;
 import vacademy.io.assessment_service.features.assessment.dto.create_assessment.AddQuestionsAssessmentDetailsDTO;
@@ -22,10 +23,7 @@ import vacademy.io.assessment_service.features.rich_text.enums.TextType;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
 
 import static org.hibernate.event.internal.EntityState.DELETED;
 import static org.hibernate.resource.transaction.spi.TransactionStatus.ACTIVE;
@@ -140,4 +138,18 @@ public class AssessmentLinkQuestionsManager {
         return sectionRepository.save(section);
     }
 
+    public Map<String, List<AssessmentQuestionPreviewDto>> getQuestionsOfSection(CustomUserDetails user, String assessmentId, String sectionIds) {
+        Map<String, List<AssessmentQuestionPreviewDto>> response = new HashMap<>();
+        List<String> sectionIdList = Arrays.asList(sectionIds.split(","));
+        List<QuestionAssessmentSectionMapping> mappings = questionAssessmentSectionMappingService.getQuestionAssessmentSectionMappingBySectionIds(sectionIdList);
+
+        for (QuestionAssessmentSectionMapping mapping : mappings) {
+            String sectionId = mapping.getSection().getId();
+            if (!response.containsKey(sectionId)) {
+                response.put(sectionId, new ArrayList<>());
+            }
+            response.get(sectionId).add(new AssessmentQuestionPreviewDto(mapping.getQuestion(), mapping));
+        }
+        return response;
+    }
 }

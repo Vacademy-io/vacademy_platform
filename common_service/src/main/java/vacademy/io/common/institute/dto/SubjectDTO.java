@@ -25,6 +25,8 @@ public class SubjectDTO {
 
     private Integer credit;
 
+    private String thumbnailId;
+
     private Date createdAt;
 
     private Date updatedAt;
@@ -37,5 +39,6 @@ public class SubjectDTO {
         this.credit = subject.getCredit();
         this.createdAt = subject.getCreatedAt();
         this.updatedAt = subject.getUpdatedAt();
+        this.thumbnailId = subject.getThumbnailId();
     }
 }

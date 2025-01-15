@@ -26,7 +26,7 @@ public class QuestionDTO {
     private String id;
     private String previewId;
     private String sectionId;
-    private String sectionOrder;
+    private Integer questionOrderInSection;
     private AssessmentRichTextDataDTO text;
     private String mediaId;
     private Date createdAt;

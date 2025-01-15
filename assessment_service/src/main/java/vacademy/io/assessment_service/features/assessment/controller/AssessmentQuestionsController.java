@@ -4,10 +4,16 @@ package vacademy.io.assessment_service.features.assessment.controller;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.assessment_service.features.assessment.dto.AssessmentQuestionPreviewDto;
 import vacademy.io.assessment_service.features.assessment.dto.AssessmentSaveResponseDto;
+import vacademy.io.assessment_service.features.assessment.dto.SectionAddEditRequestDto;
+import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.SectionDto;
 import vacademy.io.assessment_service.features.assessment.dto.create_assessment.AddQuestionsAssessmentDetailsDTO;
 import vacademy.io.assessment_service.features.assessment.manager.AssessmentLinkQuestionsManager;
 import vacademy.io.common.auth.model.CustomUserDetails;
+
+import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/assessment-service/assessment/add-questions/create/v1")
@@ -24,4 +30,12 @@ public class AssessmentQuestionsController {
                                                                                @RequestParam String type) {
         return assessmentLinkQuestionsManager.saveQuestionsToAssessment(user, basicAssessmentDetailsDTO, assessmentId, instituteId, type);
     }
+
+    @GetMapping("/questions-of-sections")
+    public Map<String, List<AssessmentQuestionPreviewDto>> getQuestionsOfSection(@RequestAttribute("user") CustomUserDetails user,
+                                                                                 @RequestParam(name = "assessmentId", required = false) String assessmentId,
+                                                                                 @RequestParam(name = "sectionIds", required = false) String sectionIds) {
+        return assessmentLinkQuestionsManager.getQuestionsOfSection(user, assessmentId, sectionIds);
+    }
+
 }

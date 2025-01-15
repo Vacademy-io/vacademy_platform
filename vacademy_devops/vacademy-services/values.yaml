@@ -30,6 +30,11 @@ services:
     image:
       repository: public.ecr.aws/e0x1f4p4/assessment-service/assessment-service-repo
       tag: latest
+  notification_service:
+    port: 8076
+    image:
+      repository: public.ecr.aws/e0x1f4p4/notification-service/notification-service-repo
+      tag: latest
 
 environment:
   stage: stage

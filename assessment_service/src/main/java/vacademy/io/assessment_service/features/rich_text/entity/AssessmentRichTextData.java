@@ -28,15 +28,14 @@ public class AssessmentRichTextData {
     @Column(name = "content", nullable = false)
     private String content;
 
+    // Static method to create entity from DTO
+    public static AssessmentRichTextData fromDTO(AssessmentRichTextDataDTO dto) {
+        if (dto == null) return null;
+        return new AssessmentRichTextData(dto.getId(), dto.getType(), dto.getContent());
+    }
 
     // Conversion method to DTO
     public AssessmentRichTextDataDTO toDTO() {
         return new AssessmentRichTextDataDTO(this.id, this.type, this.content);
-    }
-
-    // Static method to create entity from DTO
-    public static AssessmentRichTextData fromDTO(AssessmentRichTextDataDTO dto) {
-        if(dto == null) return null;
-        return new AssessmentRichTextData(dto.getId(), dto.getType(), dto.getContent());
     }
 }

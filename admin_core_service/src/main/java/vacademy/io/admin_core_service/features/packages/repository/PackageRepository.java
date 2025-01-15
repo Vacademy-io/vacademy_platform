@@ -5,7 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
-import vacademy.io.common.institute.entity.*;
+import vacademy.io.common.institute.entity.LevelProjection;
 import vacademy.io.common.institute.entity.PackageEntity;
 import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.common.institute.entity.session.SessionProjection;

@@ -11,7 +11,6 @@ import java.util.Date;
 @Entity
 @Table(name = "question_assessment_section_mapping")
 @Data
-@EqualsAndHashCode(of = {"question", "assessment", "section"})
 public class QuestionAssessmentSectionMapping {
 
     @Id
@@ -23,20 +22,25 @@ public class QuestionAssessmentSectionMapping {
     @JoinColumn(name = "question_id")
     private Question question;
 
-    @ManyToOne
-    @JoinColumn(name = "assessment_id")
-    private Assessment assessment;
+    @Column(name = "marking_json", nullable = false)
+    private String markingJson;
 
-    @ManyToOne
+    @Column(name = "status", nullable = false)
+    private String status;
+
+    @ManyToOne(cascade = CascadeType.ALL)
     @JoinColumn(name = "section_id")
     private Section section;
-    
+
     @Column(name = "question_order", nullable = false)
     private Integer questionOrder;
-    
+
+    @Column(name = "question_duration_in_min", nullable = false)
+    private Integer questionDurationInMin;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;
-    
+
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Date updatedAt;
 }

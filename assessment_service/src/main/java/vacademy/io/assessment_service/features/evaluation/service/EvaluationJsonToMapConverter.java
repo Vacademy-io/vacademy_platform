@@ -6,7 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.*;
 
 public class EvaluationJsonToMapConverter {
-    
+
     public static Map<String, Object> convertJsonToMap(String jsonString) {
         Map<String, Object> result = new HashMap<>();
         ObjectMapper objectMapper = new ObjectMapper();
@@ -14,7 +14,7 @@ public class EvaluationJsonToMapConverter {
         try {
             JsonNode rootNode = objectMapper.readTree(jsonString);
             String type = rootNode.get("type").asText();
-            
+
             // Handle different types
             switch (type) {
                 case "MCQS":

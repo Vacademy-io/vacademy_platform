@@ -1,14 +1,14 @@
 package vacademy.io.common.auth.service;
 
 import jakarta.transaction.Transactional;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
 import vacademy.io.common.auth.constants.AuthConstant;
 import vacademy.io.common.auth.entity.RefreshToken;
 import vacademy.io.common.auth.entity.User;
 import vacademy.io.common.auth.repository.RefreshTokenRepository;
 import vacademy.io.common.auth.repository.UserRepository;
 import vacademy.io.common.exceptions.ExpiredTokenException;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.HashMap;

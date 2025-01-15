@@ -14,17 +14,16 @@ public class QuestionPaperCustomRepositoryImpl implements QuestionPaperCustomRep
 
     @Override
     public void bulkInsertQuestionsToQuestionPaper(String questionPaperId, List<String> questionIds) {
-        StringBuilder sql = new StringBuilder("INSERT INTO public.question_question_paper_mapping (id, question_id, question_paper_id) VALUES ");
+        StringBuilder sql = new StringBuilder("INSERT INTO public.question_question_paper_mapping (id, question_id, question_paper_id, question_order) VALUES ");
 
         for (int i = 0; i < questionIds.size(); i++) {
-            String mappingId = UUID.randomUUID().toString(); // Generate unique ID for each mapping
-            sql.append("('").append(mappingId).append("', '").append(questionIds.get(i)).append("', '").append(questionPaperId).append("')");
+            String mappingId = UUID.randomUUID().toString();
+            sql.append("('").append(mappingId).append("', '").append(questionIds.get(i)).append("', '").append(questionPaperId).append("', ").append(i + 1).append(")");
             if (i < questionIds.size() - 1) {
                 sql.append(", ");
             }
         }
 
-        // Execute the constructed SQL statement
         entityManager.createNativeQuery(sql.toString()).executeUpdate();
     }
 }

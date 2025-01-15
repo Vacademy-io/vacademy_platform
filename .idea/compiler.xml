@@ -7,7 +7,9 @@
         <sourceOutputDir name="target/generated-sources/annotations" />
         <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
         <outputRelativeToContentRoot value="true" />
+        <module name="common_service" />
         <module name="auth_service" />
+        <module name="media_service" />
         <module name="assessment_service" />
         <module name="student_service" />
         <module name="notification_service" />

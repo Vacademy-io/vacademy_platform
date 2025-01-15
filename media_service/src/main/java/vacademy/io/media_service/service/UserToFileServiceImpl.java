@@ -3,7 +3,6 @@ package vacademy.io.media_service.service;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.media.utils.MediaUtil;
 import vacademy.io.media_service.dto.UserToFileDTO;
@@ -23,19 +22,23 @@ public class UserToFileServiceImpl implements UserToFileService {
     @Autowired
     private UserToFileRepository userToFileRepository;
 
+    public static List<String> getFolderNamesFromParam(String folderNames) {
+        return new ArrayList<>(List.of(folderNames.split(",")));
+    }
+
     @Override
     public List<UserToFileDTO> getUserFilesByUserId(String userId) {
         if (Objects.isNull(userId)) {
             throw new VacademyException("userId cannot be null");
         }
         List<UserToFile> userFiles = userToFileRepository.findByUserIdAndStatus(userId, FileStatusEnum.ACTIVE.name());
-        List<UserToFileDTO>userToFileDTOS = new ArrayList<>();
+        List<UserToFileDTO> userToFileDTOS = new ArrayList<>();
         if (Objects.nonNull(userFiles) && !userFiles.isEmpty()) {
-            for(UserToFile userFile : userFiles) {
+            for (UserToFile userFile : userFiles) {
                 UserToFileDTO userToFileDTO = userFile.mapToUserToFileDTO();
-                userToFileDTO.setFileDetail(fileService.getFileDetailsWithExpiryAndId(userFile.getFile().getId(),1));
-                if (Objects.nonNull(userFile.getFolderIcon())){
-                    userToFileDTO.setFolderIconUrl(fileService.getPublicUrlWithExpiry(userFile.getFolderIcon().getId(),1));
+                userToFileDTO.setFileDetail(fileService.getFileDetailsWithExpiryAndId(userFile.getFile().getId(), 1));
+                if (Objects.nonNull(userFile.getFolderIcon())) {
+                    userToFileDTO.setFolderIconUrl(fileService.getPublicUrlWithExpiry(userFile.getFolderIcon().getId(), 1));
                 }
                 userToFileDTOS.add(userToFileDTO);
             }
@@ -64,7 +67,6 @@ public class UserToFileServiceImpl implements UserToFileService {
 
         return fileIdsList.size() + " file(s) deleted successfully!!!";
     }
-
 
     @Override
     public Map<String, List<UserToFileDTO>> getUserFilesByFoldersAndUserId(String folderNames, String userId) {
@@ -122,7 +124,6 @@ public class UserToFileServiceImpl implements UserToFileService {
         return result;
     }
 
-
     @Override
     public List<UserToFileDTO> getUserFiles(String userId, String fileId) {
         // Validate input parameters
@@ -166,10 +167,6 @@ public class UserToFileServiceImpl implements UserToFileService {
         }
 
         return userToFileDTOS;
-    }
-
-    public static List<String> getFolderNamesFromParam(String folderNames) {
-        return new ArrayList<>(List.of(folderNames.split(",")));
     }
 
 }

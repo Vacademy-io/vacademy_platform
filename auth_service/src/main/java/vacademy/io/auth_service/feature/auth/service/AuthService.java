@@ -8,18 +8,20 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
-import vacademy.io.auth_service.feature.auth.dto.*;
+import vacademy.io.auth_service.feature.auth.dto.JwtResponseDto;
+import vacademy.io.auth_service.feature.auth.dto.RegisterRequest;
 import vacademy.io.auth_service.feature.user.repository.PermissionRepository;
-import vacademy.io.common.auth.entity.*;
+import vacademy.io.common.auth.entity.RefreshToken;
+import vacademy.io.common.auth.entity.User;
+import vacademy.io.common.auth.entity.UserRole;
 import vacademy.io.common.auth.repository.RoleRepository;
 import vacademy.io.common.auth.repository.UserRepository;
 import vacademy.io.common.auth.service.JwtService;
 import vacademy.io.common.auth.service.RefreshTokenService;
 import vacademy.io.common.exceptions.VacademyException;
-import vacademy.io.common.auth.dto.SubmoduleDTO;
 
-
-import java.util.*;
+import java.util.List;
+import java.util.Set;
 
 @Service
 public class AuthService {

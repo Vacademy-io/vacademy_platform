@@ -5,21 +5,26 @@ import org.apache.batik.transcoder.TranscoderException;
 import org.apache.batik.transcoder.TranscoderInput;
 import org.apache.batik.transcoder.TranscoderOutput;
 import org.apache.batik.transcoder.wmf.tosvg.WMFTranscoder;
-
-
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 import org.zwobble.mammoth.DocumentConverter;
-
 import org.zwobble.mammoth.Result;
 import vacademy.io.assessment_service.features.question_core.dto.QuestionDTO;
 import vacademy.io.assessment_service.features.upload_docx.service.UploadDocxService;
 
-
-import java.io.*;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.util.*;
+import java.util.Base64;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -44,6 +49,51 @@ public class QuestionPaperDocxController {
         return Base64.getEncoder().encodeToString(svgStream.toByteArray());
     }
 
+    public static String convertBase64WmfImagesToSvg(String htmlContent)
+            throws TranscoderException, IOException {
+
+        // Pattern to match WMF images in base64 format
+        Pattern wmfPattern = Pattern.compile("data:image/x-wmf;base64,([^\"]+)");
+
+        // Create a matcher to find all occurrences of WMF images
+        Matcher matcher = wmfPattern.matcher(htmlContent);
+
+        // Create a string buffer to store the modified HTML content
+        StringBuffer result = new StringBuffer();
+
+        // Iterate over all matches and replace WMF images with SVG images
+        while (matcher.find()) {
+            // Extract the base64-encoded WMF image
+            String base64Wmf = matcher.group(1);
+
+            // Convert the WMF image to an SVG image
+            String base64Svg = convertBase64WmfToBase64Svg(base64Wmf);
+
+            // Replace the WMF image with the SVG image
+            matcher.appendReplacement(result, "data:image/svg+xml;base64," + base64Svg);
+        }
+
+        // Append the remaining HTML content
+        matcher.appendTail(result);
+
+        // Return the modified HTML content
+        return result.toString();
+    }
+
+    private static String getImageMimeType(String imageType) {
+        switch (imageType.toLowerCase()) {
+            case "jpeg":
+            case "jpg":
+                return "image/jpeg";
+            case "png":
+                return "image/png";
+            case "gif":
+                return "image/gif";
+            default:
+                return "image/png"; // Default to PNG if type is unknown
+        }
+    }
+
     @PostMapping("/convert-doc-to-html")
     public List<QuestionDTO> docToHtml(
             @RequestParam("file") MultipartFile file,
@@ -52,10 +102,10 @@ public class QuestionPaperDocxController {
             @RequestParam(value = "answerIdentifier", required = false) String answerIdentifier,
             @RequestParam(value = "explanationIdentifier", required = false) String explanationIdentifier) {
 
-         questionIdentifier = "(\\d+\\.|\\d+|Q\\d+)";
-         optionIdentifier = "\\([a-zA-Z]\\.)";
-         answerIdentifier = "Ans";
-         explanationIdentifier = "Exp";
+        questionIdentifier = "(\\d+\\.|\\d+|Q\\d+)";
+        optionIdentifier = "\\([a-zA-Z]\\.)";
+        answerIdentifier = "Ans";
+        explanationIdentifier = "Exp";
 
         // Check if the uploaded file is HTML
         if (isHtmlFile(file)) {
@@ -120,39 +170,6 @@ public class QuestionPaperDocxController {
                 });
     }
 
-
-    public static String convertBase64WmfImagesToSvg(String htmlContent)
-            throws TranscoderException, IOException {
-
-        // Pattern to match WMF images in base64 format
-        Pattern wmfPattern = Pattern.compile("data:image/x-wmf;base64,([^\"]+)");
-
-        // Create a matcher to find all occurrences of WMF images
-        Matcher matcher = wmfPattern.matcher(htmlContent);
-
-        // Create a string buffer to store the modified HTML content
-        StringBuffer result = new StringBuffer();
-
-        // Iterate over all matches and replace WMF images with SVG images
-        while (matcher.find()) {
-            // Extract the base64-encoded WMF image
-            String base64Wmf = matcher.group(1);
-
-            // Convert the WMF image to an SVG image
-            String base64Svg = convertBase64WmfToBase64Svg(base64Wmf);
-
-            // Replace the WMF image with the SVG image
-            matcher.appendReplacement(result, "data:image/svg+xml;base64," + base64Svg);
-        }
-
-        // Append the remaining HTML content
-        matcher.appendTail(result);
-
-        // Return the modified HTML content
-        return result.toString();
-    }
-
-
     // Helper method to convert WMF to PNG
     private String convertWmfToSvg(byte[] wmfData) throws TranscoderException, IOException {
         // Convert WMF to SVG
@@ -163,21 +180,6 @@ public class QuestionPaperDocxController {
         TranscoderOutput svgOutput = new TranscoderOutput(svgStream);
         wmfTranscoder.transcode(wmfInput, svgOutput);
         return Base64.getEncoder().encodeToString(svgStream.toByteArray());
-    }
-
-
-    private static String getImageMimeType(String imageType) {
-        switch (imageType.toLowerCase()) {
-            case "jpeg":
-            case "jpg":
-                return "image/jpeg";
-            case "png":
-                return "image/png";
-            case "gif":
-                return "image/gif";
-            default:
-                return "image/png"; // Default to PNG if type is unknown
-        }
     }
 
 

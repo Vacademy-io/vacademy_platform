@@ -4,11 +4,9 @@ package vacademy.io.admin_core_service.features.student.controller;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import vacademy.io.admin_core_service.features.student.dto.InstituteStudentDTO;
 import vacademy.io.admin_core_service.features.student.dto.student_list_dto.AllStudentResponse;
 import vacademy.io.admin_core_service.features.student.dto.student_list_dto.StudentListFilter;
 import vacademy.io.admin_core_service.features.student.manager.StudentListManager;
-import vacademy.io.admin_core_service.features.student.manager.StudentRegistrationManager;
 import vacademy.io.common.auth.config.PageConstants;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
@@ -33,9 +31,9 @@ public class InstituteGetStudentController {
 
     @PostMapping("/all-csv")
     public ResponseEntity<byte[]> getStudentsCsvExport(@RequestAttribute(name = "user") CustomUserDetails user,
-                                                                @RequestBody StudentListFilter studentListFilter,
-                                                                @RequestParam(value = "pageNo", defaultValue = DEFAULT_PAGE_NUMBER, required = false) int pageNo,
-                                                                @RequestParam(value = "pageSize", defaultValue = PageConstants.DEFAULT_PAGE_SIZE, required = false) int pageSize) {
+                                                       @RequestBody StudentListFilter studentListFilter,
+                                                       @RequestParam(value = "pageNo", defaultValue = DEFAULT_PAGE_NUMBER, required = false) int pageNo,
+                                                       @RequestParam(value = "pageSize", defaultValue = PageConstants.DEFAULT_PAGE_SIZE, required = false) int pageSize) {
         return studentListManager.getStudentsCsvExport(user, studentListFilter, pageNo, pageSize);
     }
 

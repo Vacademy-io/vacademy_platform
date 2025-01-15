@@ -1,5 +1,6 @@
 package vacademy.io.assessment_service.features.assessment.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Data;
 import org.hibernate.annotations.UuidGenerator;
@@ -10,7 +11,7 @@ import java.util.Date;
 @Table(name = "assessment_custom_fields")
 @Data
 public class AssessmentCustomField {
-    
+
     @Id
     @UuidGenerator
     @Column(name = "id")
@@ -25,19 +26,23 @@ public class AssessmentCustomField {
     @Column(name = "comma_separated_options", nullable = true)
     private String commaSeparatedOptions;
 
+    @Column(name = "status", nullable = true)
+    private String status;
+
     @ManyToOne
     @JoinColumn(name = "assessment_id")
+    @JsonIgnore
     private Assessment assessment;
 
     @Column(name = "is_mandatory", nullable = false)
     private Boolean isMandatory;
-    
+
     @Column(name = "field_type", nullable = false)
     private String fieldType; // e.g. short_string, number, input_string
-    
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;
-    
+
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Date updatedAt;
 }

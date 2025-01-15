@@ -8,8 +8,6 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import vacademy.io.common.institute.dto.InstituteInfoDTO;
 
-import java.util.List;
-
 
 @Data
 @AllArgsConstructor

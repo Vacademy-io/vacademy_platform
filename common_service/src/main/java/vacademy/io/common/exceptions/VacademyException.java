@@ -12,7 +12,7 @@ public class VacademyException extends RuntimeException {
         this.status = status;
     }
 
-    public VacademyException(String message){
+    public VacademyException(String message) {
         super(message);
         this.status = HttpStatus.NOT_EXTENDED;
     }

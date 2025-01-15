@@ -13,12 +13,9 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Component;
 import vacademy.io.common.auth.constants.AuthConstant;
 import vacademy.io.common.auth.dto.UserServiceDTO;
-import vacademy.io.common.auth.entity.User;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.auth.repository.UserRepository;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
-
-import java.util.Optional;
 
 
 @Slf4j
@@ -26,18 +23,12 @@ import java.util.Optional;
 public class UserDetailsServiceImpl implements UserDetailsService {
 
 
-    @Autowired
-    private UserRepository userRepository;
-
-    @Autowired
-    private InternalClientUtils internalClientUtils;
-
     @Value(value = "${spring.application.name}")
     String clientName;
-
     @Value(value = "${auth.server.baseurl}")
     String authServerBaseUrl;
-
+    @Autowired
+    private InternalClientUtils internalClientUtils;
 
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {

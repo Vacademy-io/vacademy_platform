@@ -16,7 +16,7 @@ import java.util.List;
 public class InstituteInfoDTO {
     private String instituteName;
     private String id;
-    private  String country;
+    private String country;
     private String state;
     private String city;
     private String address;

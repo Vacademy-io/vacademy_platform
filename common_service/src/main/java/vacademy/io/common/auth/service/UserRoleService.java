@@ -4,7 +4,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import vacademy.io.common.auth.entity.UserAuthority;
 import vacademy.io.common.auth.entity.UserRole;
 
-import java.util.*;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 public class UserRoleService {
@@ -47,7 +49,7 @@ public class UserRoleService {
 
         return instituteMap;
     }
-    
+
     // Example usage of ObjectMapper for JSON conversion (if needed)
     public String convertToJson(Map<String, Object> map) throws Exception {
         ObjectMapper objectMapper = new ObjectMapper();

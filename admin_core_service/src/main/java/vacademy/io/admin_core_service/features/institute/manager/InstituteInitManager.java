@@ -4,16 +4,15 @@ package vacademy.io.admin_core_service.features.institute.manager;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
+import vacademy.io.admin_core_service.features.institute.service.InstituteModuleService;
 import vacademy.io.admin_core_service.features.packages.repository.PackageRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
 import vacademy.io.admin_core_service.features.subject.repository.SubjectRepository;
 import vacademy.io.common.auth.enums.Gender;
+import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.dto.*;
 import vacademy.io.common.institute.entity.Institute;
-import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
-import vacademy.io.admin_core_service.features.institute.service.InstituteModuleService;
-import vacademy.io.common.exceptions.VacademyException;
-import vacademy.io.common.institute.entity.session.PackageSession;
 
 import java.util.List;
 import java.util.Optional;
@@ -41,7 +40,7 @@ public class InstituteInitManager {
         Optional<Institute> institute = instituteRepository.findById(instituteId);
 
         ObjectMapper objectMapper = new ObjectMapper();
-        if(institute.isEmpty()) {
+        if (institute.isEmpty()) {
             throw new VacademyException("Invalid Institute Id");
         }
 

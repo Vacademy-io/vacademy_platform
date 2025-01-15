@@ -5,6 +5,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
+import org.hibernate.annotations.UuidGenerator;
 
 @Entity
 @Data
@@ -14,7 +15,7 @@ import lombok.ToString;
 @Table(name = "modules")
 public class Module {
     @Id
-    @GeneratedValue(strategy = GenerationType.AUTO)
+    @UuidGenerator
     @Column(name = "id")
     private String id;
 
@@ -26,4 +27,7 @@ public class Module {
 
     @Column(name = "description")
     private String description;
+
+    @Column(name = "thumbnail_id")
+    private String thumbnailId;
 }

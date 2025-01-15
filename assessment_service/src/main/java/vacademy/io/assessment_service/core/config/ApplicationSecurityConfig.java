@@ -17,8 +17,8 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.cors.CorsConfigurationSource;
+import vacademy.io.assessment_service.core.filter.AssessmentJwtAuthFilter;
 import vacademy.io.common.auth.filter.InternalAuthFilter;
-import vacademy.io.common.auth.filter.JwtAuthFilter;
 
 @Configuration
 @EnableMethodSecurity
@@ -30,7 +30,7 @@ public class ApplicationSecurityConfig {
     private static final String[] ALLOWED_PATHS = {"/assessment-service/question-paper/upload/docx/v1/**", "/assessment-service/actuator/**", "/assessment-service/swagger-ui.html", "/assessment-service/v1/report/alert/**", "/assessment-service/v3/api-docs/**", "/assessment-service/swagger-ui/**", "/assessment-service/webjars/swagger-ui/**", "/assessment-service/api-docs/**"};
 
     @Autowired
-    JwtAuthFilter jwtAuthFilter;
+    AssessmentJwtAuthFilter jwtAuthFilter;
     @Autowired
     UserDetailsService userDetailsService;
 

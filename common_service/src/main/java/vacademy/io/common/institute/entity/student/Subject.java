@@ -36,6 +36,9 @@ public class Subject {
     @Column(name = "status")
     private String status = "ACTIVE";
 
+    @Column(name = "thumbnail_id")
+    private String thumbnailId;
+
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Date updatedAt;
 

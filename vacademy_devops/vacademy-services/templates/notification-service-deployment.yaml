@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification-service
+  namespace: default
+  labels:
+    app: notification-service
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: notification-service
+  template:
+    metadata:
+      labels:
+        app: notification-service
+    spec:
+      containers:
+        - name: notification-service
+          image: {{ .Values.services.notification_service.image.repository }}:{{ .Values.services.notification_service.image.tag }}
+          imagePullPolicy: Always
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "450Mi"
+            limits:
+              cpu: "250m"
+              memory: "600Mi"
+          livenessProbe:
+            httpGet:
+              path: /notification-service/actuator/health
+              port: {{ .Values.services.notification_service.port }}
+              scheme: HTTP
+            initialDelaySeconds: 180
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+            successThreshold: 1
+          startupProbe:
+            httpGet:
+              path: /notification-service/actuator/health
+              port: {{ .Values.services.notification_service.port }}
+              scheme: HTTP
+            initialDelaySeconds: 180
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 30
+            successThreshold: 1
+          readinessProbe:
+            httpGet:
+              path: /notification-service/actuator/health
+              port: {{ .Values.services.notification_service.port }}
+              scheme: HTTP
+            initialDelaySeconds: 180
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+            successThreshold: 1
+          ports:
+            - containerPort: {{ .Values.services.notification_service.port }}

@@ -54,3 +54,10 @@ spec:
                 name: assessment-service
                 port:
                   number: {{ .Values.services.assessment_service.port }}
+          - path: /notification-service
+            pathType: Prefix
+            backend:
+              service:
+                name: notification-service
+                port:
+                  number: {{ .Values.services.notification_service.port }}

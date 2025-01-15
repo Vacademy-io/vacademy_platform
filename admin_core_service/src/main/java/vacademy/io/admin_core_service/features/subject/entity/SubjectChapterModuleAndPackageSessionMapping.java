@@ -24,12 +24,12 @@ public class SubjectChapterModuleAndPackageSessionMapping {
     private Subject subject;
 
     @ManyToOne
-    @JoinColumn(name = "chapter_id", nullable = false) // Foreign key for chapter_id
+    @JoinColumn(name = "chapter_id") // Foreign key for chapter_id
     private Chapter chapter;
 
     @ManyToOne
     @JoinColumn(name = "module_id") // Foreign key for module_id (nullable)
-    private Module modaaule;
+    private Module module;
 
     @ManyToOne
     @JoinColumn(name = "package_session_id") // Foreign key for package_session_id (nullable)
@@ -41,4 +41,8 @@ public class SubjectChapterModuleAndPackageSessionMapping {
     @Column(name = "updated_at", insertable = false, updatable = false, columnDefinition = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
     private Timestamp updatedAt;
 
+    public SubjectChapterModuleAndPackageSessionMapping(Subject subject, Module module) {
+        this.subject = subject;
+        this.module = module;
+    }
 }

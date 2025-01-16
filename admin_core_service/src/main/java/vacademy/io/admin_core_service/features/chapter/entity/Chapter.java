@@ -24,6 +24,12 @@ public class Chapter {
     @Column(name = "status")
     private String statues;
 
+    @Column(name = "file_id")
+    private String fileId;
+
+    @Column(name = "description")
+    private String description;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Timestamp createdAt;
 

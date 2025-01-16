@@ -10,4 +10,6 @@ public class ChapterDTO {
     private String id;
     private String chapterName;
     private String status;
+    private String fileId;
+    private String description;
 }

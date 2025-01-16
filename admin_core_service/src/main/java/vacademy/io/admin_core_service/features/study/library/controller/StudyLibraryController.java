@@ -19,7 +19,7 @@ public class StudyLibraryController {
     private StudyLibraryService studyLibraryService;
 
     @GetMapping("/init")
-    public ResponseEntity<List<SessionDTOWithDetails>> initUserLibrary(String instituteId) {
+    public ResponseEntity<List<SessionDTOWithDetails>> initStudyLibrary(String instituteId) {
         return ResponseEntity.ok(studyLibraryService.getStudyLibraryInitDetails(instituteId));
     }
 }

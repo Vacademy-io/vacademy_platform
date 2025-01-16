@@ -15,6 +15,7 @@ import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.common.institute.entity.student.Subject;
 
 import java.util.Objects;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -33,6 +34,10 @@ public class SubjectService {
             throw new VacademyException("Package Session not found");
         }
         validateSubject(subjectDTO);
+        Optional<Subject> optionalSubject = this.getSubjectByNameAndPackageSessionId(subjectDTO.getSubjectName(),packageSessionId);
+        if (optionalSubject.isPresent()){
+            throw new VacademyException("Subject already exists");
+        }
         Subject subject = new Subject();
         createSubject(subjectDTO,subject);
         Subject savedSubject = subjectRepository.save(subject);
@@ -93,6 +98,10 @@ public class SubjectService {
             subject.setThumbnailId(subjectDTO.getThumbnailId());
         }
         subject.setStatus(SubjectStatusEnum.ACTIVE.name());
+    }
+
+    public Optional<Subject> getSubjectByNameAndPackageSessionId(String subjectName, String packageSessionId) {
+        return subjectPackageSessionRepository.findSubjectByNameAndPackageSessionId(subjectName, packageSessionId);
     }
 
 }

@@ -2,6 +2,7 @@ package vacademy.io.admin_core_service.features.subject.entity;
 
 import jakarta.persistence.*;
 import org.hibernate.annotations.UuidGenerator;
+import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.common.institute.entity.module.Module;
 import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.common.institute.entity.student.Subject;
@@ -35,14 +36,20 @@ public class SubjectChapterModuleAndPackageSessionMapping {
     @JoinColumn(name = "package_session_id") // Foreign key for package_session_id (nullable)
     private PackageSession packageSession;
 
+    @ManyToOne
+    @JoinColumn(name = "institute_id") // Foreign key for package_session_id (nullable)
+    private Institute institute;
+
     @Column(name = "created_at", insertable = false, updatable = false, columnDefinition = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
     private Timestamp createdAt;
 
     @Column(name = "updated_at", insertable = false, updatable = false, columnDefinition = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
     private Timestamp updatedAt;
 
-    public SubjectChapterModuleAndPackageSessionMapping(Subject subject, Module module) {
+    public SubjectChapterModuleAndPackageSessionMapping(Subject subject, Module module, PackageSession packageSession, Institute institute) {
         this.subject = subject;
         this.module = module;
+        this.packageSession = packageSession;
+        this.institute = institute;
     }
 }

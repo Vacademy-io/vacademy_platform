@@ -14,8 +14,8 @@ public class ModuleController {
     private final ModuleService moduleService;
 
     @PostMapping("/add-module")
-    public ResponseEntity<ModuleDTO> addModule(String subjectId,@RequestBody ModuleDTO moduleDTO, @RequestAttribute("user")CustomUserDetails user) {
-        return ResponseEntity.ok(moduleService.addModule(subjectId, moduleDTO,user));
+    public ResponseEntity<ModuleDTO> addModule(@RequestParam String subjectId,@RequestParam (required = false) String packageSessionId,@RequestParam (required = false) String instituteId,@RequestBody ModuleDTO moduleDTO, @RequestAttribute("user")CustomUserDetails user) {
+        return ResponseEntity.ok(moduleService.addModule(subjectId,packageSessionId,instituteId, moduleDTO,user));
     }
 
     @DeleteMapping("/delete-module")

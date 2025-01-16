@@ -37,6 +37,7 @@ public class SubjectService {
         createSubject(subjectDTO,subject);
         Subject savedSubject = subjectRepository.save(subject);
         subjectPackageSessionRepository.save(new SubjectPackageSession(savedSubject,packageSession));
+        subjectDTO.setId(savedSubject.getId());
         return subjectDTO;
     }
 

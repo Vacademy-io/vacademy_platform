@@ -6,6 +6,7 @@
     <file url="file://$PROJECT_DIR$/auth_service/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/common_service/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/media_service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/notification_service/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/student_service/src/main/java" charset="UTF-8" />
   </component>
 </project>

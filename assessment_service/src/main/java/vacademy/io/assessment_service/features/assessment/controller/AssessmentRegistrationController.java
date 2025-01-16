@@ -24,4 +24,5 @@ public class AssessmentRegistrationController {
                                                                                   @RequestParam String type) {
         return assessmentParticipantsManager.saveParticipantsToAssessment(user, basicAssessmentDetailsDTO, assessmentId, instituteId, type);
     }
+
 }

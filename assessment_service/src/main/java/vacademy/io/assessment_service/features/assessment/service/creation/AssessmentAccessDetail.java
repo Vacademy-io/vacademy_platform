@@ -6,14 +6,14 @@ import org.springframework.util.StringUtils;
 import vacademy.io.assessment_service.features.assessment.dto.RolesBatchesAndUsersDto;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentInstituteMapping;
+import vacademy.io.assessment_service.features.assessment.enums.DurationDistributionEnum;
 import vacademy.io.assessment_service.features.assessment.enums.StepStatus;
 import vacademy.io.assessment_service.features.assessment.enums.creationSteps.AccessControlEnum;
+import vacademy.io.assessment_service.features.assessment.enums.creationSteps.AssessmentCreationEnum;
 import vacademy.io.assessment_service.features.assessment.service.IStep;
+import vacademy.io.assessment_service.features.assessment.service.StepOption;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 
 @Component
 public class AssessmentAccessDetail extends IStep {
@@ -74,6 +74,11 @@ public class AssessmentAccessDetail extends IStep {
                 setStepKeys(getStepsForManualUploadExam());
                 break;
         }
+
+        this.getFieldOptions().put(AccessControlEnum.ROLES.name().toLowerCase(), (List.of("ADMIN", "CREATOR", "EVALUATOR")).stream().map((option) ->
+                new StepOption(AssessmentCreationEnum.DURATION_DISTRIBUTION.name().toLowerCase(), option, null, false)
+        ).toList());
+
     }
 
 

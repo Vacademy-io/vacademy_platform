@@ -28,8 +28,6 @@ public class UserDetailsServiceImpl implements UserDetailsService {
     @Value(value = "${auth.server.baseurl}")
     String authServerBaseUrl;
     @Autowired
-    private UserRepository userRepository;
-    @Autowired
     private InternalClientUtils internalClientUtils;
 
     @Override

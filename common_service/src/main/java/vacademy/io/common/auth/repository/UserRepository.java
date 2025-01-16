@@ -8,12 +8,15 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.common.auth.entity.User;
 
+import javax.swing.text.html.Option;
 import java.util.List;
 import java.util.Optional;
 
 @Repository
 public interface UserRepository extends CrudRepository<User, String> {
     Optional<User> findByUsername(String username);
+
+    Optional<User> findByEmail(String email);
 
     List<User> findByIdIn(List<String> userIds);
 

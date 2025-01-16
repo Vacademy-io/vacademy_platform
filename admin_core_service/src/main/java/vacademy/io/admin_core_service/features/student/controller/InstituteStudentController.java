@@ -12,10 +12,8 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 @RequestMapping("/admin-core-service/institute/student/v1")
 public class InstituteStudentController {
 
-
     @Autowired
     private StudentRegistrationManager studentRegistrationManager;
-
 
     // Add User to Institute
     @PostMapping("/add-student")

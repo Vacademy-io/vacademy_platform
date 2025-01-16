@@ -90,29 +90,34 @@ public class ModuleService {
         if (moduleId == null) {
             throw new VacademyException("Module ID cannot be null");
         }
-        Module module = moduleRepository.findById(moduleId).orElse(null);
-        if (module == null) {
-            throw new VacademyException("Module not found");
-        }
+
+        // Use Optional to directly handle the absence of the module
+        Module module = moduleRepository.findById(moduleId)
+                .orElseThrow(() -> new VacademyException("Module not found"));
+
         moduleDTO.setId(moduleId);
         createModule(moduleDTO, module);
         module = moduleRepository.save(module);
+
         moduleDTO.setId(module.getId());
         return moduleDTO;
     }
 
-    public String deleteModule(String moduleId,CustomUserDetails user) {
+    public String deleteModule(String moduleId, CustomUserDetails user) {
         if (moduleId == null) {
             throw new VacademyException("Module ID cannot be null");
         }
-        Module module = moduleRepository.findById(moduleId).orElse(null);
-        if (module == null) {
-            throw new VacademyException("Module not found");
-        }
+
+        // Use Optional to directly handle the absence of the module
+        Module module = moduleRepository.findById(moduleId)
+                .orElseThrow(() -> new VacademyException("Module not found"));
+
         module.setStatus(ModuleStatusEnum.DELETED.name());
         moduleRepository.save(module);
+
         return "Module deleted successfully";
     }
+
 
     private void validateModule(ModuleDTO moduleDTO) {
         if (moduleDTO.getModuleName() == null) {

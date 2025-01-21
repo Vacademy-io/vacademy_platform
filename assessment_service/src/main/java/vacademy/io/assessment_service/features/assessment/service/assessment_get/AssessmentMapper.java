@@ -24,8 +24,8 @@ public class AssessmentMapper {
             .boundEndTime((Date) assessment[13])
             .createdAt((Date) assessment[14])
             .updatedAt((Date) assessment[15])
-            .userRegistrations((Integer) assessment[16])
-            .batchRegistrations((Integer) assessment[17])
+            .userRegistrations((Long) assessment[16])
+            .batchRegistrations((Long) assessment[17])
             .build();
 
         return dto;

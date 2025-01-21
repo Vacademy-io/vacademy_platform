@@ -35,31 +35,10 @@ public class AdminBasicAssessmentListItemDto {
     private Integer coverFileId;
     private Date boundStartTime;
     private Date boundEndTime;
-    private Integer userRegistrations;
-    private Integer batchRegistrations;
+    private Long userRegistrations;
+    private Long batchRegistrations;
     private List<String> adminAccesses = new ArrayList<>();
     private Date createdAt;
     private Date updatedAt;
 
-    public AdminBasicAssessmentListItemDto(Assessment assessment){
-        this.assessmentId = assessment.getId();
-        this.name = assessment.getName();
-        this.about = assessment.getAbout().toDTO();
-        this.playMode = assessment.getPlayMode();
-        this.evaluationType = assessment.getEvaluationType();
-        this.submissionType = assessment.getSubmissionType();
-        this.duration = assessment.getDuration();
-        this.assessmentVisibility = assessment.getAssessmentVisibility();
-        this.status = assessment.getStatus();
-        this.registrationCloseDate = assessment.getRegistrationCloseDate();
-        this.registrationOpenDate = assessment.getRegistrationOpenDate();
-        this.expectedParticipants = assessment.getExpectedParticipants();
-        this.coverFileId = assessment.getCoverFileId();
-        this.boundStartTime = assessment.getBoundStartTime();
-        this.boundEndTime = assessment.getBoundEndTime();
-        this.userRegistrations = assessment.getUserRegistrations().size();
-        this.batchRegistrations = assessment.getBatchRegistrations().size();
-        this.createdAt = assessment.getCreatedAt();
-        this.updatedAt = assessment.getUpdatedAt();
-    }
 }

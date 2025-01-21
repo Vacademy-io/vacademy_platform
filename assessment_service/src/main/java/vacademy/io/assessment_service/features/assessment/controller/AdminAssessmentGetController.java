@@ -14,7 +14,7 @@ import static vacademy.io.common.core.constants.PageConstants.DEFAULT_PAGE_NUMBE
 import static vacademy.io.common.core.constants.PageConstants.DEFAULT_PAGE_SIZE;
 
 @RestController
-@RequestMapping("/assessment-service/assessment/add-participants/create/v1")
+@RequestMapping("/assessment-service/assessment/admin")
 public class AdminAssessmentGetController {
 
     @Autowired

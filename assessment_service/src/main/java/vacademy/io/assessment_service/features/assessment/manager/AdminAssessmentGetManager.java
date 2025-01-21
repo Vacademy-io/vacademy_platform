@@ -53,7 +53,7 @@ public class AdminAssessmentGetManager {
 
         makeFilterFieldEmptyArrayIfNull(adminAssessmentFilter);
 
-        assessmentsPage = assessmentRepository.filterAssessments(adminAssessmentFilter.getName(), adminAssessmentFilter.getBatchIds(), adminAssessmentFilter.getSubjectsIds(), adminAssessmentFilter.getAssessmentStatuses(), adminAssessmentFilter.getGetLiveAssessments(), adminAssessmentFilter.getGetPassedAssessments(), adminAssessmentFilter.getGetUpcomingAssessments(), adminAssessmentFilter.getAssessmentModes(), pageable);
+        assessmentsPage = assessmentRepository.filterAssessments(adminAssessmentFilter.getName(), adminAssessmentFilter.getBatchIds().isEmpty() ? null : true, adminAssessmentFilter.getBatchIds(), adminAssessmentFilter.getSubjectsIds().isEmpty() ? null : true, adminAssessmentFilter.getSubjectsIds(), adminAssessmentFilter.getAssessmentStatuses(), adminAssessmentFilter.getGetLiveAssessments(), adminAssessmentFilter.getGetPassedAssessments(), adminAssessmentFilter.getGetUpcomingAssessments(), adminAssessmentFilter.getAssessmentModes(), adminAssessmentFilter.getAccessStatuses(), adminAssessmentFilter.getInstituteIds(), pageable);
         List<AdminBasicAssessmentListItemDto> content = assessmentsPage.stream().map(AssessmentMapper::toDto).collect(Collectors.toList());
         int queryPageNo = assessmentsPage.getNumber();
         int queryPageSize = assessmentsPage.getSize();
@@ -73,14 +73,8 @@ public class AdminAssessmentGetManager {
         if (adminAssessmentFilter.getAssessmentModes() == null) {
             adminAssessmentFilter.setAssessmentModes(new ArrayList<>());
         }
-        if (adminAssessmentFilter.getBatchIds() == null) {
-            adminAssessmentFilter.setBatchIds(new ArrayList<>());
-        }
-        if (adminAssessmentFilter.getTagIds() == null) {
-            adminAssessmentFilter.setTagIds(new ArrayList<>());
-        }
-        if (adminAssessmentFilter.getSubjectsIds() == null) {
-            adminAssessmentFilter.setSubjectsIds(new ArrayList<>());
+        if (adminAssessmentFilter.getInstituteIds() == null) {
+            adminAssessmentFilter.setInstituteIds(new ArrayList<>());
         }
     }
 }

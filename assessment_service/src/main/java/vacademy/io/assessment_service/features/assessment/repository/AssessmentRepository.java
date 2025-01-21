@@ -24,14 +24,15 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
             "a.assessment_visibility, a.status, a.registration_close_date, a.registration_open_date, " +
             "a.expected_participants, a.cover_file_id, a.bound_start_time, a.bound_end_time, " +
             "a.created_at, a.updated_at, " +
-            "(SELECT COUNT(*) FROM public.user_registration ur WHERE ur.assessment_id = a.id) AS user_registrations, " +
+            "(SELECT COUNT(*) FROM public.assessment_user_registration ur WHERE ur.assessment_id = a.id) AS user_registrations, " +
             "(SELECT COUNT(*) FROM public.assessment_batch_registration abr WHERE abr.assessment_id = a.id) AS batch_registrations " +
             "FROM public.assessment a " +
             "LEFT JOIN public.assessment_batch_registration abr ON a.id = abr.assessment_id " +
             "LEFT JOIN public.assessment_institute_mapping aim ON a.id = aim.assessment_id " +
             "WHERE (:name IS NULL OR :name = '' OR LOWER(a.name) LIKE LOWER(CONCAT('%', :name, '%'))) " +
-            "AND (:batchIds IS NULL OR abr.batch_id IN :batchIds) " +
-            "AND (:subjectsIds IS NULL OR aim.subject_id IN :subjectsIds) " +
+            "AND (:checkBatches IS NULL OR abr.batch_id IN :batchIds) " +
+            "AND (:checkSubjects IS NULL OR aim.subject_id IN :subjectsIds) " +
+            "AND (:instituteIds IS NULL OR aim.institute_id IN :instituteIds) " +
             "AND (:assessmentStatuses IS NULL OR a.status IN :assessmentStatuses) " +
             "AND (:accessStatuses IS NULL OR a.assessment_visibility IN :accessStatuses) " +
             "AND (:liveAssessments IS NULL OR :liveAssessments = 'false' OR (CURRENT_TIMESTAMP BETWEEN a.bound_start_time AND a.bound_end_time)) " +
@@ -42,8 +43,9 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
                     "LEFT JOIN public.assessment_batch_registration abr ON a.id = abr.assessment_id " +
                     "LEFT JOIN public.assessment_institute_mapping aim ON a.id = aim.assessment_id " +
                     "WHERE (:name IS NULL OR :name = '' OR LOWER(a.name) LIKE LOWER(CONCAT('%', :name, '%'))) " +
-                    "AND (:batchIds IS NULL OR abr.batch_id IN :batchIds) " +
-                    "AND (:subjectsIds IS NULL OR aim.subject_id IN :subjectsIds) " +
+                    "AND (:checkBatches IS NULL OR abr.batch_id IN :batchIds) " +
+                    "AND (:checkSubjects IS NULL  OR aim.subject_id IN :subjectsIds) " +
+                    "AND (:instituteIds IS NULL OR aim.institute_id IN :instituteIds) " +
                     "AND (:assessmentStatuses IS NULL OR a.status IN :assessmentStatuses) " +
                     "AND (:accessStatuses IS NULL OR a.assessment_visibility IN :accessStatuses) " +
                     "AND (:liveAssessments IS NULL OR :liveAssessments = 'false' OR (CURRENT_TIMESTAMP BETWEEN a.bound_start_time AND a.bound_end_time)) " +
@@ -52,13 +54,17 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
                     "AND (:assessmentModes IS NULL OR a.play_mode IN :assessmentModes)",
             nativeQuery = true)
     Page<Object[]> filterAssessments(@Param("name") String name,
+                                     @Param("checkBatches") Boolean checkBatches,
                                      @Param("batchIds") List<String> batchIds,
+                                     @Param("checkSubjects") Boolean checkSubjects,
                                      @Param("subjectsIds") List<String> subjectsIds,
                                      @Param("assessmentStatuses") List<String> assessmentStatuses,
                                      @Param("liveAssessments") Boolean liveAssessments,
                                      @Param("passedAssessments") Boolean passedAssessments,
                                      @Param("upcomingAssessments") Boolean upcomingAssessments,
                                      @Param("assessmentModes") List<String> assessmentModes,
+                                     @Param("accessStatuses") List<String> accessStatuses,
+                                     @Param("instituteIds") List<String> instituteIds,
                                      Pageable pageable);
 
 }

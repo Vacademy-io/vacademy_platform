@@ -17,13 +17,15 @@ import java.util.Map;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class AdminAssessmentFilter {
     private String name;
-    private List<String> batchIds = new ArrayList<>();
-    private List<String> subjectsIds = new ArrayList<>();
-    private List<String> tagIds = new ArrayList<>();
+    private List<String> batchIds;
+    private List<String> subjectsIds;
+    private List<String> tagIds;
     private Boolean getLiveAssessments;
     private Boolean getPassedAssessments;
     private Boolean getUpcomingAssessments;
+    private List<String> instituteIds = new ArrayList<>();
     private List<String> assessmentStatuses = new ArrayList<>();
     private List<String> assessmentModes = new ArrayList<>();
+    private List<String> accessStatuses = new ArrayList<>();
     private Map<String, String> sortColumns = new HashMap<>();
 }

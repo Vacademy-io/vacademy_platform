@@ -13,6 +13,7 @@ import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.Admi
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.AllAdminAssessmentResponse;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.AssessmentAdminListInitDto;
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentModeEnum;
+import vacademy.io.assessment_service.features.assessment.enums.AssessmentStatus;
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentVisibility;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentRepository;
 import vacademy.io.assessment_service.features.assessment.service.assessment_get.AssessmentMapper;
@@ -38,6 +39,7 @@ public class AdminAssessmentGetManager {
         assessmentAdminListInitDto.setAssessmentAccessStatuses(Arrays.stream(AssessmentVisibility.values()).map(AssessmentVisibility::name).toList());
         assessmentAdminListInitDto.setAssessmentModeTypes(Arrays.stream(AssessmentModeEnum.values()).map(AssessmentModeEnum::name).toList());
         assessmentAdminListInitDto.setEvaluationTypes(Arrays.stream(EvaluationTypes.values()).map(EvaluationTypes::name).toList());
+        assessmentAdminListInitDto.setAssessmentStatuses(Arrays.stream(AssessmentStatus.values()).map(AssessmentStatus::name).toList());
         assessmentAdminListInitDto.setTagAndIds(new HashMap<>());
         return ResponseEntity.ok(assessmentAdminListInitDto);
     }

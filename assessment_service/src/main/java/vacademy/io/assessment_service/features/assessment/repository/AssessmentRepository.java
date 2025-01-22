@@ -25,7 +25,7 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
             "a.expected_participants, a.cover_file_id, a.bound_start_time, a.bound_end_time, " +
             "a.created_at, a.updated_at, " +
             "(SELECT COUNT(*) FROM public.assessment_user_registration ur WHERE ur.assessment_id = a.id) AS user_registrations, " +
-            "(SELECT COUNT(*) FROM public.assessment_batch_registration abr WHERE abr.assessment_id = a.id) AS batch_registrations " +
+            "(SELECT ARRAY_AGG(abr.batch_id) FROM public.assessment_batch_registration abr WHERE abr.assessment_id = a.id) AS batch_ids " +
             "FROM public.assessment a " +
             "LEFT JOIN public.assessment_batch_registration abr ON a.id = abr.assessment_id " +
             "LEFT JOIN public.assessment_institute_mapping aim ON a.id = aim.assessment_id " +

@@ -36,7 +36,7 @@ public class AdminBasicAssessmentListItemDto {
     private Date boundStartTime;
     private Date boundEndTime;
     private Long userRegistrations;
-    private Long batchRegistrations;
+    private List<String> batchIds;
     private List<String> adminAccesses = new ArrayList<>();
     private Date createdAt;
     private Date updatedAt;

@@ -1,20 +1,16 @@
-package vacademy.io.admin_core_service.features.study.library.service;
+package vacademy.io.admin_core_service.features.study_library.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.level.repository.LevelRepository;
-import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
-import vacademy.io.admin_core_service.features.study.library.dto.LevelDTOWithDetails;
-import vacademy.io.admin_core_service.features.study.library.dto.SessionDTOWithDetails;
+import vacademy.io.admin_core_service.features.study_library.dto.LevelDTOWithDetails;
+import vacademy.io.admin_core_service.features.study_library.dto.SessionDTOWithDetails;
 import vacademy.io.admin_core_service.features.packages.repository.PackageRepository;
-import vacademy.io.admin_core_service.features.subject.repository.SubjectChapterModuleAndPackageSessionMappingRepository;
 import vacademy.io.admin_core_service.features.subject.repository.SubjectRepository;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.dto.SessionDTO;
 import vacademy.io.common.institute.dto.SubjectDTO;
 import vacademy.io.common.institute.entity.Level;
-import vacademy.io.common.institute.entity.LevelProjection;
-import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.common.institute.entity.session.SessionProjection;
 import vacademy.io.common.institute.entity.student.Subject;
 

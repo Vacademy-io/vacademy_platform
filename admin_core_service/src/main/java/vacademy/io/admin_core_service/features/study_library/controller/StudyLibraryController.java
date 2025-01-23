@@ -1,13 +1,11 @@
-package vacademy.io.admin_core_service.features.study.library.controller;
+package vacademy.io.admin_core_service.features.study_library.controller;
 
-import lombok.Getter;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.CustomAutowireConfigurer;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import vacademy.io.admin_core_service.features.study.library.dto.ModuleDTOWithDetails;
-import vacademy.io.admin_core_service.features.study.library.dto.SessionDTOWithDetails;
-import vacademy.io.admin_core_service.features.study.library.service.StudyLibraryService;
+import vacademy.io.admin_core_service.features.study_library.dto.ModuleDTOWithDetails;
+import vacademy.io.admin_core_service.features.study_library.dto.SessionDTOWithDetails;
+import vacademy.io.admin_core_service.features.study_library.service.StudyLibraryService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 import java.util.List;
@@ -25,7 +23,7 @@ public class StudyLibraryController {
     }
 
     @GetMapping("/modules-with-chapters/{subjectId}")
-    public ResponseEntity<List<ModuleDTOWithDetails>> modulesWithChapters(@PathVariable("subjectId") String subjectId,@RequestAttribute("user") CustomUserDetails user) {
+    public ResponseEntity<List<ModuleDTOWithDetails>> modulesWithChapters(@PathVariable("subjectId") String subjectId, @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok(studyLibraryService.getModulesDetailsWithChapters(subjectId, user));
     }
 }

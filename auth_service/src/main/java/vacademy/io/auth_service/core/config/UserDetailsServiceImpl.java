@@ -47,6 +47,10 @@ public class UserDetailsServiceImpl implements UserDetailsService {
 
         List<UserRole> userRoles = userRoleRepository.findByUser(user.get());
         log.info("User Authenticated Successfully..!!!");
+
+        if(instituteId == null && !userRoles.isEmpty()) {
+            instituteId = userRoles.get(0).getInstituteId();
+        }
         return new CustomUserDetails(user.get(), instituteId, userRoles);
     }
 

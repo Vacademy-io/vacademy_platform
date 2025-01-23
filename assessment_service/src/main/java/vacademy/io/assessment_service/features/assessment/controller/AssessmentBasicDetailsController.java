@@ -27,12 +27,5 @@ public class AssessmentBasicDetailsController {
         return assessmentBasicDetailsManager.saveBasicAssessmentDetails(user, basicAssessmentDetailsDTO, assessmentId, instituteId, type);
     }
 
-    @PostMapping("/publish")
-    public ResponseEntity<AssessmentSaveResponseDto> publishAssessment(@RequestAttribute("user") CustomUserDetails user,
-                                                                       @RequestBody Map<String, String> data,
-                                                                       @RequestParam(name = "assessmentId", required = false) String assessmentId,
-                                                                       @RequestParam(name = "instituteId", required = false) String instituteId,
-                                                                       @RequestParam String type) {
-        return assessmentBasicDetailsManager.publishAssessment(user, data, assessmentId, instituteId, type);
-    }
+
 }

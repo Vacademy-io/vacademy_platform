@@ -24,65 +24,93 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class ChapterService {
+
     private final ChapterRepository chapterRepository;
     private final ModuleRepository moduleRepository;
     private final PackageSessionRepository packageSessionRepository;
-    private  final ChapterPackageSessionMappingRepository chapterPackageSessionMappingRepository;
+    private final ChapterPackageSessionMappingRepository chapterPackageSessionMappingRepository;
     private final ModuleChapterMappingRepository moduleChapterMappingRepository;
 
     @Transactional
-    public ChapterDTO addChapter(ChapterDTO chapterDTO, String moduleId,String commaSeparatedPackageSessionIds, CustomUserDetails user) {
-        validateRequest(chapterDTO, moduleId,commaSeparatedPackageSessionIds);
-        Optional<Module>optionalModule = moduleRepository.findById(moduleId);
+    public ChapterDTO addChapter(ChapterDTO chapterDTO, String moduleId, String commaSeparatedPackageSessionIds, CustomUserDetails user) {
+        // Validate incoming data
+        validateRequest(chapterDTO, moduleId, commaSeparatedPackageSessionIds);
+
+        // Find the module by ID
+        Optional<Module> optionalModule = moduleRepository.findById(moduleId);
         if (optionalModule.isEmpty()) {
             throw new VacademyException("Module not found");
         }
+        Module module = optionalModule.get();
+
+        // Create and save a new chapter
         Chapter chapter = new Chapter(chapterDTO);
         chapter = chapterRepository.save(chapter);
-        ModuleChapterMapping moduleChapterMapping = new ModuleChapterMapping(chapter,optionalModule.get());
+
+        // Create a mapping between the chapter and the module
+        ModuleChapterMapping moduleChapterMapping = new ModuleChapterMapping(chapter, module);
         moduleChapterMappingRepository.save(moduleChapterMapping);
+
+        // Process comma-separated package session IDs
         String[] packageSessionIds = getPackageSessionIds(commaSeparatedPackageSessionIds);
         for (String packageSessionId : packageSessionIds) {
-            Optional< PackageSession>optionalPackageSession = packageSessionRepository.findById(packageSessionId);
+            // Find the package session by ID
+            Optional<PackageSession> optionalPackageSession = packageSessionRepository.findById(packageSessionId);
             if (optionalPackageSession.isEmpty()) {
                 throw new VacademyException("Package Session not found");
             }
-            ChapterPackageSessionMapping chapterPackageSessionMapping = new ChapterPackageSessionMapping(chapter, optionalPackageSession.get());
+            PackageSession packageSession = optionalPackageSession.get();
+
+            // Create a mapping between the chapter and the package session
+            ChapterPackageSessionMapping chapterPackageSessionMapping = new ChapterPackageSessionMapping(chapter, packageSession);
             chapterPackageSessionMappingRepository.save(chapterPackageSessionMapping);
         }
+
+        // Set chapter ID and status in the DTO
         chapterDTO.setId(chapter.getId());
         chapterDTO.setStatus(ChapterStatus.ACTIVE.name());
         return chapterDTO;
     }
 
     private void validateRequest(ChapterDTO chapterDTO, String moduleId, String commaSeparatedPackageSessionIds) {
-        if (Objects.isNull(chapterDTO)) {
+        if (chapterDTO == null) {
             throw new VacademyException("Chapter cannot be null");
         }
-        if (Objects.isNull(moduleId)) {
+        if (moduleId == null) {
             throw new VacademyException("Module ID cannot be null");
         }
-        if (Objects.isNull(commaSeparatedPackageSessionIds)) {
+        if (commaSeparatedPackageSessionIds == null) {
             throw new VacademyException("Package session IDs cannot be null");
         }
-        if (Objects.isNull(chapterDTO.getChapterName())) {
+        if (chapterDTO.getChapterName() == null) {
             throw new VacademyException("Chapter name cannot be null");
         }
     }
 
     @Transactional
-    public String updateChapter(String chapterId, ChapterDTO chapterDTO,String commaSeparatedPackageSessionIds, CustomUserDetails user) {
-        if (Objects.isNull(chapterId)) {
+    public String updateChapter(String chapterId, ChapterDTO chapterDTO, String commaSeparatedPackageSessionIds, CustomUserDetails user) {
+        // Validate chapter ID
+        if (chapterId == null) {
             throw new VacademyException("Chapter ID cannot be null");
         }
+
+        // Find the chapter by ID
         Optional<Chapter> optionalChapter = chapterRepository.findById(chapterId);
         if (optionalChapter.isEmpty()) {
             throw new VacademyException("Chapter not found");
         }
         Chapter chapter = optionalChapter.get();
-        updateChapterDetails(chapterDTO,chapter);
+
+        // Update chapter details
+        updateChapterDetails(chapterDTO, chapter);
+
+        // Save the updated chapter
         chapterRepository.save(chapter);
-        updateChapterPackageSessionMapping(chapter,commaSeparatedPackageSessionIds);
+
+        // Update the chapter-package session mappings
+        updateChapterPackageSessionMapping(chapter, commaSeparatedPackageSessionIds);
+
+        // Return success message
         return "Chapter updated successfully";
     }
 
@@ -129,20 +157,19 @@ public class ChapterService {
         }
     }
 
-
-    public void updateChapterDetails(ChapterDTO chapterDTO,Chapter chapter){
-        if (chapterDTO.getChapterName() != null){
+    public void updateChapterDetails(ChapterDTO chapterDTO, Chapter chapter) {
+        if (chapterDTO.getChapterName() != null) {
             chapter.setChapterName(chapterDTO.getChapterName());
         }
-        if (chapterDTO.getDescription() != null){
+        if (chapterDTO.getDescription() != null) {
             chapter.setDescription(chapterDTO.getDescription());
         }
-        if (chapterDTO.getFileId() != null){
+        if (chapterDTO.getFileId() != null) {
             chapter.setFileId(chapterDTO.getFileId());
         }
     }
+
     private String[] getPackageSessionIds(String commaSeparatedPackageSessionIds) {
         return commaSeparatedPackageSessionIds.split(",");
     }
-
 }

@@ -31,16 +31,28 @@ public class SubjectService {
     private final SubjectPackageSessionRepository subjectPackageSessionRepository;
     private final SubjectModuleMappingRepository subjectModuleMappingRepository;
 
+    /**
+     * Adds a new subject to the system.
+     *
+     * @param subjectDTO                 The DTO containing subject information.
+     * @param commaSeparatedPackageSessionIds A comma-separated list of package session IDs.
+     * @param user                       The user who is creating the subject.
+     * @return The created subject DTO.
+     * @throws VacademyException If there are any validation errors or if a required field is missing.
+     */
     public SubjectDTO addSubject(SubjectDTO subjectDTO, String commaSeparatedPackageSessionIds, CustomUserDetails user) {
         if (Objects.isNull(commaSeparatedPackageSessionIds)) {
             throw new VacademyException("Package Session Id cannot be null");
         }
 
-        validateSubject(subjectDTO);
+        validateSubject(subjectDTO); // Validate the subject DTO before proceeding.
+
         Subject subject = new Subject();
-        createSubject(subjectDTO, subject);
-        Subject savedSubject = subjectRepository.save(subject);
-        subjectDTO.setId(savedSubject.getId());
+        createSubject(subjectDTO, subject); // Create a Subject entity from the DTO.
+
+        Subject savedSubject = subjectRepository.save(subject); // Save the subject to the database.
+        subjectDTO.setId(savedSubject.getId()); // Set the generated ID in the DTO.
+        // different package sessions where the subject will be available
         String[] packageSessionIds = getPackageSessionIds(commaSeparatedPackageSessionIds);
         for (String packageSessionId : packageSessionIds) {
             try {
@@ -52,6 +64,7 @@ public class SubjectService {
                 }
 
                 subjectPackageSessionRepository.save(new SubjectPackageSession(savedSubject, packageSession));
+                // Create and save the relationship between the subject and the package session.
             } catch (Exception e) {
                 log.error("Error adding subject: {}", e.getMessage());
             }
@@ -63,6 +76,15 @@ public class SubjectService {
         return commaSeparatedPackageSessionIds.split(",");
     }
 
+    /**
+     * Updates an existing subject.
+     *
+     * @param subjectDTO The DTO containing updated subject information.
+     * @param subjectId   The ID of the subject to update.
+     * @param user       The user who is updating the subject.
+     * @return The updated subject DTO.
+     * @throws VacademyException If the subject ID is null or the subject is not found.
+     */
     public SubjectDTO updateSubject(SubjectDTO subjectDTO,String subjectId,CustomUserDetails user) {
         if (Objects.isNull(subjectId)){
             throw new VacademyException("Subject id can not be null");
@@ -77,6 +99,14 @@ public class SubjectService {
         return subjectDTO;
     }
 
+    /**
+     * Deletes a subject by marking it as deleted.
+     *
+     * @param subjectId The ID of the subject to delete.
+     * @param user       The user who is deleting the subject.
+     * @return A message indicating successful deletion.
+     * @throws VacademyException If the subject ID is null or the subject is not found.
+     */
     public String deleteSubject(String subjectId,CustomUserDetails user) {
         if (Objects.isNull(subjectId)){
             throw new VacademyException("Subject id can not be null");

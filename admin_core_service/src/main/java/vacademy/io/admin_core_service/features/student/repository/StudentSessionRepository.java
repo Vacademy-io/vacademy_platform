@@ -10,6 +10,7 @@ import org.springframework.stereotype.Repository;
 import vacademy.io.admin_core_service.features.student.entity.StudentSessionInstituteGroupMapping;
 
 import java.util.Date;
+import java.util.List;
 
 @Repository
 public interface StudentSessionRepository extends CrudRepository<StudentSessionInstituteGroupMapping, String> {
@@ -65,5 +66,7 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
                      @Param("packageSessionId") String packageSessionId,
                      @Param("instituteId") String instituteId,
                      @Param("status") String status);
+
+    List<StudentSessionInstituteGroupMapping> findAllByInstituteIdAndUserId(String instituteId, String userId);
 
 }

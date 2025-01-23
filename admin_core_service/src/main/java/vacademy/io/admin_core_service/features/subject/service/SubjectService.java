@@ -1,6 +1,7 @@
 package vacademy.io.admin_core_service.features.subject.service;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.bind.annotation.RequestBody;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
@@ -23,6 +24,7 @@ import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class SubjectService {
     private final SubjectRepository subjectRepository;
     private final PackageSessionRepository packageSessionRepository;
@@ -51,7 +53,7 @@ public class SubjectService {
 
                 subjectPackageSessionRepository.save(new SubjectPackageSession(savedSubject, packageSession));
             } catch (Exception e) {
-
+                log.error("Error adding subject: {}", e.getMessage());
             }
         }
         return subjectDTO;

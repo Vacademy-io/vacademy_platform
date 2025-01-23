@@ -2,10 +2,7 @@ package vacademy.io.admin_core_service.features.module.service;
 
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.module.dto.ModuleDTO;
 import vacademy.io.admin_core_service.features.module.enums.ModuleStatusEnum;
@@ -26,6 +23,7 @@ import vacademy.io.common.institute.entity.student.Subject;
 @Service
 @RequiredArgsConstructor
 public class ModuleService {
+
     private final ModuleRepository moduleRepository;
     private final SubjectChapterModuleAndPackageSessionMappingRepository subjectChapterModuleAndPackageSessionMappingRepository;
     private final SubjectRepository subjectRepository;
@@ -33,21 +31,29 @@ public class ModuleService {
     private final PackageSessionRepository packageSessionRepository;
     private final SubjectModuleMappingRepository subjectModuleMappingRepository;
 
+    // Add module to subject
     @Transactional
-    public ModuleDTO addModule(String subjectId,ModuleDTO moduleDTO, CustomUserDetails user) {
-        validateSubjectId(subjectId);
-        validateModule(moduleDTO);
-        Subject subject = findSubjectById(subjectId);
-        Module module = createAndSaveModule(moduleDTO);
-        saveMapping(subject, module);
-        moduleDTO.setId(module.getId());
-        return moduleDTO;
-    }
-
-    private void validateSubjectId(String subjectId) {
+    public ModuleDTO addModule(String subjectId, ModuleDTO moduleDTO, CustomUserDetails user) {
+        // Validate subject ID
         if (subjectId == null) {
             throw new VacademyException("Subject ID cannot be null");
         }
+
+        // Validate module details
+        validateModule(moduleDTO);
+
+        // Find subject by ID
+        Subject subject = findSubjectById(subjectId);
+
+        // Create and save module
+        Module module = createAndSaveModule(moduleDTO);
+
+        // Save mapping between subject and module
+        saveMapping(subject, module);
+
+        // Set ID in DTO and return
+        moduleDTO.setId(module.getId());
+        return moduleDTO;
     }
 
     private Subject findSubjectById(String subjectId) {
@@ -78,42 +84,50 @@ public class ModuleService {
     }
 
     private void saveMapping(Subject subject, Module module) {
-        subjectModuleMappingRepository.save(new SubjectModuleMapping(subject,module));
+        subjectModuleMappingRepository.save(new SubjectModuleMapping(subject, module));
     }
 
-
     public ModuleDTO updateModule(String moduleId, ModuleDTO moduleDTO, CustomUserDetails user) {
+        // Validate module ID
         if (moduleId == null) {
             throw new VacademyException("Module ID cannot be null");
         }
 
-        // Use Optional to directly handle the absence of the module
+        // Find module by ID
         Module module = moduleRepository.findById(moduleId)
                 .orElseThrow(() -> new VacademyException("Module not found"));
 
+        // Update module details
         moduleDTO.setId(moduleId);
         createModule(moduleDTO, module);
+
+        // Save updated module
         module = moduleRepository.save(module);
 
+        // Return updated module details
         moduleDTO.setId(module.getId());
         return moduleDTO;
     }
 
     public String deleteModule(String moduleId, CustomUserDetails user) {
+        // Validate module ID
         if (moduleId == null) {
             throw new VacademyException("Module ID cannot be null");
         }
 
-        // Use Optional to directly handle the absence of the module
+        // Find module by ID
         Module module = moduleRepository.findById(moduleId)
                 .orElseThrow(() -> new VacademyException("Module not found"));
 
+        // Set module status to deleted
         module.setStatus(ModuleStatusEnum.DELETED.name());
+
+        // Save updated module
         moduleRepository.save(module);
 
+        // Return success message
         return "Module deleted successfully";
     }
-
 
     private void validateModule(ModuleDTO moduleDTO) {
         if (moduleDTO.getModuleName() == null) {
@@ -121,7 +135,7 @@ public class ModuleService {
         }
     }
 
-    public void createModule(ModuleDTO moduleDTO, Module module){
+    private void createModule(ModuleDTO moduleDTO, Module module) {
         if (moduleDTO.getId() != null) {
             module.setId(moduleDTO.getId());
         }

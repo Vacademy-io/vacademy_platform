@@ -4,12 +4,18 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import lombok.Getter;
+import lombok.Setter;
 import org.hibernate.annotations.UuidGenerator;
+import vacademy.io.admin_core_service.features.slide.dto.AddDocumentSlideDTO;
+import vacademy.io.admin_core_service.features.slide.enums.SlideStatus;
 
 import java.sql.Timestamp;
 
 @Entity
 @Table(name = "slide")
+@Getter
+@Setter
 public class Slide {
 
     @Id
@@ -40,5 +46,14 @@ public class Slide {
 
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Timestamp updatedAt;
+
+    public Slide(AddDocumentSlideDTO addDocumentSlideDTO,String sourceId,String sourceType) {
+        this.sourceId = sourceId;
+        this.sourceType = sourceType;
+        this.title = addDocumentSlideDTO.getTitle();
+        this.imageFileId = addDocumentSlideDTO.getImageFileId();
+        this.description = addDocumentSlideDTO.getDescription();
+        this.status = SlideStatus.ACTIVE.name();
+    }
 
 }

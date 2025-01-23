@@ -50,8 +50,7 @@ public class ChapterService {
             ChapterPackageSessionMapping chapterPackageSessionMapping = new ChapterPackageSessionMapping(chapter, optionalPackageSession.get());
             chapterPackageSessionMappingRepository.save(chapterPackageSessionMapping);
         }
-        Chapter savedChapter = chapterRepository.save(chapter);
-        chapterDTO.setId(savedChapter.getId());
+        chapterDTO.setId(chapter.getId());
         chapterDTO.setStatus(ChapterStatus.ACTIVE.name());
         return chapterDTO;
     }

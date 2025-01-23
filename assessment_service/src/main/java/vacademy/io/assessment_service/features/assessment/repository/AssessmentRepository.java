@@ -70,12 +70,17 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
 
     @Query(value = "(SELECT a.id, a.name, a.play_mode, a.evaluation_type, a.submission_type, a.duration, " +
             "a.assessment_visibility, a.status, a.registration_close_date, a.registration_open_date, " +
-            "a.expected_participants, a.cover_file_id, a.bound_start_time, a.bound_end_time, a.about_id, a.instruction_id, " +
-            "a.created_at, a.updated_at " +
+            "a.expected_participants, a.cover_file_id, a.bound_start_time, a.bound_end_time, a.about_id, a.instructions_id, " +
+            "a.created_at, a.updated_at, recent_attempt.status AS recent_attempt_status, recent_attempt.start_time AS recent_attempt_start_time, a.reattempt_count, aur.reattempt_count " +
             "FROM public.assessment a " +
             "LEFT JOIN public.assessment_batch_registration abr ON a.id = abr.assessment_id " +
             "LEFT JOIN public.assessment_institute_mapping aim ON a.id = aim.assessment_id " +
             "LEFT JOIN public.assessment_user_registration aur ON a.id = aur.assessment_id " +
+            "LEFT JOIN ( " +
+            "SELECT sa.registration_id, sa.status, sa.start_time, " +
+            "ROW_NUMBER() OVER (PARTITION BY sa.registration_id ORDER BY sa.start_time DESC) AS rn " +
+            "FROM public.student_attempt sa " +
+            ") AS recent_attempt ON aur.id = recent_attempt.registration_id AND recent_attempt.rn = 1 " +
             "WHERE (:name IS NULL OR :name = '' OR LOWER(a.name) LIKE LOWER(CONCAT('%', :name, '%'))) " +
             "AND (:checkBatches IS NULL OR abr.batch_id IN :batchIds) " +
             "AND (:instituteIds IS NULL OR aim.institute_id IN :instituteIds) " +
@@ -87,10 +92,16 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
             "UNION " +
             "(SELECT a.id, a.name, a.play_mode, a.evaluation_type, a.submission_type, a.duration, " +
             "a.assessment_visibility, a.status, a.registration_close_date, a.registration_open_date, " +
-            "a.expected_participants, a.cover_file_id, a.bound_start_time, a.bound_end_time, a.about_id, a.instruction_id, " +
-            "a.created_at, a.updated_at " +
+            "a.expected_participants, a.cover_file_id, a.bound_start_time, a.bound_end_time, a.about_id, a.instructions_id, " +
+            "a.created_at, a.updated_at, recent_attempt.status AS recent_attempt_status, recent_attempt.start_time AS recent_attempt_start_time,  a.reattempt_count, aur.reattempt_count " +
             "FROM public.assessment a " +
             "LEFT JOIN public.assessment_user_registration aur ON a.id = aur.assessment_id " +
+            "LEFT JOIN public.assessment_institute_mapping aim ON a.id = aim.assessment_id " +
+            "LEFT JOIN ( " +
+            "SELECT sa.registration_id, sa.status, sa.start_time, " +
+            "ROW_NUMBER() OVER (PARTITION BY sa.registration_id ORDER BY sa.start_time DESC) AS rn " +
+            "FROM public.student_attempt sa " +
+            ") AS recent_attempt ON aur.id = recent_attempt.registration_id AND recent_attempt.rn = 1 " +
             "WHERE (:name IS NULL OR :name = '' OR LOWER(a.name) LIKE LOWER(CONCAT('%', :name, '%'))) " +
             "AND (:checkUserIds IS NULL OR aur.user_id IN :userIds) " +
             "AND (:instituteIds IS NULL OR aim.institute_id IN :instituteIds) " +
@@ -113,9 +124,10 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
                             "AND (:passedAssessments IS NULL OR :passedAssessments = 'false' OR (CURRENT_TIMESTAMP > a.bound_end_time)) " +
                             "AND (:upcomingAssessments IS NULL OR :upcomingAssessments = 'false' OR (CURRENT_TIMESTAMP < a.bound_start_time)) " +
                             "AND (:assessmentModes IS NULL OR a.play_mode IN :assessmentModes) " +
-                            "UNION ALL " +
+                            "UNION  " +
                             "SELECT a.id FROM public.assessment a " +
                             "LEFT JOIN public.assessment_user_registration aur ON a.id = aur.assessment_id " +
+                            "LEFT JOIN public.assessment_institute_mapping aim ON a.id = aim.assessment_id " +
                             "WHERE (:name IS NULL OR :name = '' OR LOWER(a.name) LIKE LOWER(CONCAT('%', :name, '%'))) " +
                             "AND (:checkUserIds IS NULL OR aur.user_id IN :userIds) " +
                             "AND (:instituteIds IS NULL OR aim.institute_id IN :instituteIds) " +

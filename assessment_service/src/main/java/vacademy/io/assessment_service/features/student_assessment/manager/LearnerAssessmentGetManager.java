@@ -47,7 +47,7 @@ public class LearnerAssessmentGetManager {
 
         makeFilterFieldEmptyArrayIfNull(studentAssessmentFilter);
 
-        assessmentsPage = assessmentRepository.studentAssessments(studentAssessmentFilter.getName(), studentAssessmentFilter.getBatchIds().isEmpty() ? null : true, studentAssessmentFilter.getBatchIds(), List.of(AssessmentStatus.PUBLISHED.name()), studentAssessmentFilter.getGetLiveAssessments(), studentAssessmentFilter.getGetPassedAssessments(), studentAssessmentFilter.getGetUpcomingAssessments(), Arrays.stream(AssessmentModeEnum.values()).map(AssessmentModeEnum::name).toList(), studentAssessmentFilter.getInstituteIds(), studentAssessmentFilter.getUserIds().isEmpty() ? null : true, studentAssessmentFilter.getUserIds(), pageable);
+        assessmentsPage = assessmentRepository.studentAssessments(studentAssessmentFilter.getName(), studentAssessmentFilter.getBatchIds().isEmpty() ? null : true, studentAssessmentFilter.getBatchIds(), List.of(AssessmentStatus.PUBLISHED.name()), studentAssessmentFilter.getGetLiveAssessments(), studentAssessmentFilter.getGetPassedAssessments(), studentAssessmentFilter.getGetUpcomingAssessments(), Arrays.stream(AssessmentModeEnum.values()).map(AssessmentModeEnum::name).toList(), studentAssessmentFilter.getInstituteIds(), true, studentAssessmentFilter.getUserIds(), pageable);
         List<StudentBasicAssessmentListItemDto> content = assessmentsPage.stream().map(StudentAssessmentMapper::toDto).collect(Collectors.toList());
         int queryPageNo = assessmentsPage.getNumber();
         int queryPageSize = assessmentsPage.getSize();

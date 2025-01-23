@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import vacademy.io.common.notification.dto.EmailOTPRequest;
+import vacademy.io.common.notification.dto.GenericEmailRequest;
 import vacademy.io.notification_service.dto.EmailRequest;
 import vacademy.io.notification_service.features.email_otp.service.OTPService;
 import vacademy.io.notification_service.service.EmailService;
@@ -45,5 +46,14 @@ public class EmailController {
         return ResponseEntity.ok("Email OTP sent successfully");
     }
 
+    @PostMapping("/send-html-email")
+    public ResponseEntity<Boolean> sendEmail(@RequestBody GenericEmailRequest request) {
+        try {
+            emailService.sendHtmlEmail(request.getTo(), request.getSubject(), request.getService(), request.getBody());
+            return ResponseEntity.ok(true);
+        } catch (Exception e) {
+            return ResponseEntity.ok(false);
+        }
+    }
 
 }

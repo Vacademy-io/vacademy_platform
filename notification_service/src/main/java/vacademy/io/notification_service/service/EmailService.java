@@ -28,125 +28,186 @@ public class EmailService {
     public EmailService(JavaMailSender mailSender) {
         this.mailSender = mailSender;
     }
-
+    private final EmailDispatcher emailDispatcher = EmailDispatcher.getInstance();
     public void sendEmail(String to, String subject, String text) {
-        SimpleMailMessage message = new SimpleMailMessage();
-        message.setTo(to);
-        message.setFrom(from);
-        message.setSubject(subject);
-        message.setText(text);
-        mailSender.send(message);
+        try {
+            emailDispatcher.sendEmail(() -> {
+                SimpleMailMessage message = new SimpleMailMessage();
+                message.setTo(to);
+                message.setFrom(from);
+                message.setSubject(subject);
+                message.setText(text);
+                mailSender.send(message);
+            });
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            e.printStackTrace();
+            throw new RuntimeException(e);
+        }
     }
 
-    public void sendEmailOtp(String to, String subject, String service, String name, String otp) throws MessagingException {
+    public void sendEmailOtp(String to, String subject, String service, String name, String otp) {
+        try {
+            // Ensure subject has a valid value
+            final String emailSubject = StringUtils.hasText(subject) ? subject : "This is a very important email";
 
-        // Default subject if not provided
-        subject = StringUtils.hasText(subject) ? subject : "This is a very important email";
+            // Create the email body using the provided information
+            final String emailBody = createEmailBody(service, name, otp);
 
-        // HTML body with #ED7424 (warm orange) color theme
-        String body = """
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Confirm Email</title>
-                <style>
-                    body {
-                        font-family: Arial, sans-serif;
-                        margin: 0;
-                        padding: 0;
-                        background-color: #FFF7E1; /* Light yellow background */
-                    }
-                    .container {
-                        max-width: 600px;
-                        margin: 40px auto;
-                        padding: 20px;
-                        background-color: #FFFFFF; /* White background for email content */
-                        border: 1px solid #ED7424; /* Warm orange border */
-                        border-radius: 10px;
-                        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-                    }
-                    .header {
-                        background-color: #ED7424; /* Warm orange header */
-                        color: #FFF;
-                        padding: 15px;
-                        text-align: center;
-                        border-radius: 10px 10px 0 0;
-                    }
-                    .content {
-                        padding: 20px;
-                        font-size: 16px;
-                        color: #333;
-                    }
-                    .footer {
-                        background-color: #ED7424; /* Warm orange footer */
-                        color: #FFF;
-                        padding: 10px;
-                        text-align: center;
-                        border-radius: 0 0 10px 10px;
-                    }
-                    .otp {
-                        font-size: 22px;
-                        font-weight: bold;
-                        color: #ED7424; /* Warm orange for OTP */
-                        text-align: center;
-                        padding: 10px;
-                        background-color: #FFFAE1; /* Light yellow background for OTP */
-                        border: 2px solid #ED7424; /* Border matching the header/footer color */
-                        border-radius: 5px;
-                    }
-                </style>
-            </head>
-            <body>
-                <div class="container">
-                    <div class="header">
-                        <h2>Confirm Your Email Address</h2>
-                    </div>
-                    <div class="content">
-                        <p>Dear %s,</p>
-                        <p>We are excited to confirm your email address. Your OTP is:</p>
-                        <div class="otp">%s</div>
-                        <p>Please enter this OTP on our app to complete the verification process.</p>
-                    </div>
-                    <div class="footer">
-                        <p>Best regards, <br> %s</p>
-                    </div>
+            // Send the email asynchronously using the emailDispatcher
+            emailDispatcher.sendEmail(() -> {
+                try {
+                    // Prepare the email session and message
+                    Session session = Session.getDefaultInstance(new Properties(), null);
+                    MimeMessage message = new MimeMessage(session);
+
+                    // Set the recipient, sender, and subject
+                    message.setRecipient(Message.RecipientType.TO, new InternetAddress(to));
+                    message.setFrom(new InternetAddress(from));
+                    message.setSubject(emailSubject);
+
+                    // Attach the HTML body
+                    MimeMultipart multipart = new MimeMultipart();
+                    MimeBodyPart htmlPart = new MimeBodyPart();
+                    htmlPart.setContent(emailBody, "text/html; charset=utf-8");
+                    multipart.addBodyPart(htmlPart);
+                    message.setContent(multipart);
+
+                    // Send the email
+                    mailSender.send(message);
+
+                } catch (Exception e) {
+                    // Log the exception and rethrow as a RuntimeException
+                    throw new RuntimeException("Failed to send OTP email", e);
+                }
+            });
+        } catch (InterruptedException e) {
+            // Handle thread interruption and rethrow exception
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Failed to send OTP email due to rate limiting", e);
+        } catch (Exception e) {
+            // Catch any other exceptions that might occur during email sending process
+            throw new RuntimeException("An error occurred while preparing the OTP email", e);
+        }
+    }
+
+
+    // Method to create the email body
+    private String createEmailBody(String service, String name, String otp) {
+        return """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Confirm Email</title>
+            <style>
+                body {
+                    font-family: Arial, sans-serif;
+                    margin: 0;
+                    padding: 0;
+                    background-color: #FFF7E1; /* Light yellow background */
+                }
+                .container {
+                    max-width: 600px;
+                    margin: 40px auto;
+                    padding: 20px;
+                    background-color: #FFFFFF; /* White background for email content */
+                    border: 1px solid #ED7424; /* Warm orange border */
+                    border-radius: 10px;
+                    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+                }
+                .header {
+                    background-color: #ED7424; /* Warm orange header */
+                    color: #FFF;
+                    padding: 15px;
+                    text-align: center;
+                    border-radius: 10px 10px 0 0;
+                }
+                .content {
+                    padding: 20px;
+                    font-size: 16px;
+                    color: #333;
+                }
+                .footer {
+                    background-color: #ED7424; /* Warm orange footer */
+                    color: #FFF;
+                    padding: 10px;
+                    text-align: center;
+                    border-radius: 0 0 10px 10px;
+                }
+                .otp {
+                    font-size: 22px;
+                    font-weight: bold;
+                    color: #ED7424; /* Warm orange for OTP */
+                    text-align: center;
+                    padding: 10px;
+                    background-color: #FFFAE1; /* Light yellow background for OTP */
+                    border: 2px solid #ED7424; /* Border matching the header/footer color */
+                    border-radius: 5px;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h2>Confirm Your Email Address</h2>
                 </div>
-            </body>
-            </html>
-            """.formatted(name, otp, service);
-
-        // Prepare and send the email
-        Session session = Session.getDefaultInstance(new Properties(), null);
-        MimeMessage message = new MimeMessage(session);
-        message.setRecipient(Message.RecipientType.TO, new InternetAddress(to));
-        message.setFrom(new InternetAddress(from));
-        message.setSubject(subject);
-
-        // Attach HTML content to the email
-        MimeMultipart multipart = new MimeMultipart();
-        MimeBodyPart htmlPart = new MimeBodyPart();
-        htmlPart.setContent(body, "text/html; charset=utf-8");
-        multipart.addBodyPart(htmlPart);
-        message.setContent(multipart);
-
-        // Send the email using the mail sender
-        mailSender.send(message);
+                <div class="content">
+                    <p>Dear %s,</p>
+                    <p>We are excited to confirm your email address. Your OTP is:</p>
+                    <div class="otp">%s</div>
+                    <p>Please enter this OTP on our app to complete the verification process.</p>
+                </div>
+                <div class="footer">
+                    <p>Best regards, <br> %s</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """.formatted(name, otp, service);
     }
 
 
-    public void sendHtmlEmail(String to, String subject, String service, String body) throws MessagingException {
+    public void sendHtmlEmail(String to, String subject, String service, String body) {
+        try {
+            // Set default subject if none is provided
+            final String emailSubject = StringUtils.hasText(subject) ? subject : "This is a very important email";
+            final String emailBody = body; // The body is already passed, so just ensure it's final if needed
 
-        subject = StringUtils.hasText(subject) ? subject : "This is very important email";
-        Session session = Session.getDefaultInstance(new Properties(), null);
-        MimeMessage message = new MimeMessage(session);
-        message.setRecipient(Message.RecipientType.TO, new InternetAddress(to));
-        message.setFrom(new InternetAddress(from));
-        message.setSubject(subject);
-        MimeMultipart multipart = new MimeMultipart();
-        MimeBodyPart htmlPart = new MimeBodyPart();
-        htmlPart.setContent(body, "text/html; charset=utf-8");
-        multipart.addBodyPart(htmlPart);
-        message.setContent(multipart);
-        mailSender.send(message);
+            // Send the email asynchronously using the emailDispatcher
+            emailDispatcher.sendEmail(() -> {
+                try {
+                    // Prepare the email session and message
+                    Session session = Session.getDefaultInstance(new Properties(), null);
+                    MimeMessage message = new MimeMessage(session);
+
+                    // Set the recipient, sender, and subject
+                    message.setRecipient(Message.RecipientType.TO, new InternetAddress(to));
+                    message.setFrom(new InternetAddress(from));
+                    message.setSubject(emailSubject);
+
+                    // Attach the HTML body
+                    MimeMultipart multipart = new MimeMultipart();
+                    MimeBodyPart htmlPart = new MimeBodyPart();
+                    htmlPart.setContent(emailBody, "text/html; charset=utf-8");
+                    multipart.addBodyPart(htmlPart);
+                    message.setContent(multipart);
+
+                    // Send the email
+                    mailSender.send(message);
+
+                } catch (Exception e) {
+                    // Log and rethrow as RuntimeException
+                    throw new RuntimeException("Failed to send HTML email", e);
+                }
+            });
+        } catch (InterruptedException e) {
+            // Handle thread interruption
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Failed to send HTML email due to rate limiting", e);
+        } catch (Exception e) {
+            // Handle any other exceptions
+            throw new RuntimeException("An error occurred while preparing the HTML email", e);
+        }
     }
+
 }

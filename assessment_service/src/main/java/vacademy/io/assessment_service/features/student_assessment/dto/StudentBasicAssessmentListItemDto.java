@@ -40,4 +40,5 @@ public class StudentBasicAssessmentListItemDto {
     private Date recentAttemptStartDate;
     private Integer assessmentAttempts;
     private Integer userAttempts;
+    private Integer previewTime;
 }

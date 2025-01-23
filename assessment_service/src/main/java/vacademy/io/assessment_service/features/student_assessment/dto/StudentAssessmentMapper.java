@@ -30,6 +30,7 @@ public class StudentAssessmentMapper {
                 .recentAttemptStartDate((Date) assessment[19])
                 .assessmentAttempts((Integer) assessment[20])
                 .userAttempts((Integer) assessment[21])
+                .previewTime((Integer) assessment[22])
                 .build();
 
         return dto;

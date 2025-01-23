@@ -4,6 +4,8 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 import org.hibernate.annotations.UuidGenerator;
+import vacademy.io.admin_core_service.features.chapter.dto.ChapterDTO;
+import vacademy.io.admin_core_service.features.chapter.enums.ChapterStatus;
 
 import java.sql.Timestamp;
 
@@ -22,7 +24,7 @@ public class Chapter {
     private String chapterName;
 
     @Column(name = "status")
-    private String statues;
+    private String status;
 
     @Column(name = "file_id")
     private String fileId;
@@ -35,5 +37,32 @@ public class Chapter {
 
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Timestamp updatedAt;
+
+    public ChapterDTO mapToDTO() {
+        ChapterDTO chapterDTO = new ChapterDTO();
+        chapterDTO.setId(id);
+        chapterDTO.setChapterName(chapterName);
+        chapterDTO.setFileId(fileId);
+        chapterDTO.setDescription(description);
+        chapterDTO.setStatus(status);
+        return chapterDTO;
+    }
+
+    public Chapter(ChapterDTO chapterDTO) {
+        if (chapterDTO.getId() != null) {
+            this.id = chapterDTO.getId();
+        }
+        if (chapterDTO.getChapterName() != null) {
+            this.chapterName = chapterDTO.getChapterName();
+        }
+        if (chapterDTO.getFileId() != null) {
+            this.fileId = chapterDTO.getFileId();
+        }
+        if (chapterDTO.getDescription() != null) {
+            this.description = chapterDTO.getDescription();
+        }
+        this.status = ChapterStatus.ACTIVE.name();
+    }
+    public Chapter(){}
 
 }

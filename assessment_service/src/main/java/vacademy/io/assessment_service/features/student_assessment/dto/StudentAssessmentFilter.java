@@ -18,7 +18,7 @@ import java.util.Map;
 public class StudentAssessmentFilter {
     private String name;
     private List<String> batchIds;
-    private List<String> userIds;
+    private List<String> userIds = new ArrayList<>();
     private List<String> tagIds;
     private Boolean getLiveAssessments;
     private Boolean getPassedAssessments;

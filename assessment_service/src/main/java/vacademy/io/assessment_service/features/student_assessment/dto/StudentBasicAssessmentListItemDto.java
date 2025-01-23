@@ -36,5 +36,8 @@ public class StudentBasicAssessmentListItemDto {
     private Date boundEndTime;
     private Date createdAt;
     private Date updatedAt;
-
+    private String recentAttemptStatus;
+    private Date recentAttemptStartDate;
+    private Integer assessmentAttempts;
+    private Integer userAttempts;
 }

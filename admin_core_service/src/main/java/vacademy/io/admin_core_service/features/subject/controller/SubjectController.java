@@ -7,6 +7,9 @@ import vacademy.io.admin_core_service.features.subject.service.SubjectService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.institute.dto.SubjectDTO;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @RestController
 @RequestMapping("/admin-core-service/subject/v1")
 @RequiredArgsConstructor
@@ -14,8 +17,8 @@ public class SubjectController {
     private final SubjectService subjectService;
 
     @PostMapping("/add-subject")
-    public ResponseEntity<SubjectDTO>addSubject(@RequestBody SubjectDTO subjectDTO, String packageSessionId,@RequestAttribute("user") CustomUserDetails user) {
-        return ResponseEntity.ok(subjectService.addSubject(subjectDTO, packageSessionId,user));
+    public ResponseEntity<SubjectDTO>addSubject(@RequestBody SubjectDTO subjectDTO, String commaSeparatedPackageSessionIds, @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(subjectService.addSubject(subjectDTO, commaSeparatedPackageSessionIds,user));
     }
 
     @PutMapping("/update-subject")

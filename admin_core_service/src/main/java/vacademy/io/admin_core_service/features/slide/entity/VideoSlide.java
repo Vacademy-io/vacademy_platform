@@ -3,13 +3,12 @@ package vacademy.io.admin_core_service.features.slide.entity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
-import org.hibernate.annotations.GenericGenerator;
 import org.hibernate.annotations.UuidGenerator;
 
 import java.sql.Timestamp;
 
 @Entity
-public class Video {
+public class VideoSlide {
 
     @Id
     @UuidGenerator

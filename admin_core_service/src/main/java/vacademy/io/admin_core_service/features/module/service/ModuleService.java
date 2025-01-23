@@ -12,7 +12,9 @@ import vacademy.io.admin_core_service.features.module.enums.ModuleStatusEnum;
 import vacademy.io.admin_core_service.features.module.repository.ModuleRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
 import vacademy.io.admin_core_service.features.subject.entity.SubjectChapterModuleAndPackageSessionMapping;
+import vacademy.io.admin_core_service.features.subject.entity.SubjectModuleMapping;
 import vacademy.io.admin_core_service.features.subject.repository.SubjectChapterModuleAndPackageSessionMappingRepository;
+import vacademy.io.admin_core_service.features.subject.repository.SubjectModuleMappingRepository;
 import vacademy.io.admin_core_service.features.subject.repository.SubjectRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
@@ -29,19 +31,15 @@ public class ModuleService {
     private final SubjectRepository subjectRepository;
     private final InstituteRepository instituteRepository;
     private final PackageSessionRepository packageSessionRepository;
+    private final SubjectModuleMappingRepository subjectModuleMappingRepository;
 
     @Transactional
-    public ModuleDTO addModule(String subjectId, String packageSessionId, String instituteId, ModuleDTO moduleDTO, CustomUserDetails user) {
+    public ModuleDTO addModule(String subjectId,ModuleDTO moduleDTO, CustomUserDetails user) {
         validateSubjectId(subjectId);
         validateModule(moduleDTO);
-
         Subject subject = findSubjectById(subjectId);
-        Institute institute = findInstituteById(instituteId);
-        PackageSession packageSession = findPackageSessionById(packageSessionId);
-
         Module module = createAndSaveModule(moduleDTO);
-        saveMapping(subject, module, packageSession, institute);
-
+        saveMapping(subject, module);
         moduleDTO.setId(module.getId());
         return moduleDTO;
     }
@@ -79,10 +77,8 @@ public class ModuleService {
         return moduleRepository.save(module);
     }
 
-    private void saveMapping(Subject subject, Module module, PackageSession packageSession, Institute institute) {
-        SubjectChapterModuleAndPackageSessionMapping mapping =
-                new SubjectChapterModuleAndPackageSessionMapping(subject, module, packageSession, institute);
-        subjectChapterModuleAndPackageSessionMappingRepository.save(mapping);
+    private void saveMapping(Subject subject, Module module) {
+        subjectModuleMappingRepository.save(new SubjectModuleMapping(subject,module));
     }
 
 

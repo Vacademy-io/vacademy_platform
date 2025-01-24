@@ -28,6 +28,8 @@ public class AssessmentMapper {
                 .updatedAt((Date) assessment[15])
                 .userRegistrations((Long) assessment[16])
                 .batchIds((assessment[17] == null) ? new ArrayList<>() : Arrays.asList((String[]) assessment[17]))
+                .subjectId((String) assessment[18])
+                .joinLink((String) assessment[19])
                 .build();
 
         return dto;

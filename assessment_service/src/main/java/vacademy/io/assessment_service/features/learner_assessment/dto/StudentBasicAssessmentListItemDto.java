@@ -38,4 +38,6 @@ public class StudentBasicAssessmentListItemDto {
     private Integer assessmentAttempts;
     private Integer userAttempts;
     private Integer previewTime;
+    private String lastAttemptId;
+    private String assessmentUserRegistrationId;
 }

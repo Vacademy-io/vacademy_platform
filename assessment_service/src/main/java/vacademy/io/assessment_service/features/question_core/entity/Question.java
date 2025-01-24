@@ -7,6 +7,7 @@ import vacademy.io.assessment_service.features.question_core.dto.QuestionDTO;
 import vacademy.io.assessment_service.features.rich_text.entity.AssessmentRichTextData;
 
 import java.sql.Timestamp;
+import java.util.ArrayList;
 import java.util.List;
 
 @Entity
@@ -65,7 +66,8 @@ public class Question {
     private AssessmentRichTextData explanationTextData;
 
     @OneToMany(mappedBy = "question", fetch = FetchType.LAZY)
-    private List<Option> options;
+    private List<Option> options = new ArrayList<>();
+
 
     public Question(QuestionDTO questionDTO) {
         this.id = questionDTO.getId();

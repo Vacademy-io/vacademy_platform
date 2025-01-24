@@ -29,6 +29,8 @@ public class StudentAssessmentMapper {
                 .assessmentAttempts((Integer) assessment[20])
                 .userAttempts((Integer) assessment[21])
                 .previewTime((Integer) assessment[22])
+                .lastAttemptId((String) assessment[23])
+                .assessmentUserRegistrationId((String) assessment[24])
                 .build();
 
         return dto;

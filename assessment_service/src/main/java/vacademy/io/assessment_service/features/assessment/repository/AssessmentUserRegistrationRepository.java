@@ -18,4 +18,7 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
 
     @Query("SELECT a FROM AssessmentUserRegistration a WHERE a.userId = :userId AND a.instituteId = :instituteId ORDER BY a.createdAt DESC")
     Optional<AssessmentUserRegistration> findTopByUserIdAndInstituteId(@Param("userId") String userId, @Param("instituteId") String instituteId);
+
+    @Query("SELECT a FROM AssessmentUserRegistration a WHERE a.userId = :userId AND a.assessmentId = :instituteId ORDER BY a.createdAt DESC")
+    Optional<AssessmentUserRegistration> findTopByUserIdAndAssessmentId(@Param("userId") String userId, @Param("assessmentId") String assessmentId);
 }

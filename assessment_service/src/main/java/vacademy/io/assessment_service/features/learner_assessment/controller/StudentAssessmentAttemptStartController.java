@@ -4,10 +4,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.assessment_service.features.learner_assessment.dto.AllStudentAssessmentResponse;
+import vacademy.io.assessment_service.features.learner_assessment.dto.LearnerAssessmentStartPreviewResponse;
 import vacademy.io.assessment_service.features.learner_assessment.dto.StudentAssessmentFilter;
 import vacademy.io.assessment_service.features.learner_assessment.manager.LearnerAssessmentAttemptStartManager;
 import vacademy.io.assessment_service.features.learner_assessment.manager.LearnerAssessmentGetManager;
 import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.student.dto.BasicParticipantDTO;
 
 import static vacademy.io.common.core.constants.PageConstants.DEFAULT_PAGE_NUMBER;
 import static vacademy.io.common.core.constants.PageConstants.DEFAULT_PAGE_SIZE;
@@ -20,12 +22,12 @@ public class StudentAssessmentAttemptStartController {
     LearnerAssessmentAttemptStartManager learnerAssessmentAttemptStartManager;
 
     @PostMapping("/assessment-start-preview")
-    public ResponseEntity<AllStudentAssessmentResponse> startAssessmentPreview(@RequestAttribute("user") CustomUserDetails user,
-                                                                             @RequestBody StudentAssessmentFilter adminAssessmentFilter,
-                                                                             @RequestParam(value = "pageNo", defaultValue = DEFAULT_PAGE_NUMBER, required = false) int pageNo,
-                                                                             @RequestParam(value = "pageSize", defaultValue = DEFAULT_PAGE_SIZE, required = false) int pageSize,
-                                                                             @RequestParam(name = "instituteId", required = false) String instituteId) {
-        return learnerAssessmentAttemptStartManager.assessmentListFilter(user, adminAssessmentFilter, instituteId, pageNo, pageSize);
+    public ResponseEntity<LearnerAssessmentStartPreviewResponse> startAssessmentPreview(@RequestAttribute("user") CustomUserDetails user,
+                                                                                        @RequestBody BasicParticipantDTO basicParticipantDTO,
+                                                                                        @RequestParam(value = "assessment_id") String assessmentId,
+                                                                                        @RequestParam(value = "batch_ids", required = false) String batchIds,
+                                                                                        @RequestParam(name = "instituteId") String instituteId) {
+        return learnerAssessmentAttemptStartManager.startAssessmentPreview(user, assessmentId, instituteId, batchIds, basicParticipantDTO);
     }
 
 }

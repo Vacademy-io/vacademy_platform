@@ -55,4 +55,8 @@ public class DateUtil {
         return Date.from(utcDateTime.toInstant());
     }
 
+    public static Date getCurrentUtcTime() {
+        return Date.from(ZonedDateTime.now().withZoneSameInstant(ZoneId.of("UTC")).toInstant());
+    }
+
 }

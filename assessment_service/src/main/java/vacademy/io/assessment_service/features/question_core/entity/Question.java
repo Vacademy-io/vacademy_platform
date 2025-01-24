@@ -26,6 +26,10 @@ public class Question {
     @Column(name = "media_id")
     private String mediaId;
 
+    @OneToOne(cascade = CascadeType.ALL)
+    @JoinColumn(name = "parent_rich_text_id", referencedColumnName = "id")
+    private AssessmentRichTextData parentRichText;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Timestamp createdAt;
 

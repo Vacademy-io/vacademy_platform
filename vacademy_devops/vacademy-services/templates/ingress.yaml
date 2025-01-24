@@ -19,11 +19,11 @@ spec:
     - host: backend-stage.vacademy.io
       http:
         paths:
-          - path: /student-service
+          - path: /institute_learner-service
             pathType: Prefix
             backend:
               service:
-                name: student-service
+                name: institute_learner-service
                 port:
                   number: {{ .Values.services.student_service.port }}
           - path: /media-service

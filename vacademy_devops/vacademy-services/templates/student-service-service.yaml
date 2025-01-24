@@ -1,11 +1,11 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: student-service
+  name: institute_learner-service
   namespace: default
 spec:
   selector:
-    app: student-service
+    app: institute_learner-service
   ports:
     - name: http
       port: { { .Values.services.student_service.port } }

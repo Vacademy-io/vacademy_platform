@@ -30,4 +30,13 @@ public class StudentAssessmentAttemptStartController {
         return learnerAssessmentAttemptStartManager.startAssessmentPreview(user, assessmentId, instituteId, batchIds, basicParticipantDTO);
     }
 
+//    @PostMapping("/assessment-start-assessment")
+//    public ResponseEntity<LearnerAssessmentStartPreviewResponse> startAssessment(@RequestAttribute("user") CustomUserDetails user,
+//                                                                                 @RequestBody BasicParticipantDTO basicParticipantDTO,
+//                                                                                 @RequestParam(value = "assessment_id") String assessmentId,
+//                                                                                 @RequestParam(value = "batch_ids", required = false) String batchIds,
+//                                                                                 @RequestParam(name = "instituteId") String instituteId) {
+//        return learnerAssessmentAttemptStartManager.startAssessment(user, assessmentId, instituteId, batchIds, basicParticipantDTO);
+//    }
+
 }

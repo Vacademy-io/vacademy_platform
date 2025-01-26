@@ -1,22 +1,22 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: institute_learner-service
+  name: student-service
   namespace: default
   labels:
-    app: institute_learner-service
+    app: student-service
 spec:
   replicas: { { .Values.replicaCount } }
   selector:
     matchLabels:
-      app: institute_learner-service
+      app: student-service
   template:
     metadata:
       labels:
-        app: institute_learner-service
+        app: student-service
     spec:
       containers:
-        - name: institute_learner-service
+        - name: student-service
           image: { { .Values.services.student_service.image.repository } }:{{ .Values.services.student_service.image.tag }}
           imagePullPolicy: Always
           resources:
@@ -28,7 +28,7 @@ spec:
               memory: "600Mi"
           livenessProbe:
             httpGet:
-              path: /institute_learner-service/actuator/health
+              path: /student-service/actuator/health
               port: { { .Values.services.student_service.port } }
               scheme: HTTP
             initialDelaySeconds: 180
@@ -38,7 +38,7 @@ spec:
             successThreshold: 1
           startupProbe:
             httpGet:
-              path: /institute_learner-service/actuator/health
+              path: /student-service/actuator/health
               port: { { .Values.services.student_service.port } }
               scheme: HTTP
             initialDelaySeconds: 180
@@ -48,7 +48,7 @@ spec:
             successThreshold: 1
           readinessProbe:
             httpGet:
-              path: /institute_learner-service/actuator/health
+              path: /student-service/actuator/health
               port: { { .Values.services.student_service.port } }
               scheme: HTTP
             initialDelaySeconds: 180

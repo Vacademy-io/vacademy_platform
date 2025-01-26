@@ -15,13 +15,13 @@ import java.util.Optional;
 @Repository
 public interface InstituteStudentRepository extends CrudRepository<Student, String> {
     @Query(
-            value = "SELECT DISTINCT s.* FROM institute_learner s LEFT JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id " +
+            value = "SELECT DISTINCT s.* FROM student s LEFT JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id " +
                     "WHERE (:statuses IS NULL OR ssigm.status IN (:statuses)) " +
                     "AND (:gender IS NULL OR s.gender IN (:gender)) " +
                     "AND (:instituteIds IS NULL OR ssigm.institute_id IN (:instituteIds)) " +
                     "AND (:groupIds IS NULL OR ssigm.group_id IN (:groupIds)) " +
                     "AND (:packageSessionIds IS NULL OR ssigm.package_session_id IN (:packageSessionIds))",
-            countQuery = "SELECT COUNT(DISTINCT s.id) FROM institute_learner s LEFT JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id " +
+            countQuery = "SELECT COUNT(DISTINCT s.id) FROM student s LEFT JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id " +
                     "WHERE (:statuses IS NULL OR ssigm.status IN (:statuses)) " +
                     "AND (:gender IS NULL OR s.gender IN (:gender)) " +
                     "AND (:instituteIds IS NULL OR ssigm.institute_id IN (:instituteIds)) " +
@@ -41,7 +41,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
     @Query(
             nativeQuery = true,
             value = "SELECT DISTINCT s.* " +
-                    "FROM institute_learner s " +
+                    "FROM student s " +
                     "JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id " +
                     "WHERE ( " +
                     "to_tsvector('simple', concat(s.full_name, ' ', s.username)) @@ plainto_tsquery('simple', :name) " +
@@ -53,7 +53,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                     ") " +
                     "AND (:instituteIds IS NULL OR ssigm.institute_id IN (:instituteIds))",
             countQuery = "SELECT COUNT(DISTINCT s.id) " +
-                    "FROM institute_learner s " +
+                    "FROM student s " +
                     "JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id " +
                     "WHERE ( " +
                     "to_tsvector('simple', concat(s.full_name, ' ', s.username)) @@ plainto_tsquery('simple', :name) " +
@@ -77,7 +77,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                     "s.city, s.pin_code, s.mobile_number, s.date_of_birth, s.gender, s.fathers_name, " +
                     "s.mothers_name, s.parents_mobile_number, s.parents_email, s.linked_institute_name, " +
                     "s.created_at, s.updated_at, ssigm.package_session_id, ssigm.institute_enrollment_number, ssigm.status, ssigm.institute_id, ssigm.expiry_date " +
-                    "FROM institute_learner s " +
+                    "FROM student s " +
                     "LEFT JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id " +
                     "WHERE (:statuses IS NULL OR ssigm.status IN (:statuses)) " +
                     "AND (:gender IS NULL OR s.gender IN (:gender)) " +
@@ -85,7 +85,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                     "AND (:groupIds IS NULL OR ssigm.group_id IN (:groupIds)) " +
                     "AND (:packageSessionIds IS NULL OR ssigm.package_session_id IN (:packageSessionIds))",
             countQuery = "SELECT COUNT(DISTINCT s.id) " +
-                    "FROM institute_learner s " +
+                    "FROM student s " +
                     "LEFT JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id " +
                     "WHERE (:statuses IS NULL OR ssigm.status IN (:statuses)) " +
                     "AND (:gender IS NULL OR s.gender IN (:gender)) " +
@@ -110,7 +110,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                     "s.city, s.pin_code, s.mobile_number, s.date_of_birth, s.gender, s.fathers_name, " +
                     "s.mothers_name, s.parents_mobile_number, s.parents_email, s.linked_institute_name, " +
                     "s.created_at, s.updated_at, ssigm.package_session_id, ssigm.institute_enrollment_number, ssigm.status, ssigm.institute_id, ssigm.expiry_date  " +
-                    "FROM institute_learner s " +
+                    "FROM student s " +
                     "JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id " +
                     "WHERE ( " +
                     "to_tsvector('simple', concat(s.full_name, ' ', s.username)) @@ plainto_tsquery('simple', :name) " +
@@ -122,7 +122,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                     ") " +
                     "AND (:instituteIds IS NULL OR ssigm.institute_id IN (:instituteIds))",
             countQuery = "SELECT COUNT(DISTINCT s.id) " +
-                    "FROM institute_learner s " +
+                    "FROM student s " +
                     "JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id " +
                     "WHERE ( " +
                     "to_tsvector('simple', concat(s.full_name, ' ', s.username)) @@ plainto_tsquery('simple', :name) " +
@@ -141,10 +141,26 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
     );
 
     // get the recent one if more than pne institute_learner exist
-    @Query(value = "SELECT * FROM institute_learner where username = :username ORDER BY created_at DESC LIMIT 1", nativeQuery = true)
+    @Query(value = "SELECT * FROM student where username = :username ORDER BY created_at DESC LIMIT 1", nativeQuery = true)
     Optional<Student> getRecentStudentByUsername(@Param("username") String username);
 
 
     Optional<Student> findByUsernameAndUserId(String username, String userId);
+
+
+    @Query(
+            nativeQuery = true,
+            value = "SELECT DISTINCT s.id, s.username, s.user_id, s.email, s.full_name, s.address_line, s.region, " +
+                    "s.city, s.pin_code, s.mobile_number, s.date_of_birth, s.gender, s.fathers_name, " +
+                    "s.mothers_name, s.parents_mobile_number, s.parents_email, s.linked_institute_name, " +
+                    "s.created_at, s.updated_at, ssigm.package_session_id, ssigm.institute_enrollment_number, ssigm.status, ssigm.institute_id, ssigm.expiry_date  " +
+                    "FROM student s " +
+                    "JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id " +
+                    "WHERE ssigm.institute_id = :instituteId AND s.user_id = :userId order by s.created_at desc limit 1"
+    )
+    Optional<Object[]> getStudentWithInstituteAndUserId(
+            @Param("userId") String userId,
+            @Param("instituteId") String instituteId
+    );
 }
 

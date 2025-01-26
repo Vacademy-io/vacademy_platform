@@ -15,10 +15,7 @@ import vacademy.io.common.institute.dto.SubjectDTO;
 import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.common.institute.entity.session.PackageSession;
 
-import java.util.HashSet;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 
 @Component
 public class LearnerInstituteManager {
@@ -66,5 +63,20 @@ public class LearnerInstituteManager {
         }
         instituteInfoDTO.setSubjects(subjectRepository.findDistinctSubjectsOfPackageSessions(packageSessions.stream().map(PackageSession::getId).toList()).stream().map(SubjectDTO::new).toList());
         return instituteInfoDTO;
+    }
+
+    public List<StudentInstituteInfoDTO> getInstituteDetailsByIds(String instituteIds, String userId) {
+        List<String> instituteIdList = List.of(instituteIds.split(","));
+        List<StudentInstituteInfoDTO> instituteInfoDTOList = new ArrayList<>();
+        Iterable<Institute> institute = instituteRepository.findAllById(instituteIdList);
+        for (Institute thisInstitute : institute) {
+            StudentInstituteInfoDTO instituteInfoDTO = new StudentInstituteInfoDTO();
+            instituteInfoDTO.setInstituteName(thisInstitute.getInstituteName());
+            instituteInfoDTO.setId(thisInstitute.getId());
+            instituteInfoDTO.setCity(thisInstitute.getCity());
+            instituteInfoDTO.setCountry(thisInstitute.getCountry());
+            instituteInfoDTOList.add(instituteInfoDTO);
+        }
+        return instituteInfoDTOList;
     }
 }

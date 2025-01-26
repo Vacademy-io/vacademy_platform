@@ -61,5 +61,7 @@ public class Student {
     private Timestamp createdAt;
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Timestamp updatedAt;
+    @Column(name = "face_file_id")
+    private String faceFileId;
 
 }

@@ -41,6 +41,7 @@ public class StudentDTO {
     private String status;
     private String sessionExpiryDays;
     private String instituteId;
+    private String faceFileId;
     private Date expiryDate;
     private Date createdAt;
     private Date updatedAt;
@@ -66,6 +67,7 @@ public class StudentDTO {
         this.linkedInstituteName = student.getLinkedInstituteName();
         this.createdAt = student.getCreatedAt();
         this.updatedAt = student.getUpdatedAt();
+        this.faceFileId = student.getFaceFileId();
     }
 
     // Constructor that takes an Object[]
@@ -105,6 +107,9 @@ public class StudentDTO {
             }
             if (objects.length > 23) {
                 this.expiryDate = (Date) objects[23]; // Additional field from mapping table
+            }
+            if (objects.length > 24) {
+                this.faceFileId = (String) objects[24]; // Additional field from mapping table
             }
         }
     }

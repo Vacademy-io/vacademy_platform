@@ -57,7 +57,7 @@ jobs:
         env:
           ECR_REGISTRY: public.ecr.aws/e0x1f4p4
           IMAGE_TAG: latest
-          REPOSITORY: institute_learner-service/institute_learner-service-repo
+          REPOSITORY: student-service/student-service-repo
           GITHUB_TOKEN: ${{ secrets.JAVA_TOKEN }}
           GITHUB_ACTOR: shreyash-jain
           JAVA_TOKEN: ${{ secrets.JAVA_TOKEN }}

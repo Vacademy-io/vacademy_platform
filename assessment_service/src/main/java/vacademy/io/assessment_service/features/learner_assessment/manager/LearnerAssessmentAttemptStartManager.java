@@ -120,6 +120,7 @@ public class LearnerAssessmentAttemptStartManager {
         newAssessmentUserRegistration.setReattemptCount(assessment.getReattemptCount());
         newAssessmentUserRegistration.setParticipantName(basicParticipantDTO.getFullName());
         newAssessmentUserRegistration.setRegistrationTime(new Date());
+
         newAssessmentUserRegistration.setFaceFileId(basicParticipantDTO.getFileId());
         newAssessmentUserRegistration.setInstituteId(matchingBatchRegistration.getInstituteId());
         newAssessmentUserRegistration.setUserId(basicParticipantDTO.getUserId());

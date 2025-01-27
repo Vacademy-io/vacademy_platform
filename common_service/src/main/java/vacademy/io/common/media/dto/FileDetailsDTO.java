@@ -22,6 +22,8 @@ public class FileDetailsDTO {
     private String source;
     private String sourceId;
     private Date expiry;
+    private double width;
+    private double height;
     private Date createdOn;
     private Date updatedOn;
 }

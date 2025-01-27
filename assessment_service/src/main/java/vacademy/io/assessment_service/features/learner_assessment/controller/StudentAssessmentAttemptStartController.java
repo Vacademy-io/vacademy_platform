@@ -3,9 +3,7 @@ package vacademy.io.assessment_service.features.learner_assessment.controller;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import vacademy.io.assessment_service.features.learner_assessment.dto.AllStudentAssessmentResponse;
-import vacademy.io.assessment_service.features.learner_assessment.dto.LearnerAssessmentStartPreviewResponse;
-import vacademy.io.assessment_service.features.learner_assessment.dto.StudentAssessmentFilter;
+import vacademy.io.assessment_service.features.learner_assessment.dto.*;
 import vacademy.io.assessment_service.features.learner_assessment.manager.LearnerAssessmentAttemptStartManager;
 import vacademy.io.assessment_service.features.learner_assessment.manager.LearnerAssessmentGetManager;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -30,13 +28,10 @@ public class StudentAssessmentAttemptStartController {
         return learnerAssessmentAttemptStartManager.startAssessmentPreview(user, assessmentId, instituteId, batchIds, basicParticipantDTO);
     }
 
-//    @PostMapping("/assessment-start-assessment")
-//    public ResponseEntity<LearnerAssessmentStartPreviewResponse> startAssessment(@RequestAttribute("user") CustomUserDetails user,
-//                                                                                 @RequestBody BasicParticipantDTO basicParticipantDTO,
-//                                                                                 @RequestParam(value = "assessment_id") String assessmentId,
-//                                                                                 @RequestParam(value = "batch_ids", required = false) String batchIds,
-//                                                                                 @RequestParam(name = "instituteId") String instituteId) {
-//        return learnerAssessmentAttemptStartManager.startAssessment(user, assessmentId, instituteId, batchIds, basicParticipantDTO);
-//    }
+    @PostMapping("/assessment-start-assessment")
+    public ResponseEntity<LearnerAssessmentStartAssessmentResponse> startAssessment(@RequestAttribute("user") CustomUserDetails user,
+                                                                                    @RequestBody StartAssessmentRequest startAssessmentRequest) {
+        return learnerAssessmentAttemptStartManager.startAssessment(user, startAssessmentRequest);
+    }
 
 }

@@ -61,7 +61,6 @@ public class LearnerAssessmentAttemptStartManager {
 
         Optional<AssessmentUserRegistration> assessmentUserRegistration = userRegistrationService.findByAssessmentIdAndUserId(assessmentId, user.getUserId());
         AssessmentUserRegistration newAssessmentUserRegistration = verifyAssessmentRegistration(assessment.get(), assessmentUserRegistration, batchIds, basicParticipantDTO);
-
         verifyAssessmentStart(assessment.get());
         verifyLastAttemptState(getLastStudentAttempt(newAssessmentUserRegistration));
 
@@ -147,5 +146,22 @@ public class LearnerAssessmentAttemptStartManager {
             questions.add(question);
         }
         return questions;
+    }
+
+    public ResponseEntity<LearnerAssessmentStartAssessmentResponse> startAssessment(CustomUserDetails user, StartAssessmentRequest startAssessmentRequest) {
+        Optional<StudentAttempt> studentAttempt = studentAttemptRepository.findById(startAssessmentRequest.getAttemptId());
+        if (studentAttempt.isEmpty()) throw new VacademyException("Student attempt not found");
+
+        if (!AssessmentAttemptEnum.PREVIEW.name().equals(studentAttempt.get().getStatus()))
+            throw new VacademyException("Assessment already live or in preview");
+
+        Date startTime = DateUtil.getCurrentUtcTime();
+        studentAttempt.get().setStartTime(startTime);
+        Date endTime = DateUtil.addMinutes(startTime, studentAttempt.get().getMaxTime());
+        studentAttempt.get().setStatus(AssessmentAttemptEnum.LIVE.name());
+
+        studentAttemptRepository.save(studentAttempt.get());
+
+        return ResponseEntity.ok(new LearnerAssessmentStartAssessmentResponse(startTime, endTime, studentAttempt.get().getId(), studentAttempt.get().getRegistration().getId()));
     }
 }

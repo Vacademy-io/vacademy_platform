@@ -24,7 +24,7 @@ public interface QuestionAssessmentSectionMappingRepository extends CrudReposito
     @Query(value = "SELECT * FROM question_assessment_section_mapping WHERE section_id IN ?1", nativeQuery = true)
     List<QuestionAssessmentSectionMapping> getQuestionAssessmentSectionMappingBySectionIds(List<String> sectionIds);
 
-    @Query(value = "SELECT * FROM question_assessment_section_mapping qasm " +
+    @Query(value = "SELECT qasm.* FROM question_assessment_section_mapping qasm " +
             "LEFT JOIN section s ON qasm.section_id = s.id " +
             "WHERE s.assessment_id = ?1", nativeQuery = true)
     List<QuestionAssessmentSectionMapping> getQuestionAssessmentSectionMappingByAssessmentId(String assessmentId);

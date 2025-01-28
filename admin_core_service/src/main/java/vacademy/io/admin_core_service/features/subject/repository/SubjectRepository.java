@@ -13,12 +13,14 @@ public interface SubjectRepository extends JpaRepository<Subject, String> {
     @Query(nativeQuery = true, value = "SELECT DISTINCT s.* " + "FROM public.subject s " + "JOIN public.subject_session ss ON s.id = ss.subject_id " + "JOIN public.package_session ps ON ss.session_id = ps.id " + "JOIN public.package_institute pi ON ps.package_id = pi.package_id " + "WHERE pi.institute_id = :instituteId AND s.status = 'ACTIVE' ")
     List<Subject> findDistinctSubjectsByInstituteId(@Param("instituteId") String instituteId);
 
-    @Query(value = "SELECT DISTINCT s.* " +
+    @Query(value = "SELECT DISTINCT s.*, ss.subject_order " +
             "FROM subject s " +
             "INNER JOIN subject_session ss ON s.id = ss.subject_id " +
             "INNER JOIN package_session ps ON ss.session_id = ps.id " +
-            "WHERE ps.level_id = :levelId AND s.status = 'ACTIVE' ", nativeQuery = true)
+            "WHERE ps.level_id = :levelId AND s.status = 'ACTIVE' " +
+            "ORDER BY ss.subject_order ASC NULLS LAST", nativeQuery = true)
     List<Subject> findDistinctSubjectsByLevelId(@Param("levelId") String levelId);
+
 
     @Query(value = "SELECT DISTINCT s.* " +
             "FROM subject s " +

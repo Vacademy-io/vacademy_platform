@@ -13,6 +13,7 @@ import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentBatchRegistration;
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentCustomField;
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentUserRegistration;
+import vacademy.io.assessment_service.features.assessment.enums.UserRegistrationSources;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentCustomFieldRepository;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentRepository;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentUserRegistrationRepository;
@@ -175,7 +176,7 @@ public class AssessmentParticipantsManager {
         assessmentParticipantRegistration.setReattemptCount((basicParticipantDTO.getReattemptCount() == null) ? assessment.getReattemptCount() : basicParticipantDTO.getReattemptCount());
         assessmentParticipantRegistration.setInstituteId(instituteId);
         assessmentParticipantRegistration.setStatus(ACTIVE.name());
-        assessmentParticipantRegistration.setSource("ADMIN_PRE_REGISTRATION");
+        assessmentParticipantRegistration.setSource(UserRegistrationSources.ADMIN_PRE_REGISTRATION.name());
         assessmentParticipantRegistration.setSourceId(adminUserId);
         assessmentParticipantRegistration.setRegistrationTime(new Date());
         return assessmentParticipantRegistration;

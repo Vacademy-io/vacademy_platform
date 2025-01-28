@@ -31,6 +31,7 @@ import vacademy.io.common.student.dto.BasicParticipantDTO;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import static vacademy.io.common.auth.enums.CompanyStatus.ACTIVE;
 import static vacademy.io.common.core.standard_classes.ListService.createSortObject;
 
 @Component
@@ -121,6 +122,7 @@ public class LearnerAssessmentAttemptStartManager {
         newAssessmentUserRegistration.setReattemptCount(assessment.getReattemptCount());
         newAssessmentUserRegistration.setParticipantName(basicParticipantDTO.getFullName());
         newAssessmentUserRegistration.setSource(UserRegistrationSources.BATCH_PREVIEW_REGISTRATION.name());
+        newAssessmentUserRegistration.setStatus(ACTIVE.name());
         newAssessmentUserRegistration.setSourceId(matchingBatchRegistration.getBatchId());
         newAssessmentUserRegistration.setRegistrationTime(new Date());
         newAssessmentUserRegistration.setFaceFileId(basicParticipantDTO.getFileId());
@@ -132,7 +134,8 @@ public class LearnerAssessmentAttemptStartManager {
     private StudentAttempt createStudentAttempt(AssessmentUserRegistration assessmentUserRegistration, Assessment assessment) {
         StudentAttempt studentAttempt = new StudentAttempt();
         studentAttempt.setRegistration(assessmentUserRegistration);
-        //studentAttempt.setStartTime(DateUtil.getCurrentUtcTime());
+        studentAttempt.setStartTime(DateUtil.getCurrentUtcTime());
+        studentAttempt.setPreviewStartTime(DateUtil.getCurrentUtcTime());
         studentAttempt.setStatus(AssessmentAttemptEnum.PREVIEW.name());
         studentAttempt.setMaxTime(assessment.getDuration());
         studentAttempt.setAttemptNumber(ObjectUtils.isEmpty(assessmentUserRegistration.getStudentAttempts()) ? 1 : assessmentUserRegistration.getStudentAttempts().size() + 1);

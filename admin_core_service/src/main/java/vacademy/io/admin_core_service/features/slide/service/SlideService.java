@@ -43,7 +43,7 @@ public class SlideService {
         DocumentSlide savedDocumentSlide = documentSlideRepository.save(documentSlide);
         Slide slide = new Slide(addDocumentSlideDTO,savedDocumentSlide.getId(), SlideTypeEnum.DOCUMENT.name(),addDocumentSlideDTO.getStatus());
         slide = slideRepository.save(slide);
-        ChapterToSlides chapterToSlides = new ChapterToSlides(chapter,slide,addDocumentSlideDTO.getSlideOrder(), SlideStatus.PUBLISHED.name());
+        ChapterToSlides chapterToSlides = new ChapterToSlides(chapter,slide,addDocumentSlideDTO.getSlideOrder(), addDocumentSlideDTO.getStatus());
         chapterToSlidesRepository.save(chapterToSlides);
         return slide.getId();
     }
@@ -77,7 +77,7 @@ public class SlideService {
         VideoSlide savedVideoSlide = videoSlideRepository.save(videoSlide);
         Slide slide = new Slide(addVideoSlideDTO,savedVideoSlide.getId(), SlideTypeEnum.VIDEO.name(),addVideoSlideDTO.getStatus());
         slide = slideRepository.save(slide);
-        ChapterToSlides chapterToSlides = new ChapterToSlides(chapter,slide,addVideoSlideDTO.getSlideOrder(), SlideStatus.PUBLISHED.name());
+        ChapterToSlides chapterToSlides = new ChapterToSlides(chapter,slide,addVideoSlideDTO.getSlideOrder(), addVideoSlideDTO.getStatus());
         chapterToSlidesRepository.save(chapterToSlides);
         return slide.getId();
     }

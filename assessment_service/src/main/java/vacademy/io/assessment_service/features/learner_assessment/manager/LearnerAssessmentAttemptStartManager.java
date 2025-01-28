@@ -15,6 +15,7 @@ import vacademy.io.assessment_service.features.assessment.dto.AssessmentQuestion
 import vacademy.io.assessment_service.features.assessment.entity.*;
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentModeEnum;
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentStatus;
+import vacademy.io.assessment_service.features.assessment.enums.UserRegistrationSources;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentRepository;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentUserRegistrationRepository;
 import vacademy.io.assessment_service.features.assessment.repository.QuestionAssessmentSectionMappingRepository;
@@ -119,8 +120,9 @@ public class LearnerAssessmentAttemptStartManager {
         newAssessmentUserRegistration.setPhoneNumber(basicParticipantDTO.getMobileNumber());
         newAssessmentUserRegistration.setReattemptCount(assessment.getReattemptCount());
         newAssessmentUserRegistration.setParticipantName(basicParticipantDTO.getFullName());
+        newAssessmentUserRegistration.setSource(UserRegistrationSources.BATCH_PREVIEW_REGISTRATION.name());
+        newAssessmentUserRegistration.setSourceId(matchingBatchRegistration.getBatchId());
         newAssessmentUserRegistration.setRegistrationTime(new Date());
-
         newAssessmentUserRegistration.setFaceFileId(basicParticipantDTO.getFileId());
         newAssessmentUserRegistration.setInstituteId(matchingBatchRegistration.getInstituteId());
         newAssessmentUserRegistration.setUserId(basicParticipantDTO.getUserId());

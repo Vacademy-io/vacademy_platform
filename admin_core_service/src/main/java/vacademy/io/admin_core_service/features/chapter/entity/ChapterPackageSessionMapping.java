@@ -31,16 +31,20 @@ public class ChapterPackageSessionMapping {
     @Column(name = "status")
     private String status;
 
+    @Column(name = "chapter_order")
+    private Integer chapterOrder;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Timestamp createdAt;
 
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Timestamp updatedAt;
 
-    public ChapterPackageSessionMapping(Chapter chapter, PackageSession packageSession) {
+    public ChapterPackageSessionMapping(Chapter chapter, PackageSession packageSession,Integer chapterOrder) {
         this.chapter = chapter;
         this.packageSession = packageSession;
         this.status = ChapterStatus.ACTIVE.name();
+        this.chapterOrder = chapterOrder;
     }
 
     public ChapterPackageSessionMapping() {}

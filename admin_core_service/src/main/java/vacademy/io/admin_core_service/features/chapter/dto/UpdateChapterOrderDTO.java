@@ -2,15 +2,14 @@ package vacademy.io.admin_core_service.features.chapter.dto;
 
 import com.fasterxml.jackson.databind.PropertyNamingStrategy;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 
 @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
-@Data
-public class ChapterDTO {
-    private String id;
-    private String chapterName;
-    private String status;
-    private String fileId;
-    private String description;
+@Getter
+@Setter
+public class UpdateChapterOrderDTO {
+    private String chapterId;
+    private String packageSessionId;
     private Integer chapterOrder;
 }

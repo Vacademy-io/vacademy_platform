@@ -1,14 +1,15 @@
 package vacademy.io.admin_core_service.features.subject.service;
 
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.web.bind.annotation.RequestBody;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
-import vacademy.io.admin_core_service.features.subject.entity.SubjectModuleMapping;
+import vacademy.io.admin_core_service.features.subject.dto.UpdateSubjectOrderDTO;
+import vacademy.io.admin_core_service.features.module.entity.SubjectModuleMapping;
 import vacademy.io.admin_core_service.features.subject.entity.SubjectPackageSession;
 import vacademy.io.admin_core_service.features.subject.enums.SubjectStatusEnum;
-import vacademy.io.admin_core_service.features.subject.repository.SubjectModuleMappingRepository;
+import vacademy.io.admin_core_service.features.module.repository.SubjectModuleMappingRepository;
 import vacademy.io.admin_core_service.features.subject.repository.SubjectPackageSessionRepository;
 import vacademy.io.admin_core_service.features.subject.repository.SubjectRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -19,8 +20,10 @@ import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.common.institute.entity.student.Subject;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -153,5 +156,48 @@ public class SubjectService {
 
     public void saveSubjectModuleMapping(Subject subject, Module module){
         subjectModuleMappingRepository.save(new SubjectModuleMapping(subject,module));
+    }
+
+    @Transactional
+    public String updateSubjectOrder(List<UpdateSubjectOrderDTO> updateSubjectOrderDTOS, CustomUserDetails user) {
+        if (updateSubjectOrderDTOS == null || updateSubjectOrderDTOS.isEmpty()) {
+            throw new IllegalArgumentException("No subject order updates provided.");
+        }
+
+        // Fetch all mappings once
+        List<SubjectPackageSession> subjectPackageSessions = subjectPackageSessionRepository
+                .findBySubjectIdInAndPackageSessionIdIn(
+                        updateSubjectOrderDTOS.stream().map(UpdateSubjectOrderDTO::getSubjectId).collect(Collectors.toList()),
+                        updateSubjectOrderDTOS.stream().map(UpdateSubjectOrderDTO::getPackageSessionId).collect(Collectors.toList())
+                );
+
+        // Create a map of the SubjectPackageSession based on the subjectId and packageSessionId
+        Map<String, SubjectPackageSession> mappingMap = subjectPackageSessions.stream()
+                .collect(Collectors.toMap(
+                        session -> session.getSubject().getId() + "-" + session.getPackageSession().getId(),
+                        session -> session
+                ));
+
+        // Update the subject order using the map
+        updateSubjectOrderDTOS.forEach(updateDTO -> {
+            String key = updateDTO.getSubjectId() + "-" + updateDTO.getPackageSessionId();
+            SubjectPackageSession subjectPackageSession = mappingMap.get(key);
+
+            if (subjectPackageSession == null) {
+                throw new RuntimeException("Mapping not found for subjectId: " + updateDTO.getSubjectId() +
+                        " and packageSessionId: " + updateDTO.getPackageSessionId());
+            }
+
+            if (updateDTO.getSubjectOrder() == null || updateDTO.getSubjectOrder() <= 0) {
+                throw new IllegalArgumentException("Invalid subject order for subjectId: " + updateDTO.getSubjectId());
+            }
+
+            subjectPackageSession.setSubjectOrder(updateDTO.getSubjectOrder());
+        });
+
+        // Batch save all updated mappings
+        subjectPackageSessionRepository.saveAll(subjectPackageSessions);
+
+        return "Subject order updated successfully.";
     }
 }

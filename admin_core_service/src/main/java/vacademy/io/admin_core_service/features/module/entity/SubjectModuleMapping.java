@@ -1,6 +1,8 @@
-package vacademy.io.admin_core_service.features.subject.entity;
+package vacademy.io.admin_core_service.features.module.entity;
 
 import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
 import org.hibernate.annotations.UuidGenerator;
 import vacademy.io.common.institute.entity.module.Module;
 import vacademy.io.common.institute.entity.student.Subject;
@@ -9,6 +11,8 @@ import java.sql.Timestamp;
 
 @Entity
 @Table(name = "subject_module_mapping")
+@Getter
+@Setter
 public class SubjectModuleMapping {
 
     @Id
@@ -23,6 +27,9 @@ public class SubjectModuleMapping {
     @ManyToOne
     @JoinColumn(name = "module_id", referencedColumnName = "id", nullable = false)
     private Module module;
+
+    @Column(name = "module_order")
+    private Integer moduleOrder;
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private Timestamp createdAt;

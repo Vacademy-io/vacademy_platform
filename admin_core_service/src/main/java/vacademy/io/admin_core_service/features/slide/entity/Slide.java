@@ -8,6 +8,7 @@ import lombok.Getter;
 import lombok.Setter;
 import org.hibernate.annotations.UuidGenerator;
 import vacademy.io.admin_core_service.features.slide.dto.AddDocumentSlideDTO;
+import vacademy.io.admin_core_service.features.slide.dto.AddVideoSlideDTO;
 import vacademy.io.admin_core_service.features.slide.enums.SlideStatus;
 
 import java.sql.Timestamp;
@@ -47,13 +48,22 @@ public class Slide {
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Timestamp updatedAt;
 
-    public Slide(AddDocumentSlideDTO addDocumentSlideDTO,String sourceId,String sourceType) {
+    public Slide(AddDocumentSlideDTO addDocumentSlideDTO,String sourceId,String sourceType,String status) {
         this.sourceId = sourceId;
         this.sourceType = sourceType;
         this.title = addDocumentSlideDTO.getTitle();
         this.imageFileId = addDocumentSlideDTO.getImageFileId();
         this.description = addDocumentSlideDTO.getDescription();
-        this.status = SlideStatus.ACTIVE.name();
+        this.status = status;
+    }
+
+    public Slide(AddVideoSlideDTO addVideoSlideDTO, String sourceId, String sourceType,String status) {
+        this.sourceId = sourceId;
+        this.sourceType = sourceType;
+        this.title = addVideoSlideDTO.getTitle();
+        this.imageFileId = addVideoSlideDTO.getImageFileId();
+        this.description = addVideoSlideDTO.getDescription();
+        this.status = status;
     }
 
 }

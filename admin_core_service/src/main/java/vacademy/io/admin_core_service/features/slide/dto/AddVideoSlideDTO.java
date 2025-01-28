@@ -10,5 +10,7 @@ public class AddVideoSlideDTO {
     private String title;
     private String imageFileId;
     private String description;
+    private Integer slideOrder;
     private VideoSlideDTO videoSlide;
+    private String status;
 }

@@ -68,6 +68,9 @@ public class AssessmentUserRegistration {
     @OneToMany(mappedBy = "assessmentUserRegistration")
     private Set<AssessmentRegistrationCustomFieldResponse> assessmentRegistrationCustomFieldResponseList= new HashSet<>();
 
+    @OneToMany(mappedBy = "registration")
+    private Set<StudentAttempt> studentAttempts = new HashSet<>();
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;
 

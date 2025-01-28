@@ -15,7 +15,7 @@ public class InviteNewUserService {
     public Boolean sendEmail(String to, String subject, String service, String body) {
         try {
             emailService.sendHtmlEmail(to, subject, service, body);
-        } catch (MessagingException e) {
+        } catch (Exception e) {
             return false;
         }
         return true;

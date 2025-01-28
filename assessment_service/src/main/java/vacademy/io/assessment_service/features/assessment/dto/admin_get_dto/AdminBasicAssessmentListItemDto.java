@@ -40,5 +40,7 @@ public class AdminBasicAssessmentListItemDto {
     private List<String> adminAccesses = new ArrayList<>();
     private Date createdAt;
     private Date updatedAt;
+    private String subjectId;
+    private String joinLink;
 
 }

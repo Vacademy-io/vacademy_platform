@@ -32,7 +32,7 @@ public class OTPService {
         EmailOtp otp = createNewOTP(to, service);
         try {
             emailService.sendEmailOtp(to, subject, service, name, otp.getOtp());
-        } catch (MessagingException e) {
+        } catch (Exception e) {
             return false;
         }
         return true;

@@ -7,20 +7,15 @@ import org.springframework.stereotype.Component;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.institute.service.InstituteModuleService;
 import vacademy.io.admin_core_service.features.learner.dto.StudentInstituteInfoDTO;
-import vacademy.io.admin_core_service.features.student.entity.StudentSessionInstituteGroupMapping;
-import vacademy.io.admin_core_service.features.student.repository.StudentSessionRepository;
-import vacademy.io.admin_core_service.features.subject.repository.SubjectPackageSessionRepository;
+import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
+import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
 import vacademy.io.admin_core_service.features.subject.repository.SubjectRepository;
 import vacademy.io.common.exceptions.VacademyException;
-import vacademy.io.common.institute.dto.InstituteInfoDTO;
 import vacademy.io.common.institute.dto.SubjectDTO;
 import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.common.institute.entity.session.PackageSession;
 
-import java.util.HashSet;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 
 @Component
 public class LearnerInstituteManager {
@@ -68,5 +63,20 @@ public class LearnerInstituteManager {
         }
         instituteInfoDTO.setSubjects(subjectRepository.findDistinctSubjectsOfPackageSessions(packageSessions.stream().map(PackageSession::getId).toList()).stream().map(SubjectDTO::new).toList());
         return instituteInfoDTO;
+    }
+
+    public List<StudentInstituteInfoDTO> getInstituteDetailsByIds(String instituteIds, String userId) {
+        List<String> instituteIdList = List.of(instituteIds.split(","));
+        List<StudentInstituteInfoDTO> instituteInfoDTOList = new ArrayList<>();
+        Iterable<Institute> institute = instituteRepository.findAllById(instituteIdList);
+        for (Institute thisInstitute : institute) {
+            StudentInstituteInfoDTO instituteInfoDTO = new StudentInstituteInfoDTO();
+            instituteInfoDTO.setInstituteName(thisInstitute.getInstituteName());
+            instituteInfoDTO.setId(thisInstitute.getId());
+            instituteInfoDTO.setCity(thisInstitute.getCity());
+            instituteInfoDTO.setCountry(thisInstitute.getCountry());
+            instituteInfoDTOList.add(instituteInfoDTO);
+        }
+        return instituteInfoDTOList;
     }
 }

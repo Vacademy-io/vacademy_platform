@@ -7,6 +7,7 @@ import vacademy.io.assessment_service.features.question_core.dto.QuestionDTO;
 import vacademy.io.assessment_service.features.rich_text.entity.AssessmentRichTextData;
 
 import java.sql.Timestamp;
+import java.util.ArrayList;
 import java.util.List;
 
 @Entity
@@ -25,6 +26,10 @@ public class Question {
 
     @Column(name = "media_id")
     private String mediaId;
+
+    @OneToOne(cascade = CascadeType.ALL)
+    @JoinColumn(name = "parent_rich_text_id", referencedColumnName = "id")
+    private AssessmentRichTextData parentRichText;
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private Timestamp createdAt;
@@ -61,7 +66,8 @@ public class Question {
     private AssessmentRichTextData explanationTextData;
 
     @OneToMany(mappedBy = "question", fetch = FetchType.LAZY)
-    private List<Option> options;
+    private List<Option> options = new ArrayList<>();
+
 
     public Question(QuestionDTO questionDTO) {
         this.id = questionDTO.getId();

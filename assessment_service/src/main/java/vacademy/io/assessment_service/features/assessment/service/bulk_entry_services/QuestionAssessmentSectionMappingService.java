@@ -16,6 +16,10 @@ public class QuestionAssessmentSectionMappingService {
     @Autowired
     private QuestionAssessmentSectionMappingRepository repository;
 
+    public QuestionAssessmentSectionMapping getMappingById(String questionId, String sectionId) {
+        return repository.findByQuestionIdAndSectionId(questionId, sectionId).orElse(null);
+    }
+
     public void addMultipleMappings(List<QuestionAssessmentSectionMapping> mappings) {
         repository.saveAll(mappings);
     }

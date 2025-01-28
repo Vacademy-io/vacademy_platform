@@ -7,6 +7,7 @@ import org.springframework.data.repository.CrudRepository;
 import vacademy.io.assessment_service.features.assessment.entity.QuestionAssessmentSectionMapping;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface QuestionAssessmentSectionMappingRepository extends CrudRepository<QuestionAssessmentSectionMapping, String> {
 
@@ -22,8 +23,8 @@ public interface QuestionAssessmentSectionMappingRepository extends CrudReposito
 
     @Query(value = "SELECT qasm.* FROM question_assessment_section_mapping qasm " +
             "LEFT JOIN section s ON qasm.section_id = s.id " +
-            "WHERE s.assessment_id = ?1", nativeQuery = true)
+            "WHERE s.assessment_id = ?1 and s.status != 'DELETED' ", nativeQuery = true)
     List<QuestionAssessmentSectionMapping> getQuestionAssessmentSectionMappingByAssessmentId(String assessmentId);
 
-
+    Optional<QuestionAssessmentSectionMapping> findByQuestionIdAndSectionId(String questionId, String sectionId);
 }

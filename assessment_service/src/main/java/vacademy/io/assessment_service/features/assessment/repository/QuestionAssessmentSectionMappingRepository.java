@@ -16,10 +16,6 @@ public interface QuestionAssessmentSectionMappingRepository extends CrudReposito
     @Query(value = "UPDATE question_assessment_section_mapping SET status = 'DELETED' WHERE question_id IN ?1 AND section_id = ?2", nativeQuery = true)
     void softDeleteByQuestionIdsAndSectionId(List<String> questionIds, String sectionId);
 
-    @Modifying
-    @Transactional
-    @Query(value = "INSERT INTO question_assessment_section_mapping (id, question_id, marking_json, section_id, question_order, question_duration_in_min, status, created_at, updated_at) VALUES ?1", nativeQuery = true)
-    void bulkInsert(List<Object[]> batch);
 
     @Query(value = "SELECT * FROM question_assessment_section_mapping WHERE section_id IN ?1", nativeQuery = true)
     List<QuestionAssessmentSectionMapping> getQuestionAssessmentSectionMappingBySectionIds(List<String> sectionIds);

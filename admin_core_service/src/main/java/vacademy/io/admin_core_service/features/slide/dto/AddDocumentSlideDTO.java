@@ -15,4 +15,5 @@ public class AddDocumentSlideDTO {
     private String description;
     private Integer slideOrder;
     private DocumentSlideDTO documentSlide;
+    private String status;
 }

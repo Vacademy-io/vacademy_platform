@@ -18,10 +18,11 @@ import vacademy.io.common.institute.entity.PackageEntity;
 public class PackageDTO {
     private String id;
     private String packageName;
-
+    private String thumbnailFileId;
     // Constructor from Package entity
     public PackageDTO(PackageEntity packageEntity) {
         this.id = packageEntity.getId();
         this.packageName = packageEntity.getPackageName();
+        this.thumbnailFileId = packageEntity.getThumbnailFileId();
     }
 }

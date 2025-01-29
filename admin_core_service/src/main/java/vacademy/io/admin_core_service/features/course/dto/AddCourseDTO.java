@@ -14,6 +14,6 @@ import java.util.List;
 public class AddCourseDTO {
     private String courseName;
     private String thumbnailFileId;
-    private Boolean containsLevels;
-    List<AddLevelDTO> levels;
+    private Boolean containLevels;
+    private List<AddLevelDTO> levels;
 }

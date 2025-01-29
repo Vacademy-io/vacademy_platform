@@ -9,17 +9,20 @@ import vacademy.io.common.institute.entity.PackageEntity;
 import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.common.institute.entity.session.Session;
 
+import java.util.Date;
+
 @Service
 @RequiredArgsConstructor
 public class PackageSessionService {
     private final PackageSessionRepository packageRepository;
 
-    public void createPackageSession(Level level, Session session, PackageEntity packageEntity) {
+    public void createPackageSession(Level level, Session session, PackageEntity packageEntity, Date startTime) {
         PackageSession packageSession = new PackageSession();
         packageSession.setSession(session);
         packageSession.setLevel(level);
         packageSession.setPackageEntity(packageEntity);
         packageSession.setStatus(PackageStatusEnum.ACTIVE.name());
+        packageSession.setStartTime(startTime);
         packageRepository.save(packageSession);
     }
 }

@@ -11,6 +11,7 @@ import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.common.institute.entity.session.SessionProjection;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface PackageRepository extends JpaRepository<PackageEntity, String> {
@@ -49,5 +50,10 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             nativeQuery = true)
     List<PackageSession> findPackageSessionsByInstituteId(
             @Param("instituteId") String instituteId);
+
+    @Query("SELECT DISTINCT p FROM PackageSession ps " +
+            "JOIN ps.packageEntity p " +
+            "WHERE ps.id = :packageSessionId")
+    Optional<PackageEntity> findDistinctPackageBySessionId(String packageSessionId);
 
 }

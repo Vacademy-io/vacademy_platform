@@ -20,6 +20,7 @@ import vacademy.io.common.institute.entity.PackageEntity;
 import vacademy.io.common.institute.entity.PackageInstitute;
 import vacademy.io.common.institute.entity.session.Session;
 
+import java.util.Date;
 import java.util.List;
 import java.util.Objects;
 
@@ -39,7 +40,7 @@ public class CourseService {
         PackageEntity packageEntity = getCourse(addCourseDTO);
         PackageEntity savedPackage = packageRepository.save(packageEntity);
         createPackageInstitute(savedPackage, instituteId);
-        createPackageSession(savedPackage,addCourseDTO.getAddLevelDTOS(), user);
+        createPackageSession(savedPackage,addCourseDTO.getLevels(), user);
         return savedPackage.getId();
     }
 
@@ -47,7 +48,7 @@ public class CourseService {
         if (Objects.isNull(addLevelDTOS) || addLevelDTOS.isEmpty()) {
             Level level = levelService.getLevelById("DEFAULT");
             Session session = sessionService.getSessionById("DEFAULT");
-            packageSessionService.createPackageSession(level, session, savedPackage);
+            packageSessionService.createPackageSession(level, session, savedPackage,new Date());
             return;
         }
         for (AddLevelDTO addLevelDTO : addLevelDTOS) {
@@ -55,7 +56,7 @@ public class CourseService {
             Level level = levelService.addLevel(addLevelDTO);
             for (SessionDTO sessionDTO : addLevelDTO.getSessions()) {
                 Session session = sessionService.createOrGetSession(sessionDTO);
-                packageSessionService.createPackageSession(level, session, savedPackage);
+                packageSessionService.createPackageSession(level, session, savedPackage,addLevelDTO.getStartDate());
             }
         }
     }
@@ -96,10 +97,11 @@ public class CourseService {
     }
 
     public String updateCourse(PackageDTO packageDTO, CustomUserDetails user,String packageId) {
-        PackageEntity packageEntity = packageRepository.findById(packageId).orElseThrow(() -> new VacademyException("Package not found with ID: " + packageId));
+        PackageEntity packageEntity = packageRepository.findById(packageId).orElseThrow(()->new VacademyException("Course not found"));
         packageEntity.setPackageName(packageDTO.getPackageName());
         packageEntity.setThumbnailFileId(packageDTO.getThumbnailFileId());
-
+        packageRepository.save(packageEntity);
+        return "Course updated successfully";
     }
 
 }

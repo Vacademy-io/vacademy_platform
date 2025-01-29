@@ -51,9 +51,4 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
     List<PackageSession> findPackageSessionsByInstituteId(
             @Param("instituteId") String instituteId);
 
-    @Query("SELECT DISTINCT p FROM PackageSession ps " +
-            "JOIN ps.packageEntity p " +
-            "WHERE ps.id = :packageSessionId")
-    Optional<PackageEntity> findDistinctPackageBySessionId(String packageSessionId);
-
 }

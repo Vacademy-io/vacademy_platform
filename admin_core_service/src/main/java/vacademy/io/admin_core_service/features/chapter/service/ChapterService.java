@@ -249,14 +249,17 @@ public class ChapterService {
         }
     }
 
-    public String deleteChapter(String chapterId, CustomUserDetails user) {
-        Optional<Chapter> optionalChapter = chapterRepository.findById(chapterId);
-        if (optionalChapter.isEmpty()) {
-            throw new VacademyException("Chapter not found");
+    public String deleteChapter(List<String> chapterIds, CustomUserDetails user) {
+        List<Chapter> chapters = chapterRepository.findAllById(chapterIds);
+
+        if (chapters.size() != chapterIds.size()) {
+            throw new VacademyException("Some chapters not found");
         }
-        Chapter chapter = optionalChapter.get();
-        chapter.setStatus(ChapterStatus.DELETED.name());
-        chapterRepository.save(chapter);
-        return "Chapter deleted successfully";
+
+        chapters.forEach(chapter -> chapter.setStatus(ChapterStatus.DELETED.name()));
+        chapterRepository.saveAll(chapters);
+
+        return "Chapters deleted successfully";
     }
+
 }

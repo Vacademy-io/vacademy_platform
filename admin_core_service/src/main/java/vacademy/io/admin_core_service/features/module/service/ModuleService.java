@@ -113,24 +113,21 @@ public class ModuleService {
         return moduleDTO;
     }
 
-    public String deleteModule(String moduleId, CustomUserDetails user) {
-        // Validate module ID
-        if (moduleId == null) {
-            throw new VacademyException("Module ID cannot be null");
+    public String deleteModule(List<String> moduleIds, CustomUserDetails user) {
+        if (moduleIds == null || moduleIds.isEmpty()) {
+            throw new VacademyException("Module IDs cannot be null or empty");
         }
 
-        // Find module by ID
-        Module module = moduleRepository.findById(moduleId)
-                .orElseThrow(() -> new VacademyException("Module not found"));
+        List<Module> modules = moduleRepository.findAllById(moduleIds);
 
-        // Set module status to deleted
-        module.setStatus(ModuleStatusEnum.DELETED.name());
+        if (modules.size() != moduleIds.size()) {
+            throw new VacademyException("Some modules not found");
+        }
 
-        // Save updated module
-        moduleRepository.save(module);
+        modules.forEach(module -> module.setStatus(ModuleStatusEnum.DELETED.name()));
+        moduleRepository.saveAll(modules);
 
-        // Return success message
-        return "Module deleted successfully";
+        return "Modules deleted successfully";
     }
 
     private void validateModule(ModuleDTO moduleDTO) {

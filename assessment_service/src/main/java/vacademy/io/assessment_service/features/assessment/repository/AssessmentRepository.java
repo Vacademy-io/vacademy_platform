@@ -36,9 +36,9 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
             "AND (:instituteIds IS NULL OR aim.institute_id IN :instituteIds) " +
             "AND (:assessmentStatuses IS NULL OR a.status IN :assessmentStatuses) " +
             "AND (:accessStatuses IS NULL OR a.assessment_visibility IN :accessStatuses) " +
-            "AND (:liveAssessments IS NULL OR :liveAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIMEZONE 'UTC' BETWEEN a.bound_start_time AND a.bound_end_time)) " +
-            "AND (:passedAssessments IS NULL OR :passedAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIMEZONE 'UTC' > a.bound_end_time)) " +
-            "AND (:upcomingAssessments IS NULL OR :upcomingAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIMEZONE 'UTC' < a.bound_start_time)) " +
+            "AND (:liveAssessments IS NULL OR :liveAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' BETWEEN a.bound_start_time AND a.bound_end_time)) " +
+            "AND (:passedAssessments IS NULL OR :passedAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' > a.bound_end_time)) " +
+            "AND (:upcomingAssessments IS NULL OR :upcomingAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' < a.bound_start_time)) " +
             "AND (:assessmentModes IS NULL OR a.play_mode IN :assessmentModes)",
             countQuery = "SELECT COUNT(DISTINCT a.id) FROM public.assessment a " +
                     "LEFT JOIN public.assessment_batch_registration abr ON a.id = abr.assessment_id " +
@@ -49,9 +49,9 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
                     "AND (:instituteIds IS NULL OR aim.institute_id IN :instituteIds) " +
                     "AND (:assessmentStatuses IS NULL OR a.status IN :assessmentStatuses) " +
                     "AND (:accessStatuses IS NULL OR a.assessment_visibility IN :accessStatuses) " +
-                    "AND (:liveAssessments IS NULL OR :liveAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIMEZONE 'UTC' BETWEEN a.bound_start_time AND a.bound_end_time)) " +
-                    "AND (:passedAssessments IS NULL OR :passedAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIMEZONE 'UTC' > a.bound_end_time)) " +
-                    "AND (:upcomingAssessments IS NULL OR :upcomingAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIMEZONE 'UTC' < a.bound_start_time)) " +
+                    "AND (:liveAssessments IS NULL OR :liveAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' BETWEEN a.bound_start_time AND a.bound_end_time)) " +
+                    "AND (:passedAssessments IS NULL OR :passedAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' > a.bound_end_time)) " +
+                    "AND (:upcomingAssessments IS NULL OR :upcomingAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' < a.bound_start_time)) " +
                     "AND (:assessmentModes IS NULL OR a.play_mode IN :assessmentModes)",
             nativeQuery = true)
     Page<Object[]> filterAssessments(@Param("name") String name,
@@ -86,9 +86,9 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
             "AND (:checkBatches IS NULL OR abr.batch_id IN :batchIds) " +
             "AND (:instituteIds IS NULL OR aim.institute_id IN :instituteIds) " +
             "AND (:assessmentStatuses IS NULL OR a.status IN :assessmentStatuses) " +
-            "AND (:liveAssessments IS NULL OR :liveAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIMEZONE 'UTC' BETWEEN a.bound_start_time AND a.bound_end_time)) " +
-            "AND (:passedAssessments IS NULL OR :passedAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIMEZONE 'UTC' > a.bound_end_time)) " +
-            "AND (:upcomingAssessments IS NULL OR :upcomingAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIMEZONE 'UTC' < a.bound_start_time)) " +
+            "AND (:liveAssessments IS NULL OR :liveAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' BETWEEN a.bound_start_time AND a.bound_end_time)) " +
+            "AND (:passedAssessments IS NULL OR :passedAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' > a.bound_end_time)) " +
+            "AND (:upcomingAssessments IS NULL OR :upcomingAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' < a.bound_start_time)) " +
             "AND (:assessmentModes IS NULL OR a.play_mode IN :assessmentModes)) " +
             "UNION " +
             "(SELECT a.id, a.name, a.play_mode, a.evaluation_type, a.submission_type, a.duration, " +
@@ -107,9 +107,9 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
             "AND (:checkUserIds IS NULL OR aur.user_id IN :userIds) " +
             "AND (:instituteIds IS NULL OR aim.institute_id IN :instituteIds) " +
             "AND (:assessmentStatuses IS NULL OR a.status IN :assessmentStatuses) " +
-            "AND (:liveAssessments IS NULL OR :liveAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIMEZONE 'UTC' BETWEEN a.bound_start_time AND a.bound_end_time)) " +
-            "AND (:passedAssessments IS NULL OR :passedAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIMEZONE 'UTC' > a.bound_end_time)) " +
-            "AND (:upcomingAssessments IS NULL OR :upcomingAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIMEZONE 'UTC' < a.bound_start_time)) " +
+            "AND (:liveAssessments IS NULL OR :liveAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' BETWEEN a.bound_start_time AND a.bound_end_time)) " +
+            "AND (:passedAssessments IS NULL OR :passedAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' > a.bound_end_time)) " +
+            "AND (:upcomingAssessments IS NULL OR :upcomingAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' < a.bound_start_time)) " +
             "AND (:assessmentModes IS NULL OR a.play_mode IN :assessmentModes))",
             countQuery =
                     "SELECT COUNT(DISTINCT id) FROM (" +
@@ -121,9 +121,9 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
                             "AND (:checkBatches IS NULL OR abr.batch_id IN :batchIds) " +
                             "AND (:instituteIds IS NULL OR aim.institute_id IN :instituteIds) " +
                             "AND (:assessmentStatuses IS NULL OR a.status IN :assessmentStatuses) " +
-                            "AND (:liveAssessments IS NULL OR :liveAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIMEZONE 'UTC' BETWEEN a.bound_start_time AND a.bound_end_time)) " +
-                            "AND (:passedAssessments IS NULL OR :passedAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIMEZONE 'UTC' > a.bound_end_time)) " +
-                            "AND (:upcomingAssessments IS NULL OR :upcomingAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIMEZONE 'UTC' < a.bound_start_time)) " +
+                            "AND (:liveAssessments IS NULL OR :liveAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' BETWEEN a.bound_start_time AND a.bound_end_time)) " +
+                            "AND (:passedAssessments IS NULL OR :passedAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' > a.bound_end_time)) " +
+                            "AND (:upcomingAssessments IS NULL OR :upcomingAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' < a.bound_start_time)) " +
                             "AND (:assessmentModes IS NULL OR a.play_mode IN :assessmentModes) " +
                             "UNION  " +
                             "SELECT a.id FROM public.assessment a " +
@@ -133,9 +133,9 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
                             "AND (:checkUserIds IS NULL OR aur.user_id IN :userIds) " +
                             "AND (:instituteIds IS NULL OR aim.institute_id IN :instituteIds) " +
                             "AND (:assessmentStatuses IS NULL OR a.status IN :assessmentStatuses) " +
-                            "AND (:liveAssessments IS NULL OR :liveAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIMEZONE 'UTC' BETWEEN a.bound_start_time AND a.bound_end_time)) " +
-                            "AND (:passedAssessments IS NULL OR :passedAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIMEZONE 'UTC' > a.bound_end_time)) " +
-                            "AND (:upcomingAssessments IS NULL OR :upcomingAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIMEZONE 'UTC' < a.bound_start_time)) " +
+                            "AND (:liveAssessments IS NULL OR :liveAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' BETWEEN a.bound_start_time AND a.bound_end_time)) " +
+                            "AND (:passedAssessments IS NULL OR :passedAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' > a.bound_end_time)) " +
+                            "AND (:upcomingAssessments IS NULL OR :upcomingAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' < a.bound_start_time)) " +
                             "AND (:assessmentModes IS NULL OR a.play_mode IN :assessmentModes)" +
                             ") AS combined_results",
             nativeQuery = true)

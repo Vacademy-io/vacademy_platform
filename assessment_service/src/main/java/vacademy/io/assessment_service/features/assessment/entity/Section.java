@@ -4,6 +4,8 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+import lombok.Getter;
+import lombok.Setter;
 import org.hibernate.annotations.Filter;
 import org.hibernate.annotations.FilterDef;
 import org.hibernate.annotations.ParamDef;
@@ -16,7 +18,8 @@ import java.util.Set;
 
 @Entity
 @Table(name = "section")
-@Data
+@Getter
+@Setter
 @EqualsAndHashCode(of = "id")
 @FilterDef(name = "activeSections", parameters = @ParamDef(name = "status", type = String.class))
 @Filter(name = "activeSections", condition = "status = :status")

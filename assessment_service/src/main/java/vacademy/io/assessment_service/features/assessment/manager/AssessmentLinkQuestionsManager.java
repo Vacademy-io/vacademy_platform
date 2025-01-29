@@ -98,6 +98,20 @@ public class AssessmentLinkQuestionsManager {
         return mapping;
     }
 
+    QuestionAssessmentSectionMapping updateFromQuestionSectionAddEditRequestDto
+            (SectionAddEditRequestDto.QuestionAndMarking questionAndMarking, Section section, Assessment assessment) {
+        validateMarkingScheme(questionAndMarking);
+        QuestionAssessmentSectionMapping mapping = questionAssessmentSectionMappingService.getMappingById(questionAndMarking.getQuestionId(), section.getId());
+        if (mapping == null) return null;
+        mapping.setSection(section);
+        mapping.setStatus(ACTIVE.name());
+        mapping.setQuestion(new Question(questionAndMarking.getQuestionId()));
+        mapping.setQuestionOrder(questionAndMarking.getQuestionOrder());
+        mapping.setQuestionDurationInMin(questionAndMarking.getQuestionDurationInMin());
+        mapping.setMarkingJson(questionAndMarking.getMarkingJson());
+        return mapping;
+    }
+
     void updateSectionForAssessment(Section section, SectionAddEditRequestDto sectionAddEditRequestDto, Assessment
             assessment, String instituteId, String type) {
         Section updatedSection = createUpdateSection(section, sectionAddEditRequestDto, assessment, ACTIVE.name());
@@ -109,6 +123,11 @@ public class AssessmentLinkQuestionsManager {
             }
             if (sectionAddEditRequestDto.getQuestionAndMarking().get(i).getIsAdded()) {
                 addedQuestions.add(createFromQuestionSectionAddEditRequestDto(sectionAddEditRequestDto.getQuestionAndMarking().get(i), updatedSection, assessment));
+            }
+            if (sectionAddEditRequestDto.getQuestionAndMarking().get(i).getIsUpdated()) {
+                var updatedMapping = updateFromQuestionSectionAddEditRequestDto(sectionAddEditRequestDto.getQuestionAndMarking().get(i), updatedSection, assessment);
+                if (updatedMapping != null)
+                    addedQuestions.add(updatedMapping);
             }
         }
         questionAssessmentSectionMappingService.softDeleteMappingsByQuestionIdsAndSectionId(deletedQuestionIds, section.getId());

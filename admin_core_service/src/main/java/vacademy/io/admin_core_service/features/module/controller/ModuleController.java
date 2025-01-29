@@ -21,9 +21,9 @@ public class ModuleController {
         return ResponseEntity.ok(moduleService.addModule(subjectId, moduleDTO,user));
     }
 
-    @DeleteMapping("/delete-module")
-    public ResponseEntity<String> addModule(String moduleId,@RequestAttribute("user")CustomUserDetails user) {
-        return ResponseEntity.ok(moduleService.deleteModule(moduleId,user));
+    @PostMapping("/delete-module")
+    public ResponseEntity<String> addModule(@RequestBody List<String> moduleIds,@RequestAttribute("user")CustomUserDetails user) {
+        return ResponseEntity.ok(moduleService.deleteModule(moduleIds,user));
     }
 
     @PutMapping("/update-module")

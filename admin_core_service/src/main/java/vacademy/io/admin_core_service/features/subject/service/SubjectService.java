@@ -110,18 +110,23 @@ public class SubjectService {
      * @return A message indicating successful deletion.
      * @throws VacademyException If the subject ID is null or the subject is not found.
      */
-    public String deleteSubject(String subjectId,CustomUserDetails user) {
-        if (Objects.isNull(subjectId)){
-            throw new VacademyException("Subject id can not be null");
+    public String deleteSubject(List<String> subjectIds, CustomUserDetails user) {
+        if (subjectIds == null || subjectIds.isEmpty()) {
+            throw new VacademyException("Subject IDs cannot be null or empty");
         }
-        Subject subject = subjectRepository.findById(subjectId).get();
-        if (Objects.isNull(subject)){
-            throw new VacademyException("Subject not found");
+
+        List<Subject> subjects = subjectRepository.findAllById(subjectIds);
+
+        if (subjects.size() != subjectIds.size()) {
+            throw new VacademyException("Some subjects not found");
         }
-        subject.setStatus(SubjectStatusEnum.DELETED.name());
-        subjectRepository.save(subject);
-        return "Subject deleted successfully";
+
+        subjects.forEach(subject -> subject.setStatus(SubjectStatusEnum.DELETED.name()));
+        subjectRepository.saveAll(subjects);
+
+        return "Subjects deleted successfully";
     }
+
 
     void validateSubject(SubjectDTO subjectDTO) {
         if (subjectDTO == null) {

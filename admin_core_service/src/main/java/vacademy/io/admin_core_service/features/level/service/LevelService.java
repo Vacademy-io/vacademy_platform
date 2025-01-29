@@ -13,8 +13,14 @@ import vacademy.io.common.institute.entity.Level;
 public class LevelService {
     private final LevelRepository levelRepository;
 
-    public Level addLevel(AddLevelDTO addLevelDTO) {
-        Level level = getLevel(addLevelDTO);
+    public Level createOrAddLevel(AddLevelDTO addLevelDTO) {
+        Level level = null;
+        if (addLevelDTO.getNewLevel()){
+            level = getLevel(addLevelDTO);
+        }
+        else{
+            level = getLevelById(addLevelDTO.getId());
+        }
         return levelRepository.save(level);
     }
 

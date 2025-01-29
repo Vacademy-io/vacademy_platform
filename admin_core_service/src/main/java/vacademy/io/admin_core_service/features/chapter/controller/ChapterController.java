@@ -38,8 +38,8 @@ public class ChapterController {
         return ResponseEntity.ok(result);
     }
 
-    @DeleteMapping("/delete-chapter")
-    public ResponseEntity<String>deleteChapter(@RequestParam("chapterId") String chapterId, @RequestAttribute("user") CustomUserDetails user){
-        return ResponseEntity.ok(chapterService.deleteChapter(chapterId, user));
+    @PostMapping("/delete-chapters")
+    public ResponseEntity<String>deleteChapter(@RequestBody List<String> chapterIds, @RequestAttribute("user") CustomUserDetails user){
+        return ResponseEntity.ok(chapterService.deleteChapter(chapterIds, user));
     }
 }

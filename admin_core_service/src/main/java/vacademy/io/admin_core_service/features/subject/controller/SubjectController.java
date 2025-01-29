@@ -28,8 +28,8 @@ public class SubjectController {
     }
 
     @DeleteMapping("/delete-subject")
-    public ResponseEntity<String>updateSubject(String subjectId,@RequestAttribute("user")CustomUserDetails user) {
-        return ResponseEntity.ok(subjectService.deleteSubject(subjectId,user));
+    public ResponseEntity<String>updateSubject(@RequestBody List<String>subjectIds,@RequestAttribute("user")CustomUserDetails user) {
+        return ResponseEntity.ok(subjectService.deleteSubject(subjectIds,user));
     }
 
     /**

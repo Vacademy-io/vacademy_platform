@@ -249,4 +249,14 @@ public class ChapterService {
         }
     }
 
+    public String deleteChapter(String chapterId, CustomUserDetails user) {
+        Optional<Chapter> optionalChapter = chapterRepository.findById(chapterId);
+        if (optionalChapter.isEmpty()) {
+            throw new VacademyException("Chapter not found");
+        }
+        Chapter chapter = optionalChapter.get();
+        chapter.setStatus(ChapterStatus.DELETED.name());
+        chapterRepository.save(chapter);
+        return "Chapter deleted successfully";
+    }
 }

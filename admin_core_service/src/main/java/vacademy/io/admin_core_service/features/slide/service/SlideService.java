@@ -33,7 +33,6 @@ public class SlideService {
     private final DocumentSlideRepository documentSlideRepository;
     private final VideoRepository videoSlideRepository;
     public String addDocumentSlide(AddDocumentSlideDTO addDocumentSlideDTO,String chapterId) {
-        validateRequest(addDocumentSlideDTO,chapterId);
         Optional<Chapter>optionalChapter = chapterRepository.findById(chapterId);
         if (optionalChapter.isEmpty()) {
             throw new VacademyException("Chapter not found");
@@ -67,7 +66,6 @@ public class SlideService {
     }
 
     public String addVideoSlide(AddVideoSlideDTO addVideoSlideDTO, String chapterId) {
-        validateRequest(addVideoSlideDTO,chapterId);
         Optional<Chapter>optionalChapter = chapterRepository.findById(chapterId);
         if (optionalChapter.isEmpty()) {
             throw new VacademyException("Chapter not found");
@@ -93,5 +91,4 @@ public class SlideService {
             throw new VacademyException("Video slide description can not be null");
         }
     }
-
 }

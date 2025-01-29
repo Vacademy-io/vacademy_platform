@@ -14,5 +14,5 @@ import java.util.List;
 public class AddCourseDTO {
     private String courseName;
     private String thumbnailFileId;
-    List<AddLevelDTO>addLevelDTOS;
+    List<AddLevelDTO> levels;
 }

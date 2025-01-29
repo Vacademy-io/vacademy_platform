@@ -6,6 +6,7 @@ import lombok.Getter;
 import lombok.Setter;
 import vacademy.io.common.institute.dto.SessionDTO;
 
+import java.util.Date;
 import java.util.List;
 
 @Getter
@@ -14,6 +15,6 @@ import java.util.List;
 public class AddLevelDTO {
     private String levelName;
     private Integer durationInDays;
-    private String status;
+    private Date startDate;
     private List<SessionDTO>sessions;
 }

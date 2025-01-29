@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.level.service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.level.dto.AddLevelDTO;
+import vacademy.io.admin_core_service.features.level.enums.LevelStatusEnum;
 import vacademy.io.admin_core_service.features.level.repository.LevelRepository;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Level;
@@ -21,7 +22,7 @@ public class LevelService {
         Level level = new Level();
         level.setLevelName(addLevelDTO.getLevelName());
         level.setDurationInDays(addLevelDTO.getDurationInDays());
-        level.setStatus(addLevelDTO.getStatus());
+        level.setStatus(LevelStatusEnum.ACTIVE.name());
         return levelRepository.save(level);
     }
 

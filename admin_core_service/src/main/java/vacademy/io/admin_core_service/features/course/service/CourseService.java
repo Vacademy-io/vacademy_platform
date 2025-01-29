@@ -40,16 +40,16 @@ public class CourseService {
         PackageEntity packageEntity = getCourse(addCourseDTO);
         PackageEntity savedPackage = packageRepository.save(packageEntity);
         createPackageInstitute(savedPackage, instituteId);
-        if (addCourseDTO.getContainsLevels()){
+        if (addCourseDTO.getContainLevels()){
             createPackageSession(savedPackage, addCourseDTO.getLevels(), user);
         }
         else{
-            createPackageSessionForDefaultLevelAndSession(savedPackage,addCourseDTO.getLevels(), user);
+            createPackageSessionForDefaultLevelAndSession(savedPackage,user);
         }
         return savedPackage.getId();
     }
 
-    private void createPackageSessionForDefaultLevelAndSession(PackageEntity savedPackage, List<AddLevelDTO> levels, CustomUserDetails user) {
+    private void createPackageSessionForDefaultLevelAndSession(PackageEntity savedPackage, CustomUserDetails user) {
         Level level = levelService.getLevelById("DEFAULT");
         Session session = sessionService.getSessionById("DEFAULT");
         packageSessionService.createPackageSession(level, session, savedPackage,new Date());

@@ -9,6 +9,7 @@ import vacademy.io.assessment_service.features.assessment.enums.creationSteps.Qu
 import vacademy.io.assessment_service.features.assessment.service.IStep;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Component
 public class AssessmentAddQuestionDetail extends IStep {
@@ -26,7 +27,7 @@ public class AssessmentAddQuestionDetail extends IStep {
         if (assessment.isEmpty()) return;
 
         Map<String, Object> savedData = new HashMap<>();
-        Set<Section> sections = assessment.get().getSections();
+        Set<Section> sections = assessment.get().getSections().stream().filter((s) -> !s.getStatus().equals("DELETED")).collect(Collectors.toSet());
         List<SectionDto> sectionDTOs = new ArrayList<>();
         for (Section section : sections) {
             sectionDTOs.add(new SectionDto(section));

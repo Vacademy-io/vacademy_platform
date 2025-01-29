@@ -37,5 +37,6 @@ public class SectionAddEditRequestDto {
         private Integer questionOrder;
         private Boolean isAdded;
         private Boolean isDeleted;
+        private Boolean isUpdated;
     }
 }

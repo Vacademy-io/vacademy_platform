@@ -30,12 +30,12 @@ public class LearnerProfileManager {
     InstituteStudentRepository instituteStudentRepository;
 
     public StudentDTO getLearnerInfo(CustomUserDetails user, String instituteId) {
-        Optional<Object[]> optionalEntry = instituteStudentRepository.getStudentWithInstituteAndUserId(user.getId(), instituteId);
+        Optional<Object[]> optionalEntry = instituteStudentRepository.getStudentWithInstituteAndUserId(user.getUserId(), instituteId);
 
-        if (!optionalEntry.isPresent()) {
+        if (optionalEntry.isEmpty() || optionalEntry.get().length == 0) {
             throw new VacademyException("No user found with id " + user.getId());
         }
 
-        return new StudentDTO(optionalEntry.get());
+        return new StudentDTO((Object[]) optionalEntry.get()[0]);
     }
 }

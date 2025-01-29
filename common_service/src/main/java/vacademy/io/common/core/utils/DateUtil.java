@@ -59,4 +59,7 @@ public class DateUtil {
         return Date.from(ZonedDateTime.now().withZoneSameInstant(ZoneId.of("UTC")).toInstant());
     }
 
+    public static Date addMinutes(Date startTime, Integer maxTime) {
+        return Date.from(startTime.toInstant().plusSeconds(maxTime * 60));
+    }
 }

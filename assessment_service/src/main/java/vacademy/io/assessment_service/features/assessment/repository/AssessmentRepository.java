@@ -78,7 +78,7 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
             "LEFT JOIN public.assessment_institute_mapping aim ON a.id = aim.assessment_id " +
             "LEFT JOIN public.assessment_user_registration aur ON a.id = aur.assessment_id " +
             "LEFT JOIN ( " +
-            "SELECT sa.registration_id, sa.status, sa.start_time, " +
+            "SELECT sa.registration_id, sa.status, sa.start_time, sa.id, " +
             "ROW_NUMBER() OVER (PARTITION BY sa.registration_id ORDER BY sa.start_time DESC) AS rn " +
             "FROM public.student_attempt sa " +
             ") AS recent_attempt ON aur.id = recent_attempt.registration_id AND recent_attempt.rn = 1 " +
@@ -99,7 +99,7 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
             "LEFT JOIN public.assessment_user_registration aur ON a.id = aur.assessment_id " +
             "LEFT JOIN public.assessment_institute_mapping aim ON a.id = aim.assessment_id " +
             "LEFT JOIN ( " +
-            "SELECT sa.registration_id, sa.status, sa.start_time, " +
+            "SELECT sa.registration_id, sa.status, sa.start_time, sa.id, " +
             "ROW_NUMBER() OVER (PARTITION BY sa.registration_id ORDER BY sa.start_time DESC) AS rn " +
             "FROM public.student_attempt sa " +
             ") AS recent_attempt ON aur.id = recent_attempt.registration_id AND recent_attempt.rn = 1 " +

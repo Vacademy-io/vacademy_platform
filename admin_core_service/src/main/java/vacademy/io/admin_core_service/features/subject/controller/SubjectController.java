@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.subject.controller;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.admin_core_service.features.subject.dto.UpdateSubjectOrderDTO;
 import vacademy.io.admin_core_service.features.subject.service.SubjectService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.institute.dto.SubjectDTO;
@@ -29,5 +30,17 @@ public class SubjectController {
     @DeleteMapping("/delete-subject")
     public ResponseEntity<String>updateSubject(String subjectId,@RequestAttribute("user")CustomUserDetails user) {
         return ResponseEntity.ok(subjectService.deleteSubject(subjectId,user));
+    }
+
+    /**
+     * Updates the order of subjects for a session.
+     *
+     * @param updateSubjectOrderDTOS List of UpdateSubjectOrderDTO containing subject order updates.
+     * @return ResponseEntity with success message.
+     */
+    @PutMapping("/update-subject-order")
+    public ResponseEntity<String> updateSubjectOrder(@RequestBody List<UpdateSubjectOrderDTO> updateSubjectOrderDTOS,@RequestAttribute("user")CustomUserDetails user) {
+        String result = subjectService.updateSubjectOrder(updateSubjectOrderDTOS,user);
+        return ResponseEntity.ok(result);
     }
 }

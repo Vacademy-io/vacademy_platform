@@ -31,6 +31,9 @@ public class SubjectPackageSession {
     @JoinColumn(name = "session_id", nullable = false)
     private PackageSession packageSession;
 
+    @Column(name = "subject_order")
+    private Integer subjectOrder;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Timestamp createdAt;
 

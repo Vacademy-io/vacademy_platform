@@ -5,13 +5,13 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.module.dto.ModuleDTO;
+import vacademy.io.admin_core_service.features.module.dto.UpdateModuleOrderDTO;
 import vacademy.io.admin_core_service.features.module.enums.ModuleStatusEnum;
 import vacademy.io.admin_core_service.features.module.repository.ModuleRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
-import vacademy.io.admin_core_service.features.subject.entity.SubjectChapterModuleAndPackageSessionMapping;
-import vacademy.io.admin_core_service.features.subject.entity.SubjectModuleMapping;
+import vacademy.io.admin_core_service.features.module.entity.SubjectModuleMapping;
 import vacademy.io.admin_core_service.features.subject.repository.SubjectChapterModuleAndPackageSessionMappingRepository;
-import vacademy.io.admin_core_service.features.subject.repository.SubjectModuleMappingRepository;
+import vacademy.io.admin_core_service.features.module.repository.SubjectModuleMappingRepository;
 import vacademy.io.admin_core_service.features.subject.repository.SubjectRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
@@ -19,6 +19,10 @@ import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.common.institute.entity.module.Module;
 import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.common.institute.entity.student.Subject;
+
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -149,5 +153,48 @@ public class ModuleService {
             module.setThumbnailId(moduleDTO.getThumbnailId());
         }
         moduleDTO.setStatus(ModuleStatusEnum.ACTIVE.name());
+    }
+
+    public String updateModuleOrder(List<UpdateModuleOrderDTO> updateModuleOrderDTOS, CustomUserDetails user) {
+        if (updateModuleOrderDTOS == null || updateModuleOrderDTOS.isEmpty()) {
+            throw new VacademyException("No module order updates provided.");
+        }
+
+        // Validate and fetch mappings in a batch for better efficiency
+        List<String> subjectIds = updateModuleOrderDTOS.stream()
+                .map(UpdateModuleOrderDTO::getSubjectId)
+                .toList();
+        List<String> moduleIds = updateModuleOrderDTOS.stream()
+                .map(UpdateModuleOrderDTO::getModuleId)
+                .toList();
+
+        // Fetch all mappings at once (assumes a batch method in repository)
+        List<SubjectModuleMapping> existingMappings = subjectModuleMappingRepository
+                .findAllBySubjectIdInAndModuleIdIn(subjectIds, moduleIds);
+
+        if (existingMappings.isEmpty()) {
+            throw new VacademyException("No mappings found for the provided subject and module IDs.");
+        }
+
+        // Create a map for fast lookup
+        Map<String, UpdateModuleOrderDTO> dtoMap = updateModuleOrderDTOS.stream()
+                .collect(Collectors.toMap(
+                        dto -> dto.getSubjectId() + ":" + dto.getModuleId(),
+                        dto -> dto
+                ));
+
+        // Update the module orders
+        for (SubjectModuleMapping mapping : existingMappings) {
+            String key = mapping.getSubject().getId() + ":" + mapping.getModule().getId();
+            if (dtoMap.containsKey(key)) {
+                UpdateModuleOrderDTO dto = dtoMap.get(key);
+                mapping.setModuleOrder(dto.getModuleOrder());
+            }
+        }
+
+        // Save all updated mappings
+        subjectModuleMappingRepository.saveAll(existingMappings);
+
+        return "Module order updated successfully.";
     }
 }

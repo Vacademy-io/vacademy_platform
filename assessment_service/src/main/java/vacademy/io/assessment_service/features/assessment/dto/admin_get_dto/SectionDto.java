@@ -24,6 +24,7 @@ public class SectionDto {
     private Double cutoffMarks;
     private Integer sectionOrder;
     private String problemRandomization;
+    private String status;
     private Date createdAt;
     private Date updatedAt;
 
@@ -37,6 +38,7 @@ public class SectionDto {
         this.totalMarks = section.getTotalMarks();
         this.problemRandomization = section.getProblemRandomType();
         this.sectionOrder = section.getSectionOrder();
+        this.status = section.getStatus();
         this.createdAt = section.getCreatedAt();
         this.updatedAt = section.getUpdatedAt();
     }

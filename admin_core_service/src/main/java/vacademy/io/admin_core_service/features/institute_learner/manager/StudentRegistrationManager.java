@@ -84,6 +84,7 @@ public class StudentRegistrationManager {
         student.setEmail(userDTO.getEmail());
         student.setMobileNumber(userDTO.getMobileNumber());
         student.setAddressLine(userDTO.getAddressLine());
+        student.setFaceFileId(userDTO.getProfilePicFileId());
         student.setCity(userDTO.getCity());
         student.setPinCode(userDTO.getPinCode());
         student.setGender(userDTO.getGender());

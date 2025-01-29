@@ -7,6 +7,7 @@ import org.springframework.data.repository.CrudRepository;
 import vacademy.io.assessment_service.features.assessment.entity.QuestionAssessmentSectionMapping;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface QuestionAssessmentSectionMappingRepository extends CrudRepository<QuestionAssessmentSectionMapping, String> {
 
@@ -16,18 +17,14 @@ public interface QuestionAssessmentSectionMappingRepository extends CrudReposito
     @Query(value = "UPDATE question_assessment_section_mapping SET status = 'DELETED' WHERE question_id IN ?1 AND section_id = ?2", nativeQuery = true)
     void softDeleteByQuestionIdsAndSectionId(List<String> questionIds, String sectionId);
 
-    @Modifying
-    @Transactional
-    @Query(value = "INSERT INTO question_assessment_section_mapping (id, question_id, marking_json, section_id, question_order, question_duration_in_min, status, created_at, updated_at) VALUES ?1", nativeQuery = true)
-    void bulkInsert(List<Object[]> batch);
 
     @Query(value = "SELECT * FROM question_assessment_section_mapping WHERE section_id IN ?1", nativeQuery = true)
     List<QuestionAssessmentSectionMapping> getQuestionAssessmentSectionMappingBySectionIds(List<String> sectionIds);
 
-    @Query(value = "SELECT * FROM question_assessment_section_mapping qasm " +
+    @Query(value = "SELECT qasm.* FROM question_assessment_section_mapping qasm " +
             "LEFT JOIN section s ON qasm.section_id = s.id " +
-            "WHERE s.assessment_id = ?1", nativeQuery = true)
+            "WHERE s.assessment_id = ?1 and s.status != 'DELETED' ", nativeQuery = true)
     List<QuestionAssessmentSectionMapping> getQuestionAssessmentSectionMappingByAssessmentId(String assessmentId);
 
-
+    Optional<QuestionAssessmentSectionMapping> findByQuestionIdAndSectionId(String questionId, String sectionId);
 }

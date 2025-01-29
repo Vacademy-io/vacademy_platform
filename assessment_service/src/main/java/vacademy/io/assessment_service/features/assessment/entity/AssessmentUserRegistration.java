@@ -44,7 +44,7 @@ public class AssessmentUserRegistration {
     @Column(name = "participant_name", nullable = false)
     private String participantName;
 
-    @Column(name = "face_file_id", nullable = false)
+    @Column(name = "face_file_id")
     private String faceFileId;
 
     @Column(name = "reattempt_count", nullable = false)
@@ -56,7 +56,7 @@ public class AssessmentUserRegistration {
     @Column(name = "source_id", nullable = false)
     private String sourceId;
 
-    @Column(name = "phone_number", nullable = false)
+    @Column(name = "phone_number")
     private String phoneNumber;
 
     @Column(name = "registration_time", nullable = false)

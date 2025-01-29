@@ -4,6 +4,7 @@ import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.chapter.dto.ChapterDTO;
+import vacademy.io.admin_core_service.features.chapter.dto.UpdateChapterOrderDTO;
 import vacademy.io.admin_core_service.features.chapter.entity.Chapter;
 import vacademy.io.admin_core_service.features.chapter.entity.ChapterPackageSessionMapping;
 import vacademy.io.admin_core_service.features.chapter.enums.ChapterStatus;
@@ -62,7 +63,7 @@ public class ChapterService {
             PackageSession packageSession = optionalPackageSession.get();
 
             // Create a mapping between the chapter and the package session
-            ChapterPackageSessionMapping chapterPackageSessionMapping = new ChapterPackageSessionMapping(chapter, packageSession);
+            ChapterPackageSessionMapping chapterPackageSessionMapping = new ChapterPackageSessionMapping(chapter, packageSession,chapterDTO.getChapterOrder()); // needs to handle one edge case where in if one chapter is connected with multiple package sessions that time chapter order
             chapterPackageSessionMappingRepository.save(chapterPackageSessionMapping);
         }
 
@@ -108,14 +109,14 @@ public class ChapterService {
         chapterRepository.save(chapter);
 
         // Update the chapter-package session mappings
-        updateChapterPackageSessionMapping(chapter, commaSeparatedPackageSessionIds);
+        updateChapterPackageSessionMapping(chapter, commaSeparatedPackageSessionIds,chapterDTO.getChapterOrder());
 
         // Return success message
         return "Chapter updated successfully";
     }
 
     @Transactional
-    private void updateChapterPackageSessionMapping(Chapter chapter, String commaSeparatedPackageSessionIds) {
+    private void updateChapterPackageSessionMapping(Chapter chapter, String commaSeparatedPackageSessionIds,Integer chapterOrder) {
         // Parse the incoming comma-separated IDs into a Set
         Set<String> incomingIds = new HashSet<>(Arrays.asList(commaSeparatedPackageSessionIds.split(",")));
 
@@ -139,7 +140,7 @@ public class ChapterService {
         for (String packageSessionId : idsToAdd) {
             PackageSession packageSession = packageSessionRepository.findById(packageSessionId)
                     .orElseThrow(() -> new IllegalArgumentException("Invalid PackageSession ID: " + packageSessionId));
-            ChapterPackageSessionMapping newMapping = new ChapterPackageSessionMapping(chapter, packageSession);
+            ChapterPackageSessionMapping newMapping = new ChapterPackageSessionMapping(chapter, packageSession,chapterOrder);
             chapterPackageSessionMappingRepository.save(newMapping);
         }
 
@@ -172,4 +173,80 @@ public class ChapterService {
     private String[] getPackageSessionIds(String commaSeparatedPackageSessionIds) {
         return commaSeparatedPackageSessionIds.split(",");
     }
+
+    @Transactional
+    public String updateChapterOrder(List<UpdateChapterOrderDTO> updateChapterOrderDTOS, CustomUserDetails user) {
+        // Validate if the list is empty or null
+        if (updateChapterOrderDTOS == null || updateChapterOrderDTOS.isEmpty()) {
+            throw new VacademyException("No chapter order updates provided");
+        }
+
+        // Validate and fetch chapter IDs and session IDs
+        List<String> chapterIds = updateChapterOrderDTOS.stream()
+                .map(UpdateChapterOrderDTO::getChapterId)
+                .distinct()
+                .collect(Collectors.toList());
+
+        List<String> packageSessionIds = updateChapterOrderDTOS.stream()
+                .map(UpdateChapterOrderDTO::getPackageSessionId)
+                .distinct()
+                .collect(Collectors.toList());
+
+        // Fetch all mappings in a single query (batch query)
+        List<ChapterPackageSessionMapping> existingMappings = chapterPackageSessionMappingRepository
+                .findByChapterIdInAndPackageSessionIdIn(chapterIds, packageSessionIds);
+
+        // If no mappings found, throw an exception
+        if (existingMappings.isEmpty()) {
+            throw new VacademyException("No mappings found for the provided chapter and session IDs.");
+        }
+
+        // Create a map for fast lookup: chapterId + ":" + sessionId as key, and the corresponding mapping as the value
+        Map<String, ChapterPackageSessionMapping> mappingMap = existingMappings.stream()
+                .collect(Collectors.toMap(
+                        mapping -> mapping.getChapter().getId() + ":" + mapping.getPackageSession().getId(), // Key format: chapterId:sessionId
+                        mapping -> mapping // Value is the mapping itself
+                ));
+
+        // Iterate over the DTOs and update the corresponding mappings
+        for (UpdateChapterOrderDTO updateChapterOrderDTO : updateChapterOrderDTOS) {
+            // Validate each DTO
+            validateUpdateChapterOrderDTO(updateChapterOrderDTO);
+
+            // Create the key for the lookup map based on chapterId and sessionId
+            String key = updateChapterOrderDTO.getChapterId() + ":" + updateChapterOrderDTO.getPackageSessionId();
+
+            // Find the mapping for the chapter and session using the pre-built map
+            ChapterPackageSessionMapping mapping = mappingMap.get(key);
+            if (mapping != null) {
+                // Update the chapter order
+                mapping.setChapterOrder(updateChapterOrderDTO.getChapterOrder());
+            } else {
+                throw new VacademyException(String.format(
+                        "Mapping not found for Chapter ID: %s and Package Session ID: %s",
+                        updateChapterOrderDTO.getChapterId(), updateChapterOrderDTO.getPackageSessionId()
+                ));
+            }
+        }
+
+        // Perform a batch save for all updated mappings
+        chapterPackageSessionMappingRepository.saveAll(existingMappings);
+
+        // Return a success message
+        return "Chapter order updated successfully";
+    }
+
+
+    private void validateUpdateChapterOrderDTO(UpdateChapterOrderDTO dto) {
+        if (dto.getChapterId() == null || dto.getChapterId().isEmpty()) {
+            throw new VacademyException("Chapter ID cannot be null or empty");
+        }
+        if (dto.getPackageSessionId() == null || dto.getPackageSessionId().isEmpty()) {
+            throw new VacademyException("Package Session ID cannot be null or empty");
+        }
+        if (dto.getChapterOrder() == null || dto.getChapterOrder() < 0) {
+            throw new VacademyException("Chapter order must be a non-negative number");
+        }
+    }
+
 }

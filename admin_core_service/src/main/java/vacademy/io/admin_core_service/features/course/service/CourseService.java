@@ -98,7 +98,7 @@ public class CourseService {
     public String updateCourse(PackageDTO packageDTO, CustomUserDetails user,String packageId) {
         PackageEntity packageEntity = packageRepository.findById(packageId).orElseThrow(() -> new VacademyException("Package not found with ID: " + packageId));
         packageEntity.setPackageName(packageDTO.getPackageName());
-        packageEntity.set
+        packageEntity.setThumbnailFileId(packageDTO.getThumbnailFileId());
 
     }
 

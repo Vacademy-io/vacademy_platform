@@ -14,8 +14,8 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
 @RestController
-@RequestMapping("/assessment-service/question-paper/manage/v1")
-public class AddQuestionPaperController {
+@RequestMapping("/assessment-service/question-paper/public/manage/v1")
+public class AddPublicQuestionPaperController {
 
     @Autowired
     AddQuestionPaperFromImportManager addQuestionPaperFromImportManager;
@@ -26,24 +26,10 @@ public class AddQuestionPaperController {
     @PostMapping("/add")
     public ResponseEntity<AddedQuestionPaperResponseDto> addQuestionPaper(@RequestAttribute("user") CustomUserDetails user, @RequestBody AddQuestionPaperDTO questionRequestBody) {
         try {
-            return ResponseEntity.ok(addQuestionPaperFromImportManager.addQuestionPaper(user, questionRequestBody, false));
+            return ResponseEntity.ok(addQuestionPaperFromImportManager.addQuestionPaper(user, questionRequestBody, true));
         } catch (JsonProcessingException e) {
             throw new VacademyException(e.getMessage());
         }
     }
-
-    @PatchMapping("/edit")
-    public ResponseEntity<Boolean> editQuestionPaper(@RequestAttribute("user") CustomUserDetails user, @RequestBody AddQuestionPaperDTO questionRequestBody) {
-
-        return ResponseEntity.ok(addQuestionPaperFromImportManager.editQuestionPaper(user, questionRequestBody));
-
-    }
-
-    @PostMapping("/mark-status")
-    public ResponseEntity<Boolean> markStatusOfQuestionPaper(@RequestAttribute("user") CustomUserDetails user, @RequestBody UpdateQuestionPaperStatus updateQuestionPaperStatus) {
-
-        return ResponseEntity.ok(editQuestionPaperManager.markQuestionPaperAsFavourite(user, updateQuestionPaperStatus));
-    }
-
 
 }

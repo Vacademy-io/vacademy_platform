@@ -43,11 +43,17 @@ public class AddQuestionPaperFromImportManager {
     QuestionEvaluationService questionEvaluationService;
 
     @Transactional
-    public AddedQuestionPaperResponseDto addQuestionPaper(CustomUserDetails user, AddQuestionPaperDTO questionRequestBody) throws JsonProcessingException {
+    public AddedQuestionPaperResponseDto addQuestionPaper(CustomUserDetails user, AddQuestionPaperDTO questionRequestBody, Boolean isPublicPaper) throws JsonProcessingException {
 
         QuestionPaper questionPaper = new QuestionPaper();
         questionPaper.setTitle(questionRequestBody.getTitle());
         questionPaper.setCreatedByUserId(user.getUserId());
+
+        if(isPublicPaper)
+            questionPaper.setAccess(QuestionAccessLevel.PUBLIC.name());
+        else
+            questionPaper.setAccess(QuestionAccessLevel.PRIVATE.name());
+
         questionPaper = questionPaperRepository.save(questionPaper);
 
         List<Question> questions = new ArrayList<>();
@@ -65,7 +71,8 @@ public class AddQuestionPaperFromImportManager {
 
         questionPaperRepository.bulkInsertQuestionsToQuestionPaper(questionPaper.getId(), savedQuestionIds);
 
-        questionPaperRepository.linkInstituteToQuestionPaper(UUID.randomUUID().toString(), questionPaper.getId(), questionRequestBody.getInstituteId(), "ACTIVE", questionRequestBody.getLevelId(), questionRequestBody.getSubjectId());
+        if (!isPublicPaper)
+            questionPaperRepository.linkInstituteToQuestionPaper(UUID.randomUUID().toString(), questionPaper.getId(), questionRequestBody.getInstituteId(), "ACTIVE", questionRequestBody.getLevelId(), questionRequestBody.getSubjectId());
 
         return new AddedQuestionPaperResponseDto(questionPaper.getId());
 

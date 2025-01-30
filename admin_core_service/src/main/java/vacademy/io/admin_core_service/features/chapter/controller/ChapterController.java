@@ -37,4 +37,9 @@ public class ChapterController {
         String result = chapterService.updateChapterOrder(updateChapterOrderDTOS,user);
         return ResponseEntity.ok(result);
     }
+
+    @PostMapping("/delete-chapters")
+    public ResponseEntity<String>deleteChapter(@RequestBody List<String> chapterIds, @RequestAttribute("user") CustomUserDetails user){
+        return ResponseEntity.ok(chapterService.deleteChapter(chapterIds, user));
+    }
 }

@@ -31,6 +31,7 @@ public class AssessmentQuestionPreviewDto {
     private String markingJson;
     private String questionType;
     private List<OptionWithoutExplanationDTO> options = new ArrayList<>();
+    private List<OptionDTO> optionsWithExplanation = new ArrayList<>();
 
     public AssessmentQuestionPreviewDto(Question question, QuestionAssessmentSectionMapping questionAssessmentSectionMapping) {
         this.questionId = question.getId();
@@ -51,5 +52,12 @@ public class AssessmentQuestionPreviewDto {
             options.add(new OptionWithoutExplanationDTO(option));
         }
         this.options = options;
+    }
+    public void fillOptionsExplanationsOfQuestion(Question question){
+        List<OptionDTO> options = new ArrayList<>();
+        for (Option option : question.getOptions()) {
+            options.add(new OptionDTO(option));
+        }
+        this.optionsWithExplanation = options;
     }
 }

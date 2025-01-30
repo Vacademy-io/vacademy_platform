@@ -167,7 +167,10 @@ public class AssessmentLinkQuestionsManager {
             if (!response.containsKey(sectionId)) {
                 response.put(sectionId, new ArrayList<>());
             }
-            response.get(sectionId).add(new AssessmentQuestionPreviewDto(mapping.getQuestion(), mapping));
+
+            AssessmentQuestionPreviewDto fillOptionsExplanationsOfQuestion = new AssessmentQuestionPreviewDto(mapping.getQuestion(), mapping);
+            fillOptionsExplanationsOfQuestion.fillOptionsExplanationsOfQuestion(mapping.getQuestion());
+            response.get(sectionId).add(fillOptionsExplanationsOfQuestion);
         }
         return response;
     }

@@ -61,6 +61,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.JAVA_TOKEN }}
           GITHUB_ACTOR: shreyash-jain
           JAVA_TOKEN: ${{ secrets.JAVA_TOKEN }}
+          AWS_MAIL_USERNAME: ${{ secrets.AWS_MAIL_USERNAME }}
+          AWS_MAIL_PASSWORD: ${{ secrets.AWS_MAIL_PASSWORD }}
         run: |
           docker build -t $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG . --build-arg GITHUB_TOKEN=${GITHUB_TOKEN} --build-arg JAVA_TOKEN=${JAVA_TOKEN}
           docker push $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG
@@ -80,6 +82,12 @@ jobs:
         with:
           method: kubeconfig
           kubeconfig: ${{ secrets.VACADEMY_STAGE_KUBECONFIG}}
+
+      - name: Deploy to Kubernetes
+        run: |
+          kubectl set env deployment/notification-service \
+            AWS_MAIL_USERNAME=${{ secrets.AWS_MAIL_USERNAME }} \
+            AWS_MAIL_PASSWORD=${{ secrets.AWS_MAIL_PASSWORD }}
 
       - name: Restart deployment
         id: restart-deployment

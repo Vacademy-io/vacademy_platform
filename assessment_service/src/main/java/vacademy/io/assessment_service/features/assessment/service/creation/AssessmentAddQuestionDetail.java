@@ -27,7 +27,7 @@ public class AssessmentAddQuestionDetail extends IStep {
         if (assessment.isEmpty()) return;
 
         Map<String, Object> savedData = new HashMap<>();
-        Set<Section> sections = assessment.get().getSections().stream().filter((s) -> !s.getStatus().equals("DELETED")).collect(Collectors.toSet());
+        Set<Section> sections = assessment.get().getSections().stream().filter((s) -> !"DELETED".equals(s.getStatus())).collect(Collectors.toSet());
         List<SectionDto> sectionDTOs = new ArrayList<>();
         for (Section section : sections) {
             sectionDTOs.add(new SectionDto(section));

@@ -31,6 +31,10 @@ public class FileMetadata {
 
     private String sourceId;
 
+    private Double width;
+
+    private Double height;
+
     @Column(name = "updated_on", insertable = false, updatable = false)
     private Date updatedOn;
 

@@ -2,6 +2,7 @@ package vacademy.io.media_service.service;
 
 import com.amazonaws.HttpMethod;
 import com.amazonaws.services.s3.AmazonS3;
+import com.amazonaws.services.s3.model.CopyObjectRequest;
 import com.amazonaws.services.s3.model.GeneratePresignedUrlRequest;
 import com.amazonaws.services.s3.model.ListObjectsV2Result;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
@@ -38,10 +39,16 @@ public class FileServiceImpl implements FileService {
     @Autowired
     private final AmazonS3 s3Client;
     private final UserToFileRepository userToFileRepository;
+
     @Value("${aws.bucket.name}")
     private String bucketName;
+
     @Value("${cloud.front.url}")
     private String cloudFrontUrl;
+
+    @Value("${aws.s3.public-bucket}")
+    private String publicBucket;
+
     @Autowired
     private FileMetadataRepository fileMetadataRepository;
 
@@ -160,6 +167,8 @@ public class FileServiceImpl implements FileService {
         Optional<FileMetadata> metadata = fileMetadataRepository.findById(request.getFileId());
         if (metadata.isPresent()) {
             metadata.get().setFileSize(request.getFileSize());
+            metadata.get().setHeight(request.getHeight());
+            metadata.get().setWidth(request.getWidth());
             FileMetadata folderIcon = null;
             if (!Objects.isNull(request.getFolderIconId())) {
                 folderIcon = fileMetadataRepository.findById(request.getFolderIconId()).orElse(null);
@@ -249,7 +258,7 @@ public class FileServiceImpl implements FileService {
         if (fileMetadata.isEmpty()) throw new DatabaseException("File Not Found");
 
         try {
-            return FileDetailsDTO.builder()
+            FileDetailsDTO.FileDetailsDTOBuilder builder = FileDetailsDTO.builder()
                     .expiry(addTime(days))
                     .fileName(fileMetadata.get().getFileName())
                     .fileType(fileMetadata.get().getFileType())
@@ -258,11 +267,20 @@ public class FileServiceImpl implements FileService {
                     .sourceId(fileMetadata.get().getSourceId())
                     .url(getUrlWithExpiryAndId(id, days))
                     .createdOn(fileMetadata.get().getCreatedOn())
-                    .updatedOn(fileMetadata.get().getUpdatedOn())
-                    .build();
+                    .updatedOn(fileMetadata.get().getUpdatedOn());
+
+            if (fileMetadata.get().getWidth() != null) {
+                builder.width(fileMetadata.get().getWidth());
+            }
+            if (fileMetadata.get().getHeight() != null) {
+                builder.height(fileMetadata.get().getHeight());
+            }
+
+            return builder.build();
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
+
 
     }
 
@@ -299,4 +317,45 @@ public class FileServiceImpl implements FileService {
 
     }
 
+    @Override
+    public FileDetailsDTO acknowledgeClientUploadAndGetPublicUrl(AcknowledgeRequest acknowledgeRequest) {
+        if (!acknowledgeClientUpload(acknowledgeRequest)) {
+            return null;
+        }
+        FileMetadata fileMetadata = fileMetadataRepository.findById(acknowledgeRequest.getFileId()).orElseThrow(() -> new DatabaseException("File Not Found"));
+        copyFileToPublicBucket(fileMetadata.getKey());
+        FileDetailsDTO.FileDetailsDTOBuilder builder = FileDetailsDTO.builder()
+                .url(getPublicUrl(acknowledgeRequest.getFileId()))
+                .sourceId(fileMetadata.getSourceId())
+                .source(fileMetadata.getSource())
+                .id(fileMetadata.getId())
+                .fileName(fileMetadata.getFileName())
+                .fileType(fileMetadata.getFileType());
+
+        if (fileMetadata.getWidth() != null) {
+            builder.width(fileMetadata.getWidth());
+        }
+        if (fileMetadata.getHeight() != null) {
+            builder.height(fileMetadata.getHeight());
+        }
+
+        return builder.build();
+
+    }
+
+    public String getPublicUrl(String id) {
+        Optional<FileMetadata> fileMetadata = fileMetadataRepository.findById(id);
+        if (fileMetadata.isEmpty()) throw new DatabaseException("File Not Found");
+
+        String objectKey = fileMetadata.get().getKey().trim();
+
+        // Directly return the public URL (ACLs are not needed)
+        return "https://" + publicBucket + ".s3.amazonaws.com/" + objectKey;
+    }
+
+
+    public void copyFileToPublicBucket(String objectKey) {
+        CopyObjectRequest copyRequest = new CopyObjectRequest(bucketName, objectKey.trim(), publicBucket, objectKey.trim());
+        s3Client.copyObject(copyRequest);
+    }
 }

@@ -18,4 +18,6 @@ public class AcknowledgeRequest {
     private String sourceId;
     private String sourceType;
     private Long fileSize;
+    private Double width;
+    private Double height;
 }

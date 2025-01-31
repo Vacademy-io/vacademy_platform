@@ -1,29 +1,25 @@
 package vacademy.io.admin_core_service.features.slide.dto;
 
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import com.fasterxml.jackson.databind.annotation.JsonNaming;
+import lombok.Data;
+
+@Data
+@JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class SlideCountProjection {
-    private String slideType;
-    private Long totalSlides;
 
-    // Constructor
-    public SlideCountProjection(String slideType, Long totalSlides) {
-        this.slideType = slideType;
-        this.totalSlides = totalSlides;
+    private Long videoCount;
+    private Long pdfCount;
+    private Long docCount;
+    private Long unknownCount;
+
+    // Constructor to match the aggregation fields
+    public SlideCountProjection(Long videoCount, Long pdfCount, Long docCount, Long unknownCount) {
+        this.videoCount = videoCount;
+        this.pdfCount = pdfCount;
+        this.docCount = docCount;
+        this.unknownCount = unknownCount;
     }
 
-    // Getters and setters
-    public String getSlideType() {
-        return slideType;
-    }
-
-    public void setSlideType(String slideType) {
-        this.slideType = slideType;
-    }
-
-    public Long getTotalSlides() {
-        return totalSlides;
-    }
-
-    public void setTotalSlides(Long totalSlides) {
-        this.totalSlides = totalSlides;
-    }
+    // Getters and setters (Lombok generates these automatically with @Data)
 }

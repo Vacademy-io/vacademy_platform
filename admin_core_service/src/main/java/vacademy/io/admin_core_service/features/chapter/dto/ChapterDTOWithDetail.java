@@ -11,5 +11,5 @@ import java.util.List;
 @Data
 public class ChapterDTOWithDetail {
     private ChapterDTO chapter;
-    private List<SlideCountProjection> slidesCount;
+    private SlideCountProjection slidesCount;
 }

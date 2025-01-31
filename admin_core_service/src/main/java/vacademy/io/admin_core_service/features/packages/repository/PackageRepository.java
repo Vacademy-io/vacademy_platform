@@ -37,7 +37,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
     // Get all distinct packages of an institute_id
     @Query(value = "SELECT DISTINCT p.* FROM package p " +
             "JOIN package_institute pi ON p.id = pi.package_id " +  // Ensure to join package_institute to filter by institute
-            "WHERE pi.institute_id = :instituteId",
+            "WHERE pi.institute_id = :instituteId AND p.status != 'DELETED'",
             nativeQuery = true)
     List<PackageEntity> findDistinctPackagesByInstituteId(@Param("instituteId") String instituteId);
 
@@ -50,5 +50,14 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             nativeQuery = true)
     List<PackageSession> findPackageSessionsByInstituteId(
             @Param("instituteId") String instituteId);
+
+    @Query(value = """
+    SELECT DISTINCT s.* 
+    FROM session s 
+    INNER JOIN package_session ps ON s.id = ps.session_id 
+    INNER JOIN package p ON ps.package_id = p.id 
+    WHERE ps.package_id = :packageId AND s.status != 'DELETED'
+""", nativeQuery = true)
+    List<SessionProjection> findDistinctSessionsByPackageId(@Param("packageId") String packageId);
 
 }

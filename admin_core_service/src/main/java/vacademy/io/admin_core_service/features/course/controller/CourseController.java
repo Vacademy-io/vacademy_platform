@@ -7,6 +7,8 @@ import vacademy.io.admin_core_service.features.course.service.CourseService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.institute.dto.PackageDTO;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/admin-core-service/course/v1")
 @RequiredArgsConstructor
@@ -20,5 +22,10 @@ public class CourseController {
     @PutMapping("/update-course/{courseId}")
     public String updateCourse(@RequestBody PackageDTO packageDTO, @PathVariable("courseId") String packageId, @RequestAttribute("user") CustomUserDetails userDetails) {
         return courseService.updateCourse(packageDTO, userDetails, packageId);
+    }
+
+    @DeleteMapping("/delete-courses")
+    public String deleteCourse(@RequestBody List<String> courseIds, @RequestAttribute("user") CustomUserDetails userDetails) {
+        return courseService.deleteCourses(courseIds, userDetails);
     }
 }

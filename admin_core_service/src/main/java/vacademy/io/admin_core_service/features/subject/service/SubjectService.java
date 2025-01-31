@@ -65,7 +65,6 @@ public class SubjectService {
                 subjectPackageSessionRepository.save(new SubjectPackageSession(savedSubject, packageSession));
                 // Create and save the relationship between the subject and the package session.
             } catch (Exception e) {
-                e.printStackTrace();
                 log.error("Error adding subject: {}", e.getMessage());
             }
         }

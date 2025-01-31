@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.study_library.service;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.chapter.dto.ChapterDTO;
+import vacademy.io.admin_core_service.features.chapter.dto.ChapterDTOWithDetail;
 import vacademy.io.admin_core_service.features.chapter.entity.Chapter;
 import vacademy.io.admin_core_service.features.course.dto.CourseDTO;
 import vacademy.io.admin_core_service.features.course.dto.CourseDTOWithDetails;
@@ -10,6 +11,7 @@ import vacademy.io.admin_core_service.features.level.repository.LevelRepository;
 import vacademy.io.admin_core_service.features.module.dto.ModuleDTO;
 import vacademy.io.admin_core_service.features.module.repository.ModuleChapterMappingRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageRepository;
+import vacademy.io.admin_core_service.features.slide.repository.SlideRepository;
 import vacademy.io.admin_core_service.features.study_library.dto.LevelDTOWithDetails;
 import vacademy.io.admin_core_service.features.study_library.dto.ModuleDTOWithDetails;
 import vacademy.io.admin_core_service.features.study_library.dto.SessionDTOWithDetails;
@@ -46,6 +48,9 @@ public class StudyLibraryService {
 
     @Autowired
     private ModuleChapterMappingRepository moduleChapterMappingRepository;
+
+    @Autowired
+    private SlideRepository slideRepository;
 
     public List<CourseDTOWithDetails> getStudyLibraryInitDetails(String instituteId) {
         if (Objects.isNull(instituteId)) {
@@ -103,10 +108,18 @@ public class StudyLibraryService {
        List<ModuleDTOWithDetails> moduleDTOWithDetails = new ArrayList<>();
        for (Module module: modules) {
            List<Chapter> chapters = moduleChapterMappingRepository.findChaptersByModuleIdAndStatusNotDeleted(module.getId());
-           List<ChapterDTO> chapterDTOS = chapters.stream().map(Chapter::mapToDTO).toList();
+           List<ChapterDTOWithDetail> chapterDTOS = chapters.stream().map(this::mapToChapterDTOWithDetail).toList();
            ModuleDTOWithDetails moduleDTOWithDetails1 = new ModuleDTOWithDetails(new ModuleDTO(module), chapterDTOS);
            moduleDTOWithDetails.add(moduleDTOWithDetails1);
        }
        return moduleDTOWithDetails;
+    }
+
+    public ChapterDTOWithDetail mapToChapterDTOWithDetail(Chapter chapter) {
+        ChapterDTOWithDetail chapterDTOWithDetail = new ChapterDTOWithDetail();
+        ChapterDTO chapterDTO = chapter.mapToDTO();
+        chapterDTOWithDetail.setChapter(chapterDTO);
+        chapterDTOWithDetail.setSlidesCount(slideRepository.countSlidesByChapterId(chapter.getId()));
+        return chapterDTOWithDetail;
     }
 }

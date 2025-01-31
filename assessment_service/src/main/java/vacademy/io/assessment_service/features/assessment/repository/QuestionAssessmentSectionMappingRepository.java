@@ -18,6 +18,11 @@ public interface QuestionAssessmentSectionMappingRepository extends CrudReposito
     void softDeleteByQuestionIdsAndSectionId(List<String> questionIds, String sectionId);
 
 
+    @Modifying
+    @Transactional
+    @Query(value = "DELETE FROM question_assessment_section_mapping WHERE question_id IN ?1 AND section_id = ?2", nativeQuery = true)
+    void hardDeleteByQuestionIdsAndSectionId(List<String> questionIds, String sectionId);
+
     @Query(value = "SELECT * FROM question_assessment_section_mapping WHERE section_id IN ?1", nativeQuery = true)
     List<QuestionAssessmentSectionMapping> getQuestionAssessmentSectionMappingBySectionIds(List<String> sectionIds);
 

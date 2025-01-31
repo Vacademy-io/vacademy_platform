@@ -29,6 +29,7 @@ public class AssessmentQuestionPreviewDto {
     private Integer questionDuration;
     private Integer questionOrder;
     private String markingJson;
+    private String evaluationJson;
     private String questionType;
     private List<OptionWithoutExplanationDTO> options = new ArrayList<>();
     private List<OptionDTO> optionsWithExplanation = new ArrayList<>();
@@ -40,6 +41,7 @@ public class AssessmentQuestionPreviewDto {
         this.questionDuration = questionAssessmentSectionMapping.getQuestionDurationInMin();
         this.questionOrder = questionAssessmentSectionMapping.getQuestionOrder();
         this.markingJson = questionAssessmentSectionMapping.getMarkingJson();
+        this.evaluationJson = question.getAutoEvaluationJson();
         this.questionType = question.getQuestionType();
         if (question.getParentRichText() != null) {
             this.parentRichText = question.getParentRichText().toDTO();

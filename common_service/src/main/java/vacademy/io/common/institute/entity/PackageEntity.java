@@ -33,6 +33,9 @@ public class PackageEntity {
     @Column(name = "thumbnail_file_id", length = 255)
     private String thumbnailFileId;
 
+    @Column(name = "status")
+    private String status;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;
 

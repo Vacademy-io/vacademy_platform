@@ -43,6 +43,7 @@ public class SubjectService {
      * @return The created subject DTO.
      * @throws VacademyException If there are any validation errors or if a required field is missing.
      */
+    @Transactional
     public SubjectDTO addSubject(SubjectDTO subjectDTO, String commaSeparatedPackageSessionIds, CustomUserDetails user) {
         if (Objects.isNull(commaSeparatedPackageSessionIds)) {
             throw new VacademyException("Package Session Id cannot be null");
@@ -61,11 +62,6 @@ public class SubjectService {
             try {
                 PackageSession packageSession = packageSessionRepository.findById(packageSessionId)
                         .orElseThrow(() -> new VacademyException("Package Session not found"));
-
-                if (getSubjectByNameAndPackageSessionId(subjectDTO.getSubjectName(), packageSessionId).isPresent()) {
-                    throw new VacademyException("Subject already exists");
-                }
-
                 subjectPackageSessionRepository.save(new SubjectPackageSession(savedSubject, packageSession));
                 // Create and save the relationship between the subject and the package session.
             } catch (Exception e) {
@@ -105,7 +101,6 @@ public class SubjectService {
     /**
      * Deletes a subject by marking it as deleted.
      *
-     * @param subjectId The ID of the subject to delete.
      * @param user       The user who is deleting the subject.
      * @return A message indicating successful deletion.
      * @throws VacademyException If the subject ID is null or the subject is not found.

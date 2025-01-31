@@ -44,4 +44,9 @@ public class FileController {
         return ResponseEntity.ok(fileDetailsDTO);
     }
 
+    @PostMapping("/acknowledge-get-details")
+    public ResponseEntity<FileDetailsDTO> acknowledgeUploadAndGetDetails(@RequestAttribute("user") CustomUserDetails userDetails, @RequestBody AcknowledgeRequest acknowledgeRequest) {
+        return ResponseEntity.ok(fileService.acknowledgeClientUploadAndGetPublicUrl(acknowledgeRequest));
+    }
+
 }

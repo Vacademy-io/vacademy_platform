@@ -24,7 +24,7 @@ public class BasicAssessmentDetailsDTO {
     private Boolean raiseReattemptRequest;
     private Boolean raiseTimeIncreaseRequest;
     private Boolean hasOmrMode;
-    private Integer defaultReattemptCount;
+    private Integer defaultReattemptCount = 1;
     private String source;
     private String sourceId;
     @Data

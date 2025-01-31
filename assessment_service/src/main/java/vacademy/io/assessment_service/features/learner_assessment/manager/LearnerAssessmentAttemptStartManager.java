@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.ObjectUtils;
 import org.springframework.util.StringUtils;
 import vacademy.io.assessment_service.features.assessment.dto.AssessmentQuestionPreviewDto;
+import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.SectionDto;
 import vacademy.io.assessment_service.features.assessment.entity.*;
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentModeEnum;
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentStatus;
@@ -31,6 +32,7 @@ import vacademy.io.common.student.dto.BasicParticipantDTO;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import static org.hibernate.event.internal.EntityState.DELETED;
 import static vacademy.io.common.auth.enums.CompanyStatus.ACTIVE;
 import static vacademy.io.common.core.standard_classes.ListService.createSortObject;
 
@@ -73,7 +75,14 @@ public class LearnerAssessmentAttemptStartManager {
         learnerAssessmentStartPreviewResponse.setAttemptId(newStudentAttempt.getId());
         learnerAssessmentStartPreviewResponse.setPreviewTotalTime(assessment.get().getPreviewTime());
         learnerAssessmentStartPreviewResponse.setQuestionPreviewDtoList(createQuestionAssessmentSectionMappingList(assessment.get()));
+        learnerAssessmentStartPreviewResponse.setSectionDtos(createSectionDtoList(assessment.get()));
         return ResponseEntity.ok(learnerAssessmentStartPreviewResponse);
+    }
+
+    private List<SectionDto> createSectionDtoList(Assessment assessment) {
+        List<SectionDto> sectionDtos = new ArrayList<>();
+        assessment.getSections().stream().filter(section -> !DELETED.name().equals(section.getStatus())).forEach(section -> sectionDtos.add(new SectionDto(section)));
+        return sectionDtos;
     }
 
     private void verifyAssessmentStart(Assessment assessment) {

@@ -82,7 +82,7 @@ public class LearnerAssessmentAttemptStatusManager {
         }
 
         // Create and return the response for update status
-        LearnerUpdateStatusResponse response = createResponseForUpdateStatus(Optional.of(assessment), Optional.of(attempt), assessmentStatusJson);
+        LearnerUpdateStatusResponse response = createResponseForUpdateStatus(Optional.of(assessment), Optional.of(attempt));
         return ResponseEntity.ok(response);
     }
 
@@ -91,10 +91,9 @@ public class LearnerAssessmentAttemptStatusManager {
      *
      * @param assessmentOptional  the optional assessment
      * @param studentAttemptOptional the optional student attempt
-     * @param assessmentStatusJson the assessment status in JSON format
      * @return                     the learner update status response
      */
-    private LearnerUpdateStatusResponse createResponseForUpdateStatus(Optional<Assessment> assessmentOptional, Optional<StudentAttempt> studentAttemptOptional, LearnerAssessmentAttemptDataDto assessmentStatusJson) {
+    private LearnerUpdateStatusResponse createResponseForUpdateStatus(Optional<Assessment> assessmentOptional, Optional<StudentAttempt> studentAttemptOptional) {
         if(studentAttemptOptional.isEmpty() || assessmentOptional.isEmpty()) throw new VacademyException("Invalid request");
 
         // Retrieve and map announcements

@@ -108,7 +108,6 @@ public class StudentAttemptService {
         double totalMarks = 0;
 
         // Get assessment and attempt ID from learnerAssessmentData
-        String assessmentId = learnerAssessmentData.getAssessment().getAssessmentId();
         String attemptId = learnerAssessmentData.getAttemptId();
 
         // Return 0 marks if student attempt is not found or attempt ID doesn't match

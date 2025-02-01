@@ -40,4 +40,9 @@ public class StudentBasicAssessmentListItemDto {
     private Integer previewTime;
     private String lastAttemptId;
     private String assessmentUserRegistrationId;
+    private String distributionDuration;
+    private String canSwitchSection;
+    private Boolean canIncreaseTime;
+    private Boolean canAskForReattempt;
+    private Boolean omrMode;
 }

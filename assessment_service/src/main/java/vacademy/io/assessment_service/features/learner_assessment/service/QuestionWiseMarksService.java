@@ -4,7 +4,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
-import vacademy.io.assessment_service.features.learner_assessment.dto.status_json.LearnerAssessmentStatusJson;
 import vacademy.io.assessment_service.features.learner_assessment.entity.QuestionWiseMarks;
 import vacademy.io.assessment_service.features.learner_assessment.repository.QuestionWiseMarksRepository;
 import vacademy.io.assessment_service.features.question_core.entity.Question;
@@ -33,7 +32,7 @@ public class QuestionWiseMarksService {
             questionWiseMarks.setResponseJson(responseJson);
             questionWiseMarks.setMarks(marks);
 
-            return questionWiseMarks;
+            return questionWiseMarksRepository.save(questionWiseMarks);
         }
 
         QuestionWiseMarks questionWiseMarks = QuestionWiseMarks.builder()

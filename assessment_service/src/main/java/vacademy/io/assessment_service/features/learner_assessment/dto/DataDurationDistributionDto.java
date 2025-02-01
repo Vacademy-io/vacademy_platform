@@ -1,6 +1,8 @@
 package vacademy.io.assessment_service.features.learner_assessment.dto;
 
 
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -12,6 +14,7 @@ import java.util.List;
 @Setter
 @AllArgsConstructor
 @NoArgsConstructor
+@JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class DataDurationDistributionDto {
 
     private DataDuration dataDuration;
@@ -20,27 +23,20 @@ public class DataDurationDistributionDto {
     @Setter
     @AllArgsConstructor
     @NoArgsConstructor
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public static class DataDuration {
-        private String id;
-        private int newMaxTimeInMins;
-        private List<Section> sections;
-        private List<Question> questions;
+        DataDurationModel assessmentDuration;
+        private List<DataDurationModel> sectionsDuration;
+        private List<DataDurationModel> questionsDuration;
     }
+
 
     @Getter
     @Setter
     @AllArgsConstructor
     @NoArgsConstructor
-    public static class Section {
-        private String id;
-        private int newMaxTimeInMins;
-    }
-
-    @Getter
-    @Setter
-    @AllArgsConstructor
-    @NoArgsConstructor
-    public static class Question {
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public static class DataDurationModel {
         private String id;
         private int newMaxTimeInMins;
     }

@@ -12,8 +12,8 @@ import java.util.List;
 @NoArgsConstructor
 @Builder
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-public class SectionJson {
+public class SectionAttemptData {
     private String sectionId;
     private Long timeElapsedInSeconds;
-    private List<QuestionJson> questions;
+    private List<QuestionAttemptData> questions;
 }

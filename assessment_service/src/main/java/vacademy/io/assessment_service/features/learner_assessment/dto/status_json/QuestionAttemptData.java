@@ -13,7 +13,7 @@ import java.util.List;
 @NoArgsConstructor
 @Builder
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-public class QuestionJson {
+public class QuestionAttemptData {
     private String questionId;
     private Long questionDurationLeftInSeconds;
     private Long timeTakenInSeconds;

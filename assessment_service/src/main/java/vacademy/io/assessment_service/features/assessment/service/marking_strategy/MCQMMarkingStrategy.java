@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import vacademy.io.assessment_service.features.assessment.service.IMarkingStrategy;
+import vacademy.io.assessment_service.features.question_core.enums.QuestionTypes;
 
 import java.util.HashSet;
 import java.util.List;
@@ -17,7 +18,7 @@ public class MCQMMarkingStrategy extends IMarkingStrategy {
 
     @Override
     public double calculateMarks(String markingJsonStr, String correctAnswerJsonStr, List<String> studentChosenOptions) throws Exception {
-        this.setType("MCQM");
+        this.setType(QuestionTypes.MCQM.name());
 
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode markingJson = objectMapper.readTree(markingJsonStr).get("data");

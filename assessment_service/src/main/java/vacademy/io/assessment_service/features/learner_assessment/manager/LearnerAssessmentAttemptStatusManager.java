@@ -231,8 +231,6 @@ public class LearnerAssessmentAttemptStatusManager {
         if (AssessmentAttemptEnum.PREVIEW.name().equals(studentAttempt.get().getStatus()))
             throw new VacademyException("Currently Assessment is in preview");
 
-        // Validate and create LearnerAssessmentStatusJson object
-        LearnerAssessmentAttemptDataDto assessmentStatusJson = studentAttemptService.validateAndCreateJsonObject(jsonContent);
         StudentAttempt attempt = new StudentAttempt();
 
         // Handle cases where the attempt status is either 'ENDED' or 'LIVE'

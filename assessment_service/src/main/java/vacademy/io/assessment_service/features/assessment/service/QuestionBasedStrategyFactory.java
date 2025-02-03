@@ -7,6 +7,7 @@ import vacademy.io.assessment_service.features.question_core.enums.QuestionTypes
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 
 public class QuestionBasedStrategyFactory {
     private static final Map<String, IQuestionTypeBasedStrategy> strategies = new HashMap<>();
@@ -18,7 +19,11 @@ public class QuestionBasedStrategyFactory {
     }
 
     private static IQuestionTypeBasedStrategy getStrategy(String questionType) {
-        return strategies.getOrDefault(questionType, null);
+        IQuestionTypeBasedStrategy strategy = strategies.getOrDefault(questionType, null);
+        if(!Objects.isNull(strategy)){
+            strategy.setType(questionType);
+        }
+        return strategy;
     }
 
     public static Object verifyMarkingJson(String markingJson, String type) throws JsonProcessingException {

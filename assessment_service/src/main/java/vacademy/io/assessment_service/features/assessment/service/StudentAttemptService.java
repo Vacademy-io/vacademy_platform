@@ -106,58 +106,62 @@ public class StudentAttemptService {
      * @throws Exception - If any error occurs during the calculation.
      */
     public double calculateTotalMarks(LearnerAssessmentAttemptDataDto learnerAssessmentData, Optional<StudentAttempt> studentAttemptOptional) throws Exception {
-        // Initialize totalMarks to 0.0
-        double totalMarks = 0;
+        double totalMarks = 0.0;
 
-        // Get assessment and attempt ID from learnerAssessmentData
-        String attemptId = learnerAssessmentData.getAttemptId();
-
-        // Return 0 marks if student attempt is not found or attempt ID doesn't match
-        if (studentAttemptOptional.isEmpty() || !attemptId.equals(studentAttemptOptional.get().getId())) {
+        if (studentAttemptOptional.isEmpty() || !learnerAssessmentData.getAttemptId().equals(studentAttemptOptional.get().getId())) {
             return 0.0;
         }
 
-        // Get the assessment and attempt data from the student attempt
         StudentAttempt studentAttempt = studentAttemptOptional.get();
         Assessment assessment = studentAttempt.getRegistration().getAssessment();
         String attemptData = studentAttempt.getAttemptData();
 
-        // Iterate over sections in the learner assessment data
         for (SectionAttemptData section : learnerAssessmentData.getSections()) {
-            // Iterate over questions in each section
-            for (QuestionAttemptData question : section.getQuestions()) {
-                // Get the marking strategy based on the question type
-                String sectionId = section.getSectionId()!=null ? section.getSectionId() : "";
-                String questionId = question.getQuestionId()!=null ?  question.getQuestionId() : "";
-                QuestionAttemptData.OptionsJson responseData = question.getResponseData();
-
-                // If responseData is null, initialize as empty list
-                List<String> attemptedOptionIds = responseData != null ? responseData.getOptionIds() : new ArrayList<>();
-                String type = responseData != null ? responseData.getType() : "";
-
-                // Retrieve the question mapping for the section and question ID
-                Optional<QuestionAssessmentSectionMapping> questionAssessmentSectionMapping =
-                        questionAssessmentSectionMappingRepository.findByQuestionIdAndSectionId(questionId, sectionId);
-
-                // If no mapping found, skip this question
-                if (questionAssessmentSectionMapping.isEmpty()) {
-                    continue;
-                }
-
-                // Get the actual question for marking
-                QuestionAssessmentSectionMapping markingScheme = questionAssessmentSectionMapping.get();
-                Question questionAsked = markingScheme.getQuestion();
-
-                // Get the specific response data for the question attempt
-                String questionWiseResponseData = getQuestionDetails(questionId, attemptData);
-
-                double marksObtained = QuestionBasedStrategyFactory.calculateMarks(markingScheme.getMarkingJson(), questionAsked.getAutoEvaluationJson(), questionWiseResponseData, type);
-                totalMarks+=marksObtained;
-                questionWiseMarksService.updateQuestionWiseMarksForEveryQuestion(assessment, studentAttempt, questionAsked,questionWiseResponseData, question.getTimeTakenInSeconds(), marksObtained);
-
-            }
+            totalMarks += calculateMarksForSection(section, attemptData, assessment, studentAttempt);
         }
+
         return totalMarks;
+    }
+
+    private double calculateMarksForSection(SectionAttemptData section, String attemptData, Assessment assessment, StudentAttempt studentAttempt) {
+        double sectionMarks = 0.0;
+
+        for (QuestionAttemptData question : section.getQuestions()) {
+            sectionMarks += calculateMarksForQuestion(section, question, attemptData, assessment, studentAttempt);
+        }
+
+        return sectionMarks;
+    }
+
+    private double calculateMarksForQuestion(SectionAttemptData section, QuestionAttemptData question, String attemptData, Assessment assessment, StudentAttempt studentAttempt) {
+        String sectionId = section.getSectionId() != null ? section.getSectionId() : "";
+        String questionId = question.getQuestionId() != null ? question.getQuestionId() : "";
+        QuestionAttemptData.OptionsJson responseData = question.getResponseData();
+        String type = responseData != null ? responseData.getType() : "";
+
+        Optional<QuestionAssessmentSectionMapping> questionAssessmentSectionMapping =
+                questionAssessmentSectionMappingRepository.findByQuestionIdAndSectionId(questionId, sectionId);
+
+        if (questionAssessmentSectionMapping.isEmpty()) {
+            return 0.0;
+        }
+
+        QuestionAssessmentSectionMapping markingScheme = questionAssessmentSectionMapping.get();
+        Question questionAsked = markingScheme.getQuestion();
+        String questionWiseResponseData = getQuestionDetails(questionId, attemptData);
+
+        double marksObtained = QuestionBasedStrategyFactory.calculateMarks(
+                markingScheme.getMarkingJson(),
+                questionAsked.getAutoEvaluationJson(),
+                questionWiseResponseData,
+                type
+        );
+
+        questionWiseMarksService.updateQuestionWiseMarksForEveryQuestion(
+                assessment, studentAttempt, questionAsked, questionWiseResponseData, question.getTimeTakenInSeconds(), marksObtained
+        );
+
+        return marksObtained;
     }
 
     public LearnerAssessmentAttemptDataDto validateAndCreateJsonObject(String jsonContent) {

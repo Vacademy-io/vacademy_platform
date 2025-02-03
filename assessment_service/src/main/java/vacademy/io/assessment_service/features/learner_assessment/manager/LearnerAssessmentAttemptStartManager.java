@@ -74,14 +74,18 @@ public class LearnerAssessmentAttemptStartManager {
         learnerAssessmentStartPreviewResponse.setAssessmentUserRegistrationId(newAssessmentUserRegistration.getId());
         learnerAssessmentStartPreviewResponse.setAttemptId(newStudentAttempt.getId());
         learnerAssessmentStartPreviewResponse.setPreviewTotalTime(assessment.get().getPreviewTime());
-        learnerAssessmentStartPreviewResponse.setQuestionPreviewDtoList(createQuestionAssessmentSectionMappingList(assessment.get()));
         learnerAssessmentStartPreviewResponse.setSectionDtos(createSectionDtoList(assessment.get()));
         return ResponseEntity.ok(learnerAssessmentStartPreviewResponse);
     }
 
     private List<SectionDto> createSectionDtoList(Assessment assessment) {
         List<SectionDto> sectionDtos = new ArrayList<>();
-        assessment.getSections().stream().filter(section -> !DELETED.name().equals(section.getStatus())).forEach(section -> sectionDtos.add(new SectionDto(section)));
+        var allQuestions = createQuestionAssessmentSectionMappingList(assessment);
+        assessment.getSections().stream().filter(section -> !DELETED.name().equals(section.getStatus())).forEach(section -> {
+            SectionDto sectionDto = new SectionDto(section);
+            sectionDto.fillQuestions(allQuestions.stream().filter(questionAssessmentSectionMapping -> section.getId().equals(questionAssessmentSectionMapping.getSectionId())).collect(Collectors.toList()));
+            sectionDtos.add(sectionDto);
+        });
         return sectionDtos;
     }
 

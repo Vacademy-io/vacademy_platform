@@ -19,7 +19,6 @@ import java.util.Map;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class LearnerAssessmentStartPreviewResponse {
     private Integer previewTotalTime;
-    private List<AssessmentQuestionPreviewDto> questionPreviewDtoList = new ArrayList<>();
     private List<SectionDto> sectionDtos = new ArrayList<>();
     private String attemptId;
     private String assessmentUserRegistrationId;

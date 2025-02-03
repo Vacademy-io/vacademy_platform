@@ -31,6 +31,11 @@ public class StudentAssessmentMapper {
                 .previewTime((Integer) assessment[22])
                 .lastAttemptId((String) assessment[23])
                 .assessmentUserRegistrationId((String) assessment[24])
+                .distributionDuration((String) assessment[25])
+                .canSwitchSection((Boolean) assessment[26])
+                .canIncreaseTime((Boolean) assessment[27])
+                .canAskForReattempt((Boolean) assessment[28])
+                .omrMode((Boolean) assessment[29])
                 .build();
 
         return dto;

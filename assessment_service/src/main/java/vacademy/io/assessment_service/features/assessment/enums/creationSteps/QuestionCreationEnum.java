@@ -8,6 +8,8 @@ public enum QuestionCreationEnum {
     NEGATIVE_MARKING,
     PARTIAL_MARKING,
     SECTIONS,
+    DURATION,
+    DURATION_DISTRIBUTION,
     PROBLEM_RANDOMIZATION;
 
 }

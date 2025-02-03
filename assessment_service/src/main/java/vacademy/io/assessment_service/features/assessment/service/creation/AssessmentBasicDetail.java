@@ -29,12 +29,10 @@ public class AssessmentBasicDetail extends IStep {
         savedData.put(AssessmentCreationEnum.ASSESSMENT_MODE.name().toLowerCase(), assessment.get().getPlayMode());
         savedData.put(AssessmentCreationEnum.NAME.name().toLowerCase(), assessment.get().getName());
         savedData.put(AssessmentCreationEnum.INSTRUCTIONS.name().toLowerCase(), assessment.get().getInstructions().toDTO());
-        savedData.put(AssessmentCreationEnum.DURATION_DISTRIBUTION.name().toLowerCase(), assessment.get().getDurationDistribution());
         savedData.put(AssessmentCreationEnum.SUBMISSION_TYPE.name().toLowerCase(), assessment.get().getSubmissionType());
         savedData.put(AssessmentCreationEnum.EVALUATION_TYPE.name().toLowerCase(), assessment.get().getEvaluationType());
         savedData.put(AssessmentCreationEnum.ASSESSMENT_PREVIEW.name().toLowerCase(), assessment.get().getPreviewTime());
         savedData.put(AssessmentCreationEnum.ASSESSMENT_VISIBILITY.name().toLowerCase(), assessment.get().getAssessmentVisibility());
-        savedData.put(AssessmentCreationEnum.DURATION.name().toLowerCase(), assessment.get().getDuration());
         savedData.put(AssessmentCreationEnum.OMR_MODE.name().toLowerCase(), assessment.get().getOmrMode());
         savedData.put(AssessmentCreationEnum.REATTEMPT_COUNT.name().toLowerCase(), assessment.get().getReattemptCount());
         savedData.put(AssessmentCreationEnum.EXPECTED_PARTICIPANTS.name().toLowerCase(), assessment.get().getExpectedParticipants());
@@ -91,9 +89,6 @@ public class AssessmentBasicDetail extends IStep {
                 break;
         }
 
-        this.getFieldOptions().put(AssessmentCreationEnum.DURATION_DISTRIBUTION.name().toLowerCase(), Arrays.stream(DurationDistributionEnum.values()).map((option) ->
-                new StepOption(AssessmentCreationEnum.DURATION_DISTRIBUTION.name().toLowerCase(), option.name(), null, false)
-        ).toList());
 
         this.getFieldOptions().put(AssessmentCreationEnum.SUBMISSION_TYPE.name().toLowerCase(), Arrays.stream(SubmissionTypes.values()).map((option) ->
                 new StepOption(AssessmentCreationEnum.SUBMISSION_TYPE.name().toLowerCase(), option.name(), null, false)
@@ -106,7 +101,6 @@ public class AssessmentBasicDetail extends IStep {
         this.getDefaultValues().put(AssessmentCreationEnum.SUBMISSION_TYPE.name().toLowerCase(), new StepOption(AssessmentCreationEnum.SUBMISSION_TYPE.name().toLowerCase(), SubmissionTypes.FILE.name(), null, false));
         this.getDefaultValues().put(AssessmentCreationEnum.EVALUATION_TYPE.name().toLowerCase(), new StepOption(AssessmentCreationEnum.EVALUATION_TYPE.name().toLowerCase(), EvaluationTypes.AUTO.name(), null, false));
 
-        this.getDefaultValues().put(AssessmentCreationEnum.DURATION_DISTRIBUTION.name().toLowerCase(), new StepOption(AssessmentCreationEnum.DURATION_DISTRIBUTION.name().toLowerCase(), DurationDistributionEnum.ASSESSMENT.name(), null, false));
         this.getDefaultValues().put(AssessmentCreationEnum.ASSESSMENT_PREVIEW.name().toLowerCase(), new StepOption(AssessmentCreationEnum.ASSESSMENT_PREVIEW.name().toLowerCase(), "FALSE", null, false));
         this.getDefaultValues().put(AssessmentCreationEnum.CAN_SWITCH_SECTION.name().toLowerCase(), new StepOption(AssessmentCreationEnum.CAN_SWITCH_SECTION.name().toLowerCase(), "TRUE", null, false));
         this.getDefaultValues().put(AssessmentCreationEnum.ADD_TIME_CONSENT.name().toLowerCase(), new StepOption(AssessmentCreationEnum.ADD_TIME_CONSENT.name().toLowerCase(), "TRUE", null, false));
@@ -118,8 +112,6 @@ public class AssessmentBasicDetail extends IStep {
         return List.of(Map.of(AssessmentCreationEnum.BOUNDATION_START_DATE.name().toLowerCase(), "REQUIRED"),
                 Map.of(AssessmentCreationEnum.SUBJECT_SELECTION.name().toLowerCase(), "OPTIONAL"),
                 Map.of(AssessmentCreationEnum.BOUNDATION_END_DATE.name().toLowerCase(), "REQUIRED"),
-                Map.of(AssessmentCreationEnum.DURATION.name().toLowerCase(), "REQUIRED"),
-                Map.of(AssessmentCreationEnum.DURATION_DISTRIBUTION.name().toLowerCase(), "REQUIRED"),
                 Map.of(AssessmentCreationEnum.CAN_SWITCH_SECTION.name().toLowerCase(), "REQUIRED"),
                 Map.of(AssessmentCreationEnum.ASSESSMENT_VISIBILITY.name().toLowerCase(), "REQUIRED"),
                 Map.of(AssessmentCreationEnum.EXPECTED_PARTICIPANTS.name().toLowerCase(), "REQUIRED"),
@@ -135,8 +127,6 @@ public class AssessmentBasicDetail extends IStep {
 
         return List.of(
                 Map.of(AssessmentCreationEnum.SUBJECT_SELECTION.name().toLowerCase(), "OPTIONAL"),
-                Map.of(AssessmentCreationEnum.DURATION.name().toLowerCase(), "REQUIRED"),
-                Map.of(AssessmentCreationEnum.DURATION_DISTRIBUTION.name().toLowerCase(), "REQUIRED"),
                 Map.of(AssessmentCreationEnum.CAN_SWITCH_SECTION.name().toLowerCase(), "REQUIRED"),
                 Map.of(AssessmentCreationEnum.ASSESSMENT_VISIBILITY.name().toLowerCase(), "REQUIRED"),
                 Map.of(AssessmentCreationEnum.EXPECTED_PARTICIPANTS.name().toLowerCase(), "REQUIRED"),

@@ -15,6 +15,7 @@ import vacademy.io.assessment_service.features.assessment.repository.QuestionAss
 import vacademy.io.assessment_service.features.assessment.repository.StudentAttemptRepository;
 import vacademy.io.assessment_service.features.assessment.service.marking_strategy.MCQMQuestionTypeBasedStrategy;
 import vacademy.io.assessment_service.features.assessment.service.marking_strategy.MCQSQuestionTypeBasedStrategy;
+import vacademy.io.assessment_service.features.learner_assessment.constants.AttemptJsonConstants;
 import vacademy.io.assessment_service.features.learner_assessment.dto.status_json.LearnerAssessmentAttemptDataDto;
 import vacademy.io.assessment_service.features.learner_assessment.dto.status_json.QuestionAttemptData;
 import vacademy.io.assessment_service.features.learner_assessment.dto.status_json.SectionAttemptData;
@@ -179,14 +180,14 @@ public class StudentAttemptService {
             JsonNode rootNode = objectMapper.readTree(attemptDataJson);
 
             // Iterate over the sections array
-            JsonNode sections = rootNode.path("sections");
+            JsonNode sections = rootNode.path(AttemptJsonConstants.sections);
             for (JsonNode section : sections) {
-                JsonNode questions = section.path("questions");
+                JsonNode questions = section.path(AttemptJsonConstants.questions);
 
                 // Iterate over the questions in the current section
                 for (JsonNode question : questions) {
                     // Compare question_id to find the correct question
-                    if (question.path("questionId").asText().equals(questionId)) {
+                    if (question.path(AttemptJsonConstants.questionId).asText().equals(questionId)) {
                         return objectMapper.writeValueAsString(question); // Return question as JSON string
                     }
                 }

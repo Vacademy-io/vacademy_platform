@@ -1,4 +1,4 @@
-package vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.MCQM;
+package vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.mcqm;
 
 import lombok.Getter;
 import lombok.Setter;

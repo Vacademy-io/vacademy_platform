@@ -3,10 +3,9 @@ package vacademy.io.assessment_service.features.assessment.service.marking_strat
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Component;
-import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.MCQM.MCQMResponseDto;
-import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.MCQS.MCQSCorrectAnswerDto;
-import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.MCQS.MCQSMarkingDto;
-import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.MCQS.MCQSResponseDto;
+import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.mcqs.MCQSCorrectAnswerDto;
+import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.mcqs.MCQSMarkingDto;
+import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.mcqs.MCQSResponseDto;
 import vacademy.io.assessment_service.features.assessment.service.IQuestionTypeBasedStrategy;
 
 import java.util.List;

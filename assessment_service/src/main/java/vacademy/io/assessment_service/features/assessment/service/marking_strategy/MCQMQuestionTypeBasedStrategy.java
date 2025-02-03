@@ -4,9 +4,9 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.MCQM.MCQMCorrectAnswerDto;
-import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.MCQM.MCQMMarkingDto;
-import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.MCQM.MCQMResponseDto;
+import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.mcqm.MCQMCorrectAnswerDto;
+import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.mcqm.MCQMMarkingDto;
+import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.mcqm.MCQMResponseDto;
 import vacademy.io.assessment_service.features.assessment.service.IQuestionTypeBasedStrategy;
 
 import java.util.List;

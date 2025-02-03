@@ -47,12 +47,31 @@ public class StudentAttempt {
     private String status;
 
     @Column(name = "attempt_data")
-    @JdbcTypeCode(SqlTypes.JSON)
-    private Map<String, Object> attemptData;
+    private String attemptData;
 
     @Column(name = "submit_data")
-    @JdbcTypeCode(SqlTypes.JSON)
-    private Map<String, Object> submitData;
+    private String submitData;
+
+    @Column(name = "server_last_sync")
+    private Date serverLastSync;
+
+    @Column(name = "client_last_sync")
+    private Date clientLastSync;
+
+    @Column(name = "duration_distribution_json")
+    private String durationDistributionJson;
+
+    @Column(name = "total_marks")
+    private Double totalMarks;
+
+    @Column(name = "total_time_in_seconds")
+    private Long totalTimeInSeconds;
+
+    @Column(name = "result_marks")
+    private Double resultMarks;
+
+    @Column(name = "result_status")
+    private String resultStatus;
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;

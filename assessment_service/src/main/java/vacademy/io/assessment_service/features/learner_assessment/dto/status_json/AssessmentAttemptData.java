@@ -9,7 +9,6 @@ import lombok.*;
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
-@JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class AssessmentAttemptData {
     private String assessmentId;
     private Long entireTestDurationLeftInSeconds;

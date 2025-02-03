@@ -169,7 +169,6 @@ public class LearnerAssessmentAttemptStatusManager {
             if(Objects.isNull(durationData)) return durationResponses;
 
             ObjectMapper objectMapper = new ObjectMapper();
-            objectMapper.setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
             DataDurationDistributionDto dataDurationDistributionDto = objectMapper.readValue(durationData, DataDurationDistributionDto.class);
 
             return mapToDurationResponses(dataDurationDistributionDto);

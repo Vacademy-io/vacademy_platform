@@ -35,7 +35,7 @@ public interface QuestionAssessmentSectionMappingRepository extends CrudReposito
     @Query(value = """
             SELECT qasm.* FROM question_assessment_section_mapping qasm
             WHERE qasm.question_id = :questionId
-            AND qasm.section_id = :sectionId LIMIT 1
+            AND qasm.section_id = :sectionId ORDER BY qasm.created_at LIMIT 1
             """, nativeQuery = true)
     Optional<QuestionAssessmentSectionMapping> findByQuestionIdAndSectionId(@Param("questionId") String questionId,
                                                                             @Param("sectionId") String sectionId);

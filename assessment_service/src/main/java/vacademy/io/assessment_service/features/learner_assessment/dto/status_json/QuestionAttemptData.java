@@ -12,7 +12,6 @@ import java.util.List;
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
-@JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class QuestionAttemptData {
     private String questionId;
     private Long questionDurationLeftInSeconds;
@@ -25,7 +24,6 @@ public class QuestionAttemptData {
     @AllArgsConstructor
     @NoArgsConstructor
     @Builder
-    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public static class OptionsJson{
         private String type;
         private List<String> optionIds = new ArrayList<>();

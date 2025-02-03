@@ -2,6 +2,8 @@ package vacademy.io.assessment_service.features.assessment.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.extern.flogger.Flogger;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -11,9 +13,8 @@ import vacademy.io.assessment_service.features.assessment.entity.QuestionAssessm
 import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
 import vacademy.io.assessment_service.features.assessment.repository.QuestionAssessmentSectionMappingRepository;
 import vacademy.io.assessment_service.features.assessment.repository.StudentAttemptRepository;
-import vacademy.io.assessment_service.features.assessment.service.marking_strategy.MCQMMarkingStrategy;
-import vacademy.io.assessment_service.features.assessment.service.marking_strategy.MCQSMarkingStrategy;
-import vacademy.io.assessment_service.features.assessment.service.marking_strategy.Markingfactory;
+import vacademy.io.assessment_service.features.assessment.service.marking_strategy.MCQMQuestionTypeBasedStrategy;
+import vacademy.io.assessment_service.features.assessment.service.marking_strategy.MCQSQuestionTypeBasedStrategy;
 import vacademy.io.assessment_service.features.learner_assessment.dto.status_json.LearnerAssessmentAttemptDataDto;
 import vacademy.io.assessment_service.features.learner_assessment.dto.status_json.QuestionAttemptData;
 import vacademy.io.assessment_service.features.learner_assessment.dto.status_json.SectionAttemptData;
@@ -25,6 +26,7 @@ import vacademy.io.common.exceptions.VacademyException;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
+@Slf4j
 @Service
 public class StudentAttemptService {
 
@@ -38,10 +40,10 @@ public class StudentAttemptService {
     QuestionAssessmentSectionMappingRepository questionAssessmentSectionMappingRepository;
 
     @Autowired
-    MCQMMarkingStrategy mcqmMarkingStrategy;
+    MCQMQuestionTypeBasedStrategy mcqmMarkingStrategy;
 
     @Autowired
-    MCQSMarkingStrategy mcqsMarkingStrategy;
+    MCQSQuestionTypeBasedStrategy mcqsMarkingStrategy;
 
     @Autowired
     QuestionWiseMarksService questionWiseMarksService;
@@ -133,9 +135,6 @@ public class StudentAttemptService {
                 List<String> attemptedOptionIds = responseData != null ? responseData.getOptionIds() : new ArrayList<>();
                 String type = responseData != null ? responseData.getType() : "";
 
-                // Get time taken for the question in seconds
-                Long timeTakenInSeconds = question.getTimeTakenInSeconds();
-
                 // Retrieve the question mapping for the section and question ID
                 Optional<QuestionAssessmentSectionMapping> questionAssessmentSectionMapping =
                         questionAssessmentSectionMappingRepository.findByQuestionIdAndSectionId(questionId, sectionId);
@@ -152,26 +151,9 @@ public class StudentAttemptService {
                 // Get the specific response data for the question attempt
                 String questionWiseResponseData = getQuestionDetails(questionId, attemptData);
 
-
-                switch (type){
-                    case "MCQM" ->{
-                        IMarkingStrategy strategy = Markingfactory.getMarkingStrategy("MCQM");
-                        double marks = strategy.calculateMarks(markingScheme.getMarkingJson(), questionAsked.getAutoEvaluationJson(), attemptedOptionIds);
-                        questionWiseMarksService.updateQuestionWiseMarksForEveryQuestion(assessment, studentAttemptOptional.get(),questionAsked,questionWiseResponseData, timeTakenInSeconds,marks);
-                        totalMarks+=marks;
-                    }
-
-                    case "MCQS" ->{
-                        IMarkingStrategy strategy = Markingfactory.getMarkingStrategy("MCQS");
-                        double marks = strategy.calculateMarks(markingScheme.getMarkingJson(), questionAsked.getAutoEvaluationJson(), attemptedOptionIds);
-                        questionWiseMarksService.updateQuestionWiseMarksForEveryQuestion(assessment, studentAttemptOptional.get(),questionAsked,questionWiseResponseData, timeTakenInSeconds,marks);
-                        totalMarks+=marks;
-                    }
-                    default ->{
-                        double marks = 0;
-                        questionWiseMarksService.updateQuestionWiseMarksForEveryQuestion(assessment, studentAttemptOptional.get(),questionAsked,questionWiseResponseData, timeTakenInSeconds,marks);
-                    }
-                }
+                double marksObtained = QuestionBasedStrategyFactory.calculateMarks(markingScheme.getMarkingJson(), questionAsked.getAutoEvaluationJson(), questionWiseResponseData, type);
+                totalMarks+=marksObtained;
+                questionWiseMarksService.updateQuestionWiseMarksForEveryQuestion(assessment, studentAttempt, questionAsked,questionWiseResponseData, question.getTimeTakenInSeconds(), marksObtained);
 
             }
         }
@@ -200,7 +182,7 @@ public class StudentAttemptService {
                 // Iterate over the questions in the current section
                 for (JsonNode question : questions) {
                     // Compare question_id to find the correct question
-                    if (question.path("question_id").asText().equals(questionId)) {
+                    if (question.path("questionId").asText().equals(questionId)) {
                         return objectMapper.writeValueAsString(question); // Return question as JSON string
                     }
                 }

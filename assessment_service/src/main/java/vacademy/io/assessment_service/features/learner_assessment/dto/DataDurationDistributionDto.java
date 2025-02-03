@@ -14,7 +14,6 @@ import java.util.List;
 @Setter
 @AllArgsConstructor
 @NoArgsConstructor
-@JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class DataDurationDistributionDto {
 
     private DataDuration dataDuration;
@@ -23,7 +22,6 @@ public class DataDurationDistributionDto {
     @Setter
     @AllArgsConstructor
     @NoArgsConstructor
-    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public static class DataDuration {
         DataDurationModel assessmentDuration;
         private List<DataDurationModel> sectionsDuration;
@@ -35,7 +33,6 @@ public class DataDurationDistributionDto {
     @Setter
     @AllArgsConstructor
     @NoArgsConstructor
-    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public static class DataDurationModel {
         private String id;
         private int newMaxTimeInMins;

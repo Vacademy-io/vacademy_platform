@@ -5,9 +5,9 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.assessment_service.features.question_bank.dto.AddQuestionDTO;
 import vacademy.io.assessment_service.features.question_bank.dto.AddQuestionPaperDTO;
 import vacademy.io.assessment_service.features.question_bank.dto.AddedQuestionPaperResponseDto;
-import vacademy.io.assessment_service.features.question_bank.dto.UpdateQuestionPaperStatus;
 import vacademy.io.assessment_service.features.question_bank.manager.AddQuestionPaperFromImportManager;
 import vacademy.io.assessment_service.features.question_bank.manager.EditQuestionPaperManager;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -27,6 +27,24 @@ public class AddPublicQuestionPaperController {
     public ResponseEntity<AddedQuestionPaperResponseDto> addQuestionPaper(@RequestAttribute("user") CustomUserDetails user, @RequestBody AddQuestionPaperDTO questionRequestBody) {
         try {
             return ResponseEntity.ok(addQuestionPaperFromImportManager.addQuestionPaper(user, questionRequestBody, true));
+        } catch (JsonProcessingException e) {
+            throw new VacademyException(e.getMessage());
+        }
+    }
+
+    @PostMapping("/add-only-question")
+    public ResponseEntity<AddQuestionDTO> addPrivateQuestion(@RequestAttribute("user") CustomUserDetails user, @RequestBody AddQuestionDTO questionRequestBody) {
+        try {
+            return ResponseEntity.ok(addQuestionPaperFromImportManager.addPrivateQuestions(user, questionRequestBody, false));
+        } catch (JsonProcessingException e) {
+            throw new VacademyException(e.getMessage());
+        }
+    }
+
+    @PostMapping("public/add-only-question")
+    public ResponseEntity<AddQuestionDTO> addPublicQuestion(@RequestAttribute("user") CustomUserDetails user, @RequestBody AddQuestionDTO questionRequestBody) {
+        try {
+            return ResponseEntity.ok(addQuestionPaperFromImportManager.addPrivateQuestions(user, questionRequestBody, true));
         } catch (JsonProcessingException e) {
             throw new VacademyException(e.getMessage());
         }

@@ -100,14 +100,14 @@ public class StudyLibraryService {
         return sessionDTOWithDetails;
     }
 
-    public List<ModuleDTOWithDetails> getModulesDetailsWithChapters(String subjectId,String sessionId, CustomUserDetails user) {
+    public List<ModuleDTOWithDetails> getModulesDetailsWithChapters(String subjectId,String packageSessionId, CustomUserDetails user) {
         if (Objects.isNull(subjectId)){
             throw new VacademyException("Please provide subjectId");
         }
-       List<Module> modules = subjectModuleMappingRepository.findModulesBySubjectIdAndSessionId(subjectId,sessionId);
+       List<Module> modules = subjectModuleMappingRepository.findModulesBySubjectIdAndPackageSessionId(subjectId,packageSessionId);
        List<ModuleDTOWithDetails> moduleDTOWithDetails = new ArrayList<>();
        for (Module module: modules) {
-           List<Chapter> chapters = moduleChapterMappingRepository.findChaptersByModuleIdAndStatusNotDeleted(module.getId());
+           List<Chapter> chapters = moduleChapterMappingRepository.findChaptersByModuleIdAndStatusNotDeleted(module.getId(),packageSessionId);
            List<ChapterDTOWithDetail> chapterDTOS = chapters.stream().map(this::mapToChapterDTOWithDetail).toList();
            ModuleDTOWithDetails moduleDTOWithDetails1 = new ModuleDTOWithDetails(new ModuleDTO(module), chapterDTOS);
            moduleDTOWithDetails.add(moduleDTOWithDetails1);

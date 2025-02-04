@@ -15,12 +15,11 @@ public interface SubjectModuleMappingRepository extends JpaRepository<SubjectMod
             "JOIN smm.subject s " +
             "JOIN SubjectPackageSession sps ON sps.subject.id = s.id " +
             "JOIN sps.packageSession ps " +
-            "JOIN ps.session sess " +
-            "WHERE s.id = :subjectId " +
-            "AND sess.id = :sessionId " +
+            "WHERE sps.subject.id = :subjectId " +
+            "AND ps.id = :packageSessionId " +
             "AND smm.module.status != 'DELETED' " +
             "ORDER BY smm.moduleOrder ASC NULLS LAST")
-    List<Module> findModulesBySubjectIdAndSessionId(String subjectId, String sessionId);
+    List<Module> findModulesBySubjectIdAndPackageSessionId(String subjectId, String packageSessionId);
 
 
     @Query("SELECT smm FROM SubjectModuleMapping smm WHERE smm.subject.id IN :subjectIds AND smm.module.id IN :moduleIds")

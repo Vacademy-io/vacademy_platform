@@ -62,7 +62,7 @@ public class SubjectService {
             try {
                 PackageSession packageSession = packageSessionRepository.findById(packageSessionId)
                         .orElseThrow(() -> new VacademyException("Package Session not found"));
-                subjectPackageSessionRepository.save(new SubjectPackageSession(savedSubject, packageSession));
+                subjectPackageSessionRepository.save(new SubjectPackageSession(savedSubject, packageSession,subjectDTO.getSubjectOrder()));
                 // Create and save the relationship between the subject and the package session.
             } catch (Exception e) {
                 log.error("Error adding subject: {}", e.getMessage());

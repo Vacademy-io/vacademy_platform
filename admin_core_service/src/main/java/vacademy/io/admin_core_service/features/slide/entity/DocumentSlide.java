@@ -19,7 +19,6 @@ import java.sql.Timestamp;
 public class DocumentSlide {
 
     @Id
-    @UuidGenerator
     @Column(name = "id")
     private String id;
 
@@ -48,5 +47,6 @@ public class DocumentSlide {
         this.data = documentSlideDTO.getData();
         this.title = documentSlideDTO.getTitle();
         this.coverFileId =documentSlideDTO.getCoverFileId();
+        this.id = documentSlideDTO.getId();
     }
 }

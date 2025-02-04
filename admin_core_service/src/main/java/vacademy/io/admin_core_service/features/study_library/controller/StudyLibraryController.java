@@ -24,7 +24,7 @@ public class StudyLibraryController {
     }
 
     @GetMapping("/modules-with-chapters")
-    public ResponseEntity<List<ModuleDTOWithDetails>> modulesWithChapters(@RequestParam("subjectId") String subjectId,@RequestParam("sessionId")String sessionId, @RequestAttribute("user") CustomUserDetails user) {
-        return ResponseEntity.ok(studyLibraryService.getModulesDetailsWithChapters(subjectId,sessionId, user));
+    public ResponseEntity<List<ModuleDTOWithDetails>> modulesWithChapters(@RequestParam("subjectId") String subjectId,@RequestParam("packageSessionId") String packageSessionId, @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(studyLibraryService.getModulesDetailsWithChapters(subjectId,packageSessionId, user));
     }
 }

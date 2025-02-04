@@ -20,7 +20,6 @@ import java.sql.Timestamp;
 public class Slide {
 
     @Id
-    @UuidGenerator
     @Column(name = "id")
     private String id;
 
@@ -55,6 +54,7 @@ public class Slide {
         this.imageFileId = addDocumentSlideDTO.getImageFileId();
         this.description = addDocumentSlideDTO.getDescription();
         this.status = status;
+        this.id = addDocumentSlideDTO.getId();
     }
 
     public Slide(AddVideoSlideDTO addVideoSlideDTO, String sourceId, String sourceType,String status) {
@@ -64,6 +64,9 @@ public class Slide {
         this.imageFileId = addVideoSlideDTO.getImageFileId();
         this.description = addVideoSlideDTO.getDescription();
         this.status = status;
+        this.id = addVideoSlideDTO.getId();
     }
+
+    public Slide() {}
 
 }

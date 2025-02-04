@@ -2,7 +2,6 @@ package vacademy.io.assessment_service.features.learner_assessment.manager;
 
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -16,10 +15,11 @@ import vacademy.io.assessment_service.features.learner_assessment.dto.DataDurati
 import vacademy.io.assessment_service.features.learner_assessment.dto.response.BasicLevelAnnouncementDto;
 import vacademy.io.assessment_service.features.learner_assessment.dto.status_json.LearnerAssessmentAttemptDataDto;
 import vacademy.io.assessment_service.features.learner_assessment.dto.response.LearnerUpdateStatusResponse;
-import vacademy.io.assessment_service.features.learner_assessment.entity.AssessmentAnnouncement;
+import vacademy.io.assessment_service.features.annoucement.entity.AssessmentAnnouncement;
 import vacademy.io.assessment_service.features.learner_assessment.enums.AssessmentAttemptEnum;
 import vacademy.io.assessment_service.features.learner_assessment.enums.AssessmentAttemptResultEnum;
 import vacademy.io.assessment_service.features.learner_assessment.service.AnnouncementService;
+import vacademy.io.assessment_service.features.annoucement.service.AnnouncementService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 

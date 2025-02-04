@@ -58,7 +58,7 @@ public class Assessment {
     @Column(name = "preview_time")
     private Integer previewTime;
 
-    @Column(name = "duration_distribution", nullable = false)
+    @Column(name = "duration_distribution")
     private String durationDistribution;
 
     @Column(name = "can_switch_section", nullable = false)

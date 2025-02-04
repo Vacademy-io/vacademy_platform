@@ -23,4 +23,13 @@ public class StudentAssessmentStatusController {
         return learnerAssessmentAttemptStatusManager.updateLearnerStatus(user, assessmentId, attemptId, jsonContent);
 
     }
+
+    @PostMapping("/submit")
+    public ResponseEntity<String> submitStatus(@RequestAttribute("user") CustomUserDetails user,
+                                                                    @RequestParam(name = "assessmentId") String assessmentId,
+                                                                    @RequestParam(name = "attemptId") String attemptId,
+                                                                    @RequestParam(name = "jsonContent") String jsonContent){
+        return learnerAssessmentAttemptStatusManager.submitAssessment(user, assessmentId, attemptId, jsonContent);
+
+    }
 }

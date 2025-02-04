@@ -19,7 +19,6 @@ import java.sql.Timestamp;
 public class VideoSlide {
 
     @Id
-    @UuidGenerator
     @Column(name = "id", nullable = false)
     private String id;
 
@@ -42,6 +41,7 @@ public class VideoSlide {
         this.description = addVideoSlideDTO.getDescription();
         this.title = addVideoSlideDTO.getTitle();
         this.url = addVideoSlideDTO.getUrl();
+        this.id = addVideoSlideDTO.getId();
     }
     public VideoSlide() {}
 }

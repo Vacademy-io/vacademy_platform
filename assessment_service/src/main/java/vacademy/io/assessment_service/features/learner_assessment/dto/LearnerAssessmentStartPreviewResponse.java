@@ -6,6 +6,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import vacademy.io.assessment_service.features.assessment.dto.AssessmentQuestionPreviewDto;
+import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.SectionDto;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -18,7 +19,7 @@ import java.util.Map;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class LearnerAssessmentStartPreviewResponse {
     private Integer previewTotalTime;
-    private List<AssessmentQuestionPreviewDto> questionPreviewDtoList = new ArrayList<>();
+    private List<SectionDto> sectionDtos = new ArrayList<>();
     private String attemptId;
     private String assessmentUserRegistrationId;
 }

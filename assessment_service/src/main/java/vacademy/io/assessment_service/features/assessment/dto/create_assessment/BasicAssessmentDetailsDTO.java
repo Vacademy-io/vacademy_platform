@@ -16,7 +16,6 @@ public class BasicAssessmentDetailsDTO {
     private String status;
     private TestCreation testCreation;
     private LiveDateRange testBoundation;
-    private TestDuration testDuration;
     private Integer assessmentPreviewTime;
     private Boolean switchSections;
     private String submissionType;
@@ -24,7 +23,7 @@ public class BasicAssessmentDetailsDTO {
     private Boolean raiseReattemptRequest;
     private Boolean raiseTimeIncreaseRequest;
     private Boolean hasOmrMode;
-    private Integer defaultReattemptCount;
+    private Integer defaultReattemptCount = 1;
     private String source;
     private String sourceId;
     @Data
@@ -48,14 +47,5 @@ public class BasicAssessmentDetailsDTO {
         private String endDate;
     }
 
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public static class TestDuration {
-        private Integer entireTestDuration;
-        private String distributionDuration;
-    }
 
 }

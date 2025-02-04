@@ -5,10 +5,13 @@ import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import vacademy.io.assessment_service.features.assessment.dto.AssessmentQuestionPreviewDto;
 import vacademy.io.assessment_service.features.assessment.entity.Section;
 import vacademy.io.assessment_service.features.rich_text.dto.AssessmentRichTextDataDTO;
 
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 
 @Data
 @AllArgsConstructor
@@ -27,6 +30,7 @@ public class SectionDto {
     private String status;
     private Date createdAt;
     private Date updatedAt;
+    private List<AssessmentQuestionPreviewDto> questionPreviewDtoList = new ArrayList<>();
 
     public SectionDto(Section section) {
         this.id = section.getId();
@@ -41,5 +45,9 @@ public class SectionDto {
         this.status = section.getStatus();
         this.createdAt = section.getCreatedAt();
         this.updatedAt = section.getUpdatedAt();
+    }
+
+    public void fillQuestions(List<AssessmentQuestionPreviewDto> questionPreviewDtoList) {
+        this.questionPreviewDtoList = questionPreviewDtoList;
     }
 }

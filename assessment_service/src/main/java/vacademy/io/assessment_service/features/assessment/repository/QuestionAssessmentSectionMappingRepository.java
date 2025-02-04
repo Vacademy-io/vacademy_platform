@@ -4,6 +4,7 @@ import jakarta.transaction.Transactional;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.CrudRepository;
+import org.springframework.data.repository.query.Param;
 import vacademy.io.assessment_service.features.assessment.entity.QuestionAssessmentSectionMapping;
 
 import java.util.List;
@@ -31,5 +32,11 @@ public interface QuestionAssessmentSectionMappingRepository extends CrudReposito
             "WHERE s.assessment_id = ?1 and s.status != 'DELETED' ", nativeQuery = true)
     List<QuestionAssessmentSectionMapping> getQuestionAssessmentSectionMappingByAssessmentId(String assessmentId);
 
-    Optional<QuestionAssessmentSectionMapping> findByQuestionIdAndSectionId(String questionId, String sectionId);
+    @Query(value = """
+            SELECT qasm.* FROM question_assessment_section_mapping qasm
+            WHERE qasm.question_id = :questionId
+            AND qasm.section_id = :sectionId ORDER BY qasm.created_at DESC LIMIT 1
+            """, nativeQuery = true)
+    Optional<QuestionAssessmentSectionMapping> findByQuestionIdAndSectionId(@Param("questionId") String questionId,
+                                                                            @Param("sectionId") String sectionId);
 }

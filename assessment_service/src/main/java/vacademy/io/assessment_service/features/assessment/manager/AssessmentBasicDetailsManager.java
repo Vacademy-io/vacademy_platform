@@ -71,7 +71,6 @@ public class AssessmentBasicDetailsManager {
         Optional.ofNullable(basicAssessmentDetailsDTO.getRaiseTimeIncreaseRequest()).ifPresent(assessment::setCanRequestTimeIncrease);
         addOrUpdateTestCreationData(assessment, null, basicAssessmentDetailsDTO.getTestCreation());
         addOrUpdateBoundationData(assessment, null, basicAssessmentDetailsDTO.getTestBoundation());
-        addOrUpdateTestDurationData(assessment, null, basicAssessmentDetailsDTO.getTestDuration());
 
         assessment = assessmentRepository.save(assessment);
         return ResponseEntity.ok(new AssessmentSaveResponseDto(assessment.getId(), AssessmentStatus.DRAFT.name()));
@@ -105,7 +104,6 @@ public class AssessmentBasicDetailsManager {
         Optional.ofNullable(basicAssessmentDetailsDTO.getRaiseTimeIncreaseRequest()).ifPresent(assessment::setCanRequestTimeIncrease);
         addOrUpdateTestCreationData(assessment, assessmentInstituteMapping, basicAssessmentDetailsDTO.getTestCreation());
         addOrUpdateBoundationData(assessment, assessmentInstituteMapping, basicAssessmentDetailsDTO.getTestBoundation());
-        addOrUpdateTestDurationData(assessment, assessmentInstituteMapping, basicAssessmentDetailsDTO.getTestDuration());
 
         assessment = assessmentRepository.save(assessment);
         assessmentInstituteMapping.setAssessment(assessment);
@@ -124,12 +122,7 @@ public class AssessmentBasicDetailsManager {
         }
     }
 
-    private void addOrUpdateTestDurationData(Assessment assessment, AssessmentInstituteMapping assessmentInstituteMapping, BasicAssessmentDetailsDTO.TestDuration testDuration) {
-        if (!ObjectUtils.isEmpty(testDuration)) {
-            Optional.ofNullable(testDuration.getEntireTestDuration()).ifPresent(assessment::setDuration);
-            Optional.ofNullable(testDuration.getDistributionDuration()).ifPresent(assessment::setDurationDistribution);
-        }
-    }
+
 
     private void addOrUpdateBoundationData(Assessment assessment, AssessmentInstituteMapping assessmentInstituteMapping, BasicAssessmentDetailsDTO.LiveDateRange boundationData) {
         if (!ObjectUtils.isEmpty(boundationData)) {

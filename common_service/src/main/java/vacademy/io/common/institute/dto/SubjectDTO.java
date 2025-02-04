@@ -31,6 +31,8 @@ public class SubjectDTO {
 
     private Date updatedAt;
 
+    private Integer subjectOrder;
+
     public SubjectDTO(Subject subject) {
 
         this.id = subject.getId();

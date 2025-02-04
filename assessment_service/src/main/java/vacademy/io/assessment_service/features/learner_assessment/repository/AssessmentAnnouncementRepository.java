@@ -4,9 +4,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
-import vacademy.io.assessment_service.features.learner_assessment.entity.AssessmentAnnouncement;
+import vacademy.io.assessment_service.features.annoucement.entity.AssessmentAnnouncement;
 
-import java.time.Instant;
 import java.util.Date;
 import java.util.List;
 

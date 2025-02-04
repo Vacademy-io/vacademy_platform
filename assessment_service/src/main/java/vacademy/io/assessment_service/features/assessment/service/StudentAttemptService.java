@@ -19,6 +19,7 @@ import vacademy.io.assessment_service.features.learner_assessment.constants.Atte
 import vacademy.io.assessment_service.features.learner_assessment.dto.status_json.LearnerAssessmentAttemptDataDto;
 import vacademy.io.assessment_service.features.learner_assessment.dto.status_json.QuestionAttemptData;
 import vacademy.io.assessment_service.features.learner_assessment.dto.status_json.SectionAttemptData;
+import vacademy.io.assessment_service.features.learner_assessment.enums.AssessmentAttemptResultEnum;
 import vacademy.io.assessment_service.features.learner_assessment.service.QuestionWiseMarksService;
 import vacademy.io.assessment_service.features.question_core.entity.Question;
 import vacademy.io.assessment_service.features.question_core.repository.QuestionRepository;
@@ -61,6 +62,31 @@ public class StudentAttemptService {
     @Async
     public CompletableFuture<StudentAttempt> updateStudentAttemptWithTotalAfterMarksCalculationAsync(Optional<StudentAttempt> studentAttemptOptional){
         return CompletableFuture.completedFuture(updateStudentAttemptWithTotalAfterMarksCalculation(studentAttemptOptional));
+    }
+
+    @Async
+    public CompletableFuture<StudentAttempt> updateStudentAttemptResultAfterMarksCalculationAsync(Optional<StudentAttempt> studentAttemptOptional){
+        return CompletableFuture.completedFuture(updateStudentAttemptWithResultAfterMarksCalculation(studentAttemptOptional));
+    }
+
+    public StudentAttempt updateStudentAttemptWithResultAfterMarksCalculation(Optional<StudentAttempt> studentAttemptOptional){
+        if(studentAttemptOptional.isEmpty()) throw new VacademyException("Student Attempt Not Found");
+
+        String attemptData = studentAttemptOptional.get().getAttemptData();
+        LearnerAssessmentAttemptDataDto attemptDataObject = validateAndCreateJsonObject(attemptData);
+
+        Long timeElapsedInSeconds = attemptDataObject.getAssessment().getTimeElapsedInSeconds();
+
+        double totalMarks = calculateTotalMarksForAttemptAndUpdateQuestionWiseMarks(studentAttemptOptional, attemptDataObject);
+
+        StudentAttempt attempt = studentAttemptOptional.get();
+
+        attempt.setTotalMarks(totalMarks);
+        attempt.setTotalTimeInSeconds(timeElapsedInSeconds);
+        attempt.setResultMarks(totalMarks);
+        attempt.setResultStatus(AssessmentAttemptResultEnum.COMPLETED.name());
+
+        return studentAttemptRepository.save(attempt);
     }
 
 

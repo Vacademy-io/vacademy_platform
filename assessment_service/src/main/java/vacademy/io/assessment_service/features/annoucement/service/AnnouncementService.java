@@ -1,9 +1,9 @@
-package vacademy.io.assessment_service.features.learner_assessment.service;
+package vacademy.io.assessment_service.features.annoucement.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import vacademy.io.assessment_service.features.learner_assessment.dto.response.BasicLevelAnnouncementDto;
-import vacademy.io.assessment_service.features.learner_assessment.entity.AssessmentAnnouncement;
+import vacademy.io.assessment_service.features.annoucement.entity.AssessmentAnnouncement;
 import vacademy.io.assessment_service.features.learner_assessment.repository.AssessmentAnnouncementRepository;
 
 import java.time.Duration;

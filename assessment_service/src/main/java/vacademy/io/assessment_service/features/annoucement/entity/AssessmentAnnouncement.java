@@ -1,4 +1,4 @@
-package vacademy.io.assessment_service.features.learner_assessment.entity;
+package vacademy.io.assessment_service.features.annoucement.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;

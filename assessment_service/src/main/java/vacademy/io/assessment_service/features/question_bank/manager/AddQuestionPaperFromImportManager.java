@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.assessment_service.features.evaluation.service.QuestionEvaluationService;
+import vacademy.io.assessment_service.features.question_bank.dto.AddQuestionDTO;
 import vacademy.io.assessment_service.features.question_bank.dto.AddQuestionPaperDTO;
 import vacademy.io.assessment_service.features.question_bank.dto.AddedQuestionPaperResponseDto;
 import vacademy.io.assessment_service.features.question_bank.entity.QuestionPaper;
@@ -49,7 +50,7 @@ public class AddQuestionPaperFromImportManager {
         questionPaper.setTitle(questionRequestBody.getTitle());
         questionPaper.setCreatedByUserId(user.getUserId());
 
-        if(isPublicPaper)
+        if (isPublicPaper)
             questionPaper.setAccess(QuestionAccessLevel.PUBLIC.name());
         else
             questionPaper.setAccess(QuestionAccessLevel.PRIVATE.name());
@@ -59,7 +60,7 @@ public class AddQuestionPaperFromImportManager {
         List<Question> questions = new ArrayList<>();
         List<Option> options = new ArrayList<>();
         for (int i = 0; i < questionRequestBody.getQuestions().size(); i++) {
-            Question question = makeQuestionAndOptionFromImportQuestion(questionRequestBody.getQuestions().get(i));
+            Question question = makeQuestionAndOptionFromImportQuestion(questionRequestBody.getQuestions().get(i), isPublicPaper);
             questions.add(question);
             options.addAll(question.getOptions());
         }
@@ -78,7 +79,7 @@ public class AddQuestionPaperFromImportManager {
 
     }
 
-    private Question makeQuestionAndOptionFromImportQuestion(QuestionDTO questionRequest) throws JsonProcessingException {
+    private Question makeQuestionAndOptionFromImportQuestion(QuestionDTO questionRequest, Boolean isPublic) throws JsonProcessingException {
         // Todo: check Question Validation
 
         Question question = new Question();
@@ -109,7 +110,8 @@ public class AddQuestionPaperFromImportManager {
 
         question.setAutoEvaluationJson(questionEvaluationService.setEvaluationJson(mcqEvaluation));
         question.setQuestionResponseType(QuestionResponseTypes.OPTION.name());
-        question.setAccessLevel(QuestionAccessLevel.PRIVATE.name());
+        if (isPublic) question.setAccessLevel(QuestionAccessLevel.PUBLIC.name());
+        else question.setAccessLevel(QuestionAccessLevel.PRIVATE.name());
         question.setQuestionType((options.size() > 1) ? QuestionTypes.MCQM.name() : QuestionTypes.MCQS.name());
         question.setEvaluationType(EvaluationTypes.AUTO.name());
         return question;
@@ -124,5 +126,20 @@ public class AddQuestionPaperFromImportManager {
         return true;
         // todo : edit question paper
 
+    }
+
+    public AddQuestionDTO addPrivateQuestions(CustomUserDetails user, AddQuestionDTO questionRequestBody, boolean isPublicQuestion) throws JsonProcessingException {
+
+        List<Option> options = new ArrayList<>();
+        for (int i = 0; i < questionRequestBody.getQuestions().size(); i++) {
+            Question question = makeQuestionAndOptionFromImportQuestion(questionRequestBody.getQuestions().get(i), isPublicQuestion);
+            options.addAll(question.getOptions());
+            question = questionRepository.save(question);
+            questionRequestBody.getQuestions().get(i).setId(question.getId());
+            options = optionRepository.saveAll(options);
+            options.clear();
+        }
+
+        return questionRequestBody;
     }
 }

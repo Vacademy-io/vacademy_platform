@@ -10,6 +10,7 @@ import vacademy.io.assessment_service.features.assessment.enums.DurationDistribu
 import vacademy.io.assessment_service.features.assessment.enums.StepStatus;
 import vacademy.io.assessment_service.features.assessment.enums.creationSteps.AccessControlEnum;
 import vacademy.io.assessment_service.features.assessment.enums.creationSteps.AssessmentCreationEnum;
+import vacademy.io.assessment_service.features.assessment.enums.creationSteps.QuestionCreationEnum;
 import vacademy.io.assessment_service.features.assessment.service.IStep;
 import vacademy.io.assessment_service.features.assessment.service.StepOption;
 
@@ -76,7 +77,7 @@ public class AssessmentAccessDetail extends IStep {
         }
 
         this.getFieldOptions().put(AccessControlEnum.ROLES.name().toLowerCase(), (List.of("ADMIN", "CREATOR", "EVALUATOR")).stream().map((option) ->
-                new StepOption(AssessmentCreationEnum.DURATION_DISTRIBUTION.name().toLowerCase(), option, null, false)
+                new StepOption(QuestionCreationEnum.DURATION_DISTRIBUTION.name().toLowerCase(), option, null, false)
         ).toList());
 
     }

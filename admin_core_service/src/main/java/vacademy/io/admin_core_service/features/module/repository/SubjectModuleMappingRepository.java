@@ -12,10 +12,16 @@ import java.util.List;
 @Repository
 public interface SubjectModuleMappingRepository extends JpaRepository<SubjectModuleMapping,String> {
     @Query("SELECT smm.module FROM SubjectModuleMapping smm " +
-            "WHERE smm.subject.id = :subjectId " +
+            "JOIN smm.subject s " +
+            "JOIN SubjectPackageSession sps ON sps.subject.id = s.id " +
+            "JOIN sps.packageSession ps " +
+            "JOIN ps.session sess " +
+            "WHERE s.id = :subjectId " +
+            "AND sess.id = :sessionId " +
             "AND smm.module.status != 'DELETED' " +
             "ORDER BY smm.moduleOrder ASC NULLS LAST")
-    List<Module> findModulesBySubjectIdAndStatusNotDeleted(String subjectId);
+    List<Module> findModulesBySubjectIdAndSessionId(String subjectId, String sessionId);
+
 
     @Query("SELECT smm FROM SubjectModuleMapping smm WHERE smm.subject.id IN :subjectIds AND smm.module.id IN :moduleIds")
     List<SubjectModuleMapping> findAllBySubjectIdInAndModuleIdIn(@Param("subjectIds") List<String> subjectIds, @Param("moduleIds") List<String> moduleIds);

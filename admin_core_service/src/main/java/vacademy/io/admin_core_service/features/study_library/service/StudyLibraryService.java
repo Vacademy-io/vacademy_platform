@@ -100,11 +100,11 @@ public class StudyLibraryService {
         return sessionDTOWithDetails;
     }
 
-    public List<ModuleDTOWithDetails> getModulesDetailsWithChapters(String subjectId, CustomUserDetails user) {
+    public List<ModuleDTOWithDetails> getModulesDetailsWithChapters(String subjectId,String sessionId, CustomUserDetails user) {
         if (Objects.isNull(subjectId)){
             throw new VacademyException("Please provide subjectId");
         }
-       List<Module> modules = subjectModuleMappingRepository.findModulesBySubjectIdAndStatusNotDeleted(subjectId);
+       List<Module> modules = subjectModuleMappingRepository.findModulesBySubjectIdAndSessionId(subjectId,sessionId);
        List<ModuleDTOWithDetails> moduleDTOWithDetails = new ArrayList<>();
        for (Module module: modules) {
            List<Chapter> chapters = moduleChapterMappingRepository.findChaptersByModuleIdAndStatusNotDeleted(module.getId());

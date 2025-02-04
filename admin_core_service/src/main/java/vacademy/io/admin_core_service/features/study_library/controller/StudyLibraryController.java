@@ -23,8 +23,8 @@ public class StudyLibraryController {
         return ResponseEntity.ok(studyLibraryService.getStudyLibraryInitDetails(instituteId));
     }
 
-    @GetMapping("/modules-with-chapters/{subjectId}")
-    public ResponseEntity<List<ModuleDTOWithDetails>> modulesWithChapters(@PathVariable("subjectId") String subjectId, @RequestAttribute("user") CustomUserDetails user) {
-        return ResponseEntity.ok(studyLibraryService.getModulesDetailsWithChapters(subjectId, user));
+    @GetMapping("/modules-with-chapters")
+    public ResponseEntity<List<ModuleDTOWithDetails>> modulesWithChapters(@RequestParam("subjectId") String subjectId,@RequestParam("sessionId")String sessionId, @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(studyLibraryService.getModulesDetailsWithChapters(subjectId,sessionId, user));
     }
 }

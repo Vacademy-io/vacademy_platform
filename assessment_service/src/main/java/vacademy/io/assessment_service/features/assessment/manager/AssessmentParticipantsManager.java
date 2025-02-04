@@ -1,13 +1,17 @@
 package vacademy.io.assessment_service.features.assessment.manager;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.ObjectUtils;
-import vacademy.io.assessment_service.features.assessment.dto.AssessmentSaveResponseDto;
-import vacademy.io.assessment_service.features.assessment.dto.RegistrationFieldDto;
-import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.AssessmentAdminListInitDto;
+import org.springframework.util.StringUtils;
+import vacademy.io.assessment_service.features.assessment.dto.*;
 import vacademy.io.assessment_service.features.assessment.dto.create_assessment.AssessmentRegistrationsDto;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentBatchRegistration;
@@ -26,13 +30,12 @@ import vacademy.io.common.core.utils.DateUtil;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.student.dto.BasicParticipantDTO;
 
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
+import java.util.stream.Collectors;
 
 import static vacademy.io.common.auth.enums.CompanyStatus.ACTIVE;
 
+@Slf4j
 @Component
 public class AssessmentParticipantsManager {
     @Autowired
@@ -193,8 +196,65 @@ public class AssessmentParticipantsManager {
         return ResponseEntity.ok(assessmentUserRegistrations);
     }
 
-    public ResponseEntity<String> getAllParticipantsForClosedAssessment(CustomUserDetails user, String instituteId, String assessmentId) {
+    public ResponseEntity<ClosedAssessmentParticipantsResponse> getAllParticipantsForClosedAssessment(CustomUserDetails user, String instituteId, String assessmentId, AssessmentUserFilter filter, Integer pageNo, Integer pageSize) {
+        if(Objects.isNull(filter)) throw new VacademyException("Invalid Filter Request");
+        Sort sortingColumns = createSortObject(filter.getSortColumns());
 
-        return ResponseEntity.ok("Done");
+        Pageable pageable = PageRequest.of(pageNo, pageSize, sortingColumns);
+        Page<ParticipantsDetailsDto> registeredUserPage = null;
+
+        if(StringUtils.hasText(filter.getName())){
+            //TODO: Filter with Search
+            registeredUserPage = assessmentUserRegistrationRepository.findUserRegistrationWithFilterWithSearch(filter.getName(),assessmentId, instituteId, filter.getBatches(), filter.getStatus(),pageable);
+        }
+        if(Objects.isNull(registeredUserPage)){
+            //TODO: Only Filter
+            registeredUserPage= assessmentUserRegistrationRepository.findUserRegistrationWithFilter(assessmentId, instituteId, filter.getBatches(), filter.getStatus(),pageable);
+        }
+        return ResponseEntity.ok(createAllRegisteredUserForClosedTest(registeredUserPage));
     }
+
+    private ClosedAssessmentParticipantsResponse createAllRegisteredUserForClosedTest(Page<ParticipantsDetailsDto> registrationPage) {
+
+        List<ParticipantsDetailsDto> content = registrationPage.getContent();
+        return ClosedAssessmentParticipantsResponse.builder().content(content)
+                .pageNo(registrationPage.getNumber())
+                .pageSize(registrationPage.getSize())
+                .last(registrationPage.isLast())
+                .totalPages(registrationPage.getTotalPages())
+                .totalElements(registrationPage.getTotalElements()).build();
+    }
+
+    private Sort createSortObject(Map<String, String> sortColumns) {
+        if(sortColumns==null) return Sort.unsorted();
+
+        List<Sort.Order> orders = new ArrayList<>();
+
+        for (Map.Entry<String, String> entry : sortColumns.entrySet()) {
+            Sort.Direction direction = "DESC".equalsIgnoreCase(entry.getValue()) ? Sort.Direction.DESC : Sort.Direction.ASC;
+            orders.add(new Sort.Order(direction, entry.getKey()));
+        }
+        return Sort.by(orders);
+    }
+
+//    public List<ParticipantsDetailsDto> getParticipantsRegistrationsDto(Page<Object[]> results) {
+//        if (results == null || results.isEmpty()) {
+//            return Collections.emptyList();
+//        }
+//
+//        results.getContent().forEach(obj -> AssessmentParticipantsManager.log.info("Row Data: " + Arrays.toString(obj)));
+//
+//        return results.getContent().stream().map(obj -> ParticipantsDetailsDto.builder()
+//                .registrationId(obj[0] != null ? (String) obj[0] : null)
+//                .attemptId(obj[1] != null ? (String) obj[1] : null)
+//                .studentName(obj[2] != null ? (String) obj[2] : null)
+//                .attemptDate(obj[3] != null ? (Date) obj[3] : null)
+//                .endTime(obj[4] != null ? (Date) obj[4] : null)
+//                .duration(obj[5] != null ? ((Number) obj[5]).longValue() : 0L)
+//                .score(obj[6] != null ? ((Number) obj[6]).doubleValue() : 0.0)
+//                .userId(obj[7] != null ? (String) obj[7] : null)
+//                .build()).collect(Collectors.toList());
+//    }
+
+
 }

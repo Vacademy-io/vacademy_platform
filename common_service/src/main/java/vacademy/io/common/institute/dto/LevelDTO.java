@@ -27,6 +27,7 @@ public class LevelDTO {
         this.id = level.getId();
         this.levelName = level.getLevelName();
         this.durationInDays = level.getDurationInDays();
+        this.thumbnailId = level.getThumbnailFileId();
     }
 
     public LevelDTO(LevelProjection level) {

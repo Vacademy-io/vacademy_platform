@@ -18,7 +18,6 @@ import vacademy.io.assessment_service.features.learner_assessment.dto.response.L
 import vacademy.io.assessment_service.features.annoucement.entity.AssessmentAnnouncement;
 import vacademy.io.assessment_service.features.learner_assessment.enums.AssessmentAttemptEnum;
 import vacademy.io.assessment_service.features.learner_assessment.enums.AssessmentAttemptResultEnum;
-import vacademy.io.assessment_service.features.learner_assessment.service.AnnouncementService;
 import vacademy.io.assessment_service.features.annoucement.service.AnnouncementService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;

@@ -192,4 +192,9 @@ public class AssessmentParticipantsManager {
         List<AssessmentUserRegistration> assessmentUserRegistrations = assessmentOptional.get().getUserRegistrations().stream().toList();
         return ResponseEntity.ok(assessmentUserRegistrations);
     }
+
+    public ResponseEntity<String> getAllParticipantsForClosedAssessment(CustomUserDetails user, String instituteId, String assessmentId) {
+
+        return ResponseEntity.ok("Done");
+    }
 }

@@ -30,4 +30,9 @@ public class AdminAssessmentGetParticipantsController {
         return assessmentParticipantsManager.assessmentAdminParticipants(user, instituteId, assessmentId);
     }
 
+    public ResponseEntity<String> closedAssessmentParticipants(@RequestAttribute("user") CustomUserDetails user,
+                                                               @RequestParam(name = "instituteId", required = false) String instituteId, @RequestParam(name = "assessmentId", required = false) String assessmentId){
+        return assessmentParticipantsManager.getAllParticipantsForClosedAssessment(user, instituteId, assessmentId);
+    }
+
 }

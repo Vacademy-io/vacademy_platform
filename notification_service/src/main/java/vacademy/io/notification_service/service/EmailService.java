@@ -215,7 +215,7 @@ public class EmailService {
 
     public void sendEmailsToUsers(EmailToUsersDTO emailToUsersDTO) throws MessagingException {
         // Extract the map from DTO
-        Map<String, ArrayList<String>> userDataMap = emailToUsersDTO.getMap();
+        Map<String, ArrayList<String>> userDataMap = emailToUsersDTO.getUserNotifications();
         String bodyTemplate = emailToUsersDTO.getBody();
         String subject = emailToUsersDTO.getSubject();
 

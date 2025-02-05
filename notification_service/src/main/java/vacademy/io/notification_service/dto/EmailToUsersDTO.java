@@ -10,7 +10,7 @@ import java.util.Map;
 @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
 @Data
 public class EmailToUsersDTO {
-    private Map<String, ArrayList<String>>map;
+    private Map<String, ArrayList<String>> userNotifications;
     private String body;
     private String subject;
 }

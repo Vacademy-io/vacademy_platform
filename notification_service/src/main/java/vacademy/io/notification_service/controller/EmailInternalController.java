@@ -1,6 +1,5 @@
 package vacademy.io.notification_service.controller;
 
-import jakarta.mail.MessagingException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -8,9 +7,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import vacademy.io.common.notification.dto.GenericEmailRequest;
-import vacademy.io.notification_service.dto.EmailToUsersDTO;
+import vacademy.io.notification_service.dto.NotificationDTO;
 import vacademy.io.notification_service.features.email_otp.service.InviteNewUserService;
-import vacademy.io.notification_service.service.EmailService;
+import vacademy.io.notification_service.service.NotificationService;
 
 @RestController
 @RequestMapping("notification-service/internal/common/v1")
@@ -20,7 +19,7 @@ public class EmailInternalController {
     private InviteNewUserService inviteNewUserService;
 
     @Autowired
-    private EmailService emailService;
+    private NotificationService notificationService;
 
     @PostMapping("/send-html-email")
     public ResponseEntity<Boolean> sendEmail(@RequestBody GenericEmailRequest request) {
@@ -28,13 +27,8 @@ public class EmailInternalController {
     }
 
     @PostMapping("/send-email-to-users")
-    public ResponseEntity<String> sendEmailsToUsers(@RequestBody EmailToUsersDTO emailToUsersDTO) {
-        try {
-            emailService.sendEmailsToUsers(emailToUsersDTO);
-            return ResponseEntity.ok("Emails sent successfully!");
-        } catch (MessagingException e) {
-            return ResponseEntity.status(500).body("Error occurred while sending emails: " + e.getMessage());
-        }
+    public ResponseEntity<String> sendEmailsToUsers(@RequestBody NotificationDTO emailToUsersDTO) {
+       return ResponseEntity.ok(notificationService.sendNotification(emailToUsersDTO));
     }
 
 }

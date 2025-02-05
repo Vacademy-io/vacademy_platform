@@ -4,13 +4,12 @@ import com.fasterxml.jackson.databind.PropertyNamingStrategy;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.Data;
 
-import java.util.ArrayList;
 import java.util.Map;
 
 @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
 @Data
-public class EmailToUsersDTO {
-    private Map<String, ArrayList<String>> userNotifications;
-    private String body;
-    private String subject;
+public class NotificationToUserDTO {
+    private Map<String, String> placeholders;
+    private String channelId;
+    private String userId;
 }

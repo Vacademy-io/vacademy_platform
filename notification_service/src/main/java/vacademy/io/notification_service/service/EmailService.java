@@ -1,7 +1,6 @@
 package vacademy.io.notification_service.service;
 
 import jakarta.mail.Message;
-import jakarta.mail.MessagingException;
 import jakarta.mail.Session;
 import jakarta.mail.internet.InternetAddress;
 import jakarta.mail.internet.MimeBodyPart;
@@ -13,10 +12,7 @@ import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
-import vacademy.io.notification_service.dto.EmailToUsersDTO;
 
-import java.util.ArrayList;
-import java.util.Map;
 import java.util.Properties;
 
 @Service
@@ -210,28 +206,6 @@ public class EmailService {
         } catch (Exception e) {
             // Handle any other exceptions
             throw new RuntimeException("An error occurred while preparing the HTML email", e);
-        }
-    }
-
-    public void sendEmailsToUsers(EmailToUsersDTO emailToUsersDTO) throws MessagingException {
-        // Extract the map from DTO
-        Map<String, ArrayList<String>> userDataMap = emailToUsersDTO.getUserNotifications();
-        String bodyTemplate = emailToUsersDTO.getBody();
-        String subject = emailToUsersDTO.getSubject();
-
-        // Iterate through the map
-        for (Map.Entry<String, ArrayList<String>> entry : userDataMap.entrySet()) {
-            String userEmail = entry.getKey(); // Assuming the map's key is the user's email
-            ArrayList<String> placeholders = entry.getValue(); // Placeholder values for the email body
-
-            // Replace placeholders in the body with corresponding values
-            String emailBody = bodyTemplate;
-            for (int i = 0; i < placeholders.size(); i++) {
-                emailBody = emailBody.replaceFirst("%s", placeholders.get(i));
-            }
-
-            // Send the email with the replaced body
-            sendHtmlEmail(userEmail, subject, "service-name", emailBody);
         }
     }
 

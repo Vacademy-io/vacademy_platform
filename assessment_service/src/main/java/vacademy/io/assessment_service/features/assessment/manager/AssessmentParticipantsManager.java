@@ -33,7 +33,6 @@ import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.student.dto.BasicParticipantDTO;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 import static vacademy.io.common.auth.enums.CompanyStatus.ACTIVE;
 
@@ -207,11 +206,11 @@ public class AssessmentParticipantsManager {
 
         //Handle Case for BATCH REGISTRATION
         if(filter.getRegistrationSource().equals(UserRegistrationSources.BATCH_PREVIEW_REGISTRATION.name())){
-            registeredUserPage = handleCaseForBatchRegistration(assessmentId,instituteId,filter, registeredUserPage, pageable);
+            registeredUserPage = handleCaseForBatchRegistration(assessmentId,instituteId,filter, pageable);
         }
         //Handle Case for ADMIN PRE REGISTRATION
         else if(filter.getRegistrationSource().equals(UserRegistrationSources.ADMIN_PRE_REGISTRATION.name())){
-            registeredUserPage = handleCaseForAdminPreRegistration(assessmentId, instituteId, filter, registeredUserPage, pageable);
+            registeredUserPage = handleCaseForAdminPreRegistration(assessmentId, instituteId, filter, pageable);
         }
         else throw new VacademyException("Invalid Source Request");
 
@@ -227,8 +226,11 @@ public class AssessmentParticipantsManager {
             String assessmentId,
             String instituteId,
             AssessmentUserFilter filter,
-            Page<ParticipantsDetailsDto> registeredUserPage,
             Pageable pageable) {
+
+        Page<ParticipantsDetailsDto> registeredUserPage = null;
+
+
 
         // Check if the attempt type is "PENDING"
         if (isPendingAttempt(filter)) {
@@ -271,7 +273,8 @@ public class AssessmentParticipantsManager {
         return registeredUserPage;
     }
 
-    private Page<ParticipantsDetailsDto> handleCaseForBatchRegistration(String assessmentId, String instituteId, AssessmentUserFilter filter, Page<ParticipantsDetailsDto> registeredUserPage, Pageable pageable) {
+    private Page<ParticipantsDetailsDto> handleCaseForBatchRegistration(String assessmentId, String instituteId, AssessmentUserFilter filter, Pageable pageable) {
+        Page<ParticipantsDetailsDto> registeredUserPage = null;
         if(isPendingAttempt(filter)){
             //TODO: Send request to admin core to get pending list for batch
         }

@@ -1,10 +1,9 @@
-package vacademy.io.assessment_service.features.annoucement.entity;
+package vacademy.io.assessment_service.features.announcement.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Builder;
 import lombok.Data;
-import lombok.EqualsAndHashCode;
 import org.hibernate.annotations.UuidGenerator;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
@@ -28,7 +27,7 @@ public class AssessmentAnnouncement {
     @JsonIgnore
     private Assessment assessment;
 
-    @ManyToOne
+    @ManyToOne(cascade = CascadeType.ALL)
     @JoinColumn(name = "rich_text_id")
     @JsonIgnore
     private AssessmentRichTextData assessmentRichTextData;
@@ -40,6 +39,12 @@ public class AssessmentAnnouncement {
 
     @Column(name = "sent_time")
     private Date sentTime;
+
+    @Column(name = "institute_id")
+    private String instituteId;
+
+    @Column(name = "type")
+    private String type;
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;

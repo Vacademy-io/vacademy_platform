@@ -1,4 +1,4 @@
-package vacademy.io.assessment_service.features.learner_assessment.repository;
+package vacademy.io.assessment_service.features.announcement.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;

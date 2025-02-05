@@ -15,9 +15,9 @@ import vacademy.io.assessment_service.features.learner_assessment.dto.DataDurati
 import vacademy.io.assessment_service.features.learner_assessment.dto.response.BasicLevelAnnouncementDto;
 import vacademy.io.assessment_service.features.learner_assessment.dto.status_json.LearnerAssessmentAttemptDataDto;
 import vacademy.io.assessment_service.features.learner_assessment.dto.response.LearnerUpdateStatusResponse;
-import vacademy.io.assessment_service.features.annoucement.entity.AssessmentAnnouncement;
+import vacademy.io.assessment_service.features.announcement.entity.AssessmentAnnouncement;
 import vacademy.io.assessment_service.features.learner_assessment.enums.AssessmentAttemptEnum;
-import vacademy.io.assessment_service.features.annoucement.service.AnnouncementService;
+import vacademy.io.assessment_service.features.announcement.service.AnnouncementService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 

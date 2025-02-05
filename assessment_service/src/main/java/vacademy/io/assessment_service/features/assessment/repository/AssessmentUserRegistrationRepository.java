@@ -26,35 +26,37 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
     Optional<AssessmentUserRegistration> findTopByUserIdAndAssessmentId(@Param("userId") String userId, @Param("assessmentId") String assessmentId);
 
     @Query(value = """
-            select distinct on (aur.user_id) aur.id as registrationId,sa.id as attemptId, aur.participant_name as studentName, sa.start_time as attemptDate,sa.submit_time as endTime ,sa.total_time_in_seconds as duration, sa.result_marks as score, aur.user_id as userId  from assessment_user_registration aur
+            select aur.id as registrationId,sa.id as attemptId, aur.participant_name as studentName, sa.start_time as attemptDate,sa.submit_time as endTime ,sa.total_time_in_seconds as duration, sa.result_marks as score, aur.user_id as userId  from assessment_user_registration aur
             join student_attempt sa on sa.registration_id = aur.id
-            join assessment_batch_registration abr on abr.assessment_id = aur.assessment_id
             where aur.assessment_id = :assessmentId
             and aur.institute_id = :instituteId
-            AND (:status IS NULL OR sa.status IN (:status))
-            AND (:batchIds IS NULL OR abr.batch_id IN (:batchIds))
+            AND (:status IS NULL OR aur.status IN (:status))
+            AND (:batchIds IS NULL OR aur.source_id IN (:batchIds))
+            AND aur.source = 'BATCH_PREVIEW_REGISTRATION'
+            AND (:status IS NULL OR sa.status IN (:attemptType))
             """,
             countQuery = """
                     select count(distinct aur.user_id)
                     from assessment_user_registration aur
                     join student_attempt sa on sa.registration_id = aur.id
-                    join assessment_batch_registration abr on abr.assessment_id = aur.assessment_id
                     where aur.assessment_id = :assessmentId
                     and aur.institute_id = :instituteId
                     AND (:status IS NULL OR sa.status IN (:status))
-                    AND (:batchIds IS NULL OR abr.batch_id IN (:batchIds))
+                    AND (:batchIds IS NULL OR aur.source_id IN (:batchIds))
+                    AND aur.source = 'BATCH_PREVIEW_REGISTRATION'
+                    AND (:status IS NULL OR sa.status IN (:attemptType))
                     """,nativeQuery = true)
-    Page<ParticipantsDetailsDto> findUserRegistrationWithFilter(@Param("assessmentId") String assessmentId,
+    Page<ParticipantsDetailsDto> findUserRegistrationWithFilterForBatch(@Param("assessmentId") String assessmentId,
                                                                 @Param("instituteId") String instituteId,
                                                                 @Param("batchIds") List<String> batchIds,
                                                                 @Param("status") List<String> status,
+                                                                        @Param("attemptType") List<String> attemptType,
                                                                 Pageable pageable);
 
 
     @Query(value = """
-            select distinct on (aur.user_id) aur.id as registrationId,sa.id as attemptId, aur.participant_name as studentName, sa.start_time as attemptDate,sa.submit_time as endTime ,sa.total_time_in_seconds as duration, sa.result_marks as score, aur.user_id as userId  from assessment_user_registration aur
+            select aur.id as registrationId,sa.id as attemptId, aur.participant_name as studentName, sa.start_time as attemptDate,sa.submit_time as endTime ,sa.total_time_in_seconds as duration, sa.result_marks as score, aur.user_id as userId  from assessment_user_registration aur
             join student_attempt sa on sa.registration_id = aur.id
-            join assessment_batch_registration abr on abr.assessment_id = aur.assessment_id
             where aur.assessment_id = :assessmentId
             and aur.institute_id = :instituteId
             AND (
@@ -64,13 +66,14 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
             OR aur.participant_name LIKE :name || '%'
           )
             AND (:status IS NULL OR sa.status IN (:status))
-            AND (:batchIds IS NULL OR abr.batch_id IN (:batchIds))
+            AND (:batchIds IS NULL OR aur.source_id IN (:batchIds))
+            AND aur.source = 'BATCH_PREVIEW_REGISTRATION'
+            AND (:status IS NULL OR sa.status IN (:attemptType))
           """,
             countQuery = """
                     select count(distinct aur.user_id)
                     from assessment_user_registration aur
                     join student_attempt sa on sa.registration_id = aur.id
-                    join assessment_batch_registration abr on abr.assessment_id = aur.assessment_id
                     where aur.assessment_id = :assessmentId
                     and aur.institute_id = :instituteId
                     AND (
@@ -79,13 +82,148 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
                     )) @@ plainto_tsquery('simple', :name)
                     OR aur.participant_name LIKE :name || '%'
                    )
-                    AND (:status IS NULL OR sa.status IN (:status))
-                    AND (:batchIds IS NULL OR abr.batch_id IN (:batchIds))
-                    """,nativeQuery = true)
-    Page<ParticipantsDetailsDto> findUserRegistrationWithFilterWithSearch(@Param("name") String name,
+                    AND (:status IS NULL OR aur.status IN (:status))
+                    AND (:batchIds IS NULL OR aur.source_id IN (:batchIds))
+                    AND aur.source = 'BATCH_PREVIEW_REGISTRATION'
+                    AND (:status IS NULL OR sa.status IN (:attemptType))
+                   """,nativeQuery = true)
+    Page<ParticipantsDetailsDto> findUserRegistrationWithFilterWithSearchForBatch(@Param("name") String name,
                                                                           @Param("assessmentId") String assessmentId,
                                                                           @Param("instituteId") String instituteId,
                                                                           @Param("batchIds") List<String> batchIds,
                                                                           @Param("status") List<String> status,
+                                                                          @Param("attemptType") List<String> attemptType,
                                                                           Pageable pageable);
+
+
+    @Query(value = """
+            select aur.id as registrationId,sa.id as attemptId, aur.participant_name as studentName, sa.start_time as attemptDate,sa.submit_time as endTime ,sa.total_time_in_seconds as duration, sa.result_marks as score, aur.user_id as userId  from assessment_user_registration aur
+            join student_attempt sa on sa.registration_id = aur.id
+            where aur.assessment_id = :assessmentId
+            and aur.institute_id = :instituteId
+            AND (:status IS NULL OR aur.status IN (:status))
+            AND aur.source = :source
+            AND (:status IS NULL OR sa.status IN (:attemptType))
+            """,
+            countQuery = """
+                    select count(distinct aur.user_id)
+                    from assessment_user_registration aur
+                    join student_attempt sa on sa.registration_id = aur.id
+                    where aur.assessment_id = :assessmentId
+                    and aur.institute_id = :instituteId
+                    AND (:status IS NULL OR aur.status IN (:status))
+                    AND aur.source = :source
+                    AND (:status IS NULL OR sa.status IN (:attemptType))
+                    """,nativeQuery = true)
+    Page<ParticipantsDetailsDto> findUserRegistrationWithFilterForSource(@Param("assessmentId") String assessmentId,
+                                                                        @Param("instituteId") String instituteId,
+                                                                        @Param("status") List<String> status,
+                                                                                       @Param("attemptType") List<String> attemptType,
+                                                                        @Param("source") String source,
+                                                                        Pageable pageable);
+
+
+    @Query(value = """
+            select aur.id as registrationId,sa.id as attemptId, aur.participant_name as studentName, sa.start_time as attemptDate,sa.submit_time as endTime ,sa.total_time_in_seconds as duration, sa.result_marks as score, aur.user_id as userId  from assessment_user_registration aur
+            join student_attempt sa on sa.registration_id = aur.id
+            where aur.assessment_id = :assessmentId
+            and aur.institute_id = :instituteId
+            AND (
+            to_tsvector('simple', concat(
+              aur.participant_name
+            )) @@ plainto_tsquery('simple', :name)
+            OR aur.participant_name LIKE :name || '%'
+          )
+            AND (:status IS NULL OR aur.status IN (:status))
+            AND aur.source = :source
+            AND (:status IS NULL OR sa.status IN (:attemptType))
+          """,
+            countQuery = """
+                    select count(distinct aur.user_id)
+                    from assessment_user_registration aur
+                    join student_attempt sa on sa.registration_id = aur.id
+                    where aur.assessment_id = :assessmentId
+                    and aur.institute_id = :instituteId
+                    AND (
+                    to_tsvector('simple', concat(
+                    aur.participant_name
+                    )) @@ plainto_tsquery('simple', :name)
+                    OR aur.participant_name LIKE :name || '%'
+                   )
+                    AND (:status IS NULL OR aur.status IN (:status))
+                    AND aur.source = :source
+                    AND (:status IS NULL OR sa.status IN (:attemptType))
+                   """,nativeQuery = true)
+    Page<ParticipantsDetailsDto> findUserRegistrationWithFilterWithSearchForSource(@Param("name") String name,
+                                                                                  @Param("assessmentId") String assessmentId,
+                                                                                  @Param("instituteId") String instituteId,
+                                                                                  @Param("status") List<String> status,
+                                                                                                 @Param("attemptType") List<String> attemptType,
+                                                                                  @Param("source") String source,
+                                                                                  Pageable pageable);
+
+
+    @Query(value = """
+            select aur.id as registrationId,sa.id as attemptId, aur.participant_name as studentName, sa.start_time as attemptDate,sa.submit_time as endTime ,sa.total_time_in_seconds as duration, sa.result_marks as score, aur.user_id as userId
+            FROM assessment_user_registration aur
+            LEFT JOIN student_attempt sa ON aur.id = sa.registration_id
+            where aur.assessment_id = :assessmentId
+            and aur.institute_id = :instituteId
+            and sa.id IS NULL
+            AND aur.source = :source
+            AND (:status IS NULL OR aur.status IN (:status))
+            """,
+            countQuery = """
+                    select count(distinct aur.user_id)
+                    FROM assessment_user_registration aur
+            LEFT JOIN student_attempt sa ON aur.id = sa.registration_id
+            where aur.assessment_id = :assessmentId
+            and aur.institute_id = :instituteId
+            and sa.id IS NULL
+            AND aur.source = :source
+            AND (:status IS NULL OR aur.status IN (:status))
+            """,nativeQuery = true)
+    Page<ParticipantsDetailsDto> findUserRegistrationWithFilterAdminPreRegistrationAndPending(@Param("assessmentId") String assessmentId,
+                                                                                       @Param("instituteId") String instituteId,
+                                                                                       @Param("status") List<String> status,
+                                                                                       @Param("source") String source,
+                                                                                       Pageable pageable);
+
+
+    @Query(value = """
+            select aur.id as registrationId,sa.id as attemptId, aur.participant_name as studentName, sa.start_time as attemptDate,sa.submit_time as endTime ,sa.total_time_in_seconds as duration, sa.result_marks as score, aur.user_id as userId
+            FROM assessment_user_registration aur
+            LEFT JOIN student_attempt sa ON aur.id = sa.registration_id
+            where aur.assessment_id = :assessmentId
+            and aur.institute_id = :instituteId
+            AND (
+            to_tsvector('simple', concat(
+              aur.participant_name
+            )) @@ plainto_tsquery('simple', :name)
+            OR aur.participant_name LIKE :name || '%'
+          )
+            AND (:status IS NULL OR aur.status IN (:status))
+            AND aur.source = :source
+          """,
+            countQuery = """
+                    select count(distinct aur.user_id)
+                    FROM assessment_user_registration aur
+            LEFT JOIN student_attempt sa ON aur.id = sa.registration_id
+            where aur.assessment_id = :assessmentId
+            and aur.institute_id = :instituteId
+                    AND (
+                    to_tsvector('simple', concat(
+                    aur.participant_name
+                    )) @@ plainto_tsquery('simple', :name)
+                    OR aur.participant_name LIKE :name || '%'
+                   )
+                    AND (:status IS NULL OR aur.status IN (:status))
+                    AND aur.source = :source
+            """,nativeQuery = true)
+    Page<ParticipantsDetailsDto> findUserRegistrationWithFilterWithSearchForPreRegistrationAndPending(@Param("name") String name,
+                                                                                                 @Param("assessmentId") String assessmentId,
+                                                                                                 @Param("instituteId") String instituteId,
+                                                                                                 @Param("status") List<String> status,
+                                                                                                 @Param("source") String source,
+                                                                                                 Pageable pageable);
 }

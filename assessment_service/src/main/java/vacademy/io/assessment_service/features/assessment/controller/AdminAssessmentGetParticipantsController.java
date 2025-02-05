@@ -41,7 +41,7 @@ public class AdminAssessmentGetParticipantsController {
                                                                                              @RequestBody AssessmentUserFilter filter,
                                                                                              @RequestParam(name = "pageNo", required = false, defaultValue = DEFAULT_PAGE_NUMBER) Integer pageNo,
                                                                                              @RequestParam(name = "pageSize", required = false, defaultValue = DEFAULT_PAGE_SIZE) Integer pageSize){
-        return assessmentParticipantsManager.getAllParticipantsForClosedAssessment(user, instituteId, assessmentId, filter, pageNo, pageSize);
+        return assessmentParticipantsManager.getAllParticipantsForAssessment(user, instituteId, assessmentId, filter, pageNo, pageSize);
     }
 
 }

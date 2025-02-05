@@ -15,8 +15,10 @@ import java.util.Map;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class AssessmentUserFilter {
     private String name;
+    private String assessmentType;
+    private List<String> attemptType;
+    private String registrationSource;
     private List<String> batches;
-    private List<String> gender;
     private List<String> status;
     private Map<String, String> sortColumns;
 }

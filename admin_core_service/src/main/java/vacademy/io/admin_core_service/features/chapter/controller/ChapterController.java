@@ -39,7 +39,7 @@ public class ChapterController {
     }
 
     @PostMapping("/delete-chapters")
-    public ResponseEntity<String>deleteChapter(@RequestBody List<String> chapterIds, @RequestAttribute("user") CustomUserDetails user){
-        return ResponseEntity.ok(chapterService.deleteChapter(chapterIds, user));
+    public ResponseEntity<String>deleteChapter(@RequestBody List<String> chapterIds, @RequestParam("packageSessionIds")String packageSessionIds, @RequestAttribute("user") CustomUserDetails user){
+        return ResponseEntity.ok(chapterService.deleteChapter(chapterIds,packageSessionIds, user));
     }
 }

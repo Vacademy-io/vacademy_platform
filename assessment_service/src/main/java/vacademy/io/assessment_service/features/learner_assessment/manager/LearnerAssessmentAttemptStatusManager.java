@@ -11,12 +11,14 @@ import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
 import vacademy.io.assessment_service.features.assessment.enums.DurationDistributionEnum;
 import vacademy.io.assessment_service.features.assessment.repository.StudentAttemptRepository;
 import vacademy.io.assessment_service.features.assessment.service.StudentAttemptService;
+import vacademy.io.assessment_service.features.learner_assessment.dto.AssessmentAttemptUpdateRequest;
 import vacademy.io.assessment_service.features.learner_assessment.dto.DataDurationDistributionDto;
 import vacademy.io.assessment_service.features.learner_assessment.dto.response.BasicLevelAnnouncementDto;
 import vacademy.io.assessment_service.features.learner_assessment.dto.status_json.LearnerAssessmentAttemptDataDto;
 import vacademy.io.assessment_service.features.learner_assessment.dto.response.LearnerUpdateStatusResponse;
 import vacademy.io.assessment_service.features.announcement.entity.AssessmentAnnouncement;
 import vacademy.io.assessment_service.features.learner_assessment.enums.AssessmentAttemptEnum;
+import vacademy.io.assessment_service.features.learner_assessment.enums.AssessmentAttemptResultEnum;
 import vacademy.io.assessment_service.features.announcement.service.AnnouncementService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
@@ -47,12 +49,14 @@ public class LearnerAssessmentAttemptStatusManager {
      * @param user           the custom user details
      * @param assessmentId   the ID of the assessment
      * @param attemptId      the ID of the student attempt
-     * @param jsonContent    the JSON content with learner's assessment status
+     * @param request    the JSON content with learner's assessment status
      * @return               a ResponseEntity containing the update status response
      */
-    public ResponseEntity<LearnerUpdateStatusResponse> updateLearnerStatus(CustomUserDetails user, String assessmentId, String attemptId, String jsonContent) {
+    public ResponseEntity<LearnerUpdateStatusResponse> updateLearnerStatus(CustomUserDetails user, String assessmentId, String attemptId, AssessmentAttemptUpdateRequest request) {
         Optional<StudentAttempt> studentAttempt = studentAttemptRepository.findById(attemptId);
         if(studentAttempt.isEmpty()) throw new VacademyException("Student Attempt Not Found");
+
+        if(Objects.isNull(request) || Objects.isNull(request.getJsonContent())) throw new VacademyException("Invalid request");
 
         Assessment assessment = studentAttempt.get().getRegistration().getAssessment();
         if(!assessment.getId().equals(assessmentId)) throw new VacademyException("Student Not Linked with Assessment");
@@ -62,15 +66,15 @@ public class LearnerAssessmentAttemptStatusManager {
             throw new VacademyException("Currently Assessment is in preview");
 
         // Validate and create LearnerAssessmentStatusJson object
-        LearnerAssessmentAttemptDataDto assessmentStatusJson = studentAttemptService.validateAndCreateJsonObject(jsonContent);
+        LearnerAssessmentAttemptDataDto assessmentStatusJson = studentAttemptService.validateAndCreateJsonObject(request.getJsonContent());
         StudentAttempt attempt = new StudentAttempt();
 
         // Handle cases where the attempt status is either 'ENDED' or 'LIVE'
         if (AssessmentAttemptEnum.ENDED.name().equals(studentAttempt.get().getStatus()))
-            attempt = handleAttemptEndedStatus(studentAttempt, assessmentStatusJson, jsonContent);
+            attempt = handleAttemptEndedStatus(studentAttempt, assessmentStatusJson, request.getJsonContent());
 
         if (AssessmentAttemptEnum.LIVE.name().equals(studentAttempt.get().getStatus()))
-            attempt = handleAttemptLiveStatus(studentAttempt, assessmentStatusJson, jsonContent);
+            attempt = handleAttemptLiveStatus(studentAttempt, assessmentStatusJson, request.getJsonContent());
 
         try{
             // Update the student attempt asynchronously
@@ -217,4 +221,45 @@ public class LearnerAssessmentAttemptStatusManager {
 
         return durationResponses;
     }
+
+    public ResponseEntity<String> submitAssessment(CustomUserDetails user, String assessmentId, String attemptId, AssessmentAttemptUpdateRequest request) {
+        Optional<StudentAttempt> studentAttempt = studentAttemptRepository.findById(attemptId);
+        if(studentAttempt.isEmpty()) throw new VacademyException("Student Attempt Not Found");
+
+        if(Objects.isNull(request) || Objects.isNull(request.getJsonContent())) throw new VacademyException("Invalid request");
+
+        Assessment assessment = studentAttempt.get().getRegistration().getAssessment();
+        if(!assessment.getId().equals(assessmentId)) throw new VacademyException("Student Not Linked with Assessment");
+
+        // Check if the attempt status is preview
+        if (AssessmentAttemptEnum.PREVIEW.name().equals(studentAttempt.get().getStatus()))
+            throw new VacademyException("Currently Assessment is in preview");
+
+        StudentAttempt attempt = new StudentAttempt();
+
+        // Handle cases where the attempt status is either 'ENDED' or 'LIVE'
+        if (!AssessmentAttemptEnum.PREVIEW.name().equals(studentAttempt.get().getStatus()))
+            attempt = handleAttemptLiveOrEndedStatusWhenSubmit(studentAttempt, request.getJsonContent());
+
+        try{
+            // Update the student attempt asynchronously
+            studentAttemptService.updateStudentAttemptResultAfterMarksCalculationAsync(Optional.of(attempt));
+        }
+        catch (Exception e){
+            log.error("[RESULT ERROR] Failed To Update Result Marks:: {}", e.getMessage());
+        }
+        return ResponseEntity.ok("Done");
+    }
+
+    private StudentAttempt handleAttemptLiveOrEndedStatusWhenSubmit(Optional<StudentAttempt> studentAttempt, String attemptStatusData) {
+        if(studentAttempt.isEmpty()) throw new VacademyException("Attempt Not Found");
+        StudentAttempt attempt = studentAttempt.get();
+        attempt.setStatus(AssessmentAttemptEnum.ENDED.name());
+        attempt.setResultStatus(AssessmentAttemptResultEnum.PENDING.name());
+        attempt.setSubmitData(attemptStatusData);
+        attempt.setAttemptData(attemptStatusData);
+
+        return studentAttemptService.updateStudentAttempt(attempt);
+    }
+
 }

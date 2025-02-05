@@ -36,13 +36,17 @@ public class Level {
     @Column(name = "status")
     private String status = "ACTIVE";
 
+    @Column(name = "thumbnail_file_id", length = 255)
+    private String thumbnailFileId;
+
     // Additional constructors, if needed
-    public Level(String id, String levelName, Integer durationInDays,String status, Date createdAt, Date updatedAt) {
+    public Level(String id, String levelName, Integer durationInDays,String status,String thumbnailFileId, Date createdAt, Date updatedAt) {
         this.id = id;
         this.levelName = levelName;
         this.durationInDays = durationInDays;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
         this.status = status;
+        this.thumbnailFileId = thumbnailFileId;
     }
 }

@@ -10,10 +10,12 @@ import lombok.Setter;
 @Getter
 @Setter
 public class AddDocumentSlideDTO {
+    private String id;
     private String title;
     private String imageFileId;
     private String description;
     private Integer slideOrder;
     private DocumentSlideDTO documentSlide;
     private String status;
+    private boolean newSlide;
 }

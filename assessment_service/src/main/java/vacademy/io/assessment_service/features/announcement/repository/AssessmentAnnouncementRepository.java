@@ -1,10 +1,10 @@
-package vacademy.io.assessment_service.features.learner_assessment.repository;
+package vacademy.io.assessment_service.features.announcement.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
-import vacademy.io.assessment_service.features.annoucement.entity.AssessmentAnnouncement;
+import vacademy.io.assessment_service.features.announcement.entity.AssessmentAnnouncement;
 
 import java.util.Date;
 import java.util.List;

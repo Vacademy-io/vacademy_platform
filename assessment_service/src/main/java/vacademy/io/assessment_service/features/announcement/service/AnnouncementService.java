@@ -1,10 +1,16 @@
-package vacademy.io.assessment_service.features.annoucement.service;
+package vacademy.io.assessment_service.features.announcement.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import vacademy.io.assessment_service.features.announcement.dto.AddAnnouncementDTO;
+import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.learner_assessment.dto.response.BasicLevelAnnouncementDto;
-import vacademy.io.assessment_service.features.annoucement.entity.AssessmentAnnouncement;
-import vacademy.io.assessment_service.features.learner_assessment.repository.AssessmentAnnouncementRepository;
+import vacademy.io.assessment_service.features.announcement.entity.AssessmentAnnouncement;
+import vacademy.io.assessment_service.features.announcement.repository.AssessmentAnnouncementRepository;
+import vacademy.io.assessment_service.features.rich_text.entity.AssessmentRichTextData;
+import vacademy.io.assessment_service.features.rich_text.enums.TextType;
+import vacademy.io.common.auth.model.CustomUserDetails;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -94,4 +100,16 @@ public class AnnouncementService {
         return allDtos;
     }
 
+    public ResponseEntity<String> addAnnouncement(CustomUserDetails user, AddAnnouncementDTO addAccessAssessmentDetailsDTO, String assessmentId, String instituteId) {
+        AssessmentAnnouncement announcement = AssessmentAnnouncement.builder()
+                .assessment(Assessment.builder().id(assessmentId).build())
+                .instituteId(instituteId)
+                .assessmentRichTextData(AssessmentRichTextData.builder().type(TextType.HTML.name()).content(addAccessAssessmentDetailsDTO.getAnnouncementHtml()).build())
+                .type(addAccessAssessmentDetailsDTO.getAnnouncementType())
+                .sentTime(new Date(addAccessAssessmentDetailsDTO.getGmtAnnouncementTimeInMillis()))
+                .build();
+
+        announcement = createAnnouncement(announcement);
+        return ResponseEntity.ok("Announcement added successfully.");
+    }
 }

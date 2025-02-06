@@ -36,9 +36,7 @@ import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.dto.InstituteIdAndNameDTO;
 import vacademy.io.common.institute.dto.InstituteInfoDTO;
 
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 
 import static vacademy.io.auth_service.feature.auth.constants.AuthConstants.ADMIN_ROLE;
 
@@ -76,6 +74,7 @@ public class AuthManager {
     private String applicationName;
 
     public JwtResponseDto registerRootUser(RegisterRequest registerRequest) {
+        if(Objects.isNull(registerRequest)) throw new VacademyException("Invalid Request");
 
         String userName = registerRequest.getUserName().trim().toLowerCase();
 
@@ -94,22 +93,33 @@ public class AuthManager {
         }
 
 
-        UserRole userRole = new UserRole();
-        userRole.setRole(getAdminRole());
-        userRole.setInstituteId(customUserDetails.getInstituteId());
+        List<Role> allRoles = getAllUserRoles(registerRequest.getUserRoles());
+        Set<UserRole> userRoleSet = new HashSet<>();
 
-        User newUser = authService.createUser(registerRequest, Set.of(userRole));
+        allRoles.forEach(role->{
+            UserRole userRole = new UserRole();
+            userRole.setRole(role);
+            userRole.setInstituteId(customUserDetails.getInstituteId());
+
+            userRoleSet.add(userRole);
+        });
+
+        User newUser = authService.createUser(registerRequest, userRoleSet);
 
         // Generate a refresh token
         RefreshToken refreshToken = refreshTokenService.createRefreshToken(userName, "VACADEMY-WEB");
 
 
-        return authService.generateJwtTokenForUser(newUser, refreshToken, List.of(userRole));
+        return authService.generateJwtTokenForUser(newUser, refreshToken, userRoleSet.stream().toList());
     }
 
 
     private Role getAdminRole() {
         return roleRepository.findByName(ADMIN_ROLE).orElseThrow(() -> new VacademyException(HttpStatus.INTERNAL_SERVER_ERROR, "Role 'ADMIN' not found"));
+    }
+
+    private List<Role> getAllUserRoles(List<String> userRoles) {
+        return roleRepository.findByNameIn(userRoles);
     }
 
 

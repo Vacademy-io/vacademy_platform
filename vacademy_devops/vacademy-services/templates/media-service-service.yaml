@@ -8,6 +8,6 @@ spec:
     app: media-service
   ports:
     - name: http
-      port: { { .Values.services.media_service.port } }
-      targetPort: { { .Values.services.media_service.port } }
+      port: {{ .Values.services.media_service.port }}
+      targetPort: {{ .Values.services.media_service.port }}
   type: NodePort

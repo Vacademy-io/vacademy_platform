@@ -11,6 +11,7 @@ import vacademy.io.admin_core_service.features.slide.dto.*;
 import vacademy.io.admin_core_service.features.slide.entity.DocumentSlide;
 import vacademy.io.admin_core_service.features.slide.entity.Slide;
 import vacademy.io.admin_core_service.features.slide.entity.VideoSlide;
+import vacademy.io.admin_core_service.features.slide.enums.SlideStatus;
 import vacademy.io.admin_core_service.features.slide.enums.SlideTypeEnum;
 import vacademy.io.admin_core_service.features.slide.repository.DocumentSlideRepository;
 import vacademy.io.admin_core_service.features.slide.repository.SlideRepository;
@@ -179,7 +180,7 @@ public class SlideService {
 
     // Fetches slide details by chapter ID
     public List<SlideDetailProjection> getSlidesByChapterId(String chapterId, CustomUserDetails user) {
-        return slideRepository.findSlideDetailsByChapterId(chapterId);
+        return slideRepository.findSlideDetailsByChapterId(chapterId,List.of(SlideStatus.PUBLISHED.name(), SlideStatus.DRAFT.name()));
     }
 
     // Updates a video slide's details

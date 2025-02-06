@@ -4,7 +4,7 @@ metadata:
   name: community-service
   namespace: default
   labels:
-    app: student-service
+    app: community-service
 spec:
   replicas: { { .Values.replicaCount } }
   selector:

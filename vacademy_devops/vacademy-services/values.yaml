@@ -5,7 +5,7 @@
 replicaCount: 1
 
 services:
-  student_service:
+  community_service:
     port: 8073
     image:
       repository: public.ecr.aws/e0x1f4p4/community-service/community-service-repo

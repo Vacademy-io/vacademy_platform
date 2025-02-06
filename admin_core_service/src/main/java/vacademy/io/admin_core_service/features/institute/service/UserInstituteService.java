@@ -69,7 +69,7 @@ public class UserInstituteService {
                 return new InstituteIdAndNameDTO(savedInstitute.getId(), savedInstitute.getInstituteName());
             }
 
-            throw new VacademyException("Institute Name Not Found");
+            return null;
         }
         catch (Exception e){
             throw new VacademyException("Failed to add: " + e.getMessage());

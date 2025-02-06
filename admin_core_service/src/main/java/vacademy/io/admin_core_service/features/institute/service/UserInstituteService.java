@@ -9,7 +9,6 @@ import vacademy.io.admin_core_service.features.institute.repository.InstituteRep
 import vacademy.io.admin_core_service.features.institute.repository.InstituteSubModuleRepository;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.auth.model.CustomUserDetails;
-import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.dto.InstituteIdAndNameDTO;
 import vacademy.io.common.institute.dto.InstituteInfoDTO;
 import vacademy.io.common.institute.entity.Institute;
@@ -21,7 +20,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-import java.util.Objects;
 import java.util.Optional;
 
 
@@ -108,10 +106,10 @@ public class UserInstituteService {
     }
 
 
-    public ResponseEntity<String> updateInstituteDetails(CustomUserDetails user, InstituteInfoDTO instituteInfoDTO) {
+    public ResponseEntity<String> updateInstituteDetails(CustomUserDetails user, String instituteId, InstituteInfoDTO instituteInfoDTO) {
         if(Objects.isNull(instituteInfoDTO)) throw new VacademyException("Invalid Request");
 
-        Optional<Institute> instituteOptional = instituteRepository.findById(instituteInfoDTO.getId());
+        Optional<Institute> instituteOptional = instituteRepository.findById(instituteId);
 
         if(instituteOptional.isEmpty()) throw new VacademyException("Institute Not Found");
         Institute institute = instituteOptional.get();

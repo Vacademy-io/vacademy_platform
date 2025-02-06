@@ -358,4 +358,29 @@ public class FileServiceImpl implements FileService {
         CopyObjectRequest copyRequest = new CopyObjectRequest(bucketName, objectKey.trim(), publicBucket, objectKey.trim());
         s3Client.copyObject(copyRequest);
     }
+
+    public PreSignedUrlResponse getPublicPreSignedUrl(String fileName, String fileType, String source, String sourceId) {
+        // Set the expiration time for the pre-signed URL (1 hour from now)
+        Date expiration = new Date(System.currentTimeMillis() + 3600000);
+
+        // Generate the S3 key for the file
+        String key = generateFileKey(fileName, source, sourceId);
+
+        // Create a request to generate the pre-signed URL
+        GeneratePresignedUrlRequest generatePresignedUrlRequest =
+                new GeneratePresignedUrlRequest(bucketName, key)
+                        .withMethod(HttpMethod.PUT)
+                        .withExpiration(expiration);
+
+        // Generate the pre-signed URL
+        URL url = s3Client.generatePresignedUrl(generatePresignedUrlRequest);
+
+        // Save file metadata (e.g. name, type, key) to the repository
+        FileMetadata metadata = new FileMetadata(fileName, fileType, key, source, sourceId);
+
+        fileMetadataRepository.save(metadata);
+
+        return new PreSignedUrlResponse(metadata.getId(), url.toString());
+    }
+
 }

@@ -37,8 +37,8 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
             "LEFT JOIN document_slide ds ON ds.id = s.source_id AND s.source_type = 'DOCUMENT' " +
             "LEFT JOIN video vs ON vs.id = s.source_id AND s.source_type = 'VIDEO' " +
             "WHERE ch.id = :chapterId " +
-            "AND s.status != 'DELETED' " +
+            "AND s.status IN :status " +
             "ORDER BY cts.slide_order IS NULL, cts.slide_order ASC",
             nativeQuery = true)
-    List<SlideDetailProjection> findSlideDetailsByChapterId(@Param("chapterId") String chapterId);
+    List<SlideDetailProjection> findSlideDetailsByChapterId(@Param("chapterId") String chapterId, @Param("status") List<String> status);
 }

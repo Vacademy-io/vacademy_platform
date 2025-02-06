@@ -53,28 +53,57 @@ public class StudyLibraryService {
     private SlideRepository slideRepository;
 
     public List<CourseDTOWithDetails> getStudyLibraryInitDetails(String instituteId) {
+        validateInstituteId(instituteId);
+
+        List<CourseDTOWithDetails> courses = new ArrayList<>();
+        List<PackageEntity> packages = packageRepository.findDistinctPackagesByInstituteId(instituteId);
+
+        for (PackageEntity course : packages) {
+            CourseDTOWithDetails courseDTOWithDetails = buildCourseDTOWithDetails(course, instituteId);
+            courses.add(courseDTOWithDetails);
+        }
+
+        return courses;
+    }
+
+    private void validateInstituteId(String instituteId) {
         if (Objects.isNull(instituteId)) {
             throw new VacademyException("Please provide instituteId");
         }
-        List<CourseDTOWithDetails>courses = new ArrayList<>();
-        List<PackageEntity>packages = packageRepository.findDistinctPackagesByInstituteId(instituteId);
-        for (PackageEntity course : packages) {
-            List<SessionProjection> packageSessions = packageRepository.findDistinctSessionsByPackageId(course.getId());
-            List<SessionDTOWithDetails> sessionDTOWithDetails = new ArrayList<>();
-            for(SessionProjection sessionProjection : packageSessions) {
-                List<LevelDTOWithDetails> levelWithDetails = new ArrayList<>();
-                List<Level>levels = levelRepository.findDistinctLevelsByInstituteIdAndSessionId(instituteId, sessionProjection.getId());
-                for (Level level: levels) {
-                    List<Subject> subjects = subjectRepository.findDistinctSubjectsByLevelId(level.getId());
-                    LevelDTOWithDetails levelDTOWithDetails = getLevelDTOWithDetails(subjects, level);
-                    levelWithDetails.add(levelDTOWithDetails);
-                }
-                sessionDTOWithDetails.add(getSessionDTOWithDetails(sessionProjection, levelWithDetails));
-            }
-            CourseDTOWithDetails courseDTOWithDetails = new CourseDTOWithDetails(new CourseDTO(course), sessionDTOWithDetails);
-            courses.add(courseDTOWithDetails);
+    }
+
+    public CourseDTOWithDetails buildCourseDTOWithDetails(PackageEntity course, String instituteId) {
+        List<SessionDTOWithDetails> sessionDTOWithDetails = buildSessionDTOWithDetails(course.getId(), instituteId);
+        return new CourseDTOWithDetails(new CourseDTO(course), sessionDTOWithDetails);
+    }
+
+    public List<SessionDTOWithDetails> buildSessionDTOWithDetails(String packageId, String instituteId) {
+        List<SessionDTOWithDetails> sessionDTOWithDetails = new ArrayList<>();
+        List<SessionProjection> packageSessions = packageRepository.findDistinctSessionsByPackageId(packageId);
+
+        for (SessionProjection sessionProjection : packageSessions) {
+            List<LevelDTOWithDetails> levelWithDetails = buildLevelDTOWithDetails(instituteId, sessionProjection.getId());
+            sessionDTOWithDetails.add(getSessionDTOWithDetails(sessionProjection, levelWithDetails));
         }
-        return courses;
+
+        return sessionDTOWithDetails;
+    }
+
+    public List<LevelDTOWithDetails> buildLevelDTOWithDetails(String instituteId, String sessionId) {
+        List<LevelDTOWithDetails> levelWithDetails = new ArrayList<>();
+        List<Level> levels = levelRepository.findDistinctLevelsByInstituteIdAndSessionId(instituteId, sessionId);
+
+        for (Level level : levels) {
+            LevelDTOWithDetails levelDTOWithDetails = buildLevelDTOWithDetails(level);
+            levelWithDetails.add(levelDTOWithDetails);
+        }
+
+        return levelWithDetails;
+    }
+
+    public LevelDTOWithDetails buildLevelDTOWithDetails(Level level) {
+        List<Subject> subjects = subjectRepository.findDistinctSubjectsByLevelId(level.getId());
+        return getLevelDTOWithDetails(subjects, level);
     }
 
     public LevelDTOWithDetails getLevelDTOWithDetails(List<Subject> subjects, Level level) {

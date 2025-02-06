@@ -13,7 +13,7 @@
         <module>media_service</module>
         <module>auth_service</module>
         <module>admin_core_service</module>
-        <module>student_service</module>
+        <module>community_service</module>
         <module>notification_service</module>
     </modules>
 

@@ -9,10 +9,10 @@
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
     <groupId>vacademy.io</groupId>
-    <artifactId>student_service</artifactId>
+    <artifactId>community_service</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>student_service</name>
-    <description>Student Service for Vacademy</description>
+    <name>community_service</name>
+    <description>Community Service for Vacademy</description>
     <properties>
         <java.version>17</java.version>
     </properties>
@@ -95,11 +95,11 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
-                    <mainClass>vacademy.io.student_service.StudentServiceApplication</mainClass>
+                    <mainClass>vacademy.io.community_service.CommunityServiceApplication</mainClass>
                 </configuration>
             </plugin>
         </plugins>
-        <finalName>student_service</finalName>
+        <finalName>community_service</finalName>
     </build>
 
 </project>

@@ -1,11 +1,11 @@
-name: Deploy Student to LKE
+name: Deploy Community to LKE
 
 on:
   push:
     branches:
       - main
     paths:
-      - 'student_service/**'
+      - 'community_service/**'
 
 jobs:
   build-and-deploy:
@@ -30,7 +30,7 @@ jobs:
 
 
       - name: Build Project
-        working-directory: ./student_service
+        working-directory: ./community_service
         env:
           JAVA_TOKEN: ${{ secrets.JAVA_TOKEN }}
         run: mvn -s settings.xml clean install -DskipTests
@@ -53,11 +53,11 @@ jobs:
 
       - name: Build, tag, and push image to Amazon ECR
         id: build-image
-        working-directory: ./student_service
+        working-directory: ./community_service
         env:
           ECR_REGISTRY: public.ecr.aws/e0x1f4p4
           IMAGE_TAG: latest
-          REPOSITORY: student-service/student-service-repo
+          REPOSITORY: community-service/community-service-repo
           GITHUB_TOKEN: ${{ secrets.JAVA_TOKEN }}
           GITHUB_ACTOR: shreyash-jain
           JAVA_TOKEN: ${{ secrets.JAVA_TOKEN }}
@@ -84,7 +84,7 @@ jobs:
       - name: Restart deployment
         id: restart-deployment
         env:
-          DEPLOYMENT_NAME: student-service
+          DEPLOYMENT_NAME: community-service
           NAMESPACE: default
         run: |
           kubectl rollout restart deployment $DEPLOYMENT_NAME --namespace $NAMESPACE

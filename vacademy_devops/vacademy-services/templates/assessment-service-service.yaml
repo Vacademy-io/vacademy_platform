@@ -8,6 +8,6 @@ spec:
     app: assessment-service
   ports:
     - name: http
-      port: { { .Values.services.assessment_service.port } }
-      targetPort: { { .Values.services.assessment_service.port } }
+      port: {{ .Values.services.assessment_service.port }}
+      targetPort: {{ .Values.services.assessment_service.port }}
   type: NodePort

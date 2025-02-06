@@ -40,4 +40,6 @@ public interface FileService {
     List<FileDetailsDTO> getMultipleFileDetailsWithExpiryAndId(String ids, Integer days) throws FileDownloadException;
 
     FileDetailsDTO acknowledgeClientUploadAndGetPublicUrl(AcknowledgeRequest acknowledgeRequest);
+
+    PreSignedUrlResponse getPublicPreSignedUrl(String fileName, String fileType, String source, String sourceId);
 }

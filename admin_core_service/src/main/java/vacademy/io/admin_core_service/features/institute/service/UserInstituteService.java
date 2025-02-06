@@ -1,11 +1,14 @@
 package vacademy.io.admin_core_service.features.institute.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.institute.constants.ConstantsSubModuleList;
+import vacademy.io.admin_core_service.features.institute.dto.InstituteDashboardResponse;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteSubModuleRepository;
+import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.dto.InstituteIdAndNameDTO;
 import vacademy.io.common.institute.dto.InstituteInfoDTO;
@@ -17,6 +20,7 @@ import vacademy.io.common.institute.repository.SubModuleRepository;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 
 @Service
@@ -102,4 +106,14 @@ public class UserInstituteService {
     }
 
 
+    public ResponseEntity<InstituteDashboardResponse> getInstituteDashboardDetail(CustomUserDetails user, String instituteId) {
+        Optional<Institute> instituteOptional = instituteRepository.findById(instituteId);
+        if(instituteOptional.isEmpty()) throw new VacademyException("Institute Not Found");
+
+        Integer emptyOrNullFieldsCount = instituteRepository.findCountForNullOrEmptyFields(instituteId);
+        Integer percentage = ((emptyOrNullFieldsCount*100)/11);
+
+        return ResponseEntity.ok(InstituteDashboardResponse.builder()
+                .profileCompletionPercentage(percentage).build());
+    }
 }

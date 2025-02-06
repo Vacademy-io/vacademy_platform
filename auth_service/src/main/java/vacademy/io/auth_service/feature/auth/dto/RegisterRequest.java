@@ -8,6 +8,8 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import vacademy.io.common.institute.dto.InstituteInfoDTO;
 
+import java.util.List;
+
 
 @Data
 @AllArgsConstructor
@@ -17,5 +19,6 @@ public class RegisterRequest {
     private String userName;
     private String email;
     private String password;
+    private List<String> userRoles;
     private InstituteInfoDTO institute;
 }

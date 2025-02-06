@@ -3,10 +3,20 @@ package vacademy.io.admin_core_service.features.institute.service;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import vacademy.io.admin_core_service.features.institute.constants.ConstantsSubModuleList;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
+import vacademy.io.admin_core_service.features.institute.repository.InstituteSubModuleRepository;
+import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.dto.InstituteIdAndNameDTO;
 import vacademy.io.common.institute.dto.InstituteInfoDTO;
 import vacademy.io.common.institute.entity.Institute;
+import vacademy.io.common.institute.entity.module.InstituteSubModule;
+import vacademy.io.common.institute.entity.module.Submodule;
+import vacademy.io.common.institute.repository.SubModuleRepository;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
 
 
 @Service
@@ -14,6 +24,12 @@ public class UserInstituteService {
 
     @Autowired
     private InstituteRepository instituteRepository;
+
+    @Autowired
+    InstituteSubModuleRepository instituteSubModuleRepository;
+
+    @Autowired
+    SubModuleRepository subModuleRepository;
 
     public static InstituteInfoDTO getInstituteDetails(Institute institute) {
         InstituteInfoDTO instituteInfoDTO = new InstituteInfoDTO();
@@ -32,16 +48,43 @@ public class UserInstituteService {
 
     @Transactional
     public InstituteIdAndNameDTO saveInstitute(InstituteInfoDTO instituteDto) {
+        try{
+            List<Submodule> allSubModules = new ArrayList<>();
 
-        InstituteIdAndNameDTO instituteList;
+            if(!Objects.isNull(instituteDto.getModuleRequestIds())){
 
-        Institute institute = getInstitute(instituteDto);
-        if (institute.getInstituteName() != null) {
-            Institute savedInstitute = instituteRepository.save(institute);
-            return new InstituteIdAndNameDTO(savedInstitute.getId(), savedInstitute.getInstituteName());
+                instituteDto.getModuleRequestIds().forEach(id->{
+                    List<String> subModuleId = ConstantsSubModuleList.getSubModulesForModule(id);
+                    allSubModules.addAll(subModuleRepository.findAllById(subModuleId));
+                });
+            }
+
+            Institute institute = getInstitute(instituteDto);
+
+            if (institute.getInstituteName() != null) {
+                Institute savedInstitute = instituteRepository.save(institute);
+
+                createInstituteSubModulesMapping(allSubModules, savedInstitute);
+
+                return new InstituteIdAndNameDTO(savedInstitute.getId(), savedInstitute.getInstituteName());
+            }
+
+            throw new VacademyException("Institute Name Not Found");
         }
+        catch (Exception e){
+            throw new VacademyException("Failed to add: " + e.getMessage());
+        }
+    }
 
-        return null;
+    private void createInstituteSubModulesMapping(List<Submodule> allSubModules, Institute institute) {
+        List<InstituteSubModule> allInstituteMapping = new ArrayList<>();
+        allSubModules.forEach(submodule -> {
+            allInstituteMapping.add(InstituteSubModule.builder()
+                    .instituteId(institute.getId())
+                    .submodule(submodule).build());
+        });
+
+        instituteSubModuleRepository.saveAll(allInstituteMapping);
     }
 
     private Institute getInstitute(InstituteInfoDTO instituteInfo) {

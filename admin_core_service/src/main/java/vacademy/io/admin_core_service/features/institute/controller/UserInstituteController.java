@@ -2,6 +2,7 @@ package vacademy.io.admin_core_service.features.institute.controller;
 
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.repository.query.Param;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.institute.dto.InstituteDashboardResponse;
@@ -33,6 +34,13 @@ public class UserInstituteController {
 
         InstituteInfoDTO instituteInfoDTO = instituteInitManager.getInstituteDetails(instituteId);
         return ResponseEntity.ok(instituteInfoDTO);
+    }
+
+    @PostMapping("/institute-update")
+    public ResponseEntity<String> updateInstitute(@RequestAttribute("user") CustomUserDetails user,
+                                                  @RequestParam("instituteId") String instituteId,
+                                                  @RequestBody InstituteInfoDTO instituteInfoDTO){
+        return instituteService.updateInstituteDetails(user, instituteId,instituteInfoDTO);
     }
 
     @GetMapping("/get-dashboard")

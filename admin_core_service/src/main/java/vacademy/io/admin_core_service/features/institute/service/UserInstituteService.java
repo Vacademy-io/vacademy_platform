@@ -6,10 +6,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.institute.constants.ConstantsSubModuleList;
 import vacademy.io.admin_core_service.features.institute.dto.InstituteDashboardResponse;
+import vacademy.io.admin_core_service.features.institute.constants.ConstantsSubModuleList;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteSubModuleRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.admin_core_service.features.institute.repository.InstituteSubModuleRepository;
+import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.institute.dto.InstituteIdAndNameDTO;
 import vacademy.io.common.institute.dto.InstituteInfoDTO;
 import vacademy.io.common.institute.entity.Institute;
@@ -20,6 +24,15 @@ import vacademy.io.common.institute.repository.SubModuleRepository;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
+import vacademy.io.common.institute.entity.module.InstituteSubModule;
+import vacademy.io.common.institute.entity.module.Submodule;
+import vacademy.io.common.institute.repository.SubModuleRepository;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+
 import java.util.Optional;
 
 
@@ -115,5 +128,43 @@ public class UserInstituteService {
 
         return ResponseEntity.ok(InstituteDashboardResponse.builder()
                 .profileCompletionPercentage(percentage).build());
+    }
+    public ResponseEntity<String> updateInstituteDetails(CustomUserDetails user, String instituteId, InstituteInfoDTO instituteInfoDTO) {
+        if(Objects.isNull(instituteInfoDTO)) throw new VacademyException("Invalid Request");
+
+        Optional<Institute> instituteOptional = instituteRepository.findById(instituteId);
+
+        if(instituteOptional.isEmpty()) throw new VacademyException("Institute Not Found");
+        Institute institute = instituteOptional.get();
+
+        updateIfNotNull(instituteInfoDTO.getInstituteName(), institute::setInstituteName);
+        updateIfNotNull(instituteInfoDTO.getType(), institute::setInstituteType);
+        updateIfNotNull(instituteInfoDTO.getEmail(), institute::setEmail);
+        updateIfNotNull(instituteInfoDTO.getPhone(), institute::setMobileNumber);
+        updateIfNotNull(instituteInfoDTO.getWebsiteUrl(), institute::setWebsiteUrl);
+        updateIfNotNull(instituteInfoDTO.getAddress(), institute::setAddress);
+        updateIfNotNull(instituteInfoDTO.getCountry(), institute::setCountry);
+        updateIfNotNull(instituteInfoDTO.getState(), institute::setState);
+        updateIfNotNull(instituteInfoDTO.getCity(), institute::setCity);
+        updateIfNotNull(instituteInfoDTO.getPinCode(), institute::setPinCode);
+        updateIfNotNull(instituteInfoDTO.getInstituteLogoFileId(), institute::setLogoFileId);
+
+        instituteRepository.save(institute);
+
+        return ResponseEntity.ok("Done");
+    }
+
+
+    /**
+     * Helper method to update a field if the new value is not null.
+     *
+     * @param value        The new value to set.
+     * @param setterMethod A method reference to set the value.
+     * @param <T>          The type of the value being updated.
+     */
+    private <T> void updateIfNotNull(T value, java.util.function.Consumer<T> setterMethod) {
+        if (value != null) {
+            setterMethod.accept(value);
+        }
     }
 }

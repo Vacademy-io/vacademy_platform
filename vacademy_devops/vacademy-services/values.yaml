@@ -1,10 +1,11 @@
-# Default values for my-monorepo-chart.
-# This is a YAML-formatted file.
-# Declare variables to be passed into your templates.
-
 replicaCount: 1
 
 services:
+  admin_core_service:
+    port: 8072
+    image:
+      repository: public.ecr.aws/e0x1f4p4/admin-core-service/admin-core-service-repo
+      tag: latest
   community_service:
     port: 8073
     image:
@@ -19,11 +20,6 @@ services:
     port: 8071
     image:
       repository: public.ecr.aws/e0x1f4p4/auth-service/auth-service-repo
-      tag: latest
-  admin_core_service:
-    port: 8072
-    image:
-      repository: public.ecr.aws/e0x1f4p4/admin-core-service/admin-core-service-repo
       tag: latest
   assessment_service:
     port: 8074

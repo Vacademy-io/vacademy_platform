@@ -8,6 +8,6 @@ spec:
     app: community-service
   ports:
     - name: http
-      port: { { .Values.services.community_service.port } }
-      targetPort: { { .Values.services.community_service.port } }
+      port: {{ .Values.services.community_service.port }}
+      targetPort: {{ .Values.services.community_service.port }}
   type: NodePort

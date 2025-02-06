@@ -45,4 +45,11 @@ public class QuestionPaperDTO {
         this.updatedOn = updatedOn;
         this.createdByUserId = createdByUserId;
     }
+
+    public QuestionPaperDTO(String id, String title, Date createdOn, Date updatedOn) {
+        this.id = id;
+        this.title = title;
+        this.createdOn = createdOn;
+        this.updatedOn = updatedOn;
+    }
 }

@@ -57,6 +57,22 @@ public interface QuestionPaperRepository extends JpaRepository<QuestionPaper, St
     );
 
 
+    @Query(
+            value = "SELECT qp.id AS id, qp.title AS title, " +
+                    "qp.created_on AS createdOn, " +
+                    "qp.updated_on AS updatedOn " +
+                    "FROM question_paper qp " +
+                    "WHERE (:title IS NULL OR qp.title ILIKE CONCAT('%', :title, '%')) ",
+            countQuery = "SELECT COUNT(qp) FROM question_paper qp " +
+                    "WHERE (:title IS NULL OR qp.title ILIKE CONCAT('%', :title, '%')) ",
+            nativeQuery = true
+    )
+    Page<Object[]> findPublicQuestionPapersByFilters(
+            @Param("title") String title,
+            Pageable pageable
+    );
+
+
     @Modifying
     @Transactional
     @Query(value = "UPDATE institute_question_paper SET status = :status, updated_on = CURRENT_TIMESTAMP WHERE institute_id = :instituteId AND question_paper_id = :questionPaperId", nativeQuery = true)

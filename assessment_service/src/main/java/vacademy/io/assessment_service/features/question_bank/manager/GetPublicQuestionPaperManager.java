@@ -37,7 +37,7 @@ public class GetPublicQuestionPaperManager {
         makeFilterFieldEmptyArrayIfNull(questionPaperFilter);
 
         // Retrieve employees based on the filter criteria
-        Page<Object[]> employeePage = questionPaperRepository.findQuestionPapersByFilters(questionPaperFilter.getName(), questionPaperFilter.getStatuses(), questionPaperFilter.getLevelIds(), questionPaperFilter.getSubjectIds(), null, null, pageable);
+        Page<Object[]> employeePage = questionPaperRepository.findPublicQuestionPapersByFilters(questionPaperFilter.getName(), pageable);
 
         return createAllQuestionPaperResponseFromPaginatedData(employeePage);
 
@@ -62,12 +62,8 @@ public class GetPublicQuestionPaperManager {
             content = questionPapers.getContent().stream().map(object -> new QuestionPaperDTO(
                     (String) object[0], // id
                     (String) object[1], // title
-                    (String) object[2], // status
-                    (String) object[3], // levelId
-                    (String) object[4], // subjectId
-                    (Date) object[5], // createdOn
-                    (Date) object[6], // updatedOn
-                    (String) object[7]  // createdByUserId
+                    (Date) object[2], // createdOn
+                    (Date) object[3] // updatedOn
             )).toList();
             return AllQuestionPaperResponse.builder().content(content).pageNo(questionPapers.getNumber()).last(questionPapers.isLast()).pageSize(questionPapers.getSize()).totalPages(questionPapers.getTotalPages()).totalElements(questionPapers.getTotalElements()).build();
         }

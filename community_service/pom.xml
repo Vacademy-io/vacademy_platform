@@ -9,7 +9,7 @@
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
     <groupId>vacademy.io</groupId>
-    <artifactId>student_service</artifactId>
+    <artifactId>community_service</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <name>student_service</name>
     <description>Student Service for Vacademy</description>

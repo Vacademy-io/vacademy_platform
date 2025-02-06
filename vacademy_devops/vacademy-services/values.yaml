@@ -8,7 +8,7 @@ services:
   student_service:
     port: 8073
     image:
-      repository: public.ecr.aws/e0x1f4p4/student-service/student-service-repo
+      repository: public.ecr.aws/e0x1f4p4/community-service/community-service-repo
       tag: latest
   media_service:
     port: 8075

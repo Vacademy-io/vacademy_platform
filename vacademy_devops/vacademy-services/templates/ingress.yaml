@@ -25,7 +25,7 @@ spec:
               service:
                 name: student-service
                 port:
-                  number: {{ .Values.services.student_service.port }}
+                  number: {{ .Values.services.community_service.port }}
           - path: /media-service
             pathType: Prefix
             backend:

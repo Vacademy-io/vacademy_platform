@@ -27,10 +27,10 @@ FROM amazoncorretto:17-alpine
 WORKDIR /app
 
 # Copy the built jar file from the previous stage
-COPY --from=build /build/target/student_service.jar student_service.jar
+COPY --from=build /build/target/student_service.jar community_service.jar
 
 # Expose the port the application runs on
 EXPOSE 8073
 
 # Define the command to run the application
-CMD ["java", "-jar", "-Dspring.profiles.active=stage", "student_service.jar"]
+CMD ["java", "-jar", "-Dspring.profiles.active=stage", "community_service.jar"]

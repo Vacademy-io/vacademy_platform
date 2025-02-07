@@ -43,8 +43,12 @@ public class DocumentTracked {
     public DocumentTracked(DocumentActivityLogDTO documentActivityLogDTO, ActivityLog activityLog) {
         this.id = documentActivityLogDTO.getId();
         this.activityLog = activityLog;
-        this.startTime = documentActivityLogDTO.getStartTime();
-        this.endTime = documentActivityLogDTO.getEndTime();
+        if(documentActivityLogDTO.getStartTimeInMillis() != null) {
+            this.startTime = new Timestamp(documentActivityLogDTO.getStartTimeInMillis());
+        }
+        if(documentActivityLogDTO.getEndTimeInMillis() != null) {
+            this.endTime = new Timestamp(documentActivityLogDTO.getEndTimeInMillis());
+        }
         this.pageNumber = documentActivityLogDTO.getPageNumber();
     }
 }

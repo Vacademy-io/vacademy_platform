@@ -10,7 +10,7 @@ import java.sql.Timestamp;
 @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
 public class DocumentActivityLogDTO {
     private String id;
-    private Timestamp startTime;
-    private Timestamp endTime;
+    private Long startTimeInMillis;
+    private Long endTimeInMillis;
     private Integer pageNumber;
 }

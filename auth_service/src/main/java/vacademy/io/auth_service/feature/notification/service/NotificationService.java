@@ -10,6 +10,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import vacademy.io.auth_service.feature.notification.constants.NotificationConstant;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
+import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.notification.dto.EmailOTPRequest;
 
 @Service
@@ -47,7 +48,7 @@ public class NotificationService {
 
             return isOtpValid;
         } catch (JsonProcessingException e) {
-            throw new RuntimeException(e);
+            throw new VacademyException(e.getMessage());
         }
     }
 }

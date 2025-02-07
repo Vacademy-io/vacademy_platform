@@ -22,7 +22,7 @@ public class LearnerStudyLibraryController {
     private LearnerStudyLibraryService learnerStudyLibraryService;
 
     @GetMapping("/init-details")
-    public ResponseEntity<List<CourseDTOWithDetails>> getLearnerStudyLibraryInitDetails(
+    public ResponseEntity<SessionDTOWithDetails> getLearnerStudyLibraryInitDetails(
             @RequestParam String instituteId,
             @RequestParam String packageSessionId,
             @RequestAttribute("user")CustomUserDetails user) {

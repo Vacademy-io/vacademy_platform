@@ -9,16 +9,23 @@ import vacademy.io.assessment_service.features.assessment.entity.AssessmentInsti
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentUserRegistration;
 import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentVisibility;
+import vacademy.io.assessment_service.features.assessment.enums.UserRegistrationSources;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentInstituteMappingRepository;
+import vacademy.io.assessment_service.features.assessment.repository.AssessmentRepository;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentUserRegistrationRepository;
 import vacademy.io.assessment_service.features.open_registration.dto.AssessmentPublicDto;
 import vacademy.io.assessment_service.features.open_registration.dto.GetAssessmentPublicResponseDto;
 import vacademy.io.assessment_service.features.open_registration.dto.ParticipantPublicResponseDto;
+import vacademy.io.assessment_service.features.open_registration.dto.RegisterOpenAssessmentRequestDto;
+import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.common.student.dto.BasicParticipantDTO;
 
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
+
+import static vacademy.io.common.auth.enums.CompanyStatus.ACTIVE;
 
 @Component
 public class AssessmentPublicPageManager {
@@ -28,6 +35,9 @@ public class AssessmentPublicPageManager {
 
     @Autowired
     AssessmentUserRegistrationRepository assessmentUserRegistrationRepository;
+
+    @Autowired
+    AssessmentRepository assessmentRepository;
 
     public ResponseEntity<GetAssessmentPublicResponseDto> getAssessmentPage(String code) {
         Optional<AssessmentInstituteMapping> assessmentInstituteMapping = assessmentInstituteMappingRepository.findTopByAssessmentUrl(code);
@@ -46,6 +56,22 @@ public class AssessmentPublicPageManager {
             return ResponseEntity.ok(GetAssessmentPublicResponseDto.builder().instituteId(assessmentInstituteMapping.get().getInstituteId()).assessmentPublicDto(new AssessmentPublicDto(assessment)).canRegister(true).build());
         }
         return ResponseEntity.ok(GetAssessmentPublicResponseDto.builder().instituteId(assessmentInstituteMapping.get().getInstituteId()).assessmentPublicDto(new AssessmentPublicDto(assessment)).canRegister(false).errorMessage("Assessment is closed").build());
+
+    }
+
+    private void validateRegisterRequest(Optional<Assessment> assessment) {
+
+        if (assessment.isEmpty()) {
+            throw new VacademyException("Assessment not found");
+        }
+
+        if (assessment.get().getRegistrationOpenDate() == null || assessment.get().getRegistrationCloseDate() == null) {
+            throw new VacademyException("Assessment not found");
+        }
+
+        if (!assessment.get().getRegistrationOpenDate().before(new Date()) || !assessment.get().getRegistrationCloseDate().after(new Date())) {
+            throw new VacademyException("Assessment is closed");
+        }
 
     }
 
@@ -68,5 +94,32 @@ public class AssessmentPublicPageManager {
         if (studentTotalAttempts == null) studentTotalAttempts = 1;
         Integer remainingAttempts = studentTotalAttempts - totalAttemptsGiven;
         return ResponseEntity.ok(ParticipantPublicResponseDto.builder().remainingAttempts(remainingAttempts).isAlreadyRegistered(true).lastAttemptStatus(recentAttempt.get().getStatus()).build());
+    }
+
+    public ResponseEntity<String> registerAssessment(CustomUserDetails user, RegisterOpenAssessmentRequestDto registerOpenAssessmentRequestDto) {
+        Optional<Assessment> assessment = assessmentRepository.findByAssessmentIdAndInstituteId(registerOpenAssessmentRequestDto.getAssessmentId(), registerOpenAssessmentRequestDto.getInstituteId());
+        validateRegisterRequest(assessment);
+
+        addUserToAssessment(registerOpenAssessmentRequestDto.getParticipantDTO(), user.getUserId(), registerOpenAssessmentRequestDto.getInstituteId(), assessment.get());
+
+        return ResponseEntity.ok("Registered successfully");
+    }
+
+    AssessmentUserRegistration addUserToAssessment(BasicParticipantDTO basicParticipantDTO, String userId, String instituteId, Assessment assessment) {
+        AssessmentUserRegistration assessmentParticipantRegistration = new AssessmentUserRegistration();
+        assessmentParticipantRegistration.setAssessment(assessment);
+        assessmentParticipantRegistration.setUserId(basicParticipantDTO.getUserId());
+        assessmentParticipantRegistration.setUsername(basicParticipantDTO.getUsername());
+        assessmentParticipantRegistration.setParticipantName(basicParticipantDTO.getFullName());
+        assessmentParticipantRegistration.setPhoneNumber(basicParticipantDTO.getMobileNumber());
+        assessmentParticipantRegistration.setFaceFileId(basicParticipantDTO.getFileId());
+        assessmentParticipantRegistration.setUserEmail(basicParticipantDTO.getEmail());
+        assessmentParticipantRegistration.setReattemptCount((basicParticipantDTO.getReattemptCount() == null) ? assessment.getReattemptCount() : basicParticipantDTO.getReattemptCount());
+        assessmentParticipantRegistration.setInstituteId(instituteId);
+        assessmentParticipantRegistration.setStatus(ACTIVE.name());
+        assessmentParticipantRegistration.setSource(UserRegistrationSources.OPEN_REGISTRATION.name());
+        assessmentParticipantRegistration.setSourceId(userId);
+        assessmentParticipantRegistration.setRegistrationTime(new Date());
+        return assessmentParticipantRegistration;
     }
 }

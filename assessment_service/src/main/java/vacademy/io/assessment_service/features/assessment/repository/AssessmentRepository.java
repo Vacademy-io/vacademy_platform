@@ -20,7 +20,7 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
             @Param("instituteId") String instituteId);
 
 
-    @Query(value = "SELECT a.id, a.name, a.play_mode, a.evaluation_type, a.submission_type, a.duration, " +
+    @Query(value = "SELECT DISTINCT a.id, a.name, a.play_mode, a.evaluation_type, a.submission_type, a.duration, " +
             "a.assessment_visibility, a.status, a.registration_close_date, a.registration_open_date, " +
             "a.expected_participants, a.cover_file_id, a.bound_start_time, a.bound_end_time, " +
             "a.created_at, a.updated_at, " +
@@ -39,7 +39,8 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
             "AND (:liveAssessments IS NULL OR :liveAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' BETWEEN a.bound_start_time AND a.bound_end_time)) " +
             "AND (:passedAssessments IS NULL OR :passedAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' > a.bound_end_time)) " +
             "AND (:upcomingAssessments IS NULL OR :upcomingAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' < a.bound_start_time)) " +
-            "AND (:assessmentModes IS NULL OR a.play_mode IN :assessmentModes)",
+            "AND (:assessmentModes IS NULL OR a.play_mode IN :assessmentModes) " +
+            "GROUP BY a.id, aim.subject_id, aim.assessment_url", // Group by necessary columns to ensure distinct results
             countQuery = "SELECT COUNT(DISTINCT a.id) FROM public.assessment a " +
                     "LEFT JOIN public.assessment_batch_registration abr ON a.id = abr.assessment_id " +
                     "LEFT JOIN public.assessment_institute_mapping aim ON a.id = aim.assessment_id " +
@@ -67,7 +68,6 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
                                      @Param("accessStatuses") List<String> accessStatuses,
                                      @Param("instituteIds") List<String> instituteIds,
                                      Pageable pageable);
-
 
     @Query(value = "(SELECT DISTINCT a.id, a.name, a.play_mode, a.evaluation_type, a.submission_type, a.duration, " +
             "a.assessment_visibility, a.status, a.registration_close_date, a.registration_open_date, " +

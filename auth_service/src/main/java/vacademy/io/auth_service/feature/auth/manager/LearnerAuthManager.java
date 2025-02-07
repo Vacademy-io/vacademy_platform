@@ -95,7 +95,7 @@ public class LearnerAuthManager {
     private EmailOTPRequest makeOtp(String email){
         //generate 4 digit OTP
         String otp = NumberUtil.generateRandomNumber(4);
-        return EmailOTPRequest.builder().to(email).service("auth-service").subject("Vacademy | Hello We have your OTP: " + otp).otp(otp).build();
+        return EmailOTPRequest.builder().to(email).service("auth-service").subject("Vacademy | Hello We have your OTP: " + otp).otp(otp).name("Vacademy User").build();
     }
 
     public JwtResponseDto loginViaOtp(AuthRequestDto authRequestDTO) {

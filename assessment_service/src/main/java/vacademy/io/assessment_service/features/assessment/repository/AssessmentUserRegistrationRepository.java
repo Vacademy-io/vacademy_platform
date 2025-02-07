@@ -226,4 +226,7 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
                                                                                                  @Param("status") List<String> status,
                                                                                                  @Param("source") String source,
                                                                                                  Pageable pageable);
+
+    @Query("SELECT COUNT(DISTINCT a.assessment.id) FROM AssessmentUserRegistration a WHERE a.userId = :userId AND a.instituteId = :instituteId")
+    Integer countDistinctAssessmentsByUserId(String userId,String instituteId);
 }

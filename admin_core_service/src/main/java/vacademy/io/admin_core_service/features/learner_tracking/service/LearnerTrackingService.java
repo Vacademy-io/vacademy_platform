@@ -13,6 +13,7 @@ import vacademy.io.admin_core_service.features.learner_tracking.repository.Video
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
+import java.sql.Date;
 import java.util.List;
 import java.util.Objects;
 
@@ -92,11 +93,11 @@ public class LearnerTrackingService {
     }
 
     private void updateActivityFields(ActivityLog activityLog, ActivityLogDTO activityLogDTO) {
-        if (activityLogDTO.getStartTime() != null) {
-            activityLog.setStartTime(activityLogDTO.getStartTime());
+        if (activityLogDTO.getStartTimeInMillis() != null) {
+            activityLog.setStartTime(new Date(activityLogDTO.getStartTimeInMillis()));
         }
-        if (activityLogDTO.getEndTime() != null) {
-            activityLog.setEndTime(activityLogDTO.getEndTime());
+        if (activityLogDTO.getEndTimeInMillis() != null) {
+            activityLog.setEndTime(new Date(activityLogDTO.getEndTimeInMillis()));
         }
         if (activityLogDTO.getPercentageWatched() != null) {
             activityLog.setPercentageWatched(activityLogDTO.getPercentageWatched());

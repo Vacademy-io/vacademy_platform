@@ -78,7 +78,7 @@ public class LearnerAssessmentAttemptStartManager {
         return ResponseEntity.ok(learnerAssessmentStartPreviewResponse);
     }
 
-    private List<SectionDto> createSectionDtoList(Assessment assessment) {
+    public List<SectionDto> createSectionDtoList(Assessment assessment) {
         List<SectionDto> sectionDtos = new ArrayList<>();
         var allQuestions = createQuestionAssessmentSectionMappingList(assessment);
         assessment.getSections().stream().filter(section -> !DELETED.name().equals(section.getStatus())).forEach(section -> {

@@ -30,4 +30,28 @@ public interface InstituteRepository extends CrudRepository<Institute, String> {
     void insertInstitute(@Param("newId") String newId,
                          @Param("institute") Institute institute);
 
+
+
+    @Query(value = """
+            SELECT
+                (
+                    (CASE WHEN name IS NULL OR name = '' THEN 1 ELSE 0 END) +
+                    (CASE WHEN address_line IS NULL OR address_line = '' THEN 1 ELSE 0 END) +
+                    (CASE WHEN pin_code IS NULL OR pin_code = '' THEN 1 ELSE 0 END) +
+                    (CASE WHEN mobile_number IS NULL OR mobile_number = '' THEN 1 ELSE 0 END) +
+                    (CASE WHEN logo_file_id IS NULL OR logo_file_id = '' THEN 1 ELSE 0 END) +
+                    (CASE WHEN website_url IS NULL OR website_url = '' THEN 1 ELSE 0 END) +
+                    (CASE WHEN "type" IS NULL OR "type" = '' THEN 1 ELSE 0 END) +
+                    (CASE WHEN country IS NULL OR country = '' THEN 1 ELSE 0 END) +
+                    (CASE WHEN state IS NULL OR state = '' THEN 1 ELSE 0 END) +
+                    (CASE WHEN city IS NULL OR city = '' THEN 1 ELSE 0 END) +
+                    (CASE WHEN email IS NULL OR email = '' THEN 1 ELSE 0 END)
+                ) AS null_or_empty_count
+            FROM
+                institutes
+            WHERE
+                id = :instituteId
+            """, nativeQuery = true)
+    public Integer findCountForNullOrEmptyFields(@Param("instituteId") String instituteId);
+
 }

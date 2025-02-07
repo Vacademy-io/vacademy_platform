@@ -5,10 +5,13 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.institute.constants.ConstantsSubModuleList;
+import vacademy.io.admin_core_service.features.institute.dto.InstituteDashboardResponse;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteSubModuleRepository;
-import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
+import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.dto.InstituteIdAndNameDTO;
 import vacademy.io.common.institute.dto.InstituteInfoDTO;
 import vacademy.io.common.institute.entity.Institute;
@@ -19,7 +22,6 @@ import vacademy.io.common.institute.repository.SubModuleRepository;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-
 import java.util.Optional;
 
 
@@ -34,6 +36,12 @@ public class UserInstituteService {
 
     @Autowired
     SubModuleRepository subModuleRepository;
+
+    @Autowired
+    PackageSessionRepository packageSessionRepository;
+
+    @Autowired
+    StudentSessionRepository studentSessionRepository;
 
     public static InstituteInfoDTO getInstituteDetails(Institute institute) {
         InstituteInfoDTO instituteInfoDTO = new InstituteInfoDTO();
@@ -103,6 +111,23 @@ public class UserInstituteService {
         institute.setMobileNumber(instituteInfo.getPhone());
         institute.setWebsiteUrl(instituteInfo.getWebsiteUrl());
         return institute;
+    }
+
+
+    public ResponseEntity<InstituteDashboardResponse> getInstituteDashboardDetail(CustomUserDetails user, String instituteId) {
+        Optional<Institute> instituteOptional = instituteRepository.findById(instituteId);
+        if(instituteOptional.isEmpty()) throw new VacademyException("Institute Not Found");
+
+        Integer emptyOrNullFieldsCount = instituteRepository.findCountForNullOrEmptyFields(instituteId);
+        Integer percentage = (((11-emptyOrNullFieldsCount)*100)/11);
+        Long batchCount = packageSessionRepository.findCountPackageSessionsByInstituteId(instituteId);
+        Long studentCount = studentSessionRepository.countStudentsByInstituteIdAndStatusNotIn(instituteId, List.of("DELETED"));
+
+        return ResponseEntity.ok(InstituteDashboardResponse.builder()
+                .id(instituteId)
+                .profileCompletionPercentage(percentage)
+                .batchCount(batchCount)
+                .studentCount(studentCount).build());
     }
 
 

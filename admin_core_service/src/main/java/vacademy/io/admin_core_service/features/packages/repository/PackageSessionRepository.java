@@ -40,5 +40,15 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
             "ORDER BY ps.updatedAt DESC LIMIT 1")
     Optional<PackageSession> findLatestPackageSessionByPackageIdAndSessionId(String packageId, String sessionId);
 
+    @Query(value = "SELECT COUNT(ps.id) " +
+            "FROM package_session ps " +
+            "JOIN package p ON ps.package_id = p.id " +
+            "JOIN package_institute pi ON p.id = pi.package_id " +
+            "WHERE pi.institute_id = :instituteId " +
+            "AND ps.status != 'DELETED'",
+            nativeQuery = true)
+    Long findCountPackageSessionsByInstituteId(@Param("instituteId") String instituteId);
+
+
 
 }

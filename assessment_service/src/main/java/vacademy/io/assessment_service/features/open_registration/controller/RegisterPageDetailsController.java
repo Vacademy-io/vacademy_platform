@@ -5,7 +5,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.assessment_service.features.open_registration.dto.GetAssessmentPublicResponseDto;
 import vacademy.io.assessment_service.features.open_registration.dto.ParticipantPublicResponseDto;
+import vacademy.io.assessment_service.features.open_registration.dto.RegisterOpenAssessmentRequestDto;
 import vacademy.io.assessment_service.features.open_registration.manager.AssessmentPublicPageManager;
+import vacademy.io.common.auth.model.CustomUserDetails;
 
 @RestController
 @RequestMapping("/assessment-service/open-registrations/register/v1")
@@ -16,12 +18,8 @@ public class RegisterPageDetailsController {
 
 
     @PostMapping("/")
-    public ResponseEntity<GetAssessmentPublicResponseDto> getAssessmentPage(@RequestParam("code") String code) {
-        return assessmentPublicPageManager.getAssessmentPage(code);
+    public ResponseEntity<String> registerAssessment(@RequestAttribute("user") CustomUserDetails user, @RequestBody RegisterOpenAssessmentRequestDto registerOpenAssessmentRequestDto) {
+        return assessmentPublicPageManager.registerAssessment(user, registerOpenAssessmentRequestDto);
     }
 
-    @GetMapping("/participant-status")
-    public ResponseEntity<ParticipantPublicResponseDto> getParticipantStatus(@RequestParam("assessmentId") String assessmentId, @RequestParam("instituteId") String instituteId, @RequestParam("userId") String userId) {
-        return assessmentPublicPageManager.getParticipantStatus(assessmentId, instituteId, userId);
-    }
 }

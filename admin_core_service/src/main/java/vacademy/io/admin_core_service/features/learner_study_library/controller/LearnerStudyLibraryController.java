@@ -24,9 +24,9 @@ public class LearnerStudyLibraryController {
     @GetMapping("/init-details")
     public ResponseEntity<List<CourseDTOWithDetails>> getLearnerStudyLibraryInitDetails(
             @RequestParam String instituteId,
-            @RequestParam String userId,
+            @RequestParam String packageSessionId,
             @RequestAttribute("user")CustomUserDetails user) {
-        return ResponseEntity.ok(learnerStudyLibraryService.getLearnerStudyLibraryInitDetails(instituteId, userId, user));
+        return ResponseEntity.ok(learnerStudyLibraryService.getLearnerStudyLibraryInitDetails(instituteId, packageSessionId, user));
     }
 
     @GetMapping("/modules-with-chapters")

@@ -18,10 +18,7 @@ import vacademy.io.common.institute.dto.SubjectDTO;
 import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.common.institute.entity.session.PackageSession;
 
-import java.util.HashSet;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 
 @Component
 public class LearnerProfileManager {
@@ -29,13 +26,17 @@ public class LearnerProfileManager {
     @Autowired
     InstituteStudentRepository instituteStudentRepository;
 
-    public StudentDTO getLearnerInfo(CustomUserDetails user, String instituteId) {
-        Optional<Object[]> optionalEntry = instituteStudentRepository.getStudentWithInstituteAndUserId(user.getUserId(), instituteId);
+    public List<StudentDTO> getLearnerInfo(CustomUserDetails user, String instituteId) {
+        List<Object[]> optionalEntry = instituteStudentRepository.getStudentWithInstituteAndUserId(user.getUserId(), instituteId);
 
-        if (optionalEntry.isEmpty() || optionalEntry.get().length == 0) {
+        if (optionalEntry.isEmpty()) {
             throw new VacademyException("No user found with id " + user.getId());
         }
+        List<StudentDTO> studentDTOS = new ArrayList<>();
+        for (Object[] objects : optionalEntry) {
+            studentDTOS.add(new StudentDTO(objects));
+        }
 
-        return new StudentDTO((Object[]) optionalEntry.get()[0]);
+        return studentDTOS;
     }
 }

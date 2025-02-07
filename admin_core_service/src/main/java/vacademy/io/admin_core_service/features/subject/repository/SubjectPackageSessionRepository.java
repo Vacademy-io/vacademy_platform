@@ -20,4 +20,9 @@ public interface SubjectPackageSessionRepository extends JpaRepository<SubjectPa
 
     @Query("SELECT sps FROM SubjectPackageSession sps WHERE sps.subject.id IN :subjectIds AND sps.packageSession.id IN :packageSessionIds")
     List<SubjectPackageSession> findBySubjectIdInAndPackageSessionIdIn(@Param("subjectIds") List<String> subjectIds, @Param("packageSessionIds") List<String> packageSessionIds);
+
+    @Query("SELECT DISTINCT ss.subject FROM SubjectPackageSession ss " +
+            "WHERE ss.packageSession.id = :packageSessionId AND ss.subject.status <> 'DELETED'")
+    List<Subject> findDistinctSubjectsByPackageSessionId(@Param("packageSessionId") String packageSessionId);
+
 }

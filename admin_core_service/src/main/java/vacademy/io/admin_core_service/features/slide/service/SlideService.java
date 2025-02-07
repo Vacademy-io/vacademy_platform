@@ -20,8 +20,11 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -32,6 +35,7 @@ public class SlideService {
     private final ChapterToSlidesRepository chapterToSlidesRepository;
     private final DocumentSlideRepository documentSlideRepository;
     private final VideoRepository videoSlideRepository;
+    private final SlideNotificationService slideNotificationService;
 
     // Adds or updates a document slide based on whether it's new or existing
     @Transactional
@@ -45,6 +49,9 @@ public class SlideService {
             updateChapterToSlides(addDocumentSlideDTO.getSlideOrder(), addDocumentSlideDTO.getStatus(), chapterToSlides.get());
             updateSlide(addDocumentSlideDTO.getDescription(), addDocumentSlideDTO.getTitle(), addDocumentSlideDTO.getImageFileId(), addDocumentSlideDTO.getStatus(), chapterToSlides.get().getSlide());
             updateDocument(addDocumentSlideDTO.getDocumentSlide());
+            if (addDocumentSlideDTO.getStatus() != null && addDocumentSlideDTO.getStatus().equals(SlideStatus.PUBLISHED.name())) {
+                slideNotificationService.sendNotificationForAddingSlide(chapterToSlides.get().getChapter(),chapterToSlides.get().getSlide());
+            }
             return "Slide updated successfully";
         }
         return addDocumentSlide(addDocumentSlideDTO, chapterId);
@@ -110,6 +117,9 @@ public class SlideService {
         slide = slideRepository.save(slide);
         ChapterToSlides chapterToSlides = new ChapterToSlides(chapter, slide, addDocumentSlideDTO.getSlideOrder(), addDocumentSlideDTO.getStatus());
         chapterToSlidesRepository.save(chapterToSlides);
+        if (addDocumentSlideDTO.getStatus() != null && addDocumentSlideDTO.getStatus().equals(SlideStatus.PUBLISHED.name())) {
+            slideNotificationService.sendNotificationForAddingSlide(chapter,slide);
+        }
         return "Slide added successfully";
     }
 
@@ -144,6 +154,9 @@ public class SlideService {
             updateChapterToSlides(addVideoSlideDTO.getSlideOrder(), addVideoSlideDTO.getStatus(), chapterToSlides.get());
             updateSlide(addVideoSlideDTO.getDescription(), addVideoSlideDTO.getTitle(), addVideoSlideDTO.getImageFileId(), addVideoSlideDTO.getStatus(), chapterToSlides.get().getSlide());
             updateVideoSlide(addVideoSlideDTO.getVideoSlide());
+            if (addVideoSlideDTO.getStatus() != null && addVideoSlideDTO.getStatus().equals(SlideStatus.PUBLISHED.name())) {
+                slideNotificationService.sendNotificationForAddingSlide(chapterToSlides.get().getChapter(),chapterToSlides.get().getSlide());
+            }
             return "Slide updated successfully";
         }
         return addVideoSlide(addVideoSlideDTO, chapterId);
@@ -162,6 +175,9 @@ public class SlideService {
         slide = slideRepository.save(slide);
         ChapterToSlides chapterToSlides = new ChapterToSlides(chapter, slide, addVideoSlideDTO.getSlideOrder(), addVideoSlideDTO.getStatus());
         chapterToSlidesRepository.save(chapterToSlides);
+        if (addVideoSlideDTO.getStatus() != null && addVideoSlideDTO.getStatus().equals(SlideStatus.PUBLISHED.name())) {
+            slideNotificationService.sendNotificationForAddingSlide(chapter,slide);
+        }
         return slide.getId();
     }
 
@@ -211,8 +227,51 @@ public class SlideService {
         Slide slide = existingChapterToSlides.getSlide();
         slide.setStatus(status);
         slideRepository.save(slide);
-
+        if (status != null && slide.equals(SlideStatus.PUBLISHED.name())) {
+            slideNotificationService.sendNotificationForAddingSlide(chapterToSlides.get().getChapter(),chapterToSlides.get().getSlide());
+        }
         return "Slide status updated successfully";
     }
+    @Transactional
+    public String updateSlideOrder(List<UpdateSlideOrderDTO> updateSlideOrderDTOs, String chapterId, CustomUserDetails user) {
+        List<String> slideIds = extractDistinctSlideIds(updateSlideOrderDTOs);
 
+        List<ChapterToSlides> chapterToSlides = fetchMappings(chapterId, slideIds);
+
+        Map<String, UpdateSlideOrderDTO> updateMap = mapUpdates(updateSlideOrderDTOs);
+
+        updateSlideOrders(chapterToSlides, updateMap);
+
+        chapterToSlidesRepository.saveAll(chapterToSlides);
+
+        return "Slide order updated successfully";
+    }
+
+    private List<String> extractDistinctSlideIds(List<UpdateSlideOrderDTO> updateSlideOrderDTOs) {
+        return updateSlideOrderDTOs.stream()
+                .map(UpdateSlideOrderDTO::getSlideId)
+                .distinct()
+                .toList();
+    }
+
+    private List<ChapterToSlides> fetchMappings(String chapterId, List<String> slideIds) {
+        return chapterToSlidesRepository.findMappingsByChapterIdAndSlideIds(chapterId, slideIds);
+    }
+
+    private Map<String, UpdateSlideOrderDTO> mapUpdates(List<UpdateSlideOrderDTO> updateSlideOrderDTOs) {
+        return updateSlideOrderDTOs.stream()
+                .collect(Collectors.toMap(
+                        UpdateSlideOrderDTO::getSlideId, // Use slideId as the key
+                        Function.identity()
+                ));
+    }
+
+    private void updateSlideOrders(List<ChapterToSlides> chapterToSlides, Map<String, UpdateSlideOrderDTO> updateMap) {
+        for (ChapterToSlides cts : chapterToSlides) {
+            String slideId = cts.getSlide().getId();
+            if (updateMap.containsKey(slideId)) {
+                cts.setSlideOrder(updateMap.get(slideId).getSlideOrder());
+            }
+        }
+    }
 }

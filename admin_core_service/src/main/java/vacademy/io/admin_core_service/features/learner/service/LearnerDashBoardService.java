@@ -45,27 +45,26 @@ public class LearnerDashBoardService {
     @Value("${assessment.server.baseurl}")
     private String assessmentServerBaseUrl;
 
-    public LeanerDashBoardDetailDTO getLearnerDashBoardDetail(String userId, String instituteId, CustomUserDetails user) {
-        int assessmentCount = getAssessmentCountForUser(user,userId, instituteId);
+    public LeanerDashBoardDetailDTO getLearnerDashBoardDetail(String instituteId, CustomUserDetails user) {
 
         return new LeanerDashBoardDetailDTO(
-                packageRepository.countDistinctPackagesByUserIdAndInstituteId(userId, instituteId),
-                assessmentCount,
-                slideRepository.findRecentIncompleteSlidesByUserId(userId, List.of(SlideStatus.PUBLISHED.name()))
+                packageRepository.countDistinctPackagesByUserIdAndInstituteId(user.getUserId(), instituteId),
+                0,
+                slideRepository.findRecentIncompleteSlidesByUserId(user.getUserId(), List.of(SlideStatus.PUBLISHED.name()))
         );
     }
 
     private int getAssessmentCountForUser(CustomUserDetails user,String userId, String instituteId) {
-            // Validate inputs
-            if (userId == null || userId.isEmpty() || instituteId == null || instituteId.isEmpty()) {
-                throw new IllegalArgumentException("userId and instituteId must not be null or empty");
-            }
+        // Validate inputs
+        if (userId == null || userId.isEmpty() || instituteId == null || instituteId.isEmpty()) {
+            throw new IllegalArgumentException("userId and instituteId must not be null or empty");
+        }
 
-            // Construct the URL with query parameters
-            String urlWithParams = AssessmentServerRouteConstants.GET_COUNT_OF_ASSESSMENTS_FOR_USER
-                    + "?userId=" + userId + "&instituteId=" + instituteId;
+        // Construct the URL with query parameters
+        String urlWithParams = AssessmentServerRouteConstants.GET_COUNT_OF_ASSESSMENTS_FOR_USER
+                + "?userId=" + userId + "&instituteId=" + instituteId;
 
-            // Make the HMAC-signed request
+        // Make the HMAC-signed request
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
                 clientName,
                 HttpMethod.GET.name(),
@@ -76,12 +75,12 @@ public class LearnerDashBoardService {
 
 
         // Parse the response
-            try {
-                ObjectMapper objectMapper = new ObjectMapper();
-                return objectMapper.readValue(response.getBody(), new TypeReference<Integer>() {});
-            } catch (JsonProcessingException e) {
-                throw new VacademyException(HttpStatus.INTERNAL_SERVER_ERROR,
-                        "Failed to retrieve assessment count: " + e.getMessage());
-            }
+        try {
+            ObjectMapper objectMapper = new ObjectMapper();
+            return objectMapper.readValue(response.getBody(), new TypeReference<Integer>() {});
+        } catch (JsonProcessingException e) {
+            throw new VacademyException(HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Failed to retrieve assessment count: " + e.getMessage());
+        }
     }
 }

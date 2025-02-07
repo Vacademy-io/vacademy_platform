@@ -27,10 +27,10 @@ public class LearnerStudyLibraryService {
     private final PackageRepository packageRepository;
     private final StudyLibraryService studyLibraryService;
     private final SlideRepository slideRepository;
-    public List<CourseDTOWithDetails> getLearnerStudyLibraryInitDetails(String instituteId, String userId, CustomUserDetails user) {
-        validateInputs(instituteId, userId);
+    public List<CourseDTOWithDetails> getLearnerStudyLibraryInitDetails(String instituteId, String packageSessionId, CustomUserDetails user) {
+        validateInputs(instituteId, user.getUserId());
 
-        return packageRepository.findDistinctPackagesByUserIdAndInstituteId(userId, instituteId)
+        return packageRepository.findDistinctPackagesByUserIdAndInstituteId(user.getUserId(), instituteId)
                 .stream()
                 .map(packageEntity -> studyLibraryService.buildCourseDTOWithDetails(packageEntity, instituteId))
                 .toList();

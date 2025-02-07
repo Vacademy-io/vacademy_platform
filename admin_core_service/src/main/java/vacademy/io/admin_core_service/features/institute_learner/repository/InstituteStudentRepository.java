@@ -156,9 +156,9 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                     "s.created_at, s.updated_at, ssigm.package_session_id, ssigm.institute_enrollment_number, ssigm.status, ssigm.institute_id, ssigm.expiry_date, s.face_file_id  " +
                     "FROM student s " +
                     "JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id " +
-                    "WHERE ssigm.institute_id = :instituteId AND s.user_id = :userId order by s.created_at desc limit 1"
+                    "WHERE ssigm.institute_id = :instituteId AND s.user_id = :userId order by s.created_at desc"
     )
-    Optional<Object[]> getStudentWithInstituteAndUserId(
+    List<Object[]> getStudentWithInstituteAndUserId(
             @Param("userId") String userId,
             @Param("instituteId") String instituteId
     );

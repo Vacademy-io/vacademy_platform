@@ -15,7 +15,6 @@ import lombok.NoArgsConstructor;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class InstituteDashboardResponse {
     private String id;
-    private String adminName;
     private Integer profileCompletionPercentage;
     private Long batchCount;
     private Long studentCount;

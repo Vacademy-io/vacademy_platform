@@ -69,4 +69,13 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
 
     List<StudentSessionInstituteGroupMapping> findAllByInstituteIdAndUserId(String instituteId, String userId);
 
+    @Query(value = "SELECT COUNT(ss.id) " +
+            "FROM student_session_institute_group_mapping ss " +
+            "WHERE ss.institute_id = :instituteId " +
+            "AND ss.status NOT IN (:statusList)",
+            nativeQuery = true)
+    Long countStudentsByInstituteIdAndStatusNotIn(
+            @Param("instituteId") String instituteId,
+            @Param("statusList") List<String> statusList);
+
 }

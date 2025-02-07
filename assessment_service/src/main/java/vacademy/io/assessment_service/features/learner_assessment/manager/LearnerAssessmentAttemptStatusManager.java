@@ -13,6 +13,8 @@ import vacademy.io.assessment_service.features.assessment.repository.StudentAtte
 import vacademy.io.assessment_service.features.assessment.service.StudentAttemptService;
 import vacademy.io.assessment_service.features.learner_assessment.dto.AssessmentAttemptUpdateRequest;
 import vacademy.io.assessment_service.features.learner_assessment.dto.DataDurationDistributionDto;
+import vacademy.io.assessment_service.features.learner_assessment.dto.LearnerAssessmentStartPreviewResponse;
+import vacademy.io.assessment_service.features.learner_assessment.dto.response.AssessmentRestartResponse;
 import vacademy.io.assessment_service.features.learner_assessment.dto.response.BasicLevelAnnouncementDto;
 import vacademy.io.assessment_service.features.learner_assessment.dto.status_json.LearnerAssessmentAttemptDataDto;
 import vacademy.io.assessment_service.features.learner_assessment.dto.response.LearnerUpdateStatusResponse;
@@ -42,6 +44,9 @@ public class LearnerAssessmentAttemptStatusManager {
 
     @Autowired
     private StudentAttemptService studentAttemptService;
+
+    @Autowired
+    LearnerAssessmentAttemptStartManager learnerAssessmentAttemptStartManager;
 
     /**
      * Updates the learner's assessment status based on the provided attempt details.
@@ -262,4 +267,34 @@ public class LearnerAssessmentAttemptStatusManager {
         return studentAttemptService.updateStudentAttempt(attempt);
     }
 
+    public ResponseEntity<AssessmentRestartResponse> restartAssessment(CustomUserDetails user, String assessmentId, String attemptId, AssessmentAttemptUpdateRequest request) {
+        try {
+            Optional<StudentAttempt> studentAttempt = studentAttemptRepository.findById(attemptId);
+            if(studentAttempt.isEmpty()) throw new VacademyException("Student Attempt Not Found");
+
+            if(Objects.isNull(request) || Objects.isNull(request.getJsonContent())) throw new VacademyException("Invalid request");
+
+            Assessment assessment = studentAttempt.get().getRegistration().getAssessment();
+            if(!assessment.getId().equals(assessmentId)) throw new VacademyException("Student Not Linked with Assessment");
+
+            // Check if the attempt status is preview
+            if (AssessmentAttemptEnum.PREVIEW.name().equals(studentAttempt.get().getStatus()))
+                throw new VacademyException("Currently Assessment is in preview");
+
+            LearnerAssessmentStartPreviewResponse learnerAssessmentStartPreviewResponse = new LearnerAssessmentStartPreviewResponse();
+            learnerAssessmentStartPreviewResponse.setAssessmentUserRegistrationId(studentAttempt.get().getRegistration().getId());
+            learnerAssessmentStartPreviewResponse.setAttemptId(studentAttempt.get().getId());
+            learnerAssessmentStartPreviewResponse.setPreviewTotalTime(assessment.getPreviewTime());
+            learnerAssessmentStartPreviewResponse.setSectionDtos(learnerAssessmentAttemptStartManager.createSectionDtoList(assessment));
+
+            return ResponseEntity.ok(AssessmentRestartResponse.builder()
+                    .previewResponse(learnerAssessmentStartPreviewResponse)
+                    .updateStatusResponse(createResponseForUpdateStatus(Optional.of(assessment), studentAttempt)).build());
+        }
+        catch (Exception e){
+            return ResponseEntity.ok(AssessmentRestartResponse.builder()
+                    .previewResponse(new LearnerAssessmentStartPreviewResponse())
+                    .updateStatusResponse(LearnerUpdateStatusResponse.builder().build()).build());
+        }
+    }
 }

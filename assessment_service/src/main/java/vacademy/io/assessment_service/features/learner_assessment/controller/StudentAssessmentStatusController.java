@@ -4,6 +4,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.assessment_service.features.learner_assessment.dto.AssessmentAttemptUpdateRequest;
+import vacademy.io.assessment_service.features.learner_assessment.dto.response.AssessmentRestartResponse;
 import vacademy.io.assessment_service.features.learner_assessment.dto.response.LearnerUpdateStatusResponse;
 import vacademy.io.assessment_service.features.learner_assessment.manager.LearnerAssessmentAttemptStatusManager;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -32,5 +33,13 @@ public class StudentAssessmentStatusController {
                                                                     @RequestBody AssessmentAttemptUpdateRequest request){
         return learnerAssessmentAttemptStatusManager.submitAssessment(user, assessmentId, attemptId, request);
 
+    }
+
+    @PostMapping("/restart")
+    public ResponseEntity<AssessmentRestartResponse> restartStatus(@RequestAttribute("user") CustomUserDetails user,
+                                                                   @RequestParam(name = "assessmentId") String assessmentId,
+                                                                   @RequestParam(name = "attemptId") String attemptId,
+                                                                   @RequestBody AssessmentAttemptUpdateRequest request){
+        return learnerAssessmentAttemptStatusManager.restartAssessment(user, assessmentId, attemptId, request);
     }
 }

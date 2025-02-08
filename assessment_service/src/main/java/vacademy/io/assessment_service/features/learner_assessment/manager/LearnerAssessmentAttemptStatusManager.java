@@ -263,6 +263,9 @@ public class LearnerAssessmentAttemptStatusManager {
         attempt.setResultStatus(AssessmentAttemptResultEnum.PENDING.name());
         attempt.setSubmitData(attemptStatusData);
         attempt.setAttemptData(attemptStatusData);
+        ZonedDateTime utcNow = ZonedDateTime.now(ZoneOffset.UTC);
+        Date utcDate = Date.from(utcNow.toInstant());
+        attempt.setSubmitTime(utcDate);
 
         return studentAttemptService.updateStudentAttempt(attempt);
     }

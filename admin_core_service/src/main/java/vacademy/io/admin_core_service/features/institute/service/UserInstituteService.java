@@ -110,6 +110,7 @@ public class UserInstituteService {
         institute.setEmail(instituteInfo.getEmail());
         institute.setMobileNumber(instituteInfo.getPhone());
         institute.setWebsiteUrl(instituteInfo.getWebsiteUrl());
+        institute.setLogoFileId(instituteInfo.getInstituteLogoFileId());
         return institute;
     }
 

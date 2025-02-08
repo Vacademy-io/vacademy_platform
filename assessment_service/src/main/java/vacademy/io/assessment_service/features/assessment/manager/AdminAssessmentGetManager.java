@@ -11,6 +11,10 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import vacademy.io.assessment_service.features.assessment.dto.LeaderBoardDto;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.*;
+import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.AssessmentOverviewDto;
+import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.AssessmentOverviewResponse;
+import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.MarksRankDto;
+import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentModeEnum;
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentStatus;
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentVisibility;
@@ -119,4 +123,12 @@ public class AdminAssessmentGetManager {
                 .totalPages(paginatedLeaderboard.getTotalPages()).build();
     }
 
+    public ResponseEntity<AssessmentOverviewResponse> getOverViewDetails(CustomUserDetails user, String assessmentId, String instituteId) {
+
+        AssessmentOverviewDto assessmentOverviewDto = studentAttemptRepository.findAssessmentOverviewDetails(assessmentId, instituteId);
+        List<MarksRankDto> marksRankDto = studentAttemptRepository.findMarkRankForAssessment(assessmentId, instituteId);
+        return ResponseEntity.ok(AssessmentOverviewResponse.builder()
+                .assessmentOverviewDto(assessmentOverviewDto)
+                .marksRankDto(marksRankDto).build());
+    }
 }

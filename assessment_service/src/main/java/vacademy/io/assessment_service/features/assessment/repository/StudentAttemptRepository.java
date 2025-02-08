@@ -7,7 +7,8 @@ import org.springframework.data.repository.CrudRepository;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import vacademy.io.assessment_service.features.assessment.dto.LeaderBoardDto;
-import vacademy.io.assessment_service.features.assessment.entity.Section;
+import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.AssessmentOverviewDto;
+import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.MarksRankDto;
 import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
 
 import java.util.List;
@@ -140,6 +141,83 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                                                                                         @Param("instituteId") String instituteId,
                                                                                         @Param("statusList") List<String> statusList,
                                                                                         Pageable pageable);
+
+
+    @Query(value = """
+            WITH LatestAttempts AS (
+                SELECT sa.id AS attemptId, sa.total_marks AS achievedMarks, aur.user_id AS userId,
+                       ROW_NUMBER() OVER (PARTITION BY aur.user_id ORDER BY sa.created_at DESC) AS rn
+                FROM student_attempt sa
+                JOIN assessment_user_registration aur ON aur.id = sa.registration_id
+                WHERE aur.assessment_id = :assessmentId
+                AND aur.institute_id = :instituteId
+                AND sa.status in ('ENDED','LIVE')
+            ),
+            RankedAttempts AS (
+                SELECT achievedMarks,
+                       DENSE_RANK() OVER (ORDER BY achievedMarks DESC) AS rank,
+                       COUNT(*) OVER (PARTITION BY achievedMarks) AS noOfParticipants
+                FROM LatestAttempts
+                WHERE rn = 1
+            ),
+            TotalParticipants AS (
+                SELECT COUNT(*) AS totalParticipants FROM LatestAttempts WHERE rn = 1
+            )
+            SELECT
+                distinct r.achievedMarks as marks,
+                r.rank as rank,
+                r.noOfParticipants as noOfParticipants,
+                ROUND(CAST(100.0 * (1.0 - (CAST(r.rank - 1 AS FLOAT) / NULLIF(t.totalParticipants * 1.0, 0))) AS NUMERIC), 2) AS percentile
+            FROM RankedAttempts r, TotalParticipants t
+            ORDER BY r.rank ASC
+            """, nativeQuery = true)
+    List<MarksRankDto> findMarkRankForAssessment(@Param("assessmentId") String assessmentId,
+                                                        @Param("instituteId") String instituteId);
+
+
+
+    @Query(value = """
+            WITH LatestAttempts AS (
+                SELECT
+                    sa.id AS attemptId,
+                    sa.total_marks AS achievedMarks,
+                    sa.total_time_in_seconds AS totalTime,
+                    aur.user_id AS userId,
+                    sa.status AS attemptStatus,
+                    ROW_NUMBER() OVER (PARTITION BY aur.user_id ORDER BY sa.created_at DESC) AS rn
+                FROM student_attempt sa
+                JOIN assessment_user_registration aur ON aur.id = sa.registration_id
+                WHERE aur.assessment_id = :assessmentId
+                AND aur.institute_id = :instituteId
+                AND sa.status IN ('ENDED', 'LIVE')
+            ),
+            AssessmentInfo AS (
+                SELECT
+                    id AS assessment_id,
+                    created_at,
+                    bound_start_time,
+                    bound_end_time,
+                    duration
+                FROM assessment
+                WHERE id = :assessmentId
+            )
+            SELECT
+                ai.created_at as createdOn,
+                ai.bound_start_time as startDateAndTime,
+                ai.bound_end_time as endDateAndTime,
+                ai.duration as durationInMin,
+                COUNT(la.userId) AS totalParticipants,
+                COALESCE(AVG(la.totalTime), 0) AS averageDuration,
+                COALESCE(AVG(la.achievedMarks), 0) AS averageMarks,
+                COUNT(CASE WHEN la.attemptStatus = 'ENDED' THEN 1 END) AS totalAttempted,
+                COUNT(CASE WHEN la.attemptStatus = 'LIVE' THEN 1 END) AS totalOngoing
+            FROM AssessmentInfo ai
+            LEFT JOIN LatestAttempts la ON 1=1
+            WHERE la.rn = 1 OR la.rn IS NULL
+            GROUP BY ai.created_at, ai.bound_start_time, ai.bound_end_time, ai.duration;
+            """, nativeQuery = true)
+    AssessmentOverviewDto findAssessmentOverviewDetails(@Param("assessmentId") String assessmentId,
+                                                        @Param("instituteId") String instituteId);
 }
 
 

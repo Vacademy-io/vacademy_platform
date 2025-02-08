@@ -7,7 +7,11 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
+import vacademy.io.assessment_service.features.assessment.entity.AssessmentCustomField;
 import vacademy.io.assessment_service.features.assessment.service.creation.AssessmentBasicDetail;
+
+import java.util.HashSet;
+import java.util.Set;
 
 @Getter
 @Setter
@@ -19,4 +23,5 @@ public class GetAssessmentPublicResponseDto {
     private AssessmentPublicDto assessmentPublicDto;
     private Boolean canRegister;
     private String errorMessage;
+    private Set<AssessmentCustomField> assessmentCustomFields = new HashSet<>();
 }

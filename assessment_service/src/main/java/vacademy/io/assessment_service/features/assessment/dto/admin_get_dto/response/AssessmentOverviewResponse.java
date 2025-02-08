@@ -1,25 +1,21 @@
-package vacademy.io.auth_service.feature.auth.dto;
+package vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response;
 
 
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import vacademy.io.common.institute.dto.InstituteInfoDTO;
 
 import java.util.List;
-
 
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
+@Builder
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-public class RegisterRequest {
-    private String fullName;
-    private String userName;
-    private String email;
-    private String password;
-    private List<String> userRoles;
-    private InstituteInfoDTO institute;
+public class AssessmentOverviewResponse {
+    AssessmentOverviewDto assessmentOverviewDto;
+    List<MarksRankDto> marksRankDto;
 }

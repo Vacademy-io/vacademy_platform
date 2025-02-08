@@ -16,6 +16,7 @@ import java.util.List;
 @NoArgsConstructor
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class RegisterRequest {
+    private String fullName;
     private String userName;
     private String email;
     private String password;

@@ -47,6 +47,7 @@ public class AuthService {
     public User createUser(RegisterRequest registerRequest, Set<UserRole> roles) {
 
         User user = User.builder()
+                .fullName(registerRequest.getFullName())
                 .username(registerRequest.getUserName())
                 .email(registerRequest.getEmail())
                 .password(registerRequest.getPassword())

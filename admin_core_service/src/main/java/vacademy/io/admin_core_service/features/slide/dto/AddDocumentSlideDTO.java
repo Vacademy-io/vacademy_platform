@@ -18,4 +18,5 @@ public class AddDocumentSlideDTO {
     private DocumentSlideDTO documentSlide;
     private String status;
     private boolean newSlide;
+    private boolean notify;
 }

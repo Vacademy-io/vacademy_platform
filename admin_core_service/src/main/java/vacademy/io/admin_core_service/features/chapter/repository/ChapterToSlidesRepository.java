@@ -20,7 +20,7 @@ public interface ChapterToSlidesRepository extends JpaRepository<ChapterToSlides
 
     @Query("SELECT cts FROM ChapterToSlides cts " +
             "WHERE cts.chapter.id = :chapterId " +
-            "AND cts.slide.id IN (:slideIds)")
+            "AND cts.slide.id IN (:slideIds) AND cts.status != 'DELETED'")
     List<ChapterToSlides> findMappingsByChapterIdAndSlideIds(
             @Param("chapterId") String chapterId,
             @Param("slideIds") List<String> slideIds);

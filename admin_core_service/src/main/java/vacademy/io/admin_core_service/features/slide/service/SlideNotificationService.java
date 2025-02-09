@@ -8,6 +8,8 @@ import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
 import vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository;
 import vacademy.io.admin_core_service.features.notification.dto.NotificationDTO;
 import vacademy.io.admin_core_service.features.notification.dto.NotificationToUserDTO;
+import vacademy.io.admin_core_service.features.notification.enums.NotificationSourceEnum;
+import vacademy.io.admin_core_service.features.notification.enums.NotificationType;
 import vacademy.io.admin_core_service.features.notification.service.NotificationService;
 import vacademy.io.admin_core_service.features.slide.entity.Slide;
 import vacademy.io.common.exceptions.VacademyException;
@@ -30,8 +32,10 @@ public class SlideNotificationService {
     @Autowired
     private NotificationService notificationService;
 
-    public void sendNotificationForAddingSlide(Chapter chapter, Slide slide) {
-        Institute institute = getInstituteByChapter(chapter);
+    private static final String SLIDE_ACCESS_URL = "http://localhost:3000";
+
+    public void sendNotificationForAddingSlide(String instituteId,Chapter chapter, Slide slide) {
+        Institute institute = instituteRepository.findById(instituteId).orElseThrow(() -> new VacademyException("Institute not found"));
         List<Student> students = getStudentsByChapter(chapter);
 
         List<NotificationToUserDTO> notificationUsers = prepareNotificationUsers(students, chapter, institute);
@@ -40,10 +44,6 @@ public class SlideNotificationService {
         notificationService.sendEmailToUsers(notificationDTO);
     }
 
-    private Institute getInstituteByChapter(Chapter chapter) {
-        return instituteRepository.findInstituteByChapterId(chapter.getId())
-                .orElseThrow(() -> new VacademyException("Institute not found"));
-    }
 
     private List<Student> getStudentsByChapter(Chapter chapter) {
         List<Student> students = instituteStudentRepository.findStudentsByChapterId(chapter.getId());
@@ -61,7 +61,7 @@ public class SlideNotificationService {
             placeholders.put("STUDENT_NAME", student.getFullName());
             placeholders.put("CHAPTER_NAME", chapter.getChapterName());
             placeholders.put("INSTITUTE_NAME", institute.getInstituteName());
-            placeholders.put("MATERIAL_LINK", "https://your-platform.com/material/" + chapter.getId());
+            placeholders.put("MATERIAL_LINK", SLIDE_ACCESS_URL);
 
             NotificationToUserDTO notificationUser = new NotificationToUserDTO();
             notificationUser.setUserId(student.getUserId());
@@ -75,89 +75,14 @@ public class SlideNotificationService {
 
     private NotificationDTO prepareNotificationDTO(Slide slide, List<NotificationToUserDTO> notificationUsers) {
         NotificationDTO notificationDTO = new NotificationDTO();
-        notificationDTO.setBody(getEmailTemplate());
-        notificationDTO.setNotificationType("EMAIL");
+        notificationDTO.setBody(SlideNotificationEmailBody.NEW_SLIDE_EMAIL_TEMPLATE);
+        notificationDTO.setNotificationType(NotificationType.EMAIL.name());
         notificationDTO.setSubject("New Study Material Available");
-        notificationDTO.setSource("SLIDE");
+        notificationDTO.setSource(NotificationSourceEnum.SLIDE.name());
         notificationDTO.setSourceId(slide.getId());
         notificationDTO.setUsers(notificationUsers);
         return notificationDTO;
     }
 
-    private String getEmailTemplate() {
-        return """
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <style>
-                        body {
-                            font-family: Arial, sans-serif;
-                            background-color: #f8f8f8;
-                            margin: 0;
-                            padding: 0;
-                        }
-                        .container {
-                            max-width: 600px;
-                            background: #ffffff;
-                            margin: 20px auto;
-                            padding: 20px;
-                            border-radius: 8px;
-                            box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
-                            text-align: center;
-                        }
-                        .header {
-                            background: #ED7424;
-                            color: #ffffff;
-                            padding: 15px;
-                            font-size: 22px;
-                            font-weight: bold;
-                            border-radius: 8px 8px 0 0;
-                        }
-                        .content {
-                            margin: 20px 0;
-                            font-size: 16px;
-                            color: #333;
-                            line-height: 1.6;
-                        }
-                        .button {
-                            display: inline-block;
-                            padding: 12px 20px;
-                            background: #ED7424;
-                            color: #ffffff;
-                            text-decoration: none;
-                            font-size: 16px;
-                            border-radius: 5px;
-                            font-weight: bold;
-                            margin-top: 10px;
-                        }
-                        .footer {
-                            margin-top: 20px;
-                            font-size: 14px;
-                            color: #777;
-                        }
-                        .highlight {
-                            color: #ED7424;
-                            font-weight: bold;
-                        }
-                    </style>
-                </head>
-                <body>
-                    <div class="container">
-                        <div class="header">📚 New Study Material Added!</div>
-                        <div class="content">
-                            <p>Dear <span class="highlight">{{STUDENT_NAME}}</span>,</p>
-                            <p>We are excited to inform you that new <strong>slides/study material</strong> have been added to:</p>
-                            <p class="highlight">"<strong>{{CHAPTER_NAME}}</strong>"</p>
-                            <p>Enhance your knowledge and stay ahead in your learning journey.</p>
-                            <a href="{{MATERIAL_LINK}}" class="button">View Material</a>
-                        </div>
-                        <div class="footer">
-                            <p>Happy Learning! 🚀</p>
-                            <p><strong>{{INSTITUTE_NAME}}</strong></p>
-                        </div>
-                    </div>
-                </body>
-                </html>
-                """;
-    }
+
 }

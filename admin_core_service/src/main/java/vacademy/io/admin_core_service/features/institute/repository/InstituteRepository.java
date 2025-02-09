@@ -55,14 +55,5 @@ public interface InstituteRepository extends CrudRepository<Institute, String> {
             """, nativeQuery = true)
     public Integer findCountForNullOrEmptyFields(@Param("instituteId") String instituteId);
 
-    @Query("""
-    SELECT i FROM Institute i
-    JOIN StudentSessionInstituteGroupMapping s ON i.id = s.institute.id
-    JOIN PackageSession ps ON s.packageSession.id = ps.id
-    JOIN ChapterPackageSessionMapping cpsm ON ps.id = cpsm.packageSession.id
-    JOIN Chapter c ON cpsm.chapter.id = c.id
-    WHERE c.id = :chapterId
-""")
-    Optional<Institute> findInstituteByChapterId(@Param("chapterId") String chapterId);
 
 }

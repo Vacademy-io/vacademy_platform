@@ -164,7 +164,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
     );
 
     @Query("""
-    SELECT st FROM Student st
+    SELECT DISTINCT st FROM Student st
     JOIN StudentSessionInstituteGroupMapping s ON st.userId = s.userId
     JOIN PackageSession ps ON s.packageSession.id = ps.id
     JOIN ChapterPackageSessionMapping cpsm ON ps.id = cpsm.packageSession.id

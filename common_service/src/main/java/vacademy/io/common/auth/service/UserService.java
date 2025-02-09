@@ -8,9 +8,11 @@ import org.springframework.util.StringUtils;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.UserPermissionRequestDTO;
 import vacademy.io.common.auth.dto.UserRoleRequestDTO;
+import vacademy.io.common.auth.dto.UserWithRolesDTO;
 import vacademy.io.common.auth.entity.Role;
 import vacademy.io.common.auth.entity.User;
 import vacademy.io.common.auth.entity.UserRole;
+import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.auth.repository.RoleRepository;
 import vacademy.io.common.auth.repository.UserRepository;
 import vacademy.io.common.exceptions.*;
@@ -228,5 +230,9 @@ public class UserService {
         user.setRoles(new HashSet<>(userRoles));
         userRepository.save(user);
         return userRoles;
+    }
+
+    public List<UserWithRolesDTO> getUserDetailsByInstituteId(String instituteId, CustomUserDetails user) {
+        return userRepository.findUsersWithRolesByInstituteId(instituteId).stream().map(UserWithRolesDTO::new).collect(Collectors.toList());
     }
 }

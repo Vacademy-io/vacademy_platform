@@ -27,7 +27,7 @@ public class GetPageDetailsController {
     }
 
     @GetMapping("/participant-status")
-    public ResponseEntity<ParticipantPublicResponseDto> getParticipantStatus(@RequestParam("assessmentId") String assessmentId, @RequestParam("instituteId") String instituteId, @RequestParam("userId") String userId) {
-        return assessmentPublicPageManager.getParticipantStatus(assessmentId, instituteId, userId);
+    public ResponseEntity<ParticipantPublicResponseDto> getParticipantStatus(@RequestParam("assessmentId") String assessmentId, @RequestParam("instituteId") String instituteId, @RequestParam("userId") String userId, @RequestParam(value = "psIds", required = false) String psIds) {
+        return assessmentPublicPageManager.getParticipantStatus(assessmentId, instituteId, userId, psIds);
     }
 }

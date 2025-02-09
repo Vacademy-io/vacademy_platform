@@ -147,6 +147,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
 
     Optional<Student> findByUsernameAndUserId(String username, String userId);
 
+    Optional<Student> findTopByUserId(String userId);
 
     @Query(
             nativeQuery = true,

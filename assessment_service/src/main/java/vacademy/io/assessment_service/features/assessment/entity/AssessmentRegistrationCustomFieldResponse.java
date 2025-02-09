@@ -1,15 +1,21 @@
 package vacademy.io.assessment_service.features.assessment.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import jakarta.persistence.*;
 import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 import org.hibernate.annotations.UuidGenerator;
 
 import java.util.Date;
 
 @Entity
 @Table(name = "assessment_registration_custom_field_response_data")
-@Data
+@Getter
+@Setter
+@JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class AssessmentRegistrationCustomFieldResponse {
 
     @Id

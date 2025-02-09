@@ -82,5 +82,10 @@ public interface UserRepository extends CrudRepository<User, String> {
     @Query(value = "DELETE FROM users WHERE id = :userId", nativeQuery = true)
     void deleteUserById(@Param("userId") String userId);
 
+    @Query("SELECT DISTINCT u FROM User u " +
+            "JOIN  u.roles ur " +
+            "JOIN ur.role r " +
+            "WHERE ur.instituteId = :instituteId")
+    List<User> findUsersWithRolesByInstituteId(@Param("instituteId") String instituteId);
 
 }

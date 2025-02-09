@@ -49,5 +49,17 @@ public class UserInstituteController {
         return instituteService.getInstituteDashboardDetail(user,instituteId);
     }
 
+    @PutMapping("/add-letterhead-file-id")
+    public ResponseEntity<String> addLetterheadFileId(@RequestParam("instituteId") String instituteId,
+                                                      @RequestParam("letterheadFileId") String letterheadFileId,
+                                                      @RequestAttribute("user") CustomUserDetails user){
+        return ResponseEntity.ok(instituteService.addLetterHeadFileId(instituteId, letterheadFileId, user));
+    }
+
+    @GetMapping("/get-letterhead-file-id")
+    public ResponseEntity<String> getLetterheadFileId(@RequestParam("instituteId") String instituteId,
+                                                      @RequestAttribute("user") CustomUserDetails user){
+        return ResponseEntity.ok(instituteService.getLetterFileId(instituteId, user));
+    }
 
 }

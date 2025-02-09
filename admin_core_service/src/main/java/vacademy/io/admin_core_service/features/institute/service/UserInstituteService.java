@@ -111,6 +111,7 @@ public class UserInstituteService {
         institute.setMobileNumber(instituteInfo.getPhone());
         institute.setWebsiteUrl(instituteInfo.getWebsiteUrl());
         institute.setLogoFileId(instituteInfo.getInstituteLogoFileId());
+        institute.setLetterHeadFileId(instituteInfo.getLetterHeadFileId());
         return institute;
     }
 
@@ -169,5 +170,19 @@ public class UserInstituteService {
         if (value != null) {
             setterMethod.accept(value);
         }
+    }
+
+    public String addLetterHeadFileId(String instituteId, String letterHeadFileId,CustomUserDetails userDetails) {
+        Optional<Institute> institute = instituteRepository.findById(instituteId);
+        if(institute.isEmpty()) throw new VacademyException("Institute Not Found");
+        institute.get().setLetterHeadFileId(letterHeadFileId);
+        instituteRepository.save(institute.get());
+        return "Done";
+    }
+
+    public String getLetterFileId(String instituteId, CustomUserDetails userDetails) {
+        Optional<Institute> institute = instituteRepository.findById(instituteId);
+        if(institute.isEmpty()) throw new VacademyException("Institute Not Found");
+        return institute.get().getLetterHeadFileId();
     }
 }

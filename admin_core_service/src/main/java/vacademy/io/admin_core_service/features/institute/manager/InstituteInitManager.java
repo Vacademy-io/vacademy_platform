@@ -72,6 +72,7 @@ public class InstituteInitManager {
         instituteInfoDTO.setStudentStatuses(List.of("ACTIVE", "INACTIVE"));
         instituteInfoDTO.setSubjects(subjectRepository.findDistinctSubjectsByInstituteId(institute.get().getId()).stream().map((SubjectDTO::new)).toList());
         instituteInfoDTO.setSessionExpiryDays(List.of(30, 180, 360));
+        instituteInfoDTO.setLetterHeadFileId(institute.get().getLetterHeadFileId());
         return instituteInfoDTO;
     }
 }

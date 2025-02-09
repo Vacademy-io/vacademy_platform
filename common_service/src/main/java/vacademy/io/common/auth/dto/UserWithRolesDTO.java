@@ -9,6 +9,7 @@ import lombok.NoArgsConstructor;
 import vacademy.io.common.auth.entity.User;
 
 import java.util.Date;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -32,7 +33,8 @@ public class UserWithRolesDTO {
     private boolean isRootUser;
     private String password;
     private String profilePicFileId;
-    private Map<String, String> roles;
+    private List<RoleDTO> roles;
+
 
     public UserWithRolesDTO(User user) {
         this.id = user.getId();
@@ -48,6 +50,7 @@ public class UserWithRolesDTO {
         this.isRootUser = user.isRootUser();
         this.profilePicFileId = user.getProfilePicFileId();
         this.roles = user.getRoles().stream()
-                .collect(Collectors.toMap(ur -> ur.getRole().getId(), ur -> ur.getRole().getName()));
+                .map(role -> new RoleDTO(role.getRole().getName(), role.getInstituteId())).collect(Collectors.toList());
     }
 }
+

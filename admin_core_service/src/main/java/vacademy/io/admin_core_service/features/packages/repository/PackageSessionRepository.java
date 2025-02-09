@@ -8,6 +8,7 @@ import org.springframework.stereotype.Repository;
 import vacademy.io.common.institute.entity.session.PackageSession;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface PackageSessionRepository extends JpaRepository<PackageSession, String> {
@@ -32,5 +33,22 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
             nativeQuery = true)
     List<PackageSession> findPackageSessionsByInstituteIdAndSessionId(
             @Param("instituteId") String instituteId, @Param("sessionId") String sessionId);
+
+    @Query("SELECT ps FROM PackageSession ps " +
+            "WHERE ps.packageEntity.id = :packageId " +
+            "AND ps.session.id = :sessionId " +
+            "ORDER BY ps.updatedAt DESC LIMIT 1")
+    Optional<PackageSession> findLatestPackageSessionByPackageIdAndSessionId(String packageId, String sessionId);
+
+    @Query(value = "SELECT COUNT(ps.id) " +
+            "FROM package_session ps " +
+            "JOIN package p ON ps.package_id = p.id " +
+            "JOIN package_institute pi ON p.id = pi.package_id " +
+            "WHERE pi.institute_id = :instituteId " +
+            "AND ps.status != 'DELETED'",
+            nativeQuery = true)
+    Long findCountPackageSessionsByInstituteId(@Param("instituteId") String instituteId);
+
+
 
 }

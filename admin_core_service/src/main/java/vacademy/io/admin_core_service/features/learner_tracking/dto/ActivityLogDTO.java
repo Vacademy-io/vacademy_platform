@@ -17,8 +17,8 @@ public class ActivityLogDTO {
     private String sourceType;
     private String userId;
     private String slideId;
-    private Timestamp startTime;
-    private Timestamp endTime;
+    private Long startTimeInMillis;
+    private Long endTimeInMillis;
     private Double percentageWatched;
     private List<VideoActivityLogDTO> videos;
     private List<DocumentActivityLogDTO> documents;

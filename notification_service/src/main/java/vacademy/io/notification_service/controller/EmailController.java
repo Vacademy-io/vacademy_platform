@@ -8,9 +8,11 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import vacademy.io.common.notification.dto.EmailOTPRequest;
 import vacademy.io.common.notification.dto.GenericEmailRequest;
+import vacademy.io.notification_service.dto.NotificationDTO;
 import vacademy.io.notification_service.dto.EmailRequest;
 import vacademy.io.notification_service.features.email_otp.service.OTPService;
 import vacademy.io.notification_service.service.EmailService;
+import vacademy.io.notification_service.service.NotificationService;
 
 @RestController
 @RequestMapping("notification-service/v1")
@@ -20,10 +22,13 @@ public class EmailController {
 
     private final OTPService otpService;
 
+    private final NotificationService notificationService;
+
     @Autowired
-    public EmailController(EmailService emailService, OTPService otpService) {
+    public EmailController(EmailService emailService, OTPService otpService,NotificationService notificationService) {
         this.emailService = emailService;
         this.otpService = otpService;
+        this.notificationService = notificationService;
     }
 
     @PostMapping("/send-email")
@@ -54,6 +59,11 @@ public class EmailController {
         } catch (Exception e) {
             return ResponseEntity.ok(false);
         }
+    }
+
+    @PostMapping("/send-email-to-users")
+    public ResponseEntity<String> sendEmailsToUsers(@RequestBody NotificationDTO emailToUsersDTO) {
+        return ResponseEntity.ok(notificationService.sendNotification(emailToUsersDTO));
     }
 
 }

@@ -40,8 +40,9 @@ public class SubjectPackageSession {
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Timestamp updatedAt;
 
-    public SubjectPackageSession(Subject subject, PackageSession packageSession) {
+    public SubjectPackageSession(Subject subject, PackageSession packageSession,Integer subjectOrder) {
         this.subject = subject;
         this.packageSession = packageSession;
+        this.subjectOrder = subjectOrder;
     }
 }

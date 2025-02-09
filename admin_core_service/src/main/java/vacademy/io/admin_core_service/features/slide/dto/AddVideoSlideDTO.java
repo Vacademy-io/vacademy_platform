@@ -13,4 +13,7 @@ public class AddVideoSlideDTO {
     private Integer slideOrder;
     private VideoSlideDTO videoSlide;
     private String status;
+    private boolean newSlide;
+    private String id;
+    private boolean notify;
 }

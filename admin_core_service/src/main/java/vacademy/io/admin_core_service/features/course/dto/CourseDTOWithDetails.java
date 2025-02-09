@@ -14,7 +14,7 @@ import java.util.List;
 @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
 public class CourseDTOWithDetails {
     private CourseDTO course;
-    private List<SessionDTOWithDetails>sessions;
+    private List<SessionDTOWithDetails> sessions;
 
     public CourseDTOWithDetails(CourseDTO course, List<SessionDTOWithDetails> sessions) {
         this.course = course;

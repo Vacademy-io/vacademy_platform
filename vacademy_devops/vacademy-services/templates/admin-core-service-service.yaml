@@ -8,6 +8,6 @@ spec:
     app: admin-core-service
   ports:
     - name: http
-      port: { { .Values.services.admin_core_service.port } }
-      targetPort: { { .Values.services.admin_core_service.port } }
+      port: {{ .Values.services.admin_core_service.port }}
+      targetPort: {{ .Values.services.admin_core_service.port }}
   type: NodePort

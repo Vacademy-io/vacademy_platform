@@ -30,7 +30,7 @@ public class LevelService {
     private final PackageRepository packageRepository;
     private final PackageSessionService packageSessionService;
     private final SessionRepository sessionRepository;
-
+    private final PackageSessionRepository packageSessionRepository;
     public Level createOrAddLevel(AddLevelDTO addLevelDTO) {
         Level level = null;
         if (addLevelDTO.getNewLevel()){
@@ -47,6 +47,7 @@ public class LevelService {
         level.setLevelName(addLevelDTO.getLevelName());
         level.setDurationInDays(addLevelDTO.getDurationInDays());
         level.setStatus(LevelStatusEnum.ACTIVE.name());
+        level.setThumbnailFileId(addLevelDTO.getThumbnailFileId());
         return levelRepository.save(level);
     }
 
@@ -65,7 +66,7 @@ public class LevelService {
             throw new VacademyException("Session not found");
         }
         Level level = createOrAddLevel(addLevelDTO);
-        packageSessionService.createPackageSession(level, optionalSession.get(), optionalPackageEntity.get(),new Date());
+        packageSessionService.createPackageSession(level, optionalSession.get(), optionalPackageEntity.get(),getStartDatePackageSessionDate(packageId,sessionId));
         return level.getId();
     }
 
@@ -94,6 +95,15 @@ public class LevelService {
 
         levelRepository.saveAll(levels); // Batch update
         return "Levels deleted successfully";
+    }
+
+    private Date getStartDatePackageSessionDate(String packageId,String sessionId){
+        Optional<PackageSession>optionalPackageSession = packageSessionRepository.findLatestPackageSessionByPackageIdAndSessionId(packageId,sessionId);
+        if (optionalPackageSession.isEmpty()) {
+            return new Date();
+        } else {
+            return optionalPackageSession.get().getStartTime();
+        }
     }
 
 }

@@ -16,4 +16,12 @@ public class NumberUtil {
         }
         return false;
     }
+
+    public static String generateRandomNumber(int digitCount) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < digitCount; i++) {
+            sb.append((char) ('0' + (int) (Math.random() * 10)));
+        }
+        return sb.toString();
+    }
 }

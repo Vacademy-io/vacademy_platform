@@ -249,17 +249,16 @@ public class ChapterService {
         }
     }
 
-    public String deleteChapter(List<String> chapterIds, CustomUserDetails user) {
-        List<Chapter> chapters = chapterRepository.findAllById(chapterIds);
-
-        if (chapters.size() != chapterIds.size()) {
-            throw new VacademyException("Some chapters not found");
+    public String deleteChapter(List<String> chapterIds,String packageSessionIds, CustomUserDetails user) {
+        List<ChapterPackageSessionMapping>chapterPackageSessionMappings = chapterPackageSessionMappingRepository.findByChapterIdInAndPackageSessionIdIn(chapterIds, Arrays.stream(getPackageSessionIds(packageSessionIds)).toList());
+        List<ChapterPackageSessionMapping>deletedChapterPackageSessionMappings = new ArrayList<>();
+        for (ChapterPackageSessionMapping chapterPackageSessionMapping : chapterPackageSessionMappings) {
+            chapterPackageSessionMapping.setStatus(ChapterStatus.DELETED.name());
+            deletedChapterPackageSessionMappings.add(chapterPackageSessionMapping);
         }
-
-        chapters.forEach(chapter -> chapter.setStatus(ChapterStatus.DELETED.name()));
-        chapterRepository.saveAll(chapters);
-
-        return "Chapters deleted successfully";
+        chapterPackageSessionMappingRepository.saveAll(deletedChapterPackageSessionMappings);
+        return "Chapter deleted successfully";
     }
+
 
 }

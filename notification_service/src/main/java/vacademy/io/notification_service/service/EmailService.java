@@ -7,6 +7,8 @@ import jakarta.mail.internet.InternetAddress;
 import jakarta.mail.internet.MimeBodyPart;
 import jakarta.mail.internet.MimeMessage;
 import jakarta.mail.internet.MimeMultipart;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.SimpleMailMessage;
@@ -23,6 +25,8 @@ public class EmailService {
 
     @Value("${app.ses.sender.email}")
     private String from;
+
+    private static final Logger logger = LoggerFactory.getLogger(EmailService.class);
 
     @Autowired
     public EmailService(JavaMailSender mailSender) {
@@ -169,14 +173,21 @@ public class EmailService {
 
     public void sendHtmlEmail(String to, String subject, String service, String body) {
         try {
+            // Log the start of email preparation
+            logger.info("Preparing to send email to: {} with subject: {}", to, subject);
+
             // Set default subject if none is provided
             final String emailSubject = StringUtils.hasText(subject) ? subject : "This is a very important email";
             final String emailBody = body; // The body is already passed, so just ensure it's final if needed
+
+            // Log the email body (excluding sensitive info like personal data)
+            logger.debug("Email body content: {}", emailBody);
 
             // Send the email asynchronously using the emailDispatcher
             emailDispatcher.sendEmail(() -> {
                 try {
                     // Prepare the email session and message
+                    logger.info("Setting up email session and message...");
                     Session session = Session.getDefaultInstance(new Properties(), null);
                     MimeMessage message = new MimeMessage(session);
 
@@ -192,20 +203,31 @@ public class EmailService {
                     multipart.addBodyPart(htmlPart);
                     message.setContent(multipart);
 
-                    // Send the email
+                    // Log before sending the email
+                    logger.info("Sending email to: {}", to);
                     mailSender.send(message);
 
-                } catch (Exception e) {
-                    // Log and rethrow as RuntimeException
+                    // Log successful email sending
+                    logger.info("Email successfully sent to: {}", to);
+
+                } catch (MessagingException e) {
+                    e.printStackTrace();
+                    // Log the error and rethrow as RuntimeException
+                    logger.error("Error while preparing or sending the email", e);
                     throw new RuntimeException("Failed to send HTML email", e);
                 }
             });
+
         } catch (InterruptedException e) {
             // Handle thread interruption
+            e.printStackTrace();
             Thread.currentThread().interrupt();
+            logger.error("Email sending interrupted due to rate limiting", e);
             throw new RuntimeException("Failed to send HTML email due to rate limiting", e);
         } catch (Exception e) {
-            // Handle any other exceptions
+            // Log and handle any other exceptions
+            e.printStackTrace();
+            logger.error("An error occurred while preparing the HTML email", e);
             throw new RuntimeException("An error occurred while preparing the HTML email", e);
         }
     }

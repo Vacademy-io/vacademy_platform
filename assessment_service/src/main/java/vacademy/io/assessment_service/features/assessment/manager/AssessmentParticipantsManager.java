@@ -1,18 +1,24 @@
 package vacademy.io.assessment_service.features.assessment.manager;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.ObjectUtils;
-import vacademy.io.assessment_service.features.assessment.dto.AssessmentSaveResponseDto;
-import vacademy.io.assessment_service.features.assessment.dto.RegistrationFieldDto;
-import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.AssessmentAdminListInitDto;
+import org.springframework.util.StringUtils;
+import vacademy.io.assessment_service.features.assessment.dto.*;
 import vacademy.io.assessment_service.features.assessment.dto.create_assessment.AssessmentRegistrationsDto;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentBatchRegistration;
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentCustomField;
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentUserRegistration;
+import vacademy.io.assessment_service.features.assessment.enums.AssessmentVisibility;
+import vacademy.io.assessment_service.features.assessment.enums.UserRegistrationFilterEnum;
 import vacademy.io.assessment_service.features.assessment.enums.UserRegistrationSources;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentCustomFieldRepository;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentRepository;
@@ -26,13 +32,11 @@ import vacademy.io.common.core.utils.DateUtil;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.student.dto.BasicParticipantDTO;
 
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 
 import static vacademy.io.common.auth.enums.CompanyStatus.ACTIVE;
 
+@Slf4j
 @Component
 public class AssessmentParticipantsManager {
     @Autowired
@@ -192,4 +196,260 @@ public class AssessmentParticipantsManager {
         List<AssessmentUserRegistration> assessmentUserRegistrations = assessmentOptional.get().getUserRegistrations().stream().toList();
         return ResponseEntity.ok(assessmentUserRegistrations);
     }
+
+    public ClosedAssessmentParticipantsResponse getAllParticipantsForClosedAssessment(CustomUserDetails user, String instituteId, String assessmentId, AssessmentUserFilter filter, Integer pageNo, Integer pageSize) {
+        if(Objects.isNull(filter)) throw new VacademyException("Invalid Filter Request");
+        Sort sortingColumns = createSortObject(filter.getSortColumns());
+
+        Pageable pageable = PageRequest.of(pageNo, pageSize, sortingColumns);
+        Page<ParticipantsDetailsDto> registeredUserPage = null;
+
+        //Handle Case for BATCH REGISTRATION
+        if(filter.getRegistrationSource().equals(UserRegistrationSources.BATCH_PREVIEW_REGISTRATION.name())){
+            registeredUserPage = handleCaseForBatchRegistration(assessmentId,instituteId,filter, pageable);
+        }
+        //Handle Case for ADMIN PRE REGISTRATION
+        else if(filter.getRegistrationSource().equals(UserRegistrationSources.ADMIN_PRE_REGISTRATION.name())){
+            registeredUserPage = handleCaseForAdminPreRegistration(assessmentId, instituteId, filter, pageable);
+        }
+        else throw new VacademyException("Invalid Source Request");
+
+        return createAllRegisteredUserForClosedTest(registeredUserPage);
+    }
+
+
+    /**
+     * Handles the case for admin pre-registration by fetching the list of registered users
+     * based on the given filter conditions.
+     */
+    private Page<ParticipantsDetailsDto> handleCaseForAdminPreRegistration(
+            String assessmentId,
+            String instituteId,
+            AssessmentUserFilter filter,
+            Pageable pageable) {
+
+        Page<ParticipantsDetailsDto> registeredUserPage = null;
+
+
+
+        // Check if the attempt type is "PENDING"
+        if (isPendingAttempt(filter)) {
+
+            // If a name filter is provided, search for pre-registered and pending users with name filtering
+            if (StringUtils.hasText(filter.getName())) {
+                registeredUserPage = assessmentUserRegistrationRepository
+                        .findUserRegistrationWithFilterWithSearchForPreRegistrationAndPending(
+                                filter.getName(), assessmentId, instituteId, filter.getStatus(),
+                                filter.getRegistrationSource(), pageable);
+            }
+
+            // If no results found, search for admin pre-registered and pending users
+            if (Objects.isNull(registeredUserPage)) {
+                registeredUserPage = assessmentUserRegistrationRepository
+                        .findUserRegistrationWithFilterAdminPreRegistrationAndPending(
+                                assessmentId, instituteId, filter.getStatus(),
+                                filter.getRegistrationSource(), pageable);
+            }
+
+        } else {
+            // If a name filter is provided, search for users with name filtering
+            if (StringUtils.hasText(filter.getName())) {
+                registeredUserPage = assessmentUserRegistrationRepository
+                        .findUserRegistrationWithFilterWithSearchForSource(
+                                filter.getName(), assessmentId, instituteId, filter.getStatus(),
+                                filter.getAttemptType(), filter.getRegistrationSource(), pageable);
+            }
+
+            // If no results found, search for users based on batch, attempt type, and registration source
+            if (Objects.isNull(registeredUserPage)) {
+                registeredUserPage = assessmentUserRegistrationRepository
+                        .findUserRegistrationWithFilterForSource(
+                                assessmentId, instituteId, filter.getBatches(),
+                                filter.getAttemptType(), filter.getRegistrationSource(), pageable);
+            }
+        }
+
+        // Return the filtered list of registered users
+        return registeredUserPage;
+    }
+
+    private Page<ParticipantsDetailsDto> handleCaseForBatchRegistration(String assessmentId, String instituteId, AssessmentUserFilter filter, Pageable pageable) {
+        Page<ParticipantsDetailsDto> registeredUserPage = null;
+        if(isPendingAttempt(filter)){
+            //TODO: Send request to admin core to get pending list for batch
+        }
+        else{
+            //Handle Case for Attempted case i.e LIVE,PREVIEW,ENDED
+            if(StringUtils.hasText(filter.getName())){
+                registeredUserPage = assessmentUserRegistrationRepository.findUserRegistrationWithFilterWithSearchForBatch(filter.getName(),assessmentId, instituteId, filter.getBatches(), filter.getStatus(), filter.getAttemptType(),pageable);
+            }
+            if(Objects.isNull(registeredUserPage)){
+                registeredUserPage= assessmentUserRegistrationRepository.findUserRegistrationWithFilterForBatch(assessmentId, instituteId, filter.getBatches(), filter.getStatus(), filter.getAttemptType(), pageable);
+            }
+        }
+
+        return registeredUserPage;
+    }
+
+    /**
+     * Retrieves all participants for an open assessment based on the provided filter criteria.
+     *
+     * @param user         The authenticated user details.
+     * @param instituteId  The ID of the institute.
+     * @param assessmentId The ID of the assessment.
+     * @param filter       The filter criteria for fetching participants.
+     * @param pageNo       The page number for pagination.
+     * @param pageSize     The size of each page for pagination.
+     * @return A {@link ClosedAssessmentParticipantsResponse} containing the list of participants.
+     * @throws VacademyException if the filter is null.
+     */
+    public ClosedAssessmentParticipantsResponse getAllParticipantsForOpenAssessment(
+            CustomUserDetails user,
+            String instituteId,
+            String assessmentId,
+            AssessmentUserFilter filter,
+            Integer pageNo,
+            Integer pageSize) {
+
+        // Validate the filter
+        if (Objects.isNull(filter)) {
+            throw new VacademyException("Invalid Filter Request");
+        }
+
+        // Create sorting object based on filter parameters
+        Sort sortingColumns = createSortObject(filter.getSortColumns());
+
+        // Define pagination settings
+        Pageable pageable = PageRequest.of(pageNo, pageSize, sortingColumns);
+        Page<ParticipantsDetailsDto> registeredUserPage = null;
+
+        // Check if the assessment attempt is pending
+        if (isPendingAttempt(filter)) {
+
+            // If a name filter is provided, search with name-based filtering
+            if (StringUtils.hasText(filter.getName())) {
+                registeredUserPage = assessmentUserRegistrationRepository
+                        .findUserRegistrationWithFilterWithSearchForPreRegistrationAndPending(
+                                filter.getName(), assessmentId, instituteId, filter.getStatus(),
+                                filter.getRegistrationSource(), pageable);
+            }
+
+            // If no results are found, perform a broader search
+            if (Objects.isNull(registeredUserPage)) {
+                registeredUserPage = assessmentUserRegistrationRepository
+                        .findUserRegistrationWithFilterAdminPreRegistrationAndPending(
+                                assessmentId, instituteId, filter.getStatus(),
+                                filter.getRegistrationSource(), pageable);
+            }
+
+        } else {
+            // If a name filter is provided, search with name-based filtering
+            if (StringUtils.hasText(filter.getName())) {
+                registeredUserPage = assessmentUserRegistrationRepository
+                        .findUserRegistrationWithFilterWithSearchForSource(
+                                filter.getName(), assessmentId, instituteId, filter.getStatus(),
+                                filter.getAttemptType(), filter.getRegistrationSource(), pageable);
+            }
+
+            // If no results are found, perform a broader search
+            if (Objects.isNull(registeredUserPage)) {
+                registeredUserPage = assessmentUserRegistrationRepository
+                        .findUserRegistrationWithFilterForSource(
+                                assessmentId, instituteId, filter.getStatus(),
+                                filter.getAttemptType(), filter.getRegistrationSource(), pageable);
+            }
+        }
+
+        // Convert the retrieved data into the required response format
+        return createAllRegisteredUserForClosedTest(registeredUserPage);
+    }
+
+    private ClosedAssessmentParticipantsResponse createAllRegisteredUserForClosedTest(Page<ParticipantsDetailsDto> registrationPage) {
+        if(Objects.isNull(registrationPage)){
+            return ClosedAssessmentParticipantsResponse.builder().content(new ArrayList<>())
+                    .pageNo(0)
+                    .pageSize(0)
+                    .last(true)
+                    .totalPages(0)
+                    .totalElements(0)
+                    .build();
+        }
+
+        List<ParticipantsDetailsDto> content = registrationPage.getContent();
+        return ClosedAssessmentParticipantsResponse.builder().content(content)
+                .pageNo(registrationPage.getNumber())
+                .pageSize(registrationPage.getSize())
+                .last(registrationPage.isLast())
+                .totalPages(registrationPage.getTotalPages())
+                .totalElements(registrationPage.getTotalElements()).build();
+    }
+
+    //Sorting Object to Sort the values
+    private Sort createSortObject(Map<String, String> sortColumns) {
+        if(sortColumns==null) return Sort.unsorted();
+
+        List<Sort.Order> orders = new ArrayList<>();
+
+        for (Map.Entry<String, String> entry : sortColumns.entrySet()) {
+            Sort.Direction direction = "DESC".equalsIgnoreCase(entry.getValue()) ? Sort.Direction.DESC : Sort.Direction.ASC;
+            orders.add(new Sort.Order(direction, entry.getKey()));
+        }
+        return Sort.by(orders);
+    }
+
+    /**
+     * Retrieves all participants for a given assessment based on the provided filter.
+     *
+     * @param user          The authenticated user details.
+     * @param instituteId   The ID of the institute.
+     * @param assessmentId  The ID of the assessment.
+     * @param filter        The filter criteria for fetching participants.
+     * @param pageNo        The page number for pagination.
+     * @param pageSize      The size of each page for pagination.
+     * @return ResponseEntity containing a list of participants matching the criteria.
+     * @throws VacademyException if the filter is invalid or the assessment type is null.
+     */
+    public ResponseEntity<ClosedAssessmentParticipantsResponse> getAllParticipantsForAssessment(
+            CustomUserDetails user,
+            String instituteId,
+            String assessmentId,
+            AssessmentUserFilter filter,
+            Integer pageNo,
+            Integer pageSize) {
+
+        // Validate the filter and ensure it contains an assessment type
+        if (Objects.isNull(filter) || Objects.isNull(filter.getAssessmentType())) {
+            throw new VacademyException("Invalid Filter Request");
+        }
+
+        // Determine whether to fetch participants for an open or closed assessment
+        ClosedAssessmentParticipantsResponse response = filter.getAssessmentType()
+                .equals(AssessmentVisibility.PUBLIC.name())
+                ? getAllParticipantsForOpenAssessment(user, instituteId, assessmentId, filter, pageNo, pageSize)
+                : getAllParticipantsForClosedAssessment(user, instituteId, assessmentId, filter, pageNo, pageSize);
+
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Checks if the assessment attempt is pending based on the provided filter.
+     *
+     * @param filter The assessment user filter.
+     * @return true if there is only one attempt type and it is "PENDING", otherwise false.
+     */
+    private boolean isPendingAttempt(AssessmentUserFilter filter) {
+        // Return false if the filter is null
+        if (Objects.isNull(filter)) {
+            return false;
+        }
+
+        // Check if the only attempt type in the filter is "PENDING"
+        return filter.getAttemptType().size() == 1 &&
+                filter.getAttemptType().get(0).equals(UserRegistrationFilterEnum.PENDING.name());
+    }
+
+    public Integer getAssessmentCountForUserId(CustomUserDetails user,String instituteId) {
+        return assessmentUserRegistrationRepository.countDistinctAssessmentsByUserId(user.getUserId(),instituteId);
+    }
+
 }

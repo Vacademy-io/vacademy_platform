@@ -60,4 +60,27 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
 """, nativeQuery = true)
     List<SessionProjection> findDistinctSessionsByPackageId(@Param("packageId") String packageId);
 
+    @Query(value = "SELECT DISTINCT p.* FROM package p " +
+            "JOIN package_session ps ON p.id = ps.package_id " +
+            "JOIN student_session_institute_group_mapping ssgm ON ssgm.package_session_id = ps.id " +
+            "WHERE ssgm.institute_id = :instituteId " +
+            "AND ssgm.user_id = :userId " +
+            "AND p.status != 'DELETED'",
+            nativeQuery = true)
+    List<PackageEntity> findDistinctPackagesByUserIdAndInstituteId(
+            @Param("userId") String userId,
+            @Param("instituteId") String instituteId);
+
+    @Query(value = "SELECT COUNT(DISTINCT p.id) FROM package p " +
+            "JOIN package_session ps ON p.id = ps.package_id " +
+            "JOIN student_session_institute_group_mapping ssgm ON ssgm.package_session_id = ps.id " +
+            "WHERE ssgm.institute_id = :instituteId " +
+            "AND ssgm.user_id = :userId " +
+            "AND p.status != 'DELETED'",
+            nativeQuery = true)
+    Integer countDistinctPackagesByUserIdAndInstituteId(
+            @Param("userId") String userId,
+            @Param("instituteId") String instituteId);
+
+
 }

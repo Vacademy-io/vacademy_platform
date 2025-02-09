@@ -9,8 +9,10 @@ import vacademy.io.admin_core_service.features.institute.service.InstituteModule
 import vacademy.io.admin_core_service.features.learner.dto.StudentInstituteInfoDTO;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
+import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
 import vacademy.io.admin_core_service.features.subject.repository.SubjectRepository;
 import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.common.institute.dto.PackageSessionDTO;
 import vacademy.io.common.institute.dto.SubjectDTO;
 import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.common.institute.entity.session.PackageSession;
@@ -31,6 +33,9 @@ public class LearnerInstituteManager {
 
     @Autowired
     SubjectRepository subjectRepository;
+
+    @Autowired
+    PackageSessionRepository packageSessionRepository;
 
     public StudentInstituteInfoDTO getInstituteDetails(String instituteId, String userId) {
         Optional<Institute> institute = instituteRepository.findById(instituteId);
@@ -54,7 +59,9 @@ public class LearnerInstituteManager {
         instituteInfoDTO.setState(institute.get().getState());
         instituteInfoDTO.setInstituteThemeCode(institute.get().getInstituteThemeCode());
         instituteInfoDTO.setSubModules(instituteModuleService.getSubmoduleIdsForInstitute(institute.get().getId()));
-
+        instituteInfoDTO.setBatchesForSessions(packageSessionRepository.findPackageSessionsByInstituteId(institute.get().getId()).stream().map((obj) -> {
+            return new PackageSessionDTO(obj);
+        }).toList());
         List<StudentSessionInstituteGroupMapping> studentSessions = studentSessionRepository.findAllByInstituteIdAndUserId(instituteId, userId);
         Set<PackageSession> packageSessions = new HashSet<>();
 

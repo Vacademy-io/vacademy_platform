@@ -9,6 +9,7 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Component;
 import vacademy.io.auth_service.feature.auth.dto.AuthRequestDto;
 import vacademy.io.auth_service.feature.auth.dto.JwtResponseDto;
+import vacademy.io.auth_service.feature.notification.service.NotificationService;
 import vacademy.io.common.auth.dto.RefreshTokenRequestDTO;
 import vacademy.io.common.auth.entity.RefreshToken;
 import vacademy.io.common.auth.entity.User;
@@ -17,7 +18,9 @@ import vacademy.io.common.auth.repository.UserRepository;
 import vacademy.io.common.auth.repository.UserRoleRepository;
 import vacademy.io.common.auth.service.JwtService;
 import vacademy.io.common.auth.service.RefreshTokenService;
+import vacademy.io.common.core.utils.NumberUtil;
 import vacademy.io.common.exceptions.ExpiredTokenException;
+import vacademy.io.common.notification.dto.EmailOTPRequest;
 
 import java.util.List;
 import java.util.Optional;
@@ -39,6 +42,9 @@ public class LearnerAuthManager {
 
     @Autowired
     UserRoleRepository userRoleRepository;
+
+    @Autowired
+    NotificationService notificationService;
 
     public JwtResponseDto loginUser(AuthRequestDto authRequestDTO) {
         Authentication authentication;
@@ -79,10 +85,17 @@ public class LearnerAuthManager {
         if (user.isEmpty()) {
             throw new UsernameNotFoundException("invalid user request..!!");
         } else {
-            // todo: generate OTP for email
+            // todo: generate OTP for
+            notificationService.sendOtp(makeOtp(authRequestDTO.getEmail()));
             return "OTP sent to " + authRequestDTO.getEmail();
         }
 
+    }
+
+    private EmailOTPRequest makeOtp(String email){
+        //generate 4 digit OTP
+        String otp = NumberUtil.generateRandomNumber(4);
+        return EmailOTPRequest.builder().to(email).service("auth-service").subject("Vacademy | Hello We have your OTP: " + otp).otp(otp).name("Vacademy User").build();
     }
 
     public JwtResponseDto loginViaOtp(AuthRequestDto authRequestDTO) {
@@ -92,7 +105,8 @@ public class LearnerAuthManager {
         }
 
         // todo: validate OTP
-        if (!authRequestDTO.getOtp().equals("654321")) {
+        Boolean isValidOtp = notificationService.verifyOTP(EmailOTPRequest.builder().otp(authRequestDTO.getOtp()).to(authRequestDTO.getEmail()).build());
+        if (!isValidOtp) {
             throw new UsernameNotFoundException("invalid user request..!!");
         }
 

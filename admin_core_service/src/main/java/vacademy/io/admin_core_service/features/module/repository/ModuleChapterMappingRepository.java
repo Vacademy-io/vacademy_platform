@@ -10,6 +10,11 @@ import java.util.List;
 public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChapterMapping,String> {
     @Query("SELECT mcm.chapter FROM ModuleChapterMapping mcm " +
             "WHERE mcm.module.id = :moduleId " +
-            "AND mcm.chapter.status != 'DELETED'")
-    List<Chapter> findChaptersByModuleIdAndStatusNotDeleted(String moduleId);
+            "AND mcm.chapter.status != 'DELETED' " +
+            "AND NOT EXISTS (SELECT 1 FROM ChapterPackageSessionMapping cpsm " +
+            "                WHERE cpsm.chapter.id = mcm.chapter.id " +
+            "                AND cpsm.status = 'DELETED' " +
+            "                AND cpsm.packageSession.id = :packageSessionId)")
+    List<Chapter> findChaptersByModuleIdAndStatusNotDeleted(String moduleId, String packageSessionId);
+
 }

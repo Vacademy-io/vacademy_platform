@@ -12,6 +12,6 @@ import java.sql.Timestamp;
 @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
 public class VideoActivityLogDTO {
     private String id;
-    private Timestamp startTime;
-    private Timestamp endTime;
+    private Long startTimeInMillis;
+    private Long endTimeInMillis;
 }

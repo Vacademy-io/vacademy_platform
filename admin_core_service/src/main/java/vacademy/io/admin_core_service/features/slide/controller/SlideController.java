@@ -5,7 +5,12 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.slide.dto.AddDocumentSlideDTO;
 import vacademy.io.admin_core_service.features.slide.dto.AddVideoSlideDTO;
+import vacademy.io.admin_core_service.features.slide.dto.SlideDetailProjection;
+import vacademy.io.admin_core_service.features.slide.dto.UpdateSlideOrderDTO;
 import vacademy.io.admin_core_service.features.slide.service.SlideService;
+import vacademy.io.common.auth.model.CustomUserDetails;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/admin-core-service/slide/v1")
@@ -13,13 +18,33 @@ import vacademy.io.admin_core_service.features.slide.service.SlideService;
 public class SlideController {
     private final SlideService slideService;
 
-    @PostMapping("/add-document-slide/{chapterId}")
-    public ResponseEntity<String> addDocumentSlide(@RequestBody AddDocumentSlideDTO addDocumentSlideDTO, @PathVariable String chapterId) {
-        return ResponseEntity.ok(slideService.addDocumentSlide(addDocumentSlideDTO, chapterId));
+    @PostMapping("/add-update-document-slide")
+    public ResponseEntity<String> addDocumentSlide(@RequestBody AddDocumentSlideDTO addDocumentSlideDTO, @RequestParam("chapterId") String chapterId,@RequestParam("instituteId") String instituteId) {
+        return ResponseEntity.ok(slideService.addOrUpdateDocumentSlide(addDocumentSlideDTO, chapterId,instituteId));
     }
 
-    @PostMapping("/add-video-slide/{chapterId}")
-    public ResponseEntity<String> addVideoSlide(@RequestBody AddVideoSlideDTO addVideoSlideDTO, @PathVariable String chapterId) {
-        return ResponseEntity.ok(slideService.addVideoSlide(addVideoSlideDTO, chapterId));
+    @PostMapping("/add-update-video-slide")
+    public ResponseEntity<String> addVideoSlide(@RequestBody AddVideoSlideDTO addVideoSlideDTO, @RequestParam String chapterId,@RequestParam  String instituteId) {
+        return ResponseEntity.ok(slideService.addOrUpdateVideoSlide(addVideoSlideDTO, chapterId,instituteId));
     }
+
+    @GetMapping("/get-slides/{chapterId}")
+    public ResponseEntity<List<SlideDetailProjection>> getSlidesByChapterId(@PathVariable String chapterId, @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(slideService.getSlidesByChapterId(chapterId,user));
+    }
+
+    @PutMapping("/update-status")
+    public ResponseEntity<String> updateSlideStatus(
+            @RequestParam String chapterId,
+            @RequestParam String slideId,
+            @RequestParam String instituteId,
+            @RequestParam String status) {
+        return ResponseEntity.ok(slideService.updateSlideStatus(instituteId,chapterId,slideId,status));
+    }
+
+    @PutMapping("/update-slide-order")
+    public ResponseEntity<String> updateSlideOrder(@RequestBody List<UpdateSlideOrderDTO> updateSlideOrderDTOs, @RequestParam String chapterId, @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(slideService.updateSlideOrder(updateSlideOrderDTOs,chapterId,user));
+    }
+
 }

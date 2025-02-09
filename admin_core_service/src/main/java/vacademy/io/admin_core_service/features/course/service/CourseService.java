@@ -96,6 +96,7 @@ public class CourseService {
         PackageEntity packageEntity = new PackageEntity();
         packageEntity.setPackageName(addCourseDTO.getCourseName());
         packageEntity.setThumbnailFileId(addCourseDTO.getThumbnailFileId());
+        packageEntity.setStatus(PackageStatusEnum.ACTIVE.name());
         return packageEntity;
     }
 

@@ -447,4 +447,9 @@ public class AssessmentParticipantsManager {
         return filter.getAttemptType().size() == 1 &&
                 filter.getAttemptType().get(0).equals(UserRegistrationFilterEnum.PENDING.name());
     }
+
+    public Integer getAssessmentCountForUserId(CustomUserDetails user,String instituteId) {
+        return assessmentUserRegistrationRepository.countDistinctAssessmentsByUserId(user.getUserId(),instituteId);
+    }
+
 }

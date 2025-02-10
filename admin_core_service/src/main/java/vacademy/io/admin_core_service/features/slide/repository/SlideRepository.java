@@ -41,4 +41,27 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
             "ORDER BY cts.slide_order IS NULL, cts.slide_order ASC",
             nativeQuery = true)
     List<SlideDetailProjection> findSlideDetailsByChapterId(@Param("chapterId") String chapterId, @Param("status") List<String> status);
+
+    @Query(value = "SELECT DISTINCT ON (s.id) s.id AS slideId, s.title AS slideTitle, s.description AS slideDescription, " +
+            "s.source_type AS sourceType, s.status AS status, s.image_file_id AS imageFileId, " +
+            "ds.id AS documentId, ds.title AS documentTitle, ds.cover_file_id AS documentCoverFileId, " +
+            "ds.type AS documentType, ds.data AS documentData, " +
+            "vs.id AS videoId, vs.title AS videoTitle, vs.url AS videoUrl, vs.description AS videoDescription, " +
+            "cts.slide_order AS slideOrder " +
+            "FROM slide s " +
+            "JOIN activity_log al ON al.slide_id = s.id " +
+            "JOIN chapter_to_slides cts ON s.id = cts.slide_id " +
+            "JOIN chapter ch ON cts.chapter_id = ch.id " +
+            "LEFT JOIN document_slide ds ON ds.id = s.source_id AND s.source_type = 'DOCUMENT' " +
+            "LEFT JOIN video vs ON vs.id = s.source_id AND s.source_type = 'VIDEO' " +
+            "WHERE al.user_id = :userId " +
+            "AND s.status IN :status " +
+            "AND (al.percentage_watched IS NULL OR al.percentage_watched != 100) " +
+            "ORDER BY s.id, al.updated_at DESC " +
+            "LIMIT 5",
+            nativeQuery = true)
+    List<SlideDetailProjection> findRecentIncompleteSlidesByUserId(
+            @Param("userId") String userId,
+            @Param("status") List<String> status);
+
 }

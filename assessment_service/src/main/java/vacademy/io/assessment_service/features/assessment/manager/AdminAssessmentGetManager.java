@@ -8,22 +8,24 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
-import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.AdminAssessmentFilter;
-import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.AdminBasicAssessmentListItemDto;
-import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.AllAdminAssessmentResponse;
-import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.AssessmentAdminListInitDto;
+import org.springframework.util.StringUtils;
+import vacademy.io.assessment_service.features.assessment.dto.LeaderBoardDto;
+import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.*;
+import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.AssessmentOverviewDto;
+import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.AssessmentOverviewResponse;
+import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.MarksRankDto;
+import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentModeEnum;
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentStatus;
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentVisibility;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentRepository;
+import vacademy.io.assessment_service.features.assessment.repository.StudentAttemptRepository;
 import vacademy.io.assessment_service.features.assessment.service.assessment_get.AssessmentMapper;
 import vacademy.io.assessment_service.features.question_core.enums.EvaluationTypes;
 import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.exceptions.VacademyException;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 import static vacademy.io.common.core.standard_classes.ListService.createSortObject;
@@ -33,6 +35,9 @@ public class AdminAssessmentGetManager {
 
     @Autowired
     AssessmentRepository assessmentRepository;
+
+    @Autowired
+    StudentAttemptRepository studentAttemptRepository;
 
     public ResponseEntity<AssessmentAdminListInitDto> assessmentAdminListInit(CustomUserDetails user, String instituteId) {
         AssessmentAdminListInitDto assessmentAdminListInitDto = new AssessmentAdminListInitDto();
@@ -78,5 +83,52 @@ public class AdminAssessmentGetManager {
         if (adminAssessmentFilter.getInstituteIds() == null) {
             adminAssessmentFilter.setInstituteIds(new ArrayList<>());
         }
+    }
+
+    public ResponseEntity<LeaderBoardResponse> getLeaderBoard(CustomUserDetails user, String assessmentId, LeaderboardFilter filter, String instituteId, int pageNo, int pageSize) {
+        if(Objects.isNull(filter)) throw new VacademyException("Invalid Request");
+        Sort sortColumn = createSortObject(filter.getSortColumns());
+
+        Pageable pageable = PageRequest.of(pageNo, pageSize, sortColumn);
+        Page<LeaderBoardDto> paginatedLeaderboard = null;
+
+        if(StringUtils.hasText(filter.getName())){
+            paginatedLeaderboard = studentAttemptRepository.findLeaderBoardForAssessmentAndInstituteIdWithSearch(filter.getName(), assessmentId, instituteId, filter.getStatus(), pageable);
+        }
+        else{
+            paginatedLeaderboard = studentAttemptRepository.findLeaderBoardForAssessmentAndInstituteIdWithoutSearch(assessmentId, instituteId, filter.getStatus(), pageable);
+        }
+
+        return ResponseEntity.ok(createLeaderBoardResponse(paginatedLeaderboard));
+    }
+
+    private LeaderBoardResponse createLeaderBoardResponse(Page<LeaderBoardDto> paginatedLeaderboard) {
+        if(Objects.isNull(paginatedLeaderboard)){
+            return LeaderBoardResponse.builder()
+                    .pageNo(0)
+                    .pageSize(0)
+                    .totalElements(0)
+                    .content(null)
+                    .last(true)
+                    .totalPages(0)
+                    .build();
+        }
+        List<LeaderBoardDto> allLeaderboard = paginatedLeaderboard.getContent();
+        return LeaderBoardResponse.builder()
+                .pageSize(paginatedLeaderboard.getSize())
+                .pageNo(paginatedLeaderboard.getNumber())
+                .content(allLeaderboard)
+                .totalElements(paginatedLeaderboard.getTotalElements())
+                .last(paginatedLeaderboard.isLast())
+                .totalPages(paginatedLeaderboard.getTotalPages()).build();
+    }
+
+    public ResponseEntity<AssessmentOverviewResponse> getOverViewDetails(CustomUserDetails user, String assessmentId, String instituteId) {
+
+        AssessmentOverviewDto assessmentOverviewDto = studentAttemptRepository.findAssessmentOverviewDetails(assessmentId, instituteId);
+        List<MarksRankDto> marksRankDto = studentAttemptRepository.findMarkRankForAssessment(assessmentId, instituteId);
+        return ResponseEntity.ok(AssessmentOverviewResponse.builder()
+                .assessmentOverviewDto(assessmentOverviewDto)
+                .marksRankDto(marksRankDto).build());
     }
 }

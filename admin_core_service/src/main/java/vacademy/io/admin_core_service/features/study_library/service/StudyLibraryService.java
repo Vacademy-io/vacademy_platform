@@ -24,6 +24,7 @@ import vacademy.io.common.institute.dto.SubjectDTO;
 import vacademy.io.common.institute.entity.Level;
 import vacademy.io.common.institute.entity.PackageEntity;
 import vacademy.io.common.institute.entity.module.Module;
+import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.common.institute.entity.session.SessionProjection;
 import vacademy.io.common.institute.entity.student.Subject;
 
@@ -89,6 +90,14 @@ public class StudyLibraryService {
         return sessionDTOWithDetails;
     }
 
+
+    public SessionDTOWithDetails buildSessionDTOForPackageSession(PackageSession packageSession, String instituteId) {
+
+        List<LevelDTOWithDetails> levelWithDetails = buildLevelDTOWithDetails(instituteId, packageSession);
+
+        return getSessionDTOWithDetails(packageSession, levelWithDetails);
+    }
+
     public List<LevelDTOWithDetails> buildLevelDTOWithDetails(String instituteId, String sessionId) {
         List<LevelDTOWithDetails> levelWithDetails = new ArrayList<>();
         List<Level> levels = levelRepository.findDistinctLevelsByInstituteIdAndSessionId(instituteId, sessionId);
@@ -97,6 +106,15 @@ public class StudyLibraryService {
             LevelDTOWithDetails levelDTOWithDetails = buildLevelDTOWithDetails(level);
             levelWithDetails.add(levelDTOWithDetails);
         }
+
+        return levelWithDetails;
+    }
+
+
+    public List<LevelDTOWithDetails> buildLevelDTOWithDetails(String instituteId, PackageSession packageSession) {
+        List<LevelDTOWithDetails> levelWithDetails = new ArrayList<>();
+        LevelDTOWithDetails levelDTOWithDetails = buildLevelDTOWithDetails(packageSession.getLevel());
+        levelWithDetails.add(levelDTOWithDetails);
 
         return levelWithDetails;
     }
@@ -129,19 +147,27 @@ public class StudyLibraryService {
         return sessionDTOWithDetails;
     }
 
-    public List<ModuleDTOWithDetails> getModulesDetailsWithChapters(String subjectId,String packageSessionId, CustomUserDetails user) {
-        if (Objects.isNull(subjectId)){
+    public SessionDTOWithDetails getSessionDTOWithDetails(PackageSession packageSession, List<LevelDTOWithDetails> levelWithDetails) {
+        SessionDTOWithDetails sessionDTOWithDetails = new SessionDTOWithDetails();
+        SessionDTO sessionDTO = new SessionDTO(packageSession.getSession());
+        sessionDTOWithDetails.setLevelWithDetails(levelWithDetails);
+        sessionDTOWithDetails.setSessionDTO(sessionDTO);
+        return sessionDTOWithDetails;
+    }
+
+    public List<ModuleDTOWithDetails> getModulesDetailsWithChapters(String subjectId, String packageSessionId, CustomUserDetails user) {
+        if (Objects.isNull(subjectId)) {
             throw new VacademyException("Please provide subjectId");
         }
-       List<Module> modules = subjectModuleMappingRepository.findModulesBySubjectIdAndPackageSessionId(subjectId,packageSessionId);
-       List<ModuleDTOWithDetails> moduleDTOWithDetails = new ArrayList<>();
-       for (Module module: modules) {
-           List<Chapter> chapters = moduleChapterMappingRepository.findChaptersByModuleIdAndStatusNotDeleted(module.getId(),packageSessionId);
-           List<ChapterDTOWithDetail> chapterDTOS = chapters.stream().map(this::mapToChapterDTOWithDetail).toList();
-           ModuleDTOWithDetails moduleDTOWithDetails1 = new ModuleDTOWithDetails(new ModuleDTO(module), chapterDTOS);
-           moduleDTOWithDetails.add(moduleDTOWithDetails1);
-       }
-       return moduleDTOWithDetails;
+        List<Module> modules = subjectModuleMappingRepository.findModulesBySubjectIdAndPackageSessionId(subjectId, packageSessionId);
+        List<ModuleDTOWithDetails> moduleDTOWithDetails = new ArrayList<>();
+        for (Module module : modules) {
+            List<Chapter> chapters = moduleChapterMappingRepository.findChaptersByModuleIdAndStatusNotDeleted(module.getId(), packageSessionId);
+            List<ChapterDTOWithDetail> chapterDTOS = chapters.stream().map(this::mapToChapterDTOWithDetail).toList();
+            ModuleDTOWithDetails moduleDTOWithDetails1 = new ModuleDTOWithDetails(new ModuleDTO(module), chapterDTOS);
+            moduleDTOWithDetails.add(moduleDTOWithDetails1);
+        }
+        return moduleDTOWithDetails;
     }
 
     public ChapterDTOWithDetail mapToChapterDTOWithDetail(Chapter chapter) {

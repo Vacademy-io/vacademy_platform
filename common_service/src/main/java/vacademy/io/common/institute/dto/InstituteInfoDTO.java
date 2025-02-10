@@ -31,6 +31,7 @@ public class InstituteInfoDTO {
     private String type;
     private String heldBy;
     private Timestamp foundedDate;
+    private List<String> moduleRequestIds;
     private List<InstituteSubModuleDTO> subModules;
     private List<SessionDTO> sessions;
     private List<PackageSessionDTO> batchesForSessions;
@@ -39,4 +40,5 @@ public class InstituteInfoDTO {
     private List<String> studentStatuses;
     private List<SubjectDTO> subjects;
     private List<Integer> sessionExpiryDays;
+    private String letterHeadFileId;
 }

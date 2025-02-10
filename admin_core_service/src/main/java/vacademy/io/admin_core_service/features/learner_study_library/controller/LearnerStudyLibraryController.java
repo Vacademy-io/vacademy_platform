@@ -1,17 +1,13 @@
 package vacademy.io.admin_core_service.features.learner_study_library.controller;
 
-import com.fasterxml.jackson.databind.PropertyNamingStrategy;
-import com.fasterxml.jackson.databind.annotation.JsonNaming;
-import lombok.Getter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import vacademy.io.admin_core_service.features.course.dto.CourseDTOWithDetails;
 import vacademy.io.admin_core_service.features.learner_study_library.service.LearnerStudyLibraryService;
 import vacademy.io.admin_core_service.features.slide.dto.SlideDetailProjection;
 import vacademy.io.admin_core_service.features.study_library.dto.ModuleDTOWithDetails;
-import vacademy.io.admin_core_service.features.study_library.dto.SessionDTOWithDetails;
 import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.institute.dto.SubjectDTO;
 
 import java.util.List;
 
@@ -22,11 +18,10 @@ public class LearnerStudyLibraryController {
     private LearnerStudyLibraryService learnerStudyLibraryService;
 
     @GetMapping("/init-details")
-    public ResponseEntity<List<CourseDTOWithDetails>> getLearnerStudyLibraryInitDetails(
-            @RequestParam String instituteId,
-            @RequestParam String userId,
+    public ResponseEntity<List<SubjectDTO>> getLearnerStudyLibraryInitDetails(
+            @RequestParam String packageSessionId,
             @RequestAttribute("user")CustomUserDetails user) {
-        return ResponseEntity.ok(learnerStudyLibraryService.getLearnerStudyLibraryInitDetails(instituteId, userId, user));
+        return ResponseEntity.ok(learnerStudyLibraryService.getSubjectsByPackageSessionId(packageSessionId,user));
     }
 
     @GetMapping("/modules-with-chapters")

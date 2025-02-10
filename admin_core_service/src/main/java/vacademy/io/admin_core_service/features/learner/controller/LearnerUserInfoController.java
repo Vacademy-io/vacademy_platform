@@ -9,6 +9,8 @@ import vacademy.io.admin_core_service.features.learner.manager.LearnerInstituteM
 import vacademy.io.admin_core_service.features.learner.manager.LearnerProfileManager;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/admin-core-service/learner/info/v1")
 public class LearnerUserInfoController {
@@ -17,9 +19,8 @@ public class LearnerUserInfoController {
     LearnerProfileManager learnerProfileManager;
 
     @GetMapping("/details")
-    public ResponseEntity<StudentDTO> getLearnerInfo(@RequestAttribute("user") CustomUserDetails user, @RequestParam("instituteId") String instituteId) {
+    public ResponseEntity<List<StudentDTO>> getLearnerInfo(@RequestAttribute("user") CustomUserDetails user, @RequestParam("instituteId") String instituteId) {
 
-        StudentDTO learnerDto = learnerProfileManager.getLearnerInfo(user, instituteId);
-        return ResponseEntity.ok(learnerDto);
+        return learnerProfileManager.getLearnerInfo(user, instituteId);
     }
 }

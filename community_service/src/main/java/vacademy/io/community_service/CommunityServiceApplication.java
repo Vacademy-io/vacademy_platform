@@ -5,9 +5,10 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Import;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import vacademy.io.common.auth.config.SharedConfigurationReference;
+import vacademy.io.community_service.config.CommunityApplicationSecurityConfig;
 
 @SpringBootApplication
-@Import(SharedConfigurationReference.class)
+@Import({SharedConfigurationReference.class, CommunityApplicationSecurityConfig.class})
 @EnableWebSecurity
 public class CommunityServiceApplication {
     public static void main(String[] args) {

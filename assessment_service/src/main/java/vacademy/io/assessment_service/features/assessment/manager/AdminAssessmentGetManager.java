@@ -131,4 +131,9 @@ public class AdminAssessmentGetManager {
                 .assessmentOverviewDto(assessmentOverviewDto)
                 .marksRankDto(marksRankDto).build());
     }
+
+    public ResponseEntity<String> getQuestionInsights(CustomUserDetails user, String assessmentId, String instituteId, String sectionId) {
+
+        return ResponseEntity.ok("Done");
+    }
 }

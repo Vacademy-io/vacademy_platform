@@ -52,4 +52,12 @@ public class AdminAssessmentGetController {
                                                                       @RequestParam("instituteId") String instituteId){
         return adminAssessmentGetManager.getOverViewDetails(user, assessmentId, instituteId);
     }
+
+    @GetMapping("/get-question-insights")
+    public ResponseEntity<String> questionInsights(@RequestAttribute("user") CustomUserDetails user,
+                                                   @RequestParam("assessmentId") String assessmentId,
+                                                   @RequestParam("instituteId") String instituteId,
+                                                   @RequestParam("sectionId") String sectionId){
+        return adminAssessmentGetManager.getQuestionInsights(user, assessmentId, instituteId, sectionId);
+    }
 }

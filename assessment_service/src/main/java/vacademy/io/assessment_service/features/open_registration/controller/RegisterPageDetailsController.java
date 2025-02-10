@@ -18,8 +18,8 @@ public class RegisterPageDetailsController {
 
 
     @PostMapping("/")
-    public ResponseEntity<String> registerAssessment(@RequestAttribute("user") CustomUserDetails user, @RequestBody RegisterOpenAssessmentRequestDto registerOpenAssessmentRequestDto) {
-        return assessmentPublicPageManager.registerAssessment(user, registerOpenAssessmentRequestDto);
+    public ResponseEntity<String> registerAssessment(@RequestBody RegisterOpenAssessmentRequestDto registerOpenAssessmentRequestDto, @RequestParam(value = "userId", required = false) String userId) {
+        return assessmentPublicPageManager.registerAssessment(userId, registerOpenAssessmentRequestDto);
     }
 
 }

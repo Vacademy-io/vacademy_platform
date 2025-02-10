@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.common.institute.entity.Institute;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface InstituteRepository extends CrudRepository<Institute, String> {
@@ -53,5 +54,6 @@ public interface InstituteRepository extends CrudRepository<Institute, String> {
                 id = :instituteId
             """, nativeQuery = true)
     public Integer findCountForNullOrEmptyFields(@Param("instituteId") String instituteId);
+
 
 }

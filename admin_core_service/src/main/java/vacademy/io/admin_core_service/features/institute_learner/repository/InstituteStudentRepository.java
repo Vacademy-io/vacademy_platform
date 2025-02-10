@@ -147,6 +147,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
 
     Optional<Student> findByUsernameAndUserId(String username, String userId);
 
+    Optional<Student> findTopByUserId(String userId);
 
     @Query(
             nativeQuery = true,
@@ -162,5 +163,15 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             @Param("userId") String userId,
             @Param("instituteId") String instituteId
     );
+
+    @Query("""
+    SELECT DISTINCT st FROM Student st
+    JOIN StudentSessionInstituteGroupMapping s ON st.userId = s.userId
+    JOIN PackageSession ps ON s.packageSession.id = ps.id
+    JOIN ChapterPackageSessionMapping cpsm ON ps.id = cpsm.packageSession.id
+    JOIN Chapter c ON cpsm.chapter.id = c.id AND s.status = 'ACTIVE'
+    WHERE c.id = :chapterId
+""")
+    List<Student> findStudentsByChapterId(@Param("chapterId") String chapterId);
 }
 

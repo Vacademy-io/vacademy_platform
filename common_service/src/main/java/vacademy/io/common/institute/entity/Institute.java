@@ -72,6 +72,8 @@ public class Institute {
     @Column(name = "email")
     private String email;
 
+    @Column(name = "letterhead_file_id")
+    private String letterHeadFileId;
 
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Date updatedAt;

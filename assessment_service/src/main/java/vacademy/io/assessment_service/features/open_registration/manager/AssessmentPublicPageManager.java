@@ -4,10 +4,7 @@ package vacademy.io.assessment_service.features.open_registration.manager;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
-import vacademy.io.assessment_service.features.assessment.entity.Assessment;
-import vacademy.io.assessment_service.features.assessment.entity.AssessmentInstituteMapping;
-import vacademy.io.assessment_service.features.assessment.entity.AssessmentUserRegistration;
-import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
+import vacademy.io.assessment_service.features.assessment.entity.*;
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentVisibility;
 import vacademy.io.assessment_service.features.assessment.enums.UserRegistrationSources;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentInstituteMappingRepository;
@@ -24,6 +21,7 @@ import vacademy.io.common.student.dto.BasicParticipantDTO;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static vacademy.io.common.auth.enums.CompanyStatus.ACTIVE;
 
@@ -42,7 +40,7 @@ public class AssessmentPublicPageManager {
     public ResponseEntity<GetAssessmentPublicResponseDto> getAssessmentPage(String code) {
         Optional<AssessmentInstituteMapping> assessmentInstituteMapping = assessmentInstituteMappingRepository.findTopByAssessmentUrl(code);
 
-        if (!assessmentInstituteMapping.isPresent()) {
+        if (assessmentInstituteMapping.isEmpty()) {
             throw new VacademyException("Assessment not found");
         }
 
@@ -75,11 +73,11 @@ public class AssessmentPublicPageManager {
 
     }
 
-    public ResponseEntity<ParticipantPublicResponseDto> getParticipantStatus(String assessmentId, String instituteId, String userId) {
+    public ResponseEntity<ParticipantPublicResponseDto> getParticipantStatus(String assessmentId, String instituteId, String userId, String psIds) {
         Optional<AssessmentUserRegistration> assessmentUserRegistration = assessmentUserRegistrationRepository.findTopByUserIdAndAssessmentId(userId, assessmentId);
 
         if (assessmentUserRegistration.isEmpty()) {
-            return ResponseEntity.ok(ParticipantPublicResponseDto.builder().remainingAttempts(assessmentUserRegistration.get().getAssessment().getReattemptCount()).isAlreadyRegistered(false).build());
+            return checkBatchRegistration(assessmentId, instituteId, userId, psIds);
         }
 
         Optional<StudentAttempt> recentAttempt = assessmentUserRegistration.get().getStudentAttempts().stream().findFirst();
@@ -96,11 +94,36 @@ public class AssessmentPublicPageManager {
         return ResponseEntity.ok(ParticipantPublicResponseDto.builder().remainingAttempts(remainingAttempts).isAlreadyRegistered(true).lastAttemptStatus(recentAttempt.get().getStatus()).build());
     }
 
-    public ResponseEntity<String> registerAssessment(CustomUserDetails user, RegisterOpenAssessmentRequestDto registerOpenAssessmentRequestDto) {
+    public ResponseEntity<ParticipantPublicResponseDto> checkBatchRegistration(String assessmentId, String instituteId, String userId, String psIds) {
+        Optional<Assessment> assessment = assessmentRepository.findByAssessmentIdAndInstituteId(assessmentId, instituteId);
+        if (assessment.isEmpty()) {
+            throw new VacademyException("Assessment not found");
+        }
+
+        if (psIds == null || psIds.isEmpty()) {
+            return ResponseEntity.ok(ParticipantPublicResponseDto.builder().remainingAttempts(assessment.get().getReattemptCount()).isAlreadyRegistered(false).build());
+        }
+
+        List<String> psIdList = List.of(psIds.split(","));
+
+        Set<AssessmentBatchRegistration> batchRegistrations = assessment.get().getBatchRegistrations();
+
+        for (AssessmentBatchRegistration batchRegistration : batchRegistrations) {
+            if (psIdList.contains(batchRegistration.getId())) {
+                return ResponseEntity.ok(ParticipantPublicResponseDto.builder().remainingAttempts(assessment.get().getReattemptCount()).isAlreadyRegistered(true).lastAttemptStatus(null).build());
+            }
+        }
+
+        return ResponseEntity.ok(ParticipantPublicResponseDto.builder().remainingAttempts(assessment.get().getReattemptCount()).isAlreadyRegistered(false).build());
+    }
+
+    public ResponseEntity<String> registerAssessment(String userId, RegisterOpenAssessmentRequestDto registerOpenAssessmentRequestDto) {
         Optional<Assessment> assessment = assessmentRepository.findByAssessmentIdAndInstituteId(registerOpenAssessmentRequestDto.getAssessmentId(), registerOpenAssessmentRequestDto.getInstituteId());
         validateRegisterRequest(assessment);
 
-        addUserToAssessment(registerOpenAssessmentRequestDto.getParticipantDTO(), user.getUserId(), registerOpenAssessmentRequestDto.getInstituteId(), assessment.get());
+        // todo: add user to auth service
+        // todo: add student to admin service
+        addUserToAssessment(registerOpenAssessmentRequestDto.getParticipantDTO(), userId, registerOpenAssessmentRequestDto.getInstituteId(), assessment.get());
 
         return ResponseEntity.ok("Registered successfully");
     }
@@ -120,6 +143,6 @@ public class AssessmentPublicPageManager {
         assessmentParticipantRegistration.setSource(UserRegistrationSources.OPEN_REGISTRATION.name());
         assessmentParticipantRegistration.setSourceId(userId);
         assessmentParticipantRegistration.setRegistrationTime(new Date());
-        return assessmentParticipantRegistration;
+        return assessmentUserRegistrationRepository.save(assessmentParticipantRegistration);
     }
 }

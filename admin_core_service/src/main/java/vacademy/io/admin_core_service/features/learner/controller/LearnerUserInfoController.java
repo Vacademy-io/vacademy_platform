@@ -21,7 +21,6 @@ public class LearnerUserInfoController {
     @GetMapping("/details")
     public ResponseEntity<List<StudentDTO>> getLearnerInfo(@RequestAttribute("user") CustomUserDetails user, @RequestParam("instituteId") String instituteId) {
 
-        List<StudentDTO> learnerDto = learnerProfileManager.getLearnerInfo(user, instituteId);
-        return ResponseEntity.ok(learnerDto);
+        return learnerProfileManager.getLearnerInfo(user, instituteId);
     }
 }

@@ -100,6 +100,7 @@ public class JwtService {
 
         // Add user details to the claims
         extraClaims.put("user", userDetails.getId());
+        extraClaims.put("fullname", userDetails.getFullName());
         extraClaims.put("username", userDetails.getUsername());
         extraClaims.put("email", userDetails.getEmail());
         extraClaims.put("is_root_user", userDetails.isRootUser());  // Indicate if it's a root user

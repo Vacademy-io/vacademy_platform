@@ -17,14 +17,15 @@ import java.util.Optional;
 public class MCQMQuestionTypeBasedStrategy extends IQuestionTypeBasedStrategy {
 
     @Override
-    public double calculateMarks(String markingJsonStr, String correctAnswerJsonStr, String responseJson){
-        try{
+    public double calculateMarks(String markingJsonStr, String correctAnswerJsonStr, String responseJson) {
+        try {
             MCQMMarkingDto markingDto = (MCQMMarkingDto) validateAndGetMarkingData(markingJsonStr);
             MCQMCorrectAnswerDto correctAnswerDto = (MCQMCorrectAnswerDto) validateAndGetCorrectAnswerData(correctAnswerJsonStr);
             MCQMResponseDto responseDto = (MCQMResponseDto) validateAndGetResponseData(responseJson);
 
             // Validate input objects and avoid NullPointerException
             if (correctAnswerDto == null || markingDto == null || responseDto == null) {
+                setAnswerStatus("INCORRECT");
                 return 0.0;
             }
 
@@ -41,6 +42,7 @@ public class MCQMQuestionTypeBasedStrategy extends IQuestionTypeBasedStrategy {
             // Extract marking scheme details safely
             MCQMMarkingDto.DataFields markingData = markingDto.getData();
             if (markingData == null) {
+                setAnswerStatus("INCORRECT");
                 return 0.0;
             }
 
@@ -52,12 +54,14 @@ public class MCQMQuestionTypeBasedStrategy extends IQuestionTypeBasedStrategy {
 
             // If the student did not attempt the question, return 0 marks
             if (attemptedOptionIds.isEmpty()) {
+                setAnswerStatus("INCORRECT");
                 return 0.0;
             }
 
-            // Calculate the score
+            // Check if the answer is completely correct
             if (attemptedOptionIds.equals(correctOptionIds)) {
-                return totalMarks;  // Full marks for correct answer
+                setAnswerStatus("CORRECT");
+                return totalMarks;
             }
 
             // Partial marking scenario
@@ -66,18 +70,21 @@ public class MCQMQuestionTypeBasedStrategy extends IQuestionTypeBasedStrategy {
 
             if (partialMarking == 1 && correctSelected > 0) {
                 double partialMarks = (totalMarks * partialMarkingPercentage) / 100.0;
-                return partialMarks - (incorrectSelected * (negativeMarks * negativePercentage) / 100.0);
+                double finalMarks = partialMarks - (incorrectSelected * (negativeMarks * negativePercentage) / 100.0);
+                setAnswerStatus("PARTIAL_CORRECT");
+                return finalMarks;
             }
 
             // If incorrect response, apply negative marking
+            setAnswerStatus("INCORRECT");
             return -((incorrectSelected * negativeMarks * negativePercentage) / 100.0);
 
-        }
-        catch (Exception e){
-            log.error("Error Occurred: "+ e.getMessage());
+        } catch (Exception e) {
+            log.error("Error Occurred: " + e.getMessage());
             return 0.0;
         }
     }
+
 
     @Override
     public Object validateAndGetMarkingData(String markingJson) throws JsonProcessingException {

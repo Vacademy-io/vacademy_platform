@@ -10,6 +10,10 @@ public abstract class IQuestionTypeBasedStrategy {
     @Setter
     private String type;
 
+    @Getter
+    @Setter
+    private String answerStatus;
+
     public abstract double calculateMarks(String markingJsonStr, String correctAnswerJsonStr, String responseJson);
     public abstract Object validateAndGetMarkingData(String jsonContent) throws JsonProcessingException;
     public abstract Object validateAndGetCorrectAnswerData(String correctAnswerJson) throws JsonProcessingException;

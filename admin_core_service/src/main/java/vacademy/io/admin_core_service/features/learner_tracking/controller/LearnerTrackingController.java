@@ -16,37 +16,22 @@ public class LearnerTrackingController {
         this.learnerTrackingService = learnerTrackingService;
     }
 
-    @PostMapping("/add-document-activity")
+    @PostMapping("/add-or-update-document-activity")
     public ResponseEntity<ActivityLogDTO> addDocumentActivityLog(
             @RequestBody ActivityLogDTO activityLogDTO,
             @RequestParam String slideId,
-            @RequestParam String userId,
+            @RequestParam String chapterId,
             @RequestAttribute("user") CustomUserDetails user) {
-        return ResponseEntity.ok(learnerTrackingService.addDocumentActivityLog(activityLogDTO, slideId, userId, user));
+        return ResponseEntity.ok(learnerTrackingService.addOrUpdateDocumentActivityLog(activityLogDTO, slideId,chapterId,  user));
     }
 
-    @PostMapping("/add-video-activity")
+    @PostMapping("/add-or-update-video-activity")
     public ResponseEntity<ActivityLogDTO> addVideoActivityLog(
             @RequestBody ActivityLogDTO activityLogDTO,
             @RequestParam String slideId,
-            @RequestParam String userId,
+            @RequestParam String chapterId,
             @RequestAttribute("user") CustomUserDetails user) {
-        return ResponseEntity.ok(learnerTrackingService.addVideoActivityLog(activityLogDTO, slideId, userId, user));
+        return ResponseEntity.ok(learnerTrackingService.addOrUpdateVideoActivityLog(activityLogDTO, slideId,chapterId ,user));
     }
 
-    @PutMapping("/update-document-activity/{activityId}")
-    public ResponseEntity<ActivityLogDTO> updateDocumentActivityLog(
-            @RequestBody ActivityLogDTO activityLogDTO,
-            @PathVariable String activityId,
-            @RequestAttribute("user") CustomUserDetails user) {
-        return ResponseEntity.ok(learnerTrackingService.updateDocumentActivityLogs(activityLogDTO, activityId, user));
-    }
-
-    @PutMapping("/update-video-activity/{activityId}")
-    public ResponseEntity<ActivityLogDTO> updateVideoActivityLog(
-            @RequestBody ActivityLogDTO activityLogDTO,
-            @PathVariable String activityId,
-            @RequestAttribute("user") CustomUserDetails user) {
-        return ResponseEntity.ok(learnerTrackingService.updateVideoActivityLogs(activityLogDTO, activityId, user));
-    }
 }

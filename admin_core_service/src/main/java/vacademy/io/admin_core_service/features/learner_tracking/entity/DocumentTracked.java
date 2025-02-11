@@ -17,7 +17,6 @@ import java.sql.Timestamp;
 public class DocumentTracked {
 
     @Id
-    @UuidGenerator
     @Column(length = 255, nullable = false)
     private String id;
 

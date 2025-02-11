@@ -18,7 +18,6 @@ import java.util.Date;
 public class VideoTracked {
 
     @Id
-    @UuidGenerator
     @Column(length = 255, nullable = false)
     private String id;
 

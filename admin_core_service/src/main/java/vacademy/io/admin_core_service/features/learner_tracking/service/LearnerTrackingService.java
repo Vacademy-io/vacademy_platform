@@ -2,8 +2,14 @@ package vacademy.io.admin_core_service.features.learner_tracking.service;
 
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.learner_operation.enums.LearnerOperationEnum;
+import vacademy.io.admin_core_service.features.learner_operation.enums.LearnerOperationSourceEnum;
+import vacademy.io.admin_core_service.features.learner_operation.service.LearnerOperationService;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.ActivityLogDTO;
+import vacademy.io.admin_core_service.features.learner_tracking.dto.DocumentActivityLogDTO;
+import vacademy.io.admin_core_service.features.learner_tracking.dto.VideoActivityLogDTO;
 import vacademy.io.admin_core_service.features.learner_tracking.entity.ActivityLog;
 import vacademy.io.admin_core_service.features.learner_tracking.entity.DocumentTracked;
 import vacademy.io.admin_core_service.features.learner_tracking.entity.VideoTracked;
@@ -23,54 +29,41 @@ public class LearnerTrackingService {
     private final ActivityLogRepository activityLogRepository;
     private final DocumentTrackedRepository documentTrackedRepository;
     private final VideoTrackedRepository videoTrackedRepository;
+    private final LearnerOperationService learnerOperationService;
 
     @Autowired
     public LearnerTrackingService(
             ActivityLogRepository activityLogRepository,
             DocumentTrackedRepository documentTrackedRepository,
-            VideoTrackedRepository videoTrackedRepository) {
+            VideoTrackedRepository videoTrackedRepository,
+            LearnerOperationService learnerOperationService) {
         this.activityLogRepository = activityLogRepository;
         this.documentTrackedRepository = documentTrackedRepository;
         this.videoTrackedRepository = videoTrackedRepository;
+        this.learnerOperationService = learnerOperationService;
     }
 
     @Transactional
-    public ActivityLogDTO addDocumentActivityLog(ActivityLogDTO activityLogDTO, String slideId, String userId, CustomUserDetails user) {
-        validateDocumentActivityLogDTO(activityLogDTO);
-        ActivityLog activityLog = saveActivityLog(activityLogDTO, slideId, userId);
+    public ActivityLogDTO addOrUpdateDocumentActivityLog(ActivityLogDTO activityLogDTO, String slideId, String chapterId, CustomUserDetails user) {
+        validateActivityLogDTO(activityLogDTO, true); // Validate for documents
+        ActivityLog activityLog = activityLogDTO.isNewActivity() ?
+                saveActivityLog(activityLogDTO, slideId, user.getUserId()) :
+                updateActivityLog(activityLogDTO, activityLogDTO.getId());
+
         saveDocumentTracking(activityLogDTO, activityLog);
+        updateLearnerOperationsForDocument(user.getUserId(), slideId, chapterId, activityLogDTO);
         return activityLog.toActivityLogDTO();
     }
 
     @Transactional
-    public ActivityLogDTO addVideoActivityLog(ActivityLogDTO activityLogDTO, String slideId, String userId, CustomUserDetails user) {
-        validateVideoActivityLogDTO(activityLogDTO);
-        ActivityLog activityLog = saveActivityLog(activityLogDTO, slideId, userId);
+    public ActivityLogDTO addOrUpdateVideoActivityLog(ActivityLogDTO activityLogDTO, String slideId, String chapterId, CustomUserDetails user) {
+        validateActivityLogDTO(activityLogDTO, false); // Validate for videos
+        ActivityLog activityLog = activityLogDTO.isNewActivity() ?
+                saveActivityLog(activityLogDTO, slideId, user.getUserId()) :
+                updateActivityLog(activityLogDTO, activityLogDTO.getId());
+
         saveVideoTracking(activityLogDTO, activityLog);
-        return activityLog.toActivityLogDTO();
-    }
-
-    @Transactional
-    public ActivityLogDTO updateDocumentActivityLogs(ActivityLogDTO activityLogDTO, String activityId, CustomUserDetails user) {
-        ActivityLog activityLog = activityLogRepository.findById(activityId)
-                .orElseThrow(() -> new VacademyException("Activity Log not found"));
-
-        updateActivityFields(activityLog, activityLogDTO);
-        activityLogRepository.save(activityLog);
-        documentTrackedRepository.deleteByActivityId(activityId);
-        saveDocumentTracking(activityLogDTO, activityLog);
-        return activityLog.toActivityLogDTO();
-    }
-
-    @Transactional
-    public ActivityLogDTO updateVideoActivityLogs(ActivityLogDTO activityLogDTO, String activityId, CustomUserDetails user) {
-        ActivityLog activityLog = activityLogRepository.findById(activityId)
-                .orElseThrow(() -> new VacademyException("Activity Log not found"));
-
-        updateActivityFields(activityLog, activityLogDTO);
-        activityLogRepository.save(activityLog);
-        videoTrackedRepository.deleteByActivityId(activityId);
-        saveVideoTracking(activityLogDTO, activityLog);
+        updateLearnerOperationsForVideo(user.getUserId(), slideId, chapterId, activityLogDTO);
         return activityLog.toActivityLogDTO();
     }
 
@@ -78,7 +71,15 @@ public class LearnerTrackingService {
         return activityLogRepository.save(new ActivityLog(activityLogDTO, userId, slideId));
     }
 
+    private ActivityLog updateActivityLog(ActivityLogDTO activityLogDTO, String activityId) {
+        ActivityLog activityLog = activityLogRepository.findById(activityId)
+                .orElseThrow(() -> new VacademyException("Activity Log not found"));
+        updateActivityFields(activityLog, activityLogDTO);
+        return activityLogRepository.save(activityLog);
+    }
+
     private void saveDocumentTracking(ActivityLogDTO activityLogDTO, ActivityLog activityLog) {
+        documentTrackedRepository.deleteByActivityId(activityLog.getId()); // Clear existing tracked documents
         List<DocumentTracked> documentTrackedList = activityLogDTO.getDocuments().stream()
                 .map(documentActivityLogDTO -> new DocumentTracked(documentActivityLogDTO, activityLog))
                 .toList();
@@ -86,6 +87,7 @@ public class LearnerTrackingService {
     }
 
     private void saveVideoTracking(ActivityLogDTO activityLogDTO, ActivityLog activityLog) {
+        videoTrackedRepository.deleteByActivityId(activityLog.getId()); // Clear existing tracked videos
         List<VideoTracked> videoTrackedList = activityLogDTO.getVideos().stream()
                 .map(videoActivityLogDTO -> new VideoTracked(videoActivityLogDTO, activityLog))
                 .toList();
@@ -104,20 +106,56 @@ public class LearnerTrackingService {
         }
     }
 
-    private void validateVideoActivityLogDTO(ActivityLogDTO dto) {
+    private void validateActivityLogDTO(ActivityLogDTO dto, boolean isDocument) {
         if (Objects.isNull(dto)) {
             throw new VacademyException("Invalid request. Activity Log cannot be null.");
         }
-        if (Objects.isNull(dto.getVideos())) {
+        if (isDocument && Objects.isNull(dto.getDocuments())) {
+            throw new VacademyException("Invalid request. Documents cannot be null.");
+        }
+        if (!isDocument && Objects.isNull(dto.getVideos())) {
             throw new VacademyException("Invalid request. Videos cannot be null.");
         }
     }
-    private void validateDocumentActivityLogDTO(ActivityLogDTO dto) {
-        if (Objects.isNull(dto)) {
-            throw new VacademyException("Invalid request. Activity Log cannot be null.");
-        }
-        if (Objects.isNull(dto.getDocuments())) {
-            throw new VacademyException("Invalid request. Documents cannot be null.");
-        }
+
+    @Async
+    private void updateLearnerOperationsForDocument(String userId, String slideId, String chapterId, ActivityLogDTO activityLogDTO) {
+        Integer highestPageNumber = activityLogDTO.getDocuments().stream()
+                .map(DocumentActivityLogDTO::getPageNumber)
+                .max(Integer::compareTo)
+                .orElse(0); // Default to 0 if no pages exist
+
+        Double percentageWatched = activityLogRepository.getPercentageDocumentWatched(slideId, userId);
+        learnerOperationService.addOrUpdateOperation(userId, LearnerOperationSourceEnum.SLIDE.name(), slideId,
+                LearnerOperationEnum.PERCENTAGE_DOCUMENT_WATCHED.name(), String.valueOf(percentageWatched));
+        learnerOperationService.addOrUpdateOperation(userId, LearnerOperationSourceEnum.SLIDE.name(), slideId,
+                LearnerOperationEnum.DOCUMENT_LAST_PAGE.name(), String.valueOf(highestPageNumber));
+
+        updateLearnerOperationsForChapter(userId, chapterId, slideId);
+    }
+
+    @Async
+    private void updateLearnerOperationsForVideo(String userId, String slideId, String chapterId, ActivityLogDTO activityLogDTO) {
+        Long maxEndTime = activityLogDTO.getVideos().stream()
+                .map(VideoActivityLogDTO::getEndTimeInMillis)
+                .max(Long::compareTo)
+                .orElse(null); // Default to null if no videos exist
+        Double percentageWatched = activityLogRepository.getPercentageVideoWatched(slideId, userId);
+        learnerOperationService.addOrUpdateOperation(userId, LearnerOperationSourceEnum.SLIDE.name(), slideId,
+                LearnerOperationEnum.PERCENTAGE_VIDEO_WATCHED.name(), String.valueOf(percentageWatched));
+        learnerOperationService.addOrUpdateOperation(userId, LearnerOperationSourceEnum.SLIDE.name(), slideId,
+                LearnerOperationEnum.VIDEO_LAST_TIMESTAMP.name(), String.valueOf(maxEndTime));
+
+        updateLearnerOperationsForChapter(userId, chapterId, slideId);
+    }
+
+    @Async
+    private void updateLearnerOperationsForChapter(String userId, String chapterId, String slideId) {
+        Double percentageWatched = activityLogRepository.getChapterCompletionPercentage(userId, chapterId,
+                List.of(LearnerOperationEnum.PERCENTAGE_VIDEO_WATCHED.name(), LearnerOperationEnum.PERCENTAGE_DOCUMENT_WATCHED.name()));
+        learnerOperationService.addOrUpdateOperation(userId, LearnerOperationSourceEnum.CHAPTER.name(), chapterId,
+                LearnerOperationEnum.PERCENTAGE_CHAPTER_COMPLETED.name(), String.valueOf(percentageWatched));
+        learnerOperationService.addOrUpdateOperation(userId, LearnerOperationSourceEnum.CHAPTER.name(), chapterId,
+                LearnerOperationEnum.LAST_SLIDE_VIEWED.name(), slideId);
     }
 }

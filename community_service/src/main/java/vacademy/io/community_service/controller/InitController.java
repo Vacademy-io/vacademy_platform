@@ -14,7 +14,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 @RestController
-@RequestMapping("/api/init")
+@RequestMapping("/community_service/init")
 public class InitController {
 
     @GetMapping

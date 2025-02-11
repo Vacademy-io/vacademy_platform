@@ -13,7 +13,9 @@ public interface LearnerOperationRepository extends JpaRepository<LearnerOperati
             "AND source = :source " +
             "AND source_id = :sourceId " +
             "AND operation = :operation " +
-            "LIMIT 1", nativeQuery = true)
+            "ORDER BY updated_at DESC " +  // Order by latest updated_at
+            "LIMIT 1",
+            nativeQuery = true)
     Optional<LearnerOperation> findByUserIdAndSourceAndSourceIdAndOperation(
             @Param("userId") String userId,
             @Param("source") String source,

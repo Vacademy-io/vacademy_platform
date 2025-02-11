@@ -122,45 +122,4 @@ public class LearnerTrackingService {
             throw new VacademyException("Invalid request. Videos cannot be null.");
         }
     }
-
-//    @Async
-//    private void updateLearnerOperationsForDocument(String userId, String slideId, String chapterId, ActivityLogDTO activityLogDTO) {
-//        Integer highestPageNumber = activityLogDTO.getDocuments().stream()
-//                .map(DocumentActivityLogDTO::getPageNumber)
-//                .max(Integer::compareTo)
-//                .orElse(0); // Default to 0 if no pages exist
-//
-//        Double percentageWatched = activityLogRepository.getPercentageDocumentWatched(slideId, userId);
-//        learnerOperationService.addOrUpdateOperation(userId, LearnerOperationSourceEnum.SLIDE.name(), slideId,
-//                LearnerOperationEnum.PERCENTAGE_DOCUMENT_WATCHED.name(), String.valueOf(percentageWatched));
-//        learnerOperationService.addOrUpdateOperation(userId, LearnerOperationSourceEnum.SLIDE.name(), slideId,
-//                LearnerOperationEnum.DOCUMENT_LAST_PAGE.name(), String.valueOf(highestPageNumber));
-//
-//        updateLearnerOperationsForChapter(userId, chapterId, slideId);
-//    }
-//
-//    @Async
-//    private void updateLearnerOperationsForVideo(String userId, String slideId, String chapterId, ActivityLogDTO activityLogDTO) {
-//        Long maxEndTime = activityLogDTO.getVideos().stream()
-//                .map(VideoActivityLogDTO::getEndTimeInMillis)
-//                .max(Long::compareTo)
-//                .orElse(null); // Default to null if no videos exist
-//        Double percentageWatched = activityLogRepository.getPercentageVideoWatched(slideId, userId);
-//        learnerOperationService.addOrUpdateOperation(userId, LearnerOperationSourceEnum.SLIDE.name(), slideId,
-//                LearnerOperationEnum.PERCENTAGE_VIDEO_WATCHED.name(), String.valueOf(percentageWatched));
-//        learnerOperationService.addOrUpdateOperation(userId, LearnerOperationSourceEnum.SLIDE.name(), slideId,
-//                LearnerOperationEnum.VIDEO_LAST_TIMESTAMP.name(), String.valueOf(maxEndTime));
-//
-//        updateLearnerOperationsForChapter(userId, chapterId, slideId);
-//    }
-//
-//    @Async
-//    private void updateLearnerOperationsForChapter(String userId, String chapterId, String slideId) {
-//        Double percentageWatched = activityLogRepository.getChapterCompletionPercentage(userId, chapterId,
-//                List.of(LearnerOperationEnum.PERCENTAGE_VIDEO_WATCHED.name(), LearnerOperationEnum.PERCENTAGE_DOCUMENT_WATCHED.name()));
-//        learnerOperationService.addOrUpdateOperation(userId, LearnerOperationSourceEnum.CHAPTER.name(), chapterId,
-//                LearnerOperationEnum.PERCENTAGE_CHAPTER_COMPLETED.name(), String.valueOf(percentageWatched));
-//        learnerOperationService.addOrUpdateOperation(userId, LearnerOperationSourceEnum.CHAPTER.name(), chapterId,
-//                LearnerOperationEnum.LAST_SLIDE_VIEWED.name(), slideId);
-//    }
 }

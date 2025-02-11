@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.*;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.*;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.AssessmentOverviewDto;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.AssessmentOverviewResponse;
+import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.QuestionInsightsResponse;
 import vacademy.io.assessment_service.features.assessment.manager.AdminAssessmentGetManager;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
@@ -51,5 +52,13 @@ public class AdminAssessmentGetController {
                                                                       @RequestParam("assessmentId") String assessmentId,
                                                                       @RequestParam("instituteId") String instituteId){
         return adminAssessmentGetManager.getOverViewDetails(user, assessmentId, instituteId);
+    }
+
+    @GetMapping("/get-question-insights")
+    public ResponseEntity<QuestionInsightsResponse> questionInsights(@RequestAttribute("user") CustomUserDetails user,
+                                                                     @RequestParam("assessmentId") String assessmentId,
+                                                                     @RequestParam("instituteId") String instituteId,
+                                                                     @RequestParam("sectionId") String sectionId){
+        return adminAssessmentGetManager.getQuestionInsights(user, assessmentId, instituteId, sectionId);
     }
 }

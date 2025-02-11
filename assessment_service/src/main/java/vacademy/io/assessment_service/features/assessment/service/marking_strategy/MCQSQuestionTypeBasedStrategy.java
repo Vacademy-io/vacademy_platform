@@ -6,6 +6,7 @@ import org.springframework.stereotype.Component;
 import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.mcqs.MCQSCorrectAnswerDto;
 import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.mcqs.MCQSMarkingDto;
 import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.mcqs.MCQSResponseDto;
+import vacademy.io.assessment_service.features.assessment.enums.QuestionResponseEnum;
 import vacademy.io.assessment_service.features.assessment.service.IQuestionTypeBasedStrategy;
 
 import java.util.List;
@@ -24,7 +25,7 @@ public class MCQSQuestionTypeBasedStrategy extends IQuestionTypeBasedStrategy {
 
             // Validate input objects and prevent NullPointerException
             if (correctAnswerDto == null || markingDto == null || responseDto == null) {
-                setAnswerStatus("INCORRECT");
+                setAnswerStatus(QuestionResponseEnum.INCORRECT.name());
                 return 0.0;
             }
 
@@ -43,7 +44,7 @@ public class MCQSQuestionTypeBasedStrategy extends IQuestionTypeBasedStrategy {
             // Extract marking scheme details safely
             MCQSMarkingDto.DataFields markingData = markingDto.getData();
             if (markingData == null) {
-                setAnswerStatus("INCORRECT");
+                setAnswerStatus(QuestionResponseEnum.INCORRECT.name());
                 return 0.0;
             }
 
@@ -53,18 +54,18 @@ public class MCQSQuestionTypeBasedStrategy extends IQuestionTypeBasedStrategy {
 
             // If no answer was attempted, return 0 marks
             if (attemptedOptionIds.isEmpty()) {
-                setAnswerStatus("INCORRECT");
+                setAnswerStatus(QuestionResponseEnum.INCORRECT.name());
                 return 0.0;
             }
 
             // If the selected option is correct, award full marks
             if (attemptedOptionIds.size() == 1 && attemptedOptionIds.get(0).equals(correctOptionId)) {
-                setAnswerStatus("CORRECT");
+                setAnswerStatus(QuestionResponseEnum.CORRECT.name());
                 return totalMarks;
             }
 
             // If an incorrect answer was selected, apply negative marking
-            setAnswerStatus("INCORRECT");
+            setAnswerStatus(QuestionResponseEnum.INCORRECT.name());
             return -(negativeMarks * negativePercentage / 100.0);
 
         } catch (Exception e) {

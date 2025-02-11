@@ -2,6 +2,7 @@ package vacademy.io.assessment_service.features.assessment.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import vacademy.io.assessment_service.features.assessment.dto.QuestionWiseBasicDetailDto;
+import vacademy.io.assessment_service.features.assessment.enums.QuestionResponseEnum;
 import vacademy.io.assessment_service.features.assessment.service.marking_strategy.MCQMQuestionTypeBasedStrategy;
 import vacademy.io.assessment_service.features.assessment.service.marking_strategy.MCQSQuestionTypeBasedStrategy;
 import vacademy.io.assessment_service.features.question_core.enums.QuestionTypes;
@@ -23,7 +24,7 @@ public class QuestionBasedStrategyFactory {
         IQuestionTypeBasedStrategy strategy = strategies.getOrDefault(questionType, null);
         if(!Objects.isNull(strategy)){
             strategy.setType(questionType);
-            strategy.setAnswerStatus("PENDING");
+            strategy.setAnswerStatus(QuestionResponseEnum.PENDING.name());
         }
         return strategy;
     }

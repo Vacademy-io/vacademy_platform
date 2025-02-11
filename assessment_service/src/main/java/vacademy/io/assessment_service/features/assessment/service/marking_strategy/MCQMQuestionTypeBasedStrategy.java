@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.mcqm.MCQMCorrectAnswerDto;
 import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.mcqm.MCQMMarkingDto;
 import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.mcqm.MCQMResponseDto;
+import vacademy.io.assessment_service.features.assessment.enums.QuestionResponseEnum;
 import vacademy.io.assessment_service.features.assessment.service.IQuestionTypeBasedStrategy;
 
 import java.util.List;
@@ -25,7 +26,7 @@ public class MCQMQuestionTypeBasedStrategy extends IQuestionTypeBasedStrategy {
 
             // Validate input objects and avoid NullPointerException
             if (correctAnswerDto == null || markingDto == null || responseDto == null) {
-                setAnswerStatus("INCORRECT");
+                setAnswerStatus(QuestionResponseEnum.INCORRECT.name());
                 return 0.0;
             }
 
@@ -42,7 +43,7 @@ public class MCQMQuestionTypeBasedStrategy extends IQuestionTypeBasedStrategy {
             // Extract marking scheme details safely
             MCQMMarkingDto.DataFields markingData = markingDto.getData();
             if (markingData == null) {
-                setAnswerStatus("INCORRECT");
+                setAnswerStatus(QuestionResponseEnum.INCORRECT.name());
                 return 0.0;
             }
 
@@ -54,13 +55,13 @@ public class MCQMQuestionTypeBasedStrategy extends IQuestionTypeBasedStrategy {
 
             // If the student did not attempt the question, return 0 marks
             if (attemptedOptionIds.isEmpty()) {
-                setAnswerStatus("INCORRECT");
+                setAnswerStatus(QuestionResponseEnum.INCORRECT.name());
                 return 0.0;
             }
 
             // Check if the answer is completely correct
             if (attemptedOptionIds.equals(correctOptionIds)) {
-                setAnswerStatus("CORRECT");
+                setAnswerStatus(QuestionResponseEnum.CORRECT.name());
                 return totalMarks;
             }
 
@@ -71,12 +72,12 @@ public class MCQMQuestionTypeBasedStrategy extends IQuestionTypeBasedStrategy {
             if (partialMarking == 1 && correctSelected > 0) {
                 double partialMarks = (totalMarks * partialMarkingPercentage) / 100.0;
                 double finalMarks = partialMarks - (incorrectSelected * (negativeMarks * negativePercentage) / 100.0);
-                setAnswerStatus("PARTIAL_CORRECT");
+                setAnswerStatus(QuestionResponseEnum.PARTIAL_CORRECT.name());
                 return finalMarks;
             }
 
             // If incorrect response, apply negative marking
-            setAnswerStatus("INCORRECT");
+            setAnswerStatus(QuestionResponseEnum.INCORRECT.name());
             return -((incorrectSelected * negativeMarks * negativePercentage) / 100.0);
 
         } catch (Exception e) {

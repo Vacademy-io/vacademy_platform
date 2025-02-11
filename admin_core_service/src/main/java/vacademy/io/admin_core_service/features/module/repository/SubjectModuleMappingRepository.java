@@ -17,7 +17,7 @@ public interface SubjectModuleMappingRepository extends JpaRepository<SubjectMod
             "JOIN sps.packageSession ps " +
             "WHERE sps.subject.id = :subjectId " +
             "AND ps.id = :packageSessionId " +
-            "AND smm.module.status != 'DELETED' " +
+            "AND smm.module.status != 'DELETED' AND s.status != 'DELETED' AND ps.status != 'DELETED' " +
             "ORDER BY smm.moduleOrder ASC NULLS LAST")
     List<Module> findModulesBySubjectIdAndPackageSessionId(String subjectId, String packageSessionId);
 

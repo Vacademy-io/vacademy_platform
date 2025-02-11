@@ -17,7 +17,7 @@ public interface LevelRepository extends JpaRepository<Level,String> {
                     JOIN package_session ps ON l.id = ps.level_id
                     JOIN package p ON ps.package_id = p.id
                     JOIN package_institute pi ON p.id = pi.package_id
-                    WHERE pi.institute_id = :instituteId AND ps.session_id = :sessionId AND l.status = 'ACTIVE'
+                    WHERE pi.institute_id = :instituteId AND ps.session_id = :sessionId AND l.status = 'ACTIVE' AND ps.status = 'ACTIVE'
         """, nativeQuery = true)
             List<Level> findDistinctLevelsByInstituteIdAndSessionId(@Param("instituteId") String instituteId,
                                                                     @Param("sessionId") String sessionId);

@@ -203,6 +203,7 @@ public class AdminAssessmentGetManager {
                 questionWiseMarksService.getTop3ParticipantsForCorrectResponse(assessmentId, questionWiseMarks.getQuestionId()));
 
         return QuestionInsightsResponse.QuestionInsightDto.builder()
+                .assessmentQuestionPreviewDto(questionPreviewDto)
                 .questionStatus(questionWiseMarks)
                 .totalAttempts(allAttempts)
                 .skipped(skipped)

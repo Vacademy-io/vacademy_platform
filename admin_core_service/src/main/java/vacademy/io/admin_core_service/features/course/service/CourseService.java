@@ -10,6 +10,7 @@ import vacademy.io.admin_core_service.features.level.service.LevelService;
 import vacademy.io.admin_core_service.features.packages.enums.PackageStatusEnum;
 import vacademy.io.admin_core_service.features.packages.repository.PackageInstituteRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageRepository;
+import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
 import vacademy.io.admin_core_service.features.packages.service.PackageSessionService;
 import vacademy.io.admin_core_service.features.session.dto.AddSessionDTO;
 import vacademy.io.admin_core_service.features.session.service.SessionService;
@@ -19,6 +20,7 @@ import vacademy.io.common.institute.dto.PackageDTO;
 import vacademy.io.common.institute.entity.Level;
 import vacademy.io.common.institute.entity.PackageEntity;
 import vacademy.io.common.institute.entity.PackageInstitute;
+import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.common.institute.entity.session.Session;
 
 import java.util.ArrayList;
@@ -35,6 +37,7 @@ public class CourseService {
     private final SessionService sessionService;
     private final PackageInstituteRepository packageInstituteRepository;
     private final InstituteRepository instituteRepository;
+    private final PackageSessionRepository packageSessionRepository;
 
     @Transactional
     public String addCourse(AddCourseDTO addCourseDTO, CustomUserDetails user,String instituteId) {
@@ -124,6 +127,7 @@ public class CourseService {
             deletedCourses.add(course);
         }
         packageRepository.saveAll(deletedCourses);
+        packageSessionRepository.updateStatusByPackageIds(PackageStatusEnum.DELETED.name(), courseIds);
         return "Course deleted successfully";
     }
 }

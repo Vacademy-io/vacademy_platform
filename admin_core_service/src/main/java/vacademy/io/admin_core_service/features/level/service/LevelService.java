@@ -92,7 +92,7 @@ public class LevelService {
         for (Level level : levels) {
             level.setStatus(LevelStatusEnum.DELETED.name());
         }
-
+        packageSessionRepository.updateStatusByLevelIds(LevelStatusEnum.DELETED.name(), levelIds);
         levelRepository.saveAll(levels); // Batch update
         return "Levels deleted successfully";
     }

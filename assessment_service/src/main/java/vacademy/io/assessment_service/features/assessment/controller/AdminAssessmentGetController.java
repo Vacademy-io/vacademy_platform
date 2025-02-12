@@ -8,7 +8,9 @@ import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.*;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.AssessmentOverviewDto;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.AssessmentOverviewResponse;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.QuestionInsightsResponse;
+import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.StudentReportResponse;
 import vacademy.io.assessment_service.features.assessment.manager.AdminAssessmentGetManager;
+import vacademy.io.assessment_service.features.learner_assessment.dto.StudentAssessmentFilter;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 import static vacademy.io.common.core.constants.PageConstants.DEFAULT_PAGE_NUMBER;
@@ -60,5 +62,15 @@ public class AdminAssessmentGetController {
                                                                      @RequestParam("instituteId") String instituteId,
                                                                      @RequestParam("sectionId") String sectionId){
         return adminAssessmentGetManager.getQuestionInsights(user, assessmentId, instituteId, sectionId);
+    }
+
+    @PostMapping("/get-student-report")
+    public ResponseEntity<StudentReportResponse> studentReport(@RequestAttribute("user") CustomUserDetails userDetails,
+                                                               @RequestParam("studentId") String studentId,
+                                                               @RequestParam("instituteId") String instituteId,
+                                                               @RequestBody StudentReportFilter filter,
+                                                               @RequestParam(value = "pageNo", defaultValue = DEFAULT_PAGE_NUMBER, required = false) int pageNo,
+                                                               @RequestParam(value = "pageSize", defaultValue = DEFAULT_PAGE_SIZE, required = false) int pageSize){
+        return adminAssessmentGetManager.getStudentReport(userDetails, studentId,instituteId,filter, pageNo, pageSize);
     }
 }

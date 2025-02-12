@@ -56,7 +56,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
     FROM session s 
     INNER JOIN package_session ps ON s.id = ps.session_id 
     INNER JOIN package p ON ps.package_id = p.id 
-    WHERE ps.package_id = :packageId AND s.status != 'DELETED'
+    WHERE ps.package_id = :packageId AND s.status != 'DELETED AND ps.status != 'DELETED'
 """, nativeQuery = true)
     List<SessionProjection> findDistinctSessionsByPackageId(@Param("packageId") String packageId);
 

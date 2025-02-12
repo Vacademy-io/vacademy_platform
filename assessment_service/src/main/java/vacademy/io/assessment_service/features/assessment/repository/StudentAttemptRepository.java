@@ -254,6 +254,7 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                 )
             WHERE aim.institute_id = :instituteId
             AND COALESCE(sa.status, 'PENDING') IN (:statusList)
+            and a.status = 'PUBLISHED'
             """,countQuery = """
             SELECT COUNT(*)
             FROM public.assessment a
@@ -272,8 +273,8 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                     LIMIT 1
                 )
             WHERE aim.institute_id = :instituteId
-            AND COALESCE(sa.status, 'PENDING') IN (:statusList);
-            
+            AND COALESCE(sa.status, 'PENDING') IN (:statusList)
+            and a.status = 'PUBLISHED'
             """, nativeQuery = true)
     Page<StudentReportDto> findAssessmentForUserWithFilter(@Param("userId") String userId,
                                                      @Param("instituteId") String instituteId,
@@ -320,6 +321,7 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                     OR a.name LIKE :name || '%'
                    )
             AND COALESCE(sa.status, 'PENDING') IN (:statusList)
+            and a.status = 'PUBLISHED'
             """,countQuery = """
             SELECT COUNT(*)
             FROM public.assessment a
@@ -344,8 +346,8 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                     )) @@ plainto_tsquery('simple', :name)
                     OR a.name LIKE :name || '%'
                    )
-            AND COALESCE(sa.status, 'PENDING') IN (:statusList);
-            
+            AND COALESCE(sa.status, 'PENDING') IN (:statusList)
+            and a.status = 'PUBLISHED'
             """, nativeQuery = true)
     Page<StudentReportDto> findAssessmentForUserWithFilterAndSearch(@Param("name") String name,
                                                                     @Param("userId") String userId,

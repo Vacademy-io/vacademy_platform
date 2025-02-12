@@ -87,6 +87,13 @@ public class LevelService {
     }
 
     public String deleteLevels(List<String> levelIds,CustomUserDetails user) {
+        List<Level> levels = levelRepository.findAllById(levelIds);
+
+        for (Level level : levels) {
+            level.setStatus(LevelStatusEnum.DELETED.name());
+        }
+
+        levelRepository.saveAll(levels); // Batch update
         packageSessionRepository.updateStatusByLevelIds(LevelStatusEnum.DELETED.name(), levelIds);
         return "Levels deleted successfully";
     }

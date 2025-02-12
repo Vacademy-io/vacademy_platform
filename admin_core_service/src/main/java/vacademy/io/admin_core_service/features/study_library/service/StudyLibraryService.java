@@ -83,7 +83,7 @@ public class StudyLibraryService {
         List<SessionProjection> packageSessions = packageRepository.findDistinctSessionsByPackageId(packageId);
 
         for (SessionProjection sessionProjection : packageSessions) {
-            List<LevelDTOWithDetails> levelWithDetails = buildLevelDTOWithDetails(instituteId, sessionProjection.getId());
+            List<LevelDTOWithDetails> levelWithDetails = buildLevelDTOWithDetails(instituteId, sessionProjection.getId(),packageId);
             sessionDTOWithDetails.add(getSessionDTOWithDetails(sessionProjection, levelWithDetails));
         }
 
@@ -98,9 +98,9 @@ public class StudyLibraryService {
         return getSessionDTOWithDetails(packageSession, levelWithDetails);
     }
 
-    public List<LevelDTOWithDetails> buildLevelDTOWithDetails(String instituteId, String sessionId) {
+    public List<LevelDTOWithDetails> buildLevelDTOWithDetails(String instituteId, String sessionId,String packageId) {
         List<LevelDTOWithDetails> levelWithDetails = new ArrayList<>();
-        List<Level> levels = levelRepository.findDistinctLevelsByInstituteIdAndSessionId(instituteId, sessionId);
+        List<Level> levels = levelRepository.findDistinctLevelsByInstituteIdAndSessionId(instituteId, sessionId, packageId);
 
         for (Level level : levels) {
             LevelDTOWithDetails levelDTOWithDetails = buildLevelDTOWithDetails(level);

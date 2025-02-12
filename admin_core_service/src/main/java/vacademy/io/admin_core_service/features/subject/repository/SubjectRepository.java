@@ -17,15 +17,28 @@ public interface SubjectRepository extends JpaRepository<Subject, String> {
             "FROM subject s " +
             "INNER JOIN subject_session ss ON s.id = ss.subject_id " +
             "INNER JOIN package_session ps ON ss.session_id = ps.id " +
-            "WHERE ps.level_id = :levelId AND s.status = 'ACTIVE' " +
+            "WHERE ps.level_id = :levelId " +
+            "AND ps.package_id = :packageId " +
+            "AND ps.session_id = :sessionId " +
+            "AND s.status = 'ACTIVE' " +
             "ORDER BY ss.subject_order ASC NULLS LAST", nativeQuery = true)
-    List<Subject> findDistinctSubjectsByLevelId(@Param("levelId") String levelId);
-
+    List<Subject> findDistinctSubjectsPackageSession(
+            @Param("levelId") String levelId,
+            @Param("packageId") String packageId,
+            @Param("sessionId") String sessionId
+    );
 
     @Query(value = "SELECT DISTINCT s.* " +
             "FROM subject s " +
             "INNER JOIN subject_session ss ON s.id = ss.subject_id " +
             "WHERE ss.session_id IN (:packageSessionIds) AND s.status = 'ACTIVE' ", nativeQuery = true)
     List<Subject> findDistinctSubjectsOfPackageSessions(@Param("packageSessionIds") List<String> packageSessionIds);
+
+    @Query(value = "SELECT DISTINCT s.* " +
+            "FROM subject s " +
+            "INNER JOIN subject_session ss ON s.id = ss.subject_id " +
+            "WHERE ss.session_id = :packageSessionId " +
+            "AND s.status = 'ACTIVE' ", nativeQuery = true)
+    List<Subject> findDistinctSubjectsByPackageSessionId(@Param("packageSessionId") String packageSessionId);
 
 }

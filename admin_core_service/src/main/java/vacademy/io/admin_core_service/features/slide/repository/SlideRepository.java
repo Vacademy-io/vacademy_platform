@@ -25,7 +25,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
 """)
     SlideCountProjection countSlidesByChapterId(@Param("chapterId") String chapterId);
 
-    @Query(value = "SELECT s.id AS slideId, s.title AS slideTitle, s.description AS slideDescription, " +
+    @Query(value = "SELECT DISTINCT ON (s.id) s.id AS slideId, s.title AS slideTitle, s.description AS slideDescription, " +
             "s.source_type AS sourceType, s.status AS status, s.image_file_id AS imageFileId, " +
             "ds.id AS documentId, ds.title AS documentTitle, ds.cover_file_id AS documentCoverFileId, " +
             "ds.type AS documentType, ds.data AS documentData, " +
@@ -38,7 +38,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
             "LEFT JOIN video vs ON vs.id = s.source_id AND s.source_type = 'VIDEO' " +
             "WHERE ch.id = :chapterId " +
             "AND s.status IN :status " +
-            "ORDER BY cts.slide_order IS NULL, cts.slide_order ASC",
+            "ORDER BY s.id, cts.slide_order IS NULL, cts.slide_order ASC",
             nativeQuery = true)
     List<SlideDetailProjection> findSlideDetailsByChapterId(@Param("chapterId") String chapterId, @Param("status") List<String> status);
 

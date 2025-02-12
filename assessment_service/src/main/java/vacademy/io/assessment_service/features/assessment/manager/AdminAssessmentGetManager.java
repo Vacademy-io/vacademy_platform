@@ -25,6 +25,7 @@ import vacademy.io.assessment_service.features.learner_assessment.dto.QuestionSt
 import vacademy.io.assessment_service.features.learner_assessment.service.QuestionWiseMarksService;
 import vacademy.io.assessment_service.features.question_core.enums.EvaluationTypes;
 import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.core.standard_classes.ListService;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.*;
@@ -221,4 +222,41 @@ public class AdminAssessmentGetManager {
         return list != null ? list : Collections.emptyList();
     }
 
+    public ResponseEntity<StudentReportResponse> getStudentReport(CustomUserDetails userDetails, String studentId, String instituteId, StudentReportFilter filter, int pageNo, int pageSize) {
+        if(Objects.isNull(filter)) throw new VacademyException("Invalid Request filter");
+
+        Sort sortingObject = ListService.createSortObject(filter.getSortColumns());
+        Pageable pageable = PageRequest.of(pageNo,pageSize,sortingObject);
+
+        Page<StudentReportDto> studentReportDtoPage = null;
+        if(StringUtils.hasText(filter.getName())){
+            studentReportDtoPage = studentAttemptRepository.findAssessmentForUserWithFilterAndSearch(filter.getName(), studentId, instituteId, filter.getStatus(), pageable);
+
+        }
+        if(Objects.isNull(studentReportDtoPage)){
+            studentReportDtoPage = studentAttemptRepository.findAssessmentForUserWithFilter(studentId, instituteId, filter.getStatus(), pageable);
+        }
+
+        return ResponseEntity.ok(createReportResponse(studentReportDtoPage));
+    }
+
+    private StudentReportResponse createReportResponse(Page<StudentReportDto> studentReportDtoPage) {
+        if(Objects.isNull(studentReportDtoPage)){
+            return StudentReportResponse.builder()
+                    .pageNo(0)
+                    .pageSize(0)
+                    .totalPages(0)
+                    .last(true)
+                    .totalElements(0).build();
+        }
+        List<StudentReportDto> content = studentReportDtoPage.getContent();
+        return StudentReportResponse.builder()
+                .content(content)
+                .pageNo(studentReportDtoPage.getNumber())
+                .pageSize(studentReportDtoPage.getSize())
+                .totalElements(studentReportDtoPage.getTotalElements())
+                .last(studentReportDtoPage.isLast())
+                .totalPages(studentReportDtoPage.getTotalPages())
+                .build();
+    }
 }

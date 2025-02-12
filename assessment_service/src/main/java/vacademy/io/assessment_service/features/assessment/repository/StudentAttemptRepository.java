@@ -9,6 +9,7 @@ import org.springframework.stereotype.Repository;
 import vacademy.io.assessment_service.features.assessment.dto.LeaderBoardDto;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.AssessmentOverviewDto;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.MarksRankDto;
+import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.StudentReportDto;
 import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
 
 import java.util.List;
@@ -218,6 +219,139 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
             """, nativeQuery = true)
     AssessmentOverviewDto findAssessmentOverviewDetails(@Param("assessmentId") String assessmentId,
                                                         @Param("instituteId") String instituteId);
+
+
+    @Query(value = """
+            SELECT
+                a.id AS assessmentId,
+                a.name AS assessmentName,
+                sa.id AS attemptId,
+                a.bound_start_time AS startTime,
+                a.bound_end_time AS endTime,
+                COALESCE(sa.status, 'PENDING') AS attemptStatus,
+                sa.created_at AS attemptDate,
+                sa.total_time_in_seconds AS durationInSeconds,
+                sa.total_marks AS totalMarks,
+                aim.subject_id as subjectId,
+                CASE
+                    WHEN a.bound_end_time < (CURRENT_TIMESTAMP AT TIME ZONE 'UTC') THEN 'ENDED'
+                    ELSE 'LIVE'
+                END AS assessmentStatus
+            FROM public.assessment a
+            LEFT JOIN public.assessment_institute_mapping aim
+                ON a.id = aim.assessment_id
+            LEFT JOIN public.assessment_user_registration aur
+                ON a.id = aur.assessment_id
+                AND aur.user_id = :userId
+            LEFT JOIN public.student_attempt sa
+                ON aur.id = sa.registration_id
+                AND sa.id = (
+                    SELECT sa_inner.id
+                    FROM public.student_attempt sa_inner
+                    WHERE sa_inner.registration_id = aur.id
+                    ORDER BY sa_inner.created_at DESC
+                    LIMIT 1
+                )
+            WHERE aim.institute_id = :instituteId
+            AND COALESCE(sa.status, 'PENDING') IN (:statusList)
+            """,countQuery = """
+            SELECT COUNT(*)
+            FROM public.assessment a
+            LEFT JOIN public.assessment_institute_mapping aim
+                ON a.id = aim.assessment_id
+            LEFT JOIN public.assessment_user_registration aur
+                ON a.id = aur.assessment_id
+                AND aur.user_id = :userId
+            LEFT JOIN public.student_attempt sa
+                ON aur.id = sa.registration_id
+                AND sa.id = (
+                    SELECT sa_inner.id
+                    FROM public.student_attempt sa_inner
+                    WHERE sa_inner.registration_id = aur.id
+                    ORDER BY sa_inner.created_at DESC
+                    LIMIT 1
+                )
+            WHERE aim.institute_id = :instituteId
+            AND COALESCE(sa.status, 'PENDING') IN (:statusList);
+            
+            """, nativeQuery = true)
+    Page<StudentReportDto> findAssessmentForUserWithFilter(@Param("userId") String userId,
+                                                     @Param("instituteId") String instituteId,
+                                                     @Param("statusList") List<String> statusList,
+                                                     Pageable pageable);
+
+
+    @Query(value = """
+            SELECT
+                a.id AS assessmentId,
+                a.name AS assessmentName,
+                sa.id AS attempt_id,
+                a.bound_start_time AS startTime,
+                a.bound_end_time AS endTime,
+                COALESCE(sa.status, 'PENDING') AS attemptStatus,
+                sa.created_at AS attemptDate,
+                sa.total_time_in_seconds AS durationInSeconds,
+                sa.total_marks AS totalMarks,
+                aim.subject_id as subjectId,
+                CASE
+                    WHEN a.bound_end_time < (CURRENT_TIMESTAMP AT TIME ZONE 'UTC') THEN 'ENDED'
+                    ELSE 'LIVE'
+                END AS assessmentStatus
+            FROM public.assessment a
+            LEFT JOIN public.assessment_institute_mapping aim
+                ON a.id = aim.assessment_id
+            LEFT JOIN public.assessment_user_registration aur
+                ON a.id = aur.assessment_id
+                AND aur.user_id = :userId
+            LEFT JOIN public.student_attempt sa
+                ON aur.id = sa.registration_id
+                AND sa.id = (
+                    SELECT sa_inner.id
+                    FROM public.student_attempt sa_inner
+                    WHERE sa_inner.registration_id = aur.id
+                    ORDER BY sa_inner.created_at DESC
+                    LIMIT 1
+                )
+            WHERE aim.institute_id = :instituteId
+            AND (
+                    to_tsvector('simple', concat(
+                    a.name
+                    )) @@ plainto_tsquery('simple', :name)
+                    OR a.name LIKE :name || '%'
+                   )
+            AND COALESCE(sa.status, 'PENDING') IN (:statusList)
+            """,countQuery = """
+            SELECT COUNT(*)
+            FROM public.assessment a
+            LEFT JOIN public.assessment_institute_mapping aim
+                ON a.id = aim.assessment_id
+            LEFT JOIN public.assessment_user_registration aur
+                ON a.id = aur.assessment_id
+                AND aur.user_id = :userId
+            LEFT JOIN public.student_attempt sa
+                ON aur.id = sa.registration_id
+                AND sa.id = (
+                    SELECT sa_inner.id
+                    FROM public.student_attempt sa_inner
+                    WHERE sa_inner.registration_id = aur.id
+                    ORDER BY sa_inner.created_at DESC
+                    LIMIT 1
+                )
+            WHERE aim.institute_id = :instituteId
+            AND (
+                    to_tsvector('simple', concat(
+                    a.name
+                    )) @@ plainto_tsquery('simple', :name)
+                    OR a.name LIKE :name || '%'
+                   )
+            AND COALESCE(sa.status, 'PENDING') IN (:statusList);
+            
+            """, nativeQuery = true)
+    Page<StudentReportDto> findAssessmentForUserWithFilterAndSearch(@Param("name") String name,
+                                                                    @Param("userId") String userId,
+                                                                    @Param("instituteId") String instituteId,
+                                                                    @Param("statusList") List<String> statusList,
+                                                                    Pageable pageable);
 }
 
 

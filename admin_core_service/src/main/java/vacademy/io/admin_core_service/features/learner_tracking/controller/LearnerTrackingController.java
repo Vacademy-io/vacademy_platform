@@ -1,5 +1,7 @@
 package vacademy.io.admin_core_service.features.learner_tracking.controller;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.ActivityLogDTO;
@@ -32,6 +34,18 @@ public class LearnerTrackingController {
             @RequestParam String chapterId,
             @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok(learnerTrackingService.addOrUpdateVideoActivityLog(activityLogDTO, slideId,chapterId ,user));
+    }
+
+    @GetMapping("/get-learner-document-activity-logs")
+    public Page<ActivityLogDTO> getDocumentActivityLogs(String userId, String slideId, int pageNo,int pageSize,@RequestAttribute("user") CustomUserDetails userDetails) {
+        Page<ActivityLogDTO> activityLogs = learnerTrackingService.getDocumentActivityLogs(userId, slideId, PageRequest.of(pageNo, pageSize), userDetails);
+        return activityLogs;
+    }
+
+    @GetMapping("/get-learner-video-activity-logs")
+    public Page<ActivityLogDTO> getVideoActivityLogs(String userId, String slideId, int pageNo,int pageSize,@RequestAttribute("user") CustomUserDetails userDetails) {
+        Page<ActivityLogDTO> activityLogs = learnerTrackingService.getDocumentActivityLogs(userId, slideId, PageRequest.of(pageNo, pageSize), userDetails);
+        return activityLogs;
     }
 
 }

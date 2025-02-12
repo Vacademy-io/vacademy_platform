@@ -1,5 +1,7 @@
 package vacademy.io.admin_core_service.features.learner_tracking.repository;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -70,6 +72,24 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog,String>
             @Param("chapterId") String chapterId,
             @Param("learnerOperation") List<String> learnerOperation
     );
+
+    @Query("""
+    SELECT DISTINCT al FROM ActivityLog al
+    LEFT JOIN FETCH al.videoTracked vt
+    WHERE al.userId = :userId AND al.slideId = :slideId
+    """)
+    Page<ActivityLog> findActivityLogsWithVideos(@Param("userId") String userId,
+                                                 @Param("slideId") String slideId,
+                                                 Pageable pageable);
+
+    @Query("""
+    SELECT DISTINCT al FROM ActivityLog al
+    LEFT JOIN FETCH al.documentTracked dt
+    WHERE al.userId = :userId AND al.slideId = :slideId
+    """)
+    Page<ActivityLog> findActivityLogsWithDocuments(@Param("userId") String userId,
+                                                    @Param("slideId") String slideId,
+                                                    Pageable pageable);
 
 
 }

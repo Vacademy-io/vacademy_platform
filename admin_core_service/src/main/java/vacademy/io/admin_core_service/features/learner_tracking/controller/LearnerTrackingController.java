@@ -1,9 +1,12 @@
 package vacademy.io.admin_core_service.features.learner_tracking.controller;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.ActivityLogDTO;
 import vacademy.io.admin_core_service.features.learner_tracking.service.LearnerTrackingService;
+import vacademy.io.common.auth.config.PageConstants;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 @RestController
@@ -34,4 +37,26 @@ public class LearnerTrackingController {
         return ResponseEntity.ok(learnerTrackingService.addOrUpdateVideoActivityLog(activityLogDTO, slideId,chapterId ,user));
     }
 
+    @GetMapping("/get-learner-document-activity-logs")
+    public Page<ActivityLogDTO> getDocumentActivityLogs(
+            @RequestParam("userId") String userId,
+            @RequestParam("slideId") String slideId,
+            @RequestParam(value = "pageNo", defaultValue = PageConstants.DEFAULT_PAGE_NUMBER, required = false) int pageNo,
+            @RequestParam(value = "pageSize", defaultValue = PageConstants.DEFAULT_PAGE_SIZE, required = false) int pageSize,
+            @RequestAttribute("user") CustomUserDetails userDetails) {
+
+        return learnerTrackingService.getDocumentActivityLogs(userId, slideId, PageRequest.of(pageNo, pageSize), userDetails);
+    }
+
+
+    @GetMapping("/get-learner-video-activity-logs")
+    public Page<ActivityLogDTO> getVideoActivityLogs(
+            @RequestParam("userId") String userId,
+            @RequestParam("slideId") String slideId,
+            @RequestParam(value = "pageNo", defaultValue = PageConstants.DEFAULT_PAGE_NUMBER, required = false) int pageNo,
+            @RequestParam(value = "pageSize", defaultValue = PageConstants.DEFAULT_PAGE_SIZE, required = false) int pageSize,
+            @RequestAttribute("user") CustomUserDetails userDetails) {
+
+        return learnerTrackingService.getDocumentActivityLogs(userId, slideId, PageRequest.of(pageNo, pageSize), userDetails);
+    }
 }

@@ -47,4 +47,12 @@ public class VideoTracked {
             this.endTime = new Timestamp(videoActivityLogDTO.getEndTimeInMillis());
         }
     }
+
+    public VideoActivityLogDTO videoActivityLogDTO() {
+        VideoActivityLogDTO videoActivityLogDTO = new VideoActivityLogDTO();
+        videoActivityLogDTO.setId(id);
+        videoActivityLogDTO.setStartTimeInMillis(startTime != null ? startTime.getTime() : null);
+        videoActivityLogDTO.setEndTimeInMillis(endTime != null ? endTime.getTime() : null);
+        return videoActivityLogDTO;
+    }
 }

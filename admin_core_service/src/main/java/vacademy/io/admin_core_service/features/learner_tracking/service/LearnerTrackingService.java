@@ -2,6 +2,8 @@ package vacademy.io.admin_core_service.features.learner_tracking.service;
 
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.learner_operation.enums.LearnerOperationEnum;
@@ -20,6 +22,7 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.sql.Date;
+import java.sql.Timestamp;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ExecutorService;
@@ -101,10 +104,10 @@ public class LearnerTrackingService {
 
     private void updateActivityFields(ActivityLog activityLog, ActivityLogDTO activityLogDTO) {
         if (activityLogDTO.getStartTimeInMillis() != null) {
-            activityLog.setStartTime(new Date(activityLogDTO.getStartTimeInMillis()));
+            activityLog.setStartTime(new Timestamp(activityLogDTO.getStartTimeInMillis()));
         }
         if (activityLogDTO.getEndTimeInMillis() != null) {
-            activityLog.setEndTime(new Date(activityLogDTO.getEndTimeInMillis()));
+            activityLog.setEndTime(new Timestamp(activityLogDTO.getEndTimeInMillis()));
         }
         if (activityLogDTO.getPercentageWatched() != null) {
             activityLog.setPercentageWatched(activityLogDTO.getPercentageWatched());
@@ -122,4 +125,15 @@ public class LearnerTrackingService {
             throw new VacademyException("Invalid request. Videos cannot be null.");
         }
     }
+
+    public Page<ActivityLogDTO>getDocumentActivityLogs(String userId, String slideId, Pageable pageable, CustomUserDetails userDetails) {
+       Page<ActivityLog>activityLogs = activityLogRepository.findActivityLogsWithDocuments(userId, slideId, pageable);
+       return activityLogs.map(ActivityLog::toActivityLogDTO);
+    }
+
+    public Page<ActivityLogDTO>getVideoActivityLogs(String userId, String slideId, Pageable pageable, CustomUserDetails userDetails) {
+        Page<ActivityLog>activityLogs = activityLogRepository.findActivityLogsWithVideos(userId, slideId, pageable);
+        return activityLogs.map(ActivityLog::toActivityLogDTO);
+    }
+
 }

@@ -50,4 +50,13 @@ public class DocumentTracked {
         }
         this.pageNumber = documentActivityLogDTO.getPageNumber();
     }
+
+    public DocumentActivityLogDTO documentActivityLogDTO() {
+        DocumentActivityLogDTO documentActivityLogDTO = new DocumentActivityLogDTO();
+        documentActivityLogDTO.setId(id);
+        documentActivityLogDTO.setStartTimeInMillis(startTime != null ? startTime.getTime() : null);
+        documentActivityLogDTO.setEndTimeInMillis(endTime != null ? endTime.getTime() : null);
+        documentActivityLogDTO.setPageNumber(pageNumber);
+        return documentActivityLogDTO;
+    }
 }

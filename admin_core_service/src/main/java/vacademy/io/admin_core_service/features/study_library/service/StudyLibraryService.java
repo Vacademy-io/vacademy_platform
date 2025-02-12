@@ -103,7 +103,7 @@ public class StudyLibraryService {
         List<Level> levels = levelRepository.findDistinctLevelsByInstituteIdAndSessionId(instituteId, sessionId, packageId);
 
         for (Level level : levels) {
-            LevelDTOWithDetails levelDTOWithDetails = buildLevelDTOWithDetails(level);
+            LevelDTOWithDetails levelDTOWithDetails = buildLevelDTOWithDetails(level,packageId,sessionId);
             levelWithDetails.add(levelDTOWithDetails);
         }
 
@@ -113,14 +113,14 @@ public class StudyLibraryService {
 
     public List<LevelDTOWithDetails> buildLevelDTOWithDetails(String instituteId, PackageSession packageSession) {
         List<LevelDTOWithDetails> levelWithDetails = new ArrayList<>();
-        LevelDTOWithDetails levelDTOWithDetails = buildLevelDTOWithDetails(packageSession.getLevel());
+        LevelDTOWithDetails levelDTOWithDetails = buildLevelDTOWithDetails(packageSession);
         levelWithDetails.add(levelDTOWithDetails);
 
         return levelWithDetails;
     }
 
-    public LevelDTOWithDetails buildLevelDTOWithDetails(Level level) {
-        List<Subject> subjects = subjectRepository.findDistinctSubjectsByLevelId(level.getId());
+    public LevelDTOWithDetails buildLevelDTOWithDetails(Level level,String packageId,String sessionId) {
+        List<Subject> subjects = subjectRepository.findDistinctSubjectsPackageSession(level.getId(),packageId,sessionId);
         return getLevelDTOWithDetails(subjects, level);
     }
 
@@ -177,4 +177,10 @@ public class StudyLibraryService {
         chapterDTOWithDetail.setSlidesCount(slideRepository.countSlidesByChapterId(chapter.getId()));
         return chapterDTOWithDetail;
     }
+
+    public LevelDTOWithDetails buildLevelDTOWithDetails(PackageSession packageSession) {
+        List<Subject> subjects = subjectRepository.findDistinctSubjectsByPackageSessionId(packageSession.getId());
+        return getLevelDTOWithDetails(subjects, packageSession.getLevel());
+    }
+
 }

@@ -36,8 +36,11 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
 
     // Get all distinct packages of an institute_id
     @Query(value = "SELECT DISTINCT p.* FROM package p " +
-            "JOIN package_institute pi ON p.id = pi.package_id " +  // Ensure to join package_institute to filter by institute
-            "WHERE pi.institute_id = :instituteId AND p.status != 'DELETED'",
+            "JOIN package_institute pi ON p.id = pi.package_id " +
+            "JOIN package_session ps ON p.id = ps.package_id " +  // Join with package_session
+            "WHERE pi.institute_id = :instituteId " +
+            "AND p.status != 'DELETED' " +
+            "AND ps.status != 'DELETED'",
             nativeQuery = true)
     List<PackageEntity> findDistinctPackagesByInstituteId(@Param("instituteId") String instituteId);
 

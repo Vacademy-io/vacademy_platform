@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import vacademy.io.admin_core_service.features.slide.dto.SlideCountProjection;
 import vacademy.io.admin_core_service.features.slide.dto.SlideDetailProjection;
+import vacademy.io.admin_core_service.features.slide.dto.SlideDetailWithOperationProjection;
 import vacademy.io.admin_core_service.features.slide.entity.Slide;
 
 import java.util.List;
@@ -63,5 +64,83 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
     List<SlideDetailProjection> findRecentIncompleteSlidesByUserId(
             @Param("userId") String userId,
             @Param("status") List<String> status);
+
+
+    @Query(value = """
+    SELECT DISTINCT ON (s.id)
+        s.id AS slideId,
+        s.title AS slideTitle,
+        s.description AS slideDescription,
+        s.source_type AS sourceType,
+        s.status AS status,
+        s.image_file_id AS imageFileId,
+
+        ds.id AS documentId,
+        ds.title AS documentTitle,
+        ds.cover_file_id AS documentCoverFileId,
+        ds.type AS documentType,
+        ds.data AS documentData,
+
+        vs.id AS videoId,
+        vs.title AS videoTitle,
+        vs.url AS videoUrl,
+        vs.description AS videoDescription,
+
+        cts.slide_order AS slideOrder,
+
+        -- Fetch percentage values without casting
+        COALESCE(NULLIF(doc_percent.value, ''), '0') AS percentageDocumentWatched,
+        COALESCE(NULLIF(doc_last.value, ''), '0') AS documentLastPage,
+        doc_last.updated_at AS documentLastUpdated,
+
+        COALESCE(NULLIF(vid_percent.value, ''), '0') AS percentageVideoWatched,
+        COALESCE(NULLIF(vid_last.value, ''), '0') AS videoLastTimestamp,
+        vid_last.updated_at AS videoLastUpdated
+
+    FROM chapter_to_slides cts
+    JOIN slide s ON cts.slide_id = s.id
+    JOIN chapter ch ON cts.chapter_id = ch.id
+
+    LEFT JOIN document_slide ds ON ds.id = s.source_id AND s.source_type = 'DOCUMENT'
+    LEFT JOIN video vs ON vs.id = s.source_id AND s.source_type = 'VIDEO'
+
+    -- Fetch PERCENTAGE_DOCUMENT_WATCHED
+    LEFT JOIN learner_operation doc_percent ON doc_percent.source = 'SLIDE'
+        AND doc_percent.source_id = s.id
+        AND s.source_type = 'DOCUMENT'
+        AND doc_percent.operation = 'PERCENTAGE_DOCUMENT_WATCHED'
+        AND doc_percent.user_id = :userId
+
+    -- Fetch DOCUMENT_LAST_PAGE
+    LEFT JOIN learner_operation doc_last ON doc_last.source = 'SLIDE'
+        AND doc_last.source_id = s.id
+        AND s.source_type = 'DOCUMENT'
+        AND doc_last.operation = 'DOCUMENT_LAST_PAGE'
+        AND doc_last.user_id = :userId
+
+    -- Fetch PERCENTAGE_VIDEO_WATCHED
+    LEFT JOIN learner_operation vid_percent ON vid_percent.source = 'SLIDE'
+        AND vid_percent.source_id = s.id
+        AND s.source_type = 'VIDEO'
+        AND vid_percent.operation = 'PERCENTAGE_VIDEO_WATCHED'
+        AND vid_percent.user_id = :userId
+
+    -- Fetch VIDEO_LAST_TIMESTAMP
+    LEFT JOIN learner_operation vid_last ON vid_last.source = 'SLIDE'
+        AND vid_last.source_id = s.id
+        AND s.source_type = 'VIDEO'
+        AND vid_last.operation = 'VIDEO_LAST_TIMESTAMP'
+        AND vid_last.user_id = :userId
+
+    WHERE ch.id = :chapterId
+    AND s.status = :status
+    ORDER BY s.id, cts.slide_order ASC
+""", nativeQuery = true)
+    List<SlideDetailWithOperationProjection> findSlideDetailsWithOperationByChapterId(
+            @Param("userId") String userId,
+            @Param("chapterId") String chapterId,
+            @Param("status") String status
+    );
+
 
 }

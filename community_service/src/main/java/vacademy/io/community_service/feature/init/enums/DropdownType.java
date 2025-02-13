@@ -1,4 +1,4 @@
-package vacademy.io.community_service.enums;
+package vacademy.io.community_service.feature.init.enums;
 
 public enum DropdownType {
     LEVEL,

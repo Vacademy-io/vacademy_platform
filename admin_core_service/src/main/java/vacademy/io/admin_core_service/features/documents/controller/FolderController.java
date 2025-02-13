@@ -14,7 +14,7 @@ import java.util.List;
 public class FolderController {
     private final FolderService folderService;
 
-    public FolderController(FolderService folderService) {;
+    public FolderController(FolderService folderService) {
         this.folderService = folderService;
     }
 

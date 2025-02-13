@@ -2,13 +2,19 @@ package vacademy.io.community_service.feature.init.service;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.community_service.feature.init.dto.*;
 import vacademy.io.community_service.feature.init.entity.*;
+import vacademy.io.community_service.feature.init.enums.Difficulty;
+import vacademy.io.community_service.feature.init.enums.Topic;
+import vacademy.io.community_service.feature.init.enums.Type;
 import vacademy.io.community_service.feature.init.repository.*;
 
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Slf4j
 @Service
@@ -23,7 +29,7 @@ public class InitService {
     @Autowired
     private SubjectsRepository subjectRepository;
 
-    public InitResponseDto getDropdownOptions() {
+    public ResponseEntity<InitResponseDto> getDropdownOptions(CustomUserDetails user) {
         List<Levels> levelEntities = levelRepository.findAll();
         List<LevelDto> levels = levelEntities.stream()
                 .map(level -> new LevelDto(level.getLevelId(), level.getLevelName()))
@@ -52,11 +58,11 @@ public class InitService {
 
 
 
+        List<String> difficulties = Stream.of(Difficulty.values()).map(Enum::name).collect(Collectors.toList());
+        List<String> topics = Stream.of(Topic.values()).map(Enum::name).collect(Collectors.toList());
+        List<String> types = Stream.of(Type.values()).map(Enum::name).collect(Collectors.toList());
 
-        List<String> difficulties = Arrays.asList("EASY", "MEDIUM", "HARD");
-        List<String> topics = Arrays.asList("ALGEBRA", "CALCULUS", "MECHANICS", "ORGANIC_CHEMISTRY", "DATABASES");
-        List<String> types = Arrays.asList("QUESTION", "QUESTION_PAPER", "VIDEO", "PPT");
+        return ResponseEntity.ok(new InitResponseDto(levels, streams, subjects, difficulties, topics, types));
 
-        return new InitResponseDto(levels, streams, subjects, difficulties, topics, types);
     }
 }

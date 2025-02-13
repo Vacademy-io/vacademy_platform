@@ -20,7 +20,7 @@ public class InitController {
     @Autowired
     private InitService initService;
 
-    @GetMapping("/inti/filters")
+    @GetMapping("/init/question-filters")
     public ResponseEntity<InitResponseDto> getDropdownOptions(@RequestAttribute("user") CustomUserDetails user) {
         return initService.getDropdownOptions(user);
     }

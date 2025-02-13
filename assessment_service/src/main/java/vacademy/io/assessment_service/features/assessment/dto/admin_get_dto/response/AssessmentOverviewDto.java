@@ -14,5 +14,8 @@ public interface AssessmentOverviewDto {
     Long getTotalParticipants();
     Double getAverageDuration();
     Double getAverageMarks();
+    Long getTotalAttempted();
+    Long getTotalOngoing();
+    String getSubjectId();
 
 }

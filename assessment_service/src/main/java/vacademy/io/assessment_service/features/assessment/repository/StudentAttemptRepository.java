@@ -194,19 +194,22 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
             ),
             AssessmentInfo AS (
                 SELECT
-                    id AS assessment_id,
-                    created_at,
-                    bound_start_time,
-                    bound_end_time,
-                    duration
-                FROM assessment
-                WHERE id = :assessmentId
+                    a.id AS assessment_id,
+                    a.created_at,
+                    a.bound_start_time,
+                    a.bound_end_time,
+                    a.duration,
+                    aim.subject_id
+                FROM assessment a
+                JOIN assessment_institute_mapping aim ON a.id = aim.assessment_id
+                WHERE a.id = :assessmentId
             )
             SELECT
-                ai.created_at as createdOn,
-                ai.bound_start_time as startDateAndTime,
-                ai.bound_end_time as endDateAndTime,
-                ai.duration as durationInMin,
+                ai.created_at AS createdOn,
+                ai.bound_start_time AS startDateAndTime,
+                ai.bound_end_time AS endDateAndTime,
+                ai.duration AS durationInMin,
+                ai.subject_id AS subjectId,
                 COUNT(la.userId) AS totalParticipants,
                 COALESCE(AVG(la.totalTime), 0) AS averageDuration,
                 COALESCE(AVG(la.achievedMarks), 0) AS averageMarks,
@@ -215,7 +218,7 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
             FROM AssessmentInfo ai
             LEFT JOIN LatestAttempts la ON 1=1
             WHERE la.rn = 1 OR la.rn IS NULL
-            GROUP BY ai.created_at, ai.bound_start_time, ai.bound_end_time, ai.duration;
+            GROUP BY ai.created_at, ai.bound_start_time, ai.bound_end_time, ai.duration, ai.subject_id;
             """, nativeQuery = true)
     AssessmentOverviewDto findAssessmentOverviewDetails(@Param("assessmentId") String assessmentId,
                                                         @Param("instituteId") String instituteId);

@@ -183,20 +183,25 @@ public class AdminAssessmentGetManager {
         // Fetch question status details
         QuestionStatusDto questionWiseMarks = questionWiseMarksService.getQuestionStatusForAssessmentAndQuestion(assessmentId, questionPreviewDto.getQuestionId());
 
-        if (questionWiseMarks == null) {
-            throw new VacademyException("Mark List Not Found for question: " + questionPreviewDto.getQuestionId());
-        }
-
         return createInsightsDto(questionPreviewDto, questionWiseMarks, assessmentId);
     }
 
     private QuestionInsightsResponse.QuestionInsightDto createInsightsDto(AssessmentQuestionPreviewDto questionPreviewDto, QuestionStatusDto questionWiseMarks, String assessmentId) {
+        Long allAttempts = safeGetLong(assessmentUserRegistrationRepository.countUserRegisteredForAssessment(assessmentId, List.of("DELETED")));
+
+        if(Objects.isNull(questionWiseMarks)){
+            return QuestionInsightsResponse.QuestionInsightDto.builder()
+                    .assessmentQuestionPreviewDto(questionPreviewDto)
+                    .totalAttempts(allAttempts)
+                    .skipped(allAttempts)
+                    .build();
+        }
+
         Long correctAttempt = safeGetLong(questionWiseMarks.getCorrectAttempt());
         Long incorrectAttempt = safeGetLong(questionWiseMarks.getIncorrectAttempt());
         Long partialCorrectAttempt = safeGetLong(questionWiseMarks.getPartialCorrectAttempt());
 
         // Fetch total attempts (handle potential null return)
-        Long allAttempts = safeGetLong(assessmentUserRegistrationRepository.countUserRegisteredForAssessment(assessmentId, List.of("DELETED")));
         Long skipped = Math.max(0, allAttempts - (correctAttempt + incorrectAttempt + partialCorrectAttempt));
 
         // Fetch top 3 correct responders (handle potential null return)

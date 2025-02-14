@@ -51,4 +51,13 @@ public interface QuestionWiseMarksRepository extends JpaRepository<QuestionWiseM
             """, nativeQuery = true)
     List<Top3CorrectResponseDto> findTop3ParticipantsForCorrectResponse(@Param("assessmentId") String assessmentId,
                                                                   @Param("questionId") String questionId);
+
+
+    @Query(value = """
+            SELECT qwm.* from question_wise_marks as qwm
+            WHERE qwm.question_id IN (:questionIds)
+            AND qwm.attempt_id = :attemptId
+            """)
+    List<QuestionWiseMarks> findAllQuestionWiseMarksForQuestionIdAndAttemptId(@Param("questionIds") List<String> questionIds,
+                                                                              @Param("attemptId") String attemptId);
 }

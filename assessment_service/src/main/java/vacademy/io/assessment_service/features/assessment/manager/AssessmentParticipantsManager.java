@@ -12,11 +12,10 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.ObjectUtils;
 import org.springframework.util.StringUtils;
 import vacademy.io.assessment_service.features.assessment.dto.*;
+import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.StudentReportAnswerReviewDto;
+import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.StudentReportOverallDetailDto;
 import vacademy.io.assessment_service.features.assessment.dto.create_assessment.AssessmentRegistrationsDto;
-import vacademy.io.assessment_service.features.assessment.entity.Assessment;
-import vacademy.io.assessment_service.features.assessment.entity.AssessmentBatchRegistration;
-import vacademy.io.assessment_service.features.assessment.entity.AssessmentCustomField;
-import vacademy.io.assessment_service.features.assessment.entity.AssessmentUserRegistration;
+import vacademy.io.assessment_service.features.assessment.entity.*;
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentVisibility;
 import vacademy.io.assessment_service.features.assessment.enums.UserRegistrationFilterEnum;
 import vacademy.io.assessment_service.features.assessment.enums.UserRegistrationSources;
@@ -25,6 +24,9 @@ import vacademy.io.assessment_service.features.assessment.repository.AssessmentR
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentUserRegistrationRepository;
 import vacademy.io.assessment_service.features.assessment.service.assessment_get.AssessmentService;
 import vacademy.io.assessment_service.features.assessment.service.bulk_entry_services.AssessmentBatchRegistrationService;
+import vacademy.io.assessment_service.features.assessment.service.bulk_entry_services.QuestionAssessmentSectionMappingService;
+import vacademy.io.assessment_service.features.learner_assessment.entity.QuestionWiseMarks;
+import vacademy.io.assessment_service.features.question_core.entity.Question;
 import vacademy.io.assessment_service.features.rich_text.entity.AssessmentRichTextData;
 import vacademy.io.assessment_service.features.rich_text.enums.TextType;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -33,6 +35,7 @@ import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.student.dto.BasicParticipantDTO;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 import static vacademy.io.common.auth.enums.CompanyStatus.ACTIVE;
 
@@ -53,6 +56,10 @@ public class AssessmentParticipantsManager {
 
     @Autowired
     AssessmentCustomFieldRepository assessmentCustomFieldRepository;
+
+    @Autowired
+    QuestionAssessmentSectionMappingService questionAssessmentSectionMappingService;
+
 
     @Transactional
     public ResponseEntity<AssessmentSaveResponseDto> saveParticipantsToAssessment(CustomUserDetails user, AssessmentRegistrationsDto assessmentRegistrationsDto, String assessmentId, String instituteId, String type) {
@@ -452,4 +459,45 @@ public class AssessmentParticipantsManager {
         return assessmentUserRegistrationRepository.countDistinctAssessmentsByUserId(user.getUserId(),instituteId);
     }
 
+    public ResponseEntity<StudentReportOverallDetailDto> getStudentReportDetails(CustomUserDetails userDetails, String assessmentId, String attemptId, String instituteId) {
+        Optional<Assessment> assessmentOptional = assessmentRepository.findByAssessmentIdAndInstituteId(assessmentId, instituteId);
+
+        if(assessmentOptional.isEmpty()) throw new VacademyException("Assessment Not Found");
+
+        Assessment assessment = assessmentOptional.get();
+        List<String> allSectionsIds = assessment.getSections().stream().map(Section::getId).toList();
+
+        List<QuestionAssessmentSectionMapping> mappings = questionAssessmentSectionMappingService.getQuestionAssessmentSectionMappingBySectionIds(allSectionsIds);
+
+        return ResponseEntity.ok(StudentReportOverallDetailDto.builder()
+                .allQuestions(createParticipantsReportQuestionReview(mappings, attemptId)).build());
+    }
+
+    private Map<String, List<StudentReportAnswerReviewDto>> createParticipantsReportQuestionReview(List<QuestionAssessmentSectionMapping> mappings, String attemptId) {
+
+        if(Objects.isNull(mappings) || mappings.isEmpty()) return new HashMap<>();
+
+
+        Map<String, List<String>> response = mappings.stream()
+                .collect(Collectors.groupingBy(
+                        mapping -> mapping.getSection().getId(), // Extract sectionId
+                        Collectors.mapping(mapping -> mapping.getQuestion().getId(), Collectors.toList()) // Extract questionId
+                ));
+
+
+        Map<String, List<StudentReportAnswerReviewDto>> reportMapping = new HashMap<>();
+        response.forEach((sectionId, questions) -> {
+            reportMapping.put(sectionId, createQuestionWiseReviewResponse(questions, attemptId));
+        });
+
+        return reportMapping;
+    }
+
+    private List<StudentReportAnswerReviewDto> createQuestionWiseReviewResponse(List<String> questionIds, String attemptId) {
+        List<StudentReportAnswerReviewDto> reportAnswerReviewDtos = new ArrayList<>();
+//        List<QuestionWiseMarks> allQuestionWiseMarks =
+
+
+        return reportAnswerReviewDtos;
+    }
 }

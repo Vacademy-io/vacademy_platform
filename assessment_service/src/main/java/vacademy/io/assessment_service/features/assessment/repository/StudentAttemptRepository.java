@@ -65,7 +65,6 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
         SELECT count(attemptId)
         FROM RankedAttempts
         WHERE rn = 1
-        ORDER BY achievedMarks DESC, completionTimeInSeconds ASC
         """,
             nativeQuery = true)
     Page<LeaderBoardDto> findLeaderBoardForAssessmentAndInstituteIdWithoutSearch(
@@ -135,7 +134,6 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                 count(attemptId)
             FROM RankedAttempts
             WHERE rn = 1
-            ORDER BY achievedMarks DESC, completionTimeInSeconds ASC
             """, nativeQuery = true)
     public Page<LeaderBoardDto> findLeaderBoardForAssessmentAndInstituteIdWithSearch(@Param("name") String name,
                                                                                      @Param("assessmentId") String assessmentId,

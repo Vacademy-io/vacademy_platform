@@ -57,7 +57,7 @@ public interface QuestionWiseMarksRepository extends JpaRepository<QuestionWiseM
             SELECT qwm.* from question_wise_marks as qwm
             WHERE qwm.question_id IN (:questionIds)
             AND qwm.attempt_id = :attemptId
-            """)
+            """, nativeQuery = true)
     List<QuestionWiseMarks> findAllQuestionWiseMarksForQuestionIdAndAttemptId(@Param("questionIds") List<String> questionIds,
                                                                               @Param("attemptId") String attemptId);
 }

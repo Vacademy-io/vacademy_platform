@@ -1,5 +1,6 @@
 package vacademy.io.assessment_service.features.assessment.manager;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
@@ -9,6 +10,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.CollectionUtils;
 import org.springframework.util.ObjectUtils;
 import org.springframework.util.StringUtils;
 import vacademy.io.assessment_service.features.assessment.dto.*;
@@ -22,10 +24,12 @@ import vacademy.io.assessment_service.features.assessment.enums.UserRegistration
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentCustomFieldRepository;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentRepository;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentUserRegistrationRepository;
+import vacademy.io.assessment_service.features.assessment.service.QuestionBasedStrategyFactory;
 import vacademy.io.assessment_service.features.assessment.service.assessment_get.AssessmentService;
 import vacademy.io.assessment_service.features.assessment.service.bulk_entry_services.AssessmentBatchRegistrationService;
 import vacademy.io.assessment_service.features.assessment.service.bulk_entry_services.QuestionAssessmentSectionMappingService;
 import vacademy.io.assessment_service.features.learner_assessment.entity.QuestionWiseMarks;
+import vacademy.io.assessment_service.features.learner_assessment.service.QuestionWiseMarksService;
 import vacademy.io.assessment_service.features.question_core.entity.Question;
 import vacademy.io.assessment_service.features.rich_text.entity.AssessmentRichTextData;
 import vacademy.io.assessment_service.features.rich_text.enums.TextType;
@@ -59,6 +63,9 @@ public class AssessmentParticipantsManager {
 
     @Autowired
     QuestionAssessmentSectionMappingService questionAssessmentSectionMappingService;
+
+    @Autowired
+    QuestionWiseMarksService questionWiseMarksService;
 
 
     @Transactional
@@ -459,45 +466,90 @@ public class AssessmentParticipantsManager {
         return assessmentUserRegistrationRepository.countDistinctAssessmentsByUserId(user.getUserId(),instituteId);
     }
 
+
     public ResponseEntity<StudentReportOverallDetailDto> getStudentReportDetails(CustomUserDetails userDetails, String assessmentId, String attemptId, String instituteId) {
-        Optional<Assessment> assessmentOptional = assessmentRepository.findByAssessmentIdAndInstituteId(assessmentId, instituteId);
+        Assessment assessment = assessmentRepository.findByAssessmentIdAndInstituteId(assessmentId, instituteId)
+                .orElseThrow(() -> new VacademyException("Assessment Not Found"));
 
-        if(assessmentOptional.isEmpty()) throw new VacademyException("Assessment Not Found");
+        List<String> sectionIds = assessment.getSections().stream()
+                .map(Section::getId)
+                .toList();
 
-        Assessment assessment = assessmentOptional.get();
-        List<String> allSectionsIds = assessment.getSections().stream().map(Section::getId).toList();
+        if (CollectionUtils.isEmpty(sectionIds)) {
+            throw new VacademyException("No Sections Found for the Given Assessment");
+        }
 
-        List<QuestionAssessmentSectionMapping> mappings = questionAssessmentSectionMappingService.getQuestionAssessmentSectionMappingBySectionIds(allSectionsIds);
+        List<QuestionAssessmentSectionMapping> mappings = questionAssessmentSectionMappingService
+                .getQuestionAssessmentSectionMappingBySectionIds(sectionIds);
 
         return ResponseEntity.ok(StudentReportOverallDetailDto.builder()
-                .allQuestions(createParticipantsReportQuestionReview(mappings, attemptId)).build());
+                .allQuestions(generateStudentReport(mappings, attemptId))
+                .build());
     }
 
-    private Map<String, List<StudentReportAnswerReviewDto>> createParticipantsReportQuestionReview(List<QuestionAssessmentSectionMapping> mappings, String attemptId) {
+    private Map<String, List<StudentReportAnswerReviewDto>> generateStudentReport(List<QuestionAssessmentSectionMapping> mappings, String attemptId) {
+        if (CollectionUtils.isEmpty(mappings)) {
+            return new HashMap<>();
+        }
 
-        if(Objects.isNull(mappings) || mappings.isEmpty()) return new HashMap<>();
-
-
-        Map<String, List<String>> response = mappings.stream()
+        Map<String, List<String>> sectionToQuestionsMap = mappings.stream()
                 .collect(Collectors.groupingBy(
-                        mapping -> mapping.getSection().getId(), // Extract sectionId
-                        Collectors.mapping(mapping -> mapping.getQuestion().getId(), Collectors.toList()) // Extract questionId
+                        mapping -> mapping.getSection().getId(), // Group by sectionId
+                        Collectors.mapping(mapping -> mapping.getQuestion().getId(), Collectors.toList()) // Collect questionIds
                 ));
 
-
-        Map<String, List<StudentReportAnswerReviewDto>> reportMapping = new HashMap<>();
-        response.forEach((sectionId, questions) -> {
-            reportMapping.put(sectionId, createQuestionWiseReviewResponse(questions, attemptId));
-        });
-
-        return reportMapping;
+        return sectionToQuestionsMap.entrySet().stream()
+                .collect(Collectors.toMap(
+                        Map.Entry::getKey,
+                        entry -> getQuestionReviewForAttempt(entry.getValue(), attemptId)
+                ));
     }
 
-    private List<StudentReportAnswerReviewDto> createQuestionWiseReviewResponse(List<String> questionIds, String attemptId) {
-        List<StudentReportAnswerReviewDto> reportAnswerReviewDtos = new ArrayList<>();
-//        List<QuestionWiseMarks> allQuestionWiseMarks =
+    private List<StudentReportAnswerReviewDto> getQuestionReviewForAttempt(List<String> questionIds, String attemptId) {
+        if (CollectionUtils.isEmpty(questionIds)) {
+            return Collections.emptyList();
+        }
 
+        List<QuestionWiseMarks> questionWiseMarksList = questionWiseMarksService
+                .getAllQuestionWiseMarksForQuestionIdsAndAttemptId(attemptId, questionIds);
 
-        return reportAnswerReviewDtos;
+        if (CollectionUtils.isEmpty(questionWiseMarksList)) {
+            return Collections.emptyList();
+        }
+
+        return questionWiseMarksList.stream()
+                .map(this::buildStudentReportReview)
+                .filter(Objects::nonNull) // Remove any null results
+                .toList();
     }
+
+    private StudentReportAnswerReviewDto buildStudentReportReview(QuestionWiseMarks questionWiseMarks) {
+        try{
+            if (questionWiseMarks == null || questionWiseMarks.getQuestion() == null) {
+                return null; // Avoid throwing an exception, instead return null to filter later
+            }
+
+            Question currentQuestion = questionWiseMarks.getQuestion();
+            String questionType = currentQuestion.getQuestionType();
+
+            if (StringUtils.isEmpty(questionType)) {
+                throw new VacademyException("Invalid Question Type for Question ID: " + currentQuestion.getId());
+            }
+
+            List<String> responseOptionIds = QuestionBasedStrategyFactory
+                    .getResponseOptionIds(questionWiseMarks.getResponseJson(), questionType);
+
+            return StudentReportAnswerReviewDto.builder()
+                    .questionId(currentQuestion.getId())
+                    .studentResponseOptionsIds(responseOptionIds)
+                    .answerStatus(questionWiseMarks.getStatus())
+                    .mark(questionWiseMarks.getMarks())
+                    .timeTakenInSeconds(questionWiseMarks.getTimeTakenInSeconds())
+                    .build();
+        }
+        catch (Exception e){
+            return StudentReportAnswerReviewDto.builder().build();
+        }
+    }
+
 }

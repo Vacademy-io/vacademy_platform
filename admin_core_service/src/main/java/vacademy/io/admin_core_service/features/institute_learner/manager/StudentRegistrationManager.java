@@ -2,6 +2,7 @@ package vacademy.io.admin_core_service.features.institute_learner.manager;
 
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.commons.lang3.RandomStringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpMethod;
@@ -9,6 +10,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.institute_learner.constants.StudentConstants;
+import vacademy.io.admin_core_service.features.institute_learner.dto.BulkUploadInitRequest;
 import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteStudentDTO;
 import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteStudentDetails;
 import vacademy.io.admin_core_service.features.institute_learner.dto.StudentExtraDetails;
@@ -20,6 +22,7 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
 import vacademy.io.common.core.utils.RandomGenerator;
 import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.common.institute.dto.InstituteInfoDTO;
 
 import java.util.*;
 
@@ -41,7 +44,8 @@ public class StudentRegistrationManager {
     private String applicationName;
 
 
-    public ResponseEntity<String> addStudentToInstitute(CustomUserDetails user, InstituteStudentDTO instituteStudentDTO) {
+    public ResponseEntity<String> addStudentToInstitute(CustomUserDetails user, InstituteStudentDTO instituteStudentDTO,BulkUploadInitRequest bulkUploadInitRequest) {
+        instituteStudentDTO = this.checkAndCreateDetails(instituteStudentDTO,bulkUploadInitRequest);
         Student student = checkAndCreateStudent(instituteStudentDTO);
         linkStudentToInstitute(student, instituteStudentDTO.getInstituteStudentDetails());
         return ResponseEntity.ok("Student added successfully");
@@ -98,7 +102,6 @@ public class StudentRegistrationManager {
     }
 
     private void linkStudentToInstitute(Student student, InstituteStudentDetails instituteStudentDetails) {
-
         try {
             UUID studentSessionId = UUID.randomUUID();
 
@@ -136,4 +139,63 @@ public class StudentRegistrationManager {
     private Optional<Student> getExistingStudentByUserNameAndUserId(String username, String userId) {
         return instituteStudentRepository.findByUsernameAndUserId(username, userId);
     }
+
+    private InstituteStudentDTO checkAndCreateDetails(InstituteStudentDTO instituteStudentDTO, BulkUploadInitRequest bulkUploadInitRequest) {
+        if (Objects.isNull(bulkUploadInitRequest)){
+            return instituteStudentDTO;
+        }
+        BulkUploadInitRequest.AutoGenerateConfig autoConfig = bulkUploadInitRequest.getAutoGenerateConfig();
+        BulkUploadInitRequest.ExpiryAndStatusConfig expiryAndStatusConfig = bulkUploadInitRequest.getExpiryAndStatusConfig();
+        BulkUploadInitRequest.OptionalFieldsConfig optionalFieldsConfig = bulkUploadInitRequest.getOptionalFieldsConfig();
+
+        // Auto-generate username if required
+        if (autoConfig.isAutoGenerateUsername()) {
+            instituteStudentDTO.getUserDetails().setUsername(generateUsername(instituteStudentDTO.getUserDetails().getFullName()));
+        }
+
+        // Auto-generate password if required
+        if (autoConfig.isAutoGeneratePassword() || StringUtils.isEmpty(instituteStudentDTO.getUserDetails().getPassword())) {
+            instituteStudentDTO.getUserDetails().setPassword(generatePassword());
+        }
+
+        // Auto-generate enrollment number if required
+        if (autoConfig.isAutoGenerateEnrollmentId()) {
+            instituteStudentDTO.getInstituteStudentDetails().setEnrollmentId(generateEnrollmentId());
+        }
+
+        // Set expiry days if included
+        if (expiryAndStatusConfig.isIncludeExpiryDays()) {
+            instituteStudentDTO.getInstituteStudentDetails().setAccessDays(bulkUploadInitRequest.getExpiryAndStatusConfig().getExpiryDays().toString());
+        }
+
+        // Set enrollment status if included
+        if (expiryAndStatusConfig.isIncludeEnrollmentStatus()) {
+            instituteStudentDTO.getInstituteStudentDetails().setEnrollmentStatus(bulkUploadInitRequest.getExpiryAndStatusConfig().getEnrollmentStatus());
+        }
+
+        return instituteStudentDTO;
+    }
+
+    private String generateUsername(String fullName) {
+        // Ensure full name has at least 4 characters, else pad with "X"
+        String namePart = fullName.replaceAll("\\s+", "").substring(0, Math.min(fullName.length(), 4)).toLowerCase();
+        if (namePart.length() < 4) {
+            namePart = String.format("%-4s", namePart).replace(' ', 'X');
+        }
+
+        // Generate 4 random digits
+        String randomDigits = RandomStringUtils.randomNumeric(4);
+
+        return namePart + randomDigits;
+    }
+
+
+    private String generatePassword() {
+        return RandomStringUtils.randomAlphanumeric(8);
+    }
+
+    private String generateEnrollmentId() {
+        return RandomStringUtils.randomNumeric(6);
+    }
+
 }

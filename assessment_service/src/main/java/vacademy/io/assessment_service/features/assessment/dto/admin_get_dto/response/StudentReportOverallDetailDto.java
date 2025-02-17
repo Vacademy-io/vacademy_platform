@@ -15,15 +15,6 @@ import java.util.Map;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 @Builder
 public class StudentReportOverallDetailDto {
-
-    private String assessmentId;
-    private Integer rank;
-    private Double percentile;
-    private Double marks;
-    private Integer attempted;
-    private Integer Skipped;
-    private Integer correctAttempt;
-    private Integer partiallyCorrectAttempt;
-    private Integer wrongAttempt;
+    private ParticipantsQuestionOverallDetailDto questionOverallDetailDto;
     private Map<String, List<StudentReportAnswerReviewDto>> allQuestions;
 }

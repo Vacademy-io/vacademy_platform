@@ -14,6 +14,7 @@ import org.springframework.util.CollectionUtils;
 import org.springframework.util.ObjectUtils;
 import org.springframework.util.StringUtils;
 import vacademy.io.assessment_service.features.assessment.dto.*;
+import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.ParticipantsQuestionOverallDetailDto;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.StudentReportAnswerReviewDto;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.StudentReportOverallDetailDto;
 import vacademy.io.assessment_service.features.assessment.dto.create_assessment.AssessmentRegistrationsDto;
@@ -24,6 +25,7 @@ import vacademy.io.assessment_service.features.assessment.enums.UserRegistration
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentCustomFieldRepository;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentRepository;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentUserRegistrationRepository;
+import vacademy.io.assessment_service.features.assessment.repository.StudentAttemptRepository;
 import vacademy.io.assessment_service.features.assessment.service.QuestionBasedStrategyFactory;
 import vacademy.io.assessment_service.features.assessment.service.assessment_get.AssessmentService;
 import vacademy.io.assessment_service.features.assessment.service.bulk_entry_services.AssessmentBatchRegistrationService;
@@ -66,6 +68,9 @@ public class AssessmentParticipantsManager {
 
     @Autowired
     QuestionWiseMarksService questionWiseMarksService;
+
+    @Autowired
+    StudentAttemptRepository studentAttemptRepository;
 
 
     @Transactional
@@ -482,8 +487,11 @@ public class AssessmentParticipantsManager {
         List<QuestionAssessmentSectionMapping> mappings = questionAssessmentSectionMappingService
                 .getQuestionAssessmentSectionMappingBySectionIds(sectionIds);
 
+        ParticipantsQuestionOverallDetailDto questionOverallDetailDto = studentAttemptRepository.findParticipantsQuestionOverallDetails(assessmentId, instituteId, attemptId);
+
         return ResponseEntity.ok(StudentReportOverallDetailDto.builder()
                 .allQuestions(generateStudentReport(mappings, attemptId))
+                .questionOverallDetailDto(questionOverallDetailDto)
                 .build());
     }
 

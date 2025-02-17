@@ -61,4 +61,8 @@ public class QuestionWiseMarksService {
     public List<Top3CorrectResponseDto> getTop3ParticipantsForCorrectResponse(String assessmentId, String questionId){
         return questionWiseMarksRepository.findTop3ParticipantsForCorrectResponse(assessmentId, questionId);
     }
+
+    public List<QuestionWiseMarks> getAllQuestionWiseMarksForQuestionIdsAndAttemptId(String attemptId, List<String> questionIds){
+        return questionWiseMarksRepository.findAllQuestionWiseMarksForQuestionIdAndAttemptId(questionIds, attemptId);
+    }
 }

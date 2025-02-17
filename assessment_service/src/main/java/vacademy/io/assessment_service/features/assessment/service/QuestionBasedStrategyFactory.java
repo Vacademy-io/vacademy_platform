@@ -1,15 +1,15 @@
 package vacademy.io.assessment_service.features.assessment.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.mcqm.MCQMResponseDto;
+import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.mcqs.MCQSResponseDto;
 import vacademy.io.assessment_service.features.assessment.dto.QuestionWiseBasicDetailDto;
 import vacademy.io.assessment_service.features.assessment.enums.QuestionResponseEnum;
 import vacademy.io.assessment_service.features.assessment.service.marking_strategy.MCQMQuestionTypeBasedStrategy;
 import vacademy.io.assessment_service.features.assessment.service.marking_strategy.MCQSQuestionTypeBasedStrategy;
 import vacademy.io.assessment_service.features.question_core.enums.QuestionTypes;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 
 public class QuestionBasedStrategyFactory {
     private static final Map<String, IQuestionTypeBasedStrategy> strategies = new HashMap<>();
@@ -63,5 +63,22 @@ public class QuestionBasedStrategyFactory {
 
         return QuestionWiseBasicDetailDto.builder().marks(marks)
                 .answerStatus(answerStatus).build();
+    }
+
+    public static List<String> getResponseOptionIds(String responseJson, String type) throws JsonProcessingException {
+        IQuestionTypeBasedStrategy strategy = getStrategy(type);
+        if(strategy.getType().equals(QuestionTypes.MCQS.name())){
+            MCQSResponseDto responseDto = (MCQSResponseDto) verifyResponseJson(responseJson, type);
+
+            return responseDto.getResponseData().getOptionIds();
+        }
+
+        if(strategy.getType().equals(QuestionTypes.MCQM.name())){
+            MCQMResponseDto responseDto = (MCQMResponseDto) verifyResponseJson(responseJson, type);
+
+            return responseDto.getResponseData().getOptionIds();
+        }
+
+        return new ArrayList<>();
     }
 }

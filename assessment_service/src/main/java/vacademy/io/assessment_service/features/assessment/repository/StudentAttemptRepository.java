@@ -9,6 +9,7 @@ import org.springframework.stereotype.Repository;
 import vacademy.io.assessment_service.features.assessment.dto.LeaderBoardDto;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.AssessmentOverviewDto;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.MarksRankDto;
+import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.ParticipantsQuestionOverallDetailDto;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.StudentReportDto;
 import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
 
@@ -355,6 +356,78 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                                                                     @Param("instituteId") String instituteId,
                                                                     @Param("statusList") List<String> statusList,
                                                                     Pageable pageable);
+
+    @Query(value = """
+            WITH RankedAttempts AS (
+                SELECT
+                    sa.id AS attemptId,
+                    aur.user_id AS userId,
+                    sa.total_time_in_seconds AS completionTimeInSeconds,
+                    sa.total_marks AS achievedMarks,
+                    aur.status,
+                    sa.submit_time,
+                    sa.start_time as startTime,
+                    aim.subject_id as subjectId,
+                    ROW_NUMBER() OVER (PARTITION BY aur.user_id ORDER BY sa.created_at DESC) AS rn
+                FROM student_attempt sa
+                JOIN assessment_user_registration aur ON aur.id = sa.registration_id
+                JOIN assessment a ON a.id = aur.assessment_id
+                JOIN assessment_institute_mapping aim ON aim.assessment_id = a.id
+                WHERE aur.assessment_id = :assessmentId
+                AND aim.institute_id = :instituteId
+                AND sa.status IN ('LIVE', 'ENDED')
+                AND aur.status IN ('ACTIVE')
+            ),
+            TotalParticipants AS (
+                SELECT COUNT(*) AS totalParticipants
+                FROM assessment_user_registration aur2
+                WHERE aur2.assessment_id = :assessmentId
+            ),
+            AttemptInformation AS(
+            SELECT
+                attempt_id,
+                COUNT(*) FILTER (WHERE status = 'CORRECT') AS correct_count,
+                COUNT(*) FILTER (WHERE status = 'INCORRECT') AS wrong_count,
+                COUNT(*) FILTER (WHERE status = 'PARTIAL_CORRECT') AS partial_correct_count,
+                COUNT(*) FILTER (WHERE status IS null or status = 'PENDING') AS skipped_count
+            FROM question_wise_marks
+            WHERE attempt_id = :attemptId
+            GROUP BY attempt_id
+            ),
+            RankedWithTotal AS (
+                SELECT
+                    attemptId,
+                    userId,
+                    completionTimeInSeconds,
+                    achievedMarks,
+                    status,
+                    startTime,
+                    subjectId,
+                    DENSE_RANK() OVER (ORDER BY achievedMarks DESC, completionTimeInSeconds ASC) AS rank,
+                    (SELECT totalParticipants FROM TotalParticipants) AS totalParticipants
+                FROM RankedAttempts
+                WHERE rn = 1
+            )
+            SELECT
+                tb.attemptId,
+                    tb.userId,
+                    tb.completionTimeInSeconds,
+                    tb.achievedMarks,
+                    tb.startTime,
+                    tb.subjectId,
+                ROUND(CAST(100.0 * (1.0 - (CAST(tb.rank - 1 AS FLOAT) / NULLIF(tb.totalParticipants * 1.0, 0))) AS NUMERIC), 2) AS percentile,
+                ai.correct_count as correctAttempt,
+                ai.wrong_count as wrongAttempt,
+                ai.partial_correct_count as partialCorrectAttempt,
+                ai.skipped_count as skippedCount
+            FROM RankedWithTotal tb
+            LEFT JOIN AttemptInformation ai ON tb.attemptId = ai.attempt_id
+            WHERE tb.attemptId = :attemptId
+            ORDER BY tb.achievedMarks DESC, tb.completionTimeInSeconds ASC;
+            """,nativeQuery = true)
+    ParticipantsQuestionOverallDetailDto findParticipantsQuestionOverallDetails(@Param("assessmentId") String assessmentId,
+                                                                                @Param("instituteId") String instituteId,
+                                                                                @Param("attemptId") String attemptId);
 }
 
 

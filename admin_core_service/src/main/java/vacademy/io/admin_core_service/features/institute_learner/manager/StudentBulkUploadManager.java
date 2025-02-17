@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.*;
 import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
+import vacademy.io.admin_core_service.features.institute_learner.dto.BulkUploadInitRequest;
 import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteStudentDTO;
 import vacademy.io.admin_core_service.features.institute_learner.service.CsvToStudentDataMapper;
 import vacademy.io.admin_core_service.features.institute_learner.service.StudentDataToCsvWriter;
@@ -26,7 +27,7 @@ public class StudentBulkUploadManager {
     StudentRegistrationManager studentRegistrationManager;
 
 
-    public ResponseEntity<byte[]> uploadStudentCsv(MultipartFile file, String instituteId, CustomUserDetails user) {
+    public ResponseEntity<byte[]> uploadStudentCsv(MultipartFile file, String instituteId, BulkUploadInitRequest bulkUploadInitRequest, CustomUserDetails user) {
 
 
         try (Reader reader = new InputStreamReader(file.getInputStream())) {
@@ -42,7 +43,7 @@ public class StudentBulkUploadManager {
             List<InstituteStudentDTO> students = CsvToStudentDataMapper.mapCsvRecordsToInstituteStudentDTOs(records, instituteId); // List to store parsed tenant entries// Trim whitespace from field
             for (InstituteStudentDTO student : students) {
                 try {
-                    studentRegistrationManager.addStudentToInstitute(user, student);
+                    studentRegistrationManager.addStudentToInstitute(user, student,bulkUploadInitRequest);
                     student.setStatus(true);
                     student.setStatusMessage("Student added successfully with username : " + student.getUserDetails().getUsername());
                 } catch (Exception e) {

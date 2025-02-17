@@ -35,7 +35,7 @@ public class StudentDataToCsvWriter {
                         student.getUserDetails().getMobileNumber(),
                         student.getUserDetails().getDateOfBirth(),
                         student.getInstituteStudentDetails().getPackageSessionId(),
-                        null,  // ACCESS_DAYS not provided in InstituteStudentDTO, can be adjusted if needed
+                        null,
                         student.getUserDetails().getEmail(),
                         student.getInstituteStudentDetails().getEnrollmentStatus(),
                         student.getUserDetails().getAddressLine(),

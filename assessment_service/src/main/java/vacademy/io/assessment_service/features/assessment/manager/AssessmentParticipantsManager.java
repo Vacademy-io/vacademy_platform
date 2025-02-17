@@ -17,6 +17,7 @@ import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentBatchRegistration;
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentCustomField;
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentUserRegistration;
+import vacademy.io.assessment_service.features.assessment.enums.AssessmentStatus;
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentVisibility;
 import vacademy.io.assessment_service.features.assessment.enums.UserRegistrationFilterEnum;
 import vacademy.io.assessment_service.features.assessment.enums.UserRegistrationSources;
@@ -448,8 +449,19 @@ public class AssessmentParticipantsManager {
                 filter.getAttemptType().get(0).equals(UserRegistrationFilterEnum.PENDING.name());
     }
 
-    public Integer getAssessmentCountForUserId(CustomUserDetails user,String instituteId,String batchId) {
-        return assessmentUserRegistrationRepository.countDistinctAssessmentsByUserAndFilters(user.getId(),instituteId,List.of(ACTIVE.name()),List.of(UserRegistrationSources.ADMIN_PRE_REGISTRATION.name(),UserRegistrationSources.OPEN_REGISTRATION.name())) + assessmentBatchRegistrationService.countAssessmentsForBatch(batchId,user,instituteId);
+    public Integer getAssessmentCountForUserId(CustomUserDetails user, String instituteId, String batchId) {
+        Integer userAssessmentCount = assessmentUserRegistrationRepository.countDistinctAssessmentsByUserAndFilters(
+                user.getId(),
+                instituteId,
+                List.of(ACTIVE.name()),
+                List.of(UserRegistrationSources.ADMIN_PRE_REGISTRATION.name(), UserRegistrationSources.OPEN_REGISTRATION.name()),
+                List.of(AssessmentStatus.PUBLISHED.name()) // Corrected List format
+        );
+
+        Integer batchAssessmentCount = assessmentBatchRegistrationService.countAssessmentsForBatch(batchId, user, instituteId);
+
+        return userAssessmentCount + batchAssessmentCount; // Correct sum operation
     }
+
 
 }

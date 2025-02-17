@@ -1,5 +1,5 @@
 HELP.md
-target/
+../assessment_service/target/
 !../admin_core_service/.mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/

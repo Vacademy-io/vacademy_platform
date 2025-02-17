@@ -3,6 +3,7 @@ package vacademy.io.assessment_service.features.assessment.service.bulk_entry_se
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentBatchRegistration;
+import vacademy.io.assessment_service.features.assessment.enums.AssessmentStatus;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentBatchRegistrationRepository;
 import vacademy.io.common.auth.enums.CompanyStatus;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -27,6 +28,6 @@ public class AssessmentBatchRegistrationService {
     }
 
     public Integer countAssessmentsForBatch(String batchId, CustomUserDetails userDetails, String instituteId) {
-        return repository.countDistinctAssessmentsByBatchAndFilters(batchId,instituteId,List.of(CompanyStatus.ACTIVE.name()));
+        return repository.countDistinctAssessmentsByBatchAndFilters(batchId,instituteId,List.of(CompanyStatus.ACTIVE.name()),List.of(AssessmentStatus.PUBLISHED.name()));
     }
 }

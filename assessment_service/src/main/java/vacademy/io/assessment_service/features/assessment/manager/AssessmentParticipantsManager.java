@@ -448,8 +448,8 @@ public class AssessmentParticipantsManager {
                 filter.getAttemptType().get(0).equals(UserRegistrationFilterEnum.PENDING.name());
     }
 
-    public Integer getAssessmentCountForUserId(CustomUserDetails user,String instituteId) {
-        return assessmentUserRegistrationRepository.countDistinctAssessmentsByUserId(user.getUserId(),instituteId);
+    public Integer getAssessmentCountForUserId(CustomUserDetails user,String instituteId,String batchId) {
+        return assessmentUserRegistrationRepository.countDistinctAssessmentsByUserAndFilters(user.getId(),instituteId,List.of(ACTIVE.name()),List.of(UserRegistrationSources.ADMIN_PRE_REGISTRATION.name(),UserRegistrationSources.OPEN_REGISTRATION.name())) + assessmentBatchRegistrationService.countAssessmentsForBatch(batchId,user,instituteId);
     }
 
 }

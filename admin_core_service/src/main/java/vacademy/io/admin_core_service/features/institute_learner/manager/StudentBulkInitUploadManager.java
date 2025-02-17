@@ -45,7 +45,7 @@ public class StudentBulkInitUploadManager {
         if (!autoGenerateConfig.isAutoGeneratePassword()){
             headers.add(createRegexHeader("regex", false, "PASSWORD", "^(?=.*[A-Za-z])(?=.*\\d)[A-Za-z\\d]{8}$",
                     "Password must be exactly 8 characters long and contain both letters and numbers",
-                    order++, List.of("a1b2C3oa", "Xy9zaq8W", "pQ4r5iiaT")));
+                    order++, List.of("a1b2C3oa", "Xy9zaq8W", "pQ4r5iaT")));
         }
 
         Map<String, List<String>> enumValues = new HashMap<>();

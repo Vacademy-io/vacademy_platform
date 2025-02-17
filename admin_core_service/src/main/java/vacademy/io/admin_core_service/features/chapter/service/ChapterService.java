@@ -63,7 +63,7 @@ public class ChapterService {
             PackageSession packageSession = optionalPackageSession.get();
 
             // Create a mapping between the chapter and the package session
-            ChapterPackageSessionMapping chapterPackageSessionMapping = new ChapterPackageSessionMapping(chapter, packageSession,chapterDTO.getChapterOrder()); // needs to handle one edge case where in if one chapter is connected with multiple package sessions that time chapter order
+            ChapterPackageSessionMapping chapterPackageSessionMapping = new ChapterPackageSessionMapping(chapter, packageSession, chapterDTO.getChapterOrder()); // needs to handle one edge case where in if one chapter is connected with multiple package sessions that time chapter order
             chapterPackageSessionMappingRepository.save(chapterPackageSessionMapping);
         }
 
@@ -109,14 +109,14 @@ public class ChapterService {
         chapterRepository.save(chapter);
 
         // Update the chapter-package session mappings
-        updateChapterPackageSessionMapping(chapter, commaSeparatedPackageSessionIds,chapterDTO.getChapterOrder());
+        updateChapterPackageSessionMapping(chapter, commaSeparatedPackageSessionIds, chapterDTO.getChapterOrder());
 
         // Return success message
         return "Chapter updated successfully";
     }
 
     @Transactional
-    private void updateChapterPackageSessionMapping(Chapter chapter, String commaSeparatedPackageSessionIds,Integer chapterOrder) {
+    private void updateChapterPackageSessionMapping(Chapter chapter, String commaSeparatedPackageSessionIds, Integer chapterOrder) {
         // Parse the incoming comma-separated IDs into a Set
         Set<String> incomingIds = new HashSet<>(Arrays.asList(commaSeparatedPackageSessionIds.split(",")));
 
@@ -140,7 +140,7 @@ public class ChapterService {
         for (String packageSessionId : idsToAdd) {
             PackageSession packageSession = packageSessionRepository.findById(packageSessionId)
                     .orElseThrow(() -> new IllegalArgumentException("Invalid PackageSession ID: " + packageSessionId));
-            ChapterPackageSessionMapping newMapping = new ChapterPackageSessionMapping(chapter, packageSession,chapterOrder);
+            ChapterPackageSessionMapping newMapping = new ChapterPackageSessionMapping(chapter, packageSession, chapterOrder);
             chapterPackageSessionMappingRepository.save(newMapping);
         }
 
@@ -249,9 +249,9 @@ public class ChapterService {
         }
     }
 
-    public String deleteChapter(List<String> chapterIds,String packageSessionIds, CustomUserDetails user) {
-        List<ChapterPackageSessionMapping>chapterPackageSessionMappings = chapterPackageSessionMappingRepository.findByChapterIdInAndPackageSessionIdIn(chapterIds, Arrays.stream(getPackageSessionIds(packageSessionIds)).toList());
-        List<ChapterPackageSessionMapping>deletedChapterPackageSessionMappings = new ArrayList<>();
+    public String deleteChapter(List<String> chapterIds, String packageSessionIds, CustomUserDetails user) {
+        List<ChapterPackageSessionMapping> chapterPackageSessionMappings = chapterPackageSessionMappingRepository.findByChapterIdInAndPackageSessionIdIn(chapterIds, Arrays.stream(getPackageSessionIds(packageSessionIds)).toList());
+        List<ChapterPackageSessionMapping> deletedChapterPackageSessionMappings = new ArrayList<>();
         for (ChapterPackageSessionMapping chapterPackageSessionMapping : chapterPackageSessionMappings) {
             chapterPackageSessionMapping.setStatus(ChapterStatus.DELETED.name());
             deletedChapterPackageSessionMappings.add(chapterPackageSessionMapping);
@@ -260,5 +260,22 @@ public class ChapterService {
         return "Chapter deleted successfully";
     }
 
+    public String copyChapter(String packageSessionId, String moduleId, String chapterId, CustomUserDetails user) {
+        PackageSession packageSession = packageSessionRepository.findById(packageSessionId).orElseThrow(() -> new VacademyException("Package Session not found"));
+        Chapter chapter = chapterRepository.findById(chapterId).orElseThrow(() -> new VacademyException("Chapter not found"));
+        Module module = moduleRepository.findById(moduleId).orElseThrow(() -> new VacademyException("Module not found"));
+        ModuleChapterMapping moduleChapterMapping = new ModuleChapterMapping(chapter, module);
+        moduleChapterMappingRepository.save(moduleChapterMapping);
+        ChapterPackageSessionMapping chapterPackageSessionMapping = new ChapterPackageSessionMapping(chapter, packageSession, null);
+        chapterPackageSessionMappingRepository.save(chapterPackageSessionMapping);
+        return "Chapter copied successfully";
+    }
+
+
+    public String moveChapter(String existingPackageSessionId, String newPackageSessionId, String moduleId, String chapterId, CustomUserDetails user) {
+        deleteChapter(List.of(chapterId),existingPackageSessionId,user);
+        copyChapter(newPackageSessionId,moduleId,chapterId,user);
+        return "Chapter moved successfully.";
+    }
 
 }

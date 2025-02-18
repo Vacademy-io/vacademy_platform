@@ -2,8 +2,16 @@ package vacademy.io.admin_core_service.features.learner_tracking.service;
 
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.learner_operation.enums.LearnerOperationEnum;
+import vacademy.io.admin_core_service.features.learner_operation.enums.LearnerOperationSourceEnum;
+import vacademy.io.admin_core_service.features.learner_operation.service.LearnerOperationService;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.ActivityLogDTO;
+import vacademy.io.admin_core_service.features.learner_tracking.dto.DocumentActivityLogDTO;
+import vacademy.io.admin_core_service.features.learner_tracking.dto.VideoActivityLogDTO;
 import vacademy.io.admin_core_service.features.learner_tracking.entity.ActivityLog;
 import vacademy.io.admin_core_service.features.learner_tracking.entity.DocumentTracked;
 import vacademy.io.admin_core_service.features.learner_tracking.entity.VideoTracked;
@@ -14,8 +22,11 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.sql.Date;
+import java.sql.Timestamp;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 @Service
 public class LearnerTrackingService {
@@ -23,54 +34,44 @@ public class LearnerTrackingService {
     private final ActivityLogRepository activityLogRepository;
     private final DocumentTrackedRepository documentTrackedRepository;
     private final VideoTrackedRepository videoTrackedRepository;
+    private final LearnerOperationService learnerOperationService;
+    private final LearnerTrackingAsyncService learnerTrackingAsyncService;
 
     @Autowired
     public LearnerTrackingService(
             ActivityLogRepository activityLogRepository,
             DocumentTrackedRepository documentTrackedRepository,
-            VideoTrackedRepository videoTrackedRepository) {
+            VideoTrackedRepository videoTrackedRepository,
+            LearnerOperationService learnerOperationService,
+            LearnerTrackingAsyncService learnerTrackingAsyncService) {
         this.activityLogRepository = activityLogRepository;
         this.documentTrackedRepository = documentTrackedRepository;
         this.videoTrackedRepository = videoTrackedRepository;
+        this.learnerOperationService = learnerOperationService;
+        this.learnerTrackingAsyncService = learnerTrackingAsyncService;
     }
 
     @Transactional
-    public ActivityLogDTO addDocumentActivityLog(ActivityLogDTO activityLogDTO, String slideId, String userId, CustomUserDetails user) {
-        validateDocumentActivityLogDTO(activityLogDTO);
-        ActivityLog activityLog = saveActivityLog(activityLogDTO, slideId, userId);
+    public ActivityLogDTO addOrUpdateDocumentActivityLog(ActivityLogDTO activityLogDTO, String slideId, String chapterId, CustomUserDetails user) {
+        validateActivityLogDTO(activityLogDTO, true); // Validate for documents
+        ActivityLog activityLog = activityLogDTO.isNewActivity() ?
+                saveActivityLog(activityLogDTO, slideId, user.getUserId()) :
+                updateActivityLog(activityLogDTO, activityLogDTO.getId());
+
         saveDocumentTracking(activityLogDTO, activityLog);
+        learnerTrackingAsyncService.updateLearnerOperationsForDocument(user.getUserId(), slideId, chapterId, activityLogDTO);
         return activityLog.toActivityLogDTO();
     }
 
     @Transactional
-    public ActivityLogDTO addVideoActivityLog(ActivityLogDTO activityLogDTO, String slideId, String userId, CustomUserDetails user) {
-        validateVideoActivityLogDTO(activityLogDTO);
-        ActivityLog activityLog = saveActivityLog(activityLogDTO, slideId, userId);
+    public ActivityLogDTO addOrUpdateVideoActivityLog(ActivityLogDTO activityLogDTO, String slideId, String chapterId, CustomUserDetails user) {
+        validateActivityLogDTO(activityLogDTO, false); // Validate for videos
+        ActivityLog activityLog = activityLogDTO.isNewActivity() ?
+                saveActivityLog(activityLogDTO, slideId, user.getUserId()) :
+                updateActivityLog(activityLogDTO, activityLogDTO.getId());
+
         saveVideoTracking(activityLogDTO, activityLog);
-        return activityLog.toActivityLogDTO();
-    }
-
-    @Transactional
-    public ActivityLogDTO updateDocumentActivityLogs(ActivityLogDTO activityLogDTO, String activityId, CustomUserDetails user) {
-        ActivityLog activityLog = activityLogRepository.findById(activityId)
-                .orElseThrow(() -> new VacademyException("Activity Log not found"));
-
-        updateActivityFields(activityLog, activityLogDTO);
-        activityLogRepository.save(activityLog);
-        documentTrackedRepository.deleteByActivityId(activityId);
-        saveDocumentTracking(activityLogDTO, activityLog);
-        return activityLog.toActivityLogDTO();
-    }
-
-    @Transactional
-    public ActivityLogDTO updateVideoActivityLogs(ActivityLogDTO activityLogDTO, String activityId, CustomUserDetails user) {
-        ActivityLog activityLog = activityLogRepository.findById(activityId)
-                .orElseThrow(() -> new VacademyException("Activity Log not found"));
-
-        updateActivityFields(activityLog, activityLogDTO);
-        activityLogRepository.save(activityLog);
-        videoTrackedRepository.deleteByActivityId(activityId);
-        saveVideoTracking(activityLogDTO, activityLog);
+        learnerTrackingAsyncService.updateLearnerOperationsForVideo(user.getUserId(), slideId, chapterId, activityLogDTO);
         return activityLog.toActivityLogDTO();
     }
 
@@ -78,7 +79,15 @@ public class LearnerTrackingService {
         return activityLogRepository.save(new ActivityLog(activityLogDTO, userId, slideId));
     }
 
+    private ActivityLog updateActivityLog(ActivityLogDTO activityLogDTO, String activityId) {
+        ActivityLog activityLog = activityLogRepository.findById(activityId)
+                .orElseThrow(() -> new VacademyException("Activity Log not found"));
+        updateActivityFields(activityLog, activityLogDTO);
+        return activityLogRepository.save(activityLog);
+    }
+
     private void saveDocumentTracking(ActivityLogDTO activityLogDTO, ActivityLog activityLog) {
+        documentTrackedRepository.deleteByActivityId(activityLog.getId()); // Clear existing tracked documents
         List<DocumentTracked> documentTrackedList = activityLogDTO.getDocuments().stream()
                 .map(documentActivityLogDTO -> new DocumentTracked(documentActivityLogDTO, activityLog))
                 .toList();
@@ -86,6 +95,7 @@ public class LearnerTrackingService {
     }
 
     private void saveVideoTracking(ActivityLogDTO activityLogDTO, ActivityLog activityLog) {
+        videoTrackedRepository.deleteByActivityId(activityLog.getId()); // Clear existing tracked videos
         List<VideoTracked> videoTrackedList = activityLogDTO.getVideos().stream()
                 .map(videoActivityLogDTO -> new VideoTracked(videoActivityLogDTO, activityLog))
                 .toList();
@@ -94,30 +104,36 @@ public class LearnerTrackingService {
 
     private void updateActivityFields(ActivityLog activityLog, ActivityLogDTO activityLogDTO) {
         if (activityLogDTO.getStartTimeInMillis() != null) {
-            activityLog.setStartTime(new Date(activityLogDTO.getStartTimeInMillis()));
+            activityLog.setStartTime(new Timestamp(activityLogDTO.getStartTimeInMillis()));
         }
         if (activityLogDTO.getEndTimeInMillis() != null) {
-            activityLog.setEndTime(new Date(activityLogDTO.getEndTimeInMillis()));
+            activityLog.setEndTime(new Timestamp(activityLogDTO.getEndTimeInMillis()));
         }
         if (activityLogDTO.getPercentageWatched() != null) {
             activityLog.setPercentageWatched(activityLogDTO.getPercentageWatched());
         }
     }
 
-    private void validateVideoActivityLogDTO(ActivityLogDTO dto) {
+    private void validateActivityLogDTO(ActivityLogDTO dto, boolean isDocument) {
         if (Objects.isNull(dto)) {
             throw new VacademyException("Invalid request. Activity Log cannot be null.");
         }
-        if (Objects.isNull(dto.getVideos())) {
+        if (isDocument && Objects.isNull(dto.getDocuments())) {
+            throw new VacademyException("Invalid request. Documents cannot be null.");
+        }
+        if (!isDocument && Objects.isNull(dto.getVideos())) {
             throw new VacademyException("Invalid request. Videos cannot be null.");
         }
     }
-    private void validateDocumentActivityLogDTO(ActivityLogDTO dto) {
-        if (Objects.isNull(dto)) {
-            throw new VacademyException("Invalid request. Activity Log cannot be null.");
-        }
-        if (Objects.isNull(dto.getDocuments())) {
-            throw new VacademyException("Invalid request. Documents cannot be null.");
-        }
+
+    public Page<ActivityLogDTO>getDocumentActivityLogs(String userId, String slideId, Pageable pageable, CustomUserDetails userDetails) {
+       Page<ActivityLog>activityLogs = activityLogRepository.findActivityLogsWithDocuments(userId, slideId, pageable);
+       return activityLogs.map(ActivityLog::toActivityLogDTO);
     }
+
+    public Page<ActivityLogDTO>getVideoActivityLogs(String userId, String slideId, Pageable pageable, CustomUserDetails userDetails) {
+        Page<ActivityLog>activityLogs = activityLogRepository.findActivityLogsWithVideos(userId, slideId, pageable);
+        return activityLogs.map(ActivityLog::toActivityLogDTO);
+    }
+
 }

@@ -17,7 +17,6 @@ import java.sql.Timestamp;
 public class DocumentTracked {
 
     @Id
-    @UuidGenerator
     @Column(length = 255, nullable = false)
     private String id;
 
@@ -50,5 +49,14 @@ public class DocumentTracked {
             this.endTime = new Timestamp(documentActivityLogDTO.getEndTimeInMillis());
         }
         this.pageNumber = documentActivityLogDTO.getPageNumber();
+    }
+
+    public DocumentActivityLogDTO documentActivityLogDTO() {
+        DocumentActivityLogDTO documentActivityLogDTO = new DocumentActivityLogDTO();
+        documentActivityLogDTO.setId(id);
+        documentActivityLogDTO.setStartTimeInMillis(startTime != null ? startTime.getTime() : null);
+        documentActivityLogDTO.setEndTimeInMillis(endTime != null ? endTime.getTime() : null);
+        documentActivityLogDTO.setPageNumber(pageNumber);
+        return documentActivityLogDTO;
     }
 }

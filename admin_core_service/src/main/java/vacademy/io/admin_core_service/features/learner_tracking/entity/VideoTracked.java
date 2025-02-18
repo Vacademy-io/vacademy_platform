@@ -18,7 +18,6 @@ import java.util.Date;
 public class VideoTracked {
 
     @Id
-    @UuidGenerator
     @Column(length = 255, nullable = false)
     private String id;
 
@@ -47,5 +46,13 @@ public class VideoTracked {
         if(videoActivityLogDTO.getEndTimeInMillis() != null) {
             this.endTime = new Timestamp(videoActivityLogDTO.getEndTimeInMillis());
         }
+    }
+
+    public VideoActivityLogDTO videoActivityLogDTO() {
+        VideoActivityLogDTO videoActivityLogDTO = new VideoActivityLogDTO();
+        videoActivityLogDTO.setId(id);
+        videoActivityLogDTO.setStartTimeInMillis(startTime != null ? startTime.getTime() : null);
+        videoActivityLogDTO.setEndTimeInMillis(endTime != null ? endTime.getTime() : null);
+        return videoActivityLogDTO;
     }
 }

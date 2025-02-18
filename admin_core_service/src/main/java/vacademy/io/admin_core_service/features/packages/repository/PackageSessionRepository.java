@@ -1,7 +1,9 @@
 package vacademy.io.admin_core_service.features.packages.repository;
 
 
+import jakarta.transaction.Transactional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -19,7 +21,7 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
             "FROM package_session ps " +
             "JOIN package p ON ps.package_id = p.id " +
             "JOIN package_institute pi ON p.id = pi.package_id " +
-            "WHERE pi.institute_id = :instituteId",
+            "WHERE pi.institute_id = :instituteId AND ps.status != 'DELETED'",
             nativeQuery = true)
     List<PackageSession> findPackageSessionsByInstituteId(
             @Param("instituteId") String instituteId);
@@ -49,6 +51,18 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
             nativeQuery = true)
     Long findCountPackageSessionsByInstituteId(@Param("instituteId") String instituteId);
 
+    @Modifying
+    @Transactional
+    @Query("UPDATE PackageSession ps SET ps.status = :status WHERE ps.packageEntity.id IN :packageIds")
+    void updateStatusByPackageIds(@Param("status") String status, @Param("packageIds") List<String> packageIds);
 
+    @Modifying
+    @Query("UPDATE PackageSession ps SET ps.status = :status WHERE ps.level.id = :levelId")
+    void updateStatusByLevelId(@Param("status") String status, @Param("levelId") String levelId);
+
+    @Modifying
+    @Transactional
+    @Query("UPDATE PackageSession ps SET ps.status = :status WHERE ps.level.id IN :levelIds")
+    void updateStatusByLevelIds(@Param("status") String status, @Param("levelIds") List<String> levelIds);
 
 }

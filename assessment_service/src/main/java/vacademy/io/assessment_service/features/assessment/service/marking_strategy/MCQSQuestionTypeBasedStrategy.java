@@ -6,6 +6,7 @@ import org.springframework.stereotype.Component;
 import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.mcqs.MCQSCorrectAnswerDto;
 import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.mcqs.MCQSMarkingDto;
 import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.mcqs.MCQSResponseDto;
+import vacademy.io.assessment_service.features.assessment.enums.QuestionResponseEnum;
 import vacademy.io.assessment_service.features.assessment.service.IQuestionTypeBasedStrategy;
 
 import java.util.List;
@@ -16,15 +17,15 @@ public class MCQSQuestionTypeBasedStrategy extends IQuestionTypeBasedStrategy {
 
 
     @Override
-    public double calculateMarks(String markingJsonStr, String correctAnswerJsonStr, String responseJson){
-        try{
+    public double calculateMarks(String markingJsonStr, String correctAnswerJsonStr, String responseJson) {
+        try {
             MCQSMarkingDto markingDto = (MCQSMarkingDto) validateAndGetMarkingData(markingJsonStr);
             MCQSCorrectAnswerDto correctAnswerDto = (MCQSCorrectAnswerDto) validateAndGetCorrectAnswerData(correctAnswerJsonStr);
             MCQSResponseDto responseDto = (MCQSResponseDto) validateAndGetResponseData(responseJson);
 
-
             // Validate input objects and prevent NullPointerException
             if (correctAnswerDto == null || markingDto == null || responseDto == null) {
+                setAnswerStatus(QuestionResponseEnum.INCORRECT.name());
                 return 0.0;
             }
 
@@ -43,6 +44,7 @@ public class MCQSQuestionTypeBasedStrategy extends IQuestionTypeBasedStrategy {
             // Extract marking scheme details safely
             MCQSMarkingDto.DataFields markingData = markingDto.getData();
             if (markingData == null) {
+                setAnswerStatus(QuestionResponseEnum.INCORRECT.name());
                 return 0.0;
             }
 
@@ -52,21 +54,25 @@ public class MCQSQuestionTypeBasedStrategy extends IQuestionTypeBasedStrategy {
 
             // If no answer was attempted, return 0 marks
             if (attemptedOptionIds.isEmpty()) {
+                setAnswerStatus(QuestionResponseEnum.INCORRECT.name());
                 return 0.0;
             }
 
             // If the selected option is correct, award full marks
             if (attemptedOptionIds.size() == 1 && attemptedOptionIds.get(0).equals(correctOptionId)) {
+                setAnswerStatus(QuestionResponseEnum.CORRECT.name());
                 return totalMarks;
             }
 
             // If an incorrect answer was selected, apply negative marking
+            setAnswerStatus(QuestionResponseEnum.INCORRECT.name());
             return -(negativeMarks * negativePercentage / 100.0);
-        }
-        catch (Exception e){
+
+        } catch (Exception e) {
             return 0.0;
         }
     }
+
 
     @Override
     public Object validateAndGetMarkingData(String markingJson) throws JsonProcessingException {

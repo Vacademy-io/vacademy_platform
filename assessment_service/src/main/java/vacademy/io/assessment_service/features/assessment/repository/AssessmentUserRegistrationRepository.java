@@ -229,4 +229,29 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
 
     @Query("SELECT COUNT(DISTINCT a.assessment.id) FROM AssessmentUserRegistration a WHERE a.userId = :userId AND a.instituteId = :instituteId")
     Integer countDistinctAssessmentsByUserId(String userId,String instituteId);
+
+    @Query(value = """
+            select count(distinct aur.id) from assessment_user_registration aur
+            where aur.assessment_id = :assessmentId
+            and (:statusList IS NULL OR aur.status NOT IN (:statusList))
+            """, nativeQuery = true)
+    Long countUserRegisteredForAssessment(@Param("assessmentId") String assessmentId,
+                                          @Param("statusList") List<String> status);
+
+    @Query("SELECT COUNT(DISTINCT aur.assessment.id) " +
+            "FROM AssessmentUserRegistration aur " +
+            "JOIN aur.assessment a " +
+            "WHERE aur.userId = :userId " +
+            "AND aur.instituteId = :instituteId " +
+            "AND aur.status IN :statusList " +
+            "AND aur.source IN :sourceList " +
+            "AND a.status IN :assessmentStatus")
+    Integer countDistinctAssessmentsByUserAndFilters(
+            @Param("userId") String userId,
+            @Param("instituteId") String instituteId,
+            @Param("statusList") List<String> statusList,
+            @Param("sourceList") List<String> sourceList,
+            @Param("assessmentStatus") List<String> assessmentStatus
+    );
+
 }

@@ -94,6 +94,7 @@ public class LevelService {
         }
 
         levelRepository.saveAll(levels); // Batch update
+        packageSessionRepository.updateStatusByLevelIds(LevelStatusEnum.DELETED.name(), levelIds);
         return "Levels deleted successfully";
     }
 

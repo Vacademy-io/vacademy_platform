@@ -32,7 +32,7 @@ public class CsvToStudentDataMapper {
                     parseDate(getFieldValue(record, "DATE_OF_BIRTH")),
                     getFieldValue(record, "GENDER"),
                     false,
-                    null,
+                    "PASSWORD",
                     null,
                     null
             );

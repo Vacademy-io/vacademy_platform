@@ -60,6 +60,10 @@ public class SubjectService {
         String[] packageSessionIds = getPackageSessionIds(commaSeparatedPackageSessionIds);
         for (String packageSessionId : packageSessionIds) {
             try {
+                 Optional<Subject>optionalSubject = getSubjectByNameAndPackageSessionId(subjectDTO.getSubjectName(), packageSessionId);
+                 if (optionalSubject.isPresent()){
+                     throw new VacademyException("Subject already exists");
+                 }
                 PackageSession packageSession = packageSessionRepository.findById(packageSessionId)
                         .orElseThrow(() -> new VacademyException("Package Session not found"));
                 subjectPackageSessionRepository.save(new SubjectPackageSession(savedSubject, packageSession, subjectDTO.getSubjectOrder()));

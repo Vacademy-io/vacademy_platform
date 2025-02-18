@@ -5,6 +5,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import vacademy.io.admin_core_service.features.learner_tracking.dto.LearnerActivityProjection;
 import vacademy.io.admin_core_service.features.learner_tracking.entity.ActivityLog;
 
 import java.util.List;
@@ -90,6 +91,18 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
     Page<ActivityLog> findActivityLogsWithDocuments(@Param("userId") String userId,
                                                     @Param("slideId") String slideId,
                                                     Pageable pageable);
+    @Query(value = """
+    SELECT s.user_id AS userId, 
+           s.full_name AS fullName, 
+           SUM(EXTRACT(EPOCH FROM (a.end_time - a.start_time))) AS totalTimeSpent, 
+           MAX(a.updated_at) AS lastActive
+    FROM activity_log a
+    JOIN student s ON a.user_id = s.user_id
+    WHERE a.slide_id = :slideId
+    GROUP BY s.user_id, s.full_name
+    ORDER BY lastActive DESC
+    """, nativeQuery = true)
+    Page<LearnerActivityProjection> findStudentActivityBySlideId(@Param("slideId") String slideId, Pageable pageable);
 
 
 }

@@ -18,4 +18,5 @@ public interface ParticipantsDetailsDto {
     Long getDuration();
     Double getScore();
     String getUserId();
+    String getBatchId();
 }

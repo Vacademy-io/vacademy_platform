@@ -191,12 +191,12 @@ public class DocxToHtmlController {
 
         List<QuestionDTO> questions = new ArrayList<>();
 
-        String questionUpdateRegex = "^\\s*\\(\\d+\\.\\)\\s?";
+        String questionUpdateRegex = "\\(\\d+\\.\\)";
 
         String questionRegex = "^\\s*\\(\\d+\\.\\)\\s?.*";
 
         String optionRegex = "^\\s*\\([a-zA-Z]\\.\\)\\s?.*";
-        String optionUpdateRegex = "^\\s*\\([a-zA-Z]\\.\\)\\s?";
+        String optionUpdateRegex = "\\([a-zA-Z]\\.\\)";
         String ansRegex = "Ans:";
         String explanationRegex = "Exp:";
 

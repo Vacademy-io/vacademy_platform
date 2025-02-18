@@ -22,4 +22,5 @@ public class ActivityLogDTO {
     private Double percentageWatched;
     private List<VideoActivityLogDTO> videos;
     private List<DocumentActivityLogDTO> documents;
+    private boolean newActivity;
 }

@@ -42,4 +42,26 @@ public class ChapterController {
     public ResponseEntity<String>deleteChapter(@RequestBody List<String> chapterIds, @RequestParam("packageSessionIds")String packageSessionIds, @RequestAttribute("user") CustomUserDetails user){
         return ResponseEntity.ok(chapterService.deleteChapter(chapterIds,packageSessionIds, user));
     }
+
+    @PostMapping("/copy")
+    public ResponseEntity<String> copyChapter(
+            @RequestParam String packageSessionId,
+            @RequestParam String moduleId,
+            @RequestParam String chapterId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        String response = chapterService.copyChapter(packageSessionId, moduleId, chapterId, user);
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/move")
+    public ResponseEntity<String> moveChapter(
+            @RequestParam String existingPackageSessionId,
+            @RequestParam String newPackageSessionId,
+            @RequestParam String moduleId,
+            @RequestParam String chapterId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        String response = chapterService.moveChapter(existingPackageSessionId, newPackageSessionId, moduleId, chapterId, user);
+        return ResponseEntity.ok(response);
+    }
+
 }

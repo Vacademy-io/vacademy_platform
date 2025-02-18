@@ -1,6 +1,7 @@
 package vacademy.io.assessment_service.features.assessment.manager;
 
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -9,20 +10,22 @@ import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
+import vacademy.io.assessment_service.features.assessment.dto.AssessmentQuestionPreviewDto;
 import vacademy.io.assessment_service.features.assessment.dto.LeaderBoardDto;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.*;
-import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.AssessmentOverviewDto;
-import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.AssessmentOverviewResponse;
-import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.MarksRankDto;
-import vacademy.io.assessment_service.features.assessment.entity.Assessment;
+import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.*;
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentModeEnum;
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentStatus;
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentVisibility;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentRepository;
+import vacademy.io.assessment_service.features.assessment.repository.AssessmentUserRegistrationRepository;
 import vacademy.io.assessment_service.features.assessment.repository.StudentAttemptRepository;
 import vacademy.io.assessment_service.features.assessment.service.assessment_get.AssessmentMapper;
+import vacademy.io.assessment_service.features.learner_assessment.dto.QuestionStatusDto;
+import vacademy.io.assessment_service.features.learner_assessment.service.QuestionWiseMarksService;
 import vacademy.io.assessment_service.features.question_core.enums.EvaluationTypes;
 import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.core.standard_classes.ListService;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.*;
@@ -30,6 +33,7 @@ import java.util.stream.Collectors;
 
 import static vacademy.io.common.core.standard_classes.ListService.createSortObject;
 
+@Slf4j
 @Component
 public class AdminAssessmentGetManager {
 
@@ -38,6 +42,15 @@ public class AdminAssessmentGetManager {
 
     @Autowired
     StudentAttemptRepository studentAttemptRepository;
+
+    @Autowired
+    AssessmentLinkQuestionsManager assessmentLinkQuestionsManager;
+
+    @Autowired
+    QuestionWiseMarksService questionWiseMarksService;
+
+    @Autowired
+    AssessmentUserRegistrationRepository assessmentUserRegistrationRepository;
 
     public ResponseEntity<AssessmentAdminListInitDto> assessmentAdminListInit(CustomUserDetails user, String instituteId) {
         AssessmentAdminListInitDto assessmentAdminListInitDto = new AssessmentAdminListInitDto();
@@ -130,5 +143,125 @@ public class AdminAssessmentGetManager {
         return ResponseEntity.ok(AssessmentOverviewResponse.builder()
                 .assessmentOverviewDto(assessmentOverviewDto)
                 .marksRankDto(marksRankDto).build());
+    }
+
+    public ResponseEntity<QuestionInsightsResponse> getQuestionInsights(CustomUserDetails user, String assessmentId, String instituteId, String sectionId) {
+        try {
+            return ResponseEntity.ok(createInsights(user, assessmentId, sectionId));
+        } catch (VacademyException e) {
+            throw new VacademyException("Failed to retrieve: " + e.getMessage());
+        }
+    }
+
+    private QuestionInsightsResponse createInsights(CustomUserDetails user, String assessmentId, String sectionId) {
+        // Fetch question mappings
+        Map<String, List<AssessmentQuestionPreviewDto>> questionMapping = assessmentLinkQuestionsManager.getQuestionsOfSection(user, assessmentId, sectionId);
+
+        if (questionMapping == null || !questionMapping.containsKey(sectionId)) {
+            throw new VacademyException("No questions found for section: " + sectionId);
+        }
+
+        List<AssessmentQuestionPreviewDto> questionPreviewDtos = questionMapping.get(sectionId);
+        if (questionPreviewDtos == null || questionPreviewDtos.isEmpty()) {
+            throw new VacademyException("No questions available in the section.");
+        }
+
+        // Process insights for each question
+        List<QuestionInsightsResponse.QuestionInsightDto> allResponses = questionPreviewDtos.stream()
+                .map(question -> processQuestionInsights(assessmentId, question))
+                .filter(Objects::nonNull) // Remove null responses (if any)
+                .collect(Collectors.toList());
+
+        return QuestionInsightsResponse.builder().questionInsightDto(allResponses).build();
+    }
+
+    private QuestionInsightsResponse.QuestionInsightDto processQuestionInsights(String assessmentId, AssessmentQuestionPreviewDto questionPreviewDto) {
+        if (questionPreviewDto == null || questionPreviewDto.getQuestionId() == null) {
+            throw new VacademyException("Invalid QuestionId or QuestionId not present");
+        }
+
+        // Fetch question status details
+        QuestionStatusDto questionWiseMarks = questionWiseMarksService.getQuestionStatusForAssessmentAndQuestion(assessmentId, questionPreviewDto.getQuestionId());
+
+        return createInsightsDto(questionPreviewDto, questionWiseMarks, assessmentId);
+    }
+
+    private QuestionInsightsResponse.QuestionInsightDto createInsightsDto(AssessmentQuestionPreviewDto questionPreviewDto, QuestionStatusDto questionWiseMarks, String assessmentId) {
+        Long allAttempts = safeGetLong(assessmentUserRegistrationRepository.countUserRegisteredForAssessment(assessmentId, List.of("DELETED")));
+
+        if(Objects.isNull(questionWiseMarks)){
+            return QuestionInsightsResponse.QuestionInsightDto.builder()
+                    .assessmentQuestionPreviewDto(questionPreviewDto)
+                    .totalAttempts(allAttempts)
+                    .skipped(allAttempts)
+                    .build();
+        }
+
+        Long correctAttempt = safeGetLong(questionWiseMarks.getCorrectAttempt());
+        Long incorrectAttempt = safeGetLong(questionWiseMarks.getIncorrectAttempt());
+        Long partialCorrectAttempt = safeGetLong(questionWiseMarks.getPartialCorrectAttempt());
+
+        // Fetch total attempts (handle potential null return)
+        Long skipped = Math.max(0, allAttempts - (correctAttempt + incorrectAttempt + partialCorrectAttempt));
+
+        // Fetch top 3 correct responders (handle potential null return)
+        List<Top3CorrectResponseDto> top3CorrectResponseDto = safeGetList(
+                questionWiseMarksService.getTop3ParticipantsForCorrectResponse(assessmentId, questionWiseMarks.getQuestionId()));
+
+        return QuestionInsightsResponse.QuestionInsightDto.builder()
+                .assessmentQuestionPreviewDto(questionPreviewDto)
+                .questionStatus(questionWiseMarks)
+                .totalAttempts(allAttempts)
+                .skipped(skipped)
+                .top3CorrectResponseDto(top3CorrectResponseDto)
+                .build();
+    }
+
+    // Helper method to handle null Long values
+    private Long safeGetLong(Long value) {
+        return value != null ? value : 0L;
+    }
+
+    // Helper method to handle null lists
+    private <T> List<T> safeGetList(List<T> list) {
+        return list != null ? list : Collections.emptyList();
+    }
+
+    public ResponseEntity<StudentReportResponse> getStudentReport(CustomUserDetails userDetails, String studentId, String instituteId, StudentReportFilter filter, int pageNo, int pageSize) {
+        if(Objects.isNull(filter)) throw new VacademyException("Invalid Request filter");
+
+        Sort sortingObject = ListService.createSortObject(filter.getSortColumns());
+        Pageable pageable = PageRequest.of(pageNo,pageSize,sortingObject);
+
+        Page<StudentReportDto> studentReportDtoPage = null;
+        if(StringUtils.hasText(filter.getName())){
+            studentReportDtoPage = studentAttemptRepository.findAssessmentForUserWithFilterAndSearch(filter.getName(), studentId, instituteId, filter.getStatus(), pageable);
+
+        }
+        if(Objects.isNull(studentReportDtoPage)){
+            studentReportDtoPage = studentAttemptRepository.findAssessmentForUserWithFilter(studentId, instituteId, filter.getStatus(), pageable);
+        }
+
+        return ResponseEntity.ok(createReportResponse(studentReportDtoPage));
+    }
+
+    private StudentReportResponse createReportResponse(Page<StudentReportDto> studentReportDtoPage) {
+        if(Objects.isNull(studentReportDtoPage)){
+            return StudentReportResponse.builder()
+                    .pageNo(0)
+                    .pageSize(0)
+                    .totalPages(0)
+                    .last(true)
+                    .totalElements(0).build();
+        }
+        List<StudentReportDto> content = studentReportDtoPage.getContent();
+        return StudentReportResponse.builder()
+                .content(content)
+                .pageNo(studentReportDtoPage.getNumber())
+                .pageSize(studentReportDtoPage.getSize())
+                .totalElements(studentReportDtoPage.getTotalElements())
+                .last(studentReportDtoPage.isLast())
+                .totalPages(studentReportDtoPage.getTotalPages())
+                .build();
     }
 }

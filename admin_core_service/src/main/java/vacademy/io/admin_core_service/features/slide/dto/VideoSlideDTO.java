@@ -11,4 +11,5 @@ public class VideoSlideDTO {
     private String description;
     private String title;
     private String url;
+    private Long videoLengthInMillis;
 }

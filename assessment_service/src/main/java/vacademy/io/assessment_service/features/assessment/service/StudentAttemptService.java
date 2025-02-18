@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import vacademy.io.assessment_service.features.assessment.dto.QuestionWiseBasicDetailDto;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.entity.QuestionAssessmentSectionMapping;
 import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
@@ -177,15 +178,17 @@ public class StudentAttemptService {
         Question questionAsked = markingScheme.getQuestion();
         String questionWiseResponseData = getQuestionDetails(questionId, attemptData);
 
-        double marksObtained = QuestionBasedStrategyFactory.calculateMarks(
+        QuestionWiseBasicDetailDto questionWiseBasicDetailDto = QuestionBasedStrategyFactory.calculateMarks(
                 markingScheme.getMarkingJson(),
                 questionAsked.getAutoEvaluationJson(),
                 questionWiseResponseData,
                 type
         );
+        double marksObtained = questionWiseBasicDetailDto.getMarks();
+        String answerStatus = questionWiseBasicDetailDto.getAnswerStatus();
 
         questionWiseMarksService.updateQuestionWiseMarksForEveryQuestion(
-                assessment, studentAttempt, questionAsked, questionWiseResponseData, question.getTimeTakenInSeconds(), marksObtained
+                assessment, studentAttempt, questionAsked, questionWiseResponseData, question.getTimeTakenInSeconds(),answerStatus, marksObtained
         );
 
         return marksObtained;

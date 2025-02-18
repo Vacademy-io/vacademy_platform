@@ -34,6 +34,9 @@ public class DocumentSlide {
     @Column(name = "cover_file_id")
     private String coverFileId;
 
+    @Column(name = "total_pages")
+    private Integer totalPages;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Timestamp createdAt;
 
@@ -48,5 +51,6 @@ public class DocumentSlide {
         this.title = documentSlideDTO.getTitle();
         this.coverFileId =documentSlideDTO.getCoverFileId();
         this.id = documentSlideDTO.getId();
+        this.totalPages = documentSlideDTO.getTotalPages();
     }
 }

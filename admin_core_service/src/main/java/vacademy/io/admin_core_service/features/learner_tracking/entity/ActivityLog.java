@@ -1,9 +1,6 @@
 package vacademy.io.admin_core_service.features.learner_tracking.entity;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -12,6 +9,7 @@ import vacademy.io.admin_core_service.features.learner_tracking.dto.ActivityLogD
 
 import java.sql.Date;
 import java.sql.Timestamp;
+import java.util.List;
 
 @Entity
 @Table(name = "activity_log")
@@ -21,7 +19,6 @@ import java.sql.Timestamp;
 public class ActivityLog {
 
     @Id
-    @UuidGenerator
     @Column(length = 255, nullable = false)
     private String id;
 
@@ -38,19 +35,25 @@ public class ActivityLog {
     private String slideId;
 
     @Column(name = "start_time")
-    private Date startTime;
+    private Timestamp startTime;
 
     @Column(name = "end_time")
-    private Date endTime;
+    private Timestamp endTime;
 
     @Column(name = "percentage_watched")
     private Double percentageWatched;
 
     @Column(name = "created_at", insertable = false, updatable = false, columnDefinition = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
-    private Date createdAt;
+    private Timestamp createdAt;
 
     @Column(name = "updated_at", insertable = false, updatable = false, columnDefinition = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
-    private Date updatedAt;
+    private Timestamp updatedAt;
+
+    @OneToMany(mappedBy = "activityLog", fetch = FetchType.LAZY)
+    private List<DocumentTracked> documentTracked;
+
+    @OneToMany(mappedBy = "activityLog", fetch = FetchType.LAZY)
+    private List<VideoTracked> videoTracked;
 
     public ActivityLog(ActivityLogDTO activityLogDTO, String userId, String slideId) {
         this.id = activityLogDTO.getId();
@@ -59,10 +62,10 @@ public class ActivityLog {
         this.userId = userId;
         this.slideId = slideId;
         if(activityLogDTO.getStartTimeInMillis() != null) {
-            this.startTime = new Date(activityLogDTO.getStartTimeInMillis());
+            this.startTime = new Timestamp(activityLogDTO.getStartTimeInMillis());
         }
         if(activityLogDTO.getEndTimeInMillis() != null) {
-            this.endTime = new Date(activityLogDTO.getEndTimeInMillis());
+            this.endTime = new Timestamp(activityLogDTO.getEndTimeInMillis());
         }
         this.percentageWatched = activityLogDTO.getPercentageWatched();
     }
@@ -73,9 +76,16 @@ public class ActivityLog {
         activityLogDTO.setSourceType(sourceType);
         activityLogDTO.setUserId(userId);
         activityLogDTO.setSlideId(slideId);
-        activityLogDTO.setStartTimeInMillis(startTime.getTime());
-        activityLogDTO.setEndTimeInMillis(endTime.getTime());
-        activityLogDTO.setPercentageWatched(percentageWatched);
+        activityLogDTO.setStartTimeInMillis(startTime != null ? startTime.getTime() : null);
+        activityLogDTO.setEndTimeInMillis(endTime != null ? endTime.getTime() : null);
+        activityLogDTO.setPercentageWatched(percentageWatched != null ? percentageWatched : 0.0);
+        activityLogDTO.setDocuments(documentTracked != null
+                ? documentTracked.stream().map(DocumentTracked::documentActivityLogDTO).toList()
+                : List.of());
+        activityLogDTO.setVideos(videoTracked != null
+                ? videoTracked.stream().map(VideoTracked::videoActivityLogDTO).toList()
+                : List.of());
         return activityLogDTO;
     }
+
 }

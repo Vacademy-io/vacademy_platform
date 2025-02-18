@@ -31,6 +31,9 @@ public class VideoSlide {
     @Column(name = "url", length = 255)
     private String url;
 
+    @Column(name = "video_length")
+    private Long videoLengthInMillis;
+
     @Column(name = "created_at", insertable = false, updatable = false, columnDefinition = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
     private Timestamp createdAt;
 
@@ -42,6 +45,9 @@ public class VideoSlide {
         this.title = addVideoSlideDTO.getTitle();
         this.url = addVideoSlideDTO.getUrl();
         this.id = addVideoSlideDTO.getId();
+        if (addVideoSlideDTO.getVideoLengthInMillis() != null){
+            this.videoLengthInMillis = addVideoSlideDTO.getVideoLengthInMillis();
+        }
     }
     public VideoSlide() {}
 }

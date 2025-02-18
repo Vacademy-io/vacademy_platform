@@ -112,10 +112,6 @@ public class SubjectService {
 
         List<Subject> subjects = subjectRepository.findAllById(subjectIds);
 
-        if (subjects.size() != subjectIds.size()) {
-            throw new VacademyException("Some subjects not found");
-        }
-
         subjects.forEach(subject -> subject.setStatus(SubjectStatusEnum.DELETED.name()));
         subjectRepository.saveAll(subjects);
 

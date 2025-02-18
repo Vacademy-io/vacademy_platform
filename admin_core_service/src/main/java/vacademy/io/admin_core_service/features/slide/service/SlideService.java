@@ -98,6 +98,7 @@ public class SlideService {
         Optional.ofNullable(documentSlideDTO.getData()).filter(d -> !d.isEmpty()).ifPresent(documentSlide::setData);
         Optional.ofNullable(documentSlideDTO.getTitle()).filter(t -> !t.isEmpty()).ifPresent(documentSlide::setTitle);
         Optional.ofNullable(documentSlideDTO.getCoverFileId()).filter(c -> !c.isEmpty()).ifPresent(documentSlide::setCoverFileId);
+        Optional.ofNullable(documentSlideDTO.getTotalPages()).ifPresent(documentSlide::setTotalPages);
         documentSlideRepository.save(documentSlide);
     }
 
@@ -108,7 +109,7 @@ public class SlideService {
         Slide slide = slideRepository.save(new Slide(addDocumentSlideDTO, documentSlide.getId(), SlideTypeEnum.DOCUMENT.name(), addDocumentSlideDTO.getStatus()));
         ChapterToSlides chapterToSlides = chapterToSlidesRepository.save(new ChapterToSlides(chapter, slide, addDocumentSlideDTO.getSlideOrder(), addDocumentSlideDTO.getStatus()));
         notifyIfPublished(addDocumentSlideDTO.getStatus(),addDocumentSlideDTO.isNotify(), instituteId, chapterToSlides);
-        return "Slide added successfully";
+        return slide.getId();
     }
 
     public String addVideoSlide(AddVideoSlideDTO addVideoSlideDTO, String chapterId, String instituteId) {
@@ -131,6 +132,8 @@ public class SlideService {
         Optional.ofNullable(videoSlideDTO.getUrl()).filter(u -> !u.trim().isEmpty()).ifPresent(videoSlide::setUrl);
         Optional.ofNullable(videoSlideDTO.getDescription()).filter(d -> !d.trim().isEmpty()).ifPresent(videoSlide::setDescription);
         Optional.ofNullable(videoSlideDTO.getTitle()).filter(t -> !t.trim().isEmpty()).ifPresent(videoSlide::setTitle);
+        Optional.ofNullable(videoSlideDTO.getVideoLengthInMillis())
+                .ifPresent(videoSlide::setVideoLengthInMillis);
         videoSlideRepository.save(videoSlide);
     }
 

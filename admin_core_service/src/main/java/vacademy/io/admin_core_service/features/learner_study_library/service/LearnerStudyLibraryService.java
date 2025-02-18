@@ -2,7 +2,14 @@ package vacademy.io.admin_core_service.features.learner_study_library.service;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.chapter.dto.ChapterDTOWithDetail;
+import vacademy.io.admin_core_service.features.chapter.dto.ChapterDetailsProjection;
+import vacademy.io.admin_core_service.features.chapter.entity.Chapter;
 import vacademy.io.admin_core_service.features.course.dto.CourseDTOWithDetails;
+import vacademy.io.admin_core_service.features.learner_study_library.dto.LearnerModuleDTOWithDetails;
+import vacademy.io.admin_core_service.features.module.dto.ModuleDTO;
+import vacademy.io.admin_core_service.features.module.repository.ModuleChapterMappingRepository;
+import vacademy.io.admin_core_service.features.module.repository.SubjectModuleMappingRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageRepository;
 import vacademy.io.admin_core_service.features.slide.dto.SlideDetailProjection;
 import vacademy.io.admin_core_service.features.slide.enums.SlideStatus;
@@ -13,7 +20,9 @@ import vacademy.io.admin_core_service.features.subject.repository.SubjectPackage
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.dto.SubjectDTO;
+import vacademy.io.common.institute.entity.module.Module;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
@@ -25,6 +34,11 @@ public class LearnerStudyLibraryService {
     private final StudyLibraryService studyLibraryService;
     private final SlideRepository slideRepository;
     private final SubjectPackageSessionRepository subjectPackageSessionRepository;
+    private final SubjectModuleMappingRepository subjectModuleMappingRepository;
+    private final ModuleChapterMappingRepository moduleChapterMappingRepository;
+
+
+
     public List<CourseDTOWithDetails> getLearnerStudyLibraryInitDetails(String instituteId, String packageSessionId, CustomUserDetails user) {
         validateInputs(instituteId, user.getUserId());
 
@@ -43,8 +57,18 @@ public class LearnerStudyLibraryService {
         }
     }
 
-    public List<ModuleDTOWithDetails> getModulesDetailsWithChapters(String subjectId, String packageSessionId, CustomUserDetails user) {
-        return studyLibraryService.getModulesDetailsWithChapters(subjectId, packageSessionId, user);
+    public List<LearnerModuleDTOWithDetails> getModulesDetailsWithChapters(String subjectId, String packageSessionId, CustomUserDetails user) {
+        if (Objects.isNull(subjectId)) {
+            throw new VacademyException("Please provide subjectId");
+        }
+        List<Module> modules = subjectModuleMappingRepository.findModulesBySubjectIdAndPackageSessionId(subjectId, packageSessionId);
+        List<LearnerModuleDTOWithDetails> moduleDTOWithDetails = new ArrayList<>();
+        for (Module module : modules) {
+            List<ChapterDetailsProjection> chapters = moduleChapterMappingRepository.getChapterDetails(module.getId(), packageSessionId,user.getUserId());
+            LearnerModuleDTOWithDetails moduleDTOWithDetails1 = new LearnerModuleDTOWithDetails(new ModuleDTO(module), chapters);
+            moduleDTOWithDetails.add(moduleDTOWithDetails1);
+        }
+        return moduleDTOWithDetails;
     }
 
     public List<SlideDetailProjection> getSlidesByChapterId(String chapterId, CustomUserDetails user) {

@@ -47,9 +47,6 @@ public class SlideNotificationService {
 
     private List<Student> getStudentsByChapter(Chapter chapter) {
         List<Student> students = instituteStudentRepository.findStudentsByChapterId(chapter.getId());
-        if (students.isEmpty()) {
-            throw new VacademyException("No students found for the given chapter.");
-        }
         return students;
     }
 

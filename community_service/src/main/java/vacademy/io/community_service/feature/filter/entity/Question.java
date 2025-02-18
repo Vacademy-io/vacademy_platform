@@ -1,4 +1,4 @@
-package vacademy.io.community_service.feature.addFilterToEntity.entity;
+package vacademy.io.community_service.feature.filter.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
@@ -11,7 +11,7 @@ import java.time.LocalDateTime;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-public class question {
+public class Question {
 
     @Id
     @Column(name = "id")

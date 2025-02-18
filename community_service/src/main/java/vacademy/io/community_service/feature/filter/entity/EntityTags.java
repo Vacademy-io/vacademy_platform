@@ -1,4 +1,4 @@
-package vacademy.io.community_service.feature.addFilterToEntity.entity;
+package vacademy.io.community_service.feature.filter.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
@@ -9,7 +9,7 @@ import lombok.*;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-public class entity_tags {
+public class EntityTags {
     @Id
     private String entityId;
 //    @Id

@@ -1,4 +1,4 @@
-package vacademy.io.community_service.feature.addFilterToEntity.entity;
+package vacademy.io.community_service.feature.filter.entity;
 
 
 import jakarta.persistence.*;
@@ -13,7 +13,7 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class question_paper {
+public class QuestionPaper {
 
     @Id
     @Column(name = "id", nullable = false)

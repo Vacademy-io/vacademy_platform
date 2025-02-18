@@ -1,13 +1,13 @@
-package vacademy.io.community_service.feature.addFilterToEntity.repository;
+package vacademy.io.community_service.feature.filter.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
-import vacademy.io.community_service.feature.addFilterToEntity.entity.entity_tags;
+import vacademy.io.community_service.feature.filter.entity.EntityTags;
 @Repository
-public interface entity_tags_repository extends JpaRepository<entity_tags, String> {
+public interface EntityTagsRepository extends JpaRepository<EntityTags, String> {
     @Modifying
     @Query(value = "INSERT INTO entity_tags (entity_id, entity_name, tag_id, tag_source) " +
             "VALUES (:entityId, :entityName, :tagId, :tagSource) " +

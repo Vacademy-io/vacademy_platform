@@ -1,6 +1,6 @@
-package vacademy.io.community_service.feature.addFilterToEntity.service;
+package vacademy.io.community_service.feature.filter.service;
 
-import vacademy.io.community_service.feature.addFilterToEntity.utils.enum_utils;
+import vacademy.io.community_service.feature.filter.utils.EnumUtils;
 import vacademy.io.community_service.feature.init.enums.Topic;
 import vacademy.io.community_service.feature.init.enums.Type;
 import vacademy.io.community_service.feature.init.repository.LevelsRepository;
@@ -11,12 +11,12 @@ import vacademy.io.community_service.feature.init.enums.Difficulty;
 import vacademy.io.community_service.feature.init.enums.DropdownType;
 
 @Service
-public class tag_validation_service {
+public class TagValidationService {
     private final LevelsRepository levelsRepository;
     private final StreamsRepository streamsRepository;
     private final SubjectsRepository subjectsRepository;
 
-    public tag_validation_service(LevelsRepository levelsRepository, StreamsRepository streamsRepository, SubjectsRepository subjectsRepository) {
+    public TagValidationService(LevelsRepository levelsRepository, StreamsRepository streamsRepository, SubjectsRepository subjectsRepository) {
         this.levelsRepository = levelsRepository;
         this.streamsRepository = streamsRepository;
         this.subjectsRepository = subjectsRepository;
@@ -27,9 +27,9 @@ public class tag_validation_service {
             case LEVEL -> levelsRepository.existsById(tagId);
             case SUBJECT -> subjectsRepository.existsById(tagId);
             case STREAM -> streamsRepository.existsById(tagId);
-            case TOPIC -> enum_utils.isValidEnum(Topic.class, tagId);
-            case DIFFICULTY -> enum_utils.isValidEnum(Difficulty.class, tagId);
-            case TYPE -> enum_utils.isValidEnum(Type.class, tagId);
+            case TOPIC -> EnumUtils.isValidEnum(Topic.class, tagId);
+            case DIFFICULTY -> EnumUtils.isValidEnum(Difficulty.class, tagId);
+            case TYPE -> EnumUtils.isValidEnum(Type.class, tagId);
         };
     }
 }

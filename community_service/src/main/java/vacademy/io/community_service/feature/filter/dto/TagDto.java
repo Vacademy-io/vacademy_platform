@@ -1,4 +1,4 @@
-package vacademy.io.community_service.feature.addFilterToEntity.dto;
+package vacademy.io.community_service.feature.filter.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import lombok.*;
@@ -7,7 +7,7 @@ import lombok.*;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-public class tag_dto {
+public class TagDto {
 
     @NotBlank(message = "Tag ID is required")
     private String tagId;

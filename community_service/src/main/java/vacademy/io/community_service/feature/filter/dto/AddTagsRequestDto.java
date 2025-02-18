@@ -1,4 +1,4 @@
-package vacademy.io.community_service.feature.addFilterToEntity.dto;
+package vacademy.io.community_service.feature.filter.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
@@ -10,7 +10,7 @@ import java.util.List;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-public class add_tags_request_dto {
+public class AddTagsRequestDto {
 
     @NotBlank(message = "Entity ID is required")
     private String entityId;
@@ -19,5 +19,5 @@ public class add_tags_request_dto {
     private String entityName;
 
     @NotEmpty(message = "At least one tag is required")
-    private List<tag_dto> tags;
+    private List<TagDto> tags;
 }

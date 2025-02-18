@@ -28,14 +28,15 @@ public class StudentAssessmentMapper {
                 .recentAttemptStartDate((Date) assessment[19])
                 .assessmentAttempts((Integer) assessment[20])
                 .userAttempts((Integer) assessment[21])
-                .previewTime((Integer) assessment[22])
-                .lastAttemptId((String) assessment[23])
-                .assessmentUserRegistrationId((String) assessment[24])
-                .distributionDuration((String) assessment[25])
-                .canSwitchSection((Boolean) assessment[26])
-                .canIncreaseTime((Boolean) assessment[27])
-                .canAskForReattempt((Boolean) assessment[28])
-                .omrMode((Boolean) assessment[29])
+                .createdAttempts((Long) assessment[22])
+                .previewTime((Integer) assessment[23])
+                .lastAttemptId((String) assessment[24])
+                .assessmentUserRegistrationId((String) assessment[25])
+                .distributionDuration((String) assessment[26])
+                .canSwitchSection((Boolean) assessment[27])
+                .canIncreaseTime((Boolean) assessment[28])
+                .canAskForReattempt((Boolean) assessment[29])
+                .omrMode((Boolean) assessment[30])
                 .build();
 
         return dto;

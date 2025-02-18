@@ -1,6 +1,6 @@
 package vacademy.io.community_service.feature.addFilterToEntity.enums;
 
-public enum EntityName {
+public enum entity_name {
     QUESTION,
     QUESTION_PAPER,
     PDF,
@@ -9,7 +9,7 @@ public enum EntityName {
 
     // Method to check if a given value is valid
     public static boolean isValid(String value) {
-        for (EntityName name : EntityName.values()) {
+        for (entity_name name : entity_name.values()) {
             if (name.name().equalsIgnoreCase(value)) {
                 return true;
             }

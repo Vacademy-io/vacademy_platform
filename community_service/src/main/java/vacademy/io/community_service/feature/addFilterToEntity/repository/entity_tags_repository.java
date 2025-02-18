@@ -5,9 +5,9 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
-import vacademy.io.community_service.feature.addFilterToEntity.entity.EntityTags;
+import vacademy.io.community_service.feature.addFilterToEntity.entity.entity_tags;
 @Repository
-public interface EntityTagsRepository extends JpaRepository<EntityTags, String> {
+public interface entity_tags_repository extends JpaRepository<entity_tags, String> {
     @Modifying
     @Query(value = "INSERT INTO entity_tags (entity_id, entity_name, tag_id, tag_source) " +
             "VALUES (:entityId, :entityName, :tagId, :tagSource) " +

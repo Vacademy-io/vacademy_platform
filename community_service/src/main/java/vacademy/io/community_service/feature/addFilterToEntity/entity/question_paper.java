@@ -13,7 +13,7 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class QuestionPaper {
+public class question_paper {
 
     @Id
     @Column(name = "id", nullable = false)

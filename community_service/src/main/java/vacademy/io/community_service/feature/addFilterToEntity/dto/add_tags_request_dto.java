@@ -10,7 +10,7 @@ import java.util.List;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-public class AddTagsRequestDto {
+public class add_tags_request_dto {
 
     @NotBlank(message = "Entity ID is required")
     private String entityId;
@@ -19,5 +19,5 @@ public class AddTagsRequestDto {
     private String entityName;
 
     @NotEmpty(message = "At least one tag is required")
-    private List<TagDto> tags;
+    private List<tag_dto> tags;
 }

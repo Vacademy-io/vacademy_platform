@@ -7,7 +7,7 @@ import lombok.*;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-public class TagDto {
+public class tag_dto {
 
     @NotBlank(message = "Tag ID is required")
     private String tagId;

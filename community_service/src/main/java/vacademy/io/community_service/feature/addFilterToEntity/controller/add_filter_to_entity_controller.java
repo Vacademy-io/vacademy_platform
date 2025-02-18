@@ -5,21 +5,21 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.common.auth.model.CustomUserDetails;
-import vacademy.io.community_service.feature.addFilterToEntity.dto.AddTagsRequestDto;
-import vacademy.io.community_service.feature.addFilterToEntity.service.EntityTagsService;
+import vacademy.io.community_service.feature.addFilterToEntity.dto.add_tags_request_dto;
+import vacademy.io.community_service.feature.addFilterToEntity.service.entity_tags_service;
 
 import java.util.HashMap;
 import java.util.Map;
 
 @RestController
 @RequestMapping("/community-service")
-public class addFilterToEntityController {
+public class add_filter_to_entity_controller {
 
     @Autowired
-    private EntityTagsService entityTagsService;
+    private entity_tags_service entityTagsService;
 
     @PostMapping("/add-tags-to-entity")
-    public ResponseEntity<?> addTags(@RequestAttribute("user") CustomUserDetails user , @RequestBody AddTagsRequestDto requestDto) {
+    public ResponseEntity<?> addTags(@RequestAttribute("user") CustomUserDetails user , @RequestBody add_tags_request_dto requestDto) {
         try {
             entityTagsService.addTagsToEntity(user , requestDto);
             return ResponseEntity.ok("Tags added successfully!");

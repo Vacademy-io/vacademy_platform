@@ -9,7 +9,7 @@ import lombok.*;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-public class EntityTags {
+public class entity_tags {
     @Id
     private String entityId;
 //    @Id

@@ -7,7 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import vacademy.io.admin_core_service.features.learner_tracking.entity.DocumentTracked;
 
-public interface DocumentTrackedRepository extends JpaRepository<DocumentTracked,String> {
+public interface DocumentTrackedRepository extends JpaRepository<DocumentTracked, String> {
     @Modifying
     @Transactional
     @Query("DELETE FROM DocumentTracked d WHERE d.activityLog.id = :activityId")

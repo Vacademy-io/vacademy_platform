@@ -29,19 +29,15 @@ import java.util.Optional;
 public class UserInstituteService {
 
     @Autowired
-    private InstituteRepository instituteRepository;
-
-    @Autowired
     InstituteSubModuleRepository instituteSubModuleRepository;
-
     @Autowired
     SubModuleRepository subModuleRepository;
-
     @Autowired
     PackageSessionRepository packageSessionRepository;
-
     @Autowired
     StudentSessionRepository studentSessionRepository;
+    @Autowired
+    private InstituteRepository instituteRepository;
 
     public static InstituteInfoDTO getInstituteDetails(Institute institute) {
         InstituteInfoDTO instituteInfoDTO = new InstituteInfoDTO();
@@ -60,12 +56,12 @@ public class UserInstituteService {
 
     @Transactional
     public InstituteIdAndNameDTO saveInstitute(InstituteInfoDTO instituteDto) {
-        try{
+        try {
             List<Submodule> allSubModules = new ArrayList<>();
 
-            if(!Objects.isNull(instituteDto.getModuleRequestIds())){
+            if (!Objects.isNull(instituteDto.getModuleRequestIds())) {
 
-                instituteDto.getModuleRequestIds().forEach(id->{
+                instituteDto.getModuleRequestIds().forEach(id -> {
                     List<String> subModuleId = ConstantsSubModuleList.getSubModulesForModule(id);
                     allSubModules.addAll(subModuleRepository.findAllById(subModuleId));
                 });
@@ -82,8 +78,7 @@ public class UserInstituteService {
             }
 
             return null;
-        }
-        catch (Exception e){
+        } catch (Exception e) {
             throw new VacademyException("Failed to add: " + e.getMessage());
         }
     }
@@ -118,10 +113,10 @@ public class UserInstituteService {
 
     public ResponseEntity<InstituteDashboardResponse> getInstituteDashboardDetail(CustomUserDetails user, String instituteId) {
         Optional<Institute> instituteOptional = instituteRepository.findById(instituteId);
-        if(instituteOptional.isEmpty()) throw new VacademyException("Institute Not Found");
+        if (instituteOptional.isEmpty()) throw new VacademyException("Institute Not Found");
 
         Integer emptyOrNullFieldsCount = instituteRepository.findCountForNullOrEmptyFields(instituteId);
-        Integer percentage = (((11-emptyOrNullFieldsCount)*100)/11);
+        Integer percentage = (((11 - emptyOrNullFieldsCount) * 100) / 11);
         Long batchCount = packageSessionRepository.findCountPackageSessionsByInstituteId(instituteId);
         Long studentCount = studentSessionRepository.countStudentsByInstituteIdAndStatusNotIn(instituteId, List.of("DELETED"));
 
@@ -134,11 +129,11 @@ public class UserInstituteService {
 
 
     public ResponseEntity<String> updateInstituteDetails(CustomUserDetails user, String instituteId, InstituteInfoDTO instituteInfoDTO) {
-        if(Objects.isNull(instituteInfoDTO)) throw new VacademyException("Invalid Request");
+        if (Objects.isNull(instituteInfoDTO)) throw new VacademyException("Invalid Request");
 
         Optional<Institute> instituteOptional = instituteRepository.findById(instituteId);
 
-        if(instituteOptional.isEmpty()) throw new VacademyException("Institute Not Found");
+        if (instituteOptional.isEmpty()) throw new VacademyException("Institute Not Found");
         Institute institute = instituteOptional.get();
 
         updateIfNotNull(instituteInfoDTO.getInstituteName(), institute::setInstituteName);
@@ -172,9 +167,9 @@ public class UserInstituteService {
         }
     }
 
-    public String addLetterHeadFileId(String instituteId, String letterHeadFileId,CustomUserDetails userDetails) {
+    public String addLetterHeadFileId(String instituteId, String letterHeadFileId, CustomUserDetails userDetails) {
         Optional<Institute> institute = instituteRepository.findById(instituteId);
-        if(institute.isEmpty()) throw new VacademyException("Institute Not Found");
+        if (institute.isEmpty()) throw new VacademyException("Institute Not Found");
         institute.get().setLetterHeadFileId(letterHeadFileId);
         instituteRepository.save(institute.get());
         return "Done";
@@ -182,7 +177,7 @@ public class UserInstituteService {
 
     public String getLetterFileId(String instituteId, CustomUserDetails userDetails) {
         Optional<Institute> institute = instituteRepository.findById(instituteId);
-        if(institute.isEmpty()) throw new VacademyException("Institute Not Found");
+        if (institute.isEmpty()) throw new VacademyException("Institute Not Found");
         return institute.get().getLetterHeadFileId();
     }
 }

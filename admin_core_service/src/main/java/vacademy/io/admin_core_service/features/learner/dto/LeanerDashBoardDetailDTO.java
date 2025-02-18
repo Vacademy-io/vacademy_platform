@@ -15,5 +15,7 @@ public class LeanerDashBoardDetailDTO {
     private Integer courses;
     private Integer testsAssigned;
     private List<SlideDetailProjection> slides;
-    public LeanerDashBoardDetailDTO() {}
+
+    public LeanerDashBoardDetailDTO() {
+    }
 }

@@ -7,7 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import vacademy.io.admin_core_service.features.learner_tracking.entity.VideoTracked;
 
-public interface VideoTrackedRepository extends JpaRepository<VideoTracked,String> {
+public interface VideoTrackedRepository extends JpaRepository<VideoTracked, String> {
     @Modifying
     @Transactional
     @Query("DELETE FROM VideoTracked v WHERE v.activityLog.id = :activityId")

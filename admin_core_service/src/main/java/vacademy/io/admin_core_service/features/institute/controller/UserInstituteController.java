@@ -2,7 +2,6 @@ package vacademy.io.admin_core_service.features.institute.controller;
 
 
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.repository.query.Param;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.institute.dto.InstituteDashboardResponse;
@@ -39,26 +38,26 @@ public class UserInstituteController {
     @PostMapping("/institute-update")
     public ResponseEntity<String> updateInstitute(@RequestAttribute("user") CustomUserDetails user,
                                                   @RequestParam("instituteId") String instituteId,
-                                                  @RequestBody InstituteInfoDTO instituteInfoDTO){
-        return instituteService.updateInstituteDetails(user, instituteId,instituteInfoDTO);
+                                                  @RequestBody InstituteInfoDTO instituteInfoDTO) {
+        return instituteService.updateInstituteDetails(user, instituteId, instituteInfoDTO);
     }
 
     @GetMapping("/get-dashboard")
     public ResponseEntity<InstituteDashboardResponse> getInstituteDashboard(@RequestAttribute(name = "user") CustomUserDetails user,
-                                                                            @RequestParam("instituteId") String instituteId){
-        return instituteService.getInstituteDashboardDetail(user,instituteId);
+                                                                            @RequestParam("instituteId") String instituteId) {
+        return instituteService.getInstituteDashboardDetail(user, instituteId);
     }
 
     @PutMapping("/add-letterhead-file-id")
     public ResponseEntity<String> addLetterheadFileId(@RequestParam("instituteId") String instituteId,
                                                       @RequestParam("letterheadFileId") String letterheadFileId,
-                                                      @RequestAttribute("user") CustomUserDetails user){
+                                                      @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok(instituteService.addLetterHeadFileId(instituteId, letterheadFileId, user));
     }
 
     @GetMapping("/get-letterhead-file-id")
     public ResponseEntity<String> getLetterheadFileId(@RequestParam("instituteId") String instituteId,
-                                                      @RequestAttribute("user") CustomUserDetails user){
+                                                      @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok(instituteService.getLetterFileId(instituteId, user));
     }
 

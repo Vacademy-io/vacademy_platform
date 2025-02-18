@@ -17,12 +17,11 @@ import java.util.concurrent.Executors;
 @Service
 public class LearnerTrackingAsyncService {
 
+    private final ExecutorService executor = Executors.newFixedThreadPool(10);
     @Autowired
     private ActivityLogRepository activityLogRepository;
     @Autowired
     private LearnerOperationService learnerOperationService;
-
-    private final ExecutorService executor = Executors.newFixedThreadPool(10);
 
     public void updateLearnerOperationsForDocument(String userId, String slideId, String chapterId, ActivityLogDTO activityLogDTO) {
         executor.submit(() -> {

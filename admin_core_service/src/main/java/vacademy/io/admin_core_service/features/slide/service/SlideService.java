@@ -21,7 +21,6 @@ import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -48,7 +47,7 @@ public class SlideService {
                     updateChapterToSlides(addDocumentSlideDTO.getSlideOrder(), addDocumentSlideDTO.getStatus(), chapterToSlides);
                     updateSlide(addDocumentSlideDTO.getDescription(), addDocumentSlideDTO.getTitle(), addDocumentSlideDTO.getImageFileId(), addDocumentSlideDTO.getStatus(), chapterToSlides.getSlide());
                     updateDocument(addDocumentSlideDTO.getDocumentSlide());
-                    notifyIfPublished(addDocumentSlideDTO.getStatus(),addDocumentSlideDTO.isNotify(), instituteId, chapterToSlides);
+                    notifyIfPublished(addDocumentSlideDTO.getStatus(), addDocumentSlideDTO.isNotify(), instituteId, chapterToSlides);
                     return "Slide updated successfully";
                 })
                 .orElseGet(() -> addDocumentSlide(addDocumentSlideDTO, chapterId, instituteId));
@@ -65,7 +64,7 @@ public class SlideService {
                     updateChapterToSlides(addVideoSlideDTO.getSlideOrder(), addVideoSlideDTO.getStatus(), chapterToSlides);
                     updateSlide(addVideoSlideDTO.getDescription(), addVideoSlideDTO.getTitle(), addVideoSlideDTO.getImageFileId(), addVideoSlideDTO.getStatus(), chapterToSlides.getSlide());
                     updateVideoSlide(addVideoSlideDTO.getVideoSlide());
-                    notifyIfPublished(addVideoSlideDTO.getStatus(),addVideoSlideDTO.isNotify(), instituteId, chapterToSlides);
+                    notifyIfPublished(addVideoSlideDTO.getStatus(), addVideoSlideDTO.isNotify(), instituteId, chapterToSlides);
                     return "Slide updated successfully";
                 })
                 .orElseGet(() -> addVideoSlide(addVideoSlideDTO, chapterId, instituteId));
@@ -108,7 +107,7 @@ public class SlideService {
         DocumentSlide documentSlide = documentSlideRepository.save(new DocumentSlide(addDocumentSlideDTO.getDocumentSlide()));
         Slide slide = slideRepository.save(new Slide(addDocumentSlideDTO, documentSlide.getId(), SlideTypeEnum.DOCUMENT.name(), addDocumentSlideDTO.getStatus()));
         ChapterToSlides chapterToSlides = chapterToSlidesRepository.save(new ChapterToSlides(chapter, slide, addDocumentSlideDTO.getSlideOrder(), addDocumentSlideDTO.getStatus()));
-        notifyIfPublished(addDocumentSlideDTO.getStatus(),addDocumentSlideDTO.isNotify(), instituteId, chapterToSlides);
+        notifyIfPublished(addDocumentSlideDTO.getStatus(), addDocumentSlideDTO.isNotify(), instituteId, chapterToSlides);
         return slide.getId();
     }
 
@@ -118,7 +117,7 @@ public class SlideService {
         VideoSlide videoSlide = videoSlideRepository.save(new VideoSlide(addVideoSlideDTO.getVideoSlide()));
         Slide slide = slideRepository.save(new Slide(addVideoSlideDTO, videoSlide.getId(), SlideTypeEnum.VIDEO.name(), addVideoSlideDTO.getStatus()));
         ChapterToSlides chapterToSlides = chapterToSlidesRepository.save(new ChapterToSlides(chapter, slide, addVideoSlideDTO.getSlideOrder(), addVideoSlideDTO.getStatus()));
-        notifyIfPublished(addVideoSlideDTO.getStatus(),addVideoSlideDTO.isNotify(), instituteId, chapterToSlides);
+        notifyIfPublished(addVideoSlideDTO.getStatus(), addVideoSlideDTO.isNotify(), instituteId, chapterToSlides);
         return slide.getId();
     }
 

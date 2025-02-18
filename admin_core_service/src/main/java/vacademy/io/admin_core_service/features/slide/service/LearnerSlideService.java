@@ -14,7 +14,7 @@ public class LearnerSlideService {
     @Autowired
     private SlideRepository slideRepository;
 
-    public List<SlideDetailWithOperationProjection>getLearnerSlides(String userId,String chapterId,CustomUserDetails user) {
+    public List<SlideDetailWithOperationProjection> getLearnerSlides(String userId, String chapterId, CustomUserDetails user) {
         return slideRepository.findSlideDetailsWithOperationByChapterId(userId, chapterId, SlideStatus.PUBLISHED.name());
     }
 }

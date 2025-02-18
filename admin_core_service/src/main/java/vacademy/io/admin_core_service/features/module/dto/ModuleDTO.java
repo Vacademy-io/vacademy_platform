@@ -13,12 +13,15 @@ public class ModuleDTO {
     private String status;
     private String description;
     private String thumbnailId;
-    public ModuleDTO(Module module){
+
+    public ModuleDTO(Module module) {
         this.id = module.getId();
         this.moduleName = module.getModuleName();
         this.status = module.getStatus();
         this.description = module.getDescription();
         this.thumbnailId = module.getThumbnailId();
     }
-    public ModuleDTO(){}
+
+    public ModuleDTO() {
+    }
 }

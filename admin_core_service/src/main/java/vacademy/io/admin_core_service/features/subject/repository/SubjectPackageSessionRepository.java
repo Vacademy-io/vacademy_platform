@@ -9,7 +9,7 @@ import vacademy.io.common.institute.entity.student.Subject;
 import java.util.List;
 import java.util.Optional;
 
-public interface SubjectPackageSessionRepository extends JpaRepository<SubjectPackageSession,String> {
+public interface SubjectPackageSessionRepository extends JpaRepository<SubjectPackageSession, String> {
     @Query("SELECT sps FROM SubjectPackageSession sps WHERE sps.subject.id = :subjectId")
     List<SubjectPackageSession> findBySubjectId(String subjectId);
 

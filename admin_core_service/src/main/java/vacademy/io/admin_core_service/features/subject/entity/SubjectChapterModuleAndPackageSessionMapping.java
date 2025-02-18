@@ -2,12 +2,11 @@ package vacademy.io.admin_core_service.features.subject.entity;
 
 import jakarta.persistence.*;
 import org.hibernate.annotations.UuidGenerator;
+import vacademy.io.admin_core_service.features.chapter.entity.Chapter;
 import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.common.institute.entity.module.Module;
 import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.common.institute.entity.student.Subject;
-import vacademy.io.admin_core_service.features.chapter.entity.Chapter;
-
 
 import java.sql.Timestamp;
 

@@ -7,7 +7,6 @@ import org.springframework.stereotype.Repository;
 import vacademy.io.admin_core_service.features.chapter.entity.Chapter;
 import vacademy.io.admin_core_service.features.subject.entity.SubjectChapterModuleAndPackageSessionMapping;
 import vacademy.io.common.institute.entity.module.Module;
-import vacademy.io.common.institute.entity.student.Subject;
 
 import java.util.List;
 

@@ -1,6 +1,9 @@
 package vacademy.io.admin_core_service.features.chapter.entity;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
 import org.hibernate.annotations.UuidGenerator;
@@ -38,16 +41,6 @@ public class Chapter {
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Timestamp updatedAt;
 
-    public ChapterDTO mapToDTO() {
-        ChapterDTO chapterDTO = new ChapterDTO();
-        chapterDTO.setId(id);
-        chapterDTO.setChapterName(chapterName);
-        chapterDTO.setFileId(fileId);
-        chapterDTO.setDescription(description);
-        chapterDTO.setStatus(status);
-        return chapterDTO;
-    }
-
     public Chapter(ChapterDTO chapterDTO) {
         if (chapterDTO.getId() != null) {
             this.id = chapterDTO.getId();
@@ -63,6 +56,18 @@ public class Chapter {
         }
         this.status = ChapterStatus.ACTIVE.name();
     }
-    public Chapter(){}
+
+    public Chapter() {
+    }
+
+    public ChapterDTO mapToDTO() {
+        ChapterDTO chapterDTO = new ChapterDTO();
+        chapterDTO.setId(id);
+        chapterDTO.setChapterName(chapterName);
+        chapterDTO.setFileId(fileId);
+        chapterDTO.setDescription(description);
+        chapterDTO.setStatus(status);
+        return chapterDTO;
+    }
 
 }

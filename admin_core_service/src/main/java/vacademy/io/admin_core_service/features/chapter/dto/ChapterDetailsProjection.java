@@ -6,14 +6,24 @@ import com.fasterxml.jackson.databind.annotation.JsonNaming;
 @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
 public interface ChapterDetailsProjection {
     String getId();
+
     String getChapterName();
+
     String getStatus();
+
     String getFileId();
+
     String getDescription();
+
     Double getPercentageCompleted();
+
     String getLastSlideViewed();
+
     Integer getVideoCount();
+
     Integer getPdfCount();
+
     Integer getDocCount();
+
     Integer getUnknownCount();
 }

@@ -10,10 +10,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.institute_learner.constants.StudentConstants;
-import vacademy.io.admin_core_service.features.institute_learner.dto.BulkUploadInitRequest;
-import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteStudentDTO;
-import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteStudentDetails;
-import vacademy.io.admin_core_service.features.institute_learner.dto.StudentExtraDetails;
+import vacademy.io.admin_core_service.features.institute_learner.dto.*;
 import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
 import vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
@@ -22,7 +19,6 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
 import vacademy.io.common.core.utils.RandomGenerator;
 import vacademy.io.common.exceptions.VacademyException;
-import vacademy.io.common.institute.dto.InstituteInfoDTO;
 
 import java.util.*;
 
@@ -44,18 +40,29 @@ public class StudentRegistrationManager {
     private String applicationName;
 
 
-    public ResponseEntity<String> addStudentToInstitute(CustomUserDetails user, InstituteStudentDTO instituteStudentDTO,BulkUploadInitRequest bulkUploadInitRequest) {
-        instituteStudentDTO = this.checkAndCreateDetails(instituteStudentDTO,bulkUploadInitRequest);
+    public ResponseEntity<String> addStudentToInstitute(CustomUserDetails user, InstituteStudentDTO instituteStudentDTO, BulkUploadInitRequest bulkUploadInitRequest) {
+        instituteStudentDTO = this.updateAsPerConfig(instituteStudentDTO, bulkUploadInitRequest);
         Student student = checkAndCreateStudent(instituteStudentDTO);
         linkStudentToInstitute(student, instituteStudentDTO.getInstituteStudentDetails());
         return ResponseEntity.ok("Student added successfully");
     }
 
+    public ResponseEntity<StudentDTO> addOpenStudentToInstitute(UserDTO userDTO, String instituteId) {
+        InstituteStudentDTO instituteStudentDTO = new InstituteStudentDTO();
+        instituteStudentDTO.setUserDetails(userDTO);
+        instituteStudentDTO.setInstituteStudentDetails(InstituteStudentDetails.builder().instituteId(instituteId).build());
 
-    private UserDTO createUserFromAuthService(InstituteStudentDTO instituteStudentDTO) {
+        Student student = checkAndCreateStudent(instituteStudentDTO);
+        if (instituteStudentDTO.getInstituteStudentDetails() != null)
+            linkStudentToInstitute(student, instituteStudentDTO.getInstituteStudentDetails());
+        return ResponseEntity.ok(new StudentDTO(student));
+    }
+
+
+    private UserDTO createUserFromAuthService(UserDTO userDTO, String instituteId) {
         try {
             ObjectMapper objectMapper = new ObjectMapper();
-            ResponseEntity<String> response = internalClientUtils.makeHmacRequest(applicationName, HttpMethod.POST.name(), authServerBaseUrl, StudentConstants.addUserRoute + "?instituteId=" + instituteStudentDTO.getInstituteStudentDetails().getInstituteId(), instituteStudentDTO.getUserDetails());
+            ResponseEntity<String> response = internalClientUtils.makeHmacRequest(applicationName, HttpMethod.POST.name(), authServerBaseUrl, StudentConstants.addUserRoute + "?instituteId=" + instituteId, userDTO);
             return objectMapper.readValue(response.getBody(), UserDTO.class);
 
         } catch (Exception e) {
@@ -66,7 +73,7 @@ public class StudentRegistrationManager {
     private Student checkAndCreateStudent(InstituteStudentDTO instituteStudentDTO) {
         instituteStudentDTO.getUserDetails().setRoles(getStudentRoles());
         setRandomPasswordIfNull(instituteStudentDTO.getUserDetails());
-        UserDTO createdUser = createUserFromAuthService(instituteStudentDTO);
+        UserDTO createdUser = createUserFromAuthService(instituteStudentDTO.getUserDetails(), instituteStudentDTO.getInstituteStudentDetails().getInstituteId());
         return createStudentFromRequest(createdUser, instituteStudentDTO.getStudentExtraDetails());
     }
 
@@ -93,11 +100,13 @@ public class StudentRegistrationManager {
         student.setPinCode(userDTO.getPinCode());
         student.setGender(userDTO.getGender());
         student.setDateOfBirth(userDTO.getDateOfBirth());
-        student.setFatherName(studentExtraDetails.getFathersName());
-        student.setMotherName(studentExtraDetails.getMothersName());
-        student.setParentsMobileNumber(studentExtraDetails.getParentsMobileNumber());
-        student.setParentsEmail(studentExtraDetails.getParentsEmail());
-        student.setLinkedInstituteName(studentExtraDetails.getLinkedInstituteName());
+        if (studentExtraDetails != null) {
+            student.setFatherName(studentExtraDetails.getFathersName());
+            student.setMotherName(studentExtraDetails.getMothersName());
+            student.setParentsMobileNumber(studentExtraDetails.getParentsMobileNumber());
+            student.setParentsEmail(studentExtraDetails.getParentsEmail());
+            student.setLinkedInstituteName(studentExtraDetails.getLinkedInstituteName());
+        }
         return instituteStudentRepository.save(student);
     }
 
@@ -140,8 +149,8 @@ public class StudentRegistrationManager {
         return instituteStudentRepository.findByUsernameAndUserId(username, userId);
     }
 
-    private InstituteStudentDTO checkAndCreateDetails(InstituteStudentDTO instituteStudentDTO, BulkUploadInitRequest bulkUploadInitRequest) {
-        if (Objects.isNull(bulkUploadInitRequest)){
+    private InstituteStudentDTO updateAsPerConfig(InstituteStudentDTO instituteStudentDTO, BulkUploadInitRequest bulkUploadInitRequest) {
+        if (Objects.isNull(bulkUploadInitRequest)) {
             return instituteStudentDTO;
         }
         BulkUploadInitRequest.AutoGenerateConfig autoConfig = bulkUploadInitRequest.getAutoGenerateConfig();

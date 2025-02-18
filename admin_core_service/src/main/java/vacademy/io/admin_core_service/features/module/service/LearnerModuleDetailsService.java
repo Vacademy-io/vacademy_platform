@@ -7,6 +7,7 @@ import vacademy.io.admin_core_service.features.learner_study_library.dto.Learner
 import vacademy.io.admin_core_service.features.module.dto.ModuleDTO;
 import vacademy.io.admin_core_service.features.module.repository.ModuleChapterMappingRepository;
 import vacademy.io.admin_core_service.features.module.repository.SubjectModuleMappingRepository;
+import vacademy.io.admin_core_service.features.slide.enums.SlideStatus;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.module.Module;
@@ -28,7 +29,7 @@ public class LearnerModuleDetailsService {
         List<Module> modules = subjectModuleMappingRepository.findModulesBySubjectIdAndPackageSessionId(subjectId, packageSessionId);
         List<LearnerModuleDTOWithDetails> moduleDTOWithDetails = new ArrayList<>();
         for (Module module : modules) {
-            List<ChapterDetailsProjection> chapters = moduleChapterMappingRepository.getChapterDetails(module.getId(), packageSessionId,userId);
+            List<ChapterDetailsProjection> chapters = moduleChapterMappingRepository.getChapterDetails(module.getId(), packageSessionId,userId,List.of(SlideStatus.PUBLISHED.name()));
             LearnerModuleDTOWithDetails moduleDTOWithDetails1 = new LearnerModuleDTOWithDetails(new ModuleDTO(module), chapters);
             moduleDTOWithDetails.add(moduleDTOWithDetails1);
         }

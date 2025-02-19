@@ -40,4 +40,11 @@ public class FolderController {
         List<FolderDTO> folders = folderService.getFoldersByUserId(userId, user);
         return ResponseEntity.ok(folders);
     }
+
+    @PostMapping("/add-folder")
+    public ResponseEntity<FolderDTO> addFolder(@RequestParam String userId,
+                                                     @RequestBody FolderDTO folderDTO,
+                                                     @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(folderService.addFolder(folderDTO, userId, user));
+    }
 }

@@ -14,5 +14,6 @@ import java.util.List;
 public class SectionAttemptData {
     private String sectionId;
     private Long timeElapsedInSeconds;
+    private Long sectionDurationLeftInSeconds;
     private List<QuestionAttemptData> questions;
 }

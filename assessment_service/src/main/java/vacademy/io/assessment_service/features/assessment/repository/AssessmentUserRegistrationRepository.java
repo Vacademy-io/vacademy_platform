@@ -258,4 +258,11 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
             @Param("assessmentStatus") List<String> assessmentStatus
     );
 
+    @Query("SELECT aur FROM AssessmentUserRegistration aur WHERE aur.assessment.id = :assessmentId AND aur.status IN :statuses")
+    List<AssessmentUserRegistration> findByInstituteIdAndAssessmentIdAndStatusIn(
+            @Param("assessmentId") String assessmentId,
+            @Param("statuses") List<String> statuses
+    );
+
+
 }

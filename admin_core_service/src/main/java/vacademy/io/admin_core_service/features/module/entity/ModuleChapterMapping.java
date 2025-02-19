@@ -30,7 +30,8 @@ public class ModuleChapterMapping {
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Timestamp updatedAt;
 
-    public ModuleChapterMapping() {}
+    public ModuleChapterMapping() {
+    }
 
     public ModuleChapterMapping(Chapter chapter, Module module) {
         this.chapter = chapter;

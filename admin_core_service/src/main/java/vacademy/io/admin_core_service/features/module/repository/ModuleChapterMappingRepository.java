@@ -9,7 +9,7 @@ import vacademy.io.admin_core_service.features.module.entity.ModuleChapterMappin
 
 import java.util.List;
 
-public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChapterMapping,String> {
+public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChapterMapping, String> {
     @Query("SELECT mcm.chapter FROM ModuleChapterMapping mcm " +
             "WHERE mcm.module.id = :moduleId " +
             "AND mcm.chapter.status != 'DELETED' " +
@@ -36,7 +36,7 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
         INNER JOIN module_chapter_mapping mcm ON mcm.chapter_id = c.id
         INNER JOIN chapter_package_session_mapping cpsm ON cpsm.chapter_id = c.id
         LEFT JOIN chapter_to_slides cs ON cs.chapter_id = c.id AND cs.status != 'DELETED'
-        LEFT JOIN slide s ON cs.slide_id = s.id AND s.status != 'DELETED'
+         LEFT JOIN slide s ON cs.slide_id = s.id AND s.status IN (:slideStatuses)
         LEFT JOIN document_slide d ON d.id = s.source_id
         LEFT JOIN learner_operation lo 
             ON lo.source_id = c.id
@@ -52,7 +52,8 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
     List<ChapterDetailsProjection> getChapterDetails(
             @Param("moduleId") String moduleId,
             @Param("packageSessionId") String packageSessionId,
-            @Param("userId") String userId
+            @Param("userId") String userId,
+            @Param("slideStatuses") List<String> slideStatuses
     );
 
 }

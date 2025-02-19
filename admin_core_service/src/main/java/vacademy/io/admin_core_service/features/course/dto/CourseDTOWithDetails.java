@@ -5,7 +5,6 @@ import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.Getter;
 import lombok.Setter;
 import vacademy.io.admin_core_service.features.study_library.dto.SessionDTOWithDetails;
-import vacademy.io.common.institute.dto.SessionDTO;
 
 import java.util.List;
 

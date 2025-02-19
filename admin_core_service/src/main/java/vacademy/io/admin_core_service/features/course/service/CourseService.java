@@ -20,7 +20,6 @@ import vacademy.io.common.institute.dto.PackageDTO;
 import vacademy.io.common.institute.entity.Level;
 import vacademy.io.common.institute.entity.PackageEntity;
 import vacademy.io.common.institute.entity.PackageInstitute;
-import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.common.institute.entity.session.Session;
 
 import java.util.ArrayList;
@@ -40,16 +39,15 @@ public class CourseService {
     private final PackageSessionRepository packageSessionRepository;
 
     @Transactional
-    public String addCourse(AddCourseDTO addCourseDTO, CustomUserDetails user,String instituteId) {
+    public String addCourse(AddCourseDTO addCourseDTO, CustomUserDetails user, String instituteId) {
         validateRequest(addCourseDTO);
         PackageEntity packageEntity = getCourse(addCourseDTO);
         PackageEntity savedPackage = packageRepository.save(packageEntity);
         createPackageInstitute(savedPackage, instituteId);
-        if (addCourseDTO.getContainLevels()){
+        if (addCourseDTO.getContainLevels()) {
             createPackageSession(savedPackage, addCourseDTO.getLevels(), user);
-        }
-        else{
-            createPackageSessionForDefaultLevelAndSession(savedPackage,user);
+        } else {
+            createPackageSessionForDefaultLevelAndSession(savedPackage, user);
         }
         return savedPackage.getId();
     }
@@ -57,10 +55,10 @@ public class CourseService {
     private void createPackageSessionForDefaultLevelAndSession(PackageEntity savedPackage, CustomUserDetails user) {
         Level level = levelService.getLevelById("DEFAULT");
         Session session = sessionService.getSessionById("DEFAULT");
-        packageSessionService.createPackageSession(level, session, savedPackage,new Date());
+        packageSessionService.createPackageSession(level, session, savedPackage, new Date());
     }
 
-    private void createPackageSession(PackageEntity savedPackage, List<AddLevelDTO>addLevelDTOS, CustomUserDetails user) {
+    private void createPackageSession(PackageEntity savedPackage, List<AddLevelDTO> addLevelDTOS, CustomUserDetails user) {
         if (Objects.isNull(addLevelDTOS) || addLevelDTOS.isEmpty()) {
             throw new VacademyException("Levels cannot be null or empty. You must provide at least one level.");
         }
@@ -69,7 +67,7 @@ public class CourseService {
             Level level = levelService.createOrAddLevel(addLevelDTO);
             for (AddSessionDTO sessionDTO : addLevelDTO.getSessions()) {
                 Session session = sessionService.createOrGetSession(sessionDTO);
-                packageSessionService.createPackageSession(level, session, savedPackage,sessionDTO.getStartDate());
+                packageSessionService.createPackageSession(level, session, savedPackage, sessionDTO.getStartDate());
             }
         }
     }
@@ -111,18 +109,18 @@ public class CourseService {
         return packageInstituteRepository.save(packageInstitute);
     }
 
-    public String updateCourse(PackageDTO packageDTO, CustomUserDetails user,String packageId) {
-        PackageEntity packageEntity = packageRepository.findById(packageId).orElseThrow(()->new VacademyException("Course not found"));
+    public String updateCourse(PackageDTO packageDTO, CustomUserDetails user, String packageId) {
+        PackageEntity packageEntity = packageRepository.findById(packageId).orElseThrow(() -> new VacademyException("Course not found"));
         packageEntity.setPackageName(packageDTO.getPackageName());
         packageEntity.setThumbnailFileId(packageDTO.getThumbnailFileId());
         packageRepository.save(packageEntity);
         return "Course updated successfully";
     }
 
-    public String deleteCourses(List<String> courseIds,CustomUserDetails userDetails) {
-        List<PackageEntity>courses=packageRepository.findAllById(courseIds);
-        List<PackageEntity>deletedCourses=new ArrayList<>();
-        for(PackageEntity course:courses) {
+    public String deleteCourses(List<String> courseIds, CustomUserDetails userDetails) {
+        List<PackageEntity> courses = packageRepository.findAllById(courseIds);
+        List<PackageEntity> deletedCourses = new ArrayList<>();
+        for (PackageEntity course : courses) {
             course.setStatus(PackageStatusEnum.DELETED.name());
             deletedCourses.add(course);
         }

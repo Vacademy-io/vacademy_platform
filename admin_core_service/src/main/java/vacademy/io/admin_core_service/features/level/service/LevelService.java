@@ -20,7 +20,6 @@ import vacademy.io.common.institute.entity.session.Session;
 
 import java.util.Date;
 import java.util.List;
-import java.util.Objects;
 import java.util.Optional;
 
 @Service
@@ -31,12 +30,12 @@ public class LevelService {
     private final PackageSessionService packageSessionService;
     private final SessionRepository sessionRepository;
     private final PackageSessionRepository packageSessionRepository;
+
     public Level createOrAddLevel(AddLevelDTO addLevelDTO) {
         Level level = null;
-        if (addLevelDTO.getNewLevel()){
+        if (addLevelDTO.getNewLevel()) {
             level = getLevel(addLevelDTO);
-        }
-        else{
+        } else {
             level = getLevelById(addLevelDTO.getId());
         }
         return levelRepository.save(level);
@@ -57,16 +56,16 @@ public class LevelService {
 
     @Transactional
     public String addLevel(AddLevelDTO addLevelDTO, String packageId, String sessionId, CustomUserDetails user) {
-        Optional<PackageEntity>optionalPackageEntity = packageRepository.findById(packageId);
+        Optional<PackageEntity> optionalPackageEntity = packageRepository.findById(packageId);
         if (optionalPackageEntity.isEmpty()) {
             throw new VacademyException("Package not found");
         }
-        Optional<Session>optionalSession = sessionRepository.findById(sessionId);
+        Optional<Session> optionalSession = sessionRepository.findById(sessionId);
         if (optionalSession.isEmpty()) {
             throw new VacademyException("Session not found");
         }
         Level level = createOrAddLevel(addLevelDTO);
-        packageSessionService.createPackageSession(level, optionalSession.get(), optionalPackageEntity.get(),getStartDatePackageSessionDate(packageId,sessionId));
+        packageSessionService.createPackageSession(level, optionalSession.get(), optionalPackageEntity.get(), getStartDatePackageSessionDate(packageId, sessionId));
         return level.getId();
     }
 
@@ -86,7 +85,7 @@ public class LevelService {
         return new LevelDTO(level);
     }
 
-    public String deleteLevels(List<String> levelIds,CustomUserDetails user) {
+    public String deleteLevels(List<String> levelIds, CustomUserDetails user) {
         List<Level> levels = levelRepository.findAllById(levelIds);
 
         for (Level level : levels) {
@@ -98,8 +97,8 @@ public class LevelService {
         return "Levels deleted successfully";
     }
 
-    private Date getStartDatePackageSessionDate(String packageId,String sessionId){
-        Optional<PackageSession>optionalPackageSession = packageSessionRepository.findLatestPackageSessionByPackageIdAndSessionId(packageId,sessionId);
+    private Date getStartDatePackageSessionDate(String packageId, String sessionId) {
+        Optional<PackageSession> optionalPackageSession = packageSessionRepository.findLatestPackageSessionByPackageIdAndSessionId(packageId, sessionId);
         if (optionalPackageSession.isEmpty()) {
             return new Date();
         } else {

@@ -17,18 +17,18 @@ public class ModuleController {
     private final ModuleService moduleService;
 
     @PostMapping("/add-module")
-    public ResponseEntity<ModuleDTO> addModule(@RequestParam String subjectId,@RequestBody ModuleDTO moduleDTO, @RequestAttribute("user")CustomUserDetails user) {
-        return ResponseEntity.ok(moduleService.addModule(subjectId, moduleDTO,user));
+    public ResponseEntity<ModuleDTO> addModule(@RequestParam String subjectId, @RequestBody ModuleDTO moduleDTO, @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(moduleService.addModule(subjectId, moduleDTO, user));
     }
 
     @PostMapping("/delete-module")
-    public ResponseEntity<String> addModule(@RequestBody List<String> moduleIds,@RequestAttribute("user")CustomUserDetails user) {
-        return ResponseEntity.ok(moduleService.deleteModule(moduleIds,user));
+    public ResponseEntity<String> addModule(@RequestBody List<String> moduleIds, @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(moduleService.deleteModule(moduleIds, user));
     }
 
     @PutMapping("/update-module")
-    public ResponseEntity<ModuleDTO> updateModule(String moduleId,@RequestBody ModuleDTO moduleDTO,@RequestAttribute("user")CustomUserDetails user) {
-        return ResponseEntity.ok(moduleService.updateModule(moduleId, moduleDTO,user));
+    public ResponseEntity<ModuleDTO> updateModule(String moduleId, @RequestBody ModuleDTO moduleDTO, @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(moduleService.updateModule(moduleId, moduleDTO, user));
     }
     /**
      * Fetches SubjectModuleMapping entities based on a list of subject IDs and module IDs.
@@ -38,13 +38,14 @@ public class ModuleController {
      */
     /**
      * Update the module order for a list of subject-module mappings.
+     *
      * @param updateModuleOrderDTOS List of DTOs containing the subjectId, moduleId, and new moduleOrder.
      * @return Message indicating whether the update was successful.
      */
     @PostMapping("/update-module-order")
-    public String updateModuleOrder(@RequestBody List<UpdateModuleOrderDTO> updateModuleOrderDTOS,@RequestAttribute("user")CustomUserDetails user) {
+    public String updateModuleOrder(@RequestBody List<UpdateModuleOrderDTO> updateModuleOrderDTOS, @RequestAttribute("user") CustomUserDetails user) {
         // Call the service method to update the module order
-        moduleService.updateModuleOrder(updateModuleOrderDTOS,user);
+        moduleService.updateModuleOrder(updateModuleOrderDTOS, user);
         return "Module order updated successfully.";
     }
 }

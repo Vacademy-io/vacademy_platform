@@ -43,7 +43,7 @@ public class StudentBulkUploadManager {
             List<InstituteStudentDTO> students = CsvToStudentDataMapper.mapCsvRecordsToInstituteStudentDTOs(records, instituteId); // List to store parsed tenant entries// Trim whitespace from field
             for (InstituteStudentDTO student : students) {
                 try {
-                    studentRegistrationManager.addStudentToInstitute(user, student,bulkUploadInitRequest);
+                    studentRegistrationManager.addStudentToInstitute(user, student, bulkUploadInitRequest);
                     student.setStatus(true);
                     student.setStatusMessage("Student added successfully with username : " + student.getUserDetails().getUsername());
                 } catch (Exception e) {

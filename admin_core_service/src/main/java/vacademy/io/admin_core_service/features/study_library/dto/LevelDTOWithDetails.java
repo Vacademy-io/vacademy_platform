@@ -4,10 +4,8 @@ import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.Getter;
 import lombok.Setter;
-import vacademy.io.common.institute.dto.LevelDTO;
 import vacademy.io.common.institute.dto.SubjectDTO;
 import vacademy.io.common.institute.entity.Level;
-import vacademy.io.common.institute.entity.LevelProjection;
 
 import java.util.List;
 

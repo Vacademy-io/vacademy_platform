@@ -4,9 +4,7 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.hibernate.annotations.GenericGenerator;
 import org.hibernate.annotations.UuidGenerator;
-import vacademy.io.common.institute.entity.module.Module;
 import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.common.institute.entity.student.Subject;
 
@@ -40,7 +38,7 @@ public class SubjectPackageSession {
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Timestamp updatedAt;
 
-    public SubjectPackageSession(Subject subject, PackageSession packageSession,Integer subjectOrder) {
+    public SubjectPackageSession(Subject subject, PackageSession packageSession, Integer subjectOrder) {
         this.subject = subject;
         this.packageSession = packageSession;
         this.subjectOrder = subjectOrder;

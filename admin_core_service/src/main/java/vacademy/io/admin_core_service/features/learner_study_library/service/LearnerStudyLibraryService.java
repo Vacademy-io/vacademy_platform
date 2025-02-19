@@ -64,7 +64,7 @@ public class LearnerStudyLibraryService {
         List<Module> modules = subjectModuleMappingRepository.findModulesBySubjectIdAndPackageSessionId(subjectId, packageSessionId);
         List<LearnerModuleDTOWithDetails> moduleDTOWithDetails = new ArrayList<>();
         for (Module module : modules) {
-            List<ChapterDetailsProjection> chapters = moduleChapterMappingRepository.getChapterDetails(module.getId(), packageSessionId,user.getUserId());
+            List<ChapterDetailsProjection> chapters = moduleChapterMappingRepository.getChapterDetails(module.getId(), packageSessionId,user.getUserId(),List.of(SlideStatus.PUBLISHED.name()));
             LearnerModuleDTOWithDetails moduleDTOWithDetails1 = new LearnerModuleDTOWithDetails(new ModuleDTO(module), chapters);
             moduleDTOWithDetails.add(moduleDTOWithDetails1);
         }

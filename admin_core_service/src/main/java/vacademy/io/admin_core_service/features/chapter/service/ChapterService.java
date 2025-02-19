@@ -273,8 +273,8 @@ public class ChapterService {
 
 
     public String moveChapter(String existingPackageSessionId, String newPackageSessionId, String moduleId, String chapterId, CustomUserDetails user) {
-        deleteChapter(List.of(chapterId),existingPackageSessionId,user);
-        copyChapter(newPackageSessionId,moduleId,chapterId,user);
+        deleteChapter(List.of(chapterId), existingPackageSessionId, user);
+        copyChapter(newPackageSessionId, moduleId, chapterId, user);
         return "Chapter moved successfully.";
     }
 

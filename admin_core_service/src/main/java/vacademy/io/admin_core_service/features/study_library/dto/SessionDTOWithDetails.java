@@ -12,6 +12,6 @@ import java.util.List;
 @Setter
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class SessionDTOWithDetails {
-    private SessionDTO sessionDTO;
     List<LevelDTOWithDetails> levelWithDetails;
+    private SessionDTO sessionDTO;
 }

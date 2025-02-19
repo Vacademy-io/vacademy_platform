@@ -4,7 +4,6 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.hibernate.annotations.UuidGenerator;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.DocumentActivityLogDTO;
 
 import java.sql.Timestamp;
@@ -42,10 +41,10 @@ public class DocumentTracked {
     public DocumentTracked(DocumentActivityLogDTO documentActivityLogDTO, ActivityLog activityLog) {
         this.id = documentActivityLogDTO.getId();
         this.activityLog = activityLog;
-        if(documentActivityLogDTO.getStartTimeInMillis() != null) {
+        if (documentActivityLogDTO.getStartTimeInMillis() != null) {
             this.startTime = new Timestamp(documentActivityLogDTO.getStartTimeInMillis());
         }
-        if(documentActivityLogDTO.getEndTimeInMillis() != null) {
+        if (documentActivityLogDTO.getEndTimeInMillis() != null) {
             this.endTime = new Timestamp(documentActivityLogDTO.getEndTimeInMillis());
         }
         this.pageNumber = documentActivityLogDTO.getPageNumber();

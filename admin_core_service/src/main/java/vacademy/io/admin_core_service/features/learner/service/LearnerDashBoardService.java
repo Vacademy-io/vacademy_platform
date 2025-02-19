@@ -11,8 +11,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.learner.constants.AssessmentServerRouteConstants;
 import vacademy.io.admin_core_service.features.learner.dto.LeanerDashBoardDetailDTO;
-import vacademy.io.admin_core_service.features.notification.dto.NotificationDTO;
-import vacademy.io.admin_core_service.features.notification.dto.NotificationToUserDTO;
 import vacademy.io.admin_core_service.features.notification.service.NotificationService;
 import vacademy.io.admin_core_service.features.packages.repository.PackageRepository;
 import vacademy.io.admin_core_service.features.slide.enums.SlideStatus;
@@ -21,7 +19,6 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
 import vacademy.io.common.exceptions.VacademyException;
 
-import java.util.HashMap;
 import java.util.List;
 
 @Service
@@ -54,7 +51,7 @@ public class LearnerDashBoardService {
         );
     }
 
-    private int getAssessmentCountForUser(CustomUserDetails user,String userId, String instituteId) {
+    private int getAssessmentCountForUser(CustomUserDetails user, String userId, String instituteId) {
         // Validate inputs
         if (userId == null || userId.isEmpty() || instituteId == null || instituteId.isEmpty()) {
             throw new IllegalArgumentException("userId and instituteId must not be null or empty");
@@ -77,7 +74,8 @@ public class LearnerDashBoardService {
         // Parse the response
         try {
             ObjectMapper objectMapper = new ObjectMapper();
-            return objectMapper.readValue(response.getBody(), new TypeReference<Integer>() {});
+            return objectMapper.readValue(response.getBody(), new TypeReference<Integer>() {
+            });
         } catch (JsonProcessingException e) {
             throw new VacademyException(HttpStatus.INTERNAL_SERVER_ERROR,
                     "Failed to retrieve assessment count: " + e.getMessage());

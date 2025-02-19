@@ -80,7 +80,7 @@ public class LearnerAuthManager {
     }
 
     public String requestOtp(AuthRequestDto authRequestDTO) {
-        Optional<User> user = userRepository.findByEmail(authRequestDTO.getEmail());
+        Optional<User> user = userRepository.findTopByEmailOrderByCreatedAtDesc(authRequestDTO.getEmail());
 
         if (user.isEmpty()) {
             throw new UsernameNotFoundException("invalid user request..!!");
@@ -110,7 +110,7 @@ public class LearnerAuthManager {
             throw new UsernameNotFoundException("invalid user request..!!");
         }
 
-        Optional<User> user = userRepository.findByEmail(authRequestDTO.getEmail());
+        Optional<User> user = userRepository.findTopByEmailOrderByCreatedAtDesc(authRequestDTO.getEmail());
 
         if (user.isEmpty()) {
             throw new UsernameNotFoundException("invalid user request..!!");

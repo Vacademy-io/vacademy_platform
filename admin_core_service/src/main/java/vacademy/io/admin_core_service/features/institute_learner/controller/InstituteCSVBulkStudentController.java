@@ -32,7 +32,7 @@ public class InstituteCSVBulkStudentController {
     public ResponseEntity<CsvInitResponse> getCSVUploadSetupDetailsForStudent(@RequestParam(name = "instituteId") String instituteId,
                                                                               @RequestParam(name = "sessionId") String sessionId,
                                                                               @RequestBody BulkUploadInitRequest bulkUploadInitRequest) {
-        return ResponseEntity.ok(studentBulkInitUploadManager.generateCsvUploadForStudents(instituteId, sessionId,bulkUploadInitRequest));
+        return ResponseEntity.ok(studentBulkInitUploadManager.generateCsvUploadForStudents(instituteId, sessionId, bulkUploadInitRequest));
     }
 
     @PostMapping(value = "/upload-csv", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

@@ -5,7 +5,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.learner.dto.StudentInstituteInfoDTO;
 import vacademy.io.admin_core_service.features.learner.manager.LearnerInstituteManager;
-import vacademy.io.common.institute.dto.InstituteInfoDTO;
 
 import java.util.List;
 

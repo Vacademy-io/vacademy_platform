@@ -6,8 +6,6 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
-import org.hibernate.annotations.UuidGenerator;
-import vacademy.io.admin_core_service.features.slide.dto.AddVideoSlideDTO;
 import vacademy.io.admin_core_service.features.slide.dto.VideoSlideDTO;
 
 import java.sql.Timestamp;
@@ -45,9 +43,11 @@ public class VideoSlide {
         this.title = addVideoSlideDTO.getTitle();
         this.url = addVideoSlideDTO.getUrl();
         this.id = addVideoSlideDTO.getId();
-        if (addVideoSlideDTO.getVideoLengthInMillis() != null){
+        if (addVideoSlideDTO.getVideoLengthInMillis() != null) {
             this.videoLengthInMillis = addVideoSlideDTO.getVideoLengthInMillis();
         }
     }
-    public VideoSlide() {}
+
+    public VideoSlide() {
+    }
 }

@@ -4,11 +4,9 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.hibernate.annotations.UuidGenerator;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.VideoActivityLogDTO;
 
 import java.sql.Timestamp;
-import java.util.Date;
 
 @Entity
 @Table(name = "video_tracked", schema = "public")
@@ -40,10 +38,10 @@ public class VideoTracked {
     public VideoTracked(VideoActivityLogDTO videoActivityLogDTO, ActivityLog activityLog) {
         this.id = videoActivityLogDTO.getId();
         this.activityLog = activityLog;
-        if(videoActivityLogDTO.getStartTimeInMillis() != null) {
+        if (videoActivityLogDTO.getStartTimeInMillis() != null) {
             this.startTime = new Timestamp(videoActivityLogDTO.getStartTimeInMillis());
         }
-        if(videoActivityLogDTO.getEndTimeInMillis() != null) {
+        if (videoActivityLogDTO.getEndTimeInMillis() != null) {
             this.endTime = new Timestamp(videoActivityLogDTO.getEndTimeInMillis());
         }
     }

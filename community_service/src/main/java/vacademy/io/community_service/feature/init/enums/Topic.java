@@ -5,5 +5,5 @@ public enum Topic {
     CALCULUS,
     MECHANICS,
     ORGANIC_CHEMISTRY,
-    DATABASES
+    DATABASES;
 }

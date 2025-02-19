@@ -5,7 +5,6 @@ import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.learner_operation.entity.LearnerOperation;
 import vacademy.io.admin_core_service.features.learner_operation.repository.LearnerOperationRepository;
 
-import java.sql.Timestamp;
 import java.util.Optional;
 
 @Service
@@ -22,12 +21,12 @@ public class LearnerOperationService {
             operationEntity.setValue(value);
             learnerOperationRepository.save(operationEntity);
         } else {
-            LearnerOperation newOperation = new LearnerOperation(userId,source, sourceId, operation, value);
+            LearnerOperation newOperation = new LearnerOperation(userId, source, sourceId, operation, value);
             learnerOperationRepository.save(newOperation);
         }
     }
 
-    private Optional<LearnerOperation> findByUserIdSourceAndSourceIdAndOperation(String userId,String source, String sourceId, String operation) {
-        return learnerOperationRepository.findByUserIdAndSourceAndSourceIdAndOperation(userId,source, sourceId, operation);
+    private Optional<LearnerOperation> findByUserIdSourceAndSourceIdAndOperation(String userId, String source, String sourceId, String operation) {
+        return learnerOperationRepository.findByUserIdAndSourceAndSourceIdAndOperation(userId, source, sourceId, operation);
     }
 }

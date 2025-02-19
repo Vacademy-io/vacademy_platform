@@ -21,15 +21,15 @@ public class DocumentService {
         this.documentRepository = documentRepository;
     }
 
-    public String addDocuments(List<DocumentDTO>addDocuments, String userId, CustomUserDetails user) {
-        List<Document>documents = addDocuments.stream().map(documentDTO -> new Document(documentDTO)).toList();
+    public String addDocuments(List<DocumentDTO> addDocuments, String userId, CustomUserDetails user) {
+        List<Document> documents = addDocuments.stream().map(documentDTO -> new Document(documentDTO)).toList();
         documentRepository.saveAll(documents);
         return "Documents added successfully";
     }
 
     public String deleteDocuments(DeleteDocumentsDTO deleteDocumentsDTO, String userId, CustomUserDetails user) {
-        List<String>ids = getIds(deleteDocumentsDTO.getCommaSeparatedIds());
-        List<Document>documents = documentRepository.findAllById(ids);
+        List<String> ids = getIds(deleteDocumentsDTO.getCommaSeparatedIds());
+        List<Document> documents = documentRepository.findAllById(ids);
         for (Document document : documents) {
             document.setStatus(DocumentStatusEnum.DELETED.name());
         }
@@ -42,10 +42,10 @@ public class DocumentService {
     }
 
     public List<DocumentDTO> getDocumentsByUserIdAndFolderId(String userId, String folderId) {
-        return documentRepository.findByUserIdAndFolderIdAndStatusNotAndAccessTypeIn(userId, folderId, DocumentStatusEnum.DELETED.name(), List.of(DocumentAccessTypeEnum.BOTH.name(),DocumentAccessTypeEnum.ADMIN.name())).stream().map(document -> document.mapToDocumentDTO()).toList();
+        return documentRepository.findByUserIdAndFolderIdAndStatusNotAndAccessTypeIn(userId, folderId, DocumentStatusEnum.DELETED.name(), List.of(DocumentAccessTypeEnum.BOTH.name(), DocumentAccessTypeEnum.ADMIN.name())).stream().map(document -> document.mapToDocumentDTO()).toList();
     }
 
     public List<DocumentDTO> getDocumentsByUserId(String userId) {
-        return documentRepository.findByUserIdAndStatusNotAndAccessTypeInAndFolder_StatusNot(userId, DocumentStatusEnum.DELETED.name(), List.of(DocumentAccessTypeEnum.BOTH.name(),DocumentAccessTypeEnum.ADMIN.name()),FolderStatusEnum.DELETED.name()).stream().map(document -> document.mapToDocumentDTO()).toList();
+        return documentRepository.findByUserIdAndStatusNotAndAccessTypeInAndFolder_StatusNot(userId, DocumentStatusEnum.DELETED.name(), List.of(DocumentAccessTypeEnum.BOTH.name(), DocumentAccessTypeEnum.ADMIN.name()), FolderStatusEnum.DELETED.name()).stream().map(document -> document.mapToDocumentDTO()).toList();
     }
 }

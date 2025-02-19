@@ -4,14 +4,9 @@ import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-import vacademy.io.admin_core_service.features.learner_operation.enums.LearnerOperationEnum;
-import vacademy.io.admin_core_service.features.learner_operation.enums.LearnerOperationSourceEnum;
 import vacademy.io.admin_core_service.features.learner_operation.service.LearnerOperationService;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.ActivityLogDTO;
-import vacademy.io.admin_core_service.features.learner_tracking.dto.DocumentActivityLogDTO;
-import vacademy.io.admin_core_service.features.learner_tracking.dto.VideoActivityLogDTO;
 import vacademy.io.admin_core_service.features.learner_tracking.entity.ActivityLog;
 import vacademy.io.admin_core_service.features.learner_tracking.entity.DocumentTracked;
 import vacademy.io.admin_core_service.features.learner_tracking.entity.VideoTracked;
@@ -21,12 +16,9 @@ import vacademy.io.admin_core_service.features.learner_tracking.repository.Video
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
-import java.sql.Date;
 import java.sql.Timestamp;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 @Service
 public class LearnerTrackingService {
@@ -126,13 +118,13 @@ public class LearnerTrackingService {
         }
     }
 
-    public Page<ActivityLogDTO>getDocumentActivityLogs(String userId, String slideId, Pageable pageable, CustomUserDetails userDetails) {
-       Page<ActivityLog>activityLogs = activityLogRepository.findActivityLogsWithDocuments(userId, slideId, pageable);
-       return activityLogs.map(ActivityLog::toActivityLogDTO);
+    public Page<ActivityLogDTO> getDocumentActivityLogs(String userId, String slideId, Pageable pageable, CustomUserDetails userDetails) {
+        Page<ActivityLog> activityLogs = activityLogRepository.findActivityLogsWithDocuments(userId, slideId, pageable);
+        return activityLogs.map(ActivityLog::toActivityLogDTO);
     }
 
-    public Page<ActivityLogDTO>getVideoActivityLogs(String userId, String slideId, Pageable pageable, CustomUserDetails userDetails) {
-        Page<ActivityLog>activityLogs = activityLogRepository.findActivityLogsWithVideos(userId, slideId, pageable);
+    public Page<ActivityLogDTO> getVideoActivityLogs(String userId, String slideId, Pageable pageable, CustomUserDetails userDetails) {
+        Page<ActivityLog> activityLogs = activityLogRepository.findActivityLogsWithVideos(userId, slideId, pageable);
         return activityLogs.map(ActivityLog::toActivityLogDTO);
     }
 

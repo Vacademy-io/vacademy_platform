@@ -10,7 +10,7 @@ import vacademy.io.common.institute.entity.module.Module;
 import java.util.List;
 
 @Repository
-public interface SubjectModuleMappingRepository extends JpaRepository<SubjectModuleMapping,String> {
+public interface SubjectModuleMappingRepository extends JpaRepository<SubjectModuleMapping, String> {
     @Query("SELECT smm.module FROM SubjectModuleMapping smm " +
             "JOIN smm.subject s " +
             "JOIN SubjectPackageSession sps ON sps.subject.id = s.id " +

@@ -28,7 +28,7 @@ public class AssessmentNotificationService {
     private final NotificationService notificationService;
 
     @Value("${scheduling.time.frame}")
-    private Integer timeFrame;
+    private Integer timeFrameInMinutes;
 
     /**
      * Sends notifications when an assessment is created.
@@ -83,7 +83,7 @@ public class AssessmentNotificationService {
      */
     private List<Assessment> getUpcomingAssessments() {
         return assessmentRepository.findAssessmentsStartingWithinTimeFrame(
-                timeFrame,
+                timeFrameInMinutes,
                 List.of(AssessmentStatus.PUBLISHED.name())
         );
     }
@@ -129,7 +129,7 @@ public class AssessmentNotificationService {
 
     public void sendNotificationsForStartedAssessments() {
         List<Assessment> assessments = assessmentRepository.findRecentlyStartedAssessments(
-                timeFrame, List.of(AssessmentStatus.PUBLISHED.name()));
+                timeFrameInMinutes, List.of(AssessmentStatus.PUBLISHED.name()));
 
         for (Assessment assessment : assessments) {
             List<AssessmentUserRegistration> registrations = getActiveUsersForAssessment(assessment.getId());

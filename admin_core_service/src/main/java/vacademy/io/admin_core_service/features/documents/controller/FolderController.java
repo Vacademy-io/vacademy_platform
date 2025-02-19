@@ -18,7 +18,7 @@ public class FolderController {
         this.folderService = folderService;
     }
 
-    @PostMapping("/add")
+    @PostMapping("/add-folders")
     public ResponseEntity<String> addFolders(@RequestBody List<FolderDTO> addFolders,
                                              @RequestParam String userId,
                                              @RequestAttribute("user") CustomUserDetails user) {

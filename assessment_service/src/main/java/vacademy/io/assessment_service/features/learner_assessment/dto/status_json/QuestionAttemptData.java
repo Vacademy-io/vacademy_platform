@@ -3,6 +3,7 @@ package vacademy.io.assessment_service.features.learner_assessment.dto.status_js
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.*;
+import org.docx4j.org.apache.xpath.operations.Bool;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -14,6 +15,8 @@ import java.util.List;
 @Builder
 public class QuestionAttemptData {
     private String questionId;
+    private Boolean isMarkedForReview;
+    private Boolean isVisited;
     private Long questionDurationLeftInSeconds;
     private Long timeTakenInSeconds;
     private OptionsJson responseData;

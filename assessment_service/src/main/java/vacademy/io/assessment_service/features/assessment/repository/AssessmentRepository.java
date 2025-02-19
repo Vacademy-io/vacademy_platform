@@ -162,4 +162,21 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
                                       @Param("userIds") List<String> userIds,
                                       Pageable pageable);
 
+    @Query("SELECT a FROM Assessment a " +
+            "WHERE TIMESTAMPDIFF(MINUTE, CURRENT_TIMESTAMP, a.boundStartTime) > 0 " +
+            "AND TIMESTAMPDIFF(MINUTE, CURRENT_TIMESTAMP, a.boundStartTime) <= :timeFrameInMinutes " +
+            "AND a.status IN :statuses")
+    List<Assessment> findAssessmentsStartingWithinTimeFrame(
+            @Param("timeFrameInMinutes") Integer timeFrameInMinutes,
+            @Param("statuses") List<String> statuses
+    );
+
+    @Query("SELECT a FROM Assessment a " +
+            "WHERE TIMESTAMPDIFF(MINUTE, a.boundStartTime, CURRENT_TIMESTAMP) > 0 " +
+            "AND TIMESTAMPDIFF(MINUTE, a.boundStartTime, CURRENT_TIMESTAMP) <= :timeFrameInMinutes " +
+            "AND a.status IN :statusList")
+    List<Assessment> findRecentlyStartedAssessments(
+            @Param("timeFrameInMinutes") Integer timeFrameInMinutes,
+            @Param("statusList") List<String> statusList);
+
 }

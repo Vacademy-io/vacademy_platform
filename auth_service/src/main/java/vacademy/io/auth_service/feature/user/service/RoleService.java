@@ -75,7 +75,7 @@ public class RoleService {
 
     public String removeRolesFromUser(ModifyUserRolesDTO modifyUserRolesDTO, CustomUserDetails customUserDetails) {
         List<String> roleIds = Arrays.asList(modifyUserRolesDTO.getCommaSeparatedRoleIds().split(","));
-        userRoleRepository.deleteAllById(roleIds);
+        userRoleRepository.deleteUserRolesByUserIdAndRoleIds(modifyUserRolesDTO.getUserId(), roleIds);
         return "Roles removed successfully";
     }
 }

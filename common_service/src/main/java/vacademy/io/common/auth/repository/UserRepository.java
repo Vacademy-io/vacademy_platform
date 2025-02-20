@@ -88,5 +88,10 @@ public interface UserRepository extends CrudRepository<User, String> {
             "WHERE ur.instituteId = :instituteId")
     List<User> findUsersWithRolesByInstituteId(@Param("instituteId") String instituteId);
 
-
+    @Query("SELECT DISTINCT u FROM User u " +
+            "JOIN u.roles ur " +
+            "JOIN ur.role r " +
+            "WHERE ur.instituteId = :instituteId " +
+            "AND r.name IN :roles")
+    List<User> findUsersWithRolesByInstituteId(@Param("instituteId") String instituteId, @Param("roles") List<String> roles);
 }

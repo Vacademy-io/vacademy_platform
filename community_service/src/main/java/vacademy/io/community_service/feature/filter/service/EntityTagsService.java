@@ -5,6 +5,7 @@ import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.community_service.feature.filter.dto.AddTagsRequestDto;
 import vacademy.io.community_service.feature.filter.entity.EntityTags;
+import vacademy.io.community_service.feature.filter.entity.EntityTagsId;
 import vacademy.io.community_service.feature.filter.enums.EntityName;
 import vacademy.io.community_service.feature.filter.repository.EntityTagsRepository;
 import vacademy.io.community_service.feature.init.enums.DropdownType;
@@ -36,16 +37,23 @@ public class EntityTagsService {
             throw new IllegalArgumentException("Entity ID does not exist.");
         }
 
-        // Convert each tagId to an EntityTags object
+        // Convert each tagId to an EntityTags object with composite key
         List<EntityTags> validTags = requestDto.getTags().stream()
                 .filter(tag -> DropdownType.isValid(tag.getTagSource()) &&
                         tagValidationService.isValidTag(tag.getTagSource(), tag.getTagId()))
-                .map(tag -> new EntityTags(requestDto.getEntityId(), requestDto.getEntityName(), tag.getTagId(), tag.getTagSource()))
+                .map(tag -> new EntityTags(
+                        new EntityTagsId(requestDto.getEntityId(), requestDto.getEntityName(), tag.getTagId()),
+                        tag.getTagSource()
+                ))
                 .collect(Collectors.toList());
 
         if (validTags.isEmpty()) {
             throw new IllegalArgumentException("No valid tags provided.");
         }
+
+        // Save all valid tags (JPA will handle conflicts with @Id)
+        //entityTagsRepository.saveAll(validTags);
+
 
         validTags.forEach(tag -> {
             entityTagsRepository.insertIgnoreConflict(

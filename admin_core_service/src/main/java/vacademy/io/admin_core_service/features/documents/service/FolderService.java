@@ -17,14 +17,14 @@ import java.util.List;
 public class FolderService {
     private final FolderRepository folderRepository;
 
-    public String addFolders(List<FolderDTO>addFolders, String userId, CustomUserDetails userDetails) {
-        List<Folder>folders = addFolders.stream().map(folderDTO -> new Folder(folderDTO)).toList();
+    public String addFolders(List<FolderDTO> addFolders, String userId, CustomUserDetails userDetails) {
+        List<Folder> folders = addFolders.stream().map(folderDTO -> new Folder(folderDTO)).toList();
         folderRepository.saveAll(folders);
         return "Folders added successfully";
     }
 
     public String deleteFolders(DeleteFoldersDTO deleteFoldersDTO, String userId, CustomUserDetails userDetails) {
-        List<Folder>folders = getIds(deleteFoldersDTO.getCommaSeparatedFolderIds()).stream().map(folderId -> folderRepository.findById(folderId).get()).toList();
+        List<Folder> folders = getIds(deleteFoldersDTO.getCommaSeparatedFolderIds()).stream().map(folderId -> folderRepository.findById(folderId).get()).toList();
         for (Folder folder : folders) {
             folder.setStatus("DELETED");
         }
@@ -36,7 +36,7 @@ public class FolderService {
         return Arrays.stream(commaSeparatedIds.split(",")).toList();
     }
 
-    public List<FolderDTO> getFoldersByUserId(String userId,CustomUserDetails userDetails) {
+    public List<FolderDTO> getFoldersByUserId(String userId, CustomUserDetails userDetails) {
         return folderRepository.findByUserIdAndStatusNot(userId, FolderStatusEnum.DELETED.name()).stream().map((folder) -> folder.mapToFolderDTO()).toList();
     }
 }

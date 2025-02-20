@@ -4,10 +4,8 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.hibernate.annotations.UuidGenerator;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.ActivityLogDTO;
 
-import java.sql.Date;
 import java.sql.Timestamp;
 import java.util.List;
 
@@ -61,14 +59,15 @@ public class ActivityLog {
         this.sourceType = activityLogDTO.getSourceType();
         this.userId = userId;
         this.slideId = slideId;
-        if(activityLogDTO.getStartTimeInMillis() != null) {
+        if (activityLogDTO.getStartTimeInMillis() != null) {
             this.startTime = new Timestamp(activityLogDTO.getStartTimeInMillis());
         }
-        if(activityLogDTO.getEndTimeInMillis() != null) {
+        if (activityLogDTO.getEndTimeInMillis() != null) {
             this.endTime = new Timestamp(activityLogDTO.getEndTimeInMillis());
         }
         this.percentageWatched = activityLogDTO.getPercentageWatched();
     }
+
     public ActivityLogDTO toActivityLogDTO() {
         ActivityLogDTO activityLogDTO = new ActivityLogDTO();
         activityLogDTO.setId(id);

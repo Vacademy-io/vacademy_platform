@@ -37,7 +37,7 @@ public class FolderController {
     @GetMapping("/get")
     public ResponseEntity<List<FolderDTO>> getFoldersByUserId(@RequestParam String userId,
                                                               @RequestAttribute("user") CustomUserDetails user) {
-        List<FolderDTO> folders = folderService.getFoldersByUserId(userId,user);
+        List<FolderDTO> folders = folderService.getFoldersByUserId(userId, user);
         return ResponseEntity.ok(folders);
     }
 }

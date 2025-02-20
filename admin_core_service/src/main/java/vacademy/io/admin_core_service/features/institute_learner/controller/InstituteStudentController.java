@@ -18,7 +18,7 @@ public class InstituteStudentController {
     // Add User to Institute
     @PostMapping("/add-institute_learner")
     public ResponseEntity<String> addStudentToInstitute(@RequestAttribute("user") CustomUserDetails user, @RequestBody InstituteStudentDTO instituteStudentDTO) {
-        return studentRegistrationManager.addStudentToInstitute(user, instituteStudentDTO,null );
+        return studentRegistrationManager.addStudentToInstitute(user, instituteStudentDTO, null);
     }
 
 }

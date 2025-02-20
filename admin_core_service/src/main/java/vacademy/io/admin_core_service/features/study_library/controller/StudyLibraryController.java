@@ -5,7 +5,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.course.dto.CourseDTOWithDetails;
 import vacademy.io.admin_core_service.features.study_library.dto.ModuleDTOWithDetails;
-import vacademy.io.admin_core_service.features.study_library.dto.SessionDTOWithDetails;
 import vacademy.io.admin_core_service.features.study_library.service.StudyLibraryService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
@@ -24,7 +23,7 @@ public class StudyLibraryController {
     }
 
     @GetMapping("/modules-with-chapters")
-    public ResponseEntity<List<ModuleDTOWithDetails>> modulesWithChapters(@RequestParam("subjectId") String subjectId,@RequestParam("packageSessionId") String packageSessionId, @RequestAttribute("user") CustomUserDetails user) {
-        return ResponseEntity.ok(studyLibraryService.getModulesDetailsWithChapters(subjectId,packageSessionId, user));
+    public ResponseEntity<List<ModuleDTOWithDetails>> modulesWithChapters(@RequestParam("subjectId") String subjectId, @RequestParam("packageSessionId") String packageSessionId, @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(studyLibraryService.getModulesDetailsWithChapters(subjectId, packageSessionId, user));
     }
 }

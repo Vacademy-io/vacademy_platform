@@ -40,12 +40,13 @@ public class ChapterPackageSessionMapping {
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Timestamp updatedAt;
 
-    public ChapterPackageSessionMapping(Chapter chapter, PackageSession packageSession,Integer chapterOrder) {
+    public ChapterPackageSessionMapping(Chapter chapter, PackageSession packageSession, Integer chapterOrder) {
         this.chapter = chapter;
         this.packageSession = packageSession;
         this.status = ChapterStatus.ACTIVE.name();
         this.chapterOrder = chapterOrder;
     }
 
-    public ChapterPackageSessionMapping() {}
+    public ChapterPackageSessionMapping() {
+    }
 }

@@ -18,7 +18,7 @@ public class LearnerSlideController {
     private final LearnerSlideService learnerSlideService;
 
     @GetMapping("/get-slides-with-status")
-    public ResponseEntity<List<SlideDetailWithOperationProjection>>getLearnerSlides(@RequestParam("userId")String userId, @RequestParam("chapterId") String chapterId, @RequestAttribute("user")CustomUserDetails userDetails){
-        return ResponseEntity.ok(learnerSlideService.getLearnerSlides(userId,chapterId,userDetails));
+    public ResponseEntity<List<SlideDetailWithOperationProjection>> getLearnerSlides(@RequestParam("userId") String userId, @RequestParam("chapterId") String chapterId, @RequestAttribute("user") CustomUserDetails userDetails) {
+        return ResponseEntity.ok(learnerSlideService.getLearnerSlides(userId, chapterId, userDetails));
     }
 }

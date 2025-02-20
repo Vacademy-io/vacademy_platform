@@ -13,6 +13,7 @@ import java.util.List;
 @Builder
 public class SectionAttemptData {
     private String sectionId;
+    private Long sectionDurationLeftInSeconds;
     private Long timeElapsedInSeconds;
     private List<QuestionAttemptData> questions;
 }

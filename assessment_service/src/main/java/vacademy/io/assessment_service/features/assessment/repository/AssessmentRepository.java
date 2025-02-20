@@ -72,14 +72,14 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
     @Query(value = "(SELECT DISTINCT a.id, a.name, a.play_mode, a.evaluation_type, a.submission_type, a.duration, " +
             "a.assessment_visibility, a.status, a.registration_close_date, a.registration_open_date, " +
             "a.expected_participants, a.cover_file_id, a.bound_start_time, a.bound_end_time, a.about_id, a.instructions_id, " +
-            "a.created_at, a.updated_at, recent_attempt.status AS recent_attempt_status, recent_attempt.start_time AS recent_attempt_start_time, a.reattempt_count, aur.reattempt_count, a.preview_time, recent_attempt.id AS recent_attempt_id, aur.id AS assessment_user_registration_id, a.duration_distribution, a.can_switch_section, a.can_request_time_increase, a.can_request_reattempt, a.omr_mode " +
+            "a.created_at, a.updated_at, recent_attempt.status AS recent_attempt_status, recent_attempt.start_time AS recent_attempt_start_time, a.reattempt_count, aur.reattempt_count, recent_attempt.total_attempts, a.preview_time, recent_attempt.id AS recent_attempt_id, aur.id AS assessment_user_registration_id, a.duration_distribution, a.can_switch_section, a.can_request_time_increase, a.can_request_reattempt, a.omr_mode " +
             "FROM public.assessment a " +
             "LEFT JOIN public.assessment_batch_registration abr ON a.id = abr.assessment_id " +
             "LEFT JOIN public.assessment_institute_mapping aim ON a.id = aim.assessment_id " +
             "LEFT JOIN public.assessment_user_registration aur ON a.id = aur.assessment_id AND aur.user_id IN (:userIds) " +
             "LEFT JOIN ( " +
             "SELECT sa.registration_id, sa.status, sa.start_time, sa.id, " +
-            "ROW_NUMBER() OVER (PARTITION BY sa.registration_id ORDER BY sa.start_time DESC) AS rn " +
+            "ROW_NUMBER() OVER (PARTITION BY sa.registration_id ORDER BY sa.start_time DESC) AS rn , COUNT(*) OVER (PARTITION BY sa.registration_id) AS total_attempts " +
             "FROM public.student_attempt sa " +
             ") AS recent_attempt ON aur.id = recent_attempt.registration_id AND recent_attempt.rn = 1 " +
             "WHERE (:name IS NULL OR :name = '' OR LOWER(a.name) LIKE LOWER(CONCAT('%', :name, '%'))) " +
@@ -94,13 +94,13 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
             "(SELECT DISTINCT a.id, a.name, a.play_mode, a.evaluation_type, a.submission_type, a.duration, " +
             "a.assessment_visibility, a.status, a.registration_close_date, a.registration_open_date, " +
             "a.expected_participants, a.cover_file_id, a.bound_start_time, a.bound_end_time, a.about_id, a.instructions_id, " +
-            "a.created_at, a.updated_at, recent_attempt.status AS recent_attempt_status, recent_attempt.start_time AS recent_attempt_start_time,  a.reattempt_count, aur.reattempt_count, a.preview_time, recent_attempt.id AS recent_attempt_id, aur.id AS assessment_user_registration_id, a.duration_distribution, a.can_switch_section, a.can_request_time_increase, a.can_request_reattempt, a.omr_mode " +
+            "a.created_at, a.updated_at, recent_attempt.status AS recent_attempt_status, recent_attempt.start_time AS recent_attempt_start_time,  a.reattempt_count, aur.reattempt_count,  recent_attempt.total_attempts, a.preview_time, recent_attempt.id AS recent_attempt_id, aur.id AS assessment_user_registration_id, a.duration_distribution, a.can_switch_section, a.can_request_time_increase, a.can_request_reattempt, a.omr_mode " +
             "FROM public.assessment a " +
             "LEFT JOIN public.assessment_user_registration aur ON a.id = aur.assessment_id " +
             "LEFT JOIN public.assessment_institute_mapping aim ON a.id = aim.assessment_id " +
             "LEFT JOIN ( " +
             "SELECT sa.registration_id, sa.status, sa.start_time, sa.id, " +
-            "ROW_NUMBER() OVER (PARTITION BY sa.registration_id ORDER BY sa.start_time DESC) AS rn " +
+            "ROW_NUMBER() OVER (PARTITION BY sa.registration_id ORDER BY sa.start_time DESC) AS rn , COUNT(*) OVER (PARTITION BY sa.registration_id) AS total_attempts " +
             "FROM public.student_attempt sa " +
             ") AS recent_attempt ON aur.id = recent_attempt.registration_id AND recent_attempt.rn = 1 " +
             "WHERE (:name IS NULL OR :name = '' OR LOWER(a.name) LIKE LOWER(CONCAT('%', :name, '%'))) " +
@@ -117,6 +117,11 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
                             "LEFT JOIN public.assessment_batch_registration abr ON a.id = abr.assessment_id " +
                             "LEFT JOIN public.assessment_institute_mapping aim ON a.id = aim.assessment_id " +
                             "LEFT JOIN public.assessment_user_registration aur ON a.id = aur.assessment_id AND aur.user_id IN (:userIds) " +
+                            "LEFT JOIN ( " +
+                            "SELECT sa.registration_id, sa.status, sa.start_time, sa.id, " +
+                            "ROW_NUMBER() OVER (PARTITION BY sa.registration_id ORDER BY sa.start_time DESC) AS rn , COUNT(*) OVER (PARTITION BY sa.registration_id) AS total_attempts " +
+                            "FROM public.student_attempt sa " +
+                            ") AS recent_attempt ON aur.id = recent_attempt.registration_id AND recent_attempt.rn = 1 " +
                             "WHERE (:name IS NULL OR :name = '' OR LOWER(a.name) LIKE LOWER(CONCAT('%', :name, '%'))) " +
                             "AND (:checkBatches IS NULL OR abr.batch_id IN :batchIds) " +
                             "AND (:instituteIds IS NULL OR aim.institute_id IN :instituteIds) " +
@@ -129,6 +134,11 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
                             "SELECT DISTINCT a.id FROM public.assessment a " +
                             "LEFT JOIN public.assessment_user_registration aur ON a.id = aur.assessment_id " +
                             "LEFT JOIN public.assessment_institute_mapping aim ON a.id = aim.assessment_id " +
+                            "LEFT JOIN ( " +
+                            "SELECT sa.registration_id, sa.status, sa.start_time, sa.id, " +
+                            "ROW_NUMBER() OVER (PARTITION BY sa.registration_id ORDER BY sa.start_time DESC) AS rn , COUNT(*) OVER (PARTITION BY sa.registration_id) AS total_attempts " +
+                            "FROM public.student_attempt sa " +
+                            ") AS recent_attempt ON aur.id = recent_attempt.registration_id AND recent_attempt.rn = 1 " +
                             "WHERE (:name IS NULL OR :name = '' OR LOWER(a.name) LIKE LOWER(CONCAT('%', :name, '%'))) " +
                             "AND (:checkUserIds IS NULL OR aur.user_id IN :userIds) " +
                             "AND (:instituteIds IS NULL OR aim.institute_id IN :instituteIds) " +
@@ -151,5 +161,22 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
                                       @Param("checkUserIds") Boolean checkUserIds,
                                       @Param("userIds") List<String> userIds,
                                       Pageable pageable);
+
+    @Query("SELECT a FROM Assessment a " +
+            "WHERE TIMESTAMPDIFF(MINUTE, CURRENT_TIMESTAMP, a.boundStartTime) > 0 " +
+            "AND TIMESTAMPDIFF(MINUTE, CURRENT_TIMESTAMP, a.boundStartTime) <= :timeFrameInMinutes " +
+            "AND a.status IN :statuses")
+    List<Assessment> findAssessmentsStartingWithinTimeFrame(
+            @Param("timeFrameInMinutes") Integer timeFrameInMinutes,
+            @Param("statuses") List<String> statuses
+    );
+
+    @Query("SELECT a FROM Assessment a " +
+            "WHERE TIMESTAMPDIFF(MINUTE, a.boundStartTime, CURRENT_TIMESTAMP) > 0 " +
+            "AND TIMESTAMPDIFF(MINUTE, a.boundStartTime, CURRENT_TIMESTAMP) <= :timeFrameInMinutes " +
+            "AND a.status IN :statusList")
+    List<Assessment> findRecentlyStartedAssessments(
+            @Param("timeFrameInMinutes") Integer timeFrameInMinutes,
+            @Param("statusList") List<String> statusList);
 
 }

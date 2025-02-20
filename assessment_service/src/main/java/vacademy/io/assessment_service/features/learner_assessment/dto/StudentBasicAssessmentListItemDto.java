@@ -37,6 +37,7 @@ public class StudentBasicAssessmentListItemDto {
     private Date recentAttemptStartDate;
     private Integer assessmentAttempts;
     private Integer userAttempts;
+    private Long createdAttempts;
     private Integer previewTime;
     private String lastAttemptId;
     private String assessmentUserRegistrationId;

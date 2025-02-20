@@ -37,7 +37,8 @@ public class SubjectModuleMapping {
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Timestamp updatedAt;
 
-    public SubjectModuleMapping() {}
+    public SubjectModuleMapping() {
+    }
 
     public SubjectModuleMapping(Subject subject, Module module) {
         this.subject = subject;

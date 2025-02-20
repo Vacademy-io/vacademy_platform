@@ -23,18 +23,15 @@ import java.util.Map;
 @Service
 public class SlideNotificationService {
 
+    private static final String SLIDE_ACCESS_URL = "http://localhost:3000";
     @Autowired
     private InstituteRepository instituteRepository;
-
     @Autowired
     private InstituteStudentRepository instituteStudentRepository;
-
     @Autowired
     private NotificationService notificationService;
 
-    private static final String SLIDE_ACCESS_URL = "http://localhost:3000";
-
-    public void sendNotificationForAddingSlide(String instituteId,Chapter chapter, Slide slide) {
+    public void sendNotificationForAddingSlide(String instituteId, Chapter chapter, Slide slide) {
         Institute institute = instituteRepository.findById(instituteId).orElseThrow(() -> new VacademyException("Institute not found"));
         List<Student> students = getStudentsByChapter(chapter);
 

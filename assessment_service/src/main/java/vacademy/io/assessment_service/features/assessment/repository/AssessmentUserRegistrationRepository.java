@@ -26,7 +26,7 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
     Optional<AssessmentUserRegistration> findTopByUserIdAndAssessmentId(@Param("userId") String userId, @Param("assessmentId") String assessmentId);
 
     @Query(value = """
-            select aur.id as registrationId,sa.id as attemptId, aur.participant_name as studentName, sa.start_time as attemptDate,sa.submit_time as endTime ,sa.total_time_in_seconds as duration, sa.result_marks as score, aur.user_id as userId  from assessment_user_registration aur
+            select aur.id as registrationId,sa.id as attemptId, aur.participant_name as studentName, sa.start_time as attemptDate,sa.submit_time as endTime ,sa.total_time_in_seconds as duration, sa.result_marks as score, aur.user_id as userId, aur.source_id as batchId from assessment_user_registration aur
             join student_attempt sa on sa.registration_id = aur.id
             where aur.assessment_id = :assessmentId
             and aur.institute_id = :instituteId
@@ -36,12 +36,12 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
             AND (:status IS NULL OR sa.status IN (:attemptType))
             """,
             countQuery = """
-                    select count(distinct aur.user_id)
+                    select count(*)
                     from assessment_user_registration aur
                     join student_attempt sa on sa.registration_id = aur.id
                     where aur.assessment_id = :assessmentId
                     and aur.institute_id = :instituteId
-                    AND (:status IS NULL OR sa.status IN (:status))
+                    AND (:status IS NULL OR aur.status IN (:status))
                     AND (:batchIds IS NULL OR aur.source_id IN (:batchIds))
                     AND aur.source = 'BATCH_PREVIEW_REGISTRATION'
                     AND (:status IS NULL OR sa.status IN (:attemptType))
@@ -55,45 +55,49 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
 
 
     @Query(value = """
-            select aur.id as registrationId,sa.id as attemptId, aur.participant_name as studentName, sa.start_time as attemptDate,sa.submit_time as endTime ,sa.total_time_in_seconds as duration, sa.result_marks as score, aur.user_id as userId  from assessment_user_registration aur
-            join student_attempt sa on sa.registration_id = aur.id
-            where aur.assessment_id = :assessmentId
-            and aur.institute_id = :instituteId
-            AND (
-            to_tsvector('simple', concat(
-              aur.participant_name
-            )) @@ plainto_tsquery('simple', :name)
+        SELECT aur.id as registrationId, sa.id as attemptId, aur.participant_name as studentName,
+               sa.start_time as attemptDate, sa.submit_time as endTime,
+               sa.total_time_in_seconds as duration, sa.result_marks as score,
+               aur.user_id as userId, aur.source_id as batchId
+        FROM assessment_user_registration aur
+        JOIN student_attempt sa ON sa.registration_id = aur.id
+        WHERE aur.assessment_id = :assessmentId
+        AND aur.institute_id = :instituteId
+        AND (
+            to_tsvector('simple', aur.participant_name) @@ plainto_tsquery('simple', :name)
             OR aur.participant_name LIKE :name || '%'
-          )
-            AND (:status IS NULL OR sa.status IN (:status))
-            AND (:batchIds IS NULL OR aur.source_id IN (:batchIds))
-            AND aur.source = 'BATCH_PREVIEW_REGISTRATION'
-            AND (:status IS NULL OR sa.status IN (:attemptType))
-          """,
+        )
+        AND (:status IS NULL OR aur.status IN (:status))
+        AND (:batchIds IS NULL OR aur.source_id IN (:batchIds))
+        AND aur.source = 'BATCH_PREVIEW_REGISTRATION'
+        AND (:attemptType IS NULL OR sa.status IN (:attemptType))
+        """,
             countQuery = """
-                    select count(distinct aur.user_id)
-                    from assessment_user_registration aur
-                    join student_attempt sa on sa.registration_id = aur.id
-                    where aur.assessment_id = :assessmentId
-                    and aur.institute_id = :instituteId
-                    AND (
-                    to_tsvector('simple', concat(
-                    aur.participant_name
-                    )) @@ plainto_tsquery('simple', :name)
-                    OR aur.participant_name LIKE :name || '%'
-                   )
-                    AND (:status IS NULL OR aur.status IN (:status))
-                    AND (:batchIds IS NULL OR aur.source_id IN (:batchIds))
-                    AND aur.source = 'BATCH_PREVIEW_REGISTRATION'
-                    AND (:status IS NULL OR sa.status IN (:attemptType))
-                   """,nativeQuery = true)
-    Page<ParticipantsDetailsDto> findUserRegistrationWithFilterWithSearchForBatch(@Param("name") String name,
-                                                                          @Param("assessmentId") String assessmentId,
-                                                                          @Param("instituteId") String instituteId,
-                                                                          @Param("batchIds") List<String> batchIds,
-                                                                          @Param("status") List<String> status,
-                                                                          @Param("attemptType") List<String> attemptType,
-                                                                          Pageable pageable);
+        SELECT COUNT(*)
+        FROM assessment_user_registration aur
+        JOIN student_attempt sa ON sa.registration_id = aur.id
+        WHERE aur.assessment_id = :assessmentId
+        AND aur.institute_id = :instituteId
+        AND (
+            to_tsvector('simple', aur.participant_name) @@ plainto_tsquery('simple', :name)
+            OR aur.participant_name LIKE :name || '%'
+        )
+        AND (:status IS NULL OR aur.status IN (:status))
+        AND (:batchIds IS NULL OR aur.source_id IN (:batchIds))
+        AND aur.source = 'BATCH_PREVIEW_REGISTRATION'
+        AND (:attemptType IS NULL OR sa.status IN (:attemptType))
+        """,
+            nativeQuery = true)
+    Page<ParticipantsDetailsDto> findUserRegistrationWithFilterWithSearchForBatch(
+            @Param("name") String name,
+            @Param("assessmentId") String assessmentId,
+            @Param("instituteId") String instituteId,
+            @Param("batchIds") List<String> batchIds,
+            @Param("status") List<String> status,
+            @Param("attemptType") List<String> attemptType,
+            Pageable pageable
+    );
+
 
 
     @Query(value = """
@@ -253,5 +257,12 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
             @Param("sourceList") List<String> sourceList,
             @Param("assessmentStatus") List<String> assessmentStatus
     );
+
+    @Query("SELECT aur FROM AssessmentUserRegistration aur WHERE aur.assessment.id = :assessmentId AND aur.status IN :statuses")
+    List<AssessmentUserRegistration> findByInstituteIdAndAssessmentIdAndStatusIn(
+            @Param("assessmentId") String assessmentId,
+            @Param("statuses") List<String> statuses
+    );
+
 
 }

@@ -6,7 +6,6 @@ import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.chapter.dto.ChapterDTO;
 import vacademy.io.admin_core_service.features.chapter.dto.UpdateChapterOrderDTO;
 import vacademy.io.admin_core_service.features.chapter.service.ChapterService;
-import vacademy.io.admin_core_service.features.subject.service.SubjectService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 import java.util.List;
@@ -18,11 +17,12 @@ public class ChapterController {
     private final ChapterService chapterService;
 
     @PostMapping("/add-chapter")
-    public ResponseEntity<ChapterDTO>addChapter(@RequestBody ChapterDTO chapterDTO, @RequestAttribute("user") CustomUserDetails user, @RequestParam("moduleId") String moduleId, @RequestParam("commaSeparatedPackageSessionIds") String commaSeparatedPackageSessionIds){
+    public ResponseEntity<ChapterDTO> addChapter(@RequestBody ChapterDTO chapterDTO, @RequestAttribute("user") CustomUserDetails user, @RequestParam("moduleId") String moduleId, @RequestParam("commaSeparatedPackageSessionIds") String commaSeparatedPackageSessionIds) {
         return ResponseEntity.ok(chapterService.addChapter(chapterDTO, moduleId, commaSeparatedPackageSessionIds, user));
     }
+
     @PutMapping("/update-chapter")
-    public ResponseEntity<String>updateChapter(@RequestBody ChapterDTO chapterDTO, @RequestAttribute("user") CustomUserDetails user, @RequestParam("chapterId") String chapterId, @RequestParam("commaSeparatedPackageSessionIds") String commaSeparatedPackageSessionIds){
+    public ResponseEntity<String> updateChapter(@RequestBody ChapterDTO chapterDTO, @RequestAttribute("user") CustomUserDetails user, @RequestParam("chapterId") String chapterId, @RequestParam("commaSeparatedPackageSessionIds") String commaSeparatedPackageSessionIds) {
         return ResponseEntity.ok(chapterService.updateChapter(chapterId, chapterDTO, commaSeparatedPackageSessionIds, user));
     }
 
@@ -34,13 +34,13 @@ public class ChapterController {
      */
     @PutMapping("/update-chapter-order")
     public ResponseEntity<String> updateChapterOrder(@RequestBody List<UpdateChapterOrderDTO> updateChapterOrderDTOS, @RequestAttribute("user") CustomUserDetails user) {
-        String result = chapterService.updateChapterOrder(updateChapterOrderDTOS,user);
+        String result = chapterService.updateChapterOrder(updateChapterOrderDTOS, user);
         return ResponseEntity.ok(result);
     }
 
     @PostMapping("/delete-chapters")
-    public ResponseEntity<String>deleteChapter(@RequestBody List<String> chapterIds, @RequestParam("packageSessionIds")String packageSessionIds, @RequestAttribute("user") CustomUserDetails user){
-        return ResponseEntity.ok(chapterService.deleteChapter(chapterIds,packageSessionIds, user));
+    public ResponseEntity<String> deleteChapter(@RequestBody List<String> chapterIds, @RequestParam("packageSessionIds") String packageSessionIds, @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(chapterService.deleteChapter(chapterIds, packageSessionIds, user));
     }
 
     @PostMapping("/copy")

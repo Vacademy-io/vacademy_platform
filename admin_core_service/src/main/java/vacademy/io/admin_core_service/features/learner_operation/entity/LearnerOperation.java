@@ -1,6 +1,9 @@
 package vacademy.io.admin_core_service.features.learner_operation.entity;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -41,7 +44,7 @@ public class LearnerOperation {
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Timestamp updatedAt;
 
-    public LearnerOperation(String userId,String source, String sourceId, String operation, String value) {
+    public LearnerOperation(String userId, String source, String sourceId, String operation, String value) {
         this.userId = userId;
         this.source = source;
         this.sourceId = sourceId;

@@ -17,17 +17,17 @@ public class LevelController {
     private final LevelService levelService;
 
     @PostMapping("/add-level")
-    public ResponseEntity<String>addLevel(@RequestBody AddLevelDTO addLevelDTO, @RequestAttribute("user")CustomUserDetails user,@RequestParam("packageId") String packageId,@RequestParam("sessionId")String sessionId) {
-        return ResponseEntity.ok(levelService.addLevel(addLevelDTO,packageId,sessionId,user));
+    public ResponseEntity<String> addLevel(@RequestBody AddLevelDTO addLevelDTO, @RequestAttribute("user") CustomUserDetails user, @RequestParam("packageId") String packageId, @RequestParam("sessionId") String sessionId) {
+        return ResponseEntity.ok(levelService.addLevel(addLevelDTO, packageId, sessionId, user));
     }
 
     @PutMapping("/update-level/{levelId}")
-    public ResponseEntity<LevelDTO>updateLevel(@RequestBody LevelDTO levelDTO, @RequestAttribute("user")CustomUserDetails user, @PathVariable("levelId") String levelId) {
-        return ResponseEntity.ok(levelService.updateLevel(levelId,levelDTO,user));
+    public ResponseEntity<LevelDTO> updateLevel(@RequestBody LevelDTO levelDTO, @RequestAttribute("user") CustomUserDetails user, @PathVariable("levelId") String levelId) {
+        return ResponseEntity.ok(levelService.updateLevel(levelId, levelDTO, user));
     }
 
     @DeleteMapping("/delete-level")
-    public ResponseEntity<String>deleteLevels(@RequestBody List<String> levelIds, @RequestAttribute("user")CustomUserDetails user) {
-        return ResponseEntity.ok(levelService.deleteLevels(levelIds,user));
+    public ResponseEntity<String> deleteLevels(@RequestBody List<String> levelIds, @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(levelService.deleteLevels(levelIds, user));
     }
 }

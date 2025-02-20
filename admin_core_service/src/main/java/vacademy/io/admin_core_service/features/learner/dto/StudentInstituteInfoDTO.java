@@ -5,9 +5,10 @@ import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import vacademy.io.common.institute.dto.*;
+import vacademy.io.common.institute.dto.InstituteSubModuleDTO;
+import vacademy.io.common.institute.dto.PackageSessionDTO;
+import vacademy.io.common.institute.dto.SubjectDTO;
 
-import java.sql.Timestamp;
 import java.util.List;
 
 @Data

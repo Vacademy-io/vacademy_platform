@@ -19,7 +19,7 @@ public class DocumentController {
         this.documentService = documentService;
     }
 
-    @PostMapping("/add")
+    @PostMapping("/add-documents")
     public ResponseEntity<String> addDocuments(@RequestBody List<DocumentDTO> addDocuments,
                                                @RequestParam String userId,
                                                @AuthenticationPrincipal CustomUserDetails user) {
@@ -43,9 +43,14 @@ public class DocumentController {
         return ResponseEntity.ok(documents);
     }
 
-    @GetMapping("/get-fo-user")
+    @GetMapping("/get-for-user")
     public ResponseEntity<List<DocumentDTO>> getDocumentsByUserId(@RequestParam String userId, @RequestAttribute("user") CustomUserDetails userDetails) {
         List<DocumentDTO> documents = documentService.getDocumentsByUserId(userId);
         return ResponseEntity.ok(documents);
+    }
+
+    @PostMapping("/add-document")
+    public ResponseEntity<DocumentDTO> getDocumentsByUserId(@RequestParam String userId,@RequestBody DocumentDTO documentDTO, @RequestAttribute("user") CustomUserDetails userDetails) {
+        return ResponseEntity.ok(documentService.addDocument(documentDTO, userId, userDetails));
     }
 }

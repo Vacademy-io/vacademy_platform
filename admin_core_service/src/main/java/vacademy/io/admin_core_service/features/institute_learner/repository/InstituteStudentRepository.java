@@ -154,15 +154,21 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             value = "SELECT DISTINCT s.id, s.username, s.user_id, s.email, s.full_name, s.address_line, s.region, " +
                     "s.city, s.pin_code, s.mobile_number, s.date_of_birth, s.gender, s.fathers_name, " +
                     "s.mothers_name, s.parents_mobile_number, s.parents_email, s.linked_institute_name, " +
-                    "s.created_at, s.updated_at, ssigm.package_session_id, ssigm.institute_enrollment_number, ssigm.status, ssigm.institute_id, ssigm.expiry_date, s.face_file_id  " +
+                    "s.created_at, s.updated_at, ssigm.package_session_id, ssigm.institute_enrollment_number, ssigm.status, " +
+                    "ssigm.institute_id, ssigm.expiry_date, s.face_file_id " +
                     "FROM student s " +
                     "JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id " +
-                    "WHERE ssigm.institute_id = :instituteId AND s.user_id = :userId order by s.created_at desc"
+                    "JOIN package_session ps ON ssigm.package_session_id = ps.id " +
+                    "WHERE ssigm.institute_id = :instituteId " +
+                    "AND s.user_id = :userId " +
+                    "AND ps.status != 'DELETED' " +
+                    "ORDER BY s.created_at DESC"
     )
     List<Object[]> getStudentWithInstituteAndUserId(
             @Param("userId") String userId,
             @Param("instituteId") String instituteId
     );
+
 
     @Query("""
                 SELECT DISTINCT st FROM Student st

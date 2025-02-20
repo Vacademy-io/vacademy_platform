@@ -18,7 +18,7 @@ public class FolderController {
         this.folderService = folderService;
     }
 
-    @PostMapping("/add")
+    @PostMapping("/add-folders")
     public ResponseEntity<String> addFolders(@RequestBody List<FolderDTO> addFolders,
                                              @RequestParam String userId,
                                              @RequestAttribute("user") CustomUserDetails user) {
@@ -39,5 +39,12 @@ public class FolderController {
                                                               @RequestAttribute("user") CustomUserDetails user) {
         List<FolderDTO> folders = folderService.getFoldersByUserId(userId, user);
         return ResponseEntity.ok(folders);
+    }
+
+    @PostMapping("/add-folder")
+    public ResponseEntity<FolderDTO> addFolder(@RequestParam String userId,
+                                                     @RequestBody FolderDTO folderDTO,
+                                                     @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(folderService.addFolder(folderDTO, userId, user));
     }
 }

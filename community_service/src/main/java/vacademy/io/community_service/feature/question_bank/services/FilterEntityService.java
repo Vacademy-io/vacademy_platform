@@ -35,21 +35,21 @@ public class FilterEntityService {
         List<EntityTags> entityTagsList;
 
         // Return all entities if no filters are provided
-        if ((filterRequest.getType() == null || filterRequest.getType().isEmpty()) &&
+        if ((Objects.isNull(filterRequest.getType())  || filterRequest.getType().isEmpty()) &&
                 (filterRequest.getTags() == null || filterRequest.getTags().isEmpty())) {
             entityTagsList = repository.findAll();
         } else {
             Specification<EntityTags> spec = Specification.where(null);
 
             // Filter by Type
-            if (filterRequest.getType() != null && !filterRequest.getType().isEmpty()) {
+            if ( !(Objects.isNull(filterRequest.getType()) && !filterRequest.getType().isEmpty())) {
                 spec = spec.and((root, query, criteriaBuilder) ->
                         criteriaBuilder.equal(root.get("id").get("entityName"), filterRequest.getType()));
             }
 
             // Filter by Tags
             // using or operator to make the specs
-            if (filterRequest.getTags() != null && !filterRequest.getTags().isEmpty()) {
+            if ( !Objects.isNull(filterRequest.getTags()) && !filterRequest.getTags().isEmpty()) {
                 List<String> tagIds = filterRequest.getTags().stream()
                         .map(TagFilterRequestDto::getTagId)
                         .filter(tagId -> tagId != null && !tagId.isEmpty())

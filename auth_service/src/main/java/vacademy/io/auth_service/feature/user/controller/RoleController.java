@@ -27,10 +27,10 @@ public class RoleController {
 
     @DeleteMapping("/remove-user-roles")
     public ResponseEntity<String> removeUserRoles(
-            @RequestBody ModifyUserRolesDTO addRolesToUserDTO,
+            @RequestBody ModifyUserRolesDTO removeUserRolesDTO,
             @RequestAttribute("user") CustomUserDetails customUserDetails) {
 
-        String response = roleService.removeRolesFromUser(addRolesToUserDTO, customUserDetails);
+        String response = roleService.removeRolesFromUser(removeUserRolesDTO, customUserDetails);
         return ResponseEntity.ok(response);
     }
 }

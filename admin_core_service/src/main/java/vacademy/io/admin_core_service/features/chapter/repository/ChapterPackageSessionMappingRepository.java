@@ -27,7 +27,8 @@ public interface ChapterPackageSessionMappingRepository extends JpaRepository<Ch
             "WHERE mcm.module.id = :moduleId " +
             "AND mcm.chapter.status != 'DELETED' " +
             "AND cpsm.packageSession.id = :packageSessionId " +
-            "AND cpsm.status != 'DELETED'")
+            "AND cpsm.status != 'DELETED' " +
+            "ORDER BY cpsm.chapterOrder ASC")
     List<ChapterPackageSessionMapping> findChapterPackageSessionsByModuleIdAndStatusNotDeleted(
             String moduleId, String packageSessionId);
 

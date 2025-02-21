@@ -281,8 +281,6 @@ public class LearnerAssessmentAttemptStatusManager {
             Optional<StudentAttempt> studentAttempt = studentAttemptRepository.findById(attemptId);
             if(studentAttempt.isEmpty()) throw new VacademyException("Student Attempt Not Found");
 
-            if(Objects.isNull(request) || Objects.isNull(request.getJsonContent())) throw new VacademyException("Invalid request");
-
             Assessment assessment = studentAttempt.get().getRegistration().getAssessment();
             if(!assessment.getId().equals(assessmentId)) throw new VacademyException("Student Not Linked with Assessment");
 
@@ -294,19 +292,20 @@ public class LearnerAssessmentAttemptStatusManager {
                 throw new VacademyException("Assessment Already Ended");
 
             LearnerAssessmentAttemptDataDto attemptDataDto = studentAttempt.get().getAttemptData()!=null ? studentAttemptService.validateAndCreateJsonObject(studentAttempt.get().getAttemptData()) : null;
+            LearnerAssessmentAttemptDataDto requestAttemptDto = request.getJsonContent()!=null ? studentAttemptService.validateAndCreateJsonObject(request.getJsonContent()) : null;
 
             return ResponseEntity.ok(AssessmentRestartResponse.builder()
-                    .previewResponse(createLearnerAssessmentPreview(studentAttempt, assessment))
-                    .learnerAssessmentAttemptDataDto(attemptDataDto)
-                    .updateStatusResponse(handleCaseWithNullRequestAttemptData(studentAttempt, assessment, attemptDataDto, request.getJsonContent())).build());
+//                    .previewResponse(createLearnerAssessmentPreview(studentAttempt, assessment))
+//                    .learnerAssessmentAttemptDataDto(attemptDataDto)
+                    .updateStatusResponse(handleStatusResponse(studentAttempt, assessment, requestAttemptDto, request.getJsonContent())).build());
         }
         catch (Exception e){
             throw new VacademyException("Failed To Restart: " + e.getMessage());
         }
     }
 
-    private LearnerUpdateStatusResponse handleCaseWithNullRequestAttemptData(Optional<StudentAttempt> studentAttempt, Assessment assessment, LearnerAssessmentAttemptDataDto attemptDataDto, String jsonContent) {
-        List<LearnerUpdateStatusResponse.DurationResponse> dataDurationResponse = restartAssessmentService.getNewDurationForAssessment(studentAttempt,assessment,Optional.of(attemptDataDto), jsonContent);
+    private LearnerUpdateStatusResponse handleStatusResponse(Optional<StudentAttempt> studentAttempt, Assessment assessment, LearnerAssessmentAttemptDataDto requestAttemptDataDto, String requestJsonContent) {
+        List<LearnerUpdateStatusResponse.DurationResponse> dataDurationResponse = restartAssessmentService.getNewDurationForAssessment(studentAttempt,assessment,requestAttemptDataDto!=null ? Optional.of(requestAttemptDataDto) : Optional.empty(), requestJsonContent);
 
         List<AssessmentAnnouncement> allAnnouncement = announcementService.getAnnouncementForAssessment(assessment.getId());
         List<BasicLevelAnnouncementDto> allAnnouncementResponse = announcementService.createBasicLevelAnnouncementDto(allAnnouncement);

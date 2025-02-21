@@ -39,4 +39,12 @@ public interface QuestionAssessmentSectionMappingRepository extends CrudReposito
             """, nativeQuery = true)
     Optional<QuestionAssessmentSectionMapping> findByQuestionIdAndSectionId(@Param("questionId") String questionId,
                                                                             @Param("sectionId") String sectionId);
+
+    @Query(value = """
+            SELECT qasm.* FROM question_assessment_section_mapping qasm
+            WHERE qasm.section_id = :sectionId
+            AND qasm.status NOT IN (:statusList)
+            """, nativeQuery = true)
+    List<QuestionAssessmentSectionMapping> findBySectionIdAndStatusNotIn(@Param("sectionId") String sectionId,
+                                                                         @Param("statusList") List<String> statusList);
 }

@@ -16,5 +16,5 @@ import java.util.Map;
 @Builder
 public class StudentReportOverallDetailDto {
     private ParticipantsQuestionOverallDetailDto questionOverallDetailDto;
-    private Map<String, List<StudentReportAnswerReviewDto>> allQuestions;
+    private Map<String, List<StudentReportAnswerReviewDto>> allSections;
 }

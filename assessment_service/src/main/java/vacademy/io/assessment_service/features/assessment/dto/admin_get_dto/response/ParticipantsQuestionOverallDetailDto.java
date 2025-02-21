@@ -14,4 +14,8 @@ public interface ParticipantsQuestionOverallDetailDto {
     Integer getWrongAttempt();
     Integer getPartialCorrectAttempt();
     Integer getSkippedCount();
+    Double getTotalCorrectMarks();
+    Double getTotalIncorrectMarks();
+    Double getTotalPartialMarks();
+    Integer getRank();
 }

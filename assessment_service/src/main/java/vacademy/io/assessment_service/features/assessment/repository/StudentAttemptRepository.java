@@ -366,8 +366,8 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                     sa.total_marks AS achievedMarks,
                     aur.status,
                     sa.submit_time,
-                    sa.start_time as startTime,
-                    aim.subject_id as subjectId,
+                    sa.start_time AS startTime,
+                    aim.subject_id AS subjectId,
                     ROW_NUMBER() OVER (PARTITION BY aur.user_id ORDER BY sa.created_at DESC) AS rn
                 FROM student_attempt sa
                 JOIN assessment_user_registration aur ON aur.id = sa.registration_id
@@ -383,16 +383,19 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                 FROM assessment_user_registration aur2
                 WHERE aur2.assessment_id = :assessmentId
             ),
-            AttemptInformation AS(
-            SELECT
-                attempt_id,
-                COUNT(*) FILTER (WHERE status = 'CORRECT') AS correct_count,
-                COUNT(*) FILTER (WHERE status = 'INCORRECT') AS wrong_count,
-                COUNT(*) FILTER (WHERE status = 'PARTIAL_CORRECT') AS partial_correct_count,
-                COUNT(*) FILTER (WHERE status IS null or status = 'PENDING') AS skipped_count
-            FROM question_wise_marks
-            WHERE attempt_id = :attemptId
-            GROUP BY attempt_id
+            AttemptInformation AS (
+                SELECT
+                    attempt_id,
+                    COUNT(*) FILTER (WHERE status = 'CORRECT') AS correct_count,
+                    COUNT(*) FILTER (WHERE status = 'INCORRECT') AS wrong_count,
+                    COUNT(*) FILTER (WHERE status = 'PARTIAL_CORRECT') AS partial_correct_count,
+                    COUNT(*) FILTER (WHERE status IS NULL OR status = 'PENDING') AS skipped_count,
+                    COALESCE(SUM(marks) FILTER (WHERE status = 'CORRECT'), 0) AS totalCorrectMarks,
+                    COALESCE(SUM(marks) FILTER (WHERE status = 'INCORRECT'), 0) AS totalIncorrectMarks,
+                    COALESCE(SUM(marks) FILTER (WHERE status = 'PARTIAL_CORRECT'), 0) AS totalPartialMarks
+                FROM question_wise_marks
+                WHERE attempt_id = :attemptId
+                GROUP BY attempt_id
             ),
             RankedWithTotal AS (
                 SELECT
@@ -410,20 +413,25 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
             )
             SELECT
                 tb.attemptId,
-                    tb.userId,
-                    tb.completionTimeInSeconds,
-                    tb.achievedMarks,
-                    tb.startTime,
-                    tb.subjectId,
+                tb.userId,
+                tb.completionTimeInSeconds,
+                tb.achievedMarks,
+                tb.startTime,
+                tb.subjectId,
                 ROUND(CAST(100.0 * (1.0 - (CAST(tb.rank - 1 AS FLOAT) / NULLIF(tb.totalParticipants * 1.0, 0))) AS NUMERIC), 2) AS percentile,
-                ai.correct_count as correctAttempt,
-                ai.wrong_count as wrongAttempt,
-                ai.partial_correct_count as partialCorrectAttempt,
-                ai.skipped_count as skippedCount
+                ai.correct_count AS correctAttempt,
+                ai.wrong_count AS wrongAttempt,
+                ai.partial_correct_count AS partialCorrectAttempt,
+                ai.skipped_count AS skippedCount,
+                ai.totalCorrectMarks,
+                ai.totalIncorrectMarks,
+                ai.totalPartialMarks,
+                tb.rank
             FROM RankedWithTotal tb
             LEFT JOIN AttemptInformation ai ON tb.attemptId = ai.attempt_id
             WHERE tb.attemptId = :attemptId
             ORDER BY tb.achievedMarks DESC, tb.completionTimeInSeconds ASC;
+            
             """,nativeQuery = true)
     ParticipantsQuestionOverallDetailDto findParticipantsQuestionOverallDetails(@Param("assessmentId") String assessmentId,
                                                                                 @Param("instituteId") String instituteId,

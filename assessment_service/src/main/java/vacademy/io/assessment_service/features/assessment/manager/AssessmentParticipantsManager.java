@@ -35,11 +35,16 @@ import vacademy.io.assessment_service.features.assessment.service.QuestionBasedS
 import vacademy.io.assessment_service.features.assessment.service.assessment_get.AssessmentService;
 import vacademy.io.assessment_service.features.assessment.service.bulk_entry_services.AssessmentBatchRegistrationService;
 import vacademy.io.assessment_service.features.assessment.service.bulk_entry_services.QuestionAssessmentSectionMappingService;
+import vacademy.io.assessment_service.features.evaluation.service.QuestionEvaluationService;
 import vacademy.io.assessment_service.features.learner_assessment.entity.QuestionWiseMarks;
 import vacademy.io.assessment_service.features.learner_assessment.service.QuestionWiseMarksService;
+import vacademy.io.assessment_service.features.question_core.dto.MCQEvaluationDTO;
+import vacademy.io.assessment_service.features.question_core.entity.Option;
 import vacademy.io.assessment_service.features.question_core.entity.Question;
+import vacademy.io.assessment_service.features.question_core.repository.OptionRepository;
 import vacademy.io.assessment_service.features.rich_text.entity.AssessmentRichTextData;
 import vacademy.io.assessment_service.features.rich_text.enums.TextType;
+import vacademy.io.assessment_service.features.rich_text.repository.AssessmentRichTextRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.core.utils.DateUtil;
 import vacademy.io.common.exceptions.VacademyException;
@@ -76,6 +81,15 @@ public class AssessmentParticipantsManager {
 
     @Autowired
     StudentAttemptRepository studentAttemptRepository;
+
+    @Autowired
+    AssessmentRichTextRepository assessmentRichTextRepository;
+
+    @Autowired
+    QuestionEvaluationService questionEvaluationService;
+
+    @Autowired
+    OptionRepository optionRepository;
 
 
     @Transactional
@@ -506,7 +520,7 @@ public class AssessmentParticipantsManager {
         ParticipantsQuestionOverallDetailDto questionOverallDetailDto = studentAttemptRepository.findParticipantsQuestionOverallDetails(assessmentId, instituteId, attemptId);
 
         return ResponseEntity.ok(StudentReportOverallDetailDto.builder()
-                .allQuestions(generateStudentReport(mappings, attemptId))
+                .allSections(generateStudentReport(mappings, attemptId))
                 .questionOverallDetailDto(questionOverallDetailDto)
                 .build());
     }
@@ -554,7 +568,10 @@ public class AssessmentParticipantsManager {
             }
 
             Question currentQuestion = questionWiseMarks.getQuestion();
+            String questionHtml = currentQuestion.getTextData().getContent();
             String questionType = currentQuestion.getQuestionType();
+
+            List<StudentReportAnswerReviewDto.ReportOptionsDto> correctOptions = createCorrectOptionsDto(currentQuestion.getAutoEvaluationJson());
 
             if (StringUtils.isEmpty(questionType)) {
                 throw new VacademyException("Invalid Question Type for Question ID: " + currentQuestion.getId());
@@ -565,15 +582,41 @@ public class AssessmentParticipantsManager {
 
             return StudentReportAnswerReviewDto.builder()
                     .questionId(currentQuestion.getId())
-                    .studentResponseOptionsIds(responseOptionIds)
+                    .questionName(questionHtml)
+                    .correctOptions(correctOptions)
+                    .studentResponseOptions(createOptionResponse(responseOptionIds))
                     .answerStatus(questionWiseMarks.getStatus())
                     .mark(questionWiseMarks.getMarks())
+                    .explanationId(currentQuestion.getExplanationTextData()!=null ? currentQuestion.getExplanationTextData().getId() : null)
+                    .explanation(currentQuestion.getExplanationTextData() != null ? currentQuestion.getExplanationTextData().getContent() : null)
                     .timeTakenInSeconds(questionWiseMarks.getTimeTakenInSeconds())
                     .build();
         }
         catch (Exception e){
             return StudentReportAnswerReviewDto.builder().build();
         }
+    }
+
+    private List<StudentReportAnswerReviewDto.ReportOptionsDto> createCorrectOptionsDto(String autoEvaluationJson) throws JsonProcessingException {
+        if(Objects.isNull(autoEvaluationJson)) return new ArrayList<>();
+        MCQEvaluationDTO evaluationDTO = questionEvaluationService.getEvaluationJson(autoEvaluationJson);
+        List<String> optionIds = evaluationDTO.getData().getCorrectOptionIds();
+
+        return createOptionResponse(optionIds);
+    }
+
+    private List<StudentReportAnswerReviewDto.ReportOptionsDto> createOptionResponse(List<String> optionIds) {
+        List<Option> allOptions = optionRepository.findAllById(optionIds);
+        List<StudentReportAnswerReviewDto.ReportOptionsDto> optionResponse = new ArrayList<>();
+
+        allOptions.forEach(option->{
+            String optionHtml = option.getText()!=null ? option.getText().getContent() : null;
+            optionResponse.add(StudentReportAnswerReviewDto.ReportOptionsDto.builder()
+                    .optionId(option.getId())
+                    .optionName(optionHtml).build());
+        });
+
+        return optionResponse;
     }
 
 }

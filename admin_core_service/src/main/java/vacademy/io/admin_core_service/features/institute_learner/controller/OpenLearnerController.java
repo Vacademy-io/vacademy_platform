@@ -19,6 +19,7 @@ public class OpenLearnerController {
     @PostMapping("/add-institute_learner")
     public ResponseEntity<StudentDTO> addStudentToInstitute(@RequestBody UserDTO userDTO, @RequestParam String instituteId) {
         return studentRegistrationManager.addOpenStudentToInstitute(userDTO, instituteId);
+
     }
 
 }

@@ -50,7 +50,7 @@ public class UserWithRolesDTO {
         this.isRootUser = user.isRootUser();
         this.profilePicFileId = user.getProfilePicFileId();
         this.roles = user.getRoles().stream()
-                .map(role -> new RoleDTO(role.getRole().getName(), role.getInstituteId())).collect(Collectors.toList());
+                .map(role -> new RoleDTO(role.getRole().getId(), role.getRole().getName())).collect(Collectors.toList());
     }
 }
 

@@ -7,6 +7,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.UserRoleRequestDTO;
+import vacademy.io.common.auth.dto.UserWithRolesDTO;
 import vacademy.io.common.auth.entity.User;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.auth.service.UserService;
@@ -80,5 +81,10 @@ public class UserController {
         return ResponseEntity.ok("Role removed from user successfully.");
     }
 
+    @GetMapping("/get-users-by-institute-id")
+    public ResponseEntity<List<UserWithRolesDTO>> getUsersByInstituteId(@RequestParam("instituteId") String instituteId, @RequestBody List<String> roles, @RequestAttribute("user") CustomUserDetails user) {
+        List<UserWithRolesDTO> users = userService.getUserDetailsByInstituteId(instituteId,roles,user);
+        return ResponseEntity.ok(users);
+    }
 
 }

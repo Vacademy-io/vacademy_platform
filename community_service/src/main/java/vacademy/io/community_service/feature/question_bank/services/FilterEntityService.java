@@ -1,15 +1,15 @@
 package vacademy.io.community_service.feature.question_bank.services;
 
-import org.springframework.data.jpa.domain.Specification;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
-import vacademy.io.community_service.feature.filter.entity.EntityTags;
 import vacademy.io.community_service.feature.filter.repository.EntityTagsRepository;
 import vacademy.io.community_service.feature.filter.repository.QuestionPaperRepository;
 import vacademy.io.community_service.feature.filter.repository.QuestionRepository;
 import vacademy.io.community_service.feature.question_bank.dto.FilteredEntityResponseDto;
 import vacademy.io.community_service.feature.question_bank.dto.RequestDto;
 import vacademy.io.community_service.feature.question_bank.dto.TagFilterRequestDto;
-import vacademy.io.community_service.feature.question_bank.dto.TagResponseDto;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -21,80 +21,68 @@ public class FilterEntityService {
     private final QuestionRepository questionRepository;
     private final QuestionPaperRepository questionPaperRepository;
 
-    public FilterEntityService(EntityTagsRepository repository , QuestionRepository questionRepository , QuestionPaperRepository questionPaperRepository) {
+    public FilterEntityService(EntityTagsRepository repository, QuestionRepository questionRepository, QuestionPaperRepository questionPaperRepository) {
         this.repository = repository;
         this.questionRepository = questionRepository;
         this.questionPaperRepository = questionPaperRepository;
     }
 
     /**
-     * Get filtered EntityTags based on user-provided filters.
-     * If no filters are provided, return all entities.
+     * Get paginated filtered entity response.
      */
-    public List<FilteredEntityResponseDto> getFilteredEntityTags(RequestDto filterRequest) {
-        List<EntityTags> entityTagsList;
+    public FilteredEntityResponseDto getFilteredEntityTags(RequestDto filterRequest, int pageNo, int pageSize) {
+        String entityName = filterRequest.getType();
+        Pageable pageable = PageRequest.of(pageNo, pageSize);
 
-        // Return all entities if no filters are provided
-        if ((Objects.isNull(filterRequest.getType())  || filterRequest.getType().isEmpty()) &&
-                (filterRequest.getTags() == null || filterRequest.getTags().isEmpty())) {
-            entityTagsList = repository.findAll();
-        } else {
-            Specification<EntityTags> spec = Specification.where(null);
+        Set<String> tagIds = Optional.ofNullable(filterRequest.getTags())
+                .orElse(Collections.emptyList())
+                .stream()
+                .map(TagFilterRequestDto::getTagId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
 
-            // Filter by Type
-            if ( !(Objects.isNull(filterRequest.getType()) && !filterRequest.getType().isEmpty())) {
-                spec = spec.and((root, query, criteriaBuilder) ->
-                        criteriaBuilder.equal(root.get("id").get("entityName"), filterRequest.getType()));
-            }
+        Page<Object[]> entityResults = repository.findDistinctEntityIds(entityName, tagIds.isEmpty() ? null : List.copyOf(tagIds), pageable);
 
-            // Filter by Tags
-            // using or operator to make the specs
-            if ( !Objects.isNull(filterRequest.getTags()) && !filterRequest.getTags().isEmpty()) {
-                List<String> tagIds = filterRequest.getTags().stream()
-                        .map(TagFilterRequestDto::getTagId)
-                        .filter(tagId -> tagId != null && !tagId.isEmpty())
-                        .collect(Collectors.toList());
-
-                List<String> tagSources = filterRequest.getTags().stream()
-                        .map(TagFilterRequestDto::getTagSource)
-                        .filter(tagSource -> tagSource != null && !tagSource.isEmpty())
-                        .collect(Collectors.toList());
-
-                if (!tagIds.isEmpty()) {
-                    spec = spec.and((root, query, criteriaBuilder) ->
-                            root.get("id").get("tagId").in(tagIds));
-                }
-
-                if (!tagSources.isEmpty()) {
-                    spec = spec.and((root, query, criteriaBuilder) ->
-                            root.get("tagSource").in(tagSources));
-                }
-            }
-
-
-
-            entityTagsList = repository.findAll(spec);
-        }
-
-        // Grouping tags by entityId
-        Map<String, FilteredEntityResponseDto> entityMap = new LinkedHashMap<>();
-
-        for (EntityTags entityTag : entityTagsList) {
-            String entityId = entityTag.getId().getEntityId();
-            String entityName = entityTag.getId().getEntityName();
-            String tagId = entityTag.getId().getTagId();
-            String tagSource = entityTag.getTagSource();
-
-            entityMap.computeIfAbsent(entityId, id -> {
-                Object entityData = fetchEntityById(entityId, entityName); // Fetch entity from DB
-                return new FilteredEntityResponseDto(entityId, entityName, new ArrayList<>(), entityData);
-            }).getTags().add(new TagResponseDto(tagId, tagSource));
-        }
-
-        return new ArrayList<>(entityMap.values());
+        return createFilteredEntityResponse(entityResults);
     }
-    private Object fetchEntityById(String entityId, String entityName) {
-        switch (entityName) {
+
+    /**
+     * Convert database results to FilteredEntityResponseDto.
+     */
+    private FilteredEntityResponseDto createFilteredEntityResponse(Page<Object[]> entityResults) {
+        List<Map<String, Object>> content = new ArrayList<>();
+
+        if (entityResults.hasContent()) {
+            content = entityResults.getContent().stream().map(result -> {
+                Map<String, Object> entityMap = new HashMap<>();
+                String entityId = (String) result[0];
+                String entityType = (String) result[1];
+
+                entityMap.put("entityId", entityId);
+                entityMap.put("entityType", entityType);
+                entityMap.put("entityData", fetchEntityById(entityId, entityType));
+
+                return entityMap;
+            }).collect(Collectors.toList());
+        }
+
+        return FilteredEntityResponseDto.builder()
+                .content(content)
+                .pageNo(entityResults.getNumber())
+                .pageSize(entityResults.getSize())
+                .totalPages(entityResults.getTotalPages())
+                .totalElements(entityResults.getTotalElements())
+                .last(entityResults.isLast())
+                .build();
+    }
+
+    /**
+     * Fetch entity details from respective repositories.
+     */
+    private Object fetchEntityById(String entityId, String entityType) {
+        if (entityType == null) return null;
+
+        switch (entityType) {
             case "QUESTION":
                 return questionRepository.findById(entityId).orElse(null);
             case "QUESTION_PAPER":

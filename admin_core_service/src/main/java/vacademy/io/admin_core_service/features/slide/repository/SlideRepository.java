@@ -26,21 +26,32 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
             """)
     SlideCountProjection countSlidesByChapterId(@Param("chapterId") String chapterId);
 
-    @Query(value = "SELECT DISTINCT ON (s.id) s.id AS slideId, s.title AS slideTitle, s.description AS slideDescription, " +
-            "s.source_type AS sourceType, s.status AS status, s.image_file_id AS imageFileId, " +
-            "ds.id AS documentId, ds.title AS documentTitle, ds.cover_file_id AS documentCoverFileId, " +
-            "ds.type AS documentType, ds.data AS documentData, " +
-            "vs.id AS videoId, vs.title AS videoTitle, vs.url AS videoUrl, vs.description AS videoDescription, " +
-            "cts.slide_order AS slideOrder " +
-            "FROM chapter_to_slides cts " +
-            "JOIN slide s ON cts.slide_id = s.id " +
-            "JOIN chapter ch ON cts.chapter_id = ch.id " +
-            "LEFT JOIN document_slide ds ON ds.id = s.source_id AND s.source_type = 'DOCUMENT' " +
-            "LEFT JOIN video vs ON vs.id = s.source_id AND s.source_type = 'VIDEO' " +
-            "WHERE ch.id = :chapterId " +
-            "AND s.status IN :status " +
-            "ORDER BY s.id, cts.slide_order IS NULL, cts.slide_order ASC",
-            nativeQuery = true)
+    @Query(value = """
+        SELECT s.id AS slideId, 
+               s.title AS slideTitle, 
+               s.description AS slideDescription, 
+               s.source_type AS sourceType, 
+               s.status AS status, 
+               s.image_file_id AS imageFileId, 
+               ds.id AS documentId, 
+               ds.title AS documentTitle, 
+               ds.cover_file_id AS documentCoverFileId, 
+               ds.type AS documentType, 
+               ds.data AS documentData, 
+               vs.id AS videoId, 
+               vs.title AS videoTitle, 
+               vs.url AS videoUrl, 
+               vs.description AS videoDescription, 
+               COALESCE(cts.slide_order, 9999) AS slideOrder
+        FROM chapter_to_slides cts
+        JOIN slide s ON cts.slide_id = s.id
+        JOIN chapter ch ON cts.chapter_id = ch.id
+        LEFT JOIN document_slide ds ON ds.id = s.source_id AND s.source_type = 'DOCUMENT'
+        LEFT JOIN video vs ON vs.id = s.source_id AND s.source_type = 'VIDEO'
+        WHERE ch.id = :chapterId
+          AND s.status IN :status
+        ORDER BY COALESCE(cts.slide_order, 9999) ASC, s.id
+        """, nativeQuery = true)
     List<SlideDetailProjection> findSlideDetailsByChapterId(@Param("chapterId") String chapterId, @Param("status") List<String> status);
 
     @Query(value = "SELECT DISTINCT ON (s.id) s.id AS slideId, s.title AS slideTitle, s.description AS slideDescription, " +

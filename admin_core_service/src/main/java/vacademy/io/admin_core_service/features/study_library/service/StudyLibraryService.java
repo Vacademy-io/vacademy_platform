@@ -5,6 +5,8 @@ import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.chapter.dto.ChapterDTO;
 import vacademy.io.admin_core_service.features.chapter.dto.ChapterDTOWithDetail;
 import vacademy.io.admin_core_service.features.chapter.entity.Chapter;
+import vacademy.io.admin_core_service.features.chapter.entity.ChapterPackageSessionMapping;
+import vacademy.io.admin_core_service.features.chapter.repository.ChapterPackageSessionMappingRepository;
 import vacademy.io.admin_core_service.features.course.dto.CourseDTO;
 import vacademy.io.admin_core_service.features.course.dto.CourseDTOWithDetails;
 import vacademy.io.admin_core_service.features.level.repository.LevelRepository;
@@ -52,6 +54,9 @@ public class StudyLibraryService {
 
     @Autowired
     private SlideRepository slideRepository;
+
+    @Autowired
+    private ChapterPackageSessionMappingRepository chapterPackageSessionMappingRepository;
 
     public List<CourseDTOWithDetails> getStudyLibraryInitDetails(String instituteId) {
         validateInstituteId(instituteId);
@@ -162,7 +167,7 @@ public class StudyLibraryService {
         List<Module> modules = subjectModuleMappingRepository.findModulesBySubjectIdAndPackageSessionId(subjectId, packageSessionId);
         List<ModuleDTOWithDetails> moduleDTOWithDetails = new ArrayList<>();
         for (Module module : modules) {
-            List<Chapter> chapters = moduleChapterMappingRepository.findChaptersByModuleIdAndStatusNotDeleted(module.getId(), packageSessionId);
+            List<ChapterPackageSessionMapping> chapters = chapterPackageSessionMappingRepository.findChapterPackageSessionsByModuleIdAndStatusNotDeleted(module.getId(), packageSessionId);
             List<ChapterDTOWithDetail> chapterDTOS = chapters.stream().map(this::mapToChapterDTOWithDetail).toList();
             ModuleDTOWithDetails moduleDTOWithDetails1 = new ModuleDTOWithDetails(new ModuleDTO(module), chapterDTOS);
             moduleDTOWithDetails.add(moduleDTOWithDetails1);
@@ -170,11 +175,11 @@ public class StudyLibraryService {
         return moduleDTOWithDetails;
     }
 
-    public ChapterDTOWithDetail mapToChapterDTOWithDetail(Chapter chapter) {
+    public ChapterDTOWithDetail mapToChapterDTOWithDetail(ChapterPackageSessionMapping chapterPackageSessionMapping) {
         ChapterDTOWithDetail chapterDTOWithDetail = new ChapterDTOWithDetail();
-        ChapterDTO chapterDTO = chapter.mapToDTO();
+        ChapterDTO chapterDTO = chapterPackageSessionMapping.mapToChapterDTO();
         chapterDTOWithDetail.setChapter(chapterDTO);
-        chapterDTOWithDetail.setSlidesCount(slideRepository.countSlidesByChapterId(chapter.getId()));
+        chapterDTOWithDetail.setSlidesCount(slideRepository.countSlidesByChapterId(chapterDTO.getId()));
         return chapterDTOWithDetail;
     }
 

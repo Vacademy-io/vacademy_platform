@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 import org.hibernate.annotations.UuidGenerator;
+import vacademy.io.admin_core_service.features.chapter.dto.ChapterDTO;
 import vacademy.io.admin_core_service.features.chapter.enums.ChapterStatus;
 import vacademy.io.common.institute.entity.session.PackageSession;
 
@@ -48,5 +49,15 @@ public class ChapterPackageSessionMapping {
     }
 
     public ChapterPackageSessionMapping() {
+    }
+
+    public ChapterDTO mapToChapterDTO(){
+        ChapterDTO chapterDTO = new ChapterDTO();
+        chapterDTO.setId(this.chapter.getId());
+        chapterDTO.setChapterName(this.chapter.getChapterName());
+        chapterDTO.setDescription(this.chapter.getDescription());
+        chapterDTO.setStatus(this.chapter.getStatus());
+        chapterDTO.setChapterOrder(this.chapterOrder);
+        return chapterDTO;
     }
 }

@@ -22,4 +22,13 @@ public interface ChapterPackageSessionMappingRepository extends JpaRepository<Ch
             @Param("chapterIds") List<String> chapterIds,
             @Param("packageSessionIds") List<String> packageSessionIds);
 
+    @Query("SELECT cpsm FROM ChapterPackageSessionMapping cpsm " +
+            "JOIN ModuleChapterMapping mcm ON mcm.chapter.id = cpsm.chapter.id " +
+            "WHERE mcm.module.id = :moduleId " +
+            "AND mcm.chapter.status != 'DELETED' " +
+            "AND cpsm.packageSession.id = :packageSessionId " +
+            "AND cpsm.status != 'DELETED'")
+    List<ChapterPackageSessionMapping> findChapterPackageSessionsByModuleIdAndStatusNotDeleted(
+            String moduleId, String packageSessionId);
+
 }

@@ -9,8 +9,10 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import vacademy.io.community_service.feature.filter.entity.EntityTags;
+import vacademy.io.community_service.feature.question_bank.dto.TagsByIdResponseDto;
 
 import java.util.List;
+import java.util.Map;
 
 @Repository
 public interface EntityTagsRepository extends JpaRepository<EntityTags, String>, JpaSpecificationExecutor<EntityTags> {
@@ -35,5 +37,24 @@ public interface EntityTagsRepository extends JpaRepository<EntityTags, String>,
             Pageable pageable
     );
 
+    @Query("""
+    SELECT new vacademy.io.community_service.feature.question_bank.dto.TagsByIdResponseDto(
+        e.id.tagId,
+        e.tagSource,
+        CASE
+            WHEN e.tagSource = 'LEVEL' THEN l.levelName
+            WHEN e.tagSource = 'STREAM' THEN s.streamName
+            WHEN e.tagSource = 'SUBJECT' THEN sub.subjectName
+            WHEN e.tagSource = 'DIFFICULTY' THEN e.id.tagId 
+            ELSE NULL
+        END
+    )
+    FROM EntityTags e
+    LEFT JOIN Levels l ON e.id.tagId = l.levelId AND e.tagSource = 'LEVEL'
+    LEFT JOIN Streams s ON e.id.tagId = s.streamId AND e.tagSource = 'STREAM'
+    LEFT JOIN Subjects sub ON e.id.tagId = sub.subjectId AND e.tagSource = 'SUBJECT'
+    WHERE e.id.entityId = :entityId
+""")
+    List<TagsByIdResponseDto> findTagsByEntityId(@Param("entityId") String entityId);
 
 }

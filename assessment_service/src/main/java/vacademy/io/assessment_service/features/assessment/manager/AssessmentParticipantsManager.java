@@ -14,9 +14,8 @@ import org.springframework.util.CollectionUtils;
 import org.springframework.util.ObjectUtils;
 import org.springframework.util.StringUtils;
 import vacademy.io.assessment_service.features.assessment.dto.*;
-import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.ParticipantsQuestionOverallDetailDto;
-import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.StudentReportAnswerReviewDto;
-import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.StudentReportOverallDetailDto;
+import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.request.RespondentFilter;
+import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.*;
 import vacademy.io.assessment_service.features.assessment.dto.create_assessment.AssessmentRegistrationsDto;
 import vacademy.io.assessment_service.features.assessment.entity.*;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
@@ -46,6 +45,7 @@ import vacademy.io.assessment_service.features.rich_text.entity.AssessmentRichTe
 import vacademy.io.assessment_service.features.rich_text.enums.TextType;
 import vacademy.io.assessment_service.features.rich_text.repository.AssessmentRichTextRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.core.standard_classes.ListService;
 import vacademy.io.common.core.utils.DateUtil;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.student.dto.BasicParticipantDTO;
@@ -619,4 +619,40 @@ public class AssessmentParticipantsManager {
         return optionResponse;
     }
 
+    public ResponseEntity<RespondentListResponse> getRespondentList(CustomUserDetails user, String assessmentId, String sectionId, String questionId, RespondentFilter filter, Integer pageNo, Integer pageSize) {
+
+        if(Objects.isNull(filter)) throw new VacademyException("Invalid Request");
+        Sort sortingObject = ListService.createSortObject(filter.getSortColumns());
+
+        Pageable pageable = PageRequest.of(pageNo,pageSize,sortingObject);
+        Page<RespondentListDto> responses = null;
+        if(StringUtils.hasText(filter.getName())){
+//            responses = questionWiseMarksService
+        }
+        return ResponseEntity.ok(createRespondentListResponse(responses));
+    }
+
+    private RespondentListResponse createRespondentListResponse(Page<RespondentListDto> responses) {
+        if(Objects.isNull(responses)){
+            return RespondentListResponse.builder()
+                    .content(null)
+                    .pageNo(0)
+                    .pageSize(0)
+                    .totalElements(0)
+                    .totalPages(0)
+                    .last(true)
+                    .build();
+        }
+
+        List<RespondentListDto> content = responses.getContent();
+
+        return RespondentListResponse.builder()
+                .content(content)
+                .pageSize(responses.getSize())
+                .pageNo(responses.getNumber())
+                .totalPages(responses.getTotalElements())
+                .totalPages(responses.getTotalPages())
+                .last(responses.isLast())
+                .build();
+    }
 }

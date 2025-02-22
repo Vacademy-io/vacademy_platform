@@ -181,7 +181,7 @@ public class RestartAssessmentService {
 
         // If there are no attempted questions, handle the case where time needs to be distributed among all questions
         if (questions == null || questions.isEmpty()) {
-            return handleCaseForNoQuestion(timeLeft, assessment, sectionId);
+            return handleCaseForNoQuestion(timeLeft, sectionId);
         }
 
         // Calculate total allocated time for all questions (excluding null values)
@@ -211,7 +211,7 @@ public class RestartAssessmentService {
      * @return A collection of {@link LearnerUpdateStatusResponse.DurationResponse} objects representing time allocation for each question.
      */
     private Collection<? extends LearnerUpdateStatusResponse.DurationResponse> handleCaseForNoQuestion(
-            Long timeLeft, Assessment assessment, String sectionId) {
+            Long timeLeft, String sectionId) {
 
         // Fetch all questions in the section that are not marked as "DELETED"
         List<QuestionAssessmentSectionMapping> allQuestions = questionAssessmentSectionMappingRepository

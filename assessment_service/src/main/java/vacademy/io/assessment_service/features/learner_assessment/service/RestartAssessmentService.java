@@ -206,7 +206,6 @@ public class RestartAssessmentService {
      * Handles the scenario where there are no attempted questions, distributing time among all section questions.
      *
      * @param timeLeft Remaining time available for the section.
-     * @param assessment Assessment object (not used in logic but kept for potential future use).
      * @param sectionId ID of the section.
      * @return A collection of {@link LearnerUpdateStatusResponse.DurationResponse} objects representing time allocation for each question.
      */

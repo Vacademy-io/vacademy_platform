@@ -146,14 +146,14 @@ public class RestartAssessmentService {
                 List<SectionAttemptData> sections = learnerAssessmentAttemptDataDto.get().getSections()!=null ? learnerAssessmentAttemptDataDto.get().getSections() : new ArrayList<>();
 
                 sections.forEach(sectionAttemptData ->{
-                    responses.addAll(createQuestionTimeDistribution(Optional.of(sectionAttemptData), timeLeft, assessment, sectionAttemptData.getSectionId()));
+                    responses.addAll(createQuestionTimeDistribution(Optional.of(sectionAttemptData), timeLeft,sectionAttemptData.getSectionId()));
                 });
             }
             else{
                 // No AttemptData available, fetch sections from the repository
                 List<Section> allSections = sectionRepository.findByAssessmentIdAndStatusNotIn(assessment.getId(), List.of("DELETED"));
                 allSections.forEach(section->{
-                    responses.addAll(createQuestionTimeDistribution(Optional.empty(), timeLeft,assessment, section.getId()));
+                    responses.addAll(createQuestionTimeDistribution(Optional.empty(), timeLeft,section.getId()));
                 });
             }
         }
@@ -167,12 +167,11 @@ public class RestartAssessmentService {
      *
      * @param sectionAttemptData Optional containing the section attempt data.
      * @param timeLeft Remaining time available for the section.
-     * @param assessment Assessment object (not used in logic but kept for potential future use).
      * @param sectionId ID of the section.
      * @return A collection of {@link LearnerUpdateStatusResponse.DurationResponse} objects representing time allocation for each question.
      */
     private Collection<? extends LearnerUpdateStatusResponse.DurationResponse> createQuestionTimeDistribution(
-            Optional<SectionAttemptData> sectionAttemptData, Long timeLeft, Assessment assessment, String sectionId) {
+            Optional<SectionAttemptData> sectionAttemptData, Long timeLeft, String sectionId) {
 
         // Retrieve questions from section attempt data if present, otherwise create an empty list
         List<QuestionAttemptData> questions = sectionAttemptData.isPresent()

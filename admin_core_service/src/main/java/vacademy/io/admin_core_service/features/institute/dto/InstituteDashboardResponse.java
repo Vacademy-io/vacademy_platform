@@ -18,4 +18,7 @@ public class InstituteDashboardResponse {
     private Integer profileCompletionPercentage;
     private Long batchCount;
     private Long studentCount;
+    private Long courseCount;
+    private Long levelCount;
+    private Long subjectCount;
 }

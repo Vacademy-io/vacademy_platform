@@ -24,6 +24,7 @@ import vacademy.io.assessment_service.features.learner_assessment.enums.Assessme
 import vacademy.io.assessment_service.features.announcement.service.AnnouncementService;
 import vacademy.io.assessment_service.features.learner_assessment.service.RestartAssessmentService;
 import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.core.utils.DateUtil;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.time.ZoneOffset;
@@ -141,7 +142,7 @@ public class LearnerAssessmentAttemptStatusManager {
             Date utcDate = Date.from(utcNow.toInstant());
             studentAttempt.setServerLastSync(utcDate);  // Set server sync time
 
-            studentAttempt.setClientLastSync(assessmentStatusJson.getClientLastSync()); // Set client sync time
+            studentAttempt.setClientLastSync(DateUtil.convertStringToUTCDate(assessmentStatusJson.getClientLastSync())); // Set client sync time
             return studentAttemptRepository.save(studentAttempt); // Save updated attempt
         }
 
@@ -164,7 +165,7 @@ public class LearnerAssessmentAttemptStatusManager {
         Date utcDate = Date.from(utcNow.toInstant());
         studentAttempt.setServerLastSync(utcDate);  // Set server sync time
 
-        studentAttempt.setClientLastSync(assessmentStatusJson.getClientLastSync()); // Set client sync time
+        studentAttempt.setClientLastSync(DateUtil.convertStringToDate(assessmentStatusJson.getClientLastSync())); // Set client sync time
         return studentAttemptRepository.save(studentAttempt); // Save updated attempt
     }
 
@@ -291,13 +292,19 @@ public class LearnerAssessmentAttemptStatusManager {
             if(AssessmentAttemptEnum.ENDED.name().equals(studentAttempt.get().getStatus()))
                 throw new VacademyException("Assessment Already Ended");
 
-            LearnerAssessmentAttemptDataDto attemptDataDto = studentAttempt.get().getAttemptData()!=null ? studentAttemptService.validateAndCreateJsonObject(studentAttempt.get().getAttemptData()) : null;
             LearnerAssessmentAttemptDataDto requestAttemptDto = request.getJsonContent()!=null ? studentAttemptService.validateAndCreateJsonObject(request.getJsonContent()) : null;
 
+            LearnerUpdateStatusResponse updateStatusResponse = handleStatusResponse(studentAttempt, assessment, requestAttemptDto, request.getJsonContent());
+
+            Optional<StudentAttempt> newSavedAttempt = studentAttemptRepository.findById(studentAttempt.get().getId());
+            if(newSavedAttempt.isEmpty()) throw new VacademyException("Attempt Not Found");
+
+            LearnerAssessmentAttemptDataDto attemptDataDto = newSavedAttempt.get().getAttemptData()!=null ? studentAttemptService.validateAndCreateJsonObject(studentAttempt.get().getAttemptData()) : null;
+
             return ResponseEntity.ok(AssessmentRestartResponse.builder()
-//                    .previewResponse(createLearnerAssessmentPreview(studentAttempt, assessment))
-//                    .learnerAssessmentAttemptDataDto(attemptDataDto)
-                    .updateStatusResponse(handleStatusResponse(studentAttempt, assessment, requestAttemptDto, request.getJsonContent())).build());
+                    .previewResponse(createLearnerAssessmentPreview(studentAttempt, assessment))
+                    .learnerAssessmentAttemptDataDto(attemptDataDto)
+                    .updateStatusResponse(updateStatusResponse).build());
         }
         catch (Exception e){
             throw new VacademyException("Failed To Restart: " + e.getMessage());

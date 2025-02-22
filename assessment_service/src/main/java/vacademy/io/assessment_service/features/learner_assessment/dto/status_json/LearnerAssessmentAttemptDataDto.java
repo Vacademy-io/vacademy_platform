@@ -16,7 +16,7 @@ import java.util.List;
 @Builder
 public class LearnerAssessmentAttemptDataDto {
     private String attemptId;
-    private Date clientLastSync;
+    private String clientLastSync;
     private AssessmentAttemptData assessment;
     private List<SectionAttemptData> sections;
 }

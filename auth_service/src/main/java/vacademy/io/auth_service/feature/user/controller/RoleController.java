@@ -4,7 +4,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.auth_service.feature.user.dto.ModifyUserRolesDTO;
 import vacademy.io.auth_service.feature.user.service.RoleService;
+import vacademy.io.common.auth.dto.RoleCountProjection;
 import vacademy.io.common.auth.model.CustomUserDetails;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("auth-service/v1/user-roles")
@@ -32,5 +35,14 @@ public class RoleController {
 
         String response = roleService.removeRolesFromUser(removeUserRolesDTO, customUserDetails);
         return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/user-roles-count")
+    public ResponseEntity<List<RoleCountProjection>> getRolesCountByInstituteId(
+            @RequestParam String instituteId,
+            @RequestAttribute("user") CustomUserDetails userDetails) {
+
+        List<RoleCountProjection> roleCounts = roleService.geRolesCountByInstituteId(instituteId, userDetails);
+        return ResponseEntity.ok(roleCounts);
     }
 }

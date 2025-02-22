@@ -1,17 +1,27 @@
 package vacademy.io.community_service.feature.question_bank.dto;
 
 
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+
+
+import lombok.Builder;
+import lombok.Data;
+
 import java.util.List;
+import java.util.Map;
 
 @Data
-@NoArgsConstructor
-@AllArgsConstructor
+@Builder
 public class FilteredEntityResponseDto {
-    private String entityId;
-    private String entityName;
-    private List<TagResponseDto> tags;
-    private Object entityData; // Can be Question or QuestionPaper
+    private List<Map<String, Object>> content;
+    private int pageNo;
+    private int pageSize;
+    private int totalPages;
+    private long totalElements;
+    private boolean last;
 }
+

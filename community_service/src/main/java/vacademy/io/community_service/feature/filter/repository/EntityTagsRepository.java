@@ -1,5 +1,7 @@
 package vacademy.io.community_service.feature.filter.repository;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Modifying;
@@ -24,7 +26,14 @@ public interface EntityTagsRepository extends JpaRepository<EntityTags, String>,
             @Param("tagSource") String tagSource
     );
 
-//    @Query("SELECT e FROM EntityTags e")
-//    List<EntityTags> findAllEntities();
+    @Query("SELECT DISTINCT et.id.entityId, et.id.entityName FROM EntityTags et " +
+            "WHERE (:entityName IS NULL OR et.id.entityName = :entityName) " +
+            "AND (:tagIds IS NULL OR et.id.tagId IN :tagIds)")
+    Page<Object[]> findDistinctEntityIds(
+            @Param("entityName") String entityName,
+            @Param("tagIds") List<String> tagIds,
+            Pageable pageable
+    );
+
 
 }

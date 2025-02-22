@@ -31,7 +31,7 @@ public class EntityTags {
 
     @EmbeddedId  // Use the composite key
     private EntityTagsId id;
-
+    @Column(name = "tag_source")
     private String tagSource;
 
     // If you want to use "entityId", "entityName", or "tagId" directly in the EntityTags class,

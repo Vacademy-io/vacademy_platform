@@ -181,7 +181,7 @@ public class AdminAssessmentGetManager {
         }
 
         // Fetch question status details
-        QuestionStatusDto questionWiseMarks = questionWiseMarksService.getQuestionStatusForAssessmentAndQuestion(assessmentId, questionPreviewDto.getQuestionId());
+        QuestionStatusDto questionWiseMarks = questionWiseMarksService.getQuestionStatusForAssessmentAndQuestion(assessmentId, questionPreviewDto.getQuestionId(), questionPreviewDto.getSectionId());
 
         return createInsightsDto(questionPreviewDto, questionWiseMarks, assessmentId);
     }
@@ -206,7 +206,7 @@ public class AdminAssessmentGetManager {
 
         // Fetch top 3 correct responders (handle potential null return)
         List<Top3CorrectResponseDto> top3CorrectResponseDto = safeGetList(
-                questionWiseMarksService.getTop3ParticipantsForCorrectResponse(assessmentId, questionWiseMarks.getQuestionId()));
+                questionWiseMarksService.getTop3ParticipantsForCorrectResponse(assessmentId, questionWiseMarks.getQuestionId(), questionPreviewDto.getSectionId()));
 
         return QuestionInsightsResponse.QuestionInsightDto.builder()
                 .assessmentQuestionPreviewDto(questionPreviewDto)

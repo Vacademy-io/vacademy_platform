@@ -627,7 +627,12 @@ public class AssessmentParticipantsManager {
         Pageable pageable = PageRequest.of(pageNo,pageSize,sortingObject);
         Page<RespondentListDto> responses = null;
         if(StringUtils.hasText(filter.getName())){
-//            responses = questionWiseMarksService
+            responses = assessmentUserRegistrationRepository
+                    .findRespondentListForAssessmentWithFilterAndSearch(filter.getName(),assessmentId,questionId,filter.getAssessmentVisibility(),filter.getStatus(),filter.getRegistrationSource(), filter.getRegistrationSourceId(), pageable);
+        }
+        if(Objects.isNull(responses)){
+            responses = assessmentUserRegistrationRepository
+                    .findRespondentListForAssessmentWithFilter(assessmentId,questionId,filter.getAssessmentVisibility(),filter.getStatus(),filter.getRegistrationSource(), filter.getRegistrationSourceId(), pageable);
         }
         return ResponseEntity.ok(createRespondentListResponse(responses));
     }
@@ -650,7 +655,7 @@ public class AssessmentParticipantsManager {
                 .content(content)
                 .pageSize(responses.getSize())
                 .pageNo(responses.getNumber())
-                .totalPages(responses.getTotalElements())
+                .totalElements(responses.getTotalElements())
                 .totalPages(responses.getTotalPages())
                 .last(responses.isLast())
                 .build();

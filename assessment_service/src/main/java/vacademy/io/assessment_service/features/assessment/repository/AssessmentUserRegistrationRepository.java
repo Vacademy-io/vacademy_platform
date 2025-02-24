@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.assessment_service.features.assessment.dto.ParticipantsDetailsDto;
+import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.RespondentListDto;
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentUserRegistration;
 
 import java.util.List;
@@ -264,5 +265,90 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
             @Param("statuses") List<String> statuses
     );
 
+    @Query(value = """
+            SELECT aur.id as registrationId, aur.user_id AS userId, aur.participant_name as participantName,\s
+            sa.id AS attemptId,
+            aur.source as source,
+            qwm.time_taken_in_seconds as responseTimeInSeconds,
+            aur.source_id as sourceId,
+                   COALESCE(NULLIF(qwm.status, 'PENDING'), 'PENDING') AS status
+            FROM assessment_user_registration aur
+            JOIN student_attempt sa ON sa.registration_id = aur.id
+            JOIN question_wise_marks qwm ON qwm.attempt_id = sa.id
+            join assessment a on a.id = aur.assessment_id
+            WHERE qwm.question_id = :questionId
+            AND qwm.assessment_id = :assessmentId
+            AND COALESCE(qwm.status, 'PENDING') IN (:attemptStatus)
+            and a.assessment_visibility in (:assessmentVisibility)
+            and aur."source" in (:source)
+            and (:sourceId IS NULL OR aur.source_id in (:sourceId))
+            """,countQuery = """
+            SELECT count(*)
+            FROM assessment_user_registration aur
+            JOIN student_attempt sa ON sa.registration_id = aur.id
+            JOIN question_wise_marks qwm ON qwm.attempt_id = sa.id
+            join assessment a on a.id = aur.assessment_id
+            WHERE qwm.question_id = :questionId
+            AND qwm.assessment_id = :assessmentId
+            AND COALESCE(qwm.status, 'PENDING') IN (:attemptStatus)
+            and a.assessment_visibility in (:assessmentVisibility)
+            and aur."source" in (:source)
+            and (:sourceId IS NULL OR aur.source_id in (:sourceId))
+            """, nativeQuery = true)
+    Page<RespondentListDto>  findRespondentListForAssessmentWithFilter(@Param("assessmentId") String assessmentId,
+                                                             @Param("questionId") String questionId,
+                                                             @Param("assessmentVisibility") List<String> assessmentVisibility,
+                                                             @Param("attemptStatus") List<String> attemptStatus,
+                                                             @Param("source") List<String> source,
+                                                             @Param("sourceId") List<String> sourceId,
+                                                                       Pageable pageable);
+
+
+    @Query(value = """
+            SELECT aur.id as registrationId, aur.user_id AS userId, aur.participant_name as participantName,\s
+            sa.id AS attemptId,
+            aur.source as source,
+            qwm.time_taken_in_seconds as responseTimeInSeconds,
+            aur.source_id as sourceId,
+                   COALESCE(NULLIF(qwm.status, 'PENDING'), 'PENDING') AS status
+            FROM assessment_user_registration aur
+            JOIN student_attempt sa ON sa.registration_id = aur.id
+            JOIN question_wise_marks qwm ON qwm.attempt_id = sa.id
+            join assessment a on a.id = aur.assessment_id
+            WHERE qwm.question_id = :questionId
+            AND qwm.assessment_id = :assessmentId
+            AND (
+                  to_tsvector('simple', concat(aur.participant_name)) @@ plainto_tsquery('simple', :name)
+                  OR aur.participant_name ILIKE :name || '%'
+              )
+            AND COALESCE(qwm.status, 'PENDING') IN (:attemptStatus)
+            and a.assessment_visibility in (:assessmentVisibility)
+            and aur."source" in (:source)
+            and (:sourceId IS NULL OR aur.source_id in (:sourceId))
+          """,countQuery = """
+            SELECT count(*)
+            FROM assessment_user_registration aur
+            JOIN student_attempt sa ON sa.registration_id = aur.id
+            JOIN question_wise_marks qwm ON qwm.attempt_id = sa.id
+            join assessment a on a.id = aur.assessment_id
+            WHERE qwm.question_id = :questionId
+            AND qwm.assessment_id = :assessmentId
+            AND (
+                  to_tsvector('simple', concat(aur.participant_name)) @@ plainto_tsquery('simple', :name)
+                  OR aur.participant_name ILIKE :name || '%'
+              )
+            AND COALESCE(qwm.status, 'PENDING') IN (:attemptStatus)
+            and a.assessment_visibility in (:assessmentVisibility)
+            and aur."source" in (:source)
+            and (:sourceId IS NULL OR aur.source_id in (:sourceId))
+          """, nativeQuery = true)
+    Page<RespondentListDto>  findRespondentListForAssessmentWithFilterAndSearch(@Param("name") String name,
+                                                                                @Param("assessmentId") String assessmentId,
+                                                                                @Param("questionId") String questionId,
+                                                                                @Param("assessmentVisibility") List<String> assessmentVisibility,
+                                                                                @Param("attemptStatus") List<String> attemptStatus,
+                                                                                @Param("source") List<String> source,
+                                                                                @Param("sourceId") List<String> sourceId,
+                                                                                Pageable pageable);
 
 }

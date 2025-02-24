@@ -55,7 +55,7 @@ public class QuestionWiseMarks {
     private String responseJson;
 
     @ManyToOne
-    @JoinColumn(name = "question_id")
+    @JoinColumn(name = "section_id")
     @JsonIgnore
     private Section section;
 

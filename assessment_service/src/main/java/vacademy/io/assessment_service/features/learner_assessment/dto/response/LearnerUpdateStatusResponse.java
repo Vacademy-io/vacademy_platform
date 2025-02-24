@@ -31,7 +31,7 @@ public class LearnerUpdateStatusResponse {
     public static class DurationResponse{
         private String id;
         private String type;
-        private String newMaxTime;
+        private Long newMaxTimeInSeconds;
     }
 
 

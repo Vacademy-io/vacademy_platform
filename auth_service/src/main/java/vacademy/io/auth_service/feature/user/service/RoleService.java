@@ -3,6 +3,7 @@ package vacademy.io.auth_service.feature.user.service;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.auth_service.feature.user.dto.ModifyUserRolesDTO;
+import vacademy.io.common.auth.dto.RoleCountProjection;
 import vacademy.io.common.auth.entity.Role;
 import vacademy.io.common.auth.entity.User;
 import vacademy.io.common.auth.entity.UserRole;
@@ -77,5 +78,9 @@ public class RoleService {
         List<String> roleIds = Arrays.asList(modifyUserRolesDTO.getCommaSeparatedRoleIds().split(","));
         userRoleRepository.deleteUserRolesByUserIdAndRoleIds(modifyUserRolesDTO.getUserId(), roleIds);
         return "Roles removed successfully";
+    }
+
+    public List<RoleCountProjection>geRolesCountByInstituteId(String instituteId,CustomUserDetails userDetails) {
+        return userRoleRepository.getUserRoleCountsByInstituteId(instituteId);
     }
 }

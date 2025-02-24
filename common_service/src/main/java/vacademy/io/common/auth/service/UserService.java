@@ -235,4 +235,8 @@ public class UserService {
     public List<UserWithRolesDTO> getUserDetailsByInstituteId(String instituteId, CustomUserDetails user) {
         return userRepository.findUsersWithRolesByInstituteId(instituteId).stream().map(UserWithRolesDTO::new).collect(Collectors.toList());
     }
+
+    public List<UserWithRolesDTO> getUserDetailsByInstituteId(String instituteId,List<String>roles, CustomUserDetails user) {
+        return userRepository.findUsersWithRolesByInstituteId(instituteId,roles).stream().map(UserWithRolesDTO::new).collect(Collectors.toList());
+    }
 }

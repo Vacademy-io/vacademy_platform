@@ -5,16 +5,20 @@ import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.*;
 
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
+@Builder
 @Getter
 @Setter
 @AllArgsConstructor
 @NoArgsConstructor
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-@Builder
-public class StudentReportOverallDetailDto {
-    private ParticipantsQuestionOverallDetailDto questionOverallDetailDto;
-    private Map<String, List<StudentReportAnswerReviewDto>> allSections;
+public class RespondentListResponse {
+    private List<RespondentListDto> content = new ArrayList<>();
+    private int pageNo;
+    private int pageSize;
+    private long totalElements;
+    private long totalPages;
+    private boolean last;
 }

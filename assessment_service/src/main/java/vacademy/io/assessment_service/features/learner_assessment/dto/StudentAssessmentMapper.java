@@ -1,5 +1,6 @@
 package vacademy.io.assessment_service.features.learner_assessment.dto;
 
+import java.time.Instant;
 import java.util.Date;
 
 public class StudentAssessmentMapper {
@@ -25,7 +26,7 @@ public class StudentAssessmentMapper {
                 .createdAt((Date) assessment[16])
                 .updatedAt((Date) assessment[17])
                 .recentAttemptStatus((String) assessment[18])
-                .recentAttemptStartDate((Date) assessment[19])
+                .recentAttemptStartDate(assessment[19] != null ? Date.from((Instant) assessment[19]) : null)
                 .assessmentAttempts((Integer) assessment[20])
                 .userAttempts((Integer) assessment[21])
                 .createdAttempts((Long) assessment[22])

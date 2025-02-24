@@ -22,7 +22,9 @@ import vacademy.io.assessment_service.features.announcement.entity.AssessmentAnn
 import vacademy.io.assessment_service.features.learner_assessment.enums.AssessmentAttemptEnum;
 import vacademy.io.assessment_service.features.learner_assessment.enums.AssessmentAttemptResultEnum;
 import vacademy.io.assessment_service.features.announcement.service.AnnouncementService;
+import vacademy.io.assessment_service.features.learner_assessment.service.RestartAssessmentService;
 import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.core.utils.DateUtil;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.time.ZoneOffset;
@@ -47,6 +49,9 @@ public class LearnerAssessmentAttemptStatusManager {
 
     @Autowired
     LearnerAssessmentAttemptStartManager learnerAssessmentAttemptStartManager;
+
+    @Autowired
+    RestartAssessmentService restartAssessmentService;
 
     /**
      * Updates the learner's assessment status based on the provided attempt details.
@@ -137,7 +142,7 @@ public class LearnerAssessmentAttemptStatusManager {
             Date utcDate = Date.from(utcNow.toInstant());
             studentAttempt.setServerLastSync(utcDate);  // Set server sync time
 
-            studentAttempt.setClientLastSync(assessmentStatusJson.getClientLastSync()); // Set client sync time
+            studentAttempt.setClientLastSync(DateUtil.convertStringToUTCDate(assessmentStatusJson.getClientLastSync())); // Set client sync time
             return studentAttemptRepository.save(studentAttempt); // Save updated attempt
         }
 
@@ -160,7 +165,7 @@ public class LearnerAssessmentAttemptStatusManager {
         Date utcDate = Date.from(utcNow.toInstant());
         studentAttempt.setServerLastSync(utcDate);  // Set server sync time
 
-        studentAttempt.setClientLastSync(assessmentStatusJson.getClientLastSync()); // Set client sync time
+        studentAttempt.setClientLastSync(DateUtil.convertStringToDate(assessmentStatusJson.getClientLastSync())); // Set client sync time
         return studentAttemptRepository.save(studentAttempt); // Save updated attempt
     }
 
@@ -204,7 +209,7 @@ public class LearnerAssessmentAttemptStatusManager {
         Optional.ofNullable(dataDuration.getAssessmentDuration())
                 .ifPresent(assessment -> durationResponses.add(
                         new LearnerUpdateStatusResponse.DurationResponse(
-                                assessment.getId(), DurationDistributionEnum.ASSESSMENT.name(), String.valueOf(assessment.getNewMaxTimeInMins())
+                                assessment.getId(), DurationDistributionEnum.ASSESSMENT.name(), assessment.getNewMaxTimeInSeconds()
                         )
                 ));
 
@@ -212,7 +217,7 @@ public class LearnerAssessmentAttemptStatusManager {
         Optional.ofNullable(dataDuration.getSectionsDuration())
                 .ifPresent(sections -> sections.forEach(section -> durationResponses.add(
                         new LearnerUpdateStatusResponse.DurationResponse(
-                                section.getId(), DurationDistributionEnum.SECTION.name(), String.valueOf(section.getNewMaxTimeInMins())
+                                section.getId(), DurationDistributionEnum.SECTION.name(), section.getNewMaxTimeInSeconds()
                         )
                 )));
 
@@ -220,7 +225,7 @@ public class LearnerAssessmentAttemptStatusManager {
         Optional.ofNullable(dataDuration.getQuestionsDuration())
                 .ifPresent(questions -> questions.forEach(question -> durationResponses.add(
                         new LearnerUpdateStatusResponse.DurationResponse(
-                                question.getId(), DurationDistributionEnum.QUESTION.name(), String.valueOf(question.getNewMaxTimeInMins())
+                                question.getId(), DurationDistributionEnum.QUESTION.name(), question.getNewMaxTimeInSeconds()
                         )
                 )));
 
@@ -272,10 +277,10 @@ public class LearnerAssessmentAttemptStatusManager {
 
     public ResponseEntity<AssessmentRestartResponse> restartAssessment(CustomUserDetails user, String assessmentId, String attemptId, AssessmentAttemptUpdateRequest request) {
         try {
+            if(Objects.isNull(request)) throw new VacademyException("Invalid Request");
+
             Optional<StudentAttempt> studentAttempt = studentAttemptRepository.findById(attemptId);
             if(studentAttempt.isEmpty()) throw new VacademyException("Student Attempt Not Found");
-
-            if(Objects.isNull(request) || Objects.isNull(request.getJsonContent())) throw new VacademyException("Invalid request");
 
             Assessment assessment = studentAttempt.get().getRegistration().getAssessment();
             if(!assessment.getId().equals(assessmentId)) throw new VacademyException("Student Not Linked with Assessment");
@@ -284,20 +289,47 @@ public class LearnerAssessmentAttemptStatusManager {
             if (AssessmentAttemptEnum.PREVIEW.name().equals(studentAttempt.get().getStatus()))
                 throw new VacademyException("Currently Assessment is in preview");
 
-            LearnerAssessmentStartPreviewResponse learnerAssessmentStartPreviewResponse = new LearnerAssessmentStartPreviewResponse();
-            learnerAssessmentStartPreviewResponse.setAssessmentUserRegistrationId(studentAttempt.get().getRegistration().getId());
-            learnerAssessmentStartPreviewResponse.setAttemptId(studentAttempt.get().getId());
-            learnerAssessmentStartPreviewResponse.setPreviewTotalTime(assessment.getPreviewTime());
-            learnerAssessmentStartPreviewResponse.setSectionDtos(learnerAssessmentAttemptStartManager.createSectionDtoList(assessment));
+            if(AssessmentAttemptEnum.ENDED.name().equals(studentAttempt.get().getStatus()))
+                throw new VacademyException("Assessment Already Ended");
+
+            LearnerAssessmentAttemptDataDto requestAttemptDto = request.getJsonContent()!=null ? studentAttemptService.validateAndCreateJsonObject(request.getJsonContent()) : null;
+
+            LearnerUpdateStatusResponse updateStatusResponse = handleStatusResponse(studentAttempt, assessment, requestAttemptDto, request.getJsonContent());
+
+            Optional<StudentAttempt> newSavedAttempt = studentAttemptRepository.findById(studentAttempt.get().getId());
+            if(newSavedAttempt.isEmpty()) throw new VacademyException("Attempt Not Found");
+
+            LearnerAssessmentAttemptDataDto attemptDataDto = newSavedAttempt.get().getAttemptData()!=null ? studentAttemptService.validateAndCreateJsonObject(studentAttempt.get().getAttemptData()) : null;
 
             return ResponseEntity.ok(AssessmentRestartResponse.builder()
-                    .previewResponse(learnerAssessmentStartPreviewResponse)
-                    .updateStatusResponse(createResponseForUpdateStatus(Optional.of(assessment), studentAttempt)).build());
+                    .previewResponse(createLearnerAssessmentPreview(studentAttempt, assessment))
+                    .learnerAssessmentAttemptDataDto(attemptDataDto)
+                    .updateStatusResponse(updateStatusResponse).build());
         }
         catch (Exception e){
-            return ResponseEntity.ok(AssessmentRestartResponse.builder()
-                    .previewResponse(new LearnerAssessmentStartPreviewResponse())
-                    .updateStatusResponse(LearnerUpdateStatusResponse.builder().build()).build());
+            throw new VacademyException("Failed To Restart: " + e.getMessage());
         }
+    }
+
+    private LearnerUpdateStatusResponse handleStatusResponse(Optional<StudentAttempt> studentAttempt, Assessment assessment, LearnerAssessmentAttemptDataDto requestAttemptDataDto, String requestJsonContent) {
+        List<LearnerUpdateStatusResponse.DurationResponse> dataDurationResponse = restartAssessmentService.getNewDurationForAssessment(studentAttempt,assessment,requestAttemptDataDto!=null ? Optional.of(requestAttemptDataDto) : Optional.empty(), requestJsonContent);
+
+        List<AssessmentAnnouncement> allAnnouncement = announcementService.getAnnouncementForAssessment(assessment.getId());
+        List<BasicLevelAnnouncementDto> allAnnouncementResponse = announcementService.createBasicLevelAnnouncementDto(allAnnouncement);
+
+
+        return LearnerUpdateStatusResponse.builder()
+                .duration(dataDurationResponse)
+                .control(new ArrayList<>())
+                .announcements(allAnnouncementResponse).build();
+    }
+
+    private LearnerAssessmentStartPreviewResponse createLearnerAssessmentPreview(Optional<StudentAttempt> studentAttempt, Assessment assessment) {
+        LearnerAssessmentStartPreviewResponse learnerAssessmentStartPreviewResponse = new LearnerAssessmentStartPreviewResponse();
+        learnerAssessmentStartPreviewResponse.setAssessmentUserRegistrationId(studentAttempt.get().getRegistration().getId());
+        learnerAssessmentStartPreviewResponse.setAttemptId(studentAttempt.get().getId());
+        learnerAssessmentStartPreviewResponse.setPreviewTotalTime(assessment.getPreviewTime());
+        learnerAssessmentStartPreviewResponse.setSectionDtos(learnerAssessmentAttemptStartManager.createSectionDtoList(assessment));
+        return learnerAssessmentStartPreviewResponse;
     }
 }

@@ -26,7 +26,7 @@ public class StudentAssessmentMapper {
                 .createdAt((Date) assessment[16])
                 .updatedAt((Date) assessment[17])
                 .recentAttemptStatus((String) assessment[18])
-                .recentAttemptStartDate(Date.from((Instant) assessment[19]))
+                .recentAttemptStartDate(assessment[19] != null ? Date.from((Instant) assessment[19]) : null)
                 .assessmentAttempts((Integer) assessment[20])
                 .userAttempts((Integer) assessment[21])
                 .createdAttempts((Long) assessment[22])

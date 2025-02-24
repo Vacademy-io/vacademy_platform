@@ -8,6 +8,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.UuidGenerator;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
+import vacademy.io.assessment_service.features.assessment.entity.Section;
 import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
 import vacademy.io.assessment_service.features.question_core.entity.Question;
 
@@ -52,6 +53,11 @@ public class QuestionWiseMarks {
 
     @Column(name = "response_json")
     private String responseJson;
+
+    @ManyToOne
+    @JoinColumn(name = "question_id")
+    @JsonIgnore
+    private Section section;
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;

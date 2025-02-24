@@ -539,17 +539,18 @@ public class AssessmentParticipantsManager {
         return sectionToQuestionsMap.entrySet().stream()
                 .collect(Collectors.toMap(
                         Map.Entry::getKey,
-                        entry -> getQuestionReviewForAttempt(entry.getValue(), attemptId)
+                        entry -> getQuestionReviewForAttempt(entry.getKey(), entry.getValue(), attemptId)
                 ));
+
     }
 
-    private List<StudentReportAnswerReviewDto> getQuestionReviewForAttempt(List<String> questionIds, String attemptId) {
+    private List<StudentReportAnswerReviewDto> getQuestionReviewForAttempt(String sectionId, List<String> questionIds, String attemptId) {
         if (CollectionUtils.isEmpty(questionIds)) {
             return Collections.emptyList();
         }
 
         List<QuestionWiseMarks> questionWiseMarksList = questionWiseMarksService
-                .getAllQuestionWiseMarksForQuestionIdsAndAttemptId(attemptId, questionIds);
+                .getAllQuestionWiseMarksForQuestionIdsAndAttemptId(attemptId, questionIds, sectionId);
 
         if (CollectionUtils.isEmpty(questionWiseMarksList)) {
             return Collections.emptyList();

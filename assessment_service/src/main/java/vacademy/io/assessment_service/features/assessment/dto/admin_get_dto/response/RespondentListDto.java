@@ -13,5 +13,6 @@ public interface RespondentListDto {
     String getAttemptId();
     Long getResponseTimeInSeconds();
     String getSource();
+    String getSourceId();
     String getStatus();
 }

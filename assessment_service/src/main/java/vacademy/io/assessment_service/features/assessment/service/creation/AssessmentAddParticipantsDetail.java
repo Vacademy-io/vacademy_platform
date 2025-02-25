@@ -34,6 +34,7 @@ public class AssessmentAddParticipantsDetail extends IStep {
         savedData.put(ParticipantsCreationEnum.REGISTRATION_FORM_FIELDS.name().toLowerCase(), assessment.get().getAssessmentCustomFields());
         savedData.put(ParticipantsCreationEnum.REGISTRATION_OPEN_DATE.name().toLowerCase(), assessment.get().getRegistrationOpenDate());
         savedData.put(ParticipantsCreationEnum.REGISTRATION_CLOSE_DATE.name().toLowerCase(), assessment.get().getRegistrationCloseDate());
+        savedData.put(ParticipantsCreationEnum.NOTIFICATIONS.name().toLowerCase(), assessment.get().getAssessmentNotificationMetadata());
         setSavedData(savedData);
 
         if (assessment.get().getRegistrationOpenDate() != null && assessment.get().getRegistrationCloseDate() != null) {

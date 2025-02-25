@@ -1,19 +1,18 @@
 package vacademy.io.assessment_service.features.assessment.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.*;
 import org.hibernate.annotations.UuidGenerator;
 
 import java.util.Date;
 
 @Entity
 @Table(name = "assessment_notification_metadata")
-@Data
+@Getter
+@Setter
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
@@ -27,6 +26,7 @@ public class AssessmentNotificationMetadata {
 
     @ManyToOne
     @JoinColumn(name = "assessment_id")
+    @JsonIgnore
     private Assessment assessment;
 
     @Column(name = "participant_when_assessment_created", nullable = false)

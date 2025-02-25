@@ -109,11 +109,17 @@ public class AddQuestionPaperFromImportManager {
         mcqEvaluation.setData(mcqData);
 
         question.setAutoEvaluationJson(questionEvaluationService.setEvaluationJson(mcqEvaluation));
-        question.setQuestionResponseType(QuestionResponseTypes.OPTION.name());
+        if (questionRequest.getQuestionResponseType() == null)
+            question.setQuestionResponseType(QuestionResponseTypes.OPTION.name());
+        else question.setQuestionResponseType(questionRequest.getQuestionResponseType());
         if (isPublic) question.setAccessLevel(QuestionAccessLevel.PUBLIC.name());
         else question.setAccessLevel(QuestionAccessLevel.PRIVATE.name());
         question.setQuestionType((options.size() > 1) ? QuestionTypes.MCQM.name() : QuestionTypes.MCQS.name());
-        question.setEvaluationType(EvaluationTypes.AUTO.name());
+        if (questionRequest.getEvaluationType() == null) question.setEvaluationType(EvaluationTypes.AUTO.name());
+        else question.setEvaluationType(questionRequest.getEvaluationType());
+        question.setMediaId(questionRequest.getMediaId());
+        question.setExplanationTextData(AssessmentRichTextData.fromDTO(questionRequest.getExplanationText()));
+
         return question;
     }
 

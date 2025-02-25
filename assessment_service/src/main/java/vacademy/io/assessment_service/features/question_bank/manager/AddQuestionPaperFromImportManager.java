@@ -2,6 +2,7 @@ package vacademy.io.assessment_service.features.question_bank.manager;
 
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import jakarta.persistence.EntityNotFoundException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -78,6 +79,64 @@ public class AddQuestionPaperFromImportManager {
         return new AddedQuestionPaperResponseDto(questionPaper.getId());
 
     }
+
+    @Transactional
+    public Boolean updateQuestionPaper(CustomUserDetails user, AddQuestionPaperDTO questionRequestBody, Boolean isPublicPaper) throws JsonProcessingException {
+
+        // Fetch the existing question paper by ID
+        QuestionPaper questionPaper = questionPaperRepository.findById(questionRequestBody.getId())
+                .orElseThrow(() -> new EntityNotFoundException("Question Paper not found"));
+
+        //  Update basic details
+        questionPaper.setTitle(questionRequestBody.getTitle());
+        questionPaper.setCreatedByUserId(user.getUserId());
+        questionPaper.setAccess(isPublicPaper ? QuestionAccessLevel.PUBLIC.name() : QuestionAccessLevel.PRIVATE.name());
+
+        //  Save updated question paper
+        questionPaper = questionPaperRepository.save(questionPaper);
+
+        //  Fetch existing questions already linked to this question paper
+        List<String> existingQuestionIds = questionRepository.findQuestionsByQuestionPaperId(questionPaper.getId())
+                .stream()
+                .map(Question::getId) // Extract only IDs
+                .toList();
+        List<Question> newQuestions = new ArrayList<>();
+        List<Option> newOptions = new ArrayList<>();
+
+        for (var importQuestion : questionRequestBody.getQuestions()) {
+            // Check if question already exists, avoid duplicate insertion
+            if (!existingQuestionIds.contains(importQuestion.getId())) {
+                Question question = makeQuestionAndOptionFromImportQuestion(importQuestion, isPublicPaper);
+                newQuestions.add(question);
+                newOptions.addAll(question.getOptions());
+            }
+        }
+
+
+        //  Save new questions and options
+        if (!newQuestions.isEmpty()) {
+            newQuestions = questionRepository.saveAll(newQuestions);
+            newOptions = optionRepository.saveAll(newOptions);
+
+            // Get the IDs of newly added questions
+            List<String> newQuestionIds = newQuestions.stream().map(Question::getId).toList();
+
+            //  Associate new questions with the existing question paper
+            questionPaperRepository.bulkInsertQuestionsToQuestionPaper(questionPaper.getId(), newQuestionIds);
+        }
+
+        //  If not public, link to an institute
+        if (!isPublicPaper) {
+            questionPaperRepository.linkInstituteToQuestionPaper(
+                    UUID.randomUUID().toString(), questionPaper.getId(),
+                    questionRequestBody.getInstituteId(), "ACTIVE",
+                    questionRequestBody.getLevelId(), questionRequestBody.getSubjectId()
+            );
+        }
+
+        return true;
+    }
+
 
     private Question makeQuestionAndOptionFromImportQuestion(QuestionDTO questionRequest, Boolean isPublic) throws JsonProcessingException {
         // Todo: check Question Validation

@@ -1,7 +1,6 @@
 package vacademy.io.community_service.feature.filter.dto;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotEmpty;
 import lombok.*;
 
 import java.util.List;
@@ -18,6 +17,7 @@ public class AddTagsRequestDto {
     @NotBlank(message = "Entity Name is required")
     private String entityName;
 
-    @NotEmpty(message = "At least one tag is required")
-    private List<TagDto> tags;
+    private List<TagDto> tags; // Can be null or empty
+
+    private String commaSeparatedTags; // Renamed to camelCase
 }

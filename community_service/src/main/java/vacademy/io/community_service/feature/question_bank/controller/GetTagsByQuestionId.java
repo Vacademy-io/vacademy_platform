@@ -16,10 +16,10 @@ public class GetTagsByQuestionId {
     private TagsService tagsService;
 
     @GetMapping("/get-tags")
-    public ResponseEntity<List<TagsByIdResponseDto>> getFilteredEntityTags(@RequestAttribute("user") CustomUserDetails user ,
+    public ResponseEntity<TagsWithQuestionPaperResponseDto> getFilteredEntityTags(@RequestAttribute("user") CustomUserDetails user ,
                                                                           @RequestParam(value = "questionPaperId", required = true) String questionPaperId) {
-        List<TagsByIdResponseDto> tags = tagsService.getQuestionPaperTags(questionPaperId);
-        return ResponseEntity.ok(tags);
+        TagsWithQuestionPaperResponseDto tagsWithQuestionPaper = tagsService.getQuestionPaperTags(questionPaperId);
+        return ResponseEntity.ok(tagsWithQuestionPaper);
     }
 }
 

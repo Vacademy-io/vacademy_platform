@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import vacademy.io.community_service.feature.filter.entity.EntityTags;
+import vacademy.io.community_service.feature.filter.entity.QuestionPaper;
 import vacademy.io.community_service.feature.question_bank.dto.TagsByIdResponseDto;
 
 import java.util.List;
@@ -45,7 +46,7 @@ public interface EntityTagsRepository extends JpaRepository<EntityTags, String>,
             WHEN e.tagSource = 'LEVEL' THEN l.levelName
             WHEN e.tagSource = 'STREAM' THEN s.streamName
             WHEN e.tagSource = 'SUBJECT' THEN sub.subjectName
-            WHEN e.tagSource = 'DIFFICULTY' THEN e.id.tagId 
+            WHEN e.tagSource = 'DIFFICULTY' THEN e.id.tagId
             ELSE NULL
         END
     )
@@ -57,4 +58,10 @@ public interface EntityTagsRepository extends JpaRepository<EntityTags, String>,
 """)
     List<TagsByIdResponseDto> findTagsByEntityId(@Param("entityId") String entityId);
 
+    @Query("""
+    SELECT qp
+    FROM QuestionPaper qp
+    WHERE qp.id = :entityId
+""")
+    QuestionPaper findQuestionPaperByEntityId(@Param("entityId") String entityId);
 }

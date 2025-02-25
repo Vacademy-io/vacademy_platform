@@ -73,8 +73,15 @@ public class StudentRegistrationManager {
     private Student checkAndCreateStudent(InstituteStudentDTO instituteStudentDTO) {
         instituteStudentDTO.getUserDetails().setRoles(getStudentRoles());
         setRandomPasswordIfNull(instituteStudentDTO.getUserDetails());
+        setRandomUserNameIfNull(instituteStudentDTO.getUserDetails());
         UserDTO createdUser = createUserFromAuthService(instituteStudentDTO.getUserDetails(), instituteStudentDTO.getInstituteStudentDetails().getInstituteId());
         return createStudentFromRequest(createdUser, instituteStudentDTO.getStudentExtraDetails());
+    }
+
+    private void setRandomUserNameIfNull(UserDTO userDetails) {
+        if (!StringUtils.hasText(userDetails.getUsername())) {
+            userDetails.setUsername(RandomStringUtils.randomAlphanumeric(6));
+        }
     }
 
     private void setRandomPasswordIfNull(UserDTO userDTO) {
@@ -89,23 +96,56 @@ public class StudentRegistrationManager {
         if (existingStudent.isPresent()) {
             student = existingStudent.get();
         }
-        student.setUserId(userDTO.getId());
-        student.setUsername(userDTO.getUsername());
-        student.setFullName(userDTO.getFullName());
-        student.setEmail(userDTO.getEmail());
-        student.setMobileNumber(userDTO.getMobileNumber());
-        student.setAddressLine(userDTO.getAddressLine());
-        student.setFaceFileId(userDTO.getProfilePicFileId());
-        student.setCity(userDTO.getCity());
-        student.setPinCode(userDTO.getPinCode());
-        student.setGender(userDTO.getGender());
-        student.setDateOfBirth(userDTO.getDateOfBirth());
+        if (userDTO.getId() != null) {
+            student.setUserId(userDTO.getId());
+        }
+        if (userDTO.getUsername() != null) {
+            student.setUsername(userDTO.getUsername());
+        }
+        if (userDTO.getFullName() != null) {
+            student.setFullName(userDTO.getFullName());
+        }
+        if (userDTO.getEmail() != null) {
+            student.setEmail(userDTO.getEmail());
+        }
+        if (userDTO.getMobileNumber() != null) {
+            student.setMobileNumber(userDTO.getMobileNumber());
+        }
+        if (userDTO.getAddressLine() != null) {
+            student.setAddressLine(userDTO.getAddressLine());
+        }
+        if (userDTO.getProfilePicFileId() != null) {
+            student.setFaceFileId(userDTO.getProfilePicFileId());
+        }
+        if (userDTO.getCity() != null) {
+            student.setCity(userDTO.getCity());
+        }
+        if (userDTO.getPinCode() != null) {
+            student.setPinCode(userDTO.getPinCode());
+        }
+        if (userDTO.getGender() != null) {
+            student.setGender(userDTO.getGender());
+        }
+        if (userDTO.getDateOfBirth() != null) {
+            student.setDateOfBirth(userDTO.getDateOfBirth());
+        }
+
         if (studentExtraDetails != null) {
-            student.setFatherName(studentExtraDetails.getFathersName());
-            student.setMotherName(studentExtraDetails.getMothersName());
-            student.setParentsMobileNumber(studentExtraDetails.getParentsMobileNumber());
-            student.setParentsEmail(studentExtraDetails.getParentsEmail());
-            student.setLinkedInstituteName(studentExtraDetails.getLinkedInstituteName());
+            if (studentExtraDetails.getFathersName() != null) {
+                student.setFatherName(studentExtraDetails.getFathersName());
+            }
+            if (studentExtraDetails.getMothersName() != null) {
+                student.setMotherName(studentExtraDetails.getMothersName());
+            }
+            if (studentExtraDetails.getParentsMobileNumber() != null) {
+                student.setParentsMobileNumber(studentExtraDetails.getParentsMobileNumber());
+            }
+            if (studentExtraDetails.getParentsEmail() != null) {
+                student.setParentsEmail(studentExtraDetails.getParentsEmail());
+            }
+            if (studentExtraDetails.getLinkedInstituteName() != null) {
+                student.setLinkedInstituteName(studentExtraDetails.getLinkedInstituteName());
+            }
         }
         return instituteStudentRepository.save(student);
     }
@@ -137,12 +177,6 @@ public class StudentRegistrationManager {
         } catch (Exception e) {
         }
         return null;
-    }
-
-    public ResponseEntity<String> addStudentToInstituteWithoutUserEntry(CustomUserDetails user, InstituteStudentDTO instituteStudentDTO) {
-        Student student = createStudentFromRequest(instituteStudentDTO.getUserDetails(), instituteStudentDTO.getStudentExtraDetails());
-        linkStudentToInstitute(student, instituteStudentDTO.getInstituteStudentDetails());
-        return ResponseEntity.ok("Student added successfully");
     }
 
     private Optional<Student> getExistingStudentByUserNameAndUserId(String username, String userId) {

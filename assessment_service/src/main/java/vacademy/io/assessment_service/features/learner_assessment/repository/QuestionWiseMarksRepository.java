@@ -17,11 +17,13 @@ public interface QuestionWiseMarksRepository extends JpaRepository<QuestionWiseM
             SELECT qwm.* from question_wise_marks qwm
             WHERE qwm.assessment_id = :assessmentId
             AND qwm.attempt_id = :attemptId
-            AND qwm.question_id = :questionId  LIMIT 1
+            AND qwm.question_id = :questionId
+            AND qwm.section_id = :sectionId LIMIT 1
             """, nativeQuery = true)
-    Optional<QuestionWiseMarks> findByAssessmentIdAndStudentAttemptIdAndQuestionId(@Param("assessmentId") String assessmentId,
+    Optional<QuestionWiseMarks> findByAssessmentIdAndStudentAttemptIdAndQuestionIdAndSectionId(@Param("assessmentId") String assessmentId,
                                                                                    @Param("attemptId") String attemptId,
-                                                                                   @Param("questionId") String questionId);
+                                                                                   @Param("questionId") String questionId,
+                                                                                               @Param("sectionId") String sectionId);
 
     @Query(value = """
             SELECT
@@ -32,11 +34,13 @@ public interface QuestionWiseMarksRepository extends JpaRepository<QuestionWiseM
             FROM question_wise_marks qwm
             WHERE qwm.assessment_id = :assessmentId
             and qwm.question_id  = :questionId
+            and qwm.section_id = :sectionId
             GROUP BY qwm.question_id
             LIMIT 1
             """, nativeQuery = true)
     QuestionStatusDto findQuestionStatusAssessmentIdAndQuestionId(@Param("assessmentId") String assessmentId,
-                                                                  @Param("questionId") String questionId);
+                                                                  @Param("questionId") String questionId,
+                                                                  @Param("sectionId") String sectionId);
 
 
 
@@ -46,18 +50,22 @@ public interface QuestionWiseMarksRepository extends JpaRepository<QuestionWiseM
             join assessment_user_registration aur on aur.id = sa.registration_id
             WHERE qwm.assessment_id = :assessmentId
             and qwm.question_id  = :questionId
+            and qwm.section_id = :sectionId
             and qwm.status = 'CORRECT'
              order by qwm.time_taken_in_seconds asc limit 3
             """, nativeQuery = true)
     List<Top3CorrectResponseDto> findTop3ParticipantsForCorrectResponse(@Param("assessmentId") String assessmentId,
-                                                                  @Param("questionId") String questionId);
+                                                                  @Param("questionId") String questionId,
+                                                                  @Param("sectionId") String sectionId);
 
 
     @Query(value = """
             SELECT qwm.* from question_wise_marks as qwm
             WHERE qwm.question_id IN (:questionIds)
             AND qwm.attempt_id = :attemptId
+            AND qwm.section_id = :sectionId
             """, nativeQuery = true)
     List<QuestionWiseMarks> findAllQuestionWiseMarksForQuestionIdAndAttemptId(@Param("questionIds") List<String> questionIds,
-                                                                              @Param("attemptId") String attemptId);
+                                                                              @Param("attemptId") String attemptId,
+                                                                              @Param("sectionId") String sectionId);
 }

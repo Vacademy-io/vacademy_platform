@@ -14,9 +14,8 @@ import org.springframework.util.CollectionUtils;
 import org.springframework.util.ObjectUtils;
 import org.springframework.util.StringUtils;
 import vacademy.io.assessment_service.features.assessment.dto.*;
-import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.ParticipantsQuestionOverallDetailDto;
-import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.StudentReportAnswerReviewDto;
-import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.StudentReportOverallDetailDto;
+import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.request.RespondentFilter;
+import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.*;
 import vacademy.io.assessment_service.features.assessment.dto.create_assessment.AssessmentRegistrationsDto;
 import vacademy.io.assessment_service.features.assessment.entity.*;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
@@ -27,10 +26,7 @@ import vacademy.io.assessment_service.features.assessment.enums.AssessmentStatus
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentVisibility;
 import vacademy.io.assessment_service.features.assessment.enums.UserRegistrationFilterEnum;
 import vacademy.io.assessment_service.features.assessment.enums.UserRegistrationSources;
-import vacademy.io.assessment_service.features.assessment.repository.AssessmentCustomFieldRepository;
-import vacademy.io.assessment_service.features.assessment.repository.AssessmentRepository;
-import vacademy.io.assessment_service.features.assessment.repository.AssessmentUserRegistrationRepository;
-import vacademy.io.assessment_service.features.assessment.repository.StudentAttemptRepository;
+import vacademy.io.assessment_service.features.assessment.repository.*;
 import vacademy.io.assessment_service.features.assessment.service.QuestionBasedStrategyFactory;
 import vacademy.io.assessment_service.features.assessment.service.assessment_get.AssessmentService;
 import vacademy.io.assessment_service.features.assessment.service.bulk_entry_services.AssessmentBatchRegistrationService;
@@ -46,6 +42,7 @@ import vacademy.io.assessment_service.features.rich_text.entity.AssessmentRichTe
 import vacademy.io.assessment_service.features.rich_text.enums.TextType;
 import vacademy.io.assessment_service.features.rich_text.repository.AssessmentRichTextRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.core.standard_classes.ListService;
 import vacademy.io.common.core.utils.DateUtil;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.student.dto.BasicParticipantDTO;
@@ -91,6 +88,9 @@ public class AssessmentParticipantsManager {
     @Autowired
     OptionRepository optionRepository;
 
+    @Autowired
+    AssessmentNotificationMetadataRepository assessmentNotificationMetadataRepository;
+
 
     @Transactional
     public ResponseEntity<AssessmentSaveResponseDto> saveParticipantsToAssessment(CustomUserDetails user, AssessmentRegistrationsDto assessmentRegistrationsDto, String assessmentId, String instituteId, String type) {
@@ -112,7 +112,63 @@ public class AssessmentParticipantsManager {
     }
 
     private void handleAssessmentParticipantNotification(AssessmentRegistrationsDto.NotifyStudent notifyStudent, AssessmentRegistrationsDto.NotifyParent notifyParent, Assessment assessment, String instituteId) {
-        //TODO: handle notification
+
+        if (assessment == null) return;
+        AssessmentNotificationMetadata assessmentNotificationMetadata = new AssessmentNotificationMetadata();
+
+
+        Optional<AssessmentNotificationMetadata> savedAssessmentNotificationMetadata = assessmentNotificationMetadataRepository.findTopByAssessmentId(assessment.getId());
+
+        if (savedAssessmentNotificationMetadata.isPresent())
+            assessmentNotificationMetadata = savedAssessmentNotificationMetadata.get();
+
+
+// Update fields from notifyStudent
+        if (notifyStudent != null) {
+            if (notifyStudent.getWhenAssessmentCreated() != null) {
+                assessmentNotificationMetadata.setParticipantWhenAssessmentCreated(notifyStudent.getWhenAssessmentCreated());
+            }
+            if (notifyStudent.getShowLeaderboard() != null) {
+                assessmentNotificationMetadata.setParticipantShowLeaderboard(notifyStudent.getShowLeaderboard());
+            }
+            if (notifyStudent.getBeforeAssessmentGoesLive() != null) {
+                assessmentNotificationMetadata.setParticipantBeforeAssessmentGoesLive(notifyStudent.getBeforeAssessmentGoesLive());
+            }
+            if (notifyStudent.getWhenAssessmentLive() != null) {
+                assessmentNotificationMetadata.setParticipantWhenAssessmentLive(notifyStudent.getWhenAssessmentLive());
+            }
+            if (notifyStudent.getWhenAssessmentReportGenerated() != null) {
+                assessmentNotificationMetadata.setParticipantWhenAssessmentReportGenerated(notifyStudent.getWhenAssessmentReportGenerated());
+            }
+        }
+
+// Update fields from notifyParent
+        if (notifyParent != null) {
+            if (notifyParent.getWhenAssessmentCreated() != null) {
+                assessmentNotificationMetadata.setParentWhenAssessmentCreated(notifyParent.getWhenAssessmentCreated());
+            }
+            if (notifyParent.getBeforeAssessmentGoesLive() != null) {
+                assessmentNotificationMetadata.setParentBeforeAssessmentGoesLive(notifyParent.getBeforeAssessmentGoesLive());
+            }
+            if (notifyParent.getShowLeaderboard() != null) {
+                assessmentNotificationMetadata.setParentShowLeaderboard(notifyParent.getShowLeaderboard());
+            }
+            if (notifyParent.getWhenAssessmentLive() != null) {
+                assessmentNotificationMetadata.setParentWhenAssessmentLive(notifyParent.getWhenAssessmentLive());
+            }
+            if (notifyParent.getWhenStudentAppears() != null) {
+                assessmentNotificationMetadata.setWhenStudentAppears(notifyParent.getWhenStudentAppears());
+            }
+            if (notifyParent.getWhenStudentFinishesTest() != null) {
+                assessmentNotificationMetadata.setWhenStudentFinishesTest(notifyParent.getWhenStudentFinishesTest());
+            }
+            if (notifyParent.getWhenAssessmentReportGenerated() != null) {
+                assessmentNotificationMetadata.setParentWhenAssessmentReportGenerated(notifyParent.getWhenAssessmentReportGenerated());
+            }
+        }
+
+        assessmentNotificationMetadataRepository.save(assessmentNotificationMetadata);
+
     }
 
     private void handleJoinUrlChange(String updatedJoinLink, Assessment assessment, String instituteId) {
@@ -236,21 +292,20 @@ public class AssessmentParticipantsManager {
     }
 
     public ClosedAssessmentParticipantsResponse getAllParticipantsForClosedAssessment(CustomUserDetails user, String instituteId, String assessmentId, AssessmentUserFilter filter, Integer pageNo, Integer pageSize) {
-        if(Objects.isNull(filter)) throw new VacademyException("Invalid Filter Request");
+        if (Objects.isNull(filter)) throw new VacademyException("Invalid Filter Request");
         Sort sortingColumns = createSortObject(filter.getSortColumns());
 
         Pageable pageable = PageRequest.of(pageNo, pageSize, sortingColumns);
         Page<ParticipantsDetailsDto> registeredUserPage = null;
 
         //Handle Case for BATCH REGISTRATION
-        if(filter.getRegistrationSource().equals(UserRegistrationSources.BATCH_PREVIEW_REGISTRATION.name())){
-            registeredUserPage = handleCaseForBatchRegistration(assessmentId,instituteId,filter, pageable);
+        if (filter.getRegistrationSource().equals(UserRegistrationSources.BATCH_PREVIEW_REGISTRATION.name())) {
+            registeredUserPage = handleCaseForBatchRegistration(assessmentId, instituteId, filter, pageable);
         }
         //Handle Case for ADMIN PRE REGISTRATION
-        else if(filter.getRegistrationSource().equals(UserRegistrationSources.ADMIN_PRE_REGISTRATION.name())){
+        else if (filter.getRegistrationSource().equals(UserRegistrationSources.ADMIN_PRE_REGISTRATION.name())) {
             registeredUserPage = handleCaseForAdminPreRegistration(assessmentId, instituteId, filter, pageable);
-        }
-        else throw new VacademyException("Invalid Source Request");
+        } else throw new VacademyException("Invalid Source Request");
 
         return createAllRegisteredUserForClosedTest(registeredUserPage);
     }
@@ -267,7 +322,6 @@ public class AssessmentParticipantsManager {
             Pageable pageable) {
 
         Page<ParticipantsDetailsDto> registeredUserPage = null;
-
 
 
         // Check if the attempt type is "PENDING"
@@ -313,16 +367,15 @@ public class AssessmentParticipantsManager {
 
     private Page<ParticipantsDetailsDto> handleCaseForBatchRegistration(String assessmentId, String instituteId, AssessmentUserFilter filter, Pageable pageable) {
         Page<ParticipantsDetailsDto> registeredUserPage = null;
-        if(isPendingAttempt(filter)){
+        if (isPendingAttempt(filter)) {
             //TODO: Send request to admin core to get pending list for batch
-        }
-        else{
+        } else {
             //Handle Case for Attempted case i.e LIVE,PREVIEW,ENDED
-            if(StringUtils.hasText(filter.getName())){
-                registeredUserPage = assessmentUserRegistrationRepository.findUserRegistrationWithFilterWithSearchForBatch(filter.getName(),assessmentId, instituteId, filter.getBatches(), filter.getStatus(), filter.getAttemptType(),pageable);
+            if (StringUtils.hasText(filter.getName())) {
+                registeredUserPage = assessmentUserRegistrationRepository.findUserRegistrationWithFilterWithSearchForBatch(filter.getName(), assessmentId, instituteId, filter.getBatches(), filter.getStatus(), filter.getAttemptType(), pageable);
             }
-            if(Objects.isNull(registeredUserPage)){
-                registeredUserPage= assessmentUserRegistrationRepository.findUserRegistrationWithFilterForBatch(assessmentId, instituteId, filter.getBatches(), filter.getStatus(), filter.getAttemptType(), pageable);
+            if (Objects.isNull(registeredUserPage)) {
+                registeredUserPage = assessmentUserRegistrationRepository.findUserRegistrationWithFilterForBatch(assessmentId, instituteId, filter.getBatches(), filter.getStatus(), filter.getAttemptType(), pageable);
             }
         }
 
@@ -403,7 +456,7 @@ public class AssessmentParticipantsManager {
     }
 
     private ClosedAssessmentParticipantsResponse createAllRegisteredUserForClosedTest(Page<ParticipantsDetailsDto> registrationPage) {
-        if(Objects.isNull(registrationPage)){
+        if (Objects.isNull(registrationPage)) {
             return ClosedAssessmentParticipantsResponse.builder().content(new ArrayList<>())
                     .pageNo(0)
                     .pageSize(0)
@@ -424,7 +477,7 @@ public class AssessmentParticipantsManager {
 
     //Sorting Object to Sort the values
     private Sort createSortObject(Map<String, String> sortColumns) {
-        if(sortColumns==null) return Sort.unsorted();
+        if (sortColumns == null) return Sort.unsorted();
 
         List<Sort.Order> orders = new ArrayList<>();
 
@@ -438,12 +491,12 @@ public class AssessmentParticipantsManager {
     /**
      * Retrieves all participants for a given assessment based on the provided filter.
      *
-     * @param user          The authenticated user details.
-     * @param instituteId   The ID of the institute.
-     * @param assessmentId  The ID of the assessment.
-     * @param filter        The filter criteria for fetching participants.
-     * @param pageNo        The page number for pagination.
-     * @param pageSize      The size of each page for pagination.
+     * @param user         The authenticated user details.
+     * @param instituteId  The ID of the institute.
+     * @param assessmentId The ID of the assessment.
+     * @param filter       The filter criteria for fetching participants.
+     * @param pageNo       The page number for pagination.
+     * @param pageSize     The size of each page for pagination.
      * @return ResponseEntity containing a list of participants matching the criteria.
      * @throws VacademyException if the filter is invalid or the assessment type is null.
      */
@@ -501,7 +554,6 @@ public class AssessmentParticipantsManager {
     }
 
 
-
     public ResponseEntity<StudentReportOverallDetailDto> getStudentReportDetails(CustomUserDetails userDetails, String assessmentId, String attemptId, String instituteId) {
         Assessment assessment = assessmentRepository.findByAssessmentIdAndInstituteId(assessmentId, instituteId)
                 .orElseThrow(() -> new VacademyException("Assessment Not Found"));
@@ -539,17 +591,18 @@ public class AssessmentParticipantsManager {
         return sectionToQuestionsMap.entrySet().stream()
                 .collect(Collectors.toMap(
                         Map.Entry::getKey,
-                        entry -> getQuestionReviewForAttempt(entry.getValue(), attemptId)
+                        entry -> getQuestionReviewForAttempt(entry.getKey(), entry.getValue(), attemptId)
                 ));
+
     }
 
-    private List<StudentReportAnswerReviewDto> getQuestionReviewForAttempt(List<String> questionIds, String attemptId) {
+    private List<StudentReportAnswerReviewDto> getQuestionReviewForAttempt(String sectionId, List<String> questionIds, String attemptId) {
         if (CollectionUtils.isEmpty(questionIds)) {
             return Collections.emptyList();
         }
 
         List<QuestionWiseMarks> questionWiseMarksList = questionWiseMarksService
-                .getAllQuestionWiseMarksForQuestionIdsAndAttemptId(attemptId, questionIds);
+                .getAllQuestionWiseMarksForQuestionIdsAndAttemptId(attemptId, questionIds, sectionId);
 
         if (CollectionUtils.isEmpty(questionWiseMarksList)) {
             return Collections.emptyList();
@@ -562,7 +615,7 @@ public class AssessmentParticipantsManager {
     }
 
     private StudentReportAnswerReviewDto buildStudentReportReview(QuestionWiseMarks questionWiseMarks) {
-        try{
+        try {
             if (questionWiseMarks == null || questionWiseMarks.getQuestion() == null) {
                 return null; // Avoid throwing an exception, instead return null to filter later
             }
@@ -587,18 +640,17 @@ public class AssessmentParticipantsManager {
                     .studentResponseOptions(createOptionResponse(responseOptionIds))
                     .answerStatus(questionWiseMarks.getStatus())
                     .mark(questionWiseMarks.getMarks())
-                    .explanationId(currentQuestion.getExplanationTextData()!=null ? currentQuestion.getExplanationTextData().getId() : null)
+                    .explanationId(currentQuestion.getExplanationTextData() != null ? currentQuestion.getExplanationTextData().getId() : null)
                     .explanation(currentQuestion.getExplanationTextData() != null ? currentQuestion.getExplanationTextData().getContent() : null)
                     .timeTakenInSeconds(questionWiseMarks.getTimeTakenInSeconds())
                     .build();
-        }
-        catch (Exception e){
+        } catch (Exception e) {
             return StudentReportAnswerReviewDto.builder().build();
         }
     }
 
     private List<StudentReportAnswerReviewDto.ReportOptionsDto> createCorrectOptionsDto(String autoEvaluationJson) throws JsonProcessingException {
-        if(Objects.isNull(autoEvaluationJson)) return new ArrayList<>();
+        if (Objects.isNull(autoEvaluationJson)) return new ArrayList<>();
         MCQEvaluationDTO evaluationDTO = questionEvaluationService.getEvaluationJson(autoEvaluationJson);
         List<String> optionIds = evaluationDTO.getData().getCorrectOptionIds();
 
@@ -609,8 +661,8 @@ public class AssessmentParticipantsManager {
         List<Option> allOptions = optionRepository.findAllById(optionIds);
         List<StudentReportAnswerReviewDto.ReportOptionsDto> optionResponse = new ArrayList<>();
 
-        allOptions.forEach(option->{
-            String optionHtml = option.getText()!=null ? option.getText().getContent() : null;
+        allOptions.forEach(option -> {
+            String optionHtml = option.getText() != null ? option.getText().getContent() : null;
             optionResponse.add(StudentReportAnswerReviewDto.ReportOptionsDto.builder()
                     .optionId(option.getId())
                     .optionName(optionHtml).build());
@@ -619,4 +671,45 @@ public class AssessmentParticipantsManager {
         return optionResponse;
     }
 
+    public ResponseEntity<RespondentListResponse> getRespondentList(CustomUserDetails user, String assessmentId, String sectionId, String questionId, RespondentFilter filter, Integer pageNo, Integer pageSize) {
+
+        if (Objects.isNull(filter)) throw new VacademyException("Invalid Request");
+        Sort sortingObject = ListService.createSortObject(filter.getSortColumns());
+
+        Pageable pageable = PageRequest.of(pageNo, pageSize, sortingObject);
+        Page<RespondentListDto> responses = null;
+        if (StringUtils.hasText(filter.getName())) {
+            responses = assessmentUserRegistrationRepository
+                    .findRespondentListForAssessmentWithFilterAndSearch(filter.getName(), assessmentId, questionId, filter.getAssessmentVisibility(), filter.getStatus(), filter.getRegistrationSource(), filter.getRegistrationSourceId(), pageable);
+        }
+        if (Objects.isNull(responses)) {
+            responses = assessmentUserRegistrationRepository
+                    .findRespondentListForAssessmentWithFilter(assessmentId, questionId, filter.getAssessmentVisibility(), filter.getStatus(), filter.getRegistrationSource(), filter.getRegistrationSourceId(), pageable);
+        }
+        return ResponseEntity.ok(createRespondentListResponse(responses));
+    }
+
+    private RespondentListResponse createRespondentListResponse(Page<RespondentListDto> responses) {
+        if (Objects.isNull(responses)) {
+            return RespondentListResponse.builder()
+                    .content(null)
+                    .pageNo(0)
+                    .pageSize(0)
+                    .totalElements(0)
+                    .totalPages(0)
+                    .last(true)
+                    .build();
+        }
+
+        List<RespondentListDto> content = responses.getContent();
+
+        return RespondentListResponse.builder()
+                .content(content)
+                .pageSize(responses.getSize())
+                .pageNo(responses.getNumber())
+                .totalElements(responses.getTotalElements())
+                .totalPages(responses.getTotalPages())
+                .last(responses.isLast())
+                .build();
+    }
 }

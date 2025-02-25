@@ -35,6 +35,6 @@ public class DataDurationDistributionDto {
     @NoArgsConstructor
     public static class DataDurationModel {
         private String id;
-        private int newMaxTimeInMins;
+        private Long newMaxTimeInSeconds;
     }
 }

@@ -11,8 +11,10 @@ import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.assessment_service.features.assessment.dto.QuestionWiseBasicDetailDto;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.entity.QuestionAssessmentSectionMapping;
+import vacademy.io.assessment_service.features.assessment.entity.Section;
 import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
 import vacademy.io.assessment_service.features.assessment.repository.QuestionAssessmentSectionMappingRepository;
+import vacademy.io.assessment_service.features.assessment.repository.SectionRepository;
 import vacademy.io.assessment_service.features.assessment.repository.StudentAttemptRepository;
 import vacademy.io.assessment_service.features.assessment.service.marking_strategy.MCQMQuestionTypeBasedStrategy;
 import vacademy.io.assessment_service.features.assessment.service.marking_strategy.MCQSQuestionTypeBasedStrategy;
@@ -50,6 +52,9 @@ public class StudentAttemptService {
 
     @Autowired
     QuestionWiseMarksService questionWiseMarksService;
+
+    @Autowired
+    SectionRepository sectionRepository;
 
     public StudentAttempt updateStudentAttempt(StudentAttempt studentAttempt){
         return studentAttemptRepository.save(studentAttempt);
@@ -187,8 +192,11 @@ public class StudentAttemptService {
         double marksObtained = questionWiseBasicDetailDto.getMarks();
         String answerStatus = questionWiseBasicDetailDto.getAnswerStatus();
 
+        Optional<Section> sectionOptional = sectionRepository.findById(sectionId);
+        if(sectionOptional.isEmpty()) throw new VacademyException("Section Not Found");
+
         questionWiseMarksService.updateQuestionWiseMarksForEveryQuestion(
-                assessment, studentAttempt, questionAsked, questionWiseResponseData, question.getTimeTakenInSeconds(),answerStatus, marksObtained
+                assessment, studentAttempt, questionAsked, questionWiseResponseData, question.getTimeTakenInSeconds(),answerStatus, sectionOptional.get(), marksObtained
         );
 
         return marksObtained;

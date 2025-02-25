@@ -48,7 +48,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             "FROM package_session ps " +
             "JOIN package p ON ps.package_id = p.id " +
             "JOIN package_institute pi ON p.id = pi.package_id " +
-            "WHERE pi.institute_id = :instituteId",
+            "WHERE pi.institute_id = :instituteId AND ps.status != 'DELETED'",
             nativeQuery = true)
     List<PackageSession> findPackageSessionsByInstituteId(
             @Param("instituteId") String instituteId);
@@ -87,5 +87,22 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("userId") String userId,
             @Param("instituteId") String instituteId);
 
+    @Query(value = "SELECT COUNT(DISTINCT p.id) FROM package p " +
+            "JOIN package_institute pi ON p.id = pi.package_id " +
+            "JOIN package_session ps ON p.id = ps.package_id " +
+            "WHERE pi.institute_id = :instituteId " +
+            "AND p.status != 'DELETED' " +
+            "AND ps.status != 'DELETED'",
+            nativeQuery = true)
+    Long countDistinctPackagesByInstituteId(@Param("instituteId") String instituteId);
+
+    @Query(value = "SELECT COUNT(DISTINCT ps.level_id) FROM package_session ps " +
+            "JOIN package p ON ps.package_id = p.id " +
+            "JOIN package_institute pi ON p.id = pi.package_id " +
+            "WHERE pi.institute_id = :instituteId " +
+            "AND p.status != 'DELETED' " +
+            "AND ps.status != 'DELETED' and ps.level_id != 'DEFAULT' ",
+            nativeQuery = true)
+    Long countDistinctLevelsByInstituteId(@Param("instituteId") String instituteId);
 
 }

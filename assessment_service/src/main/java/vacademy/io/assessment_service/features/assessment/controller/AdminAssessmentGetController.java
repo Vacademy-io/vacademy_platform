@@ -2,9 +2,11 @@ package vacademy.io.assessment_service.features.assessment.controller;
 
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.repository.query.Param;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.*;
+import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.request.RevaluateRequest;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.AssessmentOverviewDto;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.AssessmentOverviewResponse;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.QuestionInsightsResponse;
@@ -72,5 +74,14 @@ public class AdminAssessmentGetController {
                                                                @RequestParam(value = "pageNo", defaultValue = DEFAULT_PAGE_NUMBER, required = false) int pageNo,
                                                                @RequestParam(value = "pageSize", defaultValue = DEFAULT_PAGE_SIZE, required = false) int pageSize){
         return adminAssessmentGetManager.getStudentReport(userDetails, studentId,instituteId,filter, pageNo, pageSize);
+    }
+
+    @PostMapping("/revaluate")
+    public ResponseEntity<String> revaluateAssessment(@RequestAttribute("user") CustomUserDetails userDetails,
+                                                      @Param("assessmentId") String assessmentId,
+                                                      @Param("instituteId") String instituteId,
+                                                      @RequestBody RevaluateRequest request,
+                                                      @Param("methodType") String methodType){
+        return adminAssessmentGetManager.revaluateAssessment(userDetails, assessmentId, methodType, request, instituteId);
     }
 }

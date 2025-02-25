@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.Top3CorrectResponseDto;
+import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
 import vacademy.io.assessment_service.features.learner_assessment.dto.QuestionStatusDto;
 import vacademy.io.assessment_service.features.learner_assessment.entity.QuestionWiseMarks;
 
@@ -68,4 +69,6 @@ public interface QuestionWiseMarksRepository extends JpaRepository<QuestionWiseM
     List<QuestionWiseMarks> findAllQuestionWiseMarksForQuestionIdAndAttemptId(@Param("questionIds") List<String> questionIds,
                                                                               @Param("attemptId") String attemptId,
                                                                               @Param("sectionId") String sectionId);
+
+    List<QuestionWiseMarks> findByStudentAttemptIdAndAssessmentId(String attemptId, String assessmentId);
 }

@@ -221,7 +221,13 @@ public class SubjectService {
         for (String packageSessionId : packageSessionsWithoutSubject) {
             Optional<PackageSession> optionalPackageSession = packageSessionRepository.findById(packageSessionId);
             optionalPackageSession.ifPresent(packageSession -> {
-                Subject newSubject = new Subject(subject.getSubjectName(), subject.getSubjectCode(), subject.getCredit(), SubjectStatusEnum.ACTIVE.name(),subject.getThumbnailId());
+                Subject newSubject = new Subject();
+                newSubject.setSubjectName(subject.getSubjectName());
+                newSubject.setSubjectCode(subject.getSubjectCode());
+                newSubject.setCredit(subject.getCredit());
+                newSubject.setCredit(subject.getCredit());
+                newSubject.setStatus(SubjectStatusEnum.ACTIVE.name());
+                newSubject.setThumbnailId(subject.getThumbnailId());
                 subjectRepository.save(newSubject);
 
                 SubjectPackageSession newMapping = new SubjectPackageSession(newSubject, packageSession, null);

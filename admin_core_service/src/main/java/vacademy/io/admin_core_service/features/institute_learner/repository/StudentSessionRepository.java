@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.CrudRepository;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import vacademy.io.admin_core_service.features.institute_learner.dto.LearnerBatchProjection;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
 
 import java.util.Date;
@@ -78,4 +79,22 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
             @Param("instituteId") String instituteId,
             @Param("statusList") List<String> statusList);
 
+    @Query(value = """
+        SELECT ps.id AS packageSessionId, 
+               CONCAT(l.level_name, ' ', p.package_name) AS batchName, 
+               COUNT(DISTINCT ssigm.user_id) AS enrolledStudents
+        FROM package_session ps
+        JOIN package p ON ps.package_id = p.id
+        JOIN level l ON ps.level_id = l.id
+        LEFT JOIN student_session_institute_group_mapping ssigm 
+            ON ps.id = ssigm.package_session_id
+            AND ssigm.institute_id = :instituteId 
+            AND ssigm.status IN (:status)
+        WHERE ps.status != 'DELETED'
+        GROUP BY ps.id, l.level_name, p.package_name
+    """, nativeQuery = true)
+    List<LearnerBatchProjection> getPackageSessionsWithEnrollment(
+            @Param("instituteId") String instituteId,
+            @Param("status") List<String> status
+    );
 }

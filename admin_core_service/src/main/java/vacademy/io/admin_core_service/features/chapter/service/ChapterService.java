@@ -11,9 +11,12 @@ import vacademy.io.admin_core_service.features.chapter.enums.ChapterStatus;
 import vacademy.io.admin_core_service.features.chapter.repository.ChapterPackageSessionMappingRepository;
 import vacademy.io.admin_core_service.features.chapter.repository.ChapterRepository;
 import vacademy.io.admin_core_service.features.module.entity.ModuleChapterMapping;
+import vacademy.io.admin_core_service.features.module.entity.SubjectModuleMapping;
 import vacademy.io.admin_core_service.features.module.repository.ModuleChapterMappingRepository;
 import vacademy.io.admin_core_service.features.module.repository.ModuleRepository;
+import vacademy.io.admin_core_service.features.module.repository.SubjectModuleMappingRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
+import vacademy.io.admin_core_service.features.subject.service.SubjectService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.module.Module;
@@ -31,47 +34,54 @@ public class ChapterService {
     private final PackageSessionRepository packageSessionRepository;
     private final ChapterPackageSessionMappingRepository chapterPackageSessionMappingRepository;
     private final ModuleChapterMappingRepository moduleChapterMappingRepository;
+    private final SubjectModuleMappingRepository subjectModuleMappingRepository;
+    private final SubjectService subjectService;
 
     @Transactional
     public ChapterDTO addChapter(ChapterDTO chapterDTO, String moduleId, String commaSeparatedPackageSessionIds, CustomUserDetails user) {
-        // Validate incoming data
         validateRequest(chapterDTO, moduleId, commaSeparatedPackageSessionIds);
-
-        // Find the module by ID
-        Optional<Module> optionalModule = moduleRepository.findById(moduleId);
-        if (optionalModule.isEmpty()) {
-            throw new VacademyException("Module not found");
-        }
-        Module module = optionalModule.get();
-
-        // Create and save a new chapter
-        Chapter chapter = new Chapter(chapterDTO);
-        chapter = chapterRepository.save(chapter);
-
-        // Create a mapping between the chapter and the module
-        ModuleChapterMapping moduleChapterMapping = new ModuleChapterMapping(chapter, module);
-        moduleChapterMappingRepository.save(moduleChapterMapping);
-
-        // Process comma-separated package session IDs
-        String[] packageSessionIds = getPackageSessionIds(commaSeparatedPackageSessionIds);
-        for (String packageSessionId : packageSessionIds) {
-            // Find the package session by ID
-            Optional<PackageSession> optionalPackageSession = packageSessionRepository.findById(packageSessionId);
-            if (optionalPackageSession.isEmpty()) {
-                throw new VacademyException("Package Session not found");
-            }
-            PackageSession packageSession = optionalPackageSession.get();
-
-            // Create a mapping between the chapter and the package session
-            ChapterPackageSessionMapping chapterPackageSessionMapping = new ChapterPackageSessionMapping(chapter, packageSession, chapterDTO.getChapterOrder()); // needs to handle one edge case where in if one chapter is connected with multiple package sessions that time chapter order
-            chapterPackageSessionMappingRepository.save(chapterPackageSessionMapping);
-        }
-
-        // Set chapter ID and status in the DTO
+        Chapter chapter = saveChapter(chapterDTO);
+        Optional<SubjectModuleMapping>subjectModuleMapping = subjectModuleMappingRepository.findByModuleId(moduleId);
         chapterDTO.setId(chapter.getId());
         chapterDTO.setStatus(ChapterStatus.ACTIVE.name());
+        List<Module>modules = subjectService.processSubjectsAndModules(Arrays.stream(getPackageSessionIds(commaSeparatedPackageSessionIds)).toList(), subjectModuleMapping.get().getSubject(), subjectModuleMapping.get().getModule());
+        processPackageSessionMappings(chapter, commaSeparatedPackageSessionIds, chapterDTO.getChapterOrder());
+        processChapterModuleMapping(chapter,modules);
         return chapterDTO;
     }
+
+    private Module fetchModuleById(String moduleId) {
+        return moduleRepository.findById(moduleId)
+                .orElseThrow(() -> new VacademyException("Module not found"));
+    }
+
+    private Chapter saveChapter(ChapterDTO chapterDTO) {
+        return chapterRepository.save(new Chapter(chapterDTO));
+    }
+
+    private void processChapterModuleMapping(Chapter chapter, List<Module> modules) {
+        List<ModuleChapterMapping>moduleChapterMappings = modules.stream()
+                .map(module -> new ModuleChapterMapping(chapter, module)).collect(Collectors.toList());
+        moduleChapterMappingRepository.saveAll(moduleChapterMappings);
+    }
+
+    private void processPackageSessionMappings(Chapter chapter, String commaSeparatedPackageSessionIds, Integer chapterOrder) {
+        String[] packageSessionIds = getPackageSessionIds(commaSeparatedPackageSessionIds);
+        for (String packageSessionId : packageSessionIds) {
+            PackageSession packageSession = fetchPackageSessionById(packageSessionId);
+            saveChapterPackageSessionMapping(chapter, packageSession, chapterOrder);
+        }
+    }
+
+    private PackageSession fetchPackageSessionById(String packageSessionId) {
+        return packageSessionRepository.findById(packageSessionId)
+                .orElseThrow(() -> new VacademyException("Package Session not found"));
+    }
+
+    private void saveChapterPackageSessionMapping(Chapter chapter, PackageSession packageSession, Integer chapterOrder) {
+        chapterPackageSessionMappingRepository.save(new ChapterPackageSessionMapping(chapter, packageSession, chapterOrder));
+    }
+
 
     private void validateRequest(ChapterDTO chapterDTO, String moduleId, String commaSeparatedPackageSessionIds) {
         if (chapterDTO == null) {

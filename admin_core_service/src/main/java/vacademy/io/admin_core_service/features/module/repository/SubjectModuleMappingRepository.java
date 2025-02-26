@@ -8,6 +8,7 @@ import vacademy.io.admin_core_service.features.module.entity.SubjectModuleMappin
 import vacademy.io.common.institute.entity.module.Module;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface SubjectModuleMappingRepository extends JpaRepository<SubjectModuleMapping, String> {
@@ -24,4 +25,18 @@ public interface SubjectModuleMappingRepository extends JpaRepository<SubjectMod
 
     @Query("SELECT smm FROM SubjectModuleMapping smm WHERE smm.subject.id IN :subjectIds AND smm.module.id IN :moduleIds")
     List<SubjectModuleMapping> findAllBySubjectIdInAndModuleIdIn(@Param("subjectIds") List<String> subjectIds, @Param("moduleIds") List<String> moduleIds);
+
+    @Query("SELECT smm FROM SubjectModuleMapping smm WHERE smm.module.id = :moduleId")
+    Optional<SubjectModuleMapping> findByModuleId(@Param("moduleId") String moduleId);
+
+    @Query("""
+    SELECT smm FROM SubjectModuleMapping smm 
+    WHERE smm.subject.id = :subjectId 
+    AND LOWER(smm.module.moduleName) = LOWER(:moduleName) 
+    AND smm.module.status <> 'DELETED'
+""")
+    Optional<SubjectModuleMapping> findBySubjectIdAndModuleName(
+            @Param("subjectId") String subjectId,
+            @Param("moduleName") String moduleName);
+
 }

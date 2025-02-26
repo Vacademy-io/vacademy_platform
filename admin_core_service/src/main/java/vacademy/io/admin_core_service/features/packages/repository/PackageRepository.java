@@ -20,7 +20,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             "JOIN package_session ps ON s.id = ps.session_id " +
             "JOIN package p ON ps.package_id = p.id " +
             "JOIN package_institute pi ON p.id = pi.package_id " +  // Ensure to join package_institute to filter by institute
-            "WHERE pi.institute_id = :instituteId",
+            "WHERE pi.institute_id = :instituteId AND ps.status != 'DELETED'",
             nativeQuery = true)
     List<SessionProjection> findDistinctSessionsByInstituteId(@Param("instituteId") String instituteId);
 

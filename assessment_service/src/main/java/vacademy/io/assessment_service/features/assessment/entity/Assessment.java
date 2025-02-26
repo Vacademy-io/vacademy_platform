@@ -116,6 +116,9 @@ public class Assessment {
     @OneToMany(mappedBy = "assessment", fetch = FetchType.LAZY)
     private Set<AssessmentInstituteMapping> assessmentInstituteMappings = new HashSet<>();
 
+    @OneToOne(mappedBy = "assessment")
+    private AssessmentNotificationMetadata assessmentNotificationMetadata;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;
 

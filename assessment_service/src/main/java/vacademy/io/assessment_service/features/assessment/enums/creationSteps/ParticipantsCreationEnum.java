@@ -16,5 +16,7 @@ public enum ParticipantsCreationEnum {
     REGISTRATION_FORM_FIELDS,
     OPEN_SELECT_BATCH,
     OPEN_SELECT_STUDENT,
-    OPEN_LINK
+    OPEN_LINK,
+
+    NOTIFICATIONS
 }

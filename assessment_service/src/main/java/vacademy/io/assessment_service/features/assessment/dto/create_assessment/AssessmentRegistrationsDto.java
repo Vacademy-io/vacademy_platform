@@ -57,11 +57,11 @@ public class AssessmentRegistrationsDto {
     @AllArgsConstructor
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public static class NotifyStudent {
-        private boolean whenAssessmentCreated;
-        private boolean showLeaderboard;
+        private Boolean whenAssessmentCreated;
+        private Boolean showLeaderboard;
         private Integer beforeAssessmentGoesLive;
-        private boolean whenAssessmentLive;
-        private boolean whenAssessmentReportGenerated;
+        private Boolean whenAssessmentLive;
+        private Boolean whenAssessmentReportGenerated;
 
     }
 
@@ -71,12 +71,12 @@ public class AssessmentRegistrationsDto {
     @AllArgsConstructor
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public static class NotifyParent {
-        private boolean whenAssessmentCreated;
+        private Boolean whenAssessmentCreated;
         private Integer beforeAssessmentGoesLive;
-        private boolean showLeaderboard;
-        private boolean whenAssessmentLive;
-        private boolean whenStudentAppears;
-        private boolean whenStudentFinishesTest;
-        private boolean whenAssessmentReportGenerated;
+        private Boolean showLeaderboard;
+        private Boolean whenAssessmentLive;
+        private Boolean whenStudentAppears;
+        private Boolean whenStudentFinishesTest;
+        private Boolean whenAssessmentReportGenerated;
     }
 }

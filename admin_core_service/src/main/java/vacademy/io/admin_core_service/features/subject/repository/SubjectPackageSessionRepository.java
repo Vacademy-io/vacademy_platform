@@ -29,4 +29,26 @@ public interface SubjectPackageSessionRepository extends JpaRepository<SubjectPa
             "WHERE ss.packageSession.id = :packageSessionId AND ss.subject.status <> 'DELETED'")
     List<Subject> findDistinctSubjectsByPackageSessionId(@Param("packageSessionId") String packageSessionId);
 
+    @Query("""
+    SELECT sps FROM SubjectPackageSession sps
+    WHERE LOWER(sps.subject.subjectName) = LOWER(:subjectName)
+    AND sps.packageSession.id IN :packageSessionIds
+    AND sps.subject.status != 'DELETED'
+""")
+    List<SubjectPackageSession> findBySubjectNameAndPackageSessionIds(
+            @Param("subjectName") String subjectName,
+            @Param("packageSessionIds") List<String> packageSessionIds
+    );
+
+    @Query(value = "SELECT COUNT(DISTINCT s.id) FROM subject_session ss " +
+            "JOIN subject s ON ss.subject_id = s.id " +
+            "JOIN package_session ps ON ss.session_id = ps.id " +
+            "JOIN package p ON ps.package_id = p.id " +
+            "JOIN package_institute pi ON p.id = pi.package_id " +
+            "WHERE pi.institute_id = :instituteId " +
+            "AND s.status != 'DELETED' " +
+            "AND ps.status != 'DELETED'",
+            nativeQuery = true)
+    Long countDistinctSubjectsByInstituteId(@Param("instituteId") String instituteId);
+
 }

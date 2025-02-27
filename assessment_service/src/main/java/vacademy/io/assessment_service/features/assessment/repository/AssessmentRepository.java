@@ -40,6 +40,7 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
             "AND (:passedAssessments IS NULL OR :passedAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' > a.bound_end_time)) " +
             "AND (:upcomingAssessments IS NULL OR :upcomingAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' < a.bound_start_time)) " +
             "AND (:assessmentModes IS NULL OR a.play_mode IN :assessmentModes) " +
+            "AND a.status <> 'DELETED' " +
             "GROUP BY a.id, aim.subject_id, aim.assessment_url", // Group by necessary columns to ensure distinct results
             countQuery = "SELECT COUNT(DISTINCT a.id) FROM public.assessment a " +
                     "LEFT JOIN public.assessment_batch_registration abr ON a.id = abr.assessment_id " +
@@ -53,6 +54,7 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
                     "AND (:liveAssessments IS NULL OR :liveAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' BETWEEN a.bound_start_time AND a.bound_end_time)) " +
                     "AND (:passedAssessments IS NULL OR :passedAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' > a.bound_end_time)) " +
                     "AND (:upcomingAssessments IS NULL OR :upcomingAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' < a.bound_start_time)) " +
+                    "AND a.status <> 'DELETED' " +
                     "AND (:assessmentModes IS NULL OR a.play_mode IN :assessmentModes)",
             nativeQuery = true)
     Page<Object[]> filterAssessments(@Param("name") String name,

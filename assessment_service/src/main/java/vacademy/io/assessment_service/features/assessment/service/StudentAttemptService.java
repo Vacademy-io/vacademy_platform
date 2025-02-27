@@ -2,13 +2,13 @@ package vacademy.io.assessment_service.features.assessment.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.extern.flogger.Flogger;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.assessment_service.features.assessment.dto.QuestionWiseBasicDetailDto;
+import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.request.RevaluateRequest;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.entity.QuestionAssessmentSectionMapping;
 import vacademy.io.assessment_service.features.assessment.entity.Section;
@@ -22,6 +22,7 @@ import vacademy.io.assessment_service.features.learner_assessment.constants.Atte
 import vacademy.io.assessment_service.features.learner_assessment.dto.status_json.LearnerAssessmentAttemptDataDto;
 import vacademy.io.assessment_service.features.learner_assessment.dto.status_json.QuestionAttemptData;
 import vacademy.io.assessment_service.features.learner_assessment.dto.status_json.SectionAttemptData;
+import vacademy.io.assessment_service.features.learner_assessment.entity.QuestionWiseMarks;
 import vacademy.io.assessment_service.features.learner_assessment.enums.AssessmentAttemptResultEnum;
 import vacademy.io.assessment_service.features.learner_assessment.service.QuestionWiseMarksService;
 import vacademy.io.assessment_service.features.question_core.entity.Question;
@@ -30,6 +31,8 @@ import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
+import java.util.stream.StreamSupport;
 
 @Slf4j
 @Service
@@ -235,7 +238,134 @@ public class StudentAttemptService {
         }
     }
 
+    public List<StudentAttempt> getAllParticipantsAttemptForAssessment(String assessmentId){
+        return studentAttemptRepository.findAllParticipantsFromAssessmentAndStatusNotIn(assessmentId, List.of("DELETED"));
+    }
+
+    public void revaluateForAllParticipants(String assessmentId) {
+        List<StudentAttempt> allAttempts = studentAttemptRepository.findAllParticipantsFromAssessmentAndStatusNotIn(assessmentId, List.of("DELETED"));
+        revaluateAssessmentForAttempts(allAttempts);
+    }
+
+    public void revaluateAssessmentForAttempts(List<StudentAttempt> allAttempts){
+        allAttempts.forEach(attempt -> {
+            if(attempt.getStatus().equals("ENDED")){
+                updateStudentAttemptWithResultAfterMarksCalculation(Optional.of(attempt));
+            }
+            else if(attempt.getStatus().equals("LIVE")){
+                updateStudentAttemptWithTotalAfterMarksCalculation(Optional.of(attempt));
+            }
+
+        });
+    }
+
+    public void revaluateForCustomParticipantsAndQuestions(Assessment assessment, RevaluateRequest request){
+        List<StudentAttempt> allAttempts = StreamSupport
+                .stream(studentAttemptRepository.findAllById(request.getAttemptIds()).spliterator(), false)
+                .toList();
+
+        List<RevaluateRequest.RevaluateQuestionDto> questionDtos = request.getQuestions();
+        questionDtos.forEach(question->{
+            String sectionId = question.getSectionId();
+            List<String> questionIds = question.getQuestionIds();
+
+            for (StudentAttempt attempt : allAttempts) {
+                calculateMarksForSectionIdAndQuestionIds(Optional.of(attempt), sectionId, questionIds,assessment);
+                updateMarksAfterRevaluation(attempt, assessment.getId());
+            }
+        });
+    }
+
+    @Async
+    public CompletableFuture<Void> revaluateForAllParticipantsWrapper(String assessmentId, String instituteId) {
+        return CompletableFuture.runAsync(() -> revaluateForAllParticipants(assessmentId))
+                .thenRun(() -> sendEmail(instituteId));
+    }
+
+    @Async
+    public CompletableFuture<Void> revaluateForParticipantIdsWrapper(String assessmentId, List<String> allAttemptIds, String instituteId) {
+        List<StudentAttempt> allAttempts = StreamSupport
+                .stream(studentAttemptRepository.findAllById(allAttemptIds).spliterator(), false)
+                .toList();
+
+        return CompletableFuture.runAsync(() -> revaluateAssessmentForAttempts(allAttempts))
+                .thenRun(() -> sendEmail(instituteId));
+    }
+
+    @Async
+    public CompletableFuture<Void> revaluateCustomParticipantAndQuestionsWrapper(Assessment assessment, RevaluateRequest request, String instituteId) {
+
+        return CompletableFuture.runAsync(() -> revaluateForCustomParticipantsAndQuestions(assessment, request))
+                .thenRun(() -> sendEmail(instituteId));
+    }
 
 
+    public void updateMarksAfterRevaluation(StudentAttempt studentAttempt, String assessmentId){
+        List<QuestionWiseMarks> allQuestionWiseMarks = questionWiseMarksService.getAllQuestionWiseMarksForAttemptId(studentAttempt.getId(), assessmentId);
+        double totalMarks = 0.0;
+
+        for(QuestionWiseMarks questionWiseMarks: allQuestionWiseMarks){
+            totalMarks+=questionWiseMarks.getMarks();
+        }
+
+        studentAttempt.setTotalMarks(totalMarks);
+        if(studentAttempt.getStatus().equals("ENDED")){
+            studentAttempt.setResultMarks(totalMarks);
+        }
+
+        studentAttemptRepository.save(studentAttempt);
+    }
+
+    public void calculateMarksForSectionIdAndQuestionIds(Optional<StudentAttempt> studentAttemptOptional, String sectionId, List<String> questionIds, Assessment assessment){
+        questionIds.forEach(questionId->{
+            calculateMarksForSectionIdAndQuestionId(studentAttemptOptional,sectionId,questionId,assessment);
+        });
+    }
+
+
+    public double calculateMarksForSectionIdAndQuestionId(Optional<StudentAttempt> studentAttemptOptional, String sectionId, String questionId, Assessment assessment){
+        if(studentAttemptOptional.isEmpty()) throw new VacademyException("Student Attempt Not Found");
+
+        StudentAttempt studentAttempt = studentAttemptOptional.get();
+        String jsonAttemptData = studentAttempt.getAttemptData();
+        if(Objects.isNull(jsonAttemptData)) return 0.0;
+
+        LearnerAssessmentAttemptDataDto attemptData = validateAndCreateJsonObject(jsonAttemptData);
+
+        Optional<QuestionAssessmentSectionMapping> questionAssessmentSectionMapping =
+                questionAssessmentSectionMappingRepository.findByQuestionIdAndSectionId(questionId, sectionId);
+
+        if (questionAssessmentSectionMapping.isEmpty()) {
+            return 0.0;
+        }
+
+        QuestionAssessmentSectionMapping markingScheme = questionAssessmentSectionMapping.get();
+        Question questionAsked = markingScheme.getQuestion();
+        String questionWiseResponseData = getQuestionDetails(questionId, jsonAttemptData);
+
+        QuestionWiseBasicDetailDto questionWiseBasicDetailDto = QuestionBasedStrategyFactory.calculateMarks(
+                markingScheme.getMarkingJson(),
+                questionAsked.getAutoEvaluationJson(),
+                questionWiseResponseData,
+                questionAsked.getQuestionType()
+        );
+
+        double marksObtained = questionWiseBasicDetailDto.getMarks();
+        String answerStatus = questionWiseBasicDetailDto.getAnswerStatus();
+
+        Section section = questionAssessmentSectionMapping.get().getSection();
+
+        questionWiseMarksService.updateQuestionWiseMarksForEveryQuestion(
+                assessment, studentAttempt, questionAsked, questionWiseResponseData, null,answerStatus, section, marksObtained
+        );
+
+        return marksObtained;
+    }
+
+
+    private void sendEmail(String instituteId) {
+        log.info("Email Sent: " + instituteId);
+        //TODO Sent Email
+    }
 
 }

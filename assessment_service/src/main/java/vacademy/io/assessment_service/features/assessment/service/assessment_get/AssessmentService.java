@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import vacademy.io.assessment_service.features.assessment.dto.AssessmentSaveResponseDto;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentInstituteMapping;
+import vacademy.io.assessment_service.features.assessment.enums.AssessmentStatus;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentInstituteMappingRepository;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -41,7 +42,7 @@ public class AssessmentService {
         if(optionalAssessmentInstituteMapping.isEmpty()) throw new VacademyException("Assessment Not Found");
 
         Assessment assessment = optionalAssessmentInstituteMapping.get().getAssessment();
-        assessment.setStatus("DELETED");
+        assessment.setStatus(AssessmentStatus.DELETED.name());
         assessmentRepository.save(assessment);
 
         return ResponseEntity.ok("Done");

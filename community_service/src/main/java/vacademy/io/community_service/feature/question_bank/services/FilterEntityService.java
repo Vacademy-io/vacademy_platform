@@ -4,6 +4,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import vacademy.io.community_service.feature.filter.repository.EntityTagsRepository;
 import vacademy.io.community_service.feature.filter.repository.QuestionPaperRepository;
 import vacademy.io.community_service.feature.filter.repository.QuestionRepository;
@@ -32,6 +33,7 @@ public class FilterEntityService {
      */
     public FilteredEntityResponseDto getFilteredEntityTags(RequestDto filterRequest, int pageNo, int pageSize) {
         String entityName = filterRequest.getType();
+        String search = filterRequest.getName();
         Pageable pageable = PageRequest.of(pageNo, pageSize);
 
         Set<String> tagIds = Optional.ofNullable(filterRequest.getTags())
@@ -41,8 +43,13 @@ public class FilterEntityService {
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
 
-        Page<Object[]> entityResults = repository.findDistinctEntityIds(entityName, tagIds.isEmpty() ? null : List.copyOf(tagIds), pageable);
-
+        Page<Object[]> entityResults;
+        if(StringUtils.hasText(search)){
+            entityResults = repository.findDistinctEntitiesbysearch(entityName, List.copyOf(tagIds), search ,  pageable);
+        }
+        else {
+            entityResults = repository.findDistinctEntities(entityName, List.copyOf(tagIds) ,  pageable);
+        }
         return createFilteredEntityResponse(entityResults);
     }
 

@@ -10,6 +10,6 @@ import java.util.List;
 @Builder
 public class RequestDto {
     private String type; // "QUESTION" or "QUESTION_PAPER"
-//    private String name;
+    private String name;
     private List<TagFilterRequestDto> tags;
 }

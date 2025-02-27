@@ -87,33 +87,29 @@ public class AddQuestionPaperFromImportManager {
         QuestionPaper questionPaper = questionPaperRepository.findById(questionRequestBody.getId())
                 .orElseThrow(() -> new EntityNotFoundException("Question Paper not found"));
 
-        //  Update basic details
-        questionPaper.setTitle(questionRequestBody.getTitle());
+        // Update title only if it's not null
+        if (questionRequestBody.getTitle() != null) {
+            questionPaper.setTitle(questionRequestBody.getTitle());
+        }
+
+        // Update createdBy and access level
         questionPaper.setCreatedByUserId(user.getUserId());
         questionPaper.setAccess(isPublicPaper ? QuestionAccessLevel.PUBLIC.name() : QuestionAccessLevel.PRIVATE.name());
 
-        //  Save updated question paper
+        // Save updated question paper
         questionPaper = questionPaperRepository.save(questionPaper);
 
-        //  Fetch existing questions already linked to this question paper
-        List<String> existingQuestionIds = questionRepository.findQuestionsByQuestionPaperId(questionPaper.getId())
-                .stream()
-                .map(Question::getId) // Extract only IDs
-                .toList();
+        // Process and insert new questions directly (no need to check for duplicates)
         List<Question> newQuestions = new ArrayList<>();
         List<Option> newOptions = new ArrayList<>();
 
         for (var importQuestion : questionRequestBody.getQuestions()) {
-            // Check if question already exists, avoid duplicate insertion
-            if (!existingQuestionIds.contains(importQuestion.getId())) {
-                Question question = makeQuestionAndOptionFromImportQuestion(importQuestion, isPublicPaper);
-                newQuestions.add(question);
-                newOptions.addAll(question.getOptions());
-            }
+            Question question = makeQuestionAndOptionFromImportQuestion(importQuestion, isPublicPaper);
+            newQuestions.add(question);
+            newOptions.addAll(question.getOptions());
         }
 
-
-        //  Save new questions and options
+        // Save new questions and options
         if (!newQuestions.isEmpty()) {
             newQuestions = questionRepository.saveAll(newQuestions);
             newOptions = optionRepository.saveAll(newOptions);
@@ -121,11 +117,11 @@ public class AddQuestionPaperFromImportManager {
             // Get the IDs of newly added questions
             List<String> newQuestionIds = newQuestions.stream().map(Question::getId).toList();
 
-            //  Associate new questions with the existing question paper
+            // Associate new questions with the existing question paper
             questionPaperRepository.bulkInsertQuestionsToQuestionPaper(questionPaper.getId(), newQuestionIds);
         }
 
-        //  If not public, link to an institute
+        // If not public, link to an institute
         if (!isPublicPaper) {
             questionPaperRepository.linkInstituteToQuestionPaper(
                     UUID.randomUUID().toString(), questionPaper.getId(),

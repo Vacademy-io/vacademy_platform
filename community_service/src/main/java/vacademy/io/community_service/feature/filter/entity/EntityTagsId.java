@@ -25,9 +25,6 @@ public class EntityTagsId implements Serializable {
     @Column(name = "tag_id")
     private String tagId;
 
-    // Default constructor
-    public EntityTagsId() {}
-
     // Constructor with parameters
     public EntityTagsId(String entityId, String entityName, String tagId) {
         this.entityId = entityId;

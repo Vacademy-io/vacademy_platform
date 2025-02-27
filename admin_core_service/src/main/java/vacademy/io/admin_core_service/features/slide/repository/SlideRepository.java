@@ -50,6 +50,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
         LEFT JOIN video vs ON vs.id = s.source_id AND s.source_type = 'VIDEO'
         WHERE ch.id = :chapterId
           AND s.status IN :status
+          AND cts.status != 'DELETED'
         ORDER BY COALESCE(cts.slide_order, 9999) ASC, s.id
         """, nativeQuery = true)
     List<SlideDetailProjection> findSlideDetailsByChapterId(@Param("chapterId") String chapterId, @Param("status") List<String> status);
@@ -69,6 +70,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
             "WHERE al.user_id = :userId " +
             "AND s.status IN :status " +
             "AND (al.percentage_watched IS NULL OR al.percentage_watched != 100) " +
+            "AND cts.status != 'DELETED' " +
             "ORDER BY s.id, al.updated_at DESC " +
             "LIMIT 5",
             nativeQuery = true)
@@ -145,6 +147,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
 
                 WHERE ch.id = :chapterId
                 AND s.status = :status
+                AND cts.status != 'DELETED'
                 ORDER BY s.id, cts.slide_order ASC
             """, nativeQuery = true)
     List<SlideDetailWithOperationProjection> findSlideDetailsWithOperationByChapterId(

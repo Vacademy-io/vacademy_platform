@@ -34,7 +34,7 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
             COALESCE(COUNT(DISTINCT CASE WHEN s.source_type NOT IN ('VIDEO', 'DOCUMENT') THEN s.id END), 0) AS unknownCount
         FROM chapter c
         INNER JOIN module_chapter_mapping mcm ON mcm.chapter_id = c.id
-        INNER JOIN chapter_package_session_mapping cpsm ON cpsm.chapter_id = c.id
+        INNER JOIN chapter_package_session_mapping cpsm ON cpsm.chapter_id = c.id AND cpsm.status != 'DELETED'
         LEFT JOIN chapter_to_slides cs ON cs.chapter_id = c.id AND cs.status != 'DELETED'
          LEFT JOIN slide s ON cs.slide_id = s.id AND s.status IN (:slideStatuses)
         LEFT JOIN document_slide d ON d.id = s.source_id

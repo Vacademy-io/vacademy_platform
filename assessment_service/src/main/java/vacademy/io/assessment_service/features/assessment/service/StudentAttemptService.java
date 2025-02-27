@@ -259,6 +259,23 @@ public class StudentAttemptService {
         });
     }
 
+    public void revaluateForCustomParticipantsAndQuestions(Assessment assessment, RevaluateRequest request){
+        List<StudentAttempt> allAttempts = StreamSupport
+                .stream(studentAttemptRepository.findAllById(request.getAttemptIds()).spliterator(), false)
+                .toList();
+
+        List<RevaluateRequest.RevaluateQuestionDto> questionDtos = request.getQuestions();
+        questionDtos.forEach(question->{
+            String sectionId = question.getSectionId();
+            List<String> questionIds = question.getQuestionIds();
+
+            for (StudentAttempt attempt : allAttempts) {
+                calculateMarksForSectionIdAndQuestionIds(Optional.of(attempt), sectionId, questionIds,assessment);
+                updateMarksAfterRevaluation(attempt, assessment.getId());
+            }
+        });
+    }
+
     @Async
     public CompletableFuture<Void> revaluateForAllParticipantsWrapper(String assessmentId, String instituteId) {
         return CompletableFuture.runAsync(() -> revaluateForAllParticipants(assessmentId))
@@ -282,22 +299,6 @@ public class StudentAttemptService {
                 .thenRun(() -> sendEmail(instituteId));
     }
 
-    public void revaluateForCustomParticipantsAndQuestions(Assessment assessment, RevaluateRequest request){
-        List<StudentAttempt> allAttempts = StreamSupport
-                .stream(studentAttemptRepository.findAllById(request.getAttemptIds()).spliterator(), false)
-                .toList();
-
-        List<RevaluateRequest.RevaluateQuestionDto> questionDtos = request.getQuestions();
-        questionDtos.forEach(question->{
-            String sectionId = question.getSectionId();
-            List<String> questionIds = question.getQuestionIds();
-
-            for (StudentAttempt attempt : allAttempts) {
-                calculateMarksForSectionIdAndQuestionIds(Optional.of(attempt), sectionId, questionIds,assessment);
-                updateMarksAfterRevaluation(attempt, assessment.getId());
-            }
-        });
-    }
 
     public void updateMarksAfterRevaluation(StudentAttempt studentAttempt, String assessmentId){
         List<QuestionWiseMarks> allQuestionWiseMarks = questionWiseMarksService.getAllQuestionWiseMarksForAttemptId(studentAttempt.getId(), assessmentId);

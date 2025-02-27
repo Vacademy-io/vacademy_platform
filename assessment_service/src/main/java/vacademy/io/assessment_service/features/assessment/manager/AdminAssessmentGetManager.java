@@ -19,6 +19,7 @@ import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentModeEnum;
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentStatus;
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentVisibility;
+import vacademy.io.assessment_service.features.assessment.enums.RevaluateRequestEnum;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentRepository;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentUserRegistrationRepository;
 import vacademy.io.assessment_service.features.assessment.repository.StudentAttemptRepository;
@@ -271,22 +272,22 @@ public class AdminAssessmentGetManager {
                 .build();
     }
 
-    public ResponseEntity<String> revaluateAssessment(CustomUserDetails userDetails, String assessmentId, String methodType, RevaluateRequest request, String instituteId) {
-        Optional<Assessment> assessmentOptional = assessmentRepository.findById(assessmentId);
-        if(assessmentOptional.isEmpty()) throw new VacademyException("Assessment Not Found");
+    public ResponseEntity<String> revaluateAssessment(CustomUserDetails userDetails,
+                                                      String assessmentId,
+                                                      String methodType,
+                                                      RevaluateRequest request,
+                                                      String instituteId) {
+        Assessment assessment = assessmentRepository.findById(assessmentId)
+                .orElseThrow(() -> new VacademyException("Assessment Not Found"));
 
-        if(methodType.equals("ENTIRE_ASSESSMENT")){
-            return revaluateForAllParticipants(assessmentOptional.get().getId(), instituteId);
-        }
-        else if(methodType.equals("ENTIRE_ASSESSMENT_PARTICIPANTS")){
-            return revaluateAssessmentForParticipantsAndAllAssessment(assessmentOptional.get().getId(), request, instituteId);
-        }
-        else if(methodType.equals("PARTICIPANTS_AND_QUESTIONS")){
-            return revaluateAssessmentForParticipantsAndQuestions(assessmentOptional.get(), request, instituteId);
-        }
-
-        return ResponseEntity.ok("Done");
+        return switch (RevaluateRequestEnum.valueOf(methodType)) {
+            case ENTIRE_ASSESSMENT -> revaluateForAllParticipants(assessment.getId(), instituteId);
+            case ENTIRE_ASSESSMENT_PARTICIPANTS -> revaluateAssessmentForParticipantsAndAllAssessment(assessment.getId(), request, instituteId);
+            case PARTICIPANTS_AND_QUESTIONS -> revaluateAssessmentForParticipantsAndQuestions(assessment, request, instituteId);
+            default -> ResponseEntity.ok("Invalid Request");
+        };
     }
+
 
     private ResponseEntity<String> revaluateAssessmentForParticipantsAndQuestions(Assessment assessment, RevaluateRequest request, String instituteId) {
         if(Objects.isNull(request) || Objects.isNull(request.getAttemptIds()) || Objects.isNull(request.getQuestions()))
@@ -297,7 +298,7 @@ public class AdminAssessmentGetManager {
         } catch (Exception e) {
             log.error("[REVALUATE ERROR]: " + e.getMessage());
         }
-        return ResponseEntity.ok("Api Development in Progress");
+        return ResponseEntity.ok("Done");
     }
 
     private ResponseEntity<String> revaluateAssessmentForParticipantsAndAllAssessment(String assessmentId, RevaluateRequest request, String instituteId) {

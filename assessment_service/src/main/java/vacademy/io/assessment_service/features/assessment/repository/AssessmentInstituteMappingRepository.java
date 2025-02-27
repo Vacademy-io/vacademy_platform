@@ -8,4 +8,6 @@ import java.util.Optional;
 public interface AssessmentInstituteMappingRepository extends CrudRepository<AssessmentInstituteMapping, String> {
 
     Optional<AssessmentInstituteMapping> findTopByAssessmentUrl(String assessmentUrl);
-}
+
+    Optional<AssessmentInstituteMapping> findByAssessmentIdAndInstituteId(String assessmentId, String instituteId);
+ }

@@ -12,6 +12,7 @@ import vacademy.io.assessment_service.features.learner_assessment.repository.Que
 import vacademy.io.assessment_service.features.question_core.entity.Question;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 @Service
@@ -34,9 +35,15 @@ public class QuestionWiseMarksService {
 
         if(questionWiseMarksOpt.isPresent()){
             QuestionWiseMarks questionWiseMarks = questionWiseMarksOpt.get();
-            questionWiseMarks.setTimeTakenInSeconds(timeTakenInSecs);
-            questionWiseMarks.setResponseJson(responseJson);
+            if(!Objects.isNull(timeTakenInSecs)){
+                questionWiseMarks.setTimeTakenInSeconds(timeTakenInSecs);
+            }
+            if(!Objects.isNull(responseJson)){
+                questionWiseMarks.setResponseJson(responseJson);
+            }
+
             questionWiseMarks.setMarks(marks);
+
             questionWiseMarks.setSection(section);
             questionWiseMarks.setStatus(answerStatus);
 
@@ -68,5 +75,9 @@ public class QuestionWiseMarksService {
 
     public List<QuestionWiseMarks> getAllQuestionWiseMarksForQuestionIdsAndAttemptId(String attemptId, List<String> questionIds, String sectionId){
         return questionWiseMarksRepository.findAllQuestionWiseMarksForQuestionIdAndAttemptId(questionIds, attemptId, sectionId);
+    }
+
+    public List<QuestionWiseMarks> getAllQuestionWiseMarksForAttemptId(String attemptId, String assessmentId){
+        return questionWiseMarksRepository.findByStudentAttemptIdAndAssessmentId(attemptId, assessmentId);
     }
 }

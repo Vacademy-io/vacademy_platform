@@ -436,6 +436,16 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
     ParticipantsQuestionOverallDetailDto findParticipantsQuestionOverallDetails(@Param("assessmentId") String assessmentId,
                                                                                 @Param("instituteId") String instituteId,
                                                                                 @Param("attemptId") String attemptId);
+
+    @Query(value = """
+            select sa.* from student_attempt sa
+            join assessment_user_registration aur on aur.id = sa.registration_id
+            join assessment a on a.id = aur.assessment_id
+            where a.id = :assessmentId
+            and aur.status not in (:statusList)
+            """, nativeQuery = true)
+    List<StudentAttempt> findAllParticipantsFromAssessmentAndStatusNotIn(@Param("assessmentId") String assessmentId,
+                                                                         @Param("statusList") List<String> statusList);
 }
 
 

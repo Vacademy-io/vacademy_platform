@@ -51,9 +51,13 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
         WHERE ch.id = :chapterId
           AND s.status IN :status
           AND cts.status != 'DELETED'
-        ORDER BY COALESCE(cts.slide_order, 9999) ASC, s.id
+        ORDER BY 
+            CASE WHEN cts.slide_order IS NULL THEN 0 ELSE 1 END, 
+            cts.slide_order ASC, 
+            s.id
         """, nativeQuery = true)
     List<SlideDetailProjection> findSlideDetailsByChapterId(@Param("chapterId") String chapterId, @Param("status") List<String> status);
+
 
     @Query(value = "SELECT DISTINCT ON (s.id) s.id AS slideId, s.title AS slideTitle, s.description AS slideDescription, " +
             "s.source_type AS sourceType, s.status AS status, s.image_file_id AS imageFileId, " +
@@ -71,7 +75,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
             "AND s.status IN :status " +
             "AND (al.percentage_watched IS NULL OR al.percentage_watched != 100) " +
             "AND cts.status != 'DELETED' " +
-            "ORDER BY s.id, al.updated_at DESC " +
+            "ORDER BY CASE WHEN cts.slide_order IS NULL THEN 0 ELSE 1 END, cts.slide_order ASC, al.updated_at DESC, s.id " +
             "LIMIT 5",
             nativeQuery = true)
     List<SlideDetailProjection> findRecentIncompleteSlidesByUserId(
@@ -101,7 +105,6 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
 
                     cts.slide_order AS slideOrder,
 
-                    -- Fetch percentage values without casting
                     COALESCE(NULLIF(doc_percent.value, ''), '0') AS percentageDocumentWatched,
                     COALESCE(NULLIF(doc_last.value, ''), '0') AS documentLastPage,
                     doc_last.updated_at AS documentLastUpdated,
@@ -117,28 +120,24 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                 LEFT JOIN document_slide ds ON ds.id = s.source_id AND s.source_type = 'DOCUMENT'
                 LEFT JOIN video vs ON vs.id = s.source_id AND s.source_type = 'VIDEO'
 
-                -- Fetch PERCENTAGE_DOCUMENT_WATCHED
                 LEFT JOIN learner_operation doc_percent ON doc_percent.source = 'SLIDE'
                     AND doc_percent.source_id = s.id
                     AND s.source_type = 'DOCUMENT'
                     AND doc_percent.operation = 'PERCENTAGE_DOCUMENT_WATCHED'
                     AND doc_percent.user_id = :userId
 
-                -- Fetch DOCUMENT_LAST_PAGE
                 LEFT JOIN learner_operation doc_last ON doc_last.source = 'SLIDE'
                     AND doc_last.source_id = s.id
                     AND s.source_type = 'DOCUMENT'
                     AND doc_last.operation = 'DOCUMENT_LAST_PAGE'
                     AND doc_last.user_id = :userId
 
-                -- Fetch PERCENTAGE_VIDEO_WATCHED
                 LEFT JOIN learner_operation vid_percent ON vid_percent.source = 'SLIDE'
                     AND vid_percent.source_id = s.id
                     AND s.source_type = 'VIDEO'
                     AND vid_percent.operation = 'PERCENTAGE_VIDEO_WATCHED'
                     AND vid_percent.user_id = :userId
 
-                -- Fetch VIDEO_LAST_TIMESTAMP
                 LEFT JOIN learner_operation vid_last ON vid_last.source = 'SLIDE'
                     AND vid_last.source_id = s.id
                     AND s.source_type = 'VIDEO'
@@ -148,7 +147,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                 WHERE ch.id = :chapterId
                 AND s.status = :status
                 AND cts.status != 'DELETED'
-                ORDER BY s.id, cts.slide_order ASC
+                ORDER BY cts.slide_order IS NOT NULL, cts.slide_order ASC, s.id
             """, nativeQuery = true)
     List<SlideDetailWithOperationProjection> findSlideDetailsWithOperationByChapterId(
             @Param("userId") String userId,

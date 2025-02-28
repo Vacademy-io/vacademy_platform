@@ -13,6 +13,7 @@ import vacademy.io.assessment_service.features.assessment.repository.StudentAtte
 import vacademy.io.assessment_service.features.assessment.service.StudentAttemptService;
 import vacademy.io.assessment_service.features.learner_assessment.dto.AssessmentAttemptUpdateRequest;
 import vacademy.io.assessment_service.features.learner_assessment.dto.DataDurationDistributionDto;
+import vacademy.io.assessment_service.features.learner_assessment.dto.LearnerAssessmentStartAssessmentResponse;
 import vacademy.io.assessment_service.features.learner_assessment.dto.LearnerAssessmentStartPreviewResponse;
 import vacademy.io.assessment_service.features.learner_assessment.dto.response.AssessmentRestartResponse;
 import vacademy.io.assessment_service.features.learner_assessment.dto.response.BasicLevelAnnouncementDto;
@@ -302,7 +303,7 @@ public class LearnerAssessmentAttemptStatusManager {
             LearnerAssessmentAttemptDataDto attemptDataDto = newSavedAttempt.get().getAttemptData()!=null ? studentAttemptService.validateAndCreateJsonObject(studentAttempt.get().getAttemptData()) : null;
 
             return ResponseEntity.ok(AssessmentRestartResponse.builder()
-                    .startTime(studentAttempt.get().getStartTime())
+                    .startAssessmentResponse(createStartAssessmentResponse(studentAttempt))
                     .previewResponse(createLearnerAssessmentPreview(studentAttempt, assessment))
                     .learnerAssessmentAttemptDataDto(attemptDataDto)
                     .updateStatusResponse(updateStatusResponse).build());
@@ -310,6 +311,16 @@ public class LearnerAssessmentAttemptStatusManager {
         catch (Exception e){
             throw new VacademyException("Failed To Restart: " + e.getMessage());
         }
+    }
+
+    private LearnerAssessmentStartAssessmentResponse createStartAssessmentResponse(Optional<StudentAttempt> studentAttempt) {
+        if(studentAttempt.isEmpty()) throw new VacademyException("Attempt Not Found");
+
+        Date startTime = DateUtil.getCurrentUtcTime();
+        Date endTime = DateUtil.addMinutes(startTime, studentAttempt.get().getMaxTime());
+
+        return new LearnerAssessmentStartAssessmentResponse(startTime,endTime,studentAttempt.get().getId(), studentAttempt.get().getRegistration().getId());
+
     }
 
     private LearnerUpdateStatusResponse handleStatusResponse(Optional<StudentAttempt> studentAttempt, Assessment assessment, LearnerAssessmentAttemptDataDto requestAttemptDataDto, String requestJsonContent) {

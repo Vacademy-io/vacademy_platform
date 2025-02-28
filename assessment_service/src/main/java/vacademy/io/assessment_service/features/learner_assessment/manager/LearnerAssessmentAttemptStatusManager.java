@@ -302,6 +302,7 @@ public class LearnerAssessmentAttemptStatusManager {
             LearnerAssessmentAttemptDataDto attemptDataDto = newSavedAttempt.get().getAttemptData()!=null ? studentAttemptService.validateAndCreateJsonObject(studentAttempt.get().getAttemptData()) : null;
 
             return ResponseEntity.ok(AssessmentRestartResponse.builder()
+                    .startTime(studentAttempt.get().getStartTime())
                     .previewResponse(createLearnerAssessmentPreview(studentAttempt, assessment))
                     .learnerAssessmentAttemptDataDto(attemptDataDto)
                     .updateStatusResponse(updateStatusResponse).build());

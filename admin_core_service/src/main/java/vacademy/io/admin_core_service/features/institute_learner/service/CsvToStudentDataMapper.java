@@ -15,7 +15,7 @@ import java.util.List;
 
 public class CsvToStudentDataMapper {
 
-    public static List<InstituteStudentDTO> mapCsvRecordsToInstituteStudentDTOs(Iterable<CSVRecord> records, String instituteId) {
+    public static List<InstituteStudentDTO> mapCsvRecordsToInstituteStudentDTOs(Iterable<CSVRecord> records, String instituteId,String packageSessionId) {
         List<InstituteStudentDTO> students = new ArrayList<>();
 
         for (CSVRecord record : records) {
@@ -47,7 +47,7 @@ public class CsvToStudentDataMapper {
 
             InstituteStudentDetails instituteStudentDetails = new InstituteStudentDetails(
                     instituteId,
-                    getFieldValue(record, "PACKAGE_SESSION"),
+                    packageSessionId,
                     getFieldValue(record, "ENROLLMENT_NUMBER"),
                     getFieldValue(record, "ENROLLMENT_STATUS"),
                     parseDate(getFieldValue(record, "ENROLLMENT_DATE")),

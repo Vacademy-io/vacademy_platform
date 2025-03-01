@@ -31,6 +31,7 @@ import vacademy.io.common.institute.entity.session.SessionProjection;
 import vacademy.io.common.institute.entity.student.Subject;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
@@ -180,6 +181,18 @@ public class StudyLibraryService {
         ChapterDTO chapterDTO = chapterPackageSessionMapping.mapToChapterDTO();
         chapterDTOWithDetail.setChapter(chapterDTO);
         chapterDTOWithDetail.setSlidesCount(slideRepository.countSlidesByChapterId(chapterDTO.getId()));
+        if (chapterPackageSessionMappingRepository != null) {
+            List<String> packageSessionIds = chapterPackageSessionMappingRepository
+                    .findByChapterIdAndStatusNotDeleted(chapterDTO.getId())
+                    .stream()
+                    .map(cpsm -> cpsm.getPackageSession() != null ? cpsm.getPackageSession().getId() : null)
+                    .filter(Objects::nonNull) // Filter out null values
+                    .toList();
+
+            chapterDTOWithDetail.setChapterVisiblity(packageSessionIds);
+        } else {
+            chapterDTOWithDetail.setChapterVisiblity(Collections.emptyList());
+        }
         return chapterDTOWithDetail;
     }
 

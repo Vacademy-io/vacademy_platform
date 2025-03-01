@@ -36,7 +36,6 @@ public class LearnerEnrollmentNotificationService {
                 notificationService.sendEmailToUsers(notificationDTO);
             } catch (Exception e) {
                 // Handle exceptions (e.g., log the error)
-                System.err.println("Error sending enrollment notifications: " + e.getMessage());
                 e.printStackTrace();
             }
         });

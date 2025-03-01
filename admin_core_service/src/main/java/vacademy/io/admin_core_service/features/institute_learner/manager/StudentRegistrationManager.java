@@ -40,11 +40,11 @@ public class StudentRegistrationManager {
     private String applicationName;
 
 
-    public ResponseEntity<String> addStudentToInstitute(CustomUserDetails user, InstituteStudentDTO instituteStudentDTO, BulkUploadInitRequest bulkUploadInitRequest) {
+    public InstituteStudentDTO addStudentToInstitute(CustomUserDetails user, InstituteStudentDTO instituteStudentDTO, BulkUploadInitRequest bulkUploadInitRequest) {
         instituteStudentDTO = this.updateAsPerConfig(instituteStudentDTO, bulkUploadInitRequest);
         Student student = checkAndCreateStudent(instituteStudentDTO);
         linkStudentToInstitute(student, instituteStudentDTO.getInstituteStudentDetails());
-        return ResponseEntity.ok("Student added successfully");
+        return instituteStudentDTO;
     }
 
     public ResponseEntity<StudentDTO> addOpenStudentToInstitute(UserDTO userDTO, String instituteId) {

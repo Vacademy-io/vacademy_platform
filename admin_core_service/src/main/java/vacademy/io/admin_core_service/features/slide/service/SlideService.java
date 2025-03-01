@@ -1,5 +1,6 @@
 package vacademy.io.admin_core_service.features.slide.service;
 
+import com.fasterxml.jackson.annotation.ObjectIdGenerators;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -22,6 +23,7 @@ import vacademy.io.common.exceptions.VacademyException;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -182,4 +184,99 @@ public class SlideService {
         chapterToSlides.forEach(cts -> Optional.ofNullable(updateMap.get(cts.getSlide().getId()))
                 .ifPresent(update -> cts.setSlideOrder(update.getSlideOrder())));
     }
+
+    @Transactional
+    public String copySlide(String slideId, String newChapterId, CustomUserDetails user) {
+        Slide slide = getSlideById(slideId);
+        Chapter chapter = getChapterById(newChapterId);
+
+        Slide newSlide;
+        if (slide.getSourceType().equalsIgnoreCase(SlideTypeEnum.DOCUMENT.name())) {
+            newSlide = copyDocumentSlide(slide);
+        } else {
+            newSlide = copyVideoSlide(slide);
+        }
+
+        chapterToSlidesRepository.save(new ChapterToSlides(chapter, newSlide, null, SlideStatus.DRAFT.name()));
+        return "Slide copied successfully.";
+    }
+
+    @Transactional
+    public String moveSlide(String slideId, String oldChapterId, String newChapterId, CustomUserDetails user) {
+        ChapterToSlides existingMapping = getChapterToSlides(oldChapterId, slideId);
+        Chapter newChapter = getChapterById(newChapterId);
+
+        ChapterToSlides newMapping = new ChapterToSlides(newChapter, existingMapping.getSlide(), null, existingMapping.getStatus());
+        chapterToSlidesRepository.save(newMapping);
+
+        deleteMapping(slideId, oldChapterId);
+        return "Slide moved successfully.";
+    }
+
+    public String deleteMapping(String slideId, String chapterId) {
+        ChapterToSlides chapterToSlides = getChapterToSlides(chapterId, slideId);
+        chapterToSlides.setStatus(SlideStatus.DELETED.name());
+        chapterToSlidesRepository.save(chapterToSlides);
+        return "Slide deleted successfully.";
+    }
+
+    private Slide copyDocumentSlide(Slide slide) {
+        DocumentSlide documentSlide = documentSlideRepository.findById(slide.getSourceId())
+                .orElseThrow(() -> new VacademyException("No content found for slide"));
+
+        DocumentSlide newDocumentSlide = new DocumentSlide();
+        newDocumentSlide.setId(UUID.randomUUID().toString());
+        newDocumentSlide.setType(documentSlide.getType());
+        newDocumentSlide.setData(documentSlide.getData());
+        newDocumentSlide.setTitle(documentSlide.getTitle());
+        newDocumentSlide.setTotalPages(documentSlide.getTotalPages());
+        newDocumentSlide.setCoverFileId(documentSlide.getCoverFileId());
+
+        newDocumentSlide = documentSlideRepository.save(newDocumentSlide);
+
+        return createNewSlide(slide, newDocumentSlide.getId());
+    }
+
+    private Slide copyVideoSlide(Slide slide) {
+        VideoSlide videoSlide = videoSlideRepository.findById(slide.getSourceId())
+                .orElseThrow(() -> new VacademyException("No content found for slide"));
+
+        VideoSlide newVideoSlide = new VideoSlide();
+        newVideoSlide.setTitle(videoSlide.getTitle());
+        newVideoSlide.setUrl(videoSlide.getUrl());
+        newVideoSlide.setDescription(videoSlide.getDescription());
+        newVideoSlide.setVideoLengthInMillis(videoSlide.getVideoLengthInMillis());
+        newVideoSlide.setId(UUID.randomUUID().toString());
+        newVideoSlide = videoSlideRepository.save(newVideoSlide);
+
+        return createNewSlide(slide, newVideoSlide.getId());
+    }
+
+    private Slide createNewSlide(Slide slide, String newSourceId) {
+        Slide newSlide = new Slide();
+        newSlide.setId(UUID.randomUUID().toString());
+        newSlide.setStatus(SlideStatus.DRAFT.name());
+        newSlide.setTitle(slide.getTitle());
+        newSlide.setDescription(slide.getDescription());
+        newSlide.setSourceType(slide.getSourceType());
+        newSlide.setSourceId(newSourceId);
+        newSlide.setImageFileId(slide.getImageFileId());
+        return slideRepository.save(newSlide);
+    }
+
+    private Slide getSlideById(String slideId) {
+        return slideRepository.findById(slideId)
+                .orElseThrow(() -> new VacademyException("Slide not found!!!"));
+    }
+
+    private Chapter getChapterById(String chapterId) {
+        return chapterRepository.findById(chapterId)
+                .orElseThrow(() -> new VacademyException("Chapter not found!!!"));
+    }
+
+    private ChapterToSlides getChapterToSlides(String chapterId, String slideId) {
+        return chapterToSlidesRepository.findByChapterIdAndSlideId(chapterId, slideId)
+                .orElseThrow(() -> new VacademyException("Chapter to slide not found"));
+    }
+
 }

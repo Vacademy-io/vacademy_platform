@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
 import vacademy.io.admin_core_service.features.institute_learner.dto.BulkUploadInitRequest;
 import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteStudentDTO;
+import vacademy.io.admin_core_service.features.institute_learner.notification.LearnerEnrollmentNotificationService;
 import vacademy.io.admin_core_service.features.institute_learner.service.CsvToStudentDataMapper;
 import vacademy.io.admin_core_service.features.institute_learner.service.StudentDataToCsvWriter;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -18,6 +19,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.Reader;
+import java.util.ArrayList;
 import java.util.List;
 
 @Component
@@ -26,8 +28,10 @@ public class StudentBulkUploadManager {
     @Autowired
     StudentRegistrationManager studentRegistrationManager;
 
+    @Autowired
+    private LearnerEnrollmentNotificationService learnerEnrollmentNotificationService;
 
-    public ResponseEntity<byte[]> uploadStudentCsv(MultipartFile file, String instituteId, BulkUploadInitRequest bulkUploadInitRequest, CustomUserDetails user) {
+    public ResponseEntity<byte[]> uploadStudentCsv(MultipartFile file, String instituteId, BulkUploadInitRequest bulkUploadInitRequest,String packageSessionId,boolean notify, CustomUserDetails user) {
 
 
         try (Reader reader = new InputStreamReader(file.getInputStream())) {
@@ -40,10 +44,12 @@ public class StudentBulkUploadManager {
 
             // Parse the CSV file and retrieve records
             Iterable<CSVRecord> records = csvFormat.parse(reader);
-            List<InstituteStudentDTO> students = CsvToStudentDataMapper.mapCsvRecordsToInstituteStudentDTOs(records, instituteId); // List to store parsed tenant entries// Trim whitespace from field
+            List<InstituteStudentDTO> students = CsvToStudentDataMapper.mapCsvRecordsToInstituteStudentDTOs(records, instituteId,packageSessionId); // List to store parsed tenant entries// Trim whitespace from field
+            List<InstituteStudentDTO>notifyStudents = new ArrayList<>();
             for (InstituteStudentDTO student : students) {
                 try {
-                    studentRegistrationManager.addStudentToInstitute(user, student, bulkUploadInitRequest);
+                    InstituteStudentDTO instituteStudentDTO = studentRegistrationManager.addStudentToInstitute(user, student, bulkUploadInitRequest);
+                    notifyStudents.add(instituteStudentDTO);
                     student.setStatus(true);
                     student.setStatusMessage("Student added successfully with username : " + student.getUserDetails().getUsername());
                 } catch (Exception e) {
@@ -52,6 +58,9 @@ public class StudentBulkUploadManager {
                 }
             }
 
+            if (notify){
+                learnerEnrollmentNotificationService.sendLearnerEnrollmentNotification(notifyStudents,instituteId);
+            }
 
             ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
             OutputStreamWriter writer = new OutputStreamWriter(byteArrayOutputStream);

@@ -47,4 +47,23 @@ public class SlideController {
         return ResponseEntity.ok(slideService.updateSlideOrder(updateSlideOrderDTOs, chapterId, user));
     }
 
+    @PostMapping("/copy")
+    public ResponseEntity<String> copySlide(
+            @RequestParam String slideId,
+            @RequestParam String newChapterId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        String message = slideService.copySlide(slideId, newChapterId, user);
+        return ResponseEntity.ok(message);
+    }
+
+    @PostMapping("/move")
+    public ResponseEntity<String> moveSlide(
+            @RequestParam String slideId,
+            @RequestParam String oldChapterId,
+            @RequestParam String newChapterId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        String message = slideService.moveSlide(slideId, oldChapterId, newChapterId, user);
+        return ResponseEntity.ok(message);
+    }
+
 }

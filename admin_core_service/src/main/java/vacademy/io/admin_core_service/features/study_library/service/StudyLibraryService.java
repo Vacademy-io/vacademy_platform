@@ -4,7 +4,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.chapter.dto.ChapterDTO;
 import vacademy.io.admin_core_service.features.chapter.dto.ChapterDTOWithDetail;
-import vacademy.io.admin_core_service.features.chapter.entity.Chapter;
 import vacademy.io.admin_core_service.features.chapter.entity.ChapterPackageSessionMapping;
 import vacademy.io.admin_core_service.features.chapter.repository.ChapterPackageSessionMappingRepository;
 import vacademy.io.admin_core_service.features.course.dto.CourseDTO;
@@ -189,9 +188,9 @@ public class StudyLibraryService {
                     .filter(Objects::nonNull) // Filter out null values
                     .toList();
 
-            chapterDTOWithDetail.setChapterVisiblity(packageSessionIds);
+            chapterDTOWithDetail.setChapterInPackageSessions(packageSessionIds);
         } else {
-            chapterDTOWithDetail.setChapterVisiblity(Collections.emptyList());
+            chapterDTOWithDetail.setChapterInPackageSessions(Collections.emptyList());
         }
         return chapterDTOWithDetail;
     }

@@ -12,5 +12,5 @@ import java.util.List;
 public class ChapterDTOWithDetail {
     private ChapterDTO chapter;
     private SlideCountProjection slidesCount;
-    private List<String>chapterVisiblity;
+    private List<String> chapterInPackageSessions;
 }

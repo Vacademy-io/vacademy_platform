@@ -105,6 +105,7 @@ public interface EntityTagsRepository extends JpaRepository<EntityTags, String>,
             WHEN e.tagSource = 'STREAM' THEN s.streamName
             WHEN e.tagSource = 'SUBJECT' THEN sub.subjectName
             WHEN e.tagSource = 'DIFFICULTY' THEN e.id.tagId
+            WHEN e.tagSource = 'TAGS' THEN t.tagName
             ELSE NULL
         END
     )
@@ -112,6 +113,7 @@ public interface EntityTagsRepository extends JpaRepository<EntityTags, String>,
     LEFT JOIN Levels l ON e.id.tagId = l.levelId AND e.tagSource = 'LEVEL'
     LEFT JOIN Streams s ON e.id.tagId = s.streamId AND e.tagSource = 'STREAM'
     LEFT JOIN Subjects sub ON e.id.tagId = sub.subjectId AND e.tagSource = 'SUBJECT'
+    LEFT JOIN Tags t ON e.id.tagId = t.tagId AND e.tagSource = 'TAGS'
     WHERE e.id.entityId = :entityId
 """)
     List<TagsByIdResponseDto> findTagsByEntityId(@Param("entityId") String entityId);
@@ -122,4 +124,27 @@ public interface EntityTagsRepository extends JpaRepository<EntityTags, String>,
     WHERE qp.id = :entityId
 """)
     QuestionPaper findQuestionPaperByEntityId(@Param("entityId") String entityId);
+
+
+    @Query("""
+    SELECT new vacademy.io.community_service.feature.question_bank.dto.TagsByIdResponseDto(
+        e.id.tagId,
+        e.tagSource,
+        CASE
+            WHEN e.tagSource = 'LEVEL' THEN l.levelName
+            WHEN e.tagSource = 'STREAM' THEN s.streamName
+            WHEN e.tagSource = 'SUBJECT' THEN sub.subjectName
+            WHEN e.tagSource = 'DIFFICULTY' THEN e.id.tagId
+            ELSE NULL
+        END
+    )
+    FROM EntityTags e
+    LEFT JOIN Levels l ON e.id.tagId = l.levelId AND e.tagSource = 'LEVEL'
+    LEFT JOIN Streams s ON e.id.tagId = s.streamId AND e.tagSource = 'STREAM'
+    LEFT JOIN Subjects sub ON e.id.tagId = sub.subjectId AND e.tagSource = 'SUBJECT'
+    LEFT JOIN Tags t ON e.id.tagId = t.tagId AND e.tagSource = 'TAGS'
+    GROUP BY e.id.tagId, e.tagSource, l.levelName, s.streamName, sub.subjectName, t.tagName
+    ORDER BY COUNT(e.id.tagId) DESC
+""")
+    List<TagsByIdResponseDto> findPopularTags();
 }

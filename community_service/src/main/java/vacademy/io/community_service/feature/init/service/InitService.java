@@ -5,12 +5,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.community_service.feature.filter.repository.EntityTagsRepository;
 import vacademy.io.community_service.feature.init.dto.*;
 import vacademy.io.community_service.feature.init.entity.*;
 import vacademy.io.community_service.feature.init.enums.Difficulty;
 import vacademy.io.community_service.feature.init.enums.Topic;
 import vacademy.io.community_service.feature.init.enums.Type;
 import vacademy.io.community_service.feature.init.repository.*;
+import vacademy.io.community_service.feature.question_bank.dto.TagsByIdResponseDto;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -28,6 +30,9 @@ public class InitService {
 
     @Autowired
     private SubjectsRepository subjectRepository;
+
+    @Autowired
+    private EntityTagsRepository entityTagsRepository;
 
     public ResponseEntity<InitResponseDto> getDropdownOptions(CustomUserDetails user) {
         List<Levels> levelEntities = levelRepository.findAll();
@@ -61,8 +66,8 @@ public class InitService {
         List<String> difficulties = Stream.of(Difficulty.values()).map(Enum::name).collect(Collectors.toList());
         List<String> topics = Stream.of(Topic.values()).map(Enum::name).collect(Collectors.toList());
         List<String> types = Stream.of(Type.values()).map(Enum::name).collect(Collectors.toList());
-
-        return ResponseEntity.ok(new InitResponseDto(levels, streams, subjects, difficulties, topics, types));
+        List<TagsByIdResponseDto> tags = entityTagsRepository.findPopularTags();
+        return ResponseEntity.ok(new InitResponseDto(levels, streams, subjects, difficulties, topics, types , tags));
 
     }
 }

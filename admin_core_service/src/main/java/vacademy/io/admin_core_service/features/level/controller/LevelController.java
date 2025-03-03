@@ -3,7 +3,7 @@ package vacademy.io.admin_core_service.features.level.controller;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import vacademy.io.admin_core_service.features.level.dto.AddLevelDTO;
+import vacademy.io.admin_core_service.features.level.dto.AddLevelWithCourseDTO;
 import vacademy.io.admin_core_service.features.level.service.LevelService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.institute.dto.LevelDTO;
@@ -17,8 +17,8 @@ public class LevelController {
     private final LevelService levelService;
 
     @PostMapping("/add-level")
-    public ResponseEntity<String> addLevel(@RequestBody AddLevelDTO addLevelDTO, @RequestAttribute("user") CustomUserDetails user, @RequestParam("packageId") String packageId, @RequestParam("sessionId") String sessionId) {
-        return ResponseEntity.ok(levelService.addLevel(addLevelDTO, packageId, sessionId, user));
+    public ResponseEntity<String> addLevel(@RequestBody AddLevelWithCourseDTO addLevelWithCourseDTO, @RequestAttribute("user") CustomUserDetails user, @RequestParam("packageId") String packageId, @RequestParam("sessionId") String sessionId) {
+        return ResponseEntity.ok(levelService.addLevel(addLevelWithCourseDTO, packageId, sessionId, user));
     }
 
     @PutMapping("/update-level/{levelId}")

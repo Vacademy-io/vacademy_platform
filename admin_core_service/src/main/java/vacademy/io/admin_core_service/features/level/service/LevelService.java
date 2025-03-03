@@ -3,7 +3,8 @@ package vacademy.io.admin_core_service.features.level.service;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import vacademy.io.admin_core_service.features.level.dto.AddLevelDTO;
+import vacademy.io.admin_core_service.features.level.dto.AddLevelWithCourseDTO;
+import vacademy.io.admin_core_service.features.level.dto.AddLevelWithSessionDTO;
 import vacademy.io.admin_core_service.features.level.enums.LevelStatusEnum;
 import vacademy.io.admin_core_service.features.level.repository.LevelRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageRepository;
@@ -31,22 +32,22 @@ public class LevelService {
     private final SessionRepository sessionRepository;
     private final PackageSessionRepository packageSessionRepository;
 
-    public Level createOrAddLevel(AddLevelDTO addLevelDTO) {
+    public Level createOrAddLevel(String id,boolean newLevel, String levelName, Integer durationInDays, String thumbnailFileId) {
         Level level = null;
-        if (addLevelDTO.getNewLevel()) {
-            level = getLevel(addLevelDTO);
+        if (newLevel) {
+            level = getLevel(levelName, durationInDays, thumbnailFileId);
         } else {
-            level = getLevelById(addLevelDTO.getId());
+            level = getLevelById(id);
         }
         return levelRepository.save(level);
     }
 
-    private Level getLevel(AddLevelDTO addLevelDTO) {
+    private Level getLevel(String levelName, Integer durationInDays, String thumbnailFileId) {
         Level level = new Level();
-        level.setLevelName(addLevelDTO.getLevelName());
-        level.setDurationInDays(addLevelDTO.getDurationInDays());
+        level.setLevelName(levelName);
+        level.setDurationInDays(durationInDays);
         level.setStatus(LevelStatusEnum.ACTIVE.name());
-        level.setThumbnailFileId(addLevelDTO.getThumbnailFileId());
+        level.setThumbnailFileId(thumbnailFileId);
         return levelRepository.save(level);
     }
 
@@ -55,7 +56,7 @@ public class LevelService {
     }
 
     @Transactional
-    public String addLevel(AddLevelDTO addLevelDTO, String packageId, String sessionId, CustomUserDetails user) {
+    public String addLevel(AddLevelWithCourseDTO addLevelWithCourseDTO, String packageId, String sessionId, CustomUserDetails user) {
         Optional<PackageEntity> optionalPackageEntity = packageRepository.findById(packageId);
         if (optionalPackageEntity.isEmpty()) {
             throw new VacademyException("Package not found");
@@ -64,7 +65,7 @@ public class LevelService {
         if (optionalSession.isEmpty()) {
             throw new VacademyException("Session not found");
         }
-        Level level = createOrAddLevel(addLevelDTO);
+        Level level = createOrAddLevel(addLevelWithCourseDTO.getId(), addLevelWithCourseDTO.getNewLevel(), addLevelWithCourseDTO.getLevelName(), addLevelWithCourseDTO.getDurationInDays(), addLevelWithCourseDTO.getThumbnailFileId());
         packageSessionService.createPackageSession(level, optionalSession.get(), optionalPackageEntity.get(), getStartDatePackageSessionDate(packageId, sessionId));
         return level.getId();
     }

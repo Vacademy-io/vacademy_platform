@@ -21,10 +21,12 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
             "FROM package_session ps " +
             "JOIN package p ON ps.package_id = p.id " +
             "JOIN package_institute pi ON p.id = pi.package_id " +
-            "WHERE pi.institute_id = :instituteId AND ps.status != 'DELETED'",
+            "WHERE pi.institute_id = :instituteId AND ps.status IN (:statuses)",
             nativeQuery = true)
     List<PackageSession> findPackageSessionsByInstituteId(
-            @Param("instituteId") String instituteId);
+            @Param("instituteId") String instituteId,
+            @Param("statuses") List<String> statuses);
+
 
 
     @Query(value = "SELECT ps.id, ps.level_id, ps.session_id, ps.start_time, ps.updated_at, ps.created_at, ps.status, ps.package_id " +
@@ -57,12 +59,18 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
     void updateStatusByPackageIds(@Param("status") String status, @Param("packageIds") List<String> packageIds);
 
     @Modifying
-    @Query("UPDATE PackageSession ps SET ps.status = :status WHERE ps.level.id = :levelId")
-    void updateStatusByLevelId(@Param("status") String status, @Param("levelId") String levelId);
-
-    @Modifying
     @Transactional
     @Query("UPDATE PackageSession ps SET ps.status = :status WHERE ps.level.id IN :levelIds")
     void updateStatusByLevelIds(@Param("status") String status, @Param("levelIds") List<String> levelIds);
+
+    @Modifying
+    @Transactional
+    @Query("UPDATE PackageSession ps SET ps.status = :newStatus WHERE ps.id IN :packageSessionIds")
+    int updateStatusByPackageSessionIds(@Param("newStatus") String newStatus,
+                                        @Param("packageSessionIds") String[] packageSessionIds);
+
+    @Modifying
+    @Query("UPDATE PackageSession ps SET ps.status = :status WHERE ps.session.id IN :sessionIds")
+    void updateStatusBySessionIds(@Param("sessionIds") List<String> sessionIds, @Param("status") String status);
 
 }

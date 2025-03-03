@@ -134,7 +134,7 @@ public class AddQuestionPaperFromImportManager {
     }
 
 
-    private Question makeQuestionAndOptionFromImportQuestion(QuestionDTO questionRequest, Boolean isPublic) throws JsonProcessingException {
+    public Question makeQuestionAndOptionFromImportQuestion(QuestionDTO questionRequest, Boolean isPublic) throws JsonProcessingException {
         // Todo: check Question Validation
 
         Question question = new Question();

@@ -134,6 +134,7 @@ public interface EntityTagsRepository extends JpaRepository<EntityTags, String>,
             WHEN e.tagSource = 'LEVEL' THEN l.levelName
             WHEN e.tagSource = 'STREAM' THEN s.streamName
             WHEN e.tagSource = 'SUBJECT' THEN sub.subjectName
+            WHEN e.tagSource = 'TAGS' THEN t.tagName
             WHEN e.tagSource = 'DIFFICULTY' THEN e.id.tagId
             ELSE NULL
         END

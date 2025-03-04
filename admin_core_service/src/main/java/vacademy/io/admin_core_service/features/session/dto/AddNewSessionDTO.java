@@ -11,8 +11,10 @@ import java.util.List;
 @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
 @Data
 public class AddNewSessionDTO {
+    private String id;
     private String sessionName;
     private String status;
     private Date startDate;
+    private boolean newSession;
     private List<AddLevelWithSessionDTO>levels;
 }

@@ -12,7 +12,6 @@ import vacademy.io.auth_service.feature.notification.constants.NotificationConst
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.notification.dto.EmailOTPRequest;
-import vacademy.io.common.notification.dto.GenericEmailRequest;
 
 @Service
 public class NotificationService {
@@ -48,21 +47,6 @@ public class NotificationService {
             });
 
             return isOtpValid;
-        } catch (JsonProcessingException e) {
-            throw new VacademyException(e.getMessage());
-        }
-    }
-
-    public Boolean sendGenericHtmlMail(GenericEmailRequest request) {
-
-        ResponseEntity<String> response = internalClientUtils.makeHmacRequest(clientName, HttpMethod.POST.name(), notificationServerBaseUrl, NotificationConstant.SEND_HTML_EMAIL, request);
-
-        ObjectMapper objectMapper = new ObjectMapper();
-        try {
-            Boolean isMailSent = objectMapper.readValue(response.getBody(), new TypeReference<Boolean>() {
-            });
-
-            return isMailSent;
         } catch (JsonProcessingException e) {
             throw new VacademyException(e.getMessage());
         }

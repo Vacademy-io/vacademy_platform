@@ -106,16 +106,33 @@ public class SessionService {
     }
 
     @Transactional
-    public String addNewSession(AddNewSessionDTO addNewSessionDTO,CustomUserDetails user) {
-        Session session = sessionRepository.save(new Session(null, addNewSessionDTO.getSessionName(), addNewSessionDTO.getStatus()));
+    public String addNewSession(AddNewSessionDTO addNewSessionDTO, CustomUserDetails user) {
 
-        List<PackageSession> packageSessions = addNewSessionDTO.getLevels().stream()
-                .map(levelDTO -> createPackageSession(levelDTO, session, addNewSessionDTO.getStartDate()))
-                .collect(Collectors.toList());
+        if (addNewSessionDTO.getLevels() == null || addNewSessionDTO.getLevels().isEmpty()) {
+            throw new VacademyException("To add a new session, you must provide at least one level.");
+        }
+
+        Session session;
+
+        if (addNewSessionDTO.isNewSession()) {
+            session = sessionRepository.save(new Session(null, addNewSessionDTO.getSessionName(), addNewSessionDTO.getStatus()));
+        } else {
+            session = sessionRepository.findById(addNewSessionDTO.getId())
+                    .orElseThrow(() -> new VacademyException("Session not found for id " + addNewSessionDTO.getId()));
+        }
+
+        List<PackageSession> packageSessions = new ArrayList<>();
+
+        for (AddLevelWithSessionDTO levelDTO : addNewSessionDTO.getLevels()) {
+            PackageSession packageSession = createPackageSession(levelDTO, session, addNewSessionDTO.getStartDate());
+            packageSessions.add(packageSession);
+        }
 
         packageSessionRepository.saveAll(packageSessions);
-        return session.getId();
+
+        return String.valueOf(session.getId()); // Ensure return type is String
     }
+
 
     private PackageSession createPackageSession(AddLevelWithSessionDTO levelDTO, Session session, java.util.Date startDate) {
         Level level = levelService.createOrAddLevel(

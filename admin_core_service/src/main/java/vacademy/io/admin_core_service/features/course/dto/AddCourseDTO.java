@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.Getter;
 import lombok.Setter;
 import vacademy.io.admin_core_service.features.level.dto.AddLevelWithCourseDTO;
+import vacademy.io.admin_core_service.features.session.dto.AddNewSessionDTO;
+import vacademy.io.admin_core_service.features.session.dto.AddSessionDTO;
 
 import java.util.List;
 
@@ -15,5 +17,5 @@ public class AddCourseDTO {
     private String courseName;
     private String thumbnailFileId;
     private Boolean containLevels;
-    private List<AddLevelWithCourseDTO> levels;
+    private List<AddNewSessionDTO> sessions;
 }

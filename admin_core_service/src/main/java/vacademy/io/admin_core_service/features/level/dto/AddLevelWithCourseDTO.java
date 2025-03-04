@@ -17,5 +17,4 @@ public class AddLevelWithCourseDTO {
     private String levelName;
     private Integer durationInDays;
     private String thumbnailFileId;
-    private List<AddSessionDTO> sessions;
 }

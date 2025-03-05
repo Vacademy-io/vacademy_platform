@@ -1,6 +1,7 @@
 package vacademy.io.assessment_service.features.open_registration.manager;
 
 
+import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
@@ -15,13 +16,11 @@ import vacademy.io.assessment_service.features.open_registration.dto.GetAssessme
 import vacademy.io.assessment_service.features.open_registration.dto.ParticipantPublicResponseDto;
 import vacademy.io.assessment_service.features.open_registration.dto.RegisterOpenAssessmentRequestDto;
 import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.core.utils.DateUtil;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.student.dto.BasicParticipantDTO;
 
-import java.util.Date;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 
 import static vacademy.io.common.auth.enums.CompanyStatus.ACTIVE;
 
@@ -50,10 +49,12 @@ public class AssessmentPublicPageManager {
             throw new VacademyException("Assessment not found");
         }
 
+
+
         if (assessment.getRegistrationOpenDate().before(new Date()) && assessment.getRegistrationCloseDate().after(new Date())) {
-            return ResponseEntity.ok(GetAssessmentPublicResponseDto.builder().instituteId(assessmentInstituteMapping.get().getInstituteId()).assessmentPublicDto(new AssessmentPublicDto(assessment)).canRegister(true).assessmentCustomFields(assessment.getAssessmentCustomFields()).build());
+            return ResponseEntity.ok(GetAssessmentPublicResponseDto.builder().instituteId(assessmentInstituteMapping.get().getInstituteId()).serverTimeInGmt(DateUtil.getCurrentUtcTime()).assessmentPublicDto(new AssessmentPublicDto(assessment)).canRegister(true).assessmentCustomFields(assessment.getAssessmentCustomFields()).build());
         }
-        return ResponseEntity.ok(GetAssessmentPublicResponseDto.builder().instituteId(assessmentInstituteMapping.get().getInstituteId()).assessmentPublicDto(new AssessmentPublicDto(assessment)).canRegister(false).errorMessage("Assessment is closed").build());
+        return ResponseEntity.ok(GetAssessmentPublicResponseDto.builder().instituteId(assessmentInstituteMapping.get().getInstituteId()).assessmentPublicDto(new AssessmentPublicDto(assessment)).serverTimeInGmt(DateUtil.getCurrentUtcTime()).canRegister(false).errorMessage("Assessment is closed").build());
 
     }
 
@@ -117,18 +118,16 @@ public class AssessmentPublicPageManager {
         return ResponseEntity.ok(ParticipantPublicResponseDto.builder().remainingAttempts(assessment.get().getReattemptCount()).isAlreadyRegistered(false).build());
     }
 
+    @Transactional
     public ResponseEntity<String> registerAssessment(String userId, RegisterOpenAssessmentRequestDto registerOpenAssessmentRequestDto) {
         Optional<Assessment> assessment = assessmentRepository.findByAssessmentIdAndInstituteId(registerOpenAssessmentRequestDto.getAssessmentId(), registerOpenAssessmentRequestDto.getInstituteId());
         validateRegisterRequest(assessment);
 
-        // todo: add user to auth service
-        // todo: add student to admin service
-        addUserToAssessment(registerOpenAssessmentRequestDto.getParticipantDTO(), userId, registerOpenAssessmentRequestDto.getInstituteId(), assessment.get());
-
+        addUserToAssessment(registerOpenAssessmentRequestDto.getParticipantDTO(), userId, registerOpenAssessmentRequestDto.getInstituteId(), assessment.get(), registerOpenAssessmentRequestDto.getCustomFieldRequestList());
         return ResponseEntity.ok("Registered successfully");
     }
 
-    AssessmentUserRegistration addUserToAssessment(BasicParticipantDTO basicParticipantDTO, String userId, String instituteId, Assessment assessment) {
+    AssessmentUserRegistration addUserToAssessment(BasicParticipantDTO basicParticipantDTO, String userId, String instituteId, Assessment assessment, List<AssessmentRegistrationCustomFieldRequest> customFieldRequestList) {
         AssessmentUserRegistration assessmentParticipantRegistration = new AssessmentUserRegistration();
         assessmentParticipantRegistration.setAssessment(assessment);
         assessmentParticipantRegistration.setUserId(basicParticipantDTO.getUserId());
@@ -143,6 +142,21 @@ public class AssessmentPublicPageManager {
         assessmentParticipantRegistration.setSource(UserRegistrationSources.OPEN_REGISTRATION.name());
         assessmentParticipantRegistration.setSourceId(userId);
         assessmentParticipantRegistration.setRegistrationTime(new Date());
+        addCustomUserValues(customFieldRequestList, assessmentParticipantRegistration);
         return assessmentUserRegistrationRepository.save(assessmentParticipantRegistration);
+    }
+
+    void addCustomUserValues(List<AssessmentRegistrationCustomFieldRequest> customFields, AssessmentUserRegistration assessmentUserRegistration) {
+        Set<AssessmentRegistrationCustomFieldResponse> customFieldResponses = new HashSet<>();
+
+        for (AssessmentRegistrationCustomFieldRequest customField : customFields) {
+            AssessmentRegistrationCustomFieldResponse customFieldResponse = new AssessmentRegistrationCustomFieldResponse();
+            customFieldResponse.setAssessmentUserRegistration(assessmentUserRegistration);
+            customFieldResponse.setAnswer(customField.getAnswer());
+            customFieldResponse.setAssessmentCustomField(AssessmentCustomField.builder().id(customField.getAssessmentCustomFieldId()).build());
+            customFieldResponse.setAssessmentUserRegistration(assessmentUserRegistration);
+            customFieldResponses.add(customFieldResponse);
+        }
+        assessmentUserRegistration.setAssessmentRegistrationCustomFieldResponseList(customFieldResponses);
     }
 }

@@ -65,7 +65,7 @@ public class AssessmentUserRegistration {
     @Column(name = "status", nullable = false)
     private String status;
 
-    @OneToMany(mappedBy = "assessmentUserRegistration")
+    @OneToMany(mappedBy = "assessmentUserRegistration", cascade = CascadeType.ALL)
     private Set<AssessmentRegistrationCustomFieldResponse> assessmentRegistrationCustomFieldResponseList= new HashSet<>();
 
     @OneToMany(mappedBy = "registration")

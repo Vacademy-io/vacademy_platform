@@ -23,7 +23,7 @@ public class AssessmentRegistrationCustomFieldResponse {
     @Column(name = "id")
     private String id;
 
-    @ManyToOne
+    @ManyToOne(cascade = CascadeType.DETACH)
     @JoinColumn(name = "custom_field_id")
     private AssessmentCustomField assessmentCustomField;
 

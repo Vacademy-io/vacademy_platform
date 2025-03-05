@@ -115,7 +115,7 @@ public class AssessmentParticipantsManager {
 
         if (assessment == null) return;
         AssessmentNotificationMetadata assessmentNotificationMetadata = new AssessmentNotificationMetadata();
-
+        assessmentNotificationMetadata.setAssessment(assessment);
 
         Optional<AssessmentNotificationMetadata> savedAssessmentNotificationMetadata = assessmentNotificationMetadataRepository.findTopByAssessmentId(assessment.getId());
 

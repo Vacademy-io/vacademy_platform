@@ -42,7 +42,9 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                vs.title AS videoTitle, 
                vs.url AS videoUrl, 
                vs.description AS videoDescription, 
-               COALESCE(cts.slide_order, 9999) AS slideOrder
+               COALESCE(cts.slide_order, 9999) AS slideOrder,
+               vs.published_url AS publishedUrl,
+               ds.published_data AS publishedData
         FROM chapter_to_slides cts
         JOIN slide s ON cts.slide_id = s.id
         JOIN chapter ch ON cts.chapter_id = ch.id
@@ -185,6 +187,36 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
             @Param("status") String status
     );
 
-
+    @Query(value = """
+        SELECT s.id AS slideId, 
+               s.title AS slideTitle, 
+               s.description AS slideDescription, 
+               s.source_type AS sourceType, 
+               s.status AS status, 
+               s.image_file_id AS imageFileId, 
+               ds.id AS documentId, 
+               ds.title AS documentTitle, 
+               ds.cover_file_id AS documentCoverFileId, 
+               ds.type AS documentType, 
+               vs.id AS videoId, 
+               vs.title AS videoTitle, 
+               vs.description AS videoDescription, 
+               COALESCE(cts.slide_order, 9999) AS slideOrder,
+               vs.published_url AS publishedUrl,
+               ds.published_data AS publishedData
+        FROM chapter_to_slides cts
+        JOIN slide s ON cts.slide_id = s.id
+        JOIN chapter ch ON cts.chapter_id = ch.id
+        LEFT JOIN document_slide ds ON ds.id = s.source_id AND s.source_type = 'DOCUMENT'
+        LEFT JOIN video vs ON vs.id = s.source_id AND s.source_type = 'VIDEO'
+        WHERE ch.id = :chapterId
+          AND s.status IN :status
+          AND cts.status != 'DELETED'
+        ORDER BY 
+            CASE WHEN cts.slide_order IS NULL THEN 0 ELSE 1 END, 
+            cts.slide_order ASC, 
+            s.id
+        """, nativeQuery = true)
+    List<SlideDetailProjection> findLearnerSlideDetailsByChapterId(@Param("chapterId") String chapterId, @Param("status") List<String> status);
 
 }

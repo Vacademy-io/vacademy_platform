@@ -7,6 +7,7 @@ import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
 import vacademy.io.admin_core_service.features.slide.dto.VideoSlideDTO;
+import vacademy.io.admin_core_service.features.slide.enums.SlideStatus;
 
 import java.sql.Timestamp;
 
@@ -32,19 +33,33 @@ public class VideoSlide {
     @Column(name = "video_length")
     private Long videoLengthInMillis;
 
+    @Column(name = "published_url", length = 255)
+    private String publishedUrl;
+
+    @Column(name = "published_video_length")
+    private Long publishedVideoLengthInMillis;
+
     @Column(name = "created_at", insertable = false, updatable = false, columnDefinition = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
     private Timestamp createdAt;
 
     @Column(name = "updated_at", insertable = false, updatable = false, columnDefinition = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
     private Timestamp updatedAt;
 
-    public VideoSlide(VideoSlideDTO addVideoSlideDTO) {
+    public VideoSlide(VideoSlideDTO addVideoSlideDTO,String status) {
         this.description = addVideoSlideDTO.getDescription();
         this.title = addVideoSlideDTO.getTitle();
         this.url = addVideoSlideDTO.getUrl();
         this.id = addVideoSlideDTO.getId();
         if (addVideoSlideDTO.getVideoLengthInMillis() != null) {
             this.videoLengthInMillis = addVideoSlideDTO.getVideoLengthInMillis();
+        }
+        if (status.equalsIgnoreCase(SlideStatus.PUBLISHED.name())) {
+            if (addVideoSlideDTO.getPublishedUrl() != null) {
+                this.publishedUrl = addVideoSlideDTO.getPublishedUrl();
+            }
+            if (addVideoSlideDTO.getPublishedVideoLengthInMillis() != null) {
+                this.publishedVideoLengthInMillis = addVideoSlideDTO.getPublishedVideoLengthInMillis();
+            }
         }
     }
 

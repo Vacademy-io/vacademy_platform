@@ -32,6 +32,15 @@ public class AddPublicQuestionPaperController {
         }
     }
 
+    @PostMapping("/update")
+    public ResponseEntity<Boolean> updateQuestionPaper(@RequestAttribute("user") CustomUserDetails user, @RequestBody AddQuestionPaperDTO questionRequestBody) {
+        try {
+            return ResponseEntity.ok(addQuestionPaperFromImportManager.updateQuestionPaper(user, questionRequestBody, true));
+        } catch (JsonProcessingException e) {
+            throw new VacademyException(e.getMessage());
+        }
+    }
+
     @PostMapping("/add-only-question")
     public ResponseEntity<AddQuestionDTO> addPrivateQuestion(@RequestAttribute("user") CustomUserDetails user, @RequestBody AddQuestionDTO questionRequestBody) {
         try {

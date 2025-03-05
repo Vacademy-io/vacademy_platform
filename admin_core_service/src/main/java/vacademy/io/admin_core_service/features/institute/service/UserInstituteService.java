@@ -9,7 +9,9 @@ import vacademy.io.admin_core_service.features.institute.dto.InstituteDashboardR
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteSubModuleRepository;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
+import vacademy.io.admin_core_service.features.packages.repository.PackageRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
+import vacademy.io.admin_core_service.features.subject.repository.SubjectPackageSessionRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.dto.InstituteIdAndNameDTO;
@@ -38,6 +40,10 @@ public class UserInstituteService {
     StudentSessionRepository studentSessionRepository;
     @Autowired
     private InstituteRepository instituteRepository;
+    @Autowired
+    private PackageRepository packageRepository;
+    @Autowired
+    private SubjectPackageSessionRepository subjectPackageSessionRepository;
 
     public static InstituteInfoDTO getInstituteDetails(Institute institute) {
         InstituteInfoDTO instituteInfoDTO = new InstituteInfoDTO();
@@ -119,12 +125,18 @@ public class UserInstituteService {
         Integer percentage = (((11 - emptyOrNullFieldsCount) * 100) / 11);
         Long batchCount = packageSessionRepository.findCountPackageSessionsByInstituteId(instituteId);
         Long studentCount = studentSessionRepository.countStudentsByInstituteIdAndStatusNotIn(instituteId, List.of("DELETED"));
-
+        Long courseCount = packageRepository.countDistinctPackagesByInstituteId(instituteId);
+        Long levelCount = packageRepository.countDistinctLevelsByInstituteId(instituteId);
+        Long subjectCount = subjectPackageSessionRepository.countDistinctSubjectsByInstituteId(instituteId);
         return ResponseEntity.ok(InstituteDashboardResponse.builder()
                 .id(instituteId)
                 .profileCompletionPercentage(percentage)
                 .batchCount(batchCount)
-                .studentCount(studentCount).build());
+                .studentCount(studentCount)
+                .courseCount(courseCount)
+                .levelCount(levelCount)
+                .subjectCount(subjectCount)
+                .build());
     }
 
 

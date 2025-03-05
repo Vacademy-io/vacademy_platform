@@ -2,15 +2,14 @@ package vacademy.io.auth_service.feature.auth.controller;
 
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import vacademy.io.auth_service.feature.auth.dto.AuthRequestDto;
 import vacademy.io.auth_service.feature.auth.dto.JwtResponseDto;
 import vacademy.io.auth_service.feature.auth.dto.RegisterRequest;
 import vacademy.io.auth_service.feature.auth.manager.AuthManager;
+import vacademy.io.auth_service.feature.auth.service.PasswordResetManager;
 import vacademy.io.common.auth.dto.RefreshTokenRequestDTO;
 import vacademy.io.common.auth.repository.UserRepository;
 import vacademy.io.common.auth.service.JwtService;
@@ -36,6 +35,8 @@ public class AuthController {
     @Autowired
     AuthManager authManager;
 
+    @Autowired
+    private PasswordResetManager passwordResetManager;
 
     @PostMapping("/signup-root")
     public JwtResponseDto registerUser(@RequestBody RegisterRequest registerRequest) {
@@ -56,6 +57,11 @@ public class AuthController {
         return authManager.refreshToken(refreshTokenRequestDTO);
     }
 
+    @PostMapping("/send-password")
+    public ResponseEntity<String> sendPassword(@RequestParam String email) {
+        String response = passwordResetManager.sendPasswordToUser(email);
+        return ResponseEntity.ok(response);
+    }
 }
 
 

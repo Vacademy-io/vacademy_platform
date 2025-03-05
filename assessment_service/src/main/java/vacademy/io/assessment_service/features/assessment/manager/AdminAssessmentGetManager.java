@@ -13,13 +13,17 @@ import org.springframework.util.StringUtils;
 import vacademy.io.assessment_service.features.assessment.dto.AssessmentQuestionPreviewDto;
 import vacademy.io.assessment_service.features.assessment.dto.LeaderBoardDto;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.*;
+import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.request.RevaluateRequest;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.*;
+import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentModeEnum;
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentStatus;
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentVisibility;
+import vacademy.io.assessment_service.features.assessment.enums.RevaluateRequestEnum;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentRepository;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentUserRegistrationRepository;
 import vacademy.io.assessment_service.features.assessment.repository.StudentAttemptRepository;
+import vacademy.io.assessment_service.features.assessment.service.StudentAttemptService;
 import vacademy.io.assessment_service.features.assessment.service.assessment_get.AssessmentMapper;
 import vacademy.io.assessment_service.features.learner_assessment.dto.QuestionStatusDto;
 import vacademy.io.assessment_service.features.learner_assessment.service.QuestionWiseMarksService;
@@ -51,6 +55,9 @@ public class AdminAssessmentGetManager {
 
     @Autowired
     AssessmentUserRegistrationRepository assessmentUserRegistrationRepository;
+
+    @Autowired
+    StudentAttemptService studentAttemptService;
 
     public ResponseEntity<AssessmentAdminListInitDto> assessmentAdminListInit(CustomUserDetails user, String instituteId) {
         AssessmentAdminListInitDto assessmentAdminListInitDto = new AssessmentAdminListInitDto();
@@ -263,5 +270,57 @@ public class AdminAssessmentGetManager {
                 .last(studentReportDtoPage.isLast())
                 .totalPages(studentReportDtoPage.getTotalPages())
                 .build();
+    }
+
+    public ResponseEntity<String> revaluateAssessment(CustomUserDetails userDetails,
+                                                      String assessmentId,
+                                                      String methodType,
+                                                      RevaluateRequest request,
+                                                      String instituteId) {
+        Assessment assessment = assessmentRepository.findById(assessmentId)
+                .orElseThrow(() -> new VacademyException("Assessment Not Found"));
+
+        return switch (RevaluateRequestEnum.valueOf(methodType)) {
+            case ENTIRE_ASSESSMENT -> revaluateForAllParticipants(assessment.getId(), instituteId);
+            case ENTIRE_ASSESSMENT_PARTICIPANTS -> revaluateAssessmentForParticipantsAndAllAssessment(assessment.getId(), request, instituteId);
+            case PARTICIPANTS_AND_QUESTIONS -> revaluateAssessmentForParticipantsAndQuestions(assessment, request, instituteId);
+            default -> ResponseEntity.ok("Invalid Request");
+        };
+    }
+
+
+    private ResponseEntity<String> revaluateAssessmentForParticipantsAndQuestions(Assessment assessment, RevaluateRequest request, String instituteId) {
+        if(Objects.isNull(request) || Objects.isNull(request.getAttemptIds()) || Objects.isNull(request.getQuestions()))
+            throw new VacademyException("Invalid Request");
+
+        try {
+            studentAttemptService.revaluateCustomParticipantAndQuestionsWrapper(assessment, request, instituteId);
+        } catch (Exception e) {
+            log.error("[REVALUATE ERROR]: " + e.getMessage());
+        }
+        return ResponseEntity.ok("Done");
+    }
+
+    private ResponseEntity<String> revaluateAssessmentForParticipantsAndAllAssessment(String assessmentId, RevaluateRequest request, String instituteId) {
+        if(Objects.isNull(request) || Objects.isNull(request.getAttemptIds())) throw new VacademyException("Invalid Request");
+        try{
+            studentAttemptService.revaluateForParticipantIdsWrapper(assessmentId, request.getAttemptIds(), instituteId);
+        }
+        catch (Exception e){
+            log.error("[REVALUATE ERROR]: " + e.getMessage());
+        }
+
+        return ResponseEntity.ok("Done");
+    }
+
+    private ResponseEntity<String> revaluateForAllParticipants(String assessmentId, String instituteId) {
+        try{
+            studentAttemptService.revaluateForAllParticipantsWrapper(assessmentId, instituteId);
+        }
+        catch (Exception e){
+            log.error("[REVALUATE ERROR]: " + e.getMessage());
+        }
+
+        return ResponseEntity.ok("Done");
     }
 }

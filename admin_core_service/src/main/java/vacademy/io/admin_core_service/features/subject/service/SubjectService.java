@@ -4,7 +4,10 @@ import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.chapter.entity.Chapter;
 import vacademy.io.admin_core_service.features.module.entity.SubjectModuleMapping;
+import vacademy.io.admin_core_service.features.module.enums.ModuleStatusEnum;
+import vacademy.io.admin_core_service.features.module.repository.ModuleRepository;
 import vacademy.io.admin_core_service.features.module.repository.SubjectModuleMappingRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
 import vacademy.io.admin_core_service.features.subject.dto.UpdateSubjectOrderDTO;
@@ -19,10 +22,7 @@ import vacademy.io.common.institute.entity.module.Module;
 import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.common.institute.entity.student.Subject;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -33,6 +33,7 @@ public class SubjectService {
     private final PackageSessionRepository packageSessionRepository;
     private final SubjectPackageSessionRepository subjectPackageSessionRepository;
     private final SubjectModuleMappingRepository subjectModuleMappingRepository;
+    private final ModuleRepository moduleRepository;
 
     /**
      * Adds a new subject to the system.
@@ -200,5 +201,92 @@ public class SubjectService {
         subjectPackageSessionRepository.saveAll(subjectPackageSessions);
 
         return "Subject order updated successfully.";
+    }
+
+    @Transactional
+    public List<Module> processSubjectsAndModules(List<String> packageSessionIds, Subject subject, Module module) {
+        List<SubjectPackageSession> existingMappings = getExistingMappings(packageSessionIds, subject);
+        List<String> packageSessionsWithoutSubject = getPackageSessionsWithoutSubject(packageSessionIds, existingMappings);
+        List<Module> createdModules = createSubjectsAndModules(packageSessionsWithoutSubject, subject, module);
+        List<Module> ensuredModules = ensureModulesExistForSubjects(existingMappings, module);
+
+        List<Module> allModules = new ArrayList<>();
+        allModules.addAll(createdModules);
+        allModules.addAll(ensuredModules);
+        return allModules;
+    }
+
+    private List<Module> createSubjectsAndModules(List<String> packageSessionsWithoutSubject, Subject subject, Module module) {
+        List<Module> createdModules = new ArrayList<>();
+        for (String packageSessionId : packageSessionsWithoutSubject) {
+            Optional<PackageSession> optionalPackageSession = packageSessionRepository.findById(packageSessionId);
+            optionalPackageSession.ifPresent(packageSession -> {
+                Subject newSubject = new Subject();
+                newSubject.setSubjectName(subject.getSubjectName());
+                newSubject.setSubjectCode(subject.getSubjectCode());
+                newSubject.setCredit(subject.getCredit());
+                newSubject.setCredit(subject.getCredit());
+                newSubject.setStatus(SubjectStatusEnum.ACTIVE.name());
+                newSubject.setThumbnailId(subject.getThumbnailId());
+                subjectRepository.save(newSubject);
+
+                SubjectPackageSession newMapping = new SubjectPackageSession(newSubject, packageSession, null);
+                subjectPackageSessionRepository.save(newMapping);
+
+                Module newModule = createAndSaveModule(module);
+                createSubjectModuleMapping(newSubject, newModule);
+                createdModules.add(newModule);
+            });
+        }
+        return createdModules;
+    }
+
+
+
+    private List<SubjectPackageSession> getExistingMappings(List<String> packageSessionIds, Subject subject) {
+        return subjectPackageSessionRepository.findBySubjectNameAndPackageSessionIds(
+                subject.getSubjectName(), packageSessionIds
+        );
+    }
+
+    private List<String> getPackageSessionsWithoutSubject(List<String> packageSessionIds, List<SubjectPackageSession> existingMappings) {
+        return packageSessionIds.stream()
+                .filter(psId -> existingMappings.stream().noneMatch(sps -> sps.getPackageSession().getId().equals(psId)))
+                .collect(Collectors.toList());
+    }
+
+
+    private List<Module> ensureModulesExistForSubjects(List<SubjectPackageSession> subjectPackageSessions, Module module) {
+        List<Module> ensuredModules = new ArrayList<>();
+        for (SubjectPackageSession subjectPackageSession : subjectPackageSessions) {
+            Optional<SubjectModuleMapping> existingModule = subjectModuleMappingRepository.findBySubjectIdAndModuleName(
+                    subjectPackageSession.getSubject().getId(), module.getModuleName());
+            if (existingModule.isEmpty()) {
+                Module newModule = createAndSaveModule(module);
+                createSubjectModuleMapping(subjectPackageSession.getSubject(), newModule);
+                ensuredModules.add(newModule);
+            }
+            else{
+                ensuredModules.add(existingModule.get().getModule());
+            }
+        }
+
+        return ensuredModules;
+    }
+
+    private Module createAndSaveModule(Module module) {
+        Module newModule = new Module();
+        newModule.setModuleName(module.getModuleName());
+        newModule.setStatus(ModuleStatusEnum.ACTIVE.name());
+        newModule.setThumbnailId(module.getThumbnailId());
+        newModule.setDescription(module.getDescription());
+        return moduleRepository.save(newModule);
+    }
+
+    private void createSubjectModuleMapping(Subject subject, Module module) {
+        SubjectModuleMapping subjectModuleMapping = new SubjectModuleMapping();
+        subjectModuleMapping.setSubject(subject);
+        subjectModuleMapping.setModule(module);
+        subjectModuleMappingRepository.save(subjectModuleMapping);
     }
 }

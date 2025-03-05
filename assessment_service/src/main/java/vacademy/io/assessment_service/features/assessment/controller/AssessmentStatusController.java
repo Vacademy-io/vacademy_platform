@@ -3,7 +3,9 @@ package vacademy.io.assessment_service.features.assessment.controller;
 
 import org.checkerframework.checker.units.qual.A;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.assessment_service.features.assessment.dto.AssessmentSaveResponseDto;
 import vacademy.io.assessment_service.features.assessment.dto.StepResponseDto;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentRepository;
@@ -51,5 +53,12 @@ public class AssessmentStatusController {
             stepResponses.add(step.toResponseDto());
         }
         return stepResponses;
+    }
+
+    @DeleteMapping("/delete")
+    public ResponseEntity<String> deleteAssessment(@RequestAttribute("user") CustomUserDetails user,
+                                                                      @RequestParam(name = "assessmentId") String assessmentId,
+                                                                      @RequestParam(name = "instituteId") String instituteId) {
+        return assessmentService.deleteAssessment(user, assessmentId, instituteId);
     }
 }

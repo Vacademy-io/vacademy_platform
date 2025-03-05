@@ -8,9 +8,11 @@ import vacademy.io.community_service.feature.filter.entity.EntityTags;
 import vacademy.io.community_service.feature.filter.entity.EntityTagsId;
 import vacademy.io.community_service.feature.filter.enums.EntityName;
 import vacademy.io.community_service.feature.filter.repository.EntityTagsRepository;
+import vacademy.io.community_service.feature.init.entity.Tags;
 import vacademy.io.community_service.feature.init.enums.DropdownType;
+import vacademy.io.community_service.feature.init.repository.TagsRepository;
 
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -19,11 +21,13 @@ public class EntityTagsService {
     private final EntityTagsRepository entityTagsRepository;
     private final EntityValidationService entityValidationService;
     private final TagValidationService tagValidationService;
+    private final TagsRepository tagsRepository;
 
-    public EntityTagsService(TagValidationService tagValidationService , EntityValidationService entityValidationService , EntityTagsRepository entityTagsRepository) {
+    public EntityTagsService(TagsRepository tagsRepository , TagValidationService tagValidationService , EntityValidationService entityValidationService , EntityTagsRepository entityTagsRepository) {
         this.entityTagsRepository = entityTagsRepository;
         this.entityValidationService = entityValidationService;
         this.tagValidationService = tagValidationService;
+        this.tagsRepository = tagsRepository;
     }
 
     @Transactional
@@ -37,8 +41,21 @@ public class EntityTagsService {
             throw new IllegalArgumentException("Entity ID does not exist.");
         }
 
-        // Convert each tagId to an EntityTags object with composite key
-        List<EntityTags> validTags = requestDto.getTags().stream()
+        // Process comma-separated tags and save them
+        List<Tags> savedTags = processCommaSeparatedTags(requestDto.getCommaSeparatedTags());
+
+        // Convert saved tags to EntityTags format
+        List<EntityTags> entityTagsList = savedTags.stream()
+                .map(tag -> new EntityTags(
+                        new EntityTagsId(requestDto.getEntityId(), requestDto.getEntityName(), tag.getTagId()),
+                        "TAGS"
+                ))
+                .collect(Collectors.toList());
+
+        // Add Tags from `tags` list (if provided separately)
+        List<EntityTags> validTags = Optional.ofNullable(requestDto.getTags())
+                .orElse(Collections.emptyList()) // Prevent NullPointerException
+                .stream()
                 .filter(tag -> DropdownType.isValid(tag.getTagSource()) &&
                         tagValidationService.isValidTag(tag.getTagSource(), tag.getTagId()))
                 .map(tag -> new EntityTags(
@@ -47,15 +64,15 @@ public class EntityTagsService {
                 ))
                 .collect(Collectors.toList());
 
-        if (validTags.isEmpty()) {
+        // Combine both sources
+        entityTagsList.addAll(validTags);
+
+        if (entityTagsList.isEmpty()) {
             throw new IllegalArgumentException("No valid tags provided.");
         }
 
-        // Save all valid tags (JPA will handle conflicts with @Id)
-        //entityTagsRepository.saveAll(validTags);
-
-
-        validTags.forEach(tag -> {
+        // Insert into entity_tags table (avoiding conflicts)
+        entityTagsList.forEach(tag -> {
             entityTagsRepository.insertIgnoreConflict(
                     tag.getEntityId(),
                     tag.getEntityName(),
@@ -63,5 +80,42 @@ public class EntityTagsService {
                     tag.getTagSource()
             );
         });
+    }
+    private List<Tags> processCommaSeparatedTags(String commaSeparatedTags) {
+        if (commaSeparatedTags == null || commaSeparatedTags.trim().isEmpty()) {
+            return List.of();
+        }
+
+        // Convert to Set to remove duplicates
+        Set<String> tagNames = Arrays.stream(commaSeparatedTags.split(","))
+                .map(String::trim)
+                .map(String::toLowerCase) // Convert to lowercase
+                .filter(tag -> !tag.isEmpty())
+                .collect(Collectors.toSet());
+
+        // Fetch existing tags
+        List<Tags> existingTags = tagsRepository.findAllByTagNameIn(tagNames);
+        Set<String> existingTagNames = existingTags.stream()
+                .map(Tags::getTagName)
+                .collect(Collectors.toSet());
+
+        // Identify new tags to insert
+        List<Tags> newTags = tagNames.stream()
+                .filter(tagName -> !existingTagNames.contains(tagName))
+                .map(tagName -> {
+                    Tags tag = new Tags();
+                    tag.setTagId(UUID.randomUUID().toString()); // Generate a unique ID
+                    tag.setTagName(tagName);
+                    return tag;
+                })
+                .toList();
+
+        // Save new tags and return all tags
+        if (!newTags.isEmpty()) {
+            newTags = tagsRepository.saveAll(newTags);
+        }
+
+        existingTags.addAll(newTags);
+        return existingTags;
     }
 }

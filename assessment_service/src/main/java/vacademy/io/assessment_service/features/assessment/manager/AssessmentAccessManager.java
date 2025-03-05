@@ -10,6 +10,7 @@ import vacademy.io.assessment_service.features.assessment.dto.AssessmentSaveResp
 import vacademy.io.assessment_service.features.assessment.dto.create_assessment.AddAccessAssessmentDetailsDTO;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentInstituteMapping;
+import vacademy.io.assessment_service.features.assessment.repository.AssessmentInstituteMappingRepository;
 import vacademy.io.assessment_service.features.assessment.service.assessment_get.AssessmentService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
@@ -24,6 +25,9 @@ public class AssessmentAccessManager {
 
     @Autowired
     AssessmentService assessmentService;
+
+    @Autowired
+    AssessmentInstituteMappingRepository assessmentInstituteMappingRepository;
 
     public ResponseEntity<AssessmentSaveResponseDto> saveAccessToAssessment(CustomUserDetails user, AddAccessAssessmentDetailsDTO addAccessAssessmentDetailsDTO, String assessmentId, String instituteId, String type) {
         Optional<Assessment> assessmentOptional = assessmentService.getAssessmentWithActiveSections(assessmentId, instituteId);
@@ -69,9 +73,9 @@ public class AssessmentAccessManager {
                 assessmentInstituteMappingOptional.get().setCommaSeparatedSubmissionViewRoles(String.join(",", userIdsAndRoles.getSecond()));
             }
 
-        }
+            assessmentInstituteMappingRepository.save(assessmentInstituteMappingOptional.get());
 
-        // todo: handle deleted access
+        }
 
         return ResponseEntity.ok(new AssessmentSaveResponseDto(assessmentId, assessmentOptional.get().getStatus()));
 

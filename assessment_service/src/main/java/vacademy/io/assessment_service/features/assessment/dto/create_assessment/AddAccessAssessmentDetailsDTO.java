@@ -17,5 +17,4 @@ import java.util.List;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class AddAccessAssessmentDetailsDTO {
     private AssessmentAccessDto addedAccesses;
-    private AssessmentAccessDto deletedAccesses;
 }

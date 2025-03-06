@@ -7,6 +7,7 @@ import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
 import vacademy.io.admin_core_service.features.slide.dto.DocumentSlideDTO;
+import vacademy.io.admin_core_service.features.slide.enums.SlideStatus;
 
 import java.sql.Timestamp;
 
@@ -35,6 +36,12 @@ public class DocumentSlide {
     @Column(name = "total_pages")
     private Integer totalPages;
 
+    @Column(name = "published_data")
+    private String publishedData;
+
+    @Column(name = "published_document_total_pages")
+    private Integer publishedDocumentTotalPages;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Timestamp createdAt;
 
@@ -44,12 +51,18 @@ public class DocumentSlide {
     public DocumentSlide() {
     }
 
-    public DocumentSlide(DocumentSlideDTO documentSlideDTO) {
+    public DocumentSlide(DocumentSlideDTO documentSlideDTO,String status) {
         this.type = documentSlideDTO.getType();
-        this.data = documentSlideDTO.getData();
         this.title = documentSlideDTO.getTitle();
         this.coverFileId = documentSlideDTO.getCoverFileId();
         this.id = documentSlideDTO.getId();
-        this.totalPages = documentSlideDTO.getTotalPages();
+        if (status.equals(SlideStatus.DRAFT.name())) {
+            this.totalPages = documentSlideDTO.getTotalPages();
+            this.data = documentSlideDTO.getData();
+        }
+        else{
+            this.publishedData = documentSlideDTO.getData();
+            this.publishedDocumentTotalPages = documentSlideDTO.getTotalPages();
+        }
     }
 }

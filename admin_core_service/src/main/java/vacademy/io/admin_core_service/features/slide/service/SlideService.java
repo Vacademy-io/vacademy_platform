@@ -1,6 +1,5 @@
 package vacademy.io.admin_core_service.features.slide.service;
 
-import com.fasterxml.jackson.annotation.ObjectIdGenerators;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -48,7 +47,7 @@ public class SlideService {
                 .map(chapterToSlides -> {
                     updateChapterToSlides(addDocumentSlideDTO.getSlideOrder(), addDocumentSlideDTO.getStatus(), chapterToSlides);
                     updateSlide(addDocumentSlideDTO.getDescription(), addDocumentSlideDTO.getTitle(), addDocumentSlideDTO.getImageFileId(), addDocumentSlideDTO.getStatus(), chapterToSlides.getSlide());
-                    updateDocument(addDocumentSlideDTO.getDocumentSlide());
+                    updateDocument(addDocumentSlideDTO.getDocumentSlide(), addDocumentSlideDTO.getStatus());
                     notifyIfPublished(addDocumentSlideDTO.getStatus(), addDocumentSlideDTO.isNotify(), instituteId, chapterToSlides);
                     return "Slide updated successfully";
                 })
@@ -65,7 +64,7 @@ public class SlideService {
                 .map(chapterToSlides -> {
                     updateChapterToSlides(addVideoSlideDTO.getSlideOrder(), addVideoSlideDTO.getStatus(), chapterToSlides);
                     updateSlide(addVideoSlideDTO.getDescription(), addVideoSlideDTO.getTitle(), addVideoSlideDTO.getImageFileId(), addVideoSlideDTO.getStatus(), chapterToSlides.getSlide());
-                    updateVideoSlide(addVideoSlideDTO.getVideoSlide());
+                    updateVideoSlide(addVideoSlideDTO.getVideoSlide(),addVideoSlideDTO.getStatus());
                     notifyIfPublished(addVideoSlideDTO.getStatus(), addVideoSlideDTO.isNotify(), instituteId, chapterToSlides);
                     return "Slide updated successfully";
                 })
@@ -92,21 +91,29 @@ public class SlideService {
         slideRepository.save(slide);
     }
 
-    private void updateDocument(DocumentSlideDTO documentSlideDTO) {
+    private void updateDocument(DocumentSlideDTO documentSlideDTO,String status) {
         DocumentSlide documentSlide = documentSlideRepository.findById(documentSlideDTO.getId())
                 .orElseThrow(() -> new VacademyException("Document slide not found"));
+
         Optional.ofNullable(documentSlideDTO.getType()).filter(t -> !t.isEmpty()).ifPresent(documentSlide::setType);
-        Optional.ofNullable(documentSlideDTO.getData()).filter(d -> !d.isEmpty()).ifPresent(documentSlide::setData);
         Optional.ofNullable(documentSlideDTO.getTitle()).filter(t -> !t.isEmpty()).ifPresent(documentSlide::setTitle);
         Optional.ofNullable(documentSlideDTO.getCoverFileId()).filter(c -> !c.isEmpty()).ifPresent(documentSlide::setCoverFileId);
-        Optional.ofNullable(documentSlideDTO.getTotalPages()).ifPresent(documentSlide::setTotalPages);
+        if (status.equalsIgnoreCase(SlideStatus.PUBLISHED.name())){
+            handlePublishedDocumentSlide(documentSlide,documentSlideDTO);
+        }
+        else if(status.equalsIgnoreCase(SlideStatus.DRAFT.name())){
+            handleDraftDocumentSlide(documentSlide,documentSlideDTO);
+        }
+        else{
+            handleUnsyncDocumentSlide(documentSlide,documentSlideDTO);
+        }
         documentSlideRepository.save(documentSlide);
     }
 
     public String addDocumentSlide(AddDocumentSlideDTO addDocumentSlideDTO, String chapterId, String instituteId) {
         Chapter chapter = chapterRepository.findById(chapterId)
                 .orElseThrow(() -> new VacademyException("Chapter not found"));
-        DocumentSlide documentSlide = documentSlideRepository.save(new DocumentSlide(addDocumentSlideDTO.getDocumentSlide()));
+        DocumentSlide documentSlide = documentSlideRepository.save(new DocumentSlide(addDocumentSlideDTO.getDocumentSlide(),addDocumentSlideDTO.getStatus()));
         Slide slide = slideRepository.save(new Slide(addDocumentSlideDTO, documentSlide.getId(), SlideTypeEnum.DOCUMENT.name(), addDocumentSlideDTO.getStatus()));
         ChapterToSlides chapterToSlides = chapterToSlidesRepository.save(new ChapterToSlides(chapter, slide, addDocumentSlideDTO.getSlideOrder(), addDocumentSlideDTO.getStatus()));
         notifyIfPublished(addDocumentSlideDTO.getStatus(), addDocumentSlideDTO.isNotify(), instituteId, chapterToSlides);
@@ -116,7 +123,7 @@ public class SlideService {
     public String addVideoSlide(AddVideoSlideDTO addVideoSlideDTO, String chapterId, String instituteId) {
         Chapter chapter = chapterRepository.findById(chapterId)
                 .orElseThrow(() -> new VacademyException("Chapter not found"));
-        VideoSlide videoSlide = videoSlideRepository.save(new VideoSlide(addVideoSlideDTO.getVideoSlide()));
+        VideoSlide videoSlide = videoSlideRepository.save(new VideoSlide(addVideoSlideDTO.getVideoSlide(),addVideoSlideDTO.getStatus()));
         Slide slide = slideRepository.save(new Slide(addVideoSlideDTO, videoSlide.getId(), SlideTypeEnum.VIDEO.name(), addVideoSlideDTO.getStatus()));
         ChapterToSlides chapterToSlides = chapterToSlidesRepository.save(new ChapterToSlides(chapter, slide, addVideoSlideDTO.getSlideOrder(), addVideoSlideDTO.getStatus()));
         notifyIfPublished(addVideoSlideDTO.getStatus(), addVideoSlideDTO.isNotify(), instituteId, chapterToSlides);
@@ -127,14 +134,19 @@ public class SlideService {
         return slideRepository.findSlideDetailsByChapterId(chapterId, List.of(SlideStatus.PUBLISHED.name(), SlideStatus.DRAFT.name()));
     }
 
-    public void updateVideoSlide(VideoSlideDTO videoSlideDTO) {
+    public void updateVideoSlide(VideoSlideDTO videoSlideDTO,String status) {
         VideoSlide videoSlide = videoSlideRepository.findById(videoSlideDTO.getId())
                 .orElseThrow(() -> new VacademyException("Video slide not found"));
-        Optional.ofNullable(videoSlideDTO.getUrl()).filter(u -> !u.trim().isEmpty()).ifPresent(videoSlide::setUrl);
         Optional.ofNullable(videoSlideDTO.getDescription()).filter(d -> !d.trim().isEmpty()).ifPresent(videoSlide::setDescription);
         Optional.ofNullable(videoSlideDTO.getTitle()).filter(t -> !t.trim().isEmpty()).ifPresent(videoSlide::setTitle);
-        Optional.ofNullable(videoSlideDTO.getVideoLengthInMillis())
-                .ifPresent(videoSlide::setVideoLengthInMillis);
+        if (status.equalsIgnoreCase(SlideStatus.PUBLISHED.name())){
+            handlePublishedVideoSlide(videoSlide,videoSlideDTO);
+        }else if(status.equalsIgnoreCase(SlideStatus.DRAFT.name())){
+            handleDraftVideoSlide(videoSlide,videoSlideDTO);
+        }
+        else{
+            handleUnsyncVideoSlide(videoSlide,videoSlideDTO);
+        }
         videoSlideRepository.save(videoSlide);
     }
 
@@ -231,7 +243,8 @@ public class SlideService {
         newDocumentSlide.setTitle(documentSlide.getTitle());
         newDocumentSlide.setTotalPages(documentSlide.getTotalPages());
         newDocumentSlide.setCoverFileId(documentSlide.getCoverFileId());
-
+        newDocumentSlide.setPublishedDocumentTotalPages(documentSlide.getPublishedDocumentTotalPages());
+        newDocumentSlide.setPublishedData(documentSlide.getPublishedData());
         newDocumentSlide = documentSlideRepository.save(newDocumentSlide);
 
         return createNewSlide(slide, newDocumentSlide.getId());
@@ -247,6 +260,8 @@ public class SlideService {
         newVideoSlide.setDescription(videoSlide.getDescription());
         newVideoSlide.setVideoLengthInMillis(videoSlide.getVideoLengthInMillis());
         newVideoSlide.setId(UUID.randomUUID().toString());
+        newVideoSlide.setPublishedUrl(videoSlide.getPublishedUrl());
+        newVideoSlide.setPublishedVideoLengthInMillis(videoSlide.getPublishedVideoLengthInMillis());
         newVideoSlide = videoSlideRepository.save(newVideoSlide);
 
         return createNewSlide(slide, newVideoSlide.getId());
@@ -277,6 +292,72 @@ public class SlideService {
     private ChapterToSlides getChapterToSlides(String chapterId, String slideId) {
         return chapterToSlidesRepository.findByChapterIdAndSlideId(chapterId, slideId)
                 .orElseThrow(() -> new VacademyException("Chapter to slide not found"));
+    }
+
+    public void handlePublishedDocumentSlide(DocumentSlide documentSlide,DocumentSlideDTO documentSlideDTO) {
+        if (documentSlideDTO != null && documentSlideDTO.getPublishedData() != null && documentSlideDTO.getPublishedData().trim().length() > 0) {
+            documentSlide.setPublishedData(documentSlideDTO.getPublishedData());
+            documentSlide.setPublishedDocumentTotalPages(documentSlideDTO.getPublishedDocumentTotalPages());
+        }
+        else{
+            documentSlide.setPublishedData(documentSlide.getData());
+            documentSlide.setPublishedDocumentTotalPages(documentSlide.getTotalPages());
+        }
+        documentSlide.setData(null);
+        documentSlide.setPublishedDocumentTotalPages(null);
+    }
+
+    public void handleDraftDocumentSlide(DocumentSlide documentSlide, DocumentSlideDTO documentSlideDTO) {
+        if (documentSlideDTO.getData() != null && !documentSlideDTO.getData().isEmpty()) {
+            documentSlide.setData(documentSlideDTO.getData());
+        }
+
+        if (documentSlideDTO.getTotalPages() != null) {
+            documentSlide.setTotalPages(documentSlideDTO.getTotalPages());
+        }
+    }
+
+    public void handleUnsyncDocumentSlide(DocumentSlide documentSlide, DocumentSlideDTO documentSlideDTO) {
+        if (documentSlideDTO.getData() != null && !documentSlideDTO.getData().isEmpty()) {
+            documentSlide.setData(documentSlideDTO.getData());
+        }
+
+        if (documentSlideDTO.getTotalPages() != null) {
+            documentSlide.setTotalPages(documentSlideDTO.getTotalPages());
+        }
+    }
+
+    public void handlePublishedVideoSlide(VideoSlide videoSlide,VideoSlideDTO videoSlideDTO) {
+        if (videoSlide != null && videoSlideDTO.getPublishedUrl() != null && videoSlideDTO.getPublishedUrl().trim().length() > 0) {
+            videoSlide.setPublishedUrl(videoSlideDTO.getPublishedUrl());
+            videoSlide.setPublishedVideoLengthInMillis(videoSlide.getPublishedVideoLengthInMillis());
+        }
+        else{
+            videoSlide.setPublishedUrl(videoSlide.getUrl());
+            videoSlide.setPublishedVideoLengthInMillis(videoSlideDTO.getVideoLengthInMillis());
+        }
+        videoSlide.setUrl(null);
+        videoSlide.setVideoLengthInMillis(null);
+    }
+
+    public void handleDraftVideoSlide(VideoSlide videoSlide, VideoSlideDTO videoSlideDTO) {
+        if (videoSlideDTO.getUrl() != null && !videoSlideDTO.getUrl().isEmpty()) {
+            videoSlide.setUrl(videoSlideDTO.getUrl());
+        }
+
+        if (videoSlideDTO.getVideoLengthInMillis() != null) {
+            videoSlide.setVideoLengthInMillis(videoSlideDTO.getVideoLengthInMillis());
+        }
+    }
+
+    public void handleUnsyncVideoSlide(VideoSlide videoSlide, VideoSlideDTO videoSlideDTO) {
+        if (videoSlideDTO.getUrl() != null && !videoSlideDTO.getUrl().isEmpty()) {
+            videoSlide.setUrl(videoSlideDTO.getUrl());
+        }
+
+        if (videoSlideDTO.getVideoLengthInMillis() != null) {
+            videoSlide.setVideoLengthInMillis(videoSlideDTO.getVideoLengthInMillis());
+        }
     }
 
 }

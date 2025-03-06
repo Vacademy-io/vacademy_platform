@@ -2,7 +2,7 @@ package vacademy.io.common.institute.entity.session;
 
 import org.springframework.beans.factory.annotation.Value;
 
-import java.sql.Date;
+import java.util.Date;
 
 public interface SessionProjection {
     String getId();

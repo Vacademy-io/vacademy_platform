@@ -15,4 +15,5 @@ public class EditSessionDTO {
     private String sessionName;
     private Date startDate;
     private String status;
+    private String commaSeparatedVisiblePackageSessionIds;
 }

@@ -38,7 +38,7 @@ public class SessionService {
         if (sessionDTO.getNewSession() == false) {
             session = sessionRepository.findById(sessionDTO.getId()).orElseThrow(() -> new RuntimeException("Session not found for id " + sessionDTO.getId()));
         } else {
-            session = new Session(null, sessionDTO.getSessionName(), sessionDTO.getStatus());
+            session = new Session(null, sessionDTO.getSessionName(), sessionDTO.getStatus(),sessionDTO.getStartDate());
         }
         return sessionRepository.save(session);
     }
@@ -86,6 +86,7 @@ public class SessionService {
         updateSessionFields(session, editSessionDTO);
         sessionRepository.save(session);
         hidePackageSessions(editSessionDTO.getCommaSeparatedHiddenPackageSessionIds());
+        visiblePackageSessions(editSessionDTO.getCommaSeparatedVisiblePackageSessionIds());
         return "Session updated successfully.";
     }
 
@@ -115,7 +116,7 @@ public class SessionService {
         Session session;
 
         if (addNewSessionDTO.isNewSession()) {
-            session = sessionRepository.save(new Session(null, addNewSessionDTO.getSessionName(), addNewSessionDTO.getStatus()));
+            session = sessionRepository.save(new Session(null, addNewSessionDTO.getSessionName(), addNewSessionDTO.getStatus(),addNewSessionDTO.getStartDate()));
         } else {
             session = sessionRepository.findById(addNewSessionDTO.getId())
                     .orElseThrow(() -> new VacademyException("Session not found for id " + addNewSessionDTO.getId()));
@@ -165,5 +166,11 @@ public class SessionService {
         sessionRepository.saveAll(sessions);
         packageSessionRepository.updateStatusBySessionIds(sessionIds, PackageSessionStatusEnum.DELETED.name());
         return "Session deleted successfully.";
+    }
+
+    private void visiblePackageSessions(String commaSeparatedIds) {
+        if (commaSeparatedIds != null && !commaSeparatedIds.trim().isEmpty()) {
+            packageSessionRepository.updateStatusByPackageSessionIds(PackageSessionStatusEnum.ACTIVE.name(), commaSeparatedIds.split(","));
+        }
     }
 }

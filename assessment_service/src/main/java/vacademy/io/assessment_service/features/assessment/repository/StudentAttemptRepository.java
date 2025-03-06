@@ -20,52 +20,61 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
 
 
     @Query(value = """
-        WITH RankedAttempts AS (
-            SELECT
-                sa.id AS attemptId,
-                aur.user_id AS userId,
-                aur.participant_name AS studentName,
-                aur.source_id AS batchId,
-                sa.total_time_in_seconds AS completionTimeInSeconds,
-                sa.total_marks AS achievedMarks,
-                aur.status,
-                sa.submit_time,
-                ROW_NUMBER() OVER (PARTITION BY aur.user_id ORDER BY sa.created_at DESC) AS rn
-            FROM student_attempt sa
-            JOIN assessment_user_registration aur ON aur.id = sa.registration_id
-            WHERE aur.assessment_id = :assessmentId
-            AND aur.institute_id = :instituteId
-            AND sa.status IN ('LIVE', 'ENDED')
-            AND (:statusList IS NULL OR aur.status IN (:statusList))
-        )
-        SELECT
-            attemptId,
-            userId,
-            studentName,
-            batchId,
-            completionTimeInSeconds,
-            achievedMarks,
-            status,
-            DENSE_RANK() OVER (ORDER BY achievedMarks DESC, completionTimeInSeconds ASC) AS rank
-        FROM RankedAttempts
-        WHERE rn = 1
-        ORDER BY achievedMarks DESC, completionTimeInSeconds ASC
+            WITH RankedAttempts AS (
+                            SELECT
+                                sa.id AS attemptId,
+                                aur.user_id AS userId,
+                                aur.participant_name AS studentName,
+                                aur.source_id AS batchId,
+                                sa.total_time_in_seconds AS completionTimeInSeconds,
+                                sa.total_marks AS achievedMarks,
+                                aur.status,
+                                sa.submit_time,
+                                ROW_NUMBER() OVER (PARTITION BY aur.user_id ORDER BY sa.created_at DESC) AS rn,
+                                DENSE_RANK() OVER (ORDER BY sa.total_marks DESC, sa.total_time_in_seconds ASC) AS rank
+                            FROM student_attempt sa
+                            JOIN assessment_user_registration aur ON aur.id = sa.registration_id
+                            WHERE aur.assessment_id = :assessmentId
+                            AND aur.institute_id = :instituteId
+                            AND sa.status IN ('LIVE', 'ENDED')
+                            AND (:statusList IS NULL OR aur.status IN (:statusList))
+                        )
+                        ,TotalParticipants AS (
+                            SELECT COUNT(*) AS totalParticipants FROM RankedAttempts WHERE rn = 1
+                        )
+                        SELECT
+                            attemptId,
+                            userId,
+                            studentName,
+                            batchId,
+                            completionTimeInSeconds,
+                            achievedMarks,
+                            status,
+                            rank,
+                            ROUND(CAST(100.0 * (1.0 - (CAST(ra.rank - 1 AS FLOAT) / NULLIF(t.totalParticipants * 1.0, 0))) AS NUMERIC), 2) AS percentile
+                        FROM RankedAttempts as ra, TotalParticipants as t
+                        WHERE rn = 1
+                        ORDER BY achievedMarks DESC, completionTimeInSeconds ASC
         """,
             countQuery = """
-        WITH RankedAttempts AS (
-            SELECT
-                sa.id AS attemptId,
-                ROW_NUMBER() OVER (PARTITION BY aur.user_id ORDER BY sa.created_at DESC) AS rn
-            FROM student_attempt sa
-            JOIN assessment_user_registration aur ON aur.id = sa.registration_id
-            WHERE aur.assessment_id = :assessmentId
-            AND aur.institute_id = :instituteId
-            AND sa.status IN ('LIVE', 'ENDED')
-            AND (:statusList IS NULL OR aur.status IN (:statusList))
-        )
-        SELECT count(attemptId)
-        FROM RankedAttempts
-        WHERE rn = 1
+                    WITH RankedAttempts AS (
+                                    SELECT
+                                        sa.id AS attemptId,
+                                    FROM student_attempt sa
+                                    JOIN assessment_user_registration aur ON aur.id = sa.registration_id
+                                    WHERE aur.assessment_id = :assessmentId
+                                    AND aur.institute_id = :instituteId
+                                    AND sa.status IN ('LIVE', 'ENDED')
+                                    AND (:statusList IS NULL OR aur.status IN (:statusList))
+                                )
+                                ,TotalParticipants AS (
+                                    SELECT COUNT(*) AS totalParticipants FROM RankedAttempts WHERE rn = 1
+                                )
+                                SELECT
+                                    count(attemptId)
+                                FROM RankedAttempts as ra, TotalParticipants as t
+                                WHERE rn = 1
+                                ORDER BY achievedMarks DESC, completionTimeInSeconds ASC
         """,
             nativeQuery = true)
     Page<LeaderBoardDto> findLeaderBoardForAssessmentAndInstituteIdWithoutSearch(
@@ -78,63 +87,69 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
 
     @Query(value = """
             WITH RankedAttempts AS (
-                SELECT
-                    sa.id AS attemptId,
-                    aur.user_id AS userId,
-                    aur.participant_name AS studentName,
-                    aur.source_id AS batchId,
-                    sa.total_time_in_seconds AS completionTimeInSeconds,
-                    sa.total_marks AS achievedMarks,
-                    aur.status,
-                    sa.submit_time,
-                    ROW_NUMBER() OVER (PARTITION BY aur.user_id ORDER BY sa.created_at DESC) AS rn
-                FROM student_attempt sa
-                JOIN assessment_user_registration aur ON aur.id = sa.registration_id
-                WHERE aur.assessment_id = :assessmentId
-                AND aur.institute_id = :instituteId
-                AND (
-                    to_tsvector('simple', concat(
-                    aur.participant_name
-                    )) @@ plainto_tsquery('simple', :name)
-                    OR aur.participant_name LIKE :name || '%'
-                   )
-                AND sa.status IN ('LIVE', 'ENDED')
-                AND (:statusList IS NULL OR aur.status IN (:statusList))
-            )
-            SELECT
-                attemptId,
-                userId,
-                studentName,
-                batchId,
-                completionTimeInSeconds,
-                achievedMarks,
-                status,
-                DENSE_RANK() OVER (ORDER BY achievedMarks DESC, completionTimeInSeconds ASC) AS rank
-            FROM RankedAttempts
-            WHERE rn = 1
-            ORDER BY achievedMarks DESC, completionTimeInSeconds ASC
+                            SELECT
+                                sa.id AS attemptId,
+                                aur.user_id AS userId,
+                                aur.participant_name AS studentName,
+                                aur.source_id AS batchId,
+                                sa.total_time_in_seconds AS completionTimeInSeconds,
+                                sa.total_marks AS achievedMarks,
+                                aur.status,
+                                sa.submit_time,
+                                ROW_NUMBER() OVER (PARTITION BY aur.user_id ORDER BY sa.created_at DESC) AS rn,
+                                DENSE_RANK() OVER (ORDER BY sa.total_marks DESC, sa.total_time_in_seconds ASC) AS rank
+                            FROM student_attempt sa
+                            JOIN assessment_user_registration aur ON aur.id = sa.registration_id
+                            WHERE aur.assessment_id = :assessmentId
+                            AND aur.institute_id = :instituteId
+                            AND sa.status IN ('LIVE', 'ENDED')
+                            AND (:statusList IS NULL OR aur.status IN (:statusList))
+                        )
+                        ,TotalParticipants AS (
+                                        SELECT COUNT(*) AS totalParticipants FROM RankedAttempts WHERE rn = 1
+                                    )
+                        SELECT
+                            attemptId,
+                            userId,
+                            studentName,
+                            batchId,
+                            completionTimeInSeconds,
+                            achievedMarks,
+                            status,
+                            rank,
+                            ROUND(CAST(100.0 * (1.0 - (CAST(ra.rank - 1 AS FLOAT) / NULLIF(t.totalParticipants * 1.0, 0))) AS NUMERIC), 2) AS percentile
+                        FROM RankedAttempts as ra,TotalParticipants as t
+                        WHERE rn = 1
+                        AND (
+                                to_tsvector('simple', concat(
+                                ra.studentName
+                                )) @@ plainto_tsquery('simple', :name)
+                                OR ra.studentName LIKE :name || '%'
+                               )
+                        ORDER BY achievedMarks DESC, completionTimeInSeconds ASC
             """,countQuery = """
             WITH RankedAttempts AS (
-                SELECT
-                    sa.id AS attemptId,
-                    ROW_NUMBER() OVER (PARTITION BY aur.user_id ORDER BY sa.created_at DESC) AS rn
-                FROM student_attempt sa
-                JOIN assessment_user_registration aur ON aur.id = sa.registration_id
-                WHERE aur.assessment_id = :assessmentId
-                AND aur.institute_id = :instituteId
-                AND (
-                    to_tsvector('simple', concat(
-                    aur.participant_name
-                    )) @@ plainto_tsquery('simple', :name)
-                    OR aur.participant_name LIKE :name || '%'
-                   )
-                AND sa.status IN ('LIVE', 'ENDED')
-                AND (:statusList IS NULL OR aur.status IN (:statusList))
-            )
-            SELECT
-                count(attemptId)
-            FROM RankedAttempts
-            WHERE rn = 1
+                            SELECT
+                                sa.id AS attemptId,
+                                ROW_NUMBER() OVER (PARTITION BY aur.user_id ORDER BY sa.created_at DESC) AS rn,
+                                DENSE_RANK() OVER (ORDER BY sa.total_marks DESC, sa.total_time_in_seconds ASC) AS rank
+                            FROM student_attempt sa
+                            JOIN assessment_user_registration aur ON aur.id = sa.registration_id
+                            WHERE aur.assessment_id = :assessmentId
+                            AND aur.institute_id = :instituteId
+                            AND sa.status IN ('LIVE', 'ENDED')
+                            AND (:statusList IS NULL OR aur.status IN (:statusList))
+                        )
+                        SELECT
+                            count(attemptId)
+                        WHERE rn = 1
+                        AND (
+                                to_tsvector('simple', concat(
+                                ra.studentName
+                                )) @@ plainto_tsquery('simple', :name)
+                                OR ra.studentName LIKE :name || '%'
+                               )
+                        ORDER BY achievedMarks DESC, completionTimeInSeconds ASC
             """, nativeQuery = true)
     public Page<LeaderBoardDto> findLeaderBoardForAssessmentAndInstituteIdWithSearch(@Param("name") String name,
                                                                                      @Param("assessmentId") String assessmentId,
@@ -446,6 +461,48 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
             """, nativeQuery = true)
     List<StudentAttempt> findAllParticipantsFromAssessmentAndStatusNotIn(@Param("assessmentId") String assessmentId,
                                                                          @Param("statusList") List<String> statusList);
+
+
+    @Query(value = """
+            WITH RankedAttempts AS (
+                            SELECT
+                                sa.id AS attemptId,
+                                aur.user_id AS userId,
+                                aur.participant_name AS studentName,
+                                aur.source_id AS batchId,
+                                sa.total_time_in_seconds AS completionTimeInSeconds,
+                                sa.total_marks AS achievedMarks,
+                                aur.status,
+                                sa.submit_time,
+                                ROW_NUMBER() OVER (PARTITION BY aur.user_id ORDER BY sa.created_at DESC) AS rn,
+                                DENSE_RANK() OVER (ORDER BY sa.total_marks DESC, sa.total_time_in_seconds ASC) AS rank
+                            FROM student_attempt sa
+                            JOIN assessment_user_registration aur ON aur.id = sa.registration_id
+                            WHERE aur.assessment_id = :assessmentId
+                            AND aur.institute_id = :instituteId
+                            AND sa.status IN ('LIVE', 'ENDED')
+                            AND (:statusList IS NULL OR aur.status IN (:statusList))
+                        )
+                        ,TotalParticipants AS (
+                                        SELECT COUNT(*) AS totalParticipants FROM RankedAttempts WHERE rn = 1
+                                    )
+                        SELECT
+                            attemptId,
+                            userId,
+                            studentName,
+                            batchId,
+                            completionTimeInSeconds,
+                            achievedMarks,
+                            status,
+                            rank,
+                            ROUND(CAST(100.0 * (1.0 - (CAST(ra.rank - 1 AS FLOAT) / NULLIF(t.totalParticipants * 1.0, 0))) AS NUMERIC), 2) AS percentile
+                        FROM RankedAttempts as ra,TotalParticipants as t
+                        WHERE rn = 1
+                        ORDER BY achievedMarks DESC, completionTimeInSeconds ASC
+            """,nativeQuery = true)
+    public List<LeaderBoardDto> findLeaderBoardForAssessmentAndInstituteId(@Param("assessmentId") String assessmentId,
+                                                                           @Param("instituteId") String instituteId,
+                                                                           @Param("statusList") List<String> statusList);
 }
 
 

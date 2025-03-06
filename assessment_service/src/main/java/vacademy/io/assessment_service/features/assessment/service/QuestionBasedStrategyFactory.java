@@ -1,7 +1,9 @@
 package vacademy.io.assessment_service.features.assessment.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.mcqm.MCQMCorrectAnswerDto;
 import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.mcqm.MCQMResponseDto;
+import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.mcqs.MCQSCorrectAnswerDto;
 import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.mcqs.MCQSResponseDto;
 import vacademy.io.assessment_service.features.assessment.dto.QuestionWiseBasicDetailDto;
 import vacademy.io.assessment_service.features.assessment.enums.QuestionResponseEnum;
@@ -38,7 +40,7 @@ public class QuestionBasedStrategyFactory {
     }
 
     public static Object verifyCorrectAnswerJson(String correctAnswerJson, String type) throws JsonProcessingException {
-        IQuestionTypeBasedStrategy strategy = getStrategy(correctAnswerJson);
+        IQuestionTypeBasedStrategy strategy = getStrategy(type);
         if (strategy == null) {
             throw new IllegalArgumentException("Invalid Question Type: " + type);
         }
@@ -77,6 +79,23 @@ public class QuestionBasedStrategyFactory {
             MCQMResponseDto responseDto = (MCQMResponseDto) verifyResponseJson(responseJson, type);
 
             return responseDto.getResponseData().getOptionIds();
+        }
+
+        return new ArrayList<>();
+    }
+
+    public static List<String> getCorrectOptionIds(String evaluationJson, String type) throws JsonProcessingException {
+        IQuestionTypeBasedStrategy strategy = getStrategy(type);
+        if(strategy.getType().equals(QuestionTypes.MCQS.name())){
+            MCQSCorrectAnswerDto optionDto = (MCQSCorrectAnswerDto) verifyCorrectAnswerJson(evaluationJson, type);
+
+            return optionDto.getData().getCorrectOptionIds();
+        }
+
+        if(strategy.getType().equals(QuestionTypes.MCQM.name())){
+            MCQMCorrectAnswerDto optionDto = (MCQMCorrectAnswerDto) verifyCorrectAnswerJson(evaluationJson, type);
+
+            return optionDto.getData().getCorrectOptionIds();
         }
 
         return new ArrayList<>();

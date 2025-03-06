@@ -11,6 +11,8 @@ public class MCQSResponseDto {
     private String questionId;
     private int questionDurationLeftInSeconds;
     private int timeTakenInSeconds;
+    private Boolean isMarkedForReview;
+    private Boolean isVisited;
     private ResponseData responseData;
 
     @Getter

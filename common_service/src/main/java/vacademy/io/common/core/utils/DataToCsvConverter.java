@@ -131,10 +131,6 @@ public class DataToCsvConverter {
                 table.addCell(header);
             }
 
-            // Table data
-            float MINIMUM_HEIGHT = 40f;
-            float LEFT_PADDING = 10f;
-
             Font bodyFont = FontFactory.getFont(FontFactory.HELVETICA, 11);
             BaseColor altRowColor = new BaseColor(230, 230, 230);
 
@@ -160,7 +156,7 @@ public class DataToCsvConverter {
             document.add(table);
             document.close();
         } catch (Exception e) {
-            throw new RuntimeException("Some Error Occurred: " + e.getMessage());
+            throw new VacademyException("Some Error Occurred: " + e.getMessage());
         }
         return new ByteArrayInputStream(out.toByteArray());
     }

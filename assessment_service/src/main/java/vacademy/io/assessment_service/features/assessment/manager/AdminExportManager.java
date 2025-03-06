@@ -186,11 +186,11 @@ public class AdminExportManager {
 
         //Handle Case for BATCH REGISTRATION
         if (filter.getRegistrationSource().equals(UserRegistrationSources.BATCH_PREVIEW_REGISTRATION.name())) {
-            participantsDetailsDtos = handleCaseForBatchRegistration(assessmentId, instituteId, filter, pageable);
+            participantsDetailsDtos = handleCaseForBatchRegistration(assessmentId, instituteId, filter);
         }
         //Handle Case for ADMIN PRE REGISTRATION
         else if (filter.getRegistrationSource().equals(UserRegistrationSources.ADMIN_PRE_REGISTRATION.name())) {
-            participantsDetailsDtos = handleCaseForAdminPreRegistration(assessmentId, instituteId, filter, pageable);
+            participantsDetailsDtos = handleCaseForAdminPreRegistration(assessmentId, instituteId, filter);
         } else throw new VacademyException("Invalid Source Request");
 
         return DataToCsvConverter.convertListToCsv(createExportDtoFromParticipantsDto(participantsDetailsDtos));
@@ -209,7 +209,7 @@ public class AdminExportManager {
         return response;
     }
 
-    private List<ParticipantsDetailsDto> handleCaseForAdminPreRegistration(String assessmentId, String instituteId, AssessmentUserFilter filter, Pageable pageable) {
+    private List<ParticipantsDetailsDto> handleCaseForAdminPreRegistration(String assessmentId, String instituteId, AssessmentUserFilter filter) {
         List<ParticipantsDetailsDto> ParticipantsDetailsDtos = new ArrayList<>();
 
 
@@ -233,7 +233,7 @@ public class AdminExportManager {
         return ParticipantsDetailsDtos;
     }
 
-    private List<ParticipantsDetailsDto> handleCaseForBatchRegistration(String assessmentId, String instituteId, AssessmentUserFilter filter, Pageable pageable) {
+    private List<ParticipantsDetailsDto> handleCaseForBatchRegistration(String assessmentId, String instituteId, AssessmentUserFilter filter) {
         List<ParticipantsDetailsDto> ParticipantsDetailsDto = new ArrayList<>();
         if (isPendingAttempt(filter)) {
             //TODO: Send request to admin core to get pending list for batch
@@ -305,15 +305,14 @@ public class AdminExportManager {
         if(assessmentOptional.isEmpty()) throw new VacademyException("Assessment Not Found");
 
         List<ParticipantsDetailsDto> participantsDetailsDtos = new ArrayList<>();
-        Pageable pageable = null;
 
         //Handle Case for BATCH REGISTRATION
         if (filter.getRegistrationSource().equals(UserRegistrationSources.BATCH_PREVIEW_REGISTRATION.name())) {
-            participantsDetailsDtos = handleCaseForBatchRegistration(assessmentId, instituteId, filter, pageable);
+            participantsDetailsDtos = handleCaseForBatchRegistration(assessmentId, instituteId, filter);
         }
         //Handle Case for ADMIN PRE REGISTRATION
         else if (filter.getRegistrationSource().equals(UserRegistrationSources.ADMIN_PRE_REGISTRATION.name())) {
-            participantsDetailsDtos = handleCaseForAdminPreRegistration(assessmentId, instituteId, filter, pageable);
+            participantsDetailsDtos = handleCaseForAdminPreRegistration(assessmentId, instituteId, filter);
         } else throw new VacademyException("Invalid Source Request");
 
         return DataToCsvConverter.buildPdfResponse(assessmentOptional.get().getName().toUpperCase(),"PARTICIPANTS LIST",createExportDtoFromParticipantsDto(participantsDetailsDtos),"participants");

@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.institute.service.InstituteModuleService;
+import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
 import vacademy.io.admin_core_service.features.packages.repository.PackageRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
 import vacademy.io.admin_core_service.features.subject.repository.SubjectRepository;
@@ -64,7 +65,7 @@ public class InstituteInitManager {
         instituteInfoDTO.setInstituteThemeCode(institute.get().getInstituteThemeCode());
         instituteInfoDTO.setSubModules(instituteModuleService.getSubmoduleIdsForInstitute(institute.get().getId()));
         instituteInfoDTO.setSessions(packageRepository.findDistinctSessionsByInstituteId(institute.get().getId()).stream().map((SessionDTO::new)).toList());
-        instituteInfoDTO.setBatchesForSessions(packageSessionRepository.findPackageSessionsByInstituteId(institute.get().getId()).stream().map((obj) -> {
+        instituteInfoDTO.setBatchesForSessions(packageSessionRepository.findPackageSessionsByInstituteId(institute.get().getId(),List.of(PackageSessionStatusEnum.ACTIVE.name())).stream().map((obj) -> {
             return new PackageSessionDTO(obj);
         }).toList());
         instituteInfoDTO.setLevels(packageRepository.findDistinctLevelsByInstituteId(institute.get().getId()).stream().map((LevelDTO::new)).toList());

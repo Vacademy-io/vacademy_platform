@@ -10,6 +10,8 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.UuidGenerator;
 
+import java.util.Date;
+
 @Entity
 @Table(name = "session")
 @Data
@@ -28,4 +30,6 @@ public class Session {
     @Column(name = "status")
     private String status;
 
+    @Column(name = "start_date")
+    private Date startDate;
 }

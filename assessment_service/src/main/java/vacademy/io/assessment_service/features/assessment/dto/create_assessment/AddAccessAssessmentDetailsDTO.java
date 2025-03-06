@@ -7,15 +7,11 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.ArrayList;
-import java.util.List;
-
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class AddAccessAssessmentDetailsDTO {
-    private AssessmentAccessDto addedAccesses;
-    private AssessmentAccessDto deletedAccesses;
+    private AssessmentAccessDto currentAccesses;
 }

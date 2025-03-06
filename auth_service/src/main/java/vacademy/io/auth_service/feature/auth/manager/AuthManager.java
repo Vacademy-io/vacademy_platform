@@ -20,6 +20,8 @@ import vacademy.io.auth_service.feature.auth.dto.AuthRequestDto;
 import vacademy.io.auth_service.feature.auth.dto.JwtResponseDto;
 import vacademy.io.auth_service.feature.auth.dto.RegisterRequest;
 import vacademy.io.auth_service.feature.auth.service.AuthService;
+import vacademy.io.auth_service.feature.notification.service.NotificationEmailBody;
+import vacademy.io.auth_service.feature.notification.service.NotificationService;
 import vacademy.io.common.auth.dto.RefreshTokenRequestDTO;
 import vacademy.io.common.auth.entity.RefreshToken;
 import vacademy.io.common.auth.entity.Role;
@@ -35,6 +37,7 @@ import vacademy.io.common.exceptions.ExpiredTokenException;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.dto.InstituteIdAndNameDTO;
 import vacademy.io.common.institute.dto.InstituteInfoDTO;
+import vacademy.io.common.notification.dto.GenericEmailRequest;
 
 import java.util.*;
 
@@ -73,6 +76,9 @@ public class AuthManager {
     @Value("${spring.application.name}")
     private String applicationName;
 
+    @Autowired
+    private NotificationService notificationService;
+
     public JwtResponseDto registerRootUser(RegisterRequest registerRequest) {
         if(Objects.isNull(registerRequest)) throw new VacademyException("Invalid Request");
 
@@ -109,6 +115,7 @@ public class AuthManager {
         // Generate a refresh token
         RefreshToken refreshToken = refreshTokenService.createRefreshToken(userName, "VACADEMY-WEB");
 
+        sendWelcomeMailToUser(newUser);
 
         return authService.generateJwtTokenForUser(newUser, refreshToken, userRoleSet.stream().toList());
     }
@@ -161,5 +168,13 @@ public class AuthManager {
             return JwtResponseDto.builder().accessToken(accessToken).build();
         }).orElseThrow(() -> new ExpiredTokenException(refreshTokenRequestDTO.getToken() + " Refresh token is. Please make a new login..!"));
 
+    }
+
+    public void sendWelcomeMailToUser(User user){
+        GenericEmailRequest genericEmailRequest = new GenericEmailRequest();
+        genericEmailRequest.setTo(user.getEmail());
+        genericEmailRequest.setBody(NotificationEmailBody.createWelcomeEmailBody("Vacademy",user.getFullName(), user.getUsername(), user.getPassword()));
+        genericEmailRequest.setSubject("Welcome to Vacademy");
+        notificationService.sendGenericHtmlMail(genericEmailRequest);
     }
 }

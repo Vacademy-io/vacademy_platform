@@ -20,7 +20,7 @@ public class StudentBulkInitUploadManager {
     @Autowired
     PackageSessionRepository packageSessionRepository;
 
-    public CsvInitResponse generateCsvUploadForStudents(String instituteId, String sessionId, BulkUploadInitRequest bulkUploadInitRequest) {
+    public CsvInitResponse generateCsvUploadForStudents(String instituteId, BulkUploadInitRequest bulkUploadInitRequest) {
 
         BulkUploadInitRequest.AutoGenerateConfig autoGenerateConfig = bulkUploadInitRequest.getAutoGenerateConfig();
         BulkUploadInitRequest.ExpiryAndStatusConfig expiryAndStatusConfig = bulkUploadInitRequest.getExpiryAndStatusConfig();
@@ -66,9 +66,6 @@ public class StudentBulkInitUploadManager {
 
 
         // Adding package session header
-        Header packageSessionHeader = createEnumHeaderWithIdResponse("enum", false, "PACKAGE_SESSION",
-                createPackageSessionMapForInstituteAndSession(instituteId, sessionId), order++);
-        headers.add(packageSessionHeader);
         if (!expiryAndStatusConfig.isIncludeExpiryDays()) {
             headers.add(createHeader("integer", false, "ACCESS_DAYS", order++, List.of("30", "180", "365")));
         }

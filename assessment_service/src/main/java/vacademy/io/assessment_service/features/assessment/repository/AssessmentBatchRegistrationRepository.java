@@ -34,4 +34,5 @@ public interface AssessmentBatchRegistrationRepository extends JpaRepository<Ass
             @Param("assessmentStatus") List<String> assessmentStatus
     );
 
+    boolean existsByInstituteIdAndAssessmentIdAndBatchId(String instituteId, String assessmentId, String batchId);
 }

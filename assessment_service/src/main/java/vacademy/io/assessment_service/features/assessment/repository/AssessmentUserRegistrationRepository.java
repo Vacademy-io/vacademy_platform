@@ -443,4 +443,5 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
                                                                                 @Param("sourceId") List<String> sourceId,
                                                                                 Pageable pageable);
 
+    boolean existsByInstituteIdAndAssessmentIdAndUserId(String instituteId, String assessmentId, String userId);
 }

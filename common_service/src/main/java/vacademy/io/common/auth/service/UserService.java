@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.stream.Collectors;
+import java.util.stream.StreamSupport;
 
 
 @Service
@@ -244,4 +245,12 @@ public class UserService {
         userCredentials.setPassword(userEntity.getPassword());
         return userCredentials;
     }
+
+    public List<UserCredentials> getUsersCredentials(List<String> userIds) {
+        Iterable<User> userEntities = userRepository.findAllById(userIds);
+        return StreamSupport.stream(userEntities.spliterator(), false)
+                .map(user -> new UserCredentials(user.getUsername(), user.getPassword(), user.getId()))
+                .collect(Collectors.toList());
+    }
+
 }

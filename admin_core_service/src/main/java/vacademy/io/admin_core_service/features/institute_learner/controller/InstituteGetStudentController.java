@@ -37,4 +37,12 @@ public class InstituteGetStudentController {
         return studentListManager.getStudentsCsvExport(user, studentListFilter, pageNo, pageSize);
     }
 
+    @PostMapping("/basic-details-csv")
+    public ResponseEntity<byte[]> getStudentsBasicDetailsCsvExport(@RequestAttribute(name = "user") CustomUserDetails user,
+                                                       @RequestBody StudentListFilter studentListFilter,
+                                                       @RequestParam(value = "pageNo", defaultValue = DEFAULT_PAGE_NUMBER, required = false) int pageNo,
+                                                       @RequestParam(value = "pageSize", defaultValue = PageConstants.DEFAULT_PAGE_SIZE, required = false) int pageSize) {
+        return studentListManager.getStudentsBasicDetailsCsv(user, studentListFilter, pageNo, pageSize);
+    }
+
 }

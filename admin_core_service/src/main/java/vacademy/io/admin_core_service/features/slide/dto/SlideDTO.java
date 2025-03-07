@@ -16,4 +16,5 @@ public class SlideDTO {
     private String status;
     private VideoSlideDTO videoSlide;
     private DocumentSlideDTO documentSlide;
+    private Boolean isLoaded = false;
 }

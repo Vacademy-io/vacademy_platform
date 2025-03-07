@@ -4,6 +4,7 @@ import jakarta.transaction.Transactional;
 import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.level.dto.AddLevelWithSessionDTO;
+import vacademy.io.admin_core_service.features.level.dto.LevelDTOWithPackageSession;
 import vacademy.io.admin_core_service.features.level.service.LevelService;
 import vacademy.io.admin_core_service.features.packages.dto.PackageDTOWithDetails;
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
@@ -64,21 +65,31 @@ public class SessionService {
 
     private List<PackageDTOWithDetails> groupPackagesWithLevels(List<PackageSession> sessionPackages) {
         return sessionPackages.stream()
-                .collect(Collectors.groupingBy(PackageSession::getPackageEntity,
-                        Collectors.mapping(PackageSession::getLevel, Collectors.toList())))
+                .collect(Collectors.groupingBy(
+                        PackageSession::getPackageEntity,
+                        Collectors.mapping(PackageSession::getLevel, Collectors.toList()) // Group levels per package
+                ))
                 .entrySet().stream()
-                .map(entry -> createPackageDTOWithDetails(entry.getKey(), entry.getValue()))
+                .map(entry -> createPackageDTOWithDetails(entry.getKey(), entry.getValue(), sessionPackages))
                 .collect(Collectors.toList());
     }
 
-    private PackageDTOWithDetails createPackageDTOWithDetails(PackageEntity packageEntity, List<Level> levels) {
-        List<LevelDTO> levelDTOs = levels.stream()
+    private PackageDTOWithDetails createPackageDTOWithDetails(PackageEntity packageEntity, List<Level> levels, List<PackageSession> sessionPackages) {
+        List<LevelDTOWithPackageSession> levelDTOs = levels.stream()
                 .filter(Objects::nonNull) // Avoid null levels
-                .map(LevelDTO::new)
+                .map(level -> {
+                    PackageSession matchingSession = sessionPackages.stream()
+                            .filter(ps -> ps.getPackageEntity().equals(packageEntity) && ps.getLevel().equals(level))
+                            .findFirst()
+                            .orElse(null); // Find the correct PackageSession for this package & level
+
+                    return new LevelDTOWithPackageSession(level, matchingSession);
+                })
                 .collect(Collectors.toList());
 
         return new PackageDTOWithDetails(new PackageDTO(packageEntity), levelDTOs);
     }
+
 
     @Transactional
     public String editSession(EditSessionDTO editSessionDTO, String sessionId, CustomUserDetails user) {

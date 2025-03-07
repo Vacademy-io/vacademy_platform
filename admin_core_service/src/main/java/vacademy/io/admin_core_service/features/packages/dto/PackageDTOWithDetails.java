@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import vacademy.io.admin_core_service.features.level.dto.LevelDTOWithPackageSession;
 import vacademy.io.common.institute.dto.LevelDTO;
 import vacademy.io.common.institute.dto.PackageDTO;
 import vacademy.io.common.institute.entity.Level;
@@ -17,5 +18,5 @@ import java.util.List;
 @NoArgsConstructor
 public class PackageDTOWithDetails {
     private PackageDTO packageDTO;
-    private List<LevelDTO> level;
+    private List<LevelDTOWithPackageSession> level;
 }

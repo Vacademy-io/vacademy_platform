@@ -21,4 +21,6 @@ public interface SlideDetailProjection {
     String getVideoUrl();
     String getVideoDescription();
     Integer getSlideOrder(); // Added slide order field
+    String getPublishedUrl();
+    String getPublishedData();
 }

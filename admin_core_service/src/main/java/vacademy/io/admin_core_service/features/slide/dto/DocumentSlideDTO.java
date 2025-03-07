@@ -13,4 +13,6 @@ public class DocumentSlideDTO {
     private String title;
     private String coverFileId;
     private Integer totalPages;
+    private String publishedData;
+    private Integer publishedDocumentTotalPages;
 }

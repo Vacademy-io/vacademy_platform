@@ -160,7 +160,7 @@ public class AdminAssessmentGetManager {
         }
     }
 
-    private QuestionInsightsResponse createInsights(CustomUserDetails user, String assessmentId, String sectionId) {
+    public QuestionInsightsResponse createInsights(CustomUserDetails user, String assessmentId, String sectionId) {
         // Fetch question mappings
         Map<String, List<AssessmentQuestionPreviewDto>> questionMapping = assessmentLinkQuestionsManager.getQuestionsOfSection(user, assessmentId, sectionId);
 

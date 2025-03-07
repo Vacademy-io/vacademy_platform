@@ -555,6 +555,10 @@ public class AssessmentParticipantsManager {
 
 
     public ResponseEntity<StudentReportOverallDetailDto> getStudentReportDetails(CustomUserDetails userDetails, String assessmentId, String attemptId, String instituteId) {
+        return ResponseEntity.ok(createStudentReportDetailResponse(assessmentId,attemptId,instituteId));
+    }
+
+    public StudentReportOverallDetailDto createStudentReportDetailResponse(String assessmentId, String attemptId, String instituteId) {
         Assessment assessment = assessmentRepository.findByAssessmentIdAndInstituteId(assessmentId, instituteId)
                 .orElseThrow(() -> new VacademyException("Assessment Not Found"));
 
@@ -571,10 +575,10 @@ public class AssessmentParticipantsManager {
 
         ParticipantsQuestionOverallDetailDto questionOverallDetailDto = studentAttemptRepository.findParticipantsQuestionOverallDetails(assessmentId, instituteId, attemptId);
 
-        return ResponseEntity.ok(StudentReportOverallDetailDto.builder()
+        return StudentReportOverallDetailDto.builder()
                 .allSections(generateStudentReport(mappings, attemptId))
                 .questionOverallDetailDto(questionOverallDetailDto)
-                .build());
+                .build();
     }
 
     private Map<String, List<StudentReportAnswerReviewDto>> generateStudentReport(List<QuestionAssessmentSectionMapping> mappings, String attemptId) {

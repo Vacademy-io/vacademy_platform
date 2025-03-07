@@ -123,13 +123,13 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                     ds.title AS documentTitle,
                     ds.cover_file_id AS documentCoverFileId,
                     ds.type AS documentType,
-                    ds.data AS documentData,
-
+                    ds.published_data AS publishedData,
+                    
                     vs.id AS videoId,
                     vs.title AS videoTitle,
-                    vs.url AS videoUrl,
                     vs.description AS videoDescription,
-
+                    vs.published_url AS publishedUrl,
+                    
                     cts.slide_order AS slideOrder,
 
                     COALESCE(NULLIF(doc_percent.value, ''), '0') AS percentageDocumentWatched,
@@ -172,7 +172,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                     AND vid_last.user_id = :userId
 
                 WHERE ch.id = :chapterId
-                AND s.status = :status
+                AND s.status IN (:status) 
                 AND cts.status != 'DELETED'
                 ORDER BY 
                     CASE 
@@ -184,7 +184,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
     List<SlideDetailWithOperationProjection> findSlideDetailsWithOperationByChapterId(
             @Param("userId") String userId,
             @Param("chapterId") String chapterId,
-            @Param("status") String status
+            @Param("status") List<String> status
     );
 
     @Query(value = """

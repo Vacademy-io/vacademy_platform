@@ -74,13 +74,13 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                 ds.title AS documentTitle, 
                 ds.cover_file_id AS documentCoverFileId, 
                 ds.type AS documentType, 
-                ds.data AS documentData, 
+              
                 
                 vs.id AS videoId, 
                 vs.title AS videoTitle, 
-                vs.url AS videoUrl, 
                 vs.description AS videoDescription, 
-                
+                vs.published_url AS publishedUrl,
+                ds.published_data AS publishedData,
                 cts.slide_order AS slideOrder 
                 
             FROM slide s 

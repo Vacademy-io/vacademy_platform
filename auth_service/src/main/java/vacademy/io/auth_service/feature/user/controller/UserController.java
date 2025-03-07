@@ -5,6 +5,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.common.auth.dto.UserCredentials;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.UserRoleRequestDTO;
 import vacademy.io.common.auth.dto.UserWithRolesDTO;
@@ -85,6 +86,11 @@ public class UserController {
     public ResponseEntity<List<UserWithRolesDTO>> getUsersByInstituteId(@RequestParam("instituteId") String instituteId, @RequestBody List<String> roles, @RequestAttribute("user") CustomUserDetails user) {
         List<UserWithRolesDTO> users = userService.getUserDetailsByInstituteId(instituteId,roles,user);
         return ResponseEntity.ok(users);
+    }
+
+    @GetMapping("/v1/details/{userId}")
+    public ResponseEntity<UserCredentials> getUserDetails(@PathVariable String userId, @RequestAttribute("user") CustomUserDetails customUserDetails) {
+        return ResponseEntity.ok(userService.getUserCredentials(userId,customUserDetails));
     }
 
 }

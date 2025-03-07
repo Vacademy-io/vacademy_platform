@@ -88,7 +88,7 @@ public class UserController {
         return ResponseEntity.ok(users);
     }
 
-    @GetMapping("/v1/details/{userId}")
+    @GetMapping("/v1/user-credentials/{userId}")
     public ResponseEntity<UserCredentials> getUserDetails(@PathVariable String userId, @RequestAttribute("user") CustomUserDetails customUserDetails) {
         return ResponseEntity.ok(userService.getUserCredentials(userId,customUserDetails));
     }

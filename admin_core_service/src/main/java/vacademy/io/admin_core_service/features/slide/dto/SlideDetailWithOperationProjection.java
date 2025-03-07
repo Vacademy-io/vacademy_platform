@@ -50,4 +50,8 @@ public interface SlideDetailWithOperationProjection {
     String getVideoLastTimestamp();
 
     Timestamp getVideoLastUpdated();
+
+    String getPublishedUrl();
+
+    String getPublishedData();
 }

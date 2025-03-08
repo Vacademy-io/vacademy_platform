@@ -13,6 +13,7 @@ import vacademy.io.assessment_service.features.question_bank.dto.AddedQuestionPa
 import vacademy.io.assessment_service.features.question_bank.entity.QuestionPaper;
 import vacademy.io.assessment_service.features.question_bank.repository.QuestionPaperRepository;
 import vacademy.io.assessment_service.features.question_core.dto.MCQEvaluationDTO;
+import vacademy.io.assessment_service.features.question_core.dto.NumericalEvaluationDto;
 import vacademy.io.assessment_service.features.question_core.dto.QuestionDTO;
 import vacademy.io.assessment_service.features.question_core.entity.Option;
 import vacademy.io.assessment_service.features.question_core.entity.Question;
@@ -144,7 +145,10 @@ public class AddQuestionPaperFromImportManager {
 
         List<Option> options = new ArrayList<>();
         List<String> correctOptionIds = new ArrayList<>();
-        MCQEvaluationDTO requestEvaluation = questionEvaluationService.getEvaluationJson(questionRequest.getAutoEvaluationJson());
+        List<String> validAnswers = new ArrayList<>();
+//        validAnswers = questionRequest.getAutoEvaluationJson();
+        MCQEvaluationDTO requestEvaluation = (MCQEvaluationDTO) questionEvaluationService.getEvaluationJson(questionRequest.getAutoEvaluationJson() , MCQEvaluationDTO.class);
+
         for (int i = 0; i < questionRequest.getOptions().size(); i++) {
             Option option = new Option();
             UUID optionId = UUID.randomUUID();
@@ -157,19 +161,38 @@ public class AddQuestionPaperFromImportManager {
         }
         question.setOptions(options);
 
-        MCQEvaluationDTO mcqEvaluation = new MCQEvaluationDTO();
-        mcqEvaluation.setType((options.size() > 1) ? QuestionTypes.MCQM.name() : QuestionTypes.MCQS.name());
-        MCQEvaluationDTO.MCQData mcqData = new MCQEvaluationDTO.MCQData();
-        mcqData.setCorrectOptionIds(correctOptionIds);
-        mcqEvaluation.setData(mcqData);
 
-        question.setAutoEvaluationJson(questionEvaluationService.setEvaluationJson(mcqEvaluation));
+        if (options.isEmpty()) {
+
+            NumericalEvaluationDto requestNumericalEvaluation = (NumericalEvaluationDto) questionEvaluationService.getEvaluationJson(questionRequest.getAutoEvaluationJson() , NumericalEvaluationDto.class);
+
+
+            NumericalEvaluationDto numericalEvaluation = new NumericalEvaluationDto();
+            numericalEvaluation.setType(QuestionTypes.INTEGER.name());
+            NumericalEvaluationDto.NumericalData numericalData = new NumericalEvaluationDto.NumericalData();
+            numericalData.setValidAnswers(validAnswers);
+            numericalEvaluation.setData(numericalData);
+            if(!requestNumericalEvaluation.getData().getValidAnswers().isEmpty()){
+                numericalData.setValidAnswers(requestNumericalEvaluation.getData().getValidAnswers());
+            }
+            question.setAutoEvaluationJson(questionEvaluationService.setEvaluationJson(numericalEvaluation));
+        } else {
+            MCQEvaluationDTO mcqEvaluation = new MCQEvaluationDTO();
+            mcqEvaluation.setType((options.size() > 1) ? QuestionTypes.MCQM.name() : QuestionTypes.MCQS.name());
+            MCQEvaluationDTO.MCQData mcqData = new MCQEvaluationDTO.MCQData();
+            mcqData.setCorrectOptionIds(correctOptionIds);
+            mcqEvaluation.setData(mcqData);
+            question.setAutoEvaluationJson(questionEvaluationService.setEvaluationJson(mcqEvaluation));
+        }
+
+
         if (questionRequest.getQuestionResponseType() == null)
             question.setQuestionResponseType(QuestionResponseTypes.OPTION.name());
         else question.setQuestionResponseType(questionRequest.getQuestionResponseType());
         if (isPublic) question.setAccessLevel(QuestionAccessLevel.PUBLIC.name());
         else question.setAccessLevel(QuestionAccessLevel.PRIVATE.name());
-        question.setQuestionType((options.size() > 1) ? QuestionTypes.MCQM.name() : QuestionTypes.MCQS.name());
+        if(options.isEmpty()) question.setQuestionType(QuestionTypes.INTEGER.name());
+        else question.setQuestionType((options.size() > 1) ? QuestionTypes.MCQM.name() : QuestionTypes.MCQS.name());
         if (questionRequest.getEvaluationType() == null) question.setEvaluationType(EvaluationTypes.AUTO.name());
         else question.setEvaluationType(questionRequest.getEvaluationType());
         question.setMediaId(questionRequest.getMediaId());

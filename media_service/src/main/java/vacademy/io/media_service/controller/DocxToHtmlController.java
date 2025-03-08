@@ -271,10 +271,9 @@ public class DocxToHtmlController {
                         String answerText = paragraphs.get(i).text();
                         String contentAfterAns = answerText.substring(ansRegex.length()).trim();
                         NumericalEvaluationDto numericalEvaluation = new NumericalEvaluationDto();
-                        numericalEvaluation.setType("NUMERICAL");
+                        numericalEvaluation.setType("INTEGER");
                         question.setQuestionType("NUMERICAL");
                         NumericalEvaluationDto.NumericalData numericalQuestionData = new NumericalEvaluationDto.NumericalData();
-                        numericalQuestionData.setNumericalType(NumericalEvaluationDto.NumericalType.ANY_DECIMAL);
                         try {
                             numericalQuestionData.setValidAnswers(List.of((contentAfterAns).toString()));
                             numericalEvaluation.setData(numericalQuestionData);

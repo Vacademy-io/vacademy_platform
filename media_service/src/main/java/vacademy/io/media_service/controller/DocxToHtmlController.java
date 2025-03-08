@@ -54,7 +54,6 @@ public class DocxToHtmlController {
             @RequestParam(value = "numericQuestionIdentifier", required = false) String numericQuestionIdentifier) {
 
         questionIdentifier = "(\\d+\\.|\\d+|Q\\d+)";
-        numericQuestionIdentifier = "\\(N\\d+\\.\\)\n";
         optionIdentifier = "\\([a-zA-Z]\\.)";
         answerIdentifier = "Ans";
         explanationIdentifier = "Exp";
@@ -192,11 +191,9 @@ public class DocxToHtmlController {
         List<QuestionDTO> questions = new ArrayList<>();
 
         String questionUpdateRegex = "\\(\\d+\\.\\)";
-        String numericQuestionUpdateRegex = "\\(N\\d+\\.\\)\n";
 
 
         String questionRegex = "^\\s*\\(\\d+\\.\\)\\s?.*";
-//        String numericQuestionIdentifier = "^\\s*\\(N\\d+\\.\\)\\s?.*";
         String optionRegex = "^\\s*\\([a-zA-Z]\\.\\)\\s?.*";
         String optionUpdateRegex = "\\([a-zA-Z]\\.\\)";
         String ansRegex = "Ans:";
@@ -275,7 +272,7 @@ public class DocxToHtmlController {
                         question.setQuestionType("NUMERICAL");
                         NumericalEvaluationDto.NumericalData numericalQuestionData = new NumericalEvaluationDto.NumericalData();
                         try {
-                            numericalQuestionData.setValidAnswers(List.of((contentAfterAns).toString()));
+                            numericalQuestionData.setValidAnswers(List.of((contentAfterAns)));
                             numericalEvaluation.setData(numericalQuestionData);
 
                             question.setAutoEvaluationJson(setEvaluationJson(numericalEvaluation));

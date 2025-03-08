@@ -15,8 +15,8 @@ public class MCQMMarkingDto {
     public static class DataFields {
         private double totalMark;
         private double negativeMark;
-        private int negativeMarkingPercentage;
-        private int partialMarking;
-        private int partialMarkingPercentage;
+        private double negativeMarkingPercentage;
+        private double partialMarking;
+        private double partialMarkingPercentage;
     }
 }

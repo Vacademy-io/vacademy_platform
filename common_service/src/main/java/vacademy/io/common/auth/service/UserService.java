@@ -5,10 +5,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
-import vacademy.io.common.auth.dto.UserDTO;
-import vacademy.io.common.auth.dto.UserPermissionRequestDTO;
-import vacademy.io.common.auth.dto.UserRoleRequestDTO;
-import vacademy.io.common.auth.dto.UserWithRolesDTO;
+import vacademy.io.common.auth.dto.*;
 import vacademy.io.common.auth.entity.Role;
 import vacademy.io.common.auth.entity.User;
 import vacademy.io.common.auth.entity.UserRole;
@@ -21,6 +18,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.stream.Collectors;
+import java.util.stream.StreamSupport;
 
 
 @Service
@@ -239,4 +237,20 @@ public class UserService {
     public List<UserWithRolesDTO> getUserDetailsByInstituteId(String instituteId,List<String>roles, CustomUserDetails user) {
         return userRepository.findUsersWithRolesByInstituteId(instituteId,roles).stream().map(UserWithRolesDTO::new).collect(Collectors.toList());
     }
+
+    public UserCredentials getUserCredentials(String userId,CustomUserDetails user) {
+        User userEntity = userRepository.findById(userId).orElseThrow(()->new UserNotFoundException("User with Id "+userId+" not found"));
+        UserCredentials userCredentials = new UserCredentials();
+        userCredentials.setUsername(userEntity.getUsername());
+        userCredentials.setPassword(userEntity.getPassword());
+        return userCredentials;
+    }
+
+    public List<UserCredentials> getUsersCredentials(List<String> userIds) {
+        Iterable<User> userEntities = userRepository.findAllById(userIds);
+        return StreamSupport.stream(userEntities.spliterator(), false)
+                .map(user -> new UserCredentials(user.getUsername(), user.getPassword(), user.getId()))
+                .collect(Collectors.toList());
+    }
+
 }

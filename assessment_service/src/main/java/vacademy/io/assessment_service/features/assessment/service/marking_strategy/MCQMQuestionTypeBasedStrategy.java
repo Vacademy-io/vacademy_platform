@@ -26,7 +26,7 @@ public class MCQMQuestionTypeBasedStrategy extends IQuestionTypeBasedStrategy {
 
             // Validate input objects and avoid NullPointerException
             if (correctAnswerDto == null || markingDto == null || responseDto == null) {
-                setAnswerStatus(QuestionResponseEnum.INCORRECT.name());
+                setAnswerStatus(QuestionResponseEnum.PENDING.name());
                 return 0.0;
             }
 
@@ -49,13 +49,13 @@ public class MCQMQuestionTypeBasedStrategy extends IQuestionTypeBasedStrategy {
 
             double totalMarks = markingData.getTotalMark();
             double negativeMarks = markingData.getNegativeMark();
-            int negativePercentage = markingData.getNegativeMarkingPercentage();
-            int partialMarking = markingData.getPartialMarking();
-            int partialMarkingPercentage = markingData.getPartialMarkingPercentage();
+            double negativePercentage = markingData.getNegativeMarkingPercentage();
+            double partialMarking = markingData.getPartialMarking();
+            double partialMarkingPercentage = markingData.getPartialMarkingPercentage();
 
             // If the student did not attempt the question, return 0 marks
             if (attemptedOptionIds.isEmpty()) {
-                setAnswerStatus(QuestionResponseEnum.INCORRECT.name());
+                setAnswerStatus(QuestionResponseEnum.PENDING.name());
                 return 0.0;
             }
 
@@ -68,10 +68,11 @@ public class MCQMQuestionTypeBasedStrategy extends IQuestionTypeBasedStrategy {
             // Partial marking scenario
             long correctSelected = attemptedOptionIds.stream().filter(correctOptionIds::contains).count();
             long incorrectSelected = attemptedOptionIds.size() - correctSelected;
+            long totalCorrectOptions = correctOptionIds.size();
 
-            if (partialMarking == 1 && correctSelected > 0) {
-                double partialMarks = (totalMarks * partialMarkingPercentage) / 100.0;
-                double finalMarks = partialMarks - (incorrectSelected * (negativeMarks * negativePercentage) / 100.0);
+            if (partialMarking != 0 && correctSelected > 0 && incorrectSelected == 0) {
+                double partialMarks = (totalMarks / totalCorrectOptions) * correctSelected;
+                double finalMarks = (partialMarks * partialMarkingPercentage) / 100;
                 setAnswerStatus(QuestionResponseEnum.PARTIAL_CORRECT.name());
                 return finalMarks;
             }

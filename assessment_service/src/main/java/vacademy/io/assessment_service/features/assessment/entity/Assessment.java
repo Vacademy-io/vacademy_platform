@@ -107,7 +107,7 @@ public class Assessment {
     @OneToMany(mappedBy = "assessment", fetch = FetchType.LAZY)
     private Set<AssessmentUserRegistration> userRegistrations = new HashSet<>();
 
-    @OneToMany(mappedBy = "assessment", fetch = FetchType.LAZY)
+    @OneToMany(mappedBy = "assessment", fetch = FetchType.EAGER)
     private Set<AssessmentBatchRegistration> batchRegistrations = new HashSet<>();
 
     @OneToMany(mappedBy = "assessment", fetch = FetchType.LAZY)

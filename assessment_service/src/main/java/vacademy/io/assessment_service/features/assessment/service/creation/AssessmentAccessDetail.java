@@ -39,6 +39,7 @@ public class AssessmentAccessDetail extends IStep {
         savedData.put(AccessControlEnum.EVALUATION_ACCESS.name().toLowerCase(), new RolesBatchesAndUsersDto(null, getDetailsFromCommaSeparatedString(assessmentInstituteMapping.get().getCommaSeparatedEvaluationRoles()), getDetailsFromCommaSeparatedString(assessmentInstituteMapping.get().getCommaSeparatedEvaluationUserIds())));
         savedData.put(AccessControlEnum.LIVE_ASSESSMENT_ACCESS.name().toLowerCase(), new RolesBatchesAndUsersDto(null, getDetailsFromCommaSeparatedString(assessmentInstituteMapping.get().getCommaSeparatedLiveViewRoles()), getDetailsFromCommaSeparatedString(assessmentInstituteMapping.get().getCommaSeparatedLiveViewUserIds())));
         savedData.put(AccessControlEnum.REPORT_AND_SUBMISSION_ACCESS.name().toLowerCase(), new RolesBatchesAndUsersDto(null, getDetailsFromCommaSeparatedString(assessmentInstituteMapping.get().getCommaSeparatedSubmissionViewRoles()), getDetailsFromCommaSeparatedString(assessmentInstituteMapping.get().getCommaSeparatedSubmissionViewUserIds())));
+
         setSavedData(savedData);
     }
 

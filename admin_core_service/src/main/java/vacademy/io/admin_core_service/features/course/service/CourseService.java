@@ -5,13 +5,14 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.course.dto.AddCourseDTO;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
-import vacademy.io.admin_core_service.features.level.dto.AddLevelDTO;
+import vacademy.io.admin_core_service.features.level.dto.AddLevelWithCourseDTO;
 import vacademy.io.admin_core_service.features.level.service.LevelService;
 import vacademy.io.admin_core_service.features.packages.enums.PackageStatusEnum;
 import vacademy.io.admin_core_service.features.packages.repository.PackageInstituteRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
 import vacademy.io.admin_core_service.features.packages.service.PackageSessionService;
+import vacademy.io.admin_core_service.features.session.dto.AddNewSessionDTO;
 import vacademy.io.admin_core_service.features.session.dto.AddSessionDTO;
 import vacademy.io.admin_core_service.features.session.service.SessionService;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -45,7 +46,7 @@ public class CourseService {
         PackageEntity savedPackage = packageRepository.save(packageEntity);
         createPackageInstitute(savedPackage, instituteId);
         if (addCourseDTO.getContainLevels()) {
-            createPackageSession(savedPackage, addCourseDTO.getLevels(), user);
+            createPackageSession(savedPackage, addCourseDTO.getSessions(), user);
         } else {
             createPackageSessionForDefaultLevelAndSession(savedPackage, user);
         }
@@ -58,31 +59,16 @@ public class CourseService {
         packageSessionService.createPackageSession(level, session, savedPackage, new Date());
     }
 
-    private void createPackageSession(PackageEntity savedPackage, List<AddLevelDTO> addLevelDTOS, CustomUserDetails user) {
-        if (Objects.isNull(addLevelDTOS) || addLevelDTOS.isEmpty()) {
-            throw new VacademyException("Levels cannot be null or empty. You must provide at least one level.");
+    private void createPackageSession(PackageEntity savedPackage, List<AddNewSessionDTO> addNewSessionDTOS, CustomUserDetails user) {
+        if (Objects.isNull(addNewSessionDTOS) || addNewSessionDTOS.isEmpty()) {
+            throw new VacademyException("Levels and Sessions cannot be null or empty. You must provide at least one level.");
         }
-        for (AddLevelDTO addLevelDTO : addLevelDTOS) {
-            validateRequest(addLevelDTO);
-            Level level = levelService.createOrAddLevel(addLevelDTO);
-            for (AddSessionDTO sessionDTO : addLevelDTO.getSessions()) {
-                Session session = sessionService.createOrGetSession(sessionDTO);
-                packageSessionService.createPackageSession(level, session, savedPackage, sessionDTO.getStartDate());
-            }
+        for (AddNewSessionDTO addNewSessionDTO : addNewSessionDTOS) {
+            addNewSessionDTO.getLevels().forEach(level -> level.setPackageId(savedPackage.getId()));
+            sessionService.addNewSession(addNewSessionDTO, user);
         }
     }
 
-    private void validateRequest(AddLevelDTO addLevelDTO) {
-        if (Objects.isNull(addLevelDTO)) {
-            throw new VacademyException("Invalid request");
-        }
-        if (Objects.isNull(addLevelDTO.getLevelName())) {
-            throw new VacademyException("Level name cannot be null");
-        }
-        if (Objects.isNull(addLevelDTO.getSessions())) {
-            throw new VacademyException("Sessions cannot be null");
-        }
-    }
 
     private void validateRequest(AddCourseDTO addCourseDTO) {
         if (Objects.isNull(addCourseDTO)) {

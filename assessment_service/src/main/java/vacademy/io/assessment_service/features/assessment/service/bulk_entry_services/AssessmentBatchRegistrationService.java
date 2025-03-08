@@ -23,6 +23,10 @@ public class AssessmentBatchRegistrationService {
         repository.saveAll(registrations);
     }
 
+    public boolean existsByInstituteAndAssessmentAndBatch(String instituteId, String assessmentId, String batchId) {
+        return repository.existsByInstituteIdAndAssessmentIdAndBatchId(instituteId, assessmentId, batchId);
+    }
+
     public void softDeleteRegistrationsByIds(List<String> ids, String instituteId, String assessmentId) {
         repository.softDeleteByIds(ids, instituteId, assessmentId);
     }

@@ -115,7 +115,7 @@ public class AssessmentParticipantsManager {
 
         if (assessment == null) return;
         AssessmentNotificationMetadata assessmentNotificationMetadata = new AssessmentNotificationMetadata();
-
+        assessmentNotificationMetadata.setAssessment(assessment);
 
         Optional<AssessmentNotificationMetadata> savedAssessmentNotificationMetadata = assessmentNotificationMetadataRepository.findTopByAssessmentId(assessment.getId());
 
@@ -175,12 +175,25 @@ public class AssessmentParticipantsManager {
         //TODO: handle join url change
     }
 
-    private void preRegisterParticipant(CustomUserDetails user, List<BasicParticipantDTO> addedParticipants, String instituteId, Optional<Assessment> assessmentOptional) {
+    private void preRegisterParticipant(CustomUserDetails user, List<BasicParticipantDTO> addedParticipants,
+                                        String instituteId, Optional<Assessment> assessmentOptional) {
+
+        Assessment assessment = assessmentOptional.get();
         List<AssessmentUserRegistration> userRegistrations = new ArrayList<>();
+
         for (BasicParticipantDTO participantDTO : addedParticipants) {
-            userRegistrations.add(addUserToAssessment(participantDTO, user.getUserId(), instituteId, assessmentOptional.get()));
+            // Check if the participant is already registered for this assessment
+            String participantId = participantDTO.getUserId();
+            if (!assessmentUserRegistrationRepository.existsByInstituteIdAndAssessmentIdAndUserId(
+                    instituteId, assessment.getId(), participantId)) {
+                userRegistrations.add(addUserToAssessment(participantDTO, user.getUserId(), instituteId, assessment));
+            }
         }
-        assessmentUserRegistrationRepository.saveAll(userRegistrations);
+
+        // Only save if there are any new registrations
+        if (!userRegistrations.isEmpty()) {
+            assessmentUserRegistrationRepository.saveAll(userRegistrations);
+        }
     }
 
     private void handleOpenRegistration(AssessmentRegistrationsDto.OpenTestDetails openTestDetails, Assessment assessment) {
@@ -236,9 +249,16 @@ public class AssessmentParticipantsManager {
     private void preRegisterBatches(List<String> addedBatches, String instituteId, Assessment assessment) {
         List<AssessmentBatchRegistration> batchRegistrations = new ArrayList<>();
         for (String batchId : addedBatches) {
-            batchRegistrations.add(addBatchToAssessment(instituteId, batchId, assessment));
+            // Check if registration already exists before adding
+            if (!assessmentBatchRegistrationService.existsByInstituteAndAssessmentAndBatch(
+                    instituteId, assessment.getId(), batchId)) {
+                batchRegistrations.add(addBatchToAssessment(instituteId, batchId, assessment));
+            }
         }
-        assessmentBatchRegistrationService.addMultipleRegistrations(batchRegistrations);
+        // Only save if there are any new registrations
+        if (!batchRegistrations.isEmpty()) {
+            assessmentBatchRegistrationService.addMultipleRegistrations(batchRegistrations);
+        }
     }
 
     private void removeBatches(List<String> deletedBatches, String instituteId, Assessment assessment) {
@@ -252,6 +272,8 @@ public class AssessmentParticipantsManager {
     }
 
     AssessmentBatchRegistration addBatchToAssessment(String instituteId, String batchId, Assessment assessment) {
+
+
         AssessmentBatchRegistration assessmentBatchRegistration = new AssessmentBatchRegistration();
         assessmentBatchRegistration.setAssessment(assessment);
         assessmentBatchRegistration.setBatchId(batchId);
@@ -555,6 +577,10 @@ public class AssessmentParticipantsManager {
 
 
     public ResponseEntity<StudentReportOverallDetailDto> getStudentReportDetails(CustomUserDetails userDetails, String assessmentId, String attemptId, String instituteId) {
+        return ResponseEntity.ok(createStudentReportDetailResponse(assessmentId,attemptId,instituteId));
+    }
+
+    public StudentReportOverallDetailDto createStudentReportDetailResponse(String assessmentId, String attemptId, String instituteId) {
         Assessment assessment = assessmentRepository.findByAssessmentIdAndInstituteId(assessmentId, instituteId)
                 .orElseThrow(() -> new VacademyException("Assessment Not Found"));
 
@@ -571,10 +597,10 @@ public class AssessmentParticipantsManager {
 
         ParticipantsQuestionOverallDetailDto questionOverallDetailDto = studentAttemptRepository.findParticipantsQuestionOverallDetails(assessmentId, instituteId, attemptId);
 
-        return ResponseEntity.ok(StudentReportOverallDetailDto.builder()
+        return StudentReportOverallDetailDto.builder()
                 .allSections(generateStudentReport(mappings, attemptId))
                 .questionOverallDetailDto(questionOverallDetailDto)
-                .build());
+                .build();
     }
 
     private Map<String, List<StudentReportAnswerReviewDto>> generateStudentReport(List<QuestionAssessmentSectionMapping> mappings, String attemptId) {

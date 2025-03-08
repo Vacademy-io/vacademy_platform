@@ -11,11 +11,10 @@ import java.util.List;
 @Getter
 @Setter
 @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
-public class AddLevelDTO {
+public class AddLevelWithCourseDTO {
     private String id;
     private Boolean newLevel;
     private String levelName;
     private Integer durationInDays;
     private String thumbnailFileId;
-    private List<AddSessionDTO> sessions;
 }

@@ -12,4 +12,5 @@ public interface LeaderBoardDto {
     Long getCompletionTimeInSeconds();
     Double getAchievedMarks();
     Integer getRank();
+    Double getPercentile();
 }

@@ -7,10 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.*;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.request.RevaluateRequest;
-import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.AssessmentOverviewDto;
-import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.AssessmentOverviewResponse;
-import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.QuestionInsightsResponse;
-import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.StudentReportResponse;
+import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.*;
 import vacademy.io.assessment_service.features.assessment.manager.AdminAssessmentGetManager;
 import vacademy.io.assessment_service.features.learner_assessment.dto.StudentAssessmentFilter;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -83,5 +80,11 @@ public class AdminAssessmentGetController {
                                                       @RequestBody RevaluateRequest request,
                                                       @Param("methodType") String methodType){
         return adminAssessmentGetManager.revaluateAssessment(userDetails, assessmentId, methodType, request, instituteId);
+    }
+
+    @GetMapping("/init/total-marks")
+    public ResponseEntity<TotalMarksAssessmentResponse> initAssessmentMarks(@RequestAttribute("user") CustomUserDetails user,
+                                                                            @RequestParam(name = "assessmentId") String assessmentId){
+        return adminAssessmentGetManager.initTotalAssessmentMarks(user, assessmentId);
     }
 }

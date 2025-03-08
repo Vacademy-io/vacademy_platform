@@ -16,13 +16,14 @@ import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.*;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.request.RevaluateRequest;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.*;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
+import vacademy.io.assessment_service.features.assessment.entity.AssessmentSectionMapping;
+import vacademy.io.assessment_service.features.assessment.entity.QuestionAssessmentSectionMapping;
+import vacademy.io.assessment_service.features.assessment.entity.Section;
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentModeEnum;
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentStatus;
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentVisibility;
 import vacademy.io.assessment_service.features.assessment.enums.RevaluateRequestEnum;
-import vacademy.io.assessment_service.features.assessment.repository.AssessmentRepository;
-import vacademy.io.assessment_service.features.assessment.repository.AssessmentUserRegistrationRepository;
-import vacademy.io.assessment_service.features.assessment.repository.StudentAttemptRepository;
+import vacademy.io.assessment_service.features.assessment.repository.*;
 import vacademy.io.assessment_service.features.assessment.service.StudentAttemptService;
 import vacademy.io.assessment_service.features.assessment.service.assessment_get.AssessmentMapper;
 import vacademy.io.assessment_service.features.learner_assessment.dto.QuestionStatusDto;
@@ -58,6 +59,9 @@ public class AdminAssessmentGetManager {
 
     @Autowired
     StudentAttemptService studentAttemptService;
+
+    @Autowired
+    SectionRepository sectionRepository;
 
     public ResponseEntity<AssessmentAdminListInitDto> assessmentAdminListInit(CustomUserDetails user, String instituteId) {
         AssessmentAdminListInitDto assessmentAdminListInitDto = new AssessmentAdminListInitDto();
@@ -322,5 +326,24 @@ public class AdminAssessmentGetManager {
         }
 
         return ResponseEntity.ok("Done");
+    }
+
+    public ResponseEntity<TotalMarksAssessmentResponse> initTotalAssessmentMarks(CustomUserDetails user, String assessmentId) {
+        return ResponseEntity.ok(getTotalMarksForAssessment(assessmentId));
+    }
+
+    private TotalMarksAssessmentResponse getTotalMarksForAssessment(String assessmentId) {
+        List<Section> sections = sectionRepository.findByAssessmentIdAndStatusNotIn(assessmentId, List.of("DELETED"));
+        Map<String, Double> sectionMarksMapping = new HashMap<>();
+        Double totalMarks = 0.0;
+
+        for (Section mapping: sections){
+            totalMarks+=mapping.getTotalMarks();
+            sectionMarksMapping.put(mapping.getId(), mapping.getTotalMarks());
+        }
+
+        return TotalMarksAssessmentResponse.builder()
+                .totalAchievableMarks(totalMarks)
+                .sectionWiseAchievableMarks(sectionMarksMapping).build();
     }
 }

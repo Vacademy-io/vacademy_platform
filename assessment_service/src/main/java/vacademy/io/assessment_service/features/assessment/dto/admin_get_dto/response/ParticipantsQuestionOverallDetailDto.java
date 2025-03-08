@@ -8,6 +8,7 @@ public interface ParticipantsQuestionOverallDetailDto {
     Long getCompletionTimeInSeconds();
     Double getAchievedMarks();
     Date getStartTime();
+    Date getSubmitTime();
     String getSubjectId();
     Double getPercentile();
     Integer getCorrectAttempt();

@@ -380,7 +380,7 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                     sa.total_time_in_seconds AS completionTimeInSeconds,
                     sa.total_marks AS achievedMarks,
                     aur.status,
-                    sa.submit_time,
+                    sa.submit_time AS submitTime,
                     sa.start_time AS startTime,
                     aim.subject_id AS subjectId,
                     ROW_NUMBER() OVER (PARTITION BY aur.user_id ORDER BY sa.created_at DESC) AS rn
@@ -421,6 +421,7 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                     status,
                     startTime,
                     subjectId,
+                    submitTime,
                     DENSE_RANK() OVER (ORDER BY achievedMarks DESC, completionTimeInSeconds ASC) AS rank,
                     (SELECT totalParticipants FROM TotalParticipants) AS totalParticipants
                 FROM RankedAttempts
@@ -441,7 +442,8 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                 ai.totalCorrectMarks,
                 ai.totalIncorrectMarks,
                 ai.totalPartialMarks,
-                tb.rank
+                tb.rank,
+                tb.submitTime
             FROM RankedWithTotal tb
             LEFT JOIN AttemptInformation ai ON tb.attemptId = ai.attempt_id
             WHERE tb.attemptId = :attemptId

@@ -191,13 +191,16 @@ public class DocxToHtmlController {
         List<QuestionDTO> questions = new ArrayList<>();
 
         String questionUpdateRegex = "\\(\\d+\\.\\)";
-
+//        String comprehensionQuestionUpdateRegex = "\\(C\\d+\\.\\)";
 
         String questionRegex = "^\\s*\\(\\d+\\.\\)\\s?.*";
+//        String comprehensionQuestionRegex = "^\\s*\\(C\\d+\\.\\)\\s?.*";
         String optionRegex = "^\\s*\\([a-zA-Z]\\.\\)\\s?.*";
         String optionUpdateRegex = "\\([a-zA-Z]\\.\\)";
         String ansRegex = "Ans:";
         String explanationRegex = "Exp:";
+
+        String comprehensionTextId = "";
 
 
         for (int i = 0; i < paragraphs.size(); i++) {
@@ -205,6 +208,29 @@ public class DocxToHtmlController {
             String text = paragraph.text().trim();
             boolean isValidQuestion = true;
             QuestionDTO question = null;
+
+            // Detect questions using "startsWith" for "(C${number}.)" format
+//            if (text.matches(comprehensionQuestionRegex)) {
+//                int questionNumber = extractQuestionNumber(text);
+//                AssessmentRichTextDataDTO assessmentRichTextDataDTO = new AssessmentRichTextDataDTO();
+//                assessmentRichTextDataDTO.setType("HTML");
+//                assessmentRichTextDataDTO.setContent(cleanHtmlTags(paragraph.html(), comprehensionQuestionUpdateRegex));
+//
+//                // Handle multi-line questions
+//                while (i + 1 < paragraphs.size() && !paragraphs.get(i+1).text().matches(questionRegex) && !paragraphs.get(i + 1).text().startsWith("(a.)") &&  !paragraphs.get(i + 1).text().startsWith("Ans:")) {
+//                    i++;
+//                    Element multiLineParagraph = paragraphs.get(i);
+//                    String multiLineText = multiLineParagraph.text().trim();
+//
+//                    assessmentRichTextDataDTO.appendContent(cleanHtmlTags(multiLineParagraph.outerHtml(), questionUpdateRegex));
+//                }
+//                AssessmentRichText assessmentRichText = new AssessmentRichText();
+//                assessmentRichText.setId(UUID.randomUUID().toString());
+//                assessmentRichText.setContent(assessmentRichTextDataDTO.getContent());
+//                assessmentRichText.setType(assessmentRichTextDataDTO.getType());
+//                AssessmentRichText savedEntity = assessmentRichTextRepository.save(assessmentRichText);
+//                comprehensionTextId = savedEntity.getId();
+//            }
 
             // Detect questions using "startsWith" for "(number.)" format
             if (text.matches(questionRegex)) {
@@ -268,11 +294,18 @@ public class DocxToHtmlController {
                         String answerText = paragraphs.get(i).text();
                         String contentAfterAns = answerText.substring(ansRegex.length()).trim();
                         NumericalEvaluationDto numericalEvaluation = new NumericalEvaluationDto();
-                        numericalEvaluation.setType("INTEGER");
-                        question.setQuestionType("NUMERICAL");
+                        numericalEvaluation.setType("NUMERIC");
+                        question.setQuestionType("NUMERIC");
+                        OptionsJsonDto optionsJsonDto = new OptionsJsonDto();
+                        optionsJsonDto.setNumericType("TWO_DECIMAL");
+                        optionsJsonDto.setDataType("number");
+
                         NumericalEvaluationDto.NumericalData numericalQuestionData = new NumericalEvaluationDto.NumericalData();
                         try {
-                            numericalQuestionData.setValidAnswers(List.of((contentAfterAns)));
+                            question.setOptionsJson(setOptionsJson(optionsJsonDto));
+                            // Convert String to Double before adding to the List
+                            numericalQuestionData.setValidAnswers(List.of(Double.parseDouble(contentAfterAns)));
+
                             numericalEvaluation.setData(numericalQuestionData);
 
                             question.setAutoEvaluationJson(setEvaluationJson(numericalEvaluation));
@@ -316,76 +349,9 @@ public class DocxToHtmlController {
                 }
             }
 
-            // Detect questions using "startsWith" for "(N${number}.)" format
-//            if (text.matches(questionRegex)) {
-//                int questionNumber = extractQuestionNumber(text);
-//                question = new QuestionDTO(String.valueOf(questionNumber));
-//                // Regex pattern to match
-//                question.setSectionId("1");
-//                question.setText(new AssessmentRichTextDataDTO(null, "HTML", cleanHtmlTags(text, numericQuestionUpdateRegex)));
-//                question.setAccessLevel("PRIVATE");
-//                question.setQuestionResponseType("NUMERIC");
-//
-//                // Handle multi-line questions
-//                while (i + 1 < paragraphs.size() && !paragraphs.get(i + 1).text().startsWith("Ans:")) {
-//                    i++;
-//                    Element multiLineParagraph = paragraphs.get(i);
-//                    String multiLineText = multiLineParagraph.text().trim();
-//
-//                    // Check for unexpected start patterns in multi-line questions
-//                    if (multiLineText.startsWith("Ans:")) {
-//                        question.getErrors().add("Unexpected answer format in multi-line question:" + multiLineText);
-//                        isValidQuestion = false;
-//                        break;
-//                    } else if (multiLineText.startsWith("Exp:")) {
-//                        question.getErrors().add("Unexpected explanation format in multi-line question:" + multiLineText);
-//                        isValidQuestion = false;
-//                        break;
-//                    }
-//
-//                    question.appendQuestionHtml(cleanHtmlTags(multiLineParagraph.outerHtml(), questionUpdateRegex));
-//                }
-//
-//
-//                // Extract answer
-//                if (i + 1 < paragraphs.size() && paragraphs.get(i + 1).text().startsWith("Ans:")) {
-//                    i++;
-//                    String answerText = paragraphs.get(i).text();
-//                    String contentAfterAns = answerText.substring(ansRegex.length()).trim();
-//                    MCQEvaluationDTO mcqEvaluation = new MCQEvaluationDTO();
-//                    mcqEvaluation.setType("NUMERIC");
-//                    question.setQuestionType("NUMERIC");
-//                    MCQEvaluationDTO.MCQData mcqData = new MCQEvaluationDTO.MCQData();
-//
-//                    try {
-////                        mcqData.setCorrectOptionIds(List.of((contentAfterAns.toString())));
-//                        mcqData.setValidAnswers(List.of(contentAfterAns.toString()));
-//                        mcqEvaluation.setData(mcqData);
-//
-//                        question.setAutoEvaluationJson(setEvaluationJson(mcqEvaluation));
-//                        question.setParsedEvaluationObject(EvaluationJsonToMapConverter.convertJsonToMap(question.getAutoEvaluationJson()));
-//                    } catch (JsonProcessingException e) {
-//                        throw new VacademyException(e.getMessage());
-//                    }
-//                }
-//
-//                // Extract explanation
-//                if (i + 1 < paragraphs.size() && paragraphs.get(i + 1).text().startsWith("Exp:")) {
-//                    i++;
-//
-//                    String filteredText = paragraphs.get(i).html().replaceAll(explanationRegex, "").trim();
-//                    question.setExplanationText(new AssessmentRichTextDataDTO(null, "HTML", cleanHtmlTags(filteredText, explanationRegex)));
-//                    while (i + 1 < paragraphs.size() && !(paragraphs.get(i + 1).text().startsWith("(") && Character.isDigit(paragraphs.get(i + 1).text().charAt(1)))) {
-//                        i++;
-//                        String filteredInternalText = paragraphs.get(i).outerHtml().replaceAll(explanationRegex, "").trim();
-//
-//                        question.appendExplanationHtml(cleanHtmlTags(filteredInternalText, explanationRegex));
-//                    }
-//                }
-//
+//            if(!comprehensionTextId.isEmpty() && question != null){
+//                question.setParentRichTextId(comprehensionTextId);
 //            }
-//
-//
 
             if (question != null)
                 questions.add(question);
@@ -397,7 +363,7 @@ public class DocxToHtmlController {
 
     private int extractQuestionNumber(String text) {
         // Define a regex pattern to match the question number formats
-        String regex = "(\\d+)|(?:Q(\\d+))";
+        String regex = "(\\d+)|(?:Q(\\d+))|(?:C(\\d+))";
         Pattern pattern = Pattern.compile(regex);
         Matcher matcher = pattern.matcher(text);
 
@@ -409,6 +375,10 @@ public class DocxToHtmlController {
             }
 
             String qNumberStr = matcher.group(2); // This captures the Q number if present
+            if (qNumberStr != null) {
+                return Integer.parseInt(qNumberStr);
+            }
+            qNumberStr = matcher.group(3); // This captures the Q number if present
             if (qNumberStr != null) {
                 return Integer.parseInt(qNumberStr);
             }
@@ -465,6 +435,15 @@ public class DocxToHtmlController {
         // For example: question.setAutoEvaluationJson(jsonString);
 
         return jsonString; // Return the JSON string for confirmation or further processing
+    }
+
+    public String setOptionsJson(OptionsJsonDto optionsJsonDto) throws JsonProcessingException{
+        String jsonString = objectMapper.writeValueAsString(optionsJsonDto);
+
+        // Here you would save jsonString to your database (not shown)
+        // For example: question.setAutoEvaluationJson(jsonString);
+
+        return jsonString;
     }
 
     // Method to get evaluation JSON as DTO based on question type

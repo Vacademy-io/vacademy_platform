@@ -23,6 +23,8 @@ public class EvaluationJsonToMapConverter {
                 case "MCQM":
                     result = handleMCQM(rootNode);
                     break;
+                case "NUMERIC":
+                    result = handleNumeric(rootNode);
                 default:
                     result = handleDefaultType(rootNode);
                     break;
@@ -60,6 +62,36 @@ public class EvaluationJsonToMapConverter {
         // Return the populated map
         return map;
     }
+
+    private static Map<String, Object> handleNumeric(JsonNode rootNode) {
+        // Create a new HashMap to store the results
+        Map<String, Object> map = new HashMap<>();
+
+        // Create a list to hold the correct option IDs
+        // Extract correct option IDs from the JSON node
+        List<String> correctOptionIds = new ArrayList<>();
+        JsonNode dataNode = rootNode.get("data");
+        if (dataNode != null) {
+            // ✅ Get the "correct_option_ids" array safely
+            JsonNode correctOptionIdsNode = dataNode.get("valid_answers");
+
+            if (correctOptionIdsNode != null && correctOptionIdsNode.isArray()) {
+                correctOptionIdsNode.forEach(optionIdNode -> {
+                    correctOptionIds.add(optionIdNode.asText());
+                });
+            } else {
+                System.out.println("Warning: 'valid_answers' field is missing or not an array!");
+            }
+        } else {
+            System.out.println("Warning: 'data' field is missing in JSON!");
+        }
+        // Put the list of correct option IDs into the map
+        map.put("validAnswers", correctOptionIds);
+
+        // Return the populated map
+        return map;
+    }
+
 
     private static Map<String, Object> handleDefaultType(JsonNode rootNode) {
         Map<String, Object> map = new HashMap<>();

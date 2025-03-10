@@ -20,6 +20,11 @@ public class AssessmentRichTextDataDTO {
     public AssessmentRichTextDataDTO() {
     }
 
+    public void appendContent(String s) {
+        String updatedHtml = (this.getContent() == null) ? "" : this.getContent() + s;
+        this.content = updatedHtml;
+    }
+
     // Parameterized constructor
     public AssessmentRichTextDataDTO(String id, String type, String content) {
         this.id = id;

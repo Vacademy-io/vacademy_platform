@@ -49,6 +49,9 @@ public class Question {
     @Column(name = "auto_evaluation_json")
     private String autoEvaluationJson;
 
+    @Column(name = "options_json")
+    private String optionsJson;
+
     @Column(name = "evaluation_type")
     private String evaluationType;
 

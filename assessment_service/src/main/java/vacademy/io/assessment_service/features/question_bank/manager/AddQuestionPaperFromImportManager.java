@@ -145,9 +145,9 @@ public class AddQuestionPaperFromImportManager {
 
         List<Option> options = new ArrayList<>();
         List<String> correctOptionIds = new ArrayList<>();
-        List<String> validAnswers = new ArrayList<>();
+        List<Double> validAnswers = new ArrayList<>();
 //        validAnswers = questionRequest.getAutoEvaluationJson();
-        MCQEvaluationDTO requestEvaluation = (MCQEvaluationDTO) questionEvaluationService.getEvaluationJson(questionRequest.getAutoEvaluationJson() , MCQEvaluationDTO.class);
+        MCQEvaluationDTO requestEvaluation = (MCQEvaluationDTO) questionEvaluationService.getEvaluationJson(questionRequest.getAutoEvaluationJson(), MCQEvaluationDTO.class);
 
         for (int i = 0; i < questionRequest.getOptions().size(); i++) {
             Option option = new Option();
@@ -164,18 +164,19 @@ public class AddQuestionPaperFromImportManager {
 
         if (options.isEmpty()) {
 
-            NumericalEvaluationDto requestNumericalEvaluation = (NumericalEvaluationDto) questionEvaluationService.getEvaluationJson(questionRequest.getAutoEvaluationJson() , NumericalEvaluationDto.class);
-
-
+            NumericalEvaluationDto requestNumericalEvaluation = (NumericalEvaluationDto) questionEvaluationService.getEvaluationJson(questionRequest.getAutoEvaluationJson(), NumericalEvaluationDto.class);
             NumericalEvaluationDto numericalEvaluation = new NumericalEvaluationDto();
-            numericalEvaluation.setType(QuestionTypes.INTEGER.name());
+            numericalEvaluation.setType(QuestionTypes.NUMERIC.name());
             NumericalEvaluationDto.NumericalData numericalData = new NumericalEvaluationDto.NumericalData();
-            numericalData.setValidAnswers(validAnswers);
+//            numericalData.setValidAnswers(List.of(Double.parseDouble(validAnswers));
             numericalEvaluation.setData(numericalData);
-            if(!requestNumericalEvaluation.getData().getValidAnswers().isEmpty()){
+
+
+            if (!requestNumericalEvaluation.getData().getValidAnswers().isEmpty()) {
                 numericalData.setValidAnswers(requestNumericalEvaluation.getData().getValidAnswers());
             }
             question.setAutoEvaluationJson(questionEvaluationService.setEvaluationJson(numericalEvaluation));
+            question.setOptionsJson(questionRequest.getOptionsJson());
         } else {
             MCQEvaluationDTO mcqEvaluation = new MCQEvaluationDTO();
             mcqEvaluation.setType((options.size() > 1) ? QuestionTypes.MCQM.name() : QuestionTypes.MCQS.name());
@@ -191,7 +192,7 @@ public class AddQuestionPaperFromImportManager {
         else question.setQuestionResponseType(questionRequest.getQuestionResponseType());
         if (isPublic) question.setAccessLevel(QuestionAccessLevel.PUBLIC.name());
         else question.setAccessLevel(QuestionAccessLevel.PRIVATE.name());
-        if(options.isEmpty()) question.setQuestionType(QuestionTypes.INTEGER.name());
+        if (options.isEmpty()) question.setQuestionType(QuestionTypes.NUMERIC.name());
         else question.setQuestionType((options.size() > 1) ? QuestionTypes.MCQM.name() : QuestionTypes.MCQS.name());
         if (questionRequest.getEvaluationType() == null) question.setEvaluationType(EvaluationTypes.AUTO.name());
         else question.setEvaluationType(questionRequest.getEvaluationType());

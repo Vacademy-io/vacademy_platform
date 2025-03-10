@@ -25,14 +25,7 @@ public class NumericalEvaluationDto {
     @AllArgsConstructor
     @NoArgsConstructor
     public static class NumericalData {
-        private List<String> validAnswers;  // Stores integer, 1 decimal, 2 decimals, or negative numbers
+        private List<Double> validAnswers;  // Stores integer, 1 decimal, 2 decimals, or negative numbers
     }
-
-//    public enum NumericalType {
-//        INTEGER,         // e.g., 5, -3
-//        ONE_DECIMAL,     // e.g., 3.1, -2.5
-//        TWO_DECIMAL,     // e.g., 4.25, -1.75
-//        ANY_DECIMAL      // e.g., 3.1415, -2.999
-//    }
 }
 

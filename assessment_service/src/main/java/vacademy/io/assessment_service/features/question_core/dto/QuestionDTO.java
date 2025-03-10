@@ -35,9 +35,11 @@ public class QuestionDTO {
     private String questionType;
     private String accessLevel;
     private String autoEvaluationJson;
+    private String optionsJson;
     private Map<String, Object> parsedEvaluationObject;
     private String evaluationType;
     private AssessmentRichTextDataDTO explanationText;
+    private String parentRichTextId;
     private Integer defaultQuestionTimeMins;
     private List<OptionDTO> options = new ArrayList<>();
     private List<String> errors = new ArrayList<>();

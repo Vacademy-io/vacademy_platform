@@ -17,6 +17,9 @@ import org.zwobble.mammoth.DocumentConverter;
 import org.zwobble.mammoth.Result;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.media_service.dto.*;
+import vacademy.io.media_service.enums.NumericQuestionTypes;
+import vacademy.io.media_service.enums.QuestionResponseType;
+import vacademy.io.media_service.enums.QuestionTypes;
 import vacademy.io.media_service.service.EvaluationJsonToMapConverter;
 import vacademy.io.media_service.service.HtmlImageConverter;
 
@@ -241,7 +244,7 @@ public class DocxToHtmlController {
                 question.setSectionId("1");
                 question.setText(new AssessmentRichTextDataDTO(null, "HTML", cleanHtmlTags(paragraph.html(), questionUpdateRegex)));
                 question.setAccessLevel("PRIVATE");
-                question.setQuestionResponseType("OPTION");
+                question.setQuestionResponseType(QuestionResponseType.OPTION.name());
                 // Handle multi-line questions
                 while (i + 1 < paragraphs.size() && !paragraphs.get(i + 1).text().startsWith("(a.)") && !paragraphs.get(i + 1).text().startsWith("Ans:")) {
                     i++;
@@ -290,15 +293,15 @@ public class DocxToHtmlController {
                     i++;
                     // if options are empty then it is a numeric type question
                     if (question.getOptions().isEmpty()) {
-                        question.setQuestionResponseType("NUMBER");
+                        question.setQuestionResponseType(QuestionResponseType.INTEGER.name());
                         String answerText = paragraphs.get(i).text();
                         String contentAfterAns = answerText.substring(ansRegex.length()).trim();
                         NumericalEvaluationDto numericalEvaluation = new NumericalEvaluationDto();
-                        numericalEvaluation.setType("NUMERIC");
-                        question.setQuestionType("NUMERIC");
+                        numericalEvaluation.setType(QuestionTypes.NUMERIC.name());
+                        question.setQuestionType(QuestionTypes.NUMERIC.name());
                         OptionsJsonDto optionsJsonDto = new OptionsJsonDto();
-                        optionsJsonDto.setNumericType("TWO_DECIMAL");
-                        optionsJsonDto.setDataType("number");
+                        optionsJsonDto.setNumericType(NumericQuestionTypes.INTEGER.name());
+                        optionsJsonDto.setDecimals(2);
 
                         NumericalEvaluationDto.NumericalData numericalQuestionData = new NumericalEvaluationDto.NumericalData();
                         try {
@@ -318,8 +321,8 @@ public class DocxToHtmlController {
                         String answerText = paragraphs.get(i).text();
                         String contentAfterAns = answerText.substring(ansRegex.length()).trim();
                         MCQEvaluationDTO mcqEvaluation = new MCQEvaluationDTO();
-                        mcqEvaluation.setType("MCQS");
-                        question.setQuestionType("MCQS");
+                        mcqEvaluation.setType(QuestionTypes.MCQS.name());
+                        question.setQuestionType(QuestionTypes.MCQS.name());
                         MCQEvaluationDTO.MCQData mcqData = new MCQEvaluationDTO.MCQData();
 
                         try {

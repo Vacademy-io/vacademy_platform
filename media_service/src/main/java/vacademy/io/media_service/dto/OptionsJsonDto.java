@@ -16,5 +16,5 @@ import lombok.Setter;
 @NoArgsConstructor
 public class OptionsJsonDto {
     private String NumericType;
-    private String DataType;
+    private Number Decimals;
 }

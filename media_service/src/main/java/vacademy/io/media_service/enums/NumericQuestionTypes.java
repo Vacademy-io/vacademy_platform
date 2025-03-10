@@ -1,4 +1,4 @@
-package vacademy.io.assessment_service.features.question_core.enums;
+package vacademy.io.media_service.enums;
 
 public enum NumericQuestionTypes {
     NATURAL_NUMBER, // >= 1

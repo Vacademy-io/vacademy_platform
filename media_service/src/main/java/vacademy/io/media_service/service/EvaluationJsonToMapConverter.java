@@ -73,10 +73,10 @@ public class EvaluationJsonToMapConverter {
         JsonNode dataNode = rootNode.get("data");
         if (dataNode != null) {
             // ✅ Get the "correct_option_ids" array safely
-            JsonNode correctOptionIdsNode = dataNode.get("valid_answers");
+            JsonNode validAnswerNode = dataNode.get("validAnswers");
 
-            if (correctOptionIdsNode != null && correctOptionIdsNode.isArray()) {
-                correctOptionIdsNode.forEach(optionIdNode -> {
+            if (validAnswerNode != null && validAnswerNode.isArray()) {
+                validAnswerNode.forEach(optionIdNode -> {
                     correctOptionIds.add(optionIdNode.asText());
                 });
             } else {

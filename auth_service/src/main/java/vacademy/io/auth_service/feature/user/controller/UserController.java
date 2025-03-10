@@ -88,9 +88,14 @@ public class UserController {
         return ResponseEntity.ok(users);
     }
 
-    @GetMapping("/v1/user-credentials/{userId}")
-    public ResponseEntity<UserCredentials> getUserDetails(@PathVariable String userId, @RequestAttribute("user") CustomUserDetails customUserDetails) {
+    @GetMapping("/user-credentials/{userId}")
+    public ResponseEntity<UserCredentials> getUserCredentials(@PathVariable String userId, @RequestAttribute("user") CustomUserDetails customUserDetails) {
         return ResponseEntity.ok(userService.getUserCredentials(userId,customUserDetails));
+    }
+
+    @PostMapping("/internal/users-credential")
+    public ResponseEntity<List<UserCredentials>> getUsersCredentials(@RequestBody List<String>userIds) {
+        return ResponseEntity.ok(userService.getUsersCredentials(userIds));
     }
 
 }

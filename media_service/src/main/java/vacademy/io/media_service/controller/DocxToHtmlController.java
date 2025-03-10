@@ -24,7 +24,10 @@ import vacademy.io.media_service.service.EvaluationJsonToMapConverter;
 import vacademy.io.media_service.service.HtmlImageConverter;
 
 import java.io.*;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
+import java.text.DecimalFormat;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -307,7 +310,7 @@ public class DocxToHtmlController {
                         try {
                             question.setOptionsJson(setOptionsJson(optionsJsonDto));
                             // Convert String to Double before adding to the List
-                            numericalQuestionData.setValidAnswers(List.of(Double.parseDouble(contentAfterAns)));
+                            numericalQuestionData.setValidAnswers(List.of((RoundOff(2 , contentAfterAns))));
 
                             numericalEvaluation.setData(numericalQuestionData);
 
@@ -453,6 +456,13 @@ public class DocxToHtmlController {
     public MCQEvaluationDTO getEvaluationJson(String jsonString) throws JsonProcessingException {
         // Deserialize JSON string to DTO
         return objectMapper.readValue(jsonString, MCQEvaluationDTO.class);
+    }
+
+    public Double RoundOff(Number decimals, String value) {
+//        int decimalPlaces = decimals.intValue();
+        return Double.parseDouble(value);
+//        double rawValue = Double.parseDouble(value);
+//        return rawValue // Returns rounded value with correct decimal places
     }
 
 

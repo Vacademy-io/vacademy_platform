@@ -9,6 +9,7 @@ import vacademy.io.common.auth.dto.*;
 import vacademy.io.common.auth.entity.Role;
 import vacademy.io.common.auth.entity.User;
 import vacademy.io.common.auth.entity.UserRole;
+import vacademy.io.common.auth.enums.UserRoleStatus;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.auth.repository.RoleRepository;
 import vacademy.io.common.auth.repository.UserRepository;
@@ -207,7 +208,7 @@ public class UserService {
         return savedUser;
     }
 
-    public List<UserRole> addUserRoles(String instituteId, List<String> roles, User user) {
+    public List<UserRole> addUserRoles(String instituteId, List<String> roles, User user,String status) {
 
         List<Role> rolesEntity = roleRepository.findByNameIn(roles);
 
@@ -222,6 +223,7 @@ public class UserService {
             userRole.setRole(role);
             userRole.setInstituteId(instituteId);
             userRole.setUser(user);
+            userRole.setStatus(status);
             userRoles.add(userRole);
         }
 
@@ -235,7 +237,7 @@ public class UserService {
     }
 
     public List<UserWithRolesDTO> getUserDetailsByInstituteId(String instituteId,List<String>roles, CustomUserDetails user) {
-        return userRepository.findUsersWithRolesByInstituteId(instituteId,roles).stream().map(UserWithRolesDTO::new).collect(Collectors.toList());
+        return userRepository.findUsersWithRolesByInstituteIdAndStatuses(instituteId,roles,List.of(UserRoleStatus.ACTIVE.name(),UserRoleStatus.DISABLED.name())).stream().map(UserWithRolesDTO::new).collect(Collectors.toList());
     }
 
     public UserCredentials getUserCredentials(String userId,CustomUserDetails user) {
@@ -251,6 +253,16 @@ public class UserService {
         return StreamSupport.stream(userEntities.spliterator(), false)
                 .map(user -> new UserCredentials(user.getUsername(), user.getPassword(), user.getId()))
                 .collect(Collectors.toList());
+    }
+
+    public List<UserWithRolesDTO> getUsersByInstituteIdAndStatus(String instituteId, List<String> statuses,List<String> roles,CustomUserDetails userDetails) {
+        return userRepository.findUsersByStatusAndInstitute(statuses,roles, instituteId)
+                .stream()
+                .map(UserWithRolesDTO::new).collect(Collectors.toList());
+    }
+
+    public User getUserById(String userId) {
+        return userRepository.findById(userId).orElseThrow(() -> new UserNotFoundException("User with Id " + userId + " not found"));
     }
 
 }

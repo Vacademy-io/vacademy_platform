@@ -677,7 +677,8 @@ public class AssessmentParticipantsManager {
 
     private List<StudentReportAnswerReviewDto.ReportOptionsDto> createCorrectOptionsDto(String autoEvaluationJson) throws JsonProcessingException {
         if (Objects.isNull(autoEvaluationJson)) return new ArrayList<>();
-        MCQEvaluationDTO evaluationDTO = questionEvaluationService.getEvaluationJson(autoEvaluationJson);
+        MCQEvaluationDTO evaluationDTO = (MCQEvaluationDTO) questionEvaluationService.getEvaluationJson(autoEvaluationJson, MCQEvaluationDTO.class);
+
         List<String> optionIds = evaluationDTO.getData().getCorrectOptionIds();
 
         return createOptionResponse(optionIds);

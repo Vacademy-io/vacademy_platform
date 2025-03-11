@@ -131,7 +131,7 @@ public class SlideService {
     }
 
     public List<SlideDetailProjection> getSlidesByChapterId(String chapterId, CustomUserDetails user) {
-        return slideRepository.findSlideDetailsByChapterId(chapterId, List.of(SlideStatus.PUBLISHED.name(), SlideStatus.DRAFT.name()));
+        return slideRepository.findSlideDetailsByChapterId(chapterId, List.of(SlideStatus.PUBLISHED.name(), SlideStatus.DRAFT.name(),SlideStatus.UNSYNC.name()));
     }
 
     public void updateVideoSlide(VideoSlideDTO videoSlideDTO,String status) {
@@ -304,7 +304,7 @@ public class SlideService {
             documentSlide.setPublishedDocumentTotalPages(documentSlide.getTotalPages());
         }
         documentSlide.setData(null);
-        documentSlide.setPublishedDocumentTotalPages(null);
+        documentSlide.setTotalPages(null);
     }
 
     public void handleDraftDocumentSlide(DocumentSlide documentSlide, DocumentSlideDTO documentSlideDTO) {

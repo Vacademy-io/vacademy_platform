@@ -10,6 +10,7 @@ import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.UserRoleRequestDTO;
 import vacademy.io.common.auth.dto.UserWithRolesDTO;
 import vacademy.io.common.auth.entity.User;
+import vacademy.io.common.auth.enums.UserRoleStatus;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.auth.service.UserService;
 import vacademy.io.common.exceptions.VacademyException;
@@ -31,7 +32,7 @@ public class UserController {
         try {
             // todo: handle if user already exists
             User user = userService.createUserFromUserDto(userDTO);
-            userService.addUserRoles(instituteId, userDTO.getRoles(), user);
+            userService.addUserRoles(instituteId, userDTO.getRoles(), user, UserRoleStatus.ACTIVE.name());
             return ResponseEntity.ok(new UserDTO(user));
         } catch (Exception e) {
             throw new VacademyException(e.getMessage());
@@ -48,7 +49,7 @@ public class UserController {
             if (user == null)
                 user = userService.createUserFromUserDto(userDTO);
 
-            userService.addUserRoles(instituteId, userDTO.getRoles(), user);
+            userService.addUserRoles(instituteId, userDTO.getRoles(), user,UserRoleStatus.ACTIVE.name());
             return ResponseEntity.ok(new UserDTO(user));
         } catch (Exception e) {
             throw new VacademyException(e.getMessage());
@@ -82,7 +83,7 @@ public class UserController {
         return ResponseEntity.ok("Role removed from user successfully.");
     }
 
-    @GetMapping("/get-users-by-institute-id")
+    @PostMapping("/users-by-institute-id-and-roles")
     public ResponseEntity<List<UserWithRolesDTO>> getUsersByInstituteId(@RequestParam("instituteId") String instituteId, @RequestBody List<String> roles, @RequestAttribute("user") CustomUserDetails user) {
         List<UserWithRolesDTO> users = userService.getUserDetailsByInstituteId(instituteId,roles,user);
         return ResponseEntity.ok(users);

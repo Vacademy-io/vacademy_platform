@@ -33,7 +33,7 @@ public class UserWithRolesDTO {
     private boolean isRootUser;
     private String password;
     private String profilePicFileId;
-    private List<RoleDTO> roles;
+    private List<UserRoleDTO> roles;
 
 
     public UserWithRolesDTO(User user) {
@@ -50,7 +50,7 @@ public class UserWithRolesDTO {
         this.isRootUser = user.isRootUser();
         this.profilePicFileId = user.getProfilePicFileId();
         this.roles = user.getRoles().stream()
-                .map(role -> new RoleDTO(role.getRole().getId(), role.getRole().getName())).collect(Collectors.toList());
+                .map(UserRoleDTO::new).collect(Collectors.toList());
     }
 }
 

@@ -92,6 +92,13 @@ public interface UserRepository extends CrudRepository<User, String> {
             "JOIN u.roles ur " +
             "JOIN ur.role r " +
             "WHERE ur.instituteId = :instituteId " +
-            "AND r.name IN :roles")
-    List<User> findUsersWithRolesByInstituteId(@Param("instituteId") String instituteId, @Param("roles") List<String> roles);
+            "AND r.name IN :roles " +
+            "AND ur.status IN :statuses")
+    List<User> findUsersWithRolesByInstituteIdAndStatuses(
+            @Param("instituteId") String instituteId,
+            @Param("roles") List<String> roles,
+            @Param("statuses") List<String> statuses);
+
+    @Query("SELECT DISTINCT ur.user FROM UserRole ur WHERE ur.status IN :statuses AND ur.role.name IN :roles AND ur.instituteId = :instituteId")
+    List<User> findUsersByStatusAndInstitute(@Param("statuses") List<String> statuses, @Param("roles") List<String> roles, @Param("instituteId") String instituteId);
 }

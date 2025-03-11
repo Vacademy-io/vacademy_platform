@@ -58,6 +58,7 @@ public class QuestionDTO {
         this.questionResponseType = question.getQuestionResponseType();
         this.questionType = question.getQuestionType();
         this.accessLevel = question.getAccessLevel();
+        this.optionsJson = question.getOptionsJson();
         if (provideSolution) {
             this.autoEvaluationJson = question.getAutoEvaluationJson();
             this.evaluationType = question.getEvaluationType();

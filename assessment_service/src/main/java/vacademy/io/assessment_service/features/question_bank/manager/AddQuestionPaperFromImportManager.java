@@ -143,18 +143,6 @@ public class AddQuestionPaperFromImportManager {
 
         List<Option> options = new ArrayList<>();
         List<String> correctOptionIds = new ArrayList<>();
-        MCQEvaluationDTO requestEvaluation = (MCQEvaluationDTO) questionEvaluationService.getEvaluationJson(questionRequest.getAutoEvaluationJson(), MCQEvaluationDTO.class);
-//        for (int i = 0; i < questionRequest.getOptions().size(); i++) {
-//            Option option = new Option();
-//            UUID optionId = UUID.randomUUID();
-//            option.setId(optionId.toString());
-//            option.setText(AssessmentRichTextData.fromDTO(questionRequest.getOptions().get(i).getText()));
-//            option.setQuestion(question);
-//            if (requestEvaluation.getData().getCorrectOptionIds().contains(String.valueOf(questionRequest.getOptions().get(i).getPreviewId())))
-//                correctOptionIds.add(optionId.toString());
-//            options.add(option);
-//        }
-//        question.setOptions(options);
 
         switch (QuestionTypes.valueOf(questionRequest.getQuestionType())) {
             case NUMERIC:
@@ -172,43 +160,6 @@ public class AddQuestionPaperFromImportManager {
         setQuestionMetadata(question, questionRequest, isPublic, question.getOptions());
         return question;
 
-//        if (options.isEmpty()) {
-//
-//            NumericalEvaluationDto requestNumericalEvaluation = (NumericalEvaluationDto) questionEvaluationService.getEvaluationJson(questionRequest.getAutoEvaluationJson(), NumericalEvaluationDto.class);
-//            NumericalEvaluationDto numericalEvaluation = new NumericalEvaluationDto();
-//            numericalEvaluation.setType(QuestionTypes.NUMERIC.name());
-//            NumericalEvaluationDto.NumericalData numericalData = new NumericalEvaluationDto.NumericalData();
-//            numericalEvaluation.setData(numericalData);
-//
-//
-//            if (!requestNumericalEvaluation.getData().getValidAnswers().isEmpty()) {
-//                numericalData.setValidAnswers(requestNumericalEvaluation.getData().getValidAnswers());
-//            }
-//            question.setAutoEvaluationJson(questionEvaluationService.setEvaluationJson(numericalEvaluation));
-//            question.setOptionsJson(questionRequest.getOptionsJson());
-//        } else {
-//            MCQEvaluationDTO mcqEvaluation = new MCQEvaluationDTO();
-//            mcqEvaluation.setType((options.size() > 1) ? QuestionTypes.MCQM.name() : QuestionTypes.MCQS.name());
-//            MCQEvaluationDTO.MCQData mcqData = new MCQEvaluationDTO.MCQData();
-//            mcqData.setCorrectOptionIds(correctOptionIds);
-//            mcqEvaluation.setData(mcqData);
-//            question.setAutoEvaluationJson(questionEvaluationService.setEvaluationJson(mcqEvaluation));
-//        }
-
-
-//        if (questionRequest.getQuestionResponseType() == null)
-//            question.setQuestionResponseType(QuestionResponseTypes.OPTION.name());
-//        else question.setQuestionResponseType(questionRequest.getQuestionResponseType());
-//        if (isPublic) question.setAccessLevel(QuestionAccessLevel.PUBLIC.name());
-//        else question.setAccessLevel(QuestionAccessLevel.PRIVATE.name());
-//        if (options.isEmpty()) question.setQuestionType(QuestionTypes.NUMERIC.name());
-//        else question.setQuestionType((options.size() > 1) ? QuestionTypes.MCQM.name() : QuestionTypes.MCQS.name());
-//        if (questionRequest.getEvaluationType() == null) question.setEvaluationType(EvaluationTypes.AUTO.name());
-//        else question.setEvaluationType(questionRequest.getEvaluationType());
-//        question.setMediaId(questionRequest.getMediaId());
-//        question.setExplanationTextData(AssessmentRichTextData.fromDTO(questionRequest.getExplanationText()));
-//
-//        return question;
     }
 
     public Boolean editQuestionPaper(CustomUserDetails user, AddQuestionPaperDTO questionRequestBody) {
@@ -243,6 +194,18 @@ public class AddQuestionPaperFromImportManager {
         if (questionRequest.getExplanationText() != null) {
             question.setExplanationTextData(AssessmentRichTextData.fromDTO(questionRequest.getExplanationText()));
         }
+        question.setQuestionType(questionRequest.getQuestionType());
+        switch(questionRequest.getQuestionType()){
+            case "NUMERIC" :
+                question.setQuestionResponseType(QuestionResponseTypes.ALL_INTEGER.name());
+                break;
+            case "MCQS":
+            case "MCQM":
+                question.setQuestionResponseType(QuestionResponseTypes.OPTION.name());
+                break;
+            default:
+                break;
+        }
         return question;
     }
     private List<String> createOptions(Question question, QuestionDTO questionRequest) throws JsonProcessingException {
@@ -276,6 +239,10 @@ public class AddQuestionPaperFromImportManager {
 
         question.setAutoEvaluationJson(questionEvaluationService.setEvaluationJson(numericalEvaluation));
         question.setOptionsJson(questionRequest.getOptionsJson());
+        if(!questionRequest.getQuestionResponseType().isEmpty()){
+            question.setQuestionResponseType(questionRequest.getQuestionResponseType());
+        }
+        else question.setQuestionResponseType(QuestionResponseTypes.ALL_INTEGER.name());
     }
 
     private void handleMCQQuestion(Question question, QuestionDTO questionRequest, List<Option> options , List<String> correctOptionIds) throws JsonProcessingException {
@@ -290,18 +257,15 @@ public class AddQuestionPaperFromImportManager {
 
 
     private void setQuestionMetadata(Question question, QuestionDTO questionRequest, Boolean isPublic, List<Option> options) {
-        question.setQuestionResponseType(
-                (questionRequest.getQuestionResponseType() != null) ? questionRequest.getQuestionResponseType() : QuestionResponseTypes.OPTION.name());
 
         question.setAccessLevel(isPublic ? QuestionAccessLevel.PUBLIC.name() : QuestionAccessLevel.PRIVATE.name());
-
-        question.setQuestionType(question.getQuestionType());
 
         question.setEvaluationType(
                 (questionRequest.getEvaluationType() != null) ? questionRequest.getEvaluationType() : EvaluationTypes.AUTO.name());
 
         question.setMediaId(questionRequest.getMediaId());
 
+        question.setQuestionType(questionRequest.getQuestionType());
         question.setExplanationTextData(AssessmentRichTextData.fromDTO(questionRequest.getExplanationText()));
     }
 

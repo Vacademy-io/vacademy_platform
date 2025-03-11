@@ -35,4 +35,10 @@ public interface UserRoleRepository extends CrudRepository<UserRole, String> {
                                                    @Param("instituteId") String instituteId,
                                                    @Param("userIds") List<String> userIds);
 
+    @Query("SELECT ur FROM UserRole ur WHERE ur.user = :user AND ur.status = :status AND ur.role.name = :roleName")
+    List<UserRole> findByUserAndStatusAndRoleName(@Param("user") User user,
+                                                  @Param("status") String status,
+                                                  @Param("roleName") String roleName);
+
+
 }

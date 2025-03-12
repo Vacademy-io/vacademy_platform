@@ -6,14 +6,14 @@ public class InviteUserEmailBody {
 
     public static final String ADMIN_LOGIN_URL = "https://dash.vacademy.io/login";
 
-    public static String createInviteUserEmail(String name, String username, String password, List<String> roles, String organizationName) {
+    public static String createInviteUserEmail(String name, String username, String password, List<String> roles) {
         String rolesFormatted = String.join(", ", roles);
 
         return """
             <!DOCTYPE html>
             <html>
             <head>
-                <title>Invitation to Join %s</title>
+                <title>You're Invited!</title>
                 <style>
                     body {
                         font-family: Arial, sans-serif;
@@ -65,9 +65,9 @@ public class InviteUserEmailBody {
             </head>
             <body>
                 <div class="container">
-                    <h2>Invitation to Join <strong>%s</strong></h2>
+                    <h2>You're Invited!</h2>
                     <p>Hello %s,</p>
-                    <p>You have been invited to join <strong>%s</strong>.</p>
+                    <p>You have been invited to join our platform.</p>
             
                     <div class="credentials">
                         <p><strong>Username:</strong> %s</p>
@@ -83,18 +83,17 @@ public class InviteUserEmailBody {
                 </div>
             </body>
             </html>
-            """.formatted(organizationName, organizationName, name, organizationName, username, password, rolesFormatted, ADMIN_LOGIN_URL);
+            """.formatted(name, username, password, rolesFormatted, ADMIN_LOGIN_URL);
     }
 
-
-    public static String createReminderEmail(String name, String username, String password, List<String> roles, String organizationName) {
+    public static String createReminderEmail(String name, String username, String password, List<String> roles) {
         String rolesFormatted = String.join(", ", roles);
 
         return """
             <!DOCTYPE html>
             <html>
             <head>
-                <title>You're Invited to %s!</title>
+                <title>Reminder: You're Invited!</title>
                 <style>
                     body {
                         font-family: 'Arial', sans-serif;
@@ -162,11 +161,11 @@ public class InviteUserEmailBody {
             <body>
                 <div class="container">
                     <div class="header">
-                        You're Invited to %s!
+                        Reminder: You're Invited!
                     </div>
                     <div class="content">
                         <p>Hello <strong>%s</strong>,</p>
-                        <p>You have been invited to join <strong>%s</strong>. Below are your account details:</p>
+                        <p>This is a reminder that you have been invited to join our platform. Below are your account details:</p>
                         <div class="credentials">
                             <p><strong>Username:</strong> %s</p>
                             <p><strong>Password:</strong> %s</p>
@@ -181,8 +180,6 @@ public class InviteUserEmailBody {
                 </div>
             </body>
             </html>
-            """.formatted(organizationName, organizationName, name, organizationName, username, password, rolesFormatted, ADMIN_LOGIN_URL);
+            """.formatted(name, username, password, rolesFormatted, ADMIN_LOGIN_URL);
     }
-
-
 }

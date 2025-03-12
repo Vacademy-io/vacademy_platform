@@ -19,27 +19,24 @@ public class InviteUserController {
     @PostMapping("/invite")
     public ResponseEntity<String> inviteUser(@RequestBody UserDTO userDTO,
                                              @RequestParam String instituteId,
-                                             @RequestParam String instituteName,
                                              @RequestAttribute("user") CustomUserDetails customUserDetails) {
-        String response = inviteUserService.inviteUser(userDTO, instituteId,instituteName, customUserDetails);
+        String response = inviteUserService.inviteUser(userDTO, instituteId, customUserDetails);
         return ResponseEntity.ok(response);
     }
 
 
     @PostMapping("/resend-invitation")
     public ResponseEntity<String> resendInvitation(@RequestParam String userId,
-                                                    @RequestParam String instituteName,
                                                     @RequestAttribute("user") CustomUserDetails customUserDetails) {
-        String response = inviteUserService.resendInvitation(userId, instituteName, customUserDetails);
+        String response = inviteUserService.resendInvitation(userId, customUserDetails);
         return ResponseEntity.ok(response);
     }
 
     @PutMapping("/update")
     public ResponseEntity<String> updateInvitationUser(@RequestBody UserDTO user,
-                                                   @RequestParam String instituteName,
                                                    @RequestParam String instituteId,
                                                    @RequestAttribute("user") CustomUserDetails customUserDetails) {
-        String response = inviteUserService.updateInvitationUser(user, instituteName,instituteId, customUserDetails);
+        String response = inviteUserService.updateInvitationUser(user,instituteId, customUserDetails);
         return ResponseEntity.ok(response);
     }
 

@@ -58,7 +58,9 @@ public class StudentBulkInitUploadManager {
         if (!autoGenerateConfig.isAutoGenerateEnrollmentId()) {
             headers.add(createHeader("string", false, "ENROLLMENT_NUMBER", order++, List.of("1234", "5678", "9012")));
         }
-        headers.add(createHeader("string", false, "MOBILE_NUMBER", order++, List.of("911234567890", "91987654321", "91123456789")));
+        headers.add(createRegexHeader("regex", false, "MOBILE_NUMBER", "^\\d+$",
+                "Mobile number must contain only digits", order++, List.of("911234567890", "919876543210", "911234567891")));
+
 
         // Adding date header
         Header dateHeader = createDateHeader("date", true, "DATE_OF_BIRTH", "dd-MM-yyyy", order++, List.of("01-11-2000", "21-01-2001", "11-12-2002"));
@@ -73,7 +75,7 @@ public class StudentBulkInitUploadManager {
         // integer
 
         // Adding regex header for email validation
-        Header emailHeader = createRegexHeader("regex", true, "EMAIL",
+        Header emailHeader = createRegexHeader("regex", false, "EMAIL",
                 "^(?![\\s\\S])|^((?!\\.)[\\w\\-_.]*[^.])(@\\w+)(\\.\\w+(\\.\\w+)?[^.\\W])$",
                 "Invalid email format", order++, List.of("john@example.com", "doe@example.com", "smith@example.com"));
         headers.add(emailHeader);
@@ -98,9 +100,9 @@ public class StudentBulkInitUploadManager {
             headers.add(createHeader("string", true, "CITY", order++, List.of("Indore", "Bhopal", "Jaipur")));
         }
         if (optionalFieldsConfig.isIncludePinCode()) {
-            headers.add(createHeader("string", false, "PIN_CODE", order++, List.of("452001", "462001", "452002")));
+            headers.add(createRegexHeader("regex", false, "PIN_CODE", "\\d{6}","Invalid pin code",order++, List.of("452001", "462001", "452002")));
         } else {
-            headers.add(createHeader("string", true, "PIN_CODE", order++, List.of("452001", "462001", "452002")));
+            headers.add(createRegexHeader("regex", true, "PIN_CODE", "\\d{6}","Invalid pin code",order++, List.of("452001", "462001", "452002")));
         }
         if (optionalFieldsConfig.isIncludeFatherName()) {
             headers.add(createHeader("string", false, "FATHER_NAME", order++, List.of("John Henry", "Doe Walker", "Smith Jones")));
@@ -113,14 +115,22 @@ public class StudentBulkInitUploadManager {
             headers.add(createHeader("string", true, "MOTHER_NAME", order++, List.of("John Henry", "Doe Walker", "Smith Jones")));
         }
         if (optionalFieldsConfig.isIncludeParentsMobileNumber()) {
-            headers.add(createHeader("string", false, "PARENTS_MOBILE_NUMBER", order++, List.of("911234567890", "91987654321", "91123456789")));
+            headers.add(createRegexHeader("regex", false, "PARENTS_MOBILE_NUMBER", "^\\d+$",
+                    "Mobile number must contain only digits", order++, List.of("911234567890", "919876543210", "911234567891")));
         } else {
-            headers.add(createHeader("string", true, "PARENTS_MOBILE_NUMBER", order++, List.of("911234567890", "91987654321", "91123456789")));
+            headers.add(createRegexHeader("regex", true, "PARENTS_MOBILE_NUMBER", "^\\d+$",
+                    "Mobile number must contain only digits", order++, List.of("911234567890", "919876543210", "911234567891")));
         }
         if (optionalFieldsConfig.isIncludeParentsEmail()) {
-            headers.add(createHeader("string", false, "PARENTS_EMAIL", order++, List.of("johnhenry@gmail.com", "doewalker@gmail.com", "smithjones@gmail.com")));
+            emailHeader = createRegexHeader("regex", false, "PARENTS_EMAIL",
+                    "^(?![\\s\\S])|^((?!\\.)[\\w\\-_.]*[^.])(@\\w+)(\\.\\w+(\\.\\w+)?[^.\\W])$",
+                    "Invalid email format", order++, List.of("john@example.com", "doe@example.com", "smith@example.com"));
+            headers.add(emailHeader);
         } else {
-            headers.add(createHeader("string", true, "PARENTS_EMAIL", order++, List.of("johnhenry@gmail.com", "doewalker@gmail.com", "smithjones@gmail.com")));
+            emailHeader = createRegexHeader("regex", false, "PARENTS_EMAIL",
+                    "^(?![\\s\\S])|^((?!\\.)[\\w\\-_.]*[^.])(@\\w+)(\\.\\w+(\\.\\w+)?[^.\\W])$",
+                    "Invalid email format", order++, List.of("john@example.com", "doe@example.com", "smith@example.com"));
+            headers.add(emailHeader);
         }
         if (optionalFieldsConfig.isIncludeLinkedInstituteName()) {
             headers.add(createHeader("string", false, "LINKED_INSTITUTE_NAME", order++, List.of("St. Joseph coed School", "St. Paul coed School", "St. Xavier coed School")));

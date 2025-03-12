@@ -7,6 +7,8 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import vacademy.io.admin_core_service.features.packages.dto.BatchProjection;
+import vacademy.io.common.institute.entity.PackageEntity;
 import vacademy.io.common.institute.entity.session.PackageSession;
 
 import java.util.List;
@@ -72,5 +74,44 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
     @Modifying
     @Query("UPDATE PackageSession ps SET ps.status = :status WHERE ps.session.id IN :sessionIds")
     void updateStatusBySessionIds(@Param("sessionIds") List<String> sessionIds, @Param("status") String status);
+
+    @Query("""
+    SELECT pi.packageEntity 
+    FROM PackageInstitute pi 
+    JOIN pi.packageEntity p
+    JOIN PackageSession ps ON ps.packageEntity.id = pi.packageEntity.id
+    WHERE ps.session.id = :sessionId 
+      AND pi.instituteEntity.id = :instituteId
+      AND ps.status IN :statuses
+    """)
+    List<PackageEntity> findPackagesBySessionIdAndStatuses(
+            @Param("sessionId") String sessionId,
+            @Param("instituteId") String instituteId,
+            @Param("statuses") List<String> statuses
+    );
+
+
+    @Query("""
+    SELECT 
+        ps.id AS packageSessionId,
+        CONCAT(p.packageName, ' ', l.levelName) AS batchName,
+        ps.status AS batchStatus,
+        ps.startTime AS startDate,
+        COUNT(ssigm.id) AS countStudents
+    FROM PackageSession ps
+    JOIN ps.level l
+    JOIN ps.packageEntity p
+    LEFT JOIN StudentSessionInstituteGroupMapping ssigm ON ssigm.packageSession.id = ps.id
+    WHERE p.id = :packageId
+      AND ps.status IN :packageSessionStatuses 
+      AND ssigm.status IN :studentSessionStatuses
+    GROUP BY ps.id, p.packageName, l.levelName, ps.status, ps.startTime
+    ORDER BY ps.startTime DESC
+""")
+    List<BatchProjection> findBatchDetails(
+            @Param("packageId") String packageId,
+            @Param("packageSessionStatuses") List<String> packageSessionStatuses,
+            @Param("studentSessionStatuses") List<String> studentSessionStatuses
+    );
 
 }

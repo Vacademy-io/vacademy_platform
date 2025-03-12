@@ -39,4 +39,7 @@ public class UserRole {
     @Column(name = "institute_id")
     private String instituteId;
 
+    @Column(name = "status", nullable = false, columnDefinition = "VARCHAR(255) DEFAULT 'ACTIVE'")
+    private String status = "ACTIVE";
+
 }

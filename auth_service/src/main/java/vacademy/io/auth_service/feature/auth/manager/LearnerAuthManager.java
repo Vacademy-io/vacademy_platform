@@ -14,6 +14,7 @@ import vacademy.io.common.auth.dto.RefreshTokenRequestDTO;
 import vacademy.io.common.auth.entity.RefreshToken;
 import vacademy.io.common.auth.entity.User;
 import vacademy.io.common.auth.entity.UserRole;
+import vacademy.io.common.auth.enums.UserRoleStatus;
 import vacademy.io.common.auth.repository.UserRepository;
 import vacademy.io.common.auth.repository.UserRoleRepository;
 import vacademy.io.common.auth.service.JwtService;
@@ -68,8 +69,10 @@ public class LearnerAuthManager {
 
             User user = userOptional.get();
 
-            List<UserRole> userRoles = userRoleRepository.findByUser(user);
-
+            List<UserRole> userRoles = userRoleRepository.findByUserAndStatusAndRoleName(user, UserRoleStatus.ACTIVE.name(), "STUDENT");
+            if (userRoles.isEmpty()){
+                throw new UsernameNotFoundException("invalid user request..!!");
+            }
 
             RefreshToken refreshToken = refreshTokenService.createRefreshToken(authRequestDTO.getUserName(), authRequestDTO.getClientName());
             return JwtResponseDto.builder().accessToken(jwtService.generateToken(user, userRoles)).refreshToken(refreshToken.getToken()).build();

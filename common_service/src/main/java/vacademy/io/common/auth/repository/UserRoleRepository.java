@@ -19,13 +19,26 @@ public interface UserRoleRepository extends CrudRepository<UserRole, String> {
 
     @Modifying
     @Transactional
-    @Query("DELETE FROM UserRole ur WHERE ur.user.id = :userId AND ur.role.id IN :roleIds")
-    void deleteUserRolesByUserIdAndRoleIds(@Param("userId") String userId, @Param("roleIds") List<String> roleIds);
+    @Query("DELETE FROM UserRole ur WHERE ur.user.id = :userId AND ur.role.name IN :roleNames")
+    void deleteUserRolesByUserIdAndRoleNames(@Param("userId") String userId, @Param("roleNames") List<String> roleNames);
 
     @Query("SELECT r.name AS roleName, COUNT(ur.user.id) AS userCount " +
             "FROM UserRole ur JOIN ur.role r " +
             "WHERE ur.instituteId = :instituteId and r.name != 'STUDENT' " +
             "GROUP BY r.name")
     List<RoleCountProjection> getUserRoleCountsByInstituteId(@Param("instituteId") String instituteId);
+
+    @Transactional
+    @Modifying
+    @Query("UPDATE UserRole ur SET ur.status = :newStatus WHERE ur.instituteId = :instituteId AND ur.user.id IN (:userIds)")
+    int updateUserRoleStatusByInstituteIdAndUserId(@Param("newStatus") String newStatus,
+                                                   @Param("instituteId") String instituteId,
+                                                   @Param("userIds") List<String> userIds);
+
+    @Query("SELECT ur FROM UserRole ur WHERE ur.user = :user AND ur.status = :status AND ur.role.name = :roleName")
+    List<UserRole> findByUserAndStatusAndRoleName(@Param("user") User user,
+                                                  @Param("status") String status,
+                                                  @Param("roleName") String roleName);
+
 
 }

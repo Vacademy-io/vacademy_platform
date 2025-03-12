@@ -2,16 +2,13 @@ package vacademy.io.auth_service.feature.user.dto;
 
 import com.fasterxml.jackson.databind.PropertyNamingStrategy;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
-import lombok.Getter;
-import lombok.Setter;
+import lombok.Data;
 
 import java.util.List;
 
-@Getter
-@Setter
+@Data
 @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
-public class ModifyUserRolesDTO {
-    private List<String> roles;
-    private String userId;
-    private String instituteId;
+public class UserRoleFilterDTO {
+    private List<String>roles;
+    private List<String>status;
 }

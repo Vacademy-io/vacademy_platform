@@ -197,7 +197,7 @@ public class AddQuestionPaperFromImportManager {
         question.setQuestionType(questionRequest.getQuestionType());
         switch(questionRequest.getQuestionType()){
             case "NUMERIC" :
-                question.setQuestionResponseType(QuestionResponseTypes.ALL_INTEGER.name());
+                question.setQuestionResponseType(QuestionResponseTypes.INTEGER.name());
                 break;
             case "MCQS":
             case "MCQM":
@@ -239,10 +239,10 @@ public class AddQuestionPaperFromImportManager {
 
         question.setAutoEvaluationJson(questionEvaluationService.setEvaluationJson(numericalEvaluation));
         question.setOptionsJson(questionRequest.getOptionsJson());
-        if(!questionRequest.getQuestionResponseType().isEmpty()){
+        if(questionRequest.getQuestionResponseType() != null){
             question.setQuestionResponseType(questionRequest.getQuestionResponseType());
         }
-        else question.setQuestionResponseType(QuestionResponseTypes.ALL_INTEGER.name());
+        else question.setQuestionResponseType(QuestionResponseTypes.INTEGER.name());
     }
 
     private void handleMCQQuestion(Question question, QuestionDTO questionRequest, List<Option> options , List<String> correctOptionIds) throws JsonProcessingException {

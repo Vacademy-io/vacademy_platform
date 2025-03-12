@@ -296,14 +296,14 @@ public class DocxToHtmlController {
                     i++;
                     // if options are empty then it is a numeric type question
                     if (question.getOptions().isEmpty()) {
-                        question.setQuestionResponseType(QuestionResponseType.ALL_INTEGER.name());
+                        question.setQuestionResponseType(QuestionResponseType.INTEGER.name());
                         String answerText = paragraphs.get(i).text();
                         String contentAfterAns = answerText.substring(ansRegex.length()).trim();
                         NumericalEvaluationDto numericalEvaluation = new NumericalEvaluationDto();
                         numericalEvaluation.setType(QuestionTypes.NUMERIC.name());
                         question.setQuestionType(QuestionTypes.NUMERIC.name());
                         OptionsJsonDto optionsJsonDto = new OptionsJsonDto();
-                        optionsJsonDto.setNumericType(NumericQuestionTypes.ALL_INTEGER.name());
+                        optionsJsonDto.setNumericType(NumericQuestionTypes.INTEGER.name());
                         optionsJsonDto.setDecimals(2);
 
                         NumericalEvaluationDto.NumericalData numericalQuestionData = new NumericalEvaluationDto.NumericalData();

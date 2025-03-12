@@ -2,7 +2,8 @@ package vacademy.io.assessment_service.features.question_core.enums;
 
 public enum QuestionResponseTypes {
     OPTION, WRITTEN, VIDEO, FILE, IMAGE ,
-    INTEGER ,// 0 - 9
-    ALL_INTEGER , // all positive and negative integers
-    NATURAL_NUMBERS // all positive
+    SINGLE_DIGIT_NON_NEGATIVE_INTEGER, // 0 - 9 integers
+    INTEGER, // positive and negative integers
+    POSITIVE_INTEGER, // all positive integers
+    DECIMAL; // fractional number with decimal values
 }

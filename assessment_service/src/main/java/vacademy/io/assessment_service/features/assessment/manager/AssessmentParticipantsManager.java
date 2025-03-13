@@ -798,6 +798,7 @@ public class AssessmentParticipantsManager {
             case "PARTICIPANTS" -> handleReleaseResultForParticipants(assessment, instituteId, request);
             case "ASSESSMENT_CUSTOM" ->
                     handleReleaseResultForCustomAssessmentSelection(assessment, instituteId);
+            default -> throw new VacademyException("Invalid Type");
         }
     }
 

@@ -74,21 +74,29 @@ public class StudentRegistrationManager {
         instituteStudentDTO.getUserDetails().setRoles(getStudentRoles());
         setRandomPasswordIfNull(instituteStudentDTO.getUserDetails());
         setRandomUserNameIfNull(instituteStudentDTO.getUserDetails());
+        setEnrollmentNumberIfNull(instituteStudentDTO.getInstituteStudentDetails());
         UserDTO createdUser = createUserFromAuthService(instituteStudentDTO.getUserDetails(), instituteStudentDTO.getInstituteStudentDetails().getInstituteId());
         return createStudentFromRequest(createdUser, instituteStudentDTO.getStudentExtraDetails());
     }
 
     private void setRandomUserNameIfNull(UserDTO userDetails) {
-        if (!StringUtils.hasText(userDetails.getUsername())) {
-            userDetails.setUsername(RandomStringUtils.randomAlphanumeric(6));
+        if (userDetails.getUsername() == null || !StringUtils.hasText(userDetails.getUsername())) {
+            userDetails.setUsername(generateUsername(userDetails.getFullName()));
+        }
+    }
+
+    private void setEnrollmentNumberIfNull(InstituteStudentDetails instituteStudentDetails) {
+        if (instituteStudentDetails.getEnrollmentId() == null || !StringUtils.hasText(instituteStudentDetails.getEnrollmentId())) {
+            instituteStudentDetails.setEnrollmentId(generateEnrollmentId());
         }
     }
 
     private void setRandomPasswordIfNull(UserDTO userDTO) {
-        if (!StringUtils.hasText(userDTO.getPassword())) {
-            userDTO.setPassword(RandomGenerator.generatePassword(6));
+        if (userDTO.getPassword() == null || !StringUtils.hasText(userDTO.getPassword())) {
+            userDTO.setPassword(generatePassword());
         }
     }
+
 
     private Student createStudentFromRequest(UserDTO userDTO, StudentExtraDetails studentExtraDetails) {
         Student student = new Student();

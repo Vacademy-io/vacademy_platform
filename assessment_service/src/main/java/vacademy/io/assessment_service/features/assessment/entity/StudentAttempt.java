@@ -73,6 +73,12 @@ public class StudentAttempt {
     @Column(name = "result_status")
     private String resultStatus;
 
+    @Column(name = "report_release_status")
+    private String reportReleaseStatus;
+
+    @Column(name = "report_last_release_date")
+    private Date reportLastReleaseDate;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;
 

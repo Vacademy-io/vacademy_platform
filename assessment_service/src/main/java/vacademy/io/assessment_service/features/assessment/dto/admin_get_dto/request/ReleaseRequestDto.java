@@ -12,5 +12,4 @@ import java.util.List;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class ReleaseRequestDto {
     private List<String> attemptIds;
-    private String test;
 }

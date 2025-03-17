@@ -11,6 +11,7 @@ import java.util.List;
 public class LearnerInvitationResponseDTO {
     private String id;
     private String instituteId;
+    private String learnerInvitationId;
     private String status;
     private String fullName;
     private String email;

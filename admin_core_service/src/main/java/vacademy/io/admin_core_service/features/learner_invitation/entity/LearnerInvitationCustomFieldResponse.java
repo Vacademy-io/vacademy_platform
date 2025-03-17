@@ -18,18 +18,14 @@ public class LearnerInvitationCustomFieldResponse {
     @UuidGenerator
     private String id;
 
-    @Column(name = "custom_field_id", nullable = false, insertable = false, updatable = false)
+    @Column(name = "custom_field_id", nullable = false)
     private String customFieldId;
-
-    @ManyToOne
-    @JoinColumn(name = "custom_field_id", referencedColumnName = "id", nullable = false)
-    private LearnerInvitationCustomField customField;
 
     @ManyToOne
     @JoinColumn(name = "learner_invitation_response_id", nullable = false)
     private LearnerInvitationResponse learnerInvitationResponse;
 
-    @Column(name = "value", nullable = false)
+    @Column(name = "value")
     private String value;
 
     @Column(name = "created_at", insertable = false, updatable = false)
@@ -40,9 +36,10 @@ public class LearnerInvitationCustomFieldResponse {
 
     public LearnerInvitationCustomFieldResponse() {}
 
-    public LearnerInvitationCustomFieldResponse(LearnerInvitationCustomFieldResponseDTO learnerInvitationCustomFieldResponseDTO, LearnerInvitationResponse learnerInvitationResponse) {
+    public LearnerInvitationCustomFieldResponse(LearnerInvitationCustomFieldResponseDTO learnerInvitationCustomFieldResponseDTO,
+                                                LearnerInvitationResponse learnerInvitationResponse) {
         this.customFieldId = learnerInvitationCustomFieldResponseDTO.getCustomFieldId();
         this.value = learnerInvitationCustomFieldResponseDTO.getValue();
-        this.learnerInvitationResponse = learnerInvitationResponse; // Ensure proper linking with the parent entity
+        this.learnerInvitationResponse = learnerInvitationResponse; // FIXED: Assign the response correctly
     }
 }

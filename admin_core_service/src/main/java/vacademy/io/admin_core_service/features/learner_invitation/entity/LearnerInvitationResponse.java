@@ -5,6 +5,7 @@ import lombok.Getter;
 import lombok.Setter;
 import org.hibernate.annotations.UuidGenerator;
 import vacademy.io.admin_core_service.features.learner_invitation.dto.LearnerInvitationResponseDTO;
+import vacademy.io.admin_core_service.features.learner_invitation.enums.LearnerInvitationResponseStatusEnum;
 
 import java.sql.Timestamp;
 import java.util.List;
@@ -21,7 +22,7 @@ public class LearnerInvitationResponse {
     private String id;
 
     @ManyToOne
-    @JoinColumn(name = "learner_invitation_code_id", nullable = false)
+    @JoinColumn(name = "learner_invitation_id", nullable = false)
     private LearnerInvitation learnerInvitation;
 
     @Column(name = "institute_id", nullable = false)
@@ -54,20 +55,15 @@ public class LearnerInvitationResponse {
 
     public LearnerInvitationResponse() {}
 
-    public LearnerInvitationResponse(LearnerInvitationResponseDTO learnerInvitationResponseDTO) {
+    public LearnerInvitationResponse(LearnerInvitationResponseDTO learnerInvitationResponseDTO,LearnerInvitation learnerInvitation) {
         this.id = learnerInvitationResponseDTO.getId();
         this.instituteId = learnerInvitationResponseDTO.getInstituteId();
-        this.status =
+        this.status = LearnerInvitationResponseStatusEnum.ACTIVE.name();
         this.fullName = learnerInvitationResponseDTO.getFullName();
         this.email = learnerInvitationResponseDTO.getEmail();
         this.contactNumber = learnerInvitationResponseDTO.getContactNumber();
         this.batchOptionsJson = learnerInvitationResponseDTO.getBatchOptionsJson();
         this.batchSelectionJson = learnerInvitationResponseDTO.getBatchSelectionResponseJson();
-
-        // Convert DTOs to Entities and ensure proper relationship mapping
-        this.customFieldsResponse = learnerInvitationResponseDTO.getCustomFieldsResponse()
-                .stream()
-                .map(dto -> new LearnerInvitationCustomFieldResponse(dto, this)) // Ensure parent-child linkage
-                .collect(Collectors.toList());
+        this.learnerInvitation = learnerInvitation;
     }
 }

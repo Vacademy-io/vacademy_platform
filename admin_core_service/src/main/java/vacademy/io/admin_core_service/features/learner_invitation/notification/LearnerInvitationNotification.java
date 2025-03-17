@@ -1,27 +1,67 @@
 package vacademy.io.admin_core_service.features.learner_invitation.notification;
 
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.notification.dto.NotificationDTO;
 import vacademy.io.admin_core_service.features.notification.dto.NotificationToUserDTO;
 import vacademy.io.admin_core_service.features.notification.enums.NotificationType;
+import vacademy.io.admin_core_service.features.notification.service.NotificationService;
+import vacademy.io.common.notification.dto.GenericEmailRequest;
 
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
+@Service
 public class LearnerInvitationNotification {
 
+    private final NotificationService notificationService;
 
+    public LearnerInvitationNotification(NotificationService notificationService) {
+        this.notificationService = notificationService;
+    }
 
-   public static void sendLearnerInvitationNotification(List<String>emails,String instituteName, String invitationCode) {
-       NotificationDTO notificationDTO = new NotificationDTO();
-       notificationDTO.setNotificationType(NotificationType.EMAIL.name());
-       notificationDTO.setSubject("Invitation to join " + instituteName);
-       notificationDTO.setSource("LEARNER_INVITATION");
-       notificationDTO.setSourceId(invitationCode);
-       notificationDTO.setBody(LearnerInvitationEmailBody.getLearnerInvitationEmailBody(instituteName, invitationCode));
-       List<NotificationToUserDTO>users = emails.stream().map(email ->{
-           NotificationToUserDTO notificationToUserDTO = new NotificationToUserDTO();
-           notificationToUserDTO.setUserId(email);
-           notificationToUserDTO.setChannelId(email);
-           return notificationToUserDTO;
-       }).toList();
-   }
+    public void sendLearnerInvitationNotification(List<String> emails, String instituteName, String invitationCode) {
+        NotificationDTO notificationDTO = new NotificationDTO();
+        notificationDTO.setNotificationType(NotificationType.EMAIL.name());
+        notificationDTO.setSubject("Invitation to join " + instituteName);
+        notificationDTO.setSource("LEARNER_INVITATION");
+        notificationDTO.setSourceId(invitationCode);
+        notificationDTO.setBody(LearnerInvitationEmailBody.getLearnerInvitationEmailBody(instituteName, invitationCode));
+
+        List<NotificationToUserDTO> users = emails.stream().map(email -> {
+            NotificationToUserDTO notificationToUserDTO = new NotificationToUserDTO();
+            notificationToUserDTO.setUserId(email);
+            notificationToUserDTO.setChannelId(email);
+            return notificationToUserDTO;
+        }).toList();
+
+        notificationDTO.setUsers(users);
+        notificationService.sendEmailToUsers(notificationDTO);
+    }
+
+    @Async
+    public void sendLearnerInvitationNotificationAsync(List<String> emails, String instituteName, String invitationCode) {
+        CompletableFuture.runAsync(() -> {
+            try {
+                sendLearnerInvitationNotification(emails, instituteName, invitationCode);
+            } catch (Exception e) {
+                System.err.println("Error sending invitation emails: " + e.getMessage());
+            }
+        });
+    }
+
+    @Async
+    public void sendLearnerInvitationResponseNotification(String email, String instituteName, String responseId) {
+        CompletableFuture.runAsync(() -> {
+            try {
+                GenericEmailRequest genericEmailRequest = new GenericEmailRequest();
+                genericEmailRequest.setSubject("Response recorded for " + instituteName);
+                genericEmailRequest.setTo(email);
+                genericEmailRequest.setBody(LearnerInvitationEmailBody.getLearnerStatusUpdateEmailBody(instituteName));
+                notificationService.sendGenericHtmlMail(genericEmailRequest);
+            } catch (Exception e) {
+                System.err.println("Error sending invitation response email: " + e.getMessage());
+            }
+        });
+    }
 }

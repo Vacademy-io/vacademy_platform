@@ -9,7 +9,7 @@ import vacademy.io.admin_core_service.features.institute.repository.InstituteRep
 import vacademy.io.admin_core_service.features.learner_invitation.dto.LearnerInvitationCodeDTO;
 import vacademy.io.admin_core_service.features.learner_invitation.entity.LearnerInvitation;
 import vacademy.io.admin_core_service.features.learner_invitation.notification.LearnerInvitationNotification;
-import vacademy.io.admin_core_service.features.learner_invitation.repository.LearnerInvitationCodeRepository;
+import vacademy.io.admin_core_service.features.learner_invitation.repository.LearnerInvitationRepository;
 import vacademy.io.admin_core_service.features.learner_invitation.repository.LearnerInvitationCustomFieldRepository;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
@@ -26,10 +26,13 @@ public class LearnerInvitationService {
     private LearnerInvitationCustomFieldRepository learnerInvitationCustomFieldRepository;
 
     @Autowired
-    private LearnerInvitationCodeRepository learnerInvitationCodeRepository;
+    private LearnerInvitationRepository learnerInvitationRepository;
 
     @Autowired
     private InstituteRepository instituteRepository;
+
+    @Autowired
+    private LearnerInvitationNotification notification;
 
     @Transactional
     public String createLearnerInvitationCode(LearnerInvitationCodeDTO learnerInvitationCodeDTO) {
@@ -37,7 +40,7 @@ public class LearnerInvitationService {
         learnerInvitationCodeDTO.setInviteCode(generateInviteCode());
 
         LearnerInvitation learnerInvitation = new LearnerInvitation(learnerInvitationCodeDTO);
-        learnerInvitation = learnerInvitationCodeRepository.save(learnerInvitation);
+        learnerInvitation = learnerInvitationRepository.save(learnerInvitation);
 
         Institute institute = instituteRepository.findById(learnerInvitationCodeDTO.getInstituteId())
                 .orElseThrow(() -> new VacademyException("Institute not found with ID: " + learnerInvitationCodeDTO.getInstituteId()));
@@ -50,16 +53,8 @@ public class LearnerInvitationService {
         return learnerInvitation.getId();
     }
 
-    @Async
     public void sendLearnerInvitationNotificationAsync(List<String> emails, String instituteName, String invitationCode) {
-        CompletableFuture.runAsync(() -> {
-            try {
-                LearnerInvitationNotification.sendLearnerInvitationNotification(emails, instituteName, invitationCode);
-            } catch (Exception e) {
-                // Handle exception (log it, send alerts, etc.)
-                System.err.println("Error sending invitation emails: " + e.getMessage());
-            }
-        });
+        notification.sendLearnerInvitationNotification(emails, instituteName, invitationCode);
     }
 
     private void validateRequest(LearnerInvitationCodeDTO learnerInvitationCodeDTO) {

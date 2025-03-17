@@ -21,5 +21,4 @@ public class LearnerInvitationController {
         String invitationId = learnerInvitationService.createLearnerInvitationCode(learnerInvitationCodeDTO);
         return ResponseEntity.ok(invitationId);
     }
-
 }

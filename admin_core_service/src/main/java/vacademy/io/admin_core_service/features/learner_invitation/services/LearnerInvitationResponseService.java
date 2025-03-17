@@ -5,24 +5,22 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
+import vacademy.io.admin_core_service.features.learner_invitation.dto.LearnerInvitationDTO;
 import vacademy.io.admin_core_service.features.learner_invitation.dto.LearnerInvitationCustomFieldResponseDTO;
 import vacademy.io.admin_core_service.features.learner_invitation.dto.LearnerInvitationResponseDTO;
 import vacademy.io.admin_core_service.features.learner_invitation.entity.LearnerInvitation;
 import vacademy.io.admin_core_service.features.learner_invitation.entity.LearnerInvitationCustomFieldResponse;
 import vacademy.io.admin_core_service.features.learner_invitation.entity.LearnerInvitationResponse;
+import vacademy.io.admin_core_service.features.learner_invitation.enums.LearnerInvitationCodeStatusEnum;
 import vacademy.io.admin_core_service.features.learner_invitation.enums.LearnerInvitationResponseStatusEnum;
 import vacademy.io.admin_core_service.features.learner_invitation.notification.LearnerInvitationNotification;
-import vacademy.io.admin_core_service.features.learner_invitation.repository.LearnerInvitationCustomFieldRepository;
 import vacademy.io.admin_core_service.features.learner_invitation.repository.LearnerInvitationCustomFieldResponseRepository;
 import vacademy.io.admin_core_service.features.learner_invitation.repository.LearnerInvitationRepository;
 import vacademy.io.admin_core_service.features.learner_invitation.repository.LearnerInvitationResponseRepository;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 
 @Service
 public class LearnerInvitationResponseService {
@@ -54,7 +52,6 @@ public class LearnerInvitationResponseService {
         return learnerInvitationResponse.getId();
     }
 
-    // This should run asycn
     private void sendMailToLeaner(LearnerInvitationResponse learnerInvitationResponse) {
         Institute institute = instituteRepository.findById(learnerInvitationResponse.getInstituteId()).orElseThrow(() -> new VacademyException("Institute not found"));
         notification.sendLearnerInvitationResponseNotification(learnerInvitationResponse.getEmail(),institute.getInstituteName(),learnerInvitationResponse.getId());
@@ -96,5 +93,13 @@ public class LearnerInvitationResponseService {
         if (learnerInvitationResponse.isPresent()){
             throw new VacademyException("Learner with email id "+learnerInvitationResponseDTO.getEmail()+" have been already requested for this invitation");
         }
+    }
+
+    public LearnerInvitationDTO getInvitationFormByInviteCodeAndInstituteId(String instituteId, String inviteCode){
+        LearnerInvitation learnerInvitation = learnerInvitationRepository.findByInstituteIdAndInviteCodeAndStatus(instituteId,inviteCode,List.of(LearnerInvitationCodeStatusEnum.ACTIVE.name())).orElseThrow(()->new VacademyException("This invite link is closed. Please contact to institute for further support or reopen the link."));
+        if (learnerInvitation.getExpiryDate().before(new Date())){
+            throw new VacademyException("This invite code is expired. Please contact to institute for further support.");
+        }
+        return learnerInvitation.mapToDTO();
     }
 }

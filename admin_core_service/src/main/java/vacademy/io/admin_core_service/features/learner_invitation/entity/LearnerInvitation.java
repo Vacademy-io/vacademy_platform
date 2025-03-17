@@ -4,7 +4,7 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 import org.hibernate.annotations.UuidGenerator;
-import vacademy.io.admin_core_service.features.learner_invitation.dto.LearnerInvitationCodeDTO;
+import vacademy.io.admin_core_service.features.learner_invitation.dto.LearnerInvitationDTO;
 
 import java.sql.Date;
 import java.sql.Timestamp;
@@ -44,21 +44,38 @@ public class LearnerInvitation {
 
     public LearnerInvitation() {}
 
-    public LearnerInvitation(LearnerInvitationCodeDTO learnerInvitationCodeDTO) {
-        this.name = learnerInvitationCodeDTO.getName();
-        this.status = learnerInvitationCodeDTO.getStatus();
+    public LearnerInvitation(LearnerInvitationDTO learnerInvitationDTO) {
+        this.name = learnerInvitationDTO.getName();
+        this.status = learnerInvitationDTO.getStatus();
         this.dateGenerated = new Date(System.currentTimeMillis());
-        this.expiryDate = learnerInvitationCodeDTO.getExpiryDate();
-        this.instituteId = learnerInvitationCodeDTO.getInstituteId();
-        this.inviteCode = learnerInvitationCodeDTO.getInviteCode();
-        this.batchOptionsJson = learnerInvitationCodeDTO.getBatchOptionsJson();
+        this.expiryDate = learnerInvitationDTO.getExpiryDate();
+        this.instituteId = learnerInvitationDTO.getInstituteId();
+        this.inviteCode = learnerInvitationDTO.getInviteCode();
+        this.batchOptionsJson = learnerInvitationDTO.getBatchOptionsJson();
 
-        if (Objects.nonNull(learnerInvitationCodeDTO.getCustomFields())) {
-            this.customFields = learnerInvitationCodeDTO.getCustomFields()
+        if (Objects.nonNull(learnerInvitationDTO.getCustomFields())) {
+            this.customFields = learnerInvitationDTO.getCustomFields()
                     .stream()
                     .filter(Objects::nonNull)
                     .map(fieldDTO -> new LearnerInvitationCustomField(fieldDTO, this))
                     .toList();
         }
+    }
+
+    public LearnerInvitationDTO mapToDTO(){
+        return
+                LearnerInvitationDTO
+                        .builder()
+                        .id(this.id)
+                        .inviteCode(this.inviteCode)
+                        .batchOptionsJson(this.batchOptionsJson)
+                        .expiryDate(this.expiryDate)
+                        .instituteId(this.instituteId)
+                        .dateGenerated(this.dateGenerated)
+                        .name(this.name)
+                        .status(this.status)
+                        .customFields(this.customFields.stream().map(LearnerInvitationCustomField::mapToDTO).toList())
+                        .build();
+
     }
 }

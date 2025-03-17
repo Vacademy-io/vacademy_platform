@@ -2,22 +2,27 @@ package vacademy.io.admin_core_service.features.learner_invitation.services;
 
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.scheduling.annotation.Async;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
-import vacademy.io.admin_core_service.features.learner_invitation.dto.LearnerInvitationCodeDTO;
+import vacademy.io.admin_core_service.features.learner_invitation.dto.InvitationDetailProjection;
+import vacademy.io.admin_core_service.features.learner_invitation.dto.LearnerInvitationDTO;
+import vacademy.io.admin_core_service.features.learner_invitation.dto.LearnerInvitationDetailFilterDTO;
 import vacademy.io.admin_core_service.features.learner_invitation.entity.LearnerInvitation;
+import vacademy.io.admin_core_service.features.learner_invitation.enums.LearnerInvitationResponseStatusEnum;
 import vacademy.io.admin_core_service.features.learner_invitation.notification.LearnerInvitationNotification;
 import vacademy.io.admin_core_service.features.learner_invitation.repository.LearnerInvitationRepository;
 import vacademy.io.admin_core_service.features.learner_invitation.repository.LearnerInvitationCustomFieldRepository;
+import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
 
 import java.security.SecureRandom;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.CompletableFuture;
 
 @Service
 public class LearnerInvitationService {
@@ -35,19 +40,19 @@ public class LearnerInvitationService {
     private LearnerInvitationNotification notification;
 
     @Transactional
-    public String createLearnerInvitationCode(LearnerInvitationCodeDTO learnerInvitationCodeDTO) {
-        validateRequest(learnerInvitationCodeDTO);
-        learnerInvitationCodeDTO.setInviteCode(generateInviteCode());
+    public String createLearnerInvitationCode(LearnerInvitationDTO learnerInvitationDTO, CustomUserDetails user) {
+        validateRequest(learnerInvitationDTO);
+        learnerInvitationDTO.setInviteCode(generateInviteCode());
 
-        LearnerInvitation learnerInvitation = new LearnerInvitation(learnerInvitationCodeDTO);
+        LearnerInvitation learnerInvitation = new LearnerInvitation(learnerInvitationDTO);
         learnerInvitation = learnerInvitationRepository.save(learnerInvitation);
 
-        Institute institute = instituteRepository.findById(learnerInvitationCodeDTO.getInstituteId())
-                .orElseThrow(() -> new VacademyException("Institute not found with ID: " + learnerInvitationCodeDTO.getInstituteId()));
+        Institute institute = instituteRepository.findById(learnerInvitationDTO.getInstituteId())
+                .orElseThrow(() -> new VacademyException("Institute not found with ID: " + learnerInvitationDTO.getInstituteId()));
 
-        List<String> emails = learnerInvitationCodeDTO.getEmailsToSendInvitation();
+        List<String> emails = learnerInvitationDTO.getEmailsToSendInvitation();
         if (emails != null && !emails.isEmpty()) {
-            sendLearnerInvitationNotificationAsync(emails, institute.getInstituteName(), learnerInvitationCodeDTO.getInviteCode());
+            sendLearnerInvitationNotificationAsync(emails, institute.getInstituteName(), learnerInvitationDTO.getInviteCode());
         }
 
         return learnerInvitation.getId();
@@ -57,20 +62,20 @@ public class LearnerInvitationService {
         notification.sendLearnerInvitationNotification(emails, instituteName, invitationCode);
     }
 
-    private void validateRequest(LearnerInvitationCodeDTO learnerInvitationCodeDTO) {
-        if (Objects.isNull(learnerInvitationCodeDTO)) {
+    private void validateRequest(LearnerInvitationDTO learnerInvitationDTO) {
+        if (Objects.isNull(learnerInvitationDTO)) {
             throw new VacademyException("Invalid request: Learner invitation data is missing.");
         }
-        if (!StringUtils.hasText(learnerInvitationCodeDTO.getName())) {
+        if (!StringUtils.hasText(learnerInvitationDTO.getName())) {
             throw new VacademyException("Invalid request: Name cannot be null or empty.");
         }
-        if (!StringUtils.hasText(learnerInvitationCodeDTO.getStatus())) {
+        if (!StringUtils.hasText(learnerInvitationDTO.getStatus())) {
             throw new VacademyException("Invalid request: Status cannot be null or empty.");
         }
-        if (!StringUtils.hasText(learnerInvitationCodeDTO.getInstituteId())) {
+        if (!StringUtils.hasText(learnerInvitationDTO.getInstituteId())) {
             throw new VacademyException("Invalid request: Institute ID cannot be null or empty.");
         }
-        if (Objects.isNull(learnerInvitationCodeDTO.getExpiryDate())) {
+        if (Objects.isNull(learnerInvitationDTO.getExpiryDate())) {
             throw new VacademyException("Invalid request: Expiry Date cannot be null.");
         }
     }
@@ -85,5 +90,21 @@ public class LearnerInvitationService {
         }
 
         return inviteCode.toString();
+    }
+
+    public Page<InvitationDetailProjection> getInvitationDetails(String instituteId, LearnerInvitationDetailFilterDTO filter, int pageNo, int pageSize, CustomUserDetails user) {
+        Pageable pageable = PageRequest.of(pageNo, pageSize);
+        if (StringUtils.hasText(filter.getName())){
+            return learnerInvitationRepository.findInvitationsWithAcceptedCountByName(instituteId,
+                    filter.getStatus(),
+                    List.of(LearnerInvitationResponseStatusEnum.ACTIVE.name(),
+                            LearnerInvitationResponseStatusEnum.ACCEPTED.name()),
+                    filter.getName(),pageable);
+        }
+        return learnerInvitationRepository.findInvitationsWithAcceptedCount(
+               instituteId, filter.getStatus(),
+               List.of(LearnerInvitationResponseStatusEnum.ACTIVE.name(),
+                       LearnerInvitationResponseStatusEnum.ACCEPTED.name()),
+               pageable);
     }
 }

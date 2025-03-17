@@ -46,4 +46,16 @@ public class LearnerInvitationCustomField {
         this.defaultValue = learnerInvitationCustomFieldDTO.getDefaultValue();
         this.learnerInvitation = learnerInvitation;
     }
+    public LearnerInvitationCustomFieldDTO mapToDTO(){
+        return LearnerInvitationCustomFieldDTO
+                .builder()
+                .id(this.id)
+                .commaSeparatedOptions(this.commaSeparatedOptions)
+                .description(this.description)
+                .fieldName(this.fieldName)
+                .fieldType(this.fieldType)
+                .isMandatory(this.isMandatory)
+                .defaultValue(this.defaultValue)
+                .build();
+    }
 }

@@ -34,7 +34,7 @@ public class UserWithRolesDTO {
     private String password;
     private String profilePicFileId;
     private List<UserRoleDTO> roles;
-
+    private String status;
 
     public UserWithRolesDTO(User user) {
         this.id = user.getId();
@@ -51,6 +51,9 @@ public class UserWithRolesDTO {
         this.profilePicFileId = user.getProfilePicFileId();
         this.roles = user.getRoles().stream()
                 .map(UserRoleDTO::new).collect(Collectors.toList());
+        if (this.roles != null && this.roles.size() != 0){
+            this.status = this.roles.get(0).getStatus();
+        }
     }
 }
 

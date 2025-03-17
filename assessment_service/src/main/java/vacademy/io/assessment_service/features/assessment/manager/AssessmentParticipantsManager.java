@@ -1,6 +1,8 @@
 package vacademy.io.assessment_service.features.assessment.manager;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.itextpdf.html2pdf.ConverterProperties;
+import com.itextpdf.html2pdf.HtmlConverter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
@@ -8,12 +10,14 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.ObjectUtils;
 import org.springframework.util.StringUtils;
 import vacademy.io.assessment_service.features.assessment.dto.*;
+import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.request.ReleaseRequestDto;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.request.RespondentFilter;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.*;
 import vacademy.io.assessment_service.features.assessment.dto.create_assessment.AssessmentRegistrationsDto;
@@ -22,11 +26,9 @@ import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentBatchRegistration;
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentCustomField;
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentUserRegistration;
-import vacademy.io.assessment_service.features.assessment.enums.AssessmentStatus;
-import vacademy.io.assessment_service.features.assessment.enums.AssessmentVisibility;
-import vacademy.io.assessment_service.features.assessment.enums.UserRegistrationFilterEnum;
-import vacademy.io.assessment_service.features.assessment.enums.UserRegistrationSources;
+import vacademy.io.assessment_service.features.assessment.enums.*;
 import vacademy.io.assessment_service.features.assessment.repository.*;
+import vacademy.io.assessment_service.features.assessment.service.HtmlBuilderService;
 import vacademy.io.assessment_service.features.assessment.service.QuestionBasedStrategyFactory;
 import vacademy.io.assessment_service.features.assessment.service.assessment_get.AssessmentService;
 import vacademy.io.assessment_service.features.assessment.service.bulk_entry_services.AssessmentBatchRegistrationService;
@@ -47,8 +49,11 @@ import vacademy.io.common.core.utils.DateUtil;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.student.dto.BasicParticipantDTO;
 
+import java.io.ByteArrayOutputStream;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
+import java.util.stream.StreamSupport;
 
 import static vacademy.io.common.auth.enums.CompanyStatus.ACTIVE;
 
@@ -90,6 +95,12 @@ public class AssessmentParticipantsManager {
 
     @Autowired
     AssessmentNotificationMetadataRepository assessmentNotificationMetadataRepository;
+
+    @Autowired
+    HtmlBuilderService htmlBuilderService;
+
+    @Autowired
+    SectionRepository sectionRepository;
 
 
     @Transactional
@@ -584,9 +595,8 @@ public class AssessmentParticipantsManager {
         Assessment assessment = assessmentRepository.findByAssessmentIdAndInstituteId(assessmentId, instituteId)
                 .orElseThrow(() -> new VacademyException("Assessment Not Found"));
 
-        List<String> sectionIds = assessment.getSections().stream()
-                .map(Section::getId)
-                .toList();
+        List<Section> sections = sectionRepository.findByAssessmentIdAndStatusNotIn(assessmentId, List.of("DELETED"));
+        List<String> sectionIds = sections.stream().map(Section::getId).toList();
 
         if (CollectionUtils.isEmpty(sectionIds)) {
             throw new VacademyException("No Sections Found for the Given Assessment");
@@ -738,5 +748,156 @@ public class AssessmentParticipantsManager {
                 .totalPages(responses.getTotalPages())
                 .last(responses.isLast())
                 .build();
+    }
+
+    /**
+     * Releases participants' results based on the given request type.
+     *
+     * @param userDetails  The user details of the requester.
+     * @param assessmentId The ID of the assessment.
+     * @param instituteId  The ID of the institute.
+     * @param request      The request containing participant IDs (if applicable).
+     * @param type         The type of release (ASSESSMENT_ALL, PARTICIPANTS, ASSESSMENT_CUSTOM).
+     * @return ResponseEntity<String> indicating success or failure.
+     */
+    public ResponseEntity<String> releaseParticipantsResult(CustomUserDetails userDetails,
+                                                            String assessmentId,
+                                                            String instituteId,
+                                                            ReleaseRequestDto request,
+                                                            String type) {
+
+        if (!StringUtils.hasText(type)) throw new VacademyException("Invalid Request Type");
+
+        Optional<Assessment> assessmentOptional = assessmentRepository.findById(assessmentId);
+        if (assessmentOptional.isEmpty()) throw new VacademyException("No Assessment Found");
+
+        try{
+            // Call the async method
+            releaseResultWrapper(assessmentOptional.get(), instituteId, request, type);
+        }
+        catch (Exception e){
+            log.error("[FAILED TO RELEASE] "+e.getMessage());
+        }
+
+        return ResponseEntity.ok("Done");
+    }
+
+
+    @Async
+    public CompletableFuture<Void> releaseResultWrapper(Assessment assessment, String instituteId, ReleaseRequestDto request, String type) {
+        return CompletableFuture.runAsync(() -> processReleaseParticipants(assessment,instituteId,request,type))
+                .thenRun(() -> sendNotificationToAdmin(instituteId));
+    }
+
+    private void sendNotificationToAdmin(String instituteId) {
+        //TODO: Send email for successfully releasing result
+    }
+
+    private void processReleaseParticipants(Assessment assessment, String instituteId, ReleaseRequestDto request, String type) {
+        switch (type) {
+            case "ASSESSMENT_ALL" -> handleReleaseResultForAllAssessment(assessment, instituteId);
+            case "PARTICIPANTS" -> handleReleaseResultForParticipants(assessment, instituteId, request);
+            case "ASSESSMENT_CUSTOM" ->
+                    handleReleaseResultForCustomAssessmentSelection(assessment, instituteId);
+            default -> throw new VacademyException("Invalid Type");
+        }
+    }
+
+    /**
+     * Handles result release for a custom selection of assessments.
+     *
+     * @param assessment  The assessment for which results are being released.
+     * @param instituteId The ID of the institute.
+     */
+    private void handleReleaseResultForCustomAssessmentSelection(Assessment assessment, String instituteId) {
+        List<StudentAttempt> attemptList = studentAttemptRepository.findAllParticipantsFromAssessmentAndStatusNotInAndReportNotReleased(
+                assessment.getId(), List.of("DELETED")
+        );
+        createParticipantsReportAndSendEmail(attemptList, assessment, instituteId);
+    }
+
+    /**
+     * Generates reports for the given student attempts and sends notifications via email.
+     *
+     * @param attemptList  The list of student attempts.
+     * @param assessment   The assessment details.
+     * @param instituteId  The ID of the institute.
+     */
+    private void createParticipantsReportAndSendEmail(List<StudentAttempt> attemptList, Assessment assessment, String instituteId) {
+        attemptList.forEach(attempt -> {
+            // Generate student report details
+            StudentReportOverallDetailDto studentReportOverallDetailDto = createStudentReportDetailResponse(
+                    assessment.getId(), attempt.getId(), instituteId
+            );
+
+            // Convert report to HTML
+            String studentReportHtml = htmlBuilderService.generateStudentReportHtml(assessment.getName(), studentReportOverallDetailDto);
+
+            // Convert HTML report to PDF
+            ByteArrayOutputStream pdfOutputStream = new ByteArrayOutputStream();
+            ConverterProperties converterProperties = new ConverterProperties();
+            HtmlConverter.convertToPdf(studentReportHtml, pdfOutputStream, converterProperties);
+
+            // Convert the PDF stream to a byte array
+            byte[] participantPdfReport = pdfOutputStream.toByteArray();
+
+            // Update attempt status
+            updateAttemptDataReleaseData(attempt);
+
+            // Send notification to the student
+            sendNotificationToStudent(participantPdfReport);
+        });
+    }
+
+    /**
+     * Updates the attempt data to mark the report as released.
+     *
+     * @param attempt The student attempt to update.
+     */
+    private void updateAttemptDataReleaseData(StudentAttempt attempt) {
+        attempt.setReportReleaseStatus(ReleaseResultStatusEnum.RELEASED.name());
+        attempt.setReportLastReleaseDate(DateUtil.getCurrentUtcTime());
+        studentAttemptRepository.save(attempt);
+    }
+
+    /**
+     * Sends a notification to the student with the generated report.
+     *
+     * @param participantPdfReport The generated PDF report as a byte array.
+     */
+    private void sendNotificationToStudent(byte[] participantPdfReport) {
+        // TODO: Implement email notification logic to send the report
+        log.info("Notification Check");
+    }
+
+    /**
+     * Handles result release for a specific list of participants.
+     *
+     * @param assessment  The assessment details.
+     * @param instituteId The ID of the institute.
+     * @param request     The request containing the participant attempt IDs.
+     */
+    private void handleReleaseResultForParticipants(Assessment assessment, String instituteId, ReleaseRequestDto request) {
+        if (Objects.isNull(request)) throw new VacademyException("Invalid Request");
+
+        // Fetch attempts based on request
+        List<StudentAttempt> attemptList = StreamSupport
+                .stream(studentAttemptRepository.findAllById(request.getAttemptIds()).spliterator(), false)
+                .toList();
+
+        createParticipantsReportAndSendEmail(attemptList, assessment, instituteId);
+    }
+
+    /**
+     * Handles result release for all participants in an assessment.
+     *
+     * @param assessment  The assessment details.
+     * @param instituteId The ID of the institute.
+     */
+    private void handleReleaseResultForAllAssessment(Assessment assessment, String instituteId) {
+        List<StudentAttempt> attemptList = studentAttemptRepository.findAllParticipantsFromAssessmentAndStatusNotIn(
+                assessment.getId(), List.of("DELETED")
+        );
+        createParticipantsReportAndSendEmail(attemptList, assessment, instituteId);
     }
 }

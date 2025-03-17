@@ -464,6 +464,17 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
     List<StudentAttempt> findAllParticipantsFromAssessmentAndStatusNotIn(@Param("assessmentId") String assessmentId,
                                                                          @Param("statusList") List<String> statusList);
 
+    @Query(value = """
+            select sa.* from student_attempt sa
+            join assessment_user_registration aur on aur.id = sa.registration_id
+            join assessment a on a.id = aur.assessment_id
+            where a.id = :assessmentId
+            and aur.status not in (:statusList)
+            and (sa.report_release_status IS NULL OR sa.report_release_status = 'PENDING')
+            """, nativeQuery = true)
+    List<StudentAttempt> findAllParticipantsFromAssessmentAndStatusNotInAndReportNotReleased(@Param("assessmentId") String assessmentId,
+                                                                         @Param("statusList") List<String> statusList);
+
 
     @Query(value = """
             WITH RankedAttempts AS (

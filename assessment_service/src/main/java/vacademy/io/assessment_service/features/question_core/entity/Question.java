@@ -27,8 +27,9 @@ public class Question {
     @Column(name = "media_id")
     private String mediaId;
 
+    // One-to-One mapping with AssessmentRichTextData for parent_rich_text_id
     @OneToOne(cascade = CascadeType.ALL)
-    @JoinColumn(name = "parent_rich_text_id", referencedColumnName = "id")
+    @JoinColumn(name = "parent_rich_text_id", referencedColumnName = "id", insertable = true, updatable = true)
     private AssessmentRichTextData parentRichText;
 
     @Column(name = "created_at", insertable = false, updatable = false)
@@ -85,6 +86,7 @@ public class Question {
         this.defaultQuestionTimeMins = questionDTO.getDefaultQuestionTimeMins();
         this.textData = AssessmentRichTextData.fromDTO(questionDTO.getText());
         this.explanationTextData = AssessmentRichTextData.fromDTO(questionDTO.getExplanationText());
+        this.parentRichText = AssessmentRichTextData.fromDTO(questionDTO.getParentRichText());
     }
 
     public Question(String id) {

@@ -40,6 +40,7 @@ public class QuestionDTO {
     private String evaluationType;
     private AssessmentRichTextDataDTO explanationText;
     private String parentRichTextId;
+    private AssessmentRichTextDataDTO parentRichText;
     private Integer defaultQuestionTimeMins;
     private List<OptionDTO> options = new ArrayList<>();
     private List<String> errors = new ArrayList<>();
@@ -73,6 +74,10 @@ public class QuestionDTO {
 
         if (question.getExplanationTextData() != null && provideSolution) {
             this.explanationText = new AssessmentRichTextDataDTO(question.getExplanationTextData());
+        }
+
+        if(question.getParentRichText() != null){
+            this.parentRichText = new AssessmentRichTextDataDTO((question.getParentRichText()));
         }
 
         if (question.getOptions() != null) {

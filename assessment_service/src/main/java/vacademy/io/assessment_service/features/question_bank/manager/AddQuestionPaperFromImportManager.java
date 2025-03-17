@@ -64,9 +64,15 @@ public class AddQuestionPaperFromImportManager {
         List<Option> options = new ArrayList<>();
         for (int i = 0; i < questionRequestBody.getQuestions().size(); i++) {
             Question question = makeQuestionAndOptionFromImportQuestion(questionRequestBody.getQuestions().get(i), isPublicPaper);
-            questions.add(question);
+
             options.addAll(question.getOptions());
+            if(questionRequestBody.getQuestions().get(i).getParentRichText() != null){
+                question.setParentRichText(AssessmentRichTextData.fromDTO(questionRequestBody.getQuestions().get(i).getParentRichText()));
+            }
+            questions.add(question);
         }
+
+
 
         questions = questionRepository.saveAll(questions);
         options = optionRepository.saveAll(options);

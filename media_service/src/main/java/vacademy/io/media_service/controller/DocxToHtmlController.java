@@ -221,7 +221,6 @@ public class DocxToHtmlController {
 
             // Detect questions using "startsWith" for "(C${number}.)" format
             if (text.matches(comprehensionQuestionRegex)) {
-                int questionNumber = extractQuestionNumber(text);
                 AssessmentRichTextDataDTO assessmentRichTextDataDTO = new AssessmentRichTextDataDTO();
                 assessmentRichTextDataDTO.setType("HTML");
                 assessmentRichTextDataDTO.setContent(cleanHtmlTags(paragraph.html(), comprehensionQuestionUpdateRegex));
@@ -230,7 +229,6 @@ public class DocxToHtmlController {
                 while (i + 1 < paragraphs.size() && !paragraphs.get(i+1).text().matches(subQuestionRegexWithSpace) && !paragraphs.get(i+1).text().matches(subQuestionRegex) && !paragraphs.get(i + 1).text().matches(questionRegex) && !paragraphs.get(i + 1).text().startsWith("(a.)") && !paragraphs.get(i + 1).text().startsWith("Ans:")) {
                     i++;
                     Element multiLineParagraph = paragraphs.get(i);
-                    String multiLineText = multiLineParagraph.text().trim();
 
                     assessmentRichTextDataDTO.appendContent(cleanHtmlTags(multiLineParagraph.outerHtml(), comprehensionQuestionUpdateRegex));
                 }

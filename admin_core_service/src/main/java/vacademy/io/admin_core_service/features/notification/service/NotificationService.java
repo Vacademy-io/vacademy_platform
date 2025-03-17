@@ -1,5 +1,8 @@
 package vacademy.io.admin_core_service.features.notification.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpMethod;
@@ -8,6 +11,8 @@ import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.notification.constants.NotificationConstant;
 import vacademy.io.admin_core_service.features.notification.dto.NotificationDTO;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
+import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.common.notification.dto.GenericEmailRequest;
 
 @Service
 public class NotificationService {
@@ -31,5 +36,20 @@ public class NotificationService {
                 notificationDTO
         );
         return response.getBody();
+    }
+
+    public Boolean sendGenericHtmlMail(GenericEmailRequest request) {
+
+        ResponseEntity<String> response = internalClientUtils.makeHmacRequest(clientName, HttpMethod.POST.name(), notificationServerBaseUrl, NotificationConstant.SEND_HTML_EMAIL, request);
+
+        ObjectMapper objectMapper = new ObjectMapper();
+        try {
+            Boolean isMailSent = objectMapper.readValue(response.getBody(), new TypeReference<Boolean>() {
+            });
+
+            return isMailSent;
+        } catch (JsonProcessingException e) {
+            throw new VacademyException(e.getMessage());
+        }
     }
 }

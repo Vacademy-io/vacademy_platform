@@ -8,6 +8,7 @@ import vacademy.io.admin_core_service.features.notification.enums.NotificationTy
 import vacademy.io.admin_core_service.features.notification.service.NotificationService;
 import vacademy.io.common.notification.dto.GenericEmailRequest;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
@@ -21,29 +22,25 @@ public class LearnerInvitationNotification {
     }
 
     public void sendLearnerInvitationNotification(List<String> emails, String instituteName, String invitationCode) {
-        NotificationDTO notificationDTO = new NotificationDTO();
-        notificationDTO.setNotificationType(NotificationType.EMAIL.name());
-        notificationDTO.setSubject("Invitation to join " + instituteName);
-        notificationDTO.setSource("LEARNER_INVITATION");
-        notificationDTO.setSourceId(invitationCode);
-        notificationDTO.setBody(LearnerInvitationEmailBody.getLearnerInvitationEmailBody(instituteName, invitationCode));
-
-        List<NotificationToUserDTO> users = emails.stream().map(email -> {
-            NotificationToUserDTO notificationToUserDTO = new NotificationToUserDTO();
-            notificationToUserDTO.setUserId(email);
-            notificationToUserDTO.setChannelId(email);
-            return notificationToUserDTO;
-        }).toList();
-
-        notificationDTO.setUsers(users);
-        notificationService.sendEmailToUsers(notificationDTO);
-    }
-
-    @Async
-    public void sendLearnerInvitationNotificationAsync(List<String> emails, String instituteName, String invitationCode) {
         CompletableFuture.runAsync(() -> {
             try {
-                sendLearnerInvitationNotification(emails, instituteName, invitationCode);
+                NotificationDTO notificationDTO = new NotificationDTO();
+                notificationDTO.setNotificationType(NotificationType.EMAIL.name());
+                notificationDTO.setSubject("Invitation to join " + instituteName);
+                notificationDTO.setSource("LEARNER_INVITATION");
+                notificationDTO.setSourceId(invitationCode);
+                notificationDTO.setBody(LearnerInvitationEmailBody.getLearnerInvitationEmailBody(instituteName, invitationCode));
+
+                List<NotificationToUserDTO> users = emails.stream().map(email -> {
+                    NotificationToUserDTO notificationToUserDTO = new NotificationToUserDTO();
+                    notificationToUserDTO.setUserId(email);
+                    notificationToUserDTO.setChannelId(email);
+                    notificationToUserDTO.setPlaceholders(new HashMap<>());
+                    return notificationToUserDTO;
+                }).toList();
+
+                notificationDTO.setUsers(users);
+                notificationService.sendEmailToUsers(notificationDTO);
             } catch (Exception e) {
                 System.err.println("Error sending invitation emails: " + e.getMessage());
             }

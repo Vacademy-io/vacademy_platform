@@ -18,8 +18,13 @@ public class LearnerInvitationCustomFieldResponse {
     @UuidGenerator
     private String id;
 
-    @Column(name = "custom_field_id", nullable = false)
+    @Column(name = "custom_field_id", insertable = false, updatable = false)
     private String customFieldId;
+
+    @ManyToOne
+    @JoinColumn(name = "custom_field_id", referencedColumnName = "id", nullable = false)
+    private LearnerInvitationCustomField customField;
+
 
     @ManyToOne
     @JoinColumn(name = "learner_invitation_response_id", nullable = false)
@@ -40,6 +45,16 @@ public class LearnerInvitationCustomFieldResponse {
                                                 LearnerInvitationResponse learnerInvitationResponse) {
         this.customFieldId = learnerInvitationCustomFieldResponseDTO.getCustomFieldId();
         this.value = learnerInvitationCustomFieldResponseDTO.getValue();
-        this.learnerInvitationResponse = learnerInvitationResponse; // FIXED: Assign the response correctly
+        this.learnerInvitationResponse = learnerInvitationResponse;
+    }
+
+    public LearnerInvitationCustomFieldResponseDTO mapToDTO(){
+        return LearnerInvitationCustomFieldResponseDTO
+                .builder()
+                .id(this.id)
+                .fieldName(this.customField.getFieldName())
+                .value(this.value)
+                .customFieldId(this.customFieldId)
+                .build();
     }
 }

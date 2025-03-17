@@ -78,4 +78,20 @@ public class LearnerInvitation {
                         .build();
 
     }
+
+    public LearnerInvitationDTO mapToDTOWithCustomFields(){
+        return
+                LearnerInvitationDTO
+                        .builder()
+                        .id(this.id)
+                        .inviteCode(this.inviteCode)
+                        .batchOptionsJson(this.batchOptionsJson)
+                        .expiryDate(this.expiryDate)
+                        .instituteId(this.instituteId)
+                        .dateGenerated(this.dateGenerated)
+                        .name(this.name)
+                        .status(this.status)
+                        .build();
+
+    }
 }

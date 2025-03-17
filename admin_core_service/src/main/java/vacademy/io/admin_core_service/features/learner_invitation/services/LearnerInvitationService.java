@@ -8,6 +8,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
+import vacademy.io.admin_core_service.features.learner_invitation.dto.AddLearnerInvitationDTO;
 import vacademy.io.admin_core_service.features.learner_invitation.dto.InvitationDetailProjection;
 import vacademy.io.admin_core_service.features.learner_invitation.dto.LearnerInvitationDTO;
 import vacademy.io.admin_core_service.features.learner_invitation.dto.LearnerInvitationDetailFilterDTO;
@@ -40,7 +41,8 @@ public class LearnerInvitationService {
     private LearnerInvitationNotification notification;
 
     @Transactional
-    public String createLearnerInvitationCode(LearnerInvitationDTO learnerInvitationDTO, CustomUserDetails user) {
+    public String createLearnerInvitationCode(AddLearnerInvitationDTO addLearnerInvitationDTO, CustomUserDetails user) {
+        LearnerInvitationDTO learnerInvitationDTO = addLearnerInvitationDTO.getLearnerInvitation();
         validateRequest(learnerInvitationDTO);
         learnerInvitationDTO.setInviteCode(generateInviteCode());
 
@@ -50,7 +52,7 @@ public class LearnerInvitationService {
         Institute institute = instituteRepository.findById(learnerInvitationDTO.getInstituteId())
                 .orElseThrow(() -> new VacademyException("Institute not found with ID: " + learnerInvitationDTO.getInstituteId()));
 
-        List<String> emails = learnerInvitationDTO.getEmailsToSendInvitation();
+        List<String> emails = addLearnerInvitationDTO.getEmailsToSendInvitation();
         if (emails != null && !emails.isEmpty()) {
             sendLearnerInvitationNotificationAsync(emails, institute.getInstituteName(), learnerInvitationDTO.getInviteCode());
         }

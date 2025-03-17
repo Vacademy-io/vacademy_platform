@@ -20,6 +20,5 @@ public class LearnerInvitationDTO {
     private String instituteId;
     private String inviteCode;
     private String batchOptionsJson;
-    private List<String> emailsToSendInvitation;
     private List<LearnerInvitationCustomFieldDTO> customFields;
 }

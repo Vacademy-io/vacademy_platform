@@ -8,9 +8,7 @@ import lombok.Data;
 @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
 @Data
 @Builder
-public class LearnerInvitationCustomFieldResponseDTO {
-    private String customFieldId;
-    private String id;
-    private String value;
-    private String fieldName;
+public class OneLearnerInvitationResponse {
+    private LearnerInvitationResponseDTO learnerInvitationResponseDTO;
+    private LearnerInvitationDTO learnerInvitation;
 }

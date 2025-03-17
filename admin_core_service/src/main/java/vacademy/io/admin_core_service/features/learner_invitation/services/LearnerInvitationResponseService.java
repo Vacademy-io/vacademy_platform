@@ -2,12 +2,13 @@ package vacademy.io.admin_core_service.features.learner_invitation.services;
 
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
-import vacademy.io.admin_core_service.features.learner_invitation.dto.LearnerInvitationDTO;
-import vacademy.io.admin_core_service.features.learner_invitation.dto.LearnerInvitationCustomFieldResponseDTO;
-import vacademy.io.admin_core_service.features.learner_invitation.dto.LearnerInvitationResponseDTO;
+import vacademy.io.admin_core_service.features.learner_invitation.dto.*;
 import vacademy.io.admin_core_service.features.learner_invitation.entity.LearnerInvitation;
 import vacademy.io.admin_core_service.features.learner_invitation.entity.LearnerInvitationCustomFieldResponse;
 import vacademy.io.admin_core_service.features.learner_invitation.entity.LearnerInvitationResponse;
@@ -17,6 +18,7 @@ import vacademy.io.admin_core_service.features.learner_invitation.notification.L
 import vacademy.io.admin_core_service.features.learner_invitation.repository.LearnerInvitationCustomFieldResponseRepository;
 import vacademy.io.admin_core_service.features.learner_invitation.repository.LearnerInvitationRepository;
 import vacademy.io.admin_core_service.features.learner_invitation.repository.LearnerInvitationResponseRepository;
+import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
 
@@ -101,5 +103,11 @@ public class LearnerInvitationResponseService {
             throw new VacademyException("This invite code is expired. Please contact to institute for further support.");
         }
         return learnerInvitation.mapToDTO();
+    }
+
+    public Page<OneLearnerInvitationResponse> getLearnerInvitationResponses(LearnerInvitationResponsesFilterDTO filterDTO, String instituteId, int pageNo, int pageSize, CustomUserDetails user) {
+        Pageable pageable = PageRequest.of(pageNo, pageSize);
+        Page<LearnerInvitationResponse> learnerInvitationResponses = learnerInvitationResponseRepository.findByInstituteIdAndStatusWithCustomFields(instituteId,filterDTO.getStatus(),pageable);
+        return learnerInvitationResponses.map(LearnerInvitationResponse::mapToOneLearnerInvitationResponse);
     }
 }

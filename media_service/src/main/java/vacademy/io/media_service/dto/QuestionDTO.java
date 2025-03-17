@@ -37,6 +37,7 @@ public class QuestionDTO {
     private AssessmentRichTextDataDTO explanationText;
     private Integer defaultQuestionTimeMins;
     private String parentRichTextId;
+    private AssessmentRichTextDataDTO parentRichText;
     private List<OptionDTO> options = new ArrayList<>();
     private List<String> errors = new ArrayList<>();
     private List<String> warnings = new ArrayList<>();

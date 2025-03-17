@@ -197,16 +197,20 @@ public class DocxToHtmlController {
         List<QuestionDTO> questions = new ArrayList<>();
 
         String questionUpdateRegex = "\\(\\d+\\.\\)";
-//        String comprehensionQuestionUpdateRegex = "\\(C\\d+\\.\\)";
+        String comprehensionQuestionUpdateRegex = "\\(C\\d+\\.\\)";
+        String subQuestionUpdateRegex = "\\(\\d+\\sC\\d+\\.\\)";
+
 
         String questionRegex = "^\\s*\\(\\d+\\.\\)\\s?.*";
-//        String comprehensionQuestionRegex = "^\\s*\\(C\\d+\\.\\)\\s?.*";
+        String comprehensionQuestionRegex = "^\\s*\\(C\\d+\\.\\)\\s?.*";
+        String subQuestionRegexWithSpace = "^\\s*\\(\\d+\\sC\\d+\\.\\)\\s?.*"; // (1 C1.)
+        String subQuestionRegex = "^\\s*\\(\\d+C\\d+\\.\\)\\s?.*"; // (1C1.)
         String optionRegex = "^\\s*\\([a-zA-Z]\\.\\)\\s?.*";
         String optionUpdateRegex = "\\([a-zA-Z]\\.\\)";
         String ansRegex = "Ans:";
         String explanationRegex = "Exp:";
 
-//        String comprehensionTextId = "";
+        AssessmentRichTextDataDTO comprehensionRichText = null;
 
 
         for (int i = 0; i < paragraphs.size(); i++) {
@@ -216,27 +220,142 @@ public class DocxToHtmlController {
             QuestionDTO question = null;
 
             // Detect questions using "startsWith" for "(C${number}.)" format
-//            if (text.matches(comprehensionQuestionRegex)) {
-//                int questionNumber = extractQuestionNumber(text);
-//                AssessmentRichTextDataDTO assessmentRichTextDataDTO = new AssessmentRichTextDataDTO();
-//                assessmentRichTextDataDTO.setType("HTML");
-//                assessmentRichTextDataDTO.setContent(cleanHtmlTags(paragraph.html(), comprehensionQuestionUpdateRegex));
-//
-//                // Handle multi-line questions
-//                while (i + 1 < paragraphs.size() && !paragraphs.get(i+1).text().matches(questionRegex) && !paragraphs.get(i + 1).text().startsWith("(a.)") &&  !paragraphs.get(i + 1).text().startsWith("Ans:")) {
-//                    i++;
-//                    Element multiLineParagraph = paragraphs.get(i);
-//                    String multiLineText = multiLineParagraph.text().trim();
-//
-//                    assessmentRichTextDataDTO.appendContent(cleanHtmlTags(multiLineParagraph.outerHtml(), questionUpdateRegex));
-//                }
-//                AssessmentRichText assessmentRichText = new AssessmentRichText();
-//                assessmentRichText.setId(UUID.randomUUID().toString());
-//                assessmentRichText.setContent(assessmentRichTextDataDTO.getContent());
-//                assessmentRichText.setType(assessmentRichTextDataDTO.getType());
-//                AssessmentRichText savedEntity = assessmentRichTextRepository.save(assessmentRichText);
-//                comprehensionTextId = savedEntity.getId();
-//            }
+            if (text.matches(comprehensionQuestionRegex)) {
+                int questionNumber = extractQuestionNumber(text);
+                AssessmentRichTextDataDTO assessmentRichTextDataDTO = new AssessmentRichTextDataDTO();
+                assessmentRichTextDataDTO.setType("HTML");
+                assessmentRichTextDataDTO.setContent(cleanHtmlTags(paragraph.html(), comprehensionQuestionUpdateRegex));
+
+                // Handle multi-line questions
+                while (i + 1 < paragraphs.size() && !paragraphs.get(i+1).text().matches(subQuestionRegexWithSpace) && !paragraphs.get(i+1).text().matches(subQuestionRegex) && !paragraphs.get(i + 1).text().matches(questionRegex) && !paragraphs.get(i + 1).text().startsWith("(a.)") && !paragraphs.get(i + 1).text().startsWith("Ans:")) {
+                    i++;
+                    Element multiLineParagraph = paragraphs.get(i);
+                    String multiLineText = multiLineParagraph.text().trim();
+
+                    assessmentRichTextDataDTO.appendContent(cleanHtmlTags(multiLineParagraph.outerHtml(), comprehensionQuestionUpdateRegex));
+                }
+                comprehensionRichText = assessmentRichTextDataDTO;
+            }
+
+            // Detect questions using "startsWith" for "(1C1.)" or "(1 C1.)" format
+            if (text.matches(subQuestionRegex) || text.matches(subQuestionRegexWithSpace)) {
+
+                int[] questionNumbers = extractQuestionNumbers(text);
+                question = new QuestionDTO(String.valueOf(questionNumbers[0]));
+                // Regex pattern to match
+                question.setSectionId("1");
+                question.setText(new AssessmentRichTextDataDTO(null, "HTML", cleanHtmlTags(paragraph.html(), subQuestionUpdateRegex)));
+                question.setAccessLevel("PRIVATE");
+                question.setQuestionResponseType(QuestionResponseType.OPTION.name());
+                if(comprehensionRichText != null){
+                    question.setParentRichText(comprehensionRichText);
+                }
+                // Handle multi-line questions
+                while (i + 1 < paragraphs.size() && !paragraphs.get(i + 1).text().startsWith("(a.)") && !paragraphs.get(i + 1).text().startsWith("Ans:")) {
+                    i++;
+                    Element multiLineParagraph = paragraphs.get(i);
+                    String multiLineText = multiLineParagraph.text().trim();
+
+                    // Check for unexpected start patterns in multi-line questions
+                    if (multiLineText.matches(questionRegex)) {
+                        question.getErrors().add("Unexpected new question comes" + multiLineText);
+                        isValidQuestion = false;
+                        break;
+                    } else if (multiLineText.startsWith("(b.)") || multiLineText.startsWith("(c.)") || multiLineText.startsWith("(d.)")) {
+                        question.getErrors().add("Unexpected new question comes" + multiLineText);
+                        isValidQuestion = false;
+                        break;
+                    } else if (multiLineText.startsWith("Ans:")) {
+                        question.getErrors().add("Unexpected answer format in multi-line question:" + multiLineText);
+                        isValidQuestion = false;
+                        break;
+                    } else if (multiLineText.startsWith("Exp:")) {
+                        question.getErrors().add("Unexpected explanation format in multi-line question:" + multiLineText);
+                        isValidQuestion = false;
+                        break;
+                    }
+
+                    question.appendQuestionHtml(cleanHtmlTags(multiLineParagraph.outerHtml(), subQuestionUpdateRegex));
+                }
+
+                if (!isValidQuestion) {
+                    // Skip storing the invalid question and move to the next iteration
+                    continue; // Moves to the next iteration of the 'for' loop
+                }
+
+                // Extract options
+                while (i + 1 < paragraphs.size() && !paragraphs.get(i + 1).text().startsWith("Ans:") && !paragraphs.get(i + 1).text().startsWith("Exp:") && !paragraphs.get(i + 1).text().matches("^\\(\\d+\\.\\)\\s?.*")) {
+                    i++;
+                    Element optionParagraph = paragraphs.get(i);
+
+                    if (optionParagraph.text().startsWith("(a.)") || optionParagraph.text().startsWith("(b.)") || optionParagraph.text().startsWith("(c.)") || optionParagraph.text().startsWith("(d.)")) {
+                        question.getOptions().add(new OptionDTO(String.valueOf(question.getOptions().size()), new AssessmentRichTextDataDTO(null, "HTML", cleanHtmlTags(optionParagraph.html(), optionUpdateRegex))));
+                    }
+                }
+
+                // Extract answer
+                if (i + 1 < paragraphs.size() && paragraphs.get(i + 1).text().startsWith("Ans:")) {
+                    i++;
+                    // if options are empty then it is a numeric type question
+                    if (question.getOptions().isEmpty()) {
+                        question.setQuestionResponseType(QuestionResponseType.INTEGER.name());
+                        String answerText = paragraphs.get(i).text();
+                        String contentAfterAns = answerText.substring(ansRegex.length()).trim();
+                        NumericalEvaluationDto numericalEvaluation = new NumericalEvaluationDto();
+                        numericalEvaluation.setType(QuestionTypes.NUMERIC.name());
+                        question.setQuestionType(QuestionTypes.NUMERIC.name());
+                        OptionsJsonDto optionsJsonDto = new OptionsJsonDto();
+                        optionsJsonDto.setNumericType(NumericQuestionTypes.INTEGER.name());
+                        optionsJsonDto.setDecimals(2);
+
+                        NumericalEvaluationDto.NumericalData numericalQuestionData = new NumericalEvaluationDto.NumericalData();
+                        try {
+                            question.setOptionsJson(setOptionsJson(optionsJsonDto));
+                            // Convert String to Double before adding to the List
+                            numericalQuestionData.setValidAnswers(List.of((RoundOff(2, contentAfterAns))));
+
+                            numericalEvaluation.setData(numericalQuestionData);
+
+                            question.setAutoEvaluationJson(setEvaluationJson(numericalEvaluation));
+                            question.setParsedEvaluationObject(EvaluationJsonToMapConverter.convertJsonToMap(question.getAutoEvaluationJson()));
+                        } catch (JsonProcessingException e) {
+                            throw new VacademyException(e.getMessage());
+                        }
+                    } else {
+
+                        String answerText = paragraphs.get(i).text();
+                        String contentAfterAns = answerText.substring(ansRegex.length()).trim();
+                        MCQEvaluationDTO mcqEvaluation = new MCQEvaluationDTO();
+                        mcqEvaluation.setType(QuestionTypes.MCQS.name());
+                        question.setQuestionType(QuestionTypes.MCQS.name());
+                        MCQEvaluationDTO.MCQData mcqData = new MCQEvaluationDTO.MCQData();
+
+                        try {
+                            mcqData.setCorrectOptionIds(List.of(getAnswerId(contentAfterAns).toString()));
+                            mcqEvaluation.setData(mcqData);
+
+                            question.setAutoEvaluationJson(setEvaluationJson(mcqEvaluation));
+                            question.setParsedEvaluationObject(EvaluationJsonToMapConverter.convertJsonToMap(question.getAutoEvaluationJson()));
+                        } catch (JsonProcessingException e) {
+                            throw new VacademyException(e.getMessage());
+                        }
+                    }
+                }
+
+                // Extract explanation
+                if (i + 1 < paragraphs.size() && paragraphs.get(i + 1).text().startsWith("Exp:")) {
+                    i++;
+
+                    String filteredText = paragraphs.get(i).html().replaceAll(explanationRegex, "").trim();
+                    question.setExplanationText(new AssessmentRichTextDataDTO(null, "HTML", cleanHtmlTags(filteredText, explanationRegex)));
+                    while (i + 1 < paragraphs.size() && !(paragraphs.get(i + 1).text().startsWith("(") && Character.isDigit(paragraphs.get(i + 1).text().charAt(1)))) {
+                        i++;
+                        String filteredInternalText = paragraphs.get(i).outerHtml().replaceAll(explanationRegex, "").trim();
+
+                        question.appendExplanationHtml(cleanHtmlTags(filteredInternalText, explanationRegex));
+                    }
+                }
+            }
 
             // Detect questions using "startsWith" for "(number.)" format
             if (text.matches(questionRegex)) {
@@ -310,7 +429,7 @@ public class DocxToHtmlController {
                         try {
                             question.setOptionsJson(setOptionsJson(optionsJsonDto));
                             // Convert String to Double before adding to the List
-                            numericalQuestionData.setValidAnswers(List.of((RoundOff(2 , contentAfterAns))));
+                            numericalQuestionData.setValidAnswers(List.of((RoundOff(2, contentAfterAns))));
 
                             numericalEvaluation.setData(numericalQuestionData);
 
@@ -355,10 +474,6 @@ public class DocxToHtmlController {
                 }
             }
 
-//            if(!comprehensionTextId.isEmpty() && question != null){
-//                question.setParentRichTextId(comprehensionTextId);
-//            }
-
             if (question != null)
                 questions.add(question);
         }
@@ -390,7 +505,26 @@ public class DocxToHtmlController {
             }
         }
 
+
+
         // Return -1 or throw an exception if no valid number is found
+        throw new IllegalArgumentException("Invalid question format: " + text);
+    }
+
+    public static int[] extractQuestionNumbers(String text) {
+        // Updated regex: Matches both (1C1.) and (1 C1.)
+        String regex = "\\((\\d+)\\s*C(\\d+)\\.\\)";
+        Pattern pattern = Pattern.compile(regex);
+        Matcher matcher = pattern.matcher(text);
+
+        if (matcher.find()) {
+            // Extract the numbers before and after 'C'
+            int beforeC = Integer.parseInt(matcher.group(1)); // Number before 'C'
+            int afterC = Integer.parseInt(matcher.group(2));  // Number after 'C'
+            return new int[]{beforeC, afterC};
+        }
+
+        // Return -1 if no match is found or throw an error
         throw new IllegalArgumentException("Invalid question format: " + text);
     }
 
@@ -432,6 +566,7 @@ public class DocxToHtmlController {
 
         return jsonString; // Return the JSON string for confirmation or further processing
     }
+
     // function for numeric json
     public String setEvaluationJson(NumericalEvaluationDto numericalEvaluationDTO) throws JsonProcessingException {
         // Convert DTO to JSON string
@@ -443,7 +578,7 @@ public class DocxToHtmlController {
         return jsonString; // Return the JSON string for confirmation or further processing
     }
 
-    public String setOptionsJson(OptionsJsonDto optionsJsonDto) throws JsonProcessingException{
+    public String setOptionsJson(OptionsJsonDto optionsJsonDto) throws JsonProcessingException {
         String jsonString = objectMapper.writeValueAsString(optionsJsonDto);
 
         // Here you would save jsonString to your database (not shown)

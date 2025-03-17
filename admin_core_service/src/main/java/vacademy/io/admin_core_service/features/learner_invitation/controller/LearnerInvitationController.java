@@ -1,0 +1,53 @@
+package vacademy.io.admin_core_service.features.learner_invitation.controller;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import vacademy.io.admin_core_service.features.learner_invitation.dto.*;
+import vacademy.io.admin_core_service.features.learner_invitation.services.LearnerInvitationResponseService;
+import vacademy.io.admin_core_service.features.learner_invitation.services.LearnerInvitationService;
+import vacademy.io.common.auth.config.PageConstants;
+import vacademy.io.common.auth.model.CustomUserDetails;
+
+@RestController
+@RequestMapping("/admin-core-service/learner-invitation")
+public class LearnerInvitationController {
+
+    @Autowired
+    private LearnerInvitationService learnerInvitationService;
+
+    @Autowired
+    private LearnerInvitationResponseService learnerInvitationResponseService;
+
+    @PostMapping("/create")
+    public ResponseEntity<String> createInvitation(@RequestBody AddLearnerInvitationDTO addLearnerInvitationDTO,
+                                                   @RequestAttribute("user")CustomUserDetails user) {
+        String invitationId = learnerInvitationService.createLearnerInvitationCode(addLearnerInvitationDTO,user);
+        return ResponseEntity.ok(invitationId);
+    }
+
+    @PostMapping("/invitation-details")
+    public Page<InvitationDetailProjection> getInvitationDetails(
+            @RequestParam String instituteId,
+            @RequestParam(required = false,defaultValue = PageConstants.DEFAULT_PAGE_NUMBER) int pageNo,
+            @RequestParam(required = false,defaultValue = PageConstants.DEFAULT_PAGE_SIZE) int pageSize,
+            @RequestBody LearnerInvitationDetailFilterDTO filterDTO,
+            @RequestAttribute("user") CustomUserDetails user) {
+
+        return learnerInvitationService.getInvitationDetails(instituteId,filterDTO, pageNo, pageSize, user);
+    }
+
+    @PostMapping("/invitation-responses")
+    public ResponseEntity<Page<OneLearnerInvitationResponse>> getLearnerInvitationResponses(
+            @RequestParam String instituteId,
+            @RequestBody LearnerInvitationResponsesFilterDTO  filterDTO,
+            @RequestParam(defaultValue = PageConstants.DEFAULT_PAGE_NUMBER) int pageNo,
+            @RequestParam(defaultValue = PageConstants.DEFAULT_PAGE_SIZE) int pageSize,
+            @RequestAttribute("user")CustomUserDetails user) {
+
+        Page<OneLearnerInvitationResponse> responses = learnerInvitationResponseService.getLearnerInvitationResponses(filterDTO,instituteId, pageNo, pageSize,user);
+        return ResponseEntity.ok(responses);
+    }
+
+}

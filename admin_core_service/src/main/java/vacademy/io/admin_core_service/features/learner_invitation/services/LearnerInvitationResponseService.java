@@ -110,4 +110,29 @@ public class LearnerInvitationResponseService {
         Page<LearnerInvitationResponse> learnerInvitationResponses = learnerInvitationResponseRepository.findByInstituteIdAndStatusWithCustomFields(instituteId,filterDTO.getStatus(),pageable);
         return learnerInvitationResponses.map(LearnerInvitationResponse::mapToOneLearnerInvitationResponse);
     }
+
+    @Transactional
+    public String updateLearnerInvitationResponseStatus(LearnerInvitationRequestStatusChangeDTO statusChangeDTO, CustomUserDetails user){
+        if (Objects.isNull(statusChangeDTO) || Objects.isNull(statusChangeDTO.getLearnerInvitationResponseIds()) || statusChangeDTO.getLearnerInvitationResponseIds().isEmpty() || !StringUtils.hasText(statusChangeDTO.getStatus())){
+            throw new VacademyException("Invalid request!!!");
+        }
+        List<LearnerInvitationResponse>responses = learnerInvitationResponseRepository.findAllById(statusChangeDTO.getLearnerInvitationResponseIds());
+        List<String>emails = new ArrayList();
+        System.out.println(responses.size());
+        for (LearnerInvitationResponse response : responses) {
+            response.setStatus(statusChangeDTO.getStatus());
+            response.setMessageByInstitute(statusChangeDTO.getDescription());
+            emails.add(response.getEmail());
+        }
+        learnerInvitationResponseRepository.saveAll(responses);
+        if (responses.size() > 0){
+            sendStatusUpdateMail(emails,responses.get(0).getInstituteId());
+        }
+        return "Status updated successfully!!!";
+    }
+
+    private void sendStatusUpdateMail(List<String>emails,String instituteId){
+        Institute institute = instituteRepository.findById(instituteId).orElseThrow(()->new VacademyException("Institute not found"));
+        notification.sendStatusUpdateNotification(emails,institute.getInstituteName(),instituteId);
+    }
 }

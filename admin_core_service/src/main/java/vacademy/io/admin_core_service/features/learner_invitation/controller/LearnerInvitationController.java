@@ -50,4 +50,18 @@ public class LearnerInvitationController {
         return ResponseEntity.ok(responses);
     }
 
+    @PutMapping("/update-learner-invitation-response-status")
+    public ResponseEntity<String> updateLearnerInvitationResponseStatus(@RequestBody LearnerInvitationRequestStatusChangeDTO statusChangeDTO,
+                                                      @RequestAttribute("user") CustomUserDetails user) {
+        String responseMessage = learnerInvitationResponseService.updateLearnerInvitationResponseStatus(statusChangeDTO, user);
+        return ResponseEntity.ok(responseMessage);
+    }
+
+    @PutMapping("/update-learner-invitation-status")
+    public ResponseEntity<String> updateLearnerInvitationStatus(@RequestBody LearnerInvitationStatusUpdateDTO statusChangeDTO,
+                                                      @RequestAttribute("user") CustomUserDetails user) {
+        String responseMessage = learnerInvitationService.updateLearnerInvitationStatus(statusChangeDTO, user);
+        return ResponseEntity.ok(responseMessage);
+    }
+
 }

@@ -8,11 +8,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
-import vacademy.io.admin_core_service.features.learner_invitation.dto.AddLearnerInvitationDTO;
-import vacademy.io.admin_core_service.features.learner_invitation.dto.InvitationDetailProjection;
-import vacademy.io.admin_core_service.features.learner_invitation.dto.LearnerInvitationDTO;
-import vacademy.io.admin_core_service.features.learner_invitation.dto.LearnerInvitationDetailFilterDTO;
+import vacademy.io.admin_core_service.features.learner_invitation.dto.*;
 import vacademy.io.admin_core_service.features.learner_invitation.entity.LearnerInvitation;
+import vacademy.io.admin_core_service.features.learner_invitation.entity.LearnerInvitationResponse;
 import vacademy.io.admin_core_service.features.learner_invitation.enums.LearnerInvitationResponseStatusEnum;
 import vacademy.io.admin_core_service.features.learner_invitation.notification.LearnerInvitationNotification;
 import vacademy.io.admin_core_service.features.learner_invitation.repository.LearnerInvitationRepository;
@@ -22,6 +20,7 @@ import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
 
 import java.security.SecureRandom;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
@@ -108,5 +107,18 @@ public class LearnerInvitationService {
                List.of(LearnerInvitationResponseStatusEnum.ACTIVE.name(),
                        LearnerInvitationResponseStatusEnum.ACCEPTED.name()),
                pageable);
+    }
+
+    @Transactional
+    public String updateLearnerInvitationStatus(LearnerInvitationStatusUpdateDTO statusChangeDTO, CustomUserDetails user){
+        if (Objects.isNull(statusChangeDTO) || Objects.isNull(statusChangeDTO.getLearnerInvitationIds()) || statusChangeDTO.getLearnerInvitationIds().isEmpty() || !StringUtils.hasText(statusChangeDTO.getStatus())){
+            throw new VacademyException("Invalid request!!!");
+        }
+        List<LearnerInvitation>responses = learnerInvitationRepository.findAllById(statusChangeDTO.getLearnerInvitationIds());
+        for (LearnerInvitation learnerInvitation : responses) {
+            learnerInvitation.setStatus(statusChangeDTO.getStatus());
+        }
+        learnerInvitationRepository.saveAll(responses);
+        return "Status updated successfully!!!";
     }
 }

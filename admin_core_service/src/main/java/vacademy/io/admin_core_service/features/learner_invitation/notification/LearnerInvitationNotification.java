@@ -61,4 +61,30 @@ public class LearnerInvitationNotification {
             }
         });
     }
+
+    public void sendStatusUpdateNotification(List<String> emails, String instituteName,String instituteId) {
+        CompletableFuture.runAsync(() -> {
+            try {
+                NotificationDTO notificationDTO = new NotificationDTO();
+                notificationDTO.setNotificationType(NotificationType.EMAIL.name());
+                notificationDTO.setSubject("Status updated for your request to " + instituteName);
+                notificationDTO.setSource("LEARNER_INVITATION");
+                notificationDTO.setSourceId(instituteId);
+                notificationDTO.setBody(LearnerInvitationEmailBody.getLearnerStatusUpdateByInstituteEmailBody(instituteName));
+
+                List<NotificationToUserDTO> users = emails.stream().map(email -> {
+                    NotificationToUserDTO notificationToUserDTO = new NotificationToUserDTO();
+                    notificationToUserDTO.setUserId(email);
+                    notificationToUserDTO.setChannelId(email);
+                    notificationToUserDTO.setPlaceholders(new HashMap<>());
+                    return notificationToUserDTO;
+                }).toList();
+
+                notificationDTO.setUsers(users);
+                notificationService.sendEmailToUsers(notificationDTO);
+            } catch (Exception e) {
+                System.err.println("Error sending invitation emails: " + e.getMessage());
+            }
+        });
+    }
 }

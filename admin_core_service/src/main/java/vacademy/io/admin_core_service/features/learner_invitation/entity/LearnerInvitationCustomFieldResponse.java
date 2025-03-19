@@ -18,11 +18,11 @@ public class LearnerInvitationCustomFieldResponse {
     @UuidGenerator
     private String id;
 
-    @Column(name = "custom_field_id", insertable = false, updatable = false)
+    @Column(name = "custom_field_id",nullable = false)
     private String customFieldId;
 
     @ManyToOne
-    @JoinColumn(name = "custom_field_id", referencedColumnName = "id", nullable = false)
+    @JoinColumn(name = "custom_field_id", referencedColumnName = "id", insertable = false,updatable = false)
     private LearnerInvitationCustomField customField;
 
 

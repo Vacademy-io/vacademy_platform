@@ -74,6 +74,7 @@ public class StudentRegistrationManager {
         instituteStudentDTO.getUserDetails().setRoles(getStudentRoles());
         setRandomPasswordIfNull(instituteStudentDTO.getUserDetails());
         setRandomUserNameIfNull(instituteStudentDTO.getUserDetails());
+        instituteStudentDTO.getUserDetails().setUsername(instituteStudentDTO.getUserDetails().getUsername().toLowerCase());
         setEnrollmentNumberIfNull(instituteStudentDTO.getInstituteStudentDetails());
         UserDTO createdUser = createUserFromAuthService(instituteStudentDTO.getUserDetails(), instituteStudentDTO.getInstituteStudentDetails().getInstituteId());
         return createStudentFromRequest(createdUser, instituteStudentDTO.getStudentExtraDetails());
@@ -83,6 +84,7 @@ public class StudentRegistrationManager {
         if (userDetails.getUsername() == null || !StringUtils.hasText(userDetails.getUsername())) {
             userDetails.setUsername(generateUsername(userDetails.getFullName()));
         }
+        userDetails.setUsername(userDetails.getUsername().toLowerCase());
     }
 
     private void setEnrollmentNumberIfNull(InstituteStudentDetails instituteStudentDetails) {
@@ -201,7 +203,7 @@ public class StudentRegistrationManager {
 
         // Auto-generate username if required
         if (autoConfig.isAutoGenerateUsername()) {
-            instituteStudentDTO.getUserDetails().setUsername(generateUsername(instituteStudentDTO.getUserDetails().getFullName()));
+            instituteStudentDTO.getUserDetails().setUsername(generateUsername(instituteStudentDTO.getUserDetails().getFullName()).toLowerCase());
         }
 
         // Auto-generate password if required

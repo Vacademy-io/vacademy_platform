@@ -26,7 +26,8 @@ public interface AssessmentBatchRegistrationRepository extends JpaRepository<Ass
             "WHERE abr.batchId = :batchId " +
             "AND abr.instituteId = :instituteId " +
             "AND abr.status IN :statusList " +
-            "AND abr.assessment.status IN :assessmentStatus")
+            "AND abr.assessment.status IN :assessmentStatus " +
+            "AND (abr.assessment.boundEndTime IS NULL OR abr.assessment.boundEndTime >= CURRENT_TIMESTAMP)")
     Integer countDistinctAssessmentsByBatchAndFilters(
             @Param("batchId") String batchId,
             @Param("instituteId") String instituteId,

@@ -79,6 +79,10 @@ public class StudentAttempt {
     @Column(name = "report_last_release_date")
     private Date reportLastReleaseDate;
 
+    @ManyToOne
+    @JoinColumn(name = "assessment_section_mapping")
+    private AssessmentSetMapping assessmentSetMapping;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;
 

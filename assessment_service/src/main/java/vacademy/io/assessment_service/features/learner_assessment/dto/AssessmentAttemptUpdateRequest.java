@@ -15,4 +15,5 @@ import lombok.NoArgsConstructor;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class AssessmentAttemptUpdateRequest {
     String jsonContent;
+    String setId;
 }

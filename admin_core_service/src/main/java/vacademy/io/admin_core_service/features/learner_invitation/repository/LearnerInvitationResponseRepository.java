@@ -19,10 +19,14 @@ public interface LearnerInvitationResponseRepository extends JpaRepository<Learn
 
     @Query("SELECT lir FROM LearnerInvitationResponse lir " +
             "LEFT JOIN FETCH lir.customFieldsResponse lircfr " +
-            "LEFT JOIN FETCH lircfr.customField cf " +  // Ensuring field_name is fetched
-            "WHERE lir.instituteId = :instituteId AND lir.status IN :status")
+            "LEFT JOIN FETCH lircfr.customField cf " +
+            "WHERE lir.instituteId = :instituteId " +
+            "AND lir.status IN :status " +
+            "AND cf.status IN :customFieldStatus")
     Page<LearnerInvitationResponse> findByInstituteIdAndStatusWithCustomFields(
             @Param("instituteId") String instituteId,
             @Param("status") List<String> status,
+            @Param("customFieldStatus") List<String> customFieldStatus,
             Pageable pageable);
+
 }

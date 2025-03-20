@@ -12,6 +12,7 @@ import vacademy.io.admin_core_service.features.learner_invitation.dto.*;
 import vacademy.io.admin_core_service.features.learner_invitation.entity.LearnerInvitation;
 import vacademy.io.admin_core_service.features.learner_invitation.entity.LearnerInvitationCustomFieldResponse;
 import vacademy.io.admin_core_service.features.learner_invitation.entity.LearnerInvitationResponse;
+import vacademy.io.admin_core_service.features.learner_invitation.enums.CustomFieldStatusEnum;
 import vacademy.io.admin_core_service.features.learner_invitation.enums.LearnerInvitationCodeStatusEnum;
 import vacademy.io.admin_core_service.features.learner_invitation.enums.LearnerInvitationResponseStatusEnum;
 import vacademy.io.admin_core_service.features.learner_invitation.notification.LearnerInvitationNotification;
@@ -98,7 +99,7 @@ public class LearnerInvitationResponseService {
     }
 
     public LearnerInvitationDTO getInvitationFormByInviteCodeAndInstituteId(String instituteId, String inviteCode){
-        LearnerInvitation learnerInvitation = learnerInvitationRepository.findByInstituteIdAndInviteCodeAndStatus(instituteId,inviteCode,List.of(LearnerInvitationCodeStatusEnum.ACTIVE.name())).orElseThrow(()->new VacademyException("This invite link is closed. Please contact to institute for further support or reopen the link."));
+        LearnerInvitation learnerInvitation = learnerInvitationRepository.findByInstituteIdAndInviteCodeAndStatus(instituteId,inviteCode,List.of(LearnerInvitationCodeStatusEnum.ACTIVE.name()),List.of(CustomFieldStatusEnum.ACTIVE.name())).orElseThrow(()->new VacademyException("This invite link is closed. Please contact to institute for further support or reopen the link."));
         if (learnerInvitation.getExpiryDate().before(new Date())){
             throw new VacademyException("This invite code is expired. Please contact to institute for further support.");
         }
@@ -107,7 +108,7 @@ public class LearnerInvitationResponseService {
 
     public Page<OneLearnerInvitationResponse> getLearnerInvitationResponses(LearnerInvitationResponsesFilterDTO filterDTO, String instituteId, int pageNo, int pageSize, CustomUserDetails user) {
         Pageable pageable = PageRequest.of(pageNo, pageSize);
-        Page<LearnerInvitationResponse> learnerInvitationResponses = learnerInvitationResponseRepository.findByInstituteIdAndStatusWithCustomFields(instituteId,filterDTO.getStatus(),pageable);
+        Page<LearnerInvitationResponse> learnerInvitationResponses = learnerInvitationResponseRepository.findByInstituteIdAndStatusWithCustomFields(instituteId,filterDTO.getStatus(),List.of(CustomFieldStatusEnum.ACTIVE.name()),pageable);
         return learnerInvitationResponses.map(LearnerInvitationResponse::mapToOneLearnerInvitationResponse);
     }
 
@@ -118,7 +119,6 @@ public class LearnerInvitationResponseService {
         }
         List<LearnerInvitationResponse>responses = learnerInvitationResponseRepository.findAllById(statusChangeDTO.getLearnerInvitationResponseIds());
         List<String>emails = new ArrayList();
-        System.out.println(responses.size());
         for (LearnerInvitationResponse response : responses) {
             response.setStatus(statusChangeDTO.getStatus());
             response.setMessageByInstitute(statusChangeDTO.getDescription());

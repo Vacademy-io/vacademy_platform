@@ -226,7 +226,7 @@ public class DocxToHtmlController {
                 assessmentRichTextDataDTO.setContent(cleanHtmlTags(paragraph.html(), comprehensionQuestionUpdateRegex));
 
                 // Handle multi-line questions
-                while (i + 1 < paragraphs.size() && !paragraphs.get(i+1).text().matches(subQuestionRegexWithSpace) && !paragraphs.get(i+1).text().matches(subQuestionRegex) && !paragraphs.get(i + 1).text().matches(questionRegex) && !paragraphs.get(i + 1).text().startsWith("(a.)") && !paragraphs.get(i + 1).text().startsWith("Ans:")) {
+                while (i + 1 < paragraphs.size() && !paragraphs.get(i + 1).text().matches(subQuestionRegexWithSpace) && !paragraphs.get(i + 1).text().matches(subQuestionRegex) && !paragraphs.get(i + 1).text().matches(questionRegex) && !paragraphs.get(i + 1).text().startsWith("(a.)") && !paragraphs.get(i + 1).text().startsWith("Ans:")) {
                     i++;
                     Element multiLineParagraph = paragraphs.get(i);
 
@@ -245,7 +245,7 @@ public class DocxToHtmlController {
                 question.setText(new AssessmentRichTextDataDTO(null, "HTML", cleanHtmlTags(paragraph.html(), subQuestionUpdateRegex)));
                 question.setAccessLevel("PRIVATE");
                 question.setQuestionResponseType(QuestionResponseType.OPTION.name());
-                if(comprehensionRichText != null){
+                if (comprehensionRichText != null) {
                     question.setParentRichText(comprehensionRichText);
                 }
                 // Handle multi-line questions
@@ -413,29 +413,24 @@ public class DocxToHtmlController {
                     i++;
                     // if options are empty then it is a numeric type question
                     if (question.getOptions().isEmpty()) {
-                        question.setQuestionResponseType(QuestionResponseType.INTEGER.name());
+
                         String answerText = paragraphs.get(i).text();
-                        String contentAfterAns = answerText.substring(ansRegex.length()).trim();
-                        NumericalEvaluationDto numericalEvaluation = new NumericalEvaluationDto();
-                        numericalEvaluation.setType(QuestionTypes.NUMERIC.name());
-                        question.setQuestionType(QuestionTypes.NUMERIC.name());
-                        OptionsJsonDto optionsJsonDto = new OptionsJsonDto();
-                        optionsJsonDto.setNumericType(NumericQuestionTypes.INTEGER.name());
-                        optionsJsonDto.setDecimals(2);
+                        StringBuilder answerBuilder = new StringBuilder(answerText);
 
-                        NumericalEvaluationDto.NumericalData numericalQuestionData = new NumericalEvaluationDto.NumericalData();
-                        try {
-                            question.setOptionsJson(setOptionsJson(optionsJsonDto));
-                            // Convert String to Double before adding to the List
-                            numericalQuestionData.setValidAnswers(List.of((RoundOff(2, contentAfterAns))));
+                        //multiple line ans for long answer type
+                        while (i + 1 < paragraphs.size() && !paragraphs.get(i + 1).text().matches(subQuestionRegexWithSpace) && !paragraphs.get(i + 1).text().matches(subQuestionRegex) && !paragraphs.get(i + 1).text().matches(questionRegex) && !paragraphs.get(i + 1).text().matches(explanationRegex) && !paragraphs.get(i + 1).text().matches(comprehensionQuestionRegex) && !paragraphs.get(i + 1).text().startsWith("(a.)")) {
+                            i++;
+                            String filteredInternalText = paragraphs.get(i).outerHtml().replaceAll(ansRegex, "").trim();
 
-                            numericalEvaluation.setData(numericalQuestionData);
+                            answerBuilder.append(cleanHtmlTags(filteredInternalText, ansRegex));
 
-                            question.setAutoEvaluationJson(setEvaluationJson(numericalEvaluation));
-                            question.setParsedEvaluationObject(EvaluationJsonToMapConverter.convertJsonToMap(question.getAutoEvaluationJson()));
-                        } catch (JsonProcessingException e) {
-                            throw new VacademyException(e.getMessage());
                         }
+                        String ans = answerBuilder.substring(ansRegex.length()).trim();
+                        String contentAfterAns = answerText.substring(ansRegex.length()).trim();
+
+                        getAnswerType(ans , question);
+                        setEvaluation(ans , question);
+
                     } else {
 
                         String answerText = paragraphs.get(i).text();
@@ -480,6 +475,87 @@ public class DocxToHtmlController {
         return questions;
     }
 
+    private void setEvaluation(String ans , QuestionDTO question) {
+        switch (question.getQuestionType()) {
+            case "NUMERIC":
+                // Handle numeric question type
+                NumericalEvaluationDto numericalEvaluation = new NumericalEvaluationDto();
+                numericalEvaluation.setType(QuestionTypes.NUMERIC.name());
+                question.setQuestionType(QuestionTypes.NUMERIC.name());
+                question.setQuestionResponseType(QuestionResponseType.INTEGER.name());
+                OptionsJsonDto optionsJsonDto = new OptionsJsonDto();
+                optionsJsonDto.setNumericType(NumericQuestionTypes.INTEGER.name());
+                optionsJsonDto.setDecimals(2);
+
+                NumericalEvaluationDto.NumericalData numericalQuestionData = new NumericalEvaluationDto.NumericalData();
+                try {
+                    question.setOptionsJson(setOptionsJson(optionsJsonDto));
+                    // Convert String to Double before adding to the List
+                    numericalQuestionData.setValidAnswers(List.of((RoundOff(2, ans))));
+
+                    numericalEvaluation.setData(numericalQuestionData);
+
+                    question.setAutoEvaluationJson(setEvaluationJson(numericalEvaluation));
+                    question.setParsedEvaluationObject(EvaluationJsonToMapConverter.convertJsonToMap(question.getAutoEvaluationJson()));
+                } catch (JsonProcessingException e) {
+                    throw new VacademyException(e.getMessage());
+                }
+                break;
+            case "ONE_WORD":
+                // Handle one-word question type
+                try {
+                    OneWordEvaluationDTO oneWordEvaluationDTO = new OneWordEvaluationDTO();
+                    oneWordEvaluationDTO.setType(QuestionTypes.ONE_WORD.name());
+                    question.setQuestionResponseType(QuestionResponseType.ONE_WORD.name());
+                    OneWordEvaluationDTO.OneWordEvaluationData oneWordEvaluationData = new OneWordEvaluationDTO.OneWordEvaluationData();
+                    oneWordEvaluationData.setAnswer(ans);
+                    oneWordEvaluationDTO.setData(oneWordEvaluationData);
+                    question.setAutoEvaluationJson(setEvaluationJson(oneWordEvaluationDTO));
+                } catch (JsonProcessingException e) {
+                    throw new VacademyException(e.getMessage());
+                }
+                break;
+            case "LONG_ANSWER":
+                // Handle long-answer question type
+                try {
+                    LongAnswerEvaluationDTO longAnswerEvaluationDTO = new LongAnswerEvaluationDTO();
+                    longAnswerEvaluationDTO.setType(QuestionTypes.LONG_ANSWER.name());
+                    question.setQuestionResponseType(QuestionResponseType.LONG_ANSWER.name());
+                    LongAnswerEvaluationDTO.LongAnswerEvaluationData longAnswerEvaluationData = new LongAnswerEvaluationDTO.LongAnswerEvaluationData();
+                    AssessmentRichTextDataDTO assessmentRichTextDataDTO = new AssessmentRichTextDataDTO();
+                    assessmentRichTextDataDTO.setType("HTML");
+                    assessmentRichTextDataDTO.setContent(ans);
+                    longAnswerEvaluationData.setAnswer(assessmentRichTextDataDTO);
+                    longAnswerEvaluationDTO.setData(longAnswerEvaluationData);
+                    question.setAutoEvaluationJson(setEvaluationJson(longAnswerEvaluationDTO));
+                } catch (JsonProcessingException e) {
+                    throw new VacademyException(e.getMessage());
+                }
+                break;
+            default:
+                // Handle unknown or unexpected question types
+                throw new IllegalArgumentException("Unsupported question type: " + question.getQuestionType());
+        }
+    }
+
+
+    private void getAnswerType(String answer , QuestionDTO question) {
+        Pattern INTEGER_PATTERN = Pattern.compile("^\\d+$");          // Matches whole numbers
+        Pattern DECIMAL_PATTERN = Pattern.compile("^\\d+\\.\\d+$");   // Matches decimal numbers
+        Pattern ONE_WORD_PATTERN = Pattern.compile("^[a-zA-Z0-9]+$"); // Matches a single word (letters/numbers)
+
+        if (INTEGER_PATTERN.matcher(answer).matches()) {
+            question.setQuestionType(QuestionTypes.NUMERIC.name());
+        } else if (DECIMAL_PATTERN.matcher(answer).matches()) {
+            question.setQuestionType(QuestionTypes.NUMERIC.name());
+        } else if (ONE_WORD_PATTERN.matcher(answer).matches()) {
+            question.setQuestionType(QuestionTypes.ONE_WORD.name());
+        } else {
+            question.setQuestionType(QuestionTypes.LONG_ANSWER.name());
+        }
+    }
+
+
     private int extractQuestionNumber(String text) {
         // Define a regex pattern to match the question number formats
         String regex = "(\\d+)|(?:Q(\\d+))|(?:C(\\d+))";
@@ -502,7 +578,6 @@ public class DocxToHtmlController {
                 return Integer.parseInt(qNumberStr);
             }
         }
-
 
 
         // Return -1 or throw an exception if no valid number is found
@@ -569,6 +644,26 @@ public class DocxToHtmlController {
     public String setEvaluationJson(NumericalEvaluationDto numericalEvaluationDTO) throws JsonProcessingException {
         // Convert DTO to JSON string
         String jsonString = objectMapper.writeValueAsString(numericalEvaluationDTO);
+
+        // Here you would save jsonString to your database (not shown)
+        // For example: question.setAutoEvaluationJson(jsonString);
+
+        return jsonString; // Return the JSON string for confirmation or further processing
+    }
+
+    public String setEvaluationJson(OneWordEvaluationDTO oneWordEvaluationDTO) throws JsonProcessingException {
+        // Convert DTO to JSON string
+        String jsonString = objectMapper.writeValueAsString(oneWordEvaluationDTO);
+
+        // Here you would save jsonString to your database (not shown)
+        // For example: question.setAutoEvaluationJson(jsonString);
+
+        return jsonString; // Return the JSON string for confirmation or further processing
+    }
+
+    public String setEvaluationJson(LongAnswerEvaluationDTO longAnswerEvaluationDTO) throws JsonProcessingException {
+        // Convert DTO to JSON string
+        String jsonString = objectMapper.writeValueAsString(longAnswerEvaluationDTO);
 
         // Here you would save jsonString to your database (not shown)
         // For example: question.setAutoEvaluationJson(jsonString);

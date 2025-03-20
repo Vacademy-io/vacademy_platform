@@ -4,6 +4,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.learner_invitation.dto.LearnerInvitationDTO;
+import vacademy.io.admin_core_service.features.learner_invitation.dto.LearnerInvitationFormDTO;
 import vacademy.io.admin_core_service.features.learner_invitation.dto.LearnerInvitationResponseDTO;
 import vacademy.io.admin_core_service.features.learner_invitation.services.LearnerInvitationResponseService;
 import vacademy.io.admin_core_service.features.learner_invitation.services.LearnerInvitationService;
@@ -18,11 +19,11 @@ public class LearnerInvitationResponseController {
     private LearnerInvitationService learnerInvitationService;
 
     @GetMapping("/form")
-    public ResponseEntity<LearnerInvitationDTO> getInvitationFormByInviteCodeAndInstituteId(
+    public ResponseEntity<LearnerInvitationFormDTO> getInvitationFormByInviteCodeAndInstituteId(
             @RequestParam String instituteId,
             @RequestParam String inviteCode) {
 
-        LearnerInvitationDTO invitationDTO = learnerInvitationResponseService.getInvitationFormByInviteCodeAndInstituteId(instituteId, inviteCode);
+        LearnerInvitationFormDTO invitationDTO = learnerInvitationResponseService.getInvitationFormByInviteCodeAndInstituteId(instituteId, inviteCode);
         return ResponseEntity.ok(invitationDTO);
     }
 

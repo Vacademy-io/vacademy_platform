@@ -58,7 +58,7 @@ public class AdminManualEvaluationManager {
             Assessment assessment = attemptOptional.get().getRegistration().getAssessment();
             if(assessment.getId().equals(assessmentId)) throw new VacademyException("Assessment Not Found");
 
-            updateMarksForAttempt(assessment,instituteId,attemptOptional.get(),request);
+            updateMarksForAttempt(assessment,attemptOptional.get(),request);
 
             createEvaluationLog(attemptOptional.get(),userDetails,request.getDataJson());
 
@@ -85,8 +85,8 @@ public class AdminManualEvaluationManager {
     }
 
     @Transactional
-    private void updateMarksForAttempt(Assessment assessment, String instituteId, StudentAttempt attempt, ManualSubmitMarksRequest request) {
-        List<QuestionWiseMarks> allQuestionAttempts = new ArrayList<>();
+    private void updateMarksForAttempt(Assessment assessment, StudentAttempt attempt, ManualSubmitMarksRequest request) {
+
 
         String setId = request.getSetId();
         if(Objects.isNull(setId) || setId.isEmpty()) throw new VacademyException("SetId is Null or Empty");
@@ -98,7 +98,11 @@ public class AdminManualEvaluationManager {
                     .computeIfAbsent(mark.getSectionId(), k -> new ArrayList<>())
                     .add(mark);
         }
+        updateMarksForSectionQuestionMarkMapping(assessment,attempt,sectionQuestionMarkMapping);
+    }
 
+    private void updateMarksForSectionQuestionMarkMapping(Assessment assessment, StudentAttempt attempt, Map<String, List<ManualSubmitMarksRequest.SubmitMarksDto>> sectionQuestionMarkMapping) {
+        List<QuestionWiseMarks> allQuestionAttempts = new ArrayList<>();
         // Iterating over the map
         for (Map.Entry<String, List<ManualSubmitMarksRequest.SubmitMarksDto>> entry : sectionQuestionMarkMapping.entrySet()) {
             String sectionId = entry.getKey();
@@ -131,10 +135,11 @@ public class AdminManualEvaluationManager {
                             .build());
                 }
             }
-
         }
+
         questionWiseMarksService.createQuestionWiseMarks(allQuestionAttempts);
     }
+
 
     public ResponseEntity<String> updateAttemptSet(CustomUserDetails userDetails, String attemptId, String setId) {
         try{

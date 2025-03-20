@@ -426,8 +426,6 @@ public class DocxToHtmlController {
 
                         }
                         String ans = answerBuilder.substring(ansRegex.length()).trim();
-                        String contentAfterAns = answerText.substring(ansRegex.length()).trim();
-
                         getAnswerType(ans , question);
                         setEvaluation(ans , question);
 

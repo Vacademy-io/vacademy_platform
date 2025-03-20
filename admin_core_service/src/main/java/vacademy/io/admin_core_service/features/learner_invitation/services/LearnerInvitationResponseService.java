@@ -98,12 +98,17 @@ public class LearnerInvitationResponseService {
         }
     }
 
-    public LearnerInvitationDTO getInvitationFormByInviteCodeAndInstituteId(String instituteId, String inviteCode){
+    public LearnerInvitationFormDTO getInvitationFormByInviteCodeAndInstituteId(String instituteId, String inviteCode){
         LearnerInvitation learnerInvitation = learnerInvitationRepository.findByInstituteIdAndInviteCodeAndStatus(instituteId,inviteCode,List.of(LearnerInvitationCodeStatusEnum.ACTIVE.name()),List.of(CustomFieldStatusEnum.ACTIVE.name())).orElseThrow(()->new VacademyException("This invite link is closed. Please contact to institute for further support or reopen the link."));
         if (learnerInvitation.getExpiryDate().before(new Date())){
             throw new VacademyException("This invite code is expired. Please contact to institute for further support.");
         }
-        return learnerInvitation.mapToDTO();
+        Institute institute = instituteRepository.findById(instituteId).orElseThrow(()->new VacademyException("Institute not found"));
+        LearnerInvitationFormDTO learnerInvitationFormDTO = new LearnerInvitationFormDTO();
+        learnerInvitationFormDTO.setLearnerInvitation(learnerInvitation.mapToDTO());
+        learnerInvitationFormDTO.setInstituteName(institute.getInstituteName());
+        learnerInvitationFormDTO.setInstituteLogoFileId(institute.getLogoFileId());
+        return learnerInvitationFormDTO;
     }
 
     public Page<OneLearnerInvitationResponse> getLearnerInvitationResponses(LearnerInvitationResponsesFilterDTO filterDTO, String instituteId, int pageNo, int pageSize, CustomUserDetails user) {

@@ -50,6 +50,19 @@ public class AddPublicQuestionPaperController {
         }
     }
 
+    @PostMapping("delete")
+    public ResponseEntity<Boolean> deletePublicQuestionPaper(@RequestAttribute("user") CustomUserDetails user,
+                                                             @RequestParam String questionPaperId) {
+        try {
+            return ResponseEntity.ok(editQuestionPaperManager.deletePublicQuestionPaperById(user , questionPaperId));
+        } catch (VacademyException e) {
+            throw new VacademyException(e.getMessage());
+        } catch (RuntimeException e) {
+            throw new VacademyException("An unexpected error occurred.");
+        }
+    }
+
+
     @PostMapping("public/add-only-question")
     public ResponseEntity<AddQuestionDTO> addPublicQuestion(@RequestAttribute("user") CustomUserDetails user, @RequestBody AddQuestionDTO questionRequestBody) {
         try {

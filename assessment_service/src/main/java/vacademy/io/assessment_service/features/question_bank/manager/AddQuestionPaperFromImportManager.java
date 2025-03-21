@@ -12,10 +12,7 @@ import vacademy.io.assessment_service.features.question_bank.dto.AddQuestionPape
 import vacademy.io.assessment_service.features.question_bank.dto.AddedQuestionPaperResponseDto;
 import vacademy.io.assessment_service.features.question_bank.entity.QuestionPaper;
 import vacademy.io.assessment_service.features.question_bank.repository.QuestionPaperRepository;
-import vacademy.io.assessment_service.features.question_core.dto.MCQEvaluationDTO;
-import vacademy.io.assessment_service.features.question_core.dto.NumericalEvaluationDto;
-import vacademy.io.assessment_service.features.question_core.dto.OptionDTO;
-import vacademy.io.assessment_service.features.question_core.dto.QuestionDTO;
+import vacademy.io.assessment_service.features.question_core.dto.*;
 import vacademy.io.assessment_service.features.question_core.entity.Option;
 import vacademy.io.assessment_service.features.question_core.entity.Question;
 import vacademy.io.assessment_service.features.question_core.enums.EvaluationTypes;
@@ -66,12 +63,11 @@ public class AddQuestionPaperFromImportManager {
             Question question = makeQuestionAndOptionFromImportQuestion(questionRequestBody.getQuestions().get(i), isPublicPaper);
 
             options.addAll(question.getOptions());
-            if(questionRequestBody.getQuestions().get(i).getParentRichText() != null){
+            if (questionRequestBody.getQuestions().get(i).getParentRichText() != null) {
                 question.setParentRichText(AssessmentRichTextData.fromDTO(questionRequestBody.getQuestions().get(i).getParentRichText()));
             }
             questions.add(question);
         }
-
 
 
         questions = questionRepository.saveAll(questions);
@@ -156,8 +152,14 @@ public class AddQuestionPaperFromImportManager {
                 break;
             case MCQS:
             case MCQM:
-                correctOptionIds = createOptions(question , questionRequest);
-                handleMCQQuestion(question, questionRequest, question.getOptions() , correctOptionIds);
+                correctOptionIds = createOptions(question, questionRequest);
+                handleMCQQuestion(question, questionRequest, question.getOptions(), correctOptionIds);
+                break;
+            case ONE_WORD:
+                handleOneWordQuestion(question , questionRequest);
+                break;
+            case LONG_ANSWER:
+                handleLongAnswerQuestion(question , questionRequest);
                 break;
             default:
                 throw new IllegalArgumentException("Unsupported question type: " + questionRequest.getQuestionType());
@@ -201,23 +203,27 @@ public class AddQuestionPaperFromImportManager {
             question.setExplanationTextData(AssessmentRichTextData.fromDTO(questionRequest.getExplanationText()));
         }
         question.setQuestionType(questionRequest.getQuestionType());
-        switch(questionRequest.getQuestionType()){
-            case "NUMERIC" :
+        switch (questionRequest.getQuestionType()) {
+            case "NUMERIC":
                 question.setQuestionResponseType(QuestionResponseTypes.INTEGER.name());
                 break;
             case "MCQS":
             case "MCQM":
                 question.setQuestionResponseType(QuestionResponseTypes.OPTION.name());
                 break;
+            case "ONE_WORD":
+                question.setQuestionResponseType(QuestionResponseTypes.ONE_WORD.name());
+            case "LONG_ANSWER":
+                question.setQuestionResponseType(QuestionResponseTypes.LONG_ANSWER.name());
             default:
                 break;
         }
         return question;
     }
+
     private List<String> createOptions(Question question, QuestionDTO questionRequest) throws JsonProcessingException {
         List<Option> options = new ArrayList<>();
-        MCQEvaluationDTO requestEvaluation = (MCQEvaluationDTO) questionEvaluationService.getEvaluationJson(
-                questionRequest.getAutoEvaluationJson(), MCQEvaluationDTO.class);
+        MCQEvaluationDTO requestEvaluation = (MCQEvaluationDTO) questionEvaluationService.getEvaluationJson(questionRequest.getAutoEvaluationJson(), MCQEvaluationDTO.class);
         List<String> correctOptionIds = new ArrayList<>();
         for (OptionDTO optionDTO : questionRequest.getOptions()) {
             Option option = new Option();
@@ -245,13 +251,41 @@ public class AddQuestionPaperFromImportManager {
 
         question.setAutoEvaluationJson(questionEvaluationService.setEvaluationJson(numericalEvaluation));
         question.setOptionsJson(questionRequest.getOptionsJson());
-        if(questionRequest.getQuestionResponseType() != null){
+        if (questionRequest.getQuestionResponseType() != null) {
             question.setQuestionResponseType(questionRequest.getQuestionResponseType());
-        }
-        else question.setQuestionResponseType(QuestionResponseTypes.INTEGER.name());
+        } else question.setQuestionResponseType(QuestionResponseTypes.INTEGER.name());
     }
 
-    private void handleMCQQuestion(Question question, QuestionDTO questionRequest, List<Option> options , List<String> correctOptionIds) throws JsonProcessingException {
+    private void handleOneWordQuestion(Question question, QuestionDTO questionRequest) throws JsonProcessingException {
+        OneWordEvaluationDTO requestOneWordEvaluation = (OneWordEvaluationDTO) questionEvaluationService.getEvaluationJson(
+                questionRequest.getAutoEvaluationJson(), OneWordEvaluationDTO.class);
+
+        OneWordEvaluationDTO oneWordEvaluation = new OneWordEvaluationDTO();
+        oneWordEvaluation.setType(QuestionTypes.ONE_WORD.name());
+        oneWordEvaluation.setData(new OneWordEvaluationDTO.OneWordEvaluationData(requestOneWordEvaluation.getData().getAnswer()));
+
+        question.setAutoEvaluationJson(questionEvaluationService.setEvaluationJson(oneWordEvaluation));
+        if (questionRequest.getQuestionResponseType() != null) {
+            question.setQuestionResponseType(questionRequest.getQuestionResponseType());
+        } else question.setQuestionResponseType(QuestionResponseTypes.ONE_WORD.name());
+    }
+
+    private void handleLongAnswerQuestion(Question question, QuestionDTO questionRequest) throws JsonProcessingException {
+        LongAnswerEvaluationDTO requestLongAnswerEvaluation = (LongAnswerEvaluationDTO) questionEvaluationService.getEvaluationJson(
+                questionRequest.getAutoEvaluationJson(), LongAnswerEvaluationDTO.class);
+
+        LongAnswerEvaluationDTO longAnswerEvaluation = new LongAnswerEvaluationDTO();
+        longAnswerEvaluation.setType(QuestionTypes.LONG_ANSWER.name());
+        longAnswerEvaluation.setData(new LongAnswerEvaluationDTO.LongAnswerEvaluationData(requestLongAnswerEvaluation.getData().getAnswer()));
+
+        question.setAutoEvaluationJson(questionEvaluationService.setEvaluationJson(longAnswerEvaluation));
+        if (questionRequest.getQuestionResponseType() != null) {
+            question.setQuestionResponseType(questionRequest.getQuestionResponseType());
+        } else question.setQuestionResponseType(QuestionResponseTypes.LONG_ANSWER.name());
+    }
+
+
+    private void handleMCQQuestion(Question question, QuestionDTO questionRequest, List<Option> options, List<String> correctOptionIds) throws JsonProcessingException {
 
         MCQEvaluationDTO mcqEvaluation = new MCQEvaluationDTO();
         mcqEvaluation.setType(question.getQuestionType());
@@ -259,7 +293,6 @@ public class AddQuestionPaperFromImportManager {
 
         question.setAutoEvaluationJson(questionEvaluationService.setEvaluationJson(mcqEvaluation));
     }
-
 
 
     private void setQuestionMetadata(Question question, QuestionDTO questionRequest, Boolean isPublic, List<Option> options) {
@@ -274,7 +307,6 @@ public class AddQuestionPaperFromImportManager {
         question.setQuestionType(questionRequest.getQuestionType());
         question.setExplanationTextData(AssessmentRichTextData.fromDTO(questionRequest.getExplanationText()));
     }
-
 
 
 }

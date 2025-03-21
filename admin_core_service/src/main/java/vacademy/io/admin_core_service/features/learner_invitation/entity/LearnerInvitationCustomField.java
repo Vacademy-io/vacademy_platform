@@ -5,6 +5,7 @@ import lombok.Getter;
 import lombok.Setter;
 import org.hibernate.annotations.UuidGenerator;
 import vacademy.io.admin_core_service.features.learner_invitation.dto.LearnerInvitationCustomFieldDTO;
+import vacademy.io.admin_core_service.features.learner_invitation.enums.CustomFieldStatusEnum;
 
 import java.sql.Timestamp;
 
@@ -24,6 +25,7 @@ public class LearnerInvitationCustomField {
     private Boolean isMandatory;
     private String description;
     private String defaultValue;
+    private String status; // ACTIVE DELETED
 
     @ManyToOne
     @JoinColumn(name = "learner_invitation_id", nullable = false)
@@ -45,6 +47,7 @@ public class LearnerInvitationCustomField {
         this.description = learnerInvitationCustomFieldDTO.getDescription();
         this.defaultValue = learnerInvitationCustomFieldDTO.getDefaultValue();
         this.learnerInvitation = learnerInvitation;
+        this.status = CustomFieldStatusEnum.ACTIVE.name();
     }
     public LearnerInvitationCustomFieldDTO mapToDTO(){
         return LearnerInvitationCustomFieldDTO
@@ -56,6 +59,7 @@ public class LearnerInvitationCustomField {
                 .fieldType(this.fieldType)
                 .isMandatory(this.isMandatory)
                 .defaultValue(this.defaultValue)
+                .status(this.status)
                 .build();
     }
 }

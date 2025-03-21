@@ -12,4 +12,5 @@ public interface InvitationDetailProjection {
     String getInstituteId();
     Date getDateGenerated();
     Long getAcceptedBy();
+    String getInviteCode();
 }

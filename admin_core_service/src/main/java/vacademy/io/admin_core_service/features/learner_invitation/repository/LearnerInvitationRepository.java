@@ -17,6 +17,7 @@ public interface LearnerInvitationRepository extends JpaRepository<LearnerInvita
                li.name AS name, 
                li.instituteId AS instituteId, 
                li.dateGenerated AS dateGenerated,
+               li.inviteCode AS inviteCode,
                COUNT(lir.id) AS acceptedBy
         FROM LearnerInvitation li
         LEFT JOIN LearnerInvitationResponse lir 
@@ -38,6 +39,7 @@ public interface LearnerInvitationRepository extends JpaRepository<LearnerInvita
                li.name AS name, 
                li.instituteId AS instituteId, 
                li.dateGenerated AS dateGenerated,
+               li.inviteCode AS inviteCode,
                COUNT(lir.id) AS acceptedBy
         FROM LearnerInvitation li
         LEFT JOIN LearnerInvitationResponse lir 

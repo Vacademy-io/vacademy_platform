@@ -80,7 +80,7 @@ public class StudentAttempt {
     private Date reportLastReleaseDate;
 
     @ManyToOne
-    @JoinColumn(name = "assessment_section_mapping")
+    @JoinColumn(name = "set_id")
     private AssessmentSetMapping assessmentSetMapping;
 
     @Column(name = "created_at", insertable = false, updatable = false)

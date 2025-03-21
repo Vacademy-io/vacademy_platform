@@ -71,4 +71,11 @@ public class LearnerInvitationController {
         return ResponseEntity.ok(response);
     }
 
+    @GetMapping("/learner-invitation-detail-by-id")
+    public ResponseEntity<LearnerInvitationDTO> getLearnerInvitation(@RequestParam String learnerInvitationId,
+                                                          @RequestAttribute("user") CustomUserDetails user) {
+        LearnerInvitationDTO response = learnerInvitationService.getLearnerInvitationById(learnerInvitationId, user);
+        return ResponseEntity.ok(response);
+    }
+
 }

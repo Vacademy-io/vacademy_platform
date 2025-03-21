@@ -9,7 +9,7 @@ import vacademy.io.assessment_service.features.assessment.dto.manual_evaluation.
 import java.util.Date;
 
 @Entity
-@Table(name = "assessment_section_mapping")
+@Table(name = "assessment_set_mapping")
 @Data
 @Builder
 public class AssessmentSetMapping {

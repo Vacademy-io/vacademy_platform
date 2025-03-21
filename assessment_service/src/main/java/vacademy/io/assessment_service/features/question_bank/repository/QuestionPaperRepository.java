@@ -62,9 +62,11 @@ public interface QuestionPaperRepository extends JpaRepository<QuestionPaper, St
                     "qp.created_on AS createdOn, " +
                     "qp.updated_on AS updatedOn " +
                     "FROM question_paper qp " +
-                    "WHERE (:title IS NULL OR qp.title ILIKE CONCAT('%', :title, '%')) ",
+                    "WHERE (:title IS NULL OR qp.title ILIKE CONCAT('%', :title, '%')) " +
+                    "AND qp.access ILIKE 'PUBLIC' ",
             countQuery = "SELECT COUNT(qp) FROM question_paper qp " +
-                    "WHERE (:title IS NULL OR qp.title ILIKE CONCAT('%', :title, '%')) ",
+                    "WHERE (:title IS NULL OR qp.title ILIKE CONCAT('%', :title, '%')) "+
+                    "AND qp.access ILIKE 'PUBLIC' ",
             nativeQuery = true
     )
     Page<Object[]> findPublicQuestionPapersByFilters(
@@ -72,6 +74,10 @@ public interface QuestionPaperRepository extends JpaRepository<QuestionPaper, St
             Pageable pageable
     );
 
+    @Modifying
+    @Transactional
+    @Query(value = "UPDATE question_paper SET access = 'PRIVATE' WHERE id = :id AND access = 'PUBLIC' ", nativeQuery = true)
+    void deletePublicQuestionPaperById(String id);
 
     @Modifying
     @Transactional

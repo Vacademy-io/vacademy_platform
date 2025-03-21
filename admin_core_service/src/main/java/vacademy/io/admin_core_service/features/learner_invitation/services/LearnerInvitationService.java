@@ -173,4 +173,9 @@ public class LearnerInvitationService {
         return field;
     }
 
+    public LearnerInvitationDTO getLearnerInvitationById(String learnerInvitationId, CustomUserDetails user) {
+        LearnerInvitation learnerInvitation = learnerInvitationRepository.findById(learnerInvitationId)
+                .orElseThrow(() -> new VacademyException("Learner invitation not found"));
+        return learnerInvitation.mapToDTO();
+    }
 }

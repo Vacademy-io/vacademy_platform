@@ -5,6 +5,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
+import org.checkerframework.checker.units.qual.A;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -13,6 +14,7 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+import vacademy.io.assessment_service.core.config.AssessmentInternalUserDetailsService;
 import vacademy.io.common.auth.entity.UserActivity;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.auth.repository.UserActivityRepository;
@@ -26,13 +28,24 @@ import java.io.IOException;
 @Slf4j
 public class AssessmentJwtAuthFilter extends OncePerRequestFilter {
 
+    private static final String[] AUTH_BY_ASSESS_DB_URLS = {"/assessment-service/assessment/learner/status/update", "/assessment-service/assessment/learner/status/submit", "/assessment-service/assessment/learner/status/restart"};
     @Autowired
     UserDetailsService userDetailsService;
-
+    @Autowired
+    AssessmentInternalUserDetailsService assessmentInternalUserDetailsService;
     @Autowired
     private UserActivityRepository userActivityRepository;
     @Autowired
     private JwtService jwtService; // Inject JwtService dependency
+
+    private static boolean startWithAssessAuth(String request) {
+        for (String path : AUTH_BY_ASSESS_DB_URLS) {
+            if (request.startsWith(path)) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
@@ -62,9 +75,17 @@ public class AssessmentJwtAuthFilter extends OncePerRequestFilter {
 
                 boolean isTokenExpired = jwtService.isTokenExpired(jwt);
                 if (isTokenExpired) throw new ExpiredTokenException("Expired Token");
-                // Load user details using user email
-                CustomUserDetails userDetails = (CustomUserDetails) userDetailsService.loadUserByUsername(usernameWithInstituteId);
 
+                String requestUri = request.getRequestURI();
+
+                CustomUserDetails userDetails = null;
+
+                if (startWithAssessAuth(requestUri)) {
+                    userDetails = (CustomUserDetails) (assessmentInternalUserDetailsService.loadUserByUsername(usernameWithInstituteId));
+                } else {
+                    // Load user details using user email
+                    userDetails = (CustomUserDetails) userDetailsService.loadUserByUsername(usernameWithInstituteId);
+                }
                 // Pass User ID with request
                 request.setAttribute("user", userDetails);
 
@@ -94,7 +115,6 @@ public class AssessmentJwtAuthFilter extends OncePerRequestFilter {
             throw new InvalidTokenException("Invalid Token");
         }
     }
-
 
     void addUserActivity(String userId, String origin, String route, String clientIp) {
         try {

@@ -22,6 +22,7 @@ import vacademy.io.assessment_service.features.learner_assessment.constants.Atte
 import vacademy.io.assessment_service.features.learner_assessment.dto.status_json.LearnerAssessmentAttemptDataDto;
 import vacademy.io.assessment_service.features.learner_assessment.dto.status_json.QuestionAttemptData;
 import vacademy.io.assessment_service.features.learner_assessment.dto.status_json.SectionAttemptData;
+import vacademy.io.assessment_service.features.learner_assessment.dto.status_json.manual.LearnerManualAttemptDataDto;
 import vacademy.io.assessment_service.features.learner_assessment.entity.QuestionWiseMarks;
 import vacademy.io.assessment_service.features.learner_assessment.enums.AssessmentAttemptResultEnum;
 import vacademy.io.assessment_service.features.learner_assessment.service.QuestionWiseMarksService;
@@ -214,7 +215,16 @@ public class StudentAttemptService {
         }
     }
 
-    public static String getQuestionDetails(String questionId, String attemptDataJson) {
+    public LearnerManualAttemptDataDto validateAndCreateManualAttemptJsonObject(String jsonContent) {
+        try {
+            ObjectMapper objectMapper = new ObjectMapper();
+            return objectMapper.readValue(jsonContent, LearnerManualAttemptDataDto.class);
+        } catch (Exception e) {
+            throw new VacademyException("Invalid json format: " + e.getMessage());
+        }
+    }
+
+    public String getQuestionDetails(String questionId, String attemptDataJson) {
         try {
             ObjectMapper objectMapper = new ObjectMapper();
             JsonNode rootNode = objectMapper.readTree(attemptDataJson);
@@ -366,6 +376,10 @@ public class StudentAttemptService {
     private void sendEmail(String instituteId) {
         log.info("Email Sent: " + instituteId);
         //TODO Sent Email
+    }
+
+    public Optional<StudentAttempt> getStudentAttemptById(String id){
+        return studentAttemptRepository.findById(id);
     }
 
 }

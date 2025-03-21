@@ -17,6 +17,7 @@ public interface LearnerInvitationRepository extends JpaRepository<LearnerInvita
                li.name AS name, 
                li.instituteId AS instituteId, 
                li.dateGenerated AS dateGenerated,
+               li.inviteCode AS inviteCode,
                COUNT(lir.id) AS acceptedBy
         FROM LearnerInvitation li
         LEFT JOIN LearnerInvitationResponse lir 
@@ -38,6 +39,7 @@ public interface LearnerInvitationRepository extends JpaRepository<LearnerInvita
                li.name AS name, 
                li.instituteId AS instituteId, 
                li.dateGenerated AS dateGenerated,
+               li.inviteCode AS inviteCode,
                COUNT(lir.id) AS acceptedBy
         FROM LearnerInvitation li
         LEFT JOIN LearnerInvitationResponse lir 
@@ -57,8 +59,16 @@ public interface LearnerInvitationRepository extends JpaRepository<LearnerInvita
             Pageable pageable
     );
 
-    @Query("SELECT li FROM LearnerInvitation li WHERE li.instituteId = :instituteId AND li.inviteCode = :inviteCode AND li.status IN :status")
-    Optional<LearnerInvitation> findByInstituteIdAndInviteCodeAndStatus(@Param("instituteId") String instituteId,
-                                                                        @Param("inviteCode") String inviteCode,
-                                                                        @Param("status") List<String> status);
+    @Query("SELECT DISTINCT li FROM LearnerInvitation li " +
+            "LEFT JOIN FETCH li.customFields cf " +
+            "WHERE li.instituteId = :instituteId " +
+            "AND li.inviteCode = :inviteCode " +
+            "AND li.status IN :status " +
+            "AND cf.status IN :customFieldStatus")
+    Optional<LearnerInvitation> findByInstituteIdAndInviteCodeAndStatus(
+            @Param("instituteId") String instituteId,
+            @Param("inviteCode") String inviteCode,
+            @Param("status") List<String> status,
+            @Param("customFieldStatus") List<String> customFieldStatus);
+
 }

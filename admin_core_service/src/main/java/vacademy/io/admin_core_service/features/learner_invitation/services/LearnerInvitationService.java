@@ -10,6 +10,7 @@ import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.learner_invitation.dto.*;
 import vacademy.io.admin_core_service.features.learner_invitation.entity.LearnerInvitation;
+import vacademy.io.admin_core_service.features.learner_invitation.entity.LearnerInvitationCustomField;
 import vacademy.io.admin_core_service.features.learner_invitation.entity.LearnerInvitationResponse;
 import vacademy.io.admin_core_service.features.learner_invitation.enums.LearnerInvitationResponseStatusEnum;
 import vacademy.io.admin_core_service.features.learner_invitation.notification.LearnerInvitationNotification;
@@ -23,6 +24,7 @@ import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 @Service
 public class LearnerInvitationService {
@@ -40,7 +42,7 @@ public class LearnerInvitationService {
     private LearnerInvitationNotification notification;
 
     @Transactional
-    public String createLearnerInvitationCode(AddLearnerInvitationDTO addLearnerInvitationDTO, CustomUserDetails user) {
+    public LearnerInvitationDTO createLearnerInvitationCode(AddLearnerInvitationDTO addLearnerInvitationDTO, CustomUserDetails user) {
         LearnerInvitationDTO learnerInvitationDTO = addLearnerInvitationDTO.getLearnerInvitation();
         validateRequest(learnerInvitationDTO);
         learnerInvitationDTO.setInviteCode(generateInviteCode());
@@ -56,7 +58,7 @@ public class LearnerInvitationService {
             sendLearnerInvitationNotificationAsync(emails, institute.getInstituteName(), learnerInvitationDTO.getInviteCode());
         }
 
-        return learnerInvitation.getId();
+        return learnerInvitation.mapToDTO();
     }
 
     public void sendLearnerInvitationNotificationAsync(List<String> emails, String instituteName, String invitationCode) {
@@ -84,9 +86,9 @@ public class LearnerInvitationService {
     private String generateInviteCode() {
         String chars = "ABC0D1E2F3G4H5I6JK7L8M9NOPQR0STUVWXYZ";
         SecureRandom random = new SecureRandom();
-        StringBuilder inviteCode = new StringBuilder(5);
+        StringBuilder inviteCode = new StringBuilder(6);
 
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < 6; i++) {
             inviteCode.append(chars.charAt(random.nextInt(chars.length())));
         }
 
@@ -121,4 +123,54 @@ public class LearnerInvitationService {
         learnerInvitationRepository.saveAll(responses);
         return "Status updated successfully!!!";
     }
+
+    @Transactional
+    public String updateLearnerInvitation(LearnerInvitationDTO learnerInvitationDTO, CustomUserDetails user) {
+        LearnerInvitation learnerInvitation = learnerInvitationRepository.findById(learnerInvitationDTO.getId())
+                .orElseThrow(() -> new VacademyException("Learner invitation not found"));
+
+        updateLearnerInvitationDetails(learnerInvitationDTO, learnerInvitation);
+
+        if (learnerInvitationDTO.getCustomFields() != null && !learnerInvitationDTO.getCustomFields().isEmpty()) {
+            updateCustomFields(learnerInvitationDTO.getCustomFields(), learnerInvitation);
+        }
+
+        return "Details updated successfully";
+    }
+
+    private void updateLearnerInvitationDetails(LearnerInvitationDTO dto, LearnerInvitation entity) {
+        if (StringUtils.hasText(dto.getStatus())) entity.setStatus(dto.getStatus());
+        if (StringUtils.hasText(dto.getName())) entity.setName(dto.getName());
+        if (dto.getExpiryDate() != null) entity.setExpiryDate(dto.getExpiryDate());
+        if (StringUtils.hasText(dto.getBatchOptionsJson())) entity.setBatchOptionsJson(dto.getBatchOptionsJson());
+
+        learnerInvitationRepository.save(entity); // Save updated entity once
+    }
+
+    private void updateCustomFields(List<LearnerInvitationCustomFieldDTO> fieldDTOs, LearnerInvitation learnerInvitation) {
+        List<LearnerInvitationCustomField> updatedFields = new ArrayList<>();
+
+        for (LearnerInvitationCustomFieldDTO fieldDTO : fieldDTOs) {
+            LearnerInvitationCustomField field = learnerInvitationCustomFieldRepository.findById(fieldDTO.getId())
+                    .map(existingField -> updateExistingField(existingField, fieldDTO))
+                    .orElseGet(() -> new LearnerInvitationCustomField(fieldDTO, learnerInvitation));
+
+            updatedFields.add(field);
+        }
+
+        learnerInvitationCustomFieldRepository.saveAll(updatedFields); // Batch save for performance
+    }
+
+    private LearnerInvitationCustomField updateExistingField(LearnerInvitationCustomField field, LearnerInvitationCustomFieldDTO dto) {
+        if (StringUtils.hasText(dto.getFieldName())) field.setFieldName(dto.getFieldName());
+        if (StringUtils.hasText(dto.getFieldType())) field.setFieldType(dto.getFieldType());
+        if (StringUtils.hasText(dto.getCommaSeparatedOptions())) field.setCommaSeparatedOptions(dto.getCommaSeparatedOptions());
+        if (dto.getIsMandatory() != null) field.setIsMandatory(dto.getIsMandatory());
+        if (StringUtils.hasText(dto.getDescription())) field.setDescription(dto.getDescription());
+        if (StringUtils.hasText(dto.getDefaultValue())) field.setDefaultValue(dto.getDefaultValue());
+        if (StringUtils.hasText(dto.getStatus())) field.setStatus(dto.getStatus());
+
+        return field;
+    }
+
 }

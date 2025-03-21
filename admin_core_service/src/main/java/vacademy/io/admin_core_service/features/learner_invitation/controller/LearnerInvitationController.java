@@ -21,10 +21,10 @@ public class LearnerInvitationController {
     private LearnerInvitationResponseService learnerInvitationResponseService;
 
     @PostMapping("/create")
-    public ResponseEntity<String> createInvitation(@RequestBody AddLearnerInvitationDTO addLearnerInvitationDTO,
+    public ResponseEntity<LearnerInvitationDTO> createInvitation(@RequestBody AddLearnerInvitationDTO addLearnerInvitationDTO,
                                                    @RequestAttribute("user")CustomUserDetails user) {
-        String invitationId = learnerInvitationService.createLearnerInvitationCode(addLearnerInvitationDTO,user);
-        return ResponseEntity.ok(invitationId);
+        LearnerInvitationDTO learnerInvitationDTO = learnerInvitationService.createLearnerInvitationCode(addLearnerInvitationDTO,user);
+        return ResponseEntity.ok(learnerInvitationDTO);
     }
 
     @PostMapping("/invitation-details")
@@ -62,6 +62,13 @@ public class LearnerInvitationController {
                                                       @RequestAttribute("user") CustomUserDetails user) {
         String responseMessage = learnerInvitationService.updateLearnerInvitationStatus(statusChangeDTO, user);
         return ResponseEntity.ok(responseMessage);
+    }
+
+    @PutMapping("/update")
+    public ResponseEntity<String> updateLearnerInvitation(@RequestBody LearnerInvitationDTO learnerInvitationDTO,
+                                                          @RequestAttribute("user") CustomUserDetails user) {
+        String response = learnerInvitationService.updateLearnerInvitation(learnerInvitationDTO, user);
+        return ResponseEntity.ok(response);
     }
 
 }

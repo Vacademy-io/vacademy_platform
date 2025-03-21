@@ -19,6 +19,7 @@ import vacademy.io.common.auth.repository.UserActivityRepository;
 import vacademy.io.common.auth.service.JwtService;
 import vacademy.io.common.exceptions.ExpiredTokenException;
 import vacademy.io.common.exceptions.InvalidTokenException;
+import vacademy.io.common.exceptions.VacademyException;
 
 import java.io.IOException;
 
@@ -88,7 +89,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         } catch (Exception exception) {
             // Log any errors during JWT processing
             log.error(exception.getMessage());
-            throw new InvalidTokenException("Invalid Token");
+            throw new VacademyException(exception.getMessage());
         }
     }
 

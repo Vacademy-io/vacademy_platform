@@ -60,16 +60,19 @@ public class LearnerInstituteManager {
         instituteInfoDTO.setState(institute.get().getState());
         instituteInfoDTO.setInstituteThemeCode(institute.get().getInstituteThemeCode());
         instituteInfoDTO.setSubModules(instituteModuleService.getSubmoduleIdsForInstitute(institute.get().getId()));
-        instituteInfoDTO.setBatchesForSessions(packageSessionRepository.findPackageSessionsByInstituteId(institute.get().getId(),List.of(PackageSessionStatusEnum.ACTIVE.name())).stream().map((obj) -> {
+        instituteInfoDTO.setBatchesForSessions(packageSessionRepository.findPackageSessionsByInstituteId(institute.get().getId(), List.of(PackageSessionStatusEnum.ACTIVE.name())).stream().map((obj) -> {
             return new PackageSessionDTO(obj);
         }).toList());
         List<StudentSessionInstituteGroupMapping> studentSessions = studentSessionRepository.findAllByInstituteIdAndUserId(instituteId, userId);
         Set<PackageSession> packageSessions = new HashSet<>();
 
         for (StudentSessionInstituteGroupMapping studentSession : studentSessions) {
-            packageSessions.add(studentSession.getPackageSession());
+            if (studentSession.getPackageSession() != null)
+                packageSessions.add(studentSession.getPackageSession());
         }
-        instituteInfoDTO.setSubjects(subjectRepository.findDistinctSubjectsOfPackageSessions(packageSessions.stream().map(PackageSession::getId).toList()).stream().map(SubjectDTO::new).toList());
+        if (!packageSessions.isEmpty()) {
+            instituteInfoDTO.setSubjects(subjectRepository.findDistinctSubjectsOfPackageSessions(packageSessions.stream().map(PackageSession::getId).toList()).stream().map(SubjectDTO::new).toList());
+        }
         return instituteInfoDTO;
     }
 

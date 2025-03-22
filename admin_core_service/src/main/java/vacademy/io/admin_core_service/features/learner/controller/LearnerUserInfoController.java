@@ -4,7 +4,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.institute_learner.dto.StudentDTO;
+import vacademy.io.admin_core_service.features.learner.dto.LearnerDetailsEditDTO;
 import vacademy.io.admin_core_service.features.learner.manager.LearnerProfileManager;
+import vacademy.io.admin_core_service.features.learner.service.LearnerService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 import java.util.List;
@@ -16,9 +18,20 @@ public class LearnerUserInfoController {
     @Autowired
     LearnerProfileManager learnerProfileManager;
 
+    @Autowired
+    private LearnerService learnerService;
+
     @GetMapping("/details")
     public ResponseEntity<List<StudentDTO>> getLearnerInfo(@RequestAttribute("user") CustomUserDetails user, @RequestParam("instituteId") String instituteId) {
 
         return learnerProfileManager.getLearnerInfo(user, instituteId);
+    }
+
+    @PutMapping("/edit")
+    public ResponseEntity<String> editLearnerDetails(@RequestBody LearnerDetailsEditDTO learnerDetailsEditDTO,
+                                                     @RequestAttribute("user") CustomUserDetails user) {
+
+        return ResponseEntity.ok(learnerService.editLearnerDetails(learnerDetailsEditDTO, user));
+
     }
 }

@@ -1,9 +1,6 @@
 package vacademy.io.admin_core_service.features.slide.entity;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 import vacademy.io.admin_core_service.features.slide.dto.AddDocumentSlideDTO;
@@ -38,6 +35,14 @@ public class Slide {
 
     @Column(name = "status")
     private String status;
+
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "id", referencedColumnName = "id", insertable = false, updatable = false)
+    private DocumentSlide documentSlide;
+
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "id", referencedColumnName = "id", insertable = false, updatable = false)
+    private VideoSlide videoSlide;
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private Timestamp createdAt;

@@ -13,6 +13,7 @@ import vacademy.io.admin_core_service.features.packages.repository.PackageSessio
 import vacademy.io.admin_core_service.features.session.dto.*;
 import vacademy.io.admin_core_service.features.session.enums.SessionStatusEnum;
 import vacademy.io.admin_core_service.features.session.repository.SessionRepository;
+import vacademy.io.admin_core_service.features.subject.service.SubjectService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.dto.LevelDTO;
@@ -34,6 +35,7 @@ public class SessionService {
     private final PackageSessionRepository packageSessionRepository;
     private final LevelService levelService;
     private final PackageRepository packageRepository;
+    private final SubjectService subjectService;
     public Session createOrGetSession(AddSessionDTO sessionDTO) {
         Session session = null;
         if (sessionDTO.getNewSession() == false) {
@@ -183,5 +185,11 @@ public class SessionService {
         if (commaSeparatedIds != null && !commaSeparatedIds.trim().isEmpty()) {
             packageSessionRepository.updateStatusByPackageSessionIds(PackageSessionStatusEnum.ACTIVE.name(), commaSeparatedIds.split(","));
         }
+    }
+
+    public boolean copyStudyMaterial(String fromPackageSessionId,String toPackageSessionId) {
+        PackageSession oldPackageSession = packageSessionRepository.findById(fromPackageSessionId).orElseThrow(()->new VacademyException("Package Session not found"));
+        PackageSession newPackageSession = packageSessionRepository.findById(toPackageSessionId).orElseThrow(()->new VacademyException("Package Session not found"));
+        return subjectService.copySubjectsFromExistingPackageSessionMapping(oldPackageSession, newPackageSession);
     }
 }

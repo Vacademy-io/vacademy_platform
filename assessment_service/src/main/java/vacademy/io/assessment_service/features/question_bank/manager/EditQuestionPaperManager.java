@@ -19,4 +19,9 @@ public class EditQuestionPaperManager {
         questionPaperRepository.updateStatusForInstituteQuestionPaper(updateQuestionPaperStatus.getInstituteId(), updateQuestionPaperStatus.getQuestionPaperId(), updateQuestionPaperStatus.getStatus());
         return true;
     }
+
+    public Boolean deletePublicQuestionPaperById( CustomUserDetails user ,  String questionPaperId){
+        questionPaperRepository.deletePublicQuestionPaperById(questionPaperId);
+        return true;
+    }
 }

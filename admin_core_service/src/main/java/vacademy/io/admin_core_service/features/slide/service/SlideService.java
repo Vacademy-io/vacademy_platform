@@ -19,10 +19,7 @@ import vacademy.io.admin_core_service.features.slide.repository.VideoRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -359,5 +356,69 @@ public class SlideService {
             videoSlide.setVideoLengthInMillis(videoSlideDTO.getVideoLengthInMillis());
         }
     }
+
+    public void copySlidesOfChapter(Chapter oldChapter, Chapter newChapter) {
+        List<ChapterToSlides> chapterToSlides = chapterToSlidesRepository.findByChapterId(oldChapter.getId());
+        List<Slide> newSlides = new ArrayList<>();
+        List<ChapterToSlides> newChapterToSlides = new ArrayList<>();
+
+        // First, create new Slide instances and persist them before using them in ChapterToSlides
+        for (ChapterToSlides chapterToSlide : chapterToSlides) {
+            Slide slide = chapterToSlide.getSlide();
+            Slide newSlide = new Slide();
+            newSlide.setTitle(slide.getTitle());
+            newSlide.setStatus(slide.getStatus());
+            newSlide.setImageFileId(slide.getImageFileId());
+            newSlide.setSourceType(slide.getSourceType());
+            newSlide.setDescription(slide.getDescription());
+            newSlide.setId(UUID.randomUUID().toString());
+            newSlides.add(newSlide);
+        }
+
+        // Save slides to make sure they are managed entities
+        List<Slide> persistedSlides = slideRepository.saveAll(newSlides);
+
+        // Now, process dependent entities (DocumentSlide/VideoSlide)
+        for (int i = 0; i < chapterToSlides.size(); i++) {
+            Slide oldSlide = chapterToSlides.get(i).getSlide();
+            Slide newSlide = persistedSlides.get(i); // Ensure we're using the persisted entity
+
+            if (oldSlide.getSourceType().equalsIgnoreCase(SlideTypeEnum.DOCUMENT.name())) {
+                DocumentSlide documentSlide = documentSlideRepository.findById(oldSlide.getSourceId()).orElse(null);
+                if (documentSlide != null) {
+                    DocumentSlide newDocumentSlide = new DocumentSlide();
+                    newDocumentSlide.setData(documentSlide.getData());
+                    newDocumentSlide.setTotalPages(documentSlide.getTotalPages());
+                    newDocumentSlide.setType(documentSlide.getType());
+                    newDocumentSlide.setTitle(documentSlide.getTitle());
+                    newDocumentSlide.setPublishedData(documentSlide.getPublishedData());
+                    newDocumentSlide.setCoverFileId(documentSlide.getCoverFileId());
+                    newDocumentSlide.setPublishedDocumentTotalPages(documentSlide.getPublishedDocumentTotalPages());
+                    newDocumentSlide.setId(UUID.randomUUID().toString());
+                    newDocumentSlide = documentSlideRepository.save(newDocumentSlide);  // Save first
+                    newSlide.setSourceId(newDocumentSlide.getId()); // Now set reference
+                }
+            } else {
+                VideoSlide videoSlide = videoSlideRepository.findById(oldSlide.getSourceId()).orElse(null);
+                if (videoSlide != null) {
+                    VideoSlide newVideoSlide = new VideoSlide();
+                    newVideoSlide.setUrl(videoSlide.getUrl());
+                    newVideoSlide.setVideoLengthInMillis(videoSlide.getVideoLengthInMillis());
+                    newVideoSlide.setId(UUID.randomUUID().toString());
+                    newVideoSlide.setPublishedUrl(videoSlide.getPublishedUrl());
+                    newVideoSlide.setPublishedVideoLengthInMillis(videoSlide.getPublishedVideoLengthInMillis());
+                    newVideoSlide = videoSlideRepository.save(newVideoSlide); // Save first
+                    newSlide.setSourceId(newVideoSlide.getId()); // Now set reference
+                }
+            }
+
+            // Ensure the Slide object is fully persisted before creating ChapterToSlides
+            newChapterToSlides.add(new ChapterToSlides(newChapter, newSlide, chapterToSlides.get(i).getSlideOrder(), chapterToSlides.get(i).getStatus()));
+        }
+
+        // Now save ChapterToSlides
+        chapterToSlidesRepository.saveAll(newChapterToSlides);
+    }
+
 
 }

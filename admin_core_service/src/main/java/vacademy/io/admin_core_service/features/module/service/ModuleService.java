@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.module.service;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.chapter.service.ChapterManager;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.module.dto.ModuleDTO;
 import vacademy.io.admin_core_service.features.module.dto.UpdateModuleOrderDTO;
@@ -20,6 +21,8 @@ import vacademy.io.common.institute.entity.module.Module;
 import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.common.institute.entity.student.Subject;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;

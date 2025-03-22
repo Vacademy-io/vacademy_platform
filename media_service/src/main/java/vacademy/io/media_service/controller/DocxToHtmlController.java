@@ -418,10 +418,9 @@ public class DocxToHtmlController {
                         StringBuilder answerBuilder = new StringBuilder(answerText);
 
                         //multiple line ans for long answer type
-                        while (i + 1 < paragraphs.size() && !paragraphs.get(i + 1).text().matches(subQuestionRegexWithSpace) && !paragraphs.get(i + 1).text().matches(subQuestionRegex) && !paragraphs.get(i + 1).text().matches(questionRegex) && !paragraphs.get(i + 1).text().matches(explanationRegex) && !paragraphs.get(i + 1).text().matches(comprehensionQuestionRegex) && !paragraphs.get(i + 1).text().startsWith("(a.)")) {
+                        while (i + 1 < paragraphs.size() && !paragraphs.get(i + 1).text().matches("Ans:") && !paragraphs.get(i + 1).text().matches("Exp:") && !paragraphs.get(i + 1).text().matches(subQuestionRegexWithSpace) && !paragraphs.get(i + 1).text().matches(subQuestionRegex) && !paragraphs.get(i + 1).text().matches(questionRegex) && !paragraphs.get(i + 1).text().matches(explanationRegex) && !paragraphs.get(i + 1).text().matches(comprehensionQuestionRegex) && !paragraphs.get(i + 1).text().startsWith("(a.)") && !paragraphs.get(i + 1).text().startsWith("Exp:") && !paragraphs.get(i + 1).text().startsWith("Ans:")) {
                             i++;
                             String filteredInternalText = paragraphs.get(i).outerHtml().replaceAll(ansRegex, "").trim();
-
                             answerBuilder.append(cleanHtmlTags(filteredInternalText, ansRegex));
 
                         }

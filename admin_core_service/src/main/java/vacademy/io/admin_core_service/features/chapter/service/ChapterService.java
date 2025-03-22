@@ -287,5 +287,4 @@ public class ChapterService {
         copyChapter(newPackageSessionId, moduleId, chapterId, user);
         return "Chapter moved successfully.";
     }
-
 }

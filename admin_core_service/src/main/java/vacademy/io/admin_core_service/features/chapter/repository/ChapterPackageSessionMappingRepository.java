@@ -7,6 +7,7 @@ import vacademy.io.admin_core_service.features.chapter.entity.Chapter;
 import vacademy.io.admin_core_service.features.chapter.entity.ChapterPackageSessionMapping;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface ChapterPackageSessionMappingRepository extends JpaRepository<ChapterPackageSessionMapping, String> {
 
@@ -34,5 +35,13 @@ public interface ChapterPackageSessionMappingRepository extends JpaRepository<Ch
 
     @Query("SELECT cpsm FROM ChapterPackageSessionMapping cpsm WHERE cpsm.chapter.id = :chapterId AND cpsm.status <> 'DELETED'")
     List<ChapterPackageSessionMapping> findByChapterIdAndStatusNotDeleted(@Param("chapterId") String chapterId);
+
+    @Query("SELECT cpsm FROM ChapterPackageSessionMapping cpsm " +
+            "WHERE cpsm.chapter.id = :chapterId " +
+            "AND cpsm.packageSession.id = :packageSessionId " +
+            "AND cpsm.status <> 'DELETED'")
+    Optional<ChapterPackageSessionMapping> findByChapterIdAndPackageSessionIdAndStatusNotDeleted(
+            @Param("chapterId") String chapterId,
+            @Param("packageSessionId") String packageSessionId);
 
 }

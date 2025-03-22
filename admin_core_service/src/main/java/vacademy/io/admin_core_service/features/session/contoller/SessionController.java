@@ -50,4 +50,13 @@ public class SessionController {
         String response = sessionService.deleteSessions(sessionIds, user);
         return ResponseEntity.ok(response);
     }
+
+    @PostMapping("/copy-study-material")
+    public ResponseEntity<Boolean> copyStudyMaterial(
+            @RequestParam String fromPackageSessionId,
+            @RequestParam String toPackageSessionId) {
+
+        boolean success = sessionService.copyStudyMaterial(fromPackageSessionId, toPackageSessionId);
+        return ResponseEntity.ok(success);
+    }
 }

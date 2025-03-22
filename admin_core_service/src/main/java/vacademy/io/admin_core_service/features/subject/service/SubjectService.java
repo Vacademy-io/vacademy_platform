@@ -4,12 +4,20 @@ import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.chapter.entity.Chapter;
+import vacademy.io.admin_core_service.features.chapter.entity.ChapterPackageSessionMapping;
+import vacademy.io.admin_core_service.features.chapter.repository.ChapterPackageSessionMappingRepository;
+import vacademy.io.admin_core_service.features.module.entity.ModuleChapterMapping;
 import vacademy.io.admin_core_service.features.module.entity.SubjectModuleMapping;
 import vacademy.io.admin_core_service.features.module.enums.ModuleStatusEnum;
+import vacademy.io.admin_core_service.features.module.repository.ModuleChapterMappingRepository;
 import vacademy.io.admin_core_service.features.module.repository.ModuleRepository;
 import vacademy.io.admin_core_service.features.module.repository.SubjectModuleMappingRepository;
+import vacademy.io.admin_core_service.features.module.service.ModuleManager;
+import vacademy.io.admin_core_service.features.module.service.ModuleService;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
+import vacademy.io.admin_core_service.features.slide.service.SlideService;
 import vacademy.io.admin_core_service.features.subject.dto.UpdateSubjectOrderDTO;
 import vacademy.io.admin_core_service.features.subject.entity.SubjectPackageSession;
 import vacademy.io.admin_core_service.features.subject.enums.SubjectStatusEnum;
@@ -34,7 +42,9 @@ public class SubjectService {
     private final SubjectPackageSessionRepository subjectPackageSessionRepository;
     private final SubjectModuleMappingRepository subjectModuleMappingRepository;
     private final ModuleRepository moduleRepository;
-
+    private final ModuleChapterMappingRepository moduleChapterMappingRepository;
+    private final ChapterPackageSessionMappingRepository chapterPackageSessionMappingRepository;
+    private final ModuleManager moduleManager;
     /**
      * Adds a new subject to the system.
      *
@@ -289,4 +299,47 @@ public class SubjectService {
         subjectModuleMapping.setModule(module);
         subjectModuleMappingRepository.save(subjectModuleMapping);
     }
+
+    @Transactional
+    public boolean copySubjectsFromExistingPackageSessionMapping(PackageSession oldPackageSession, PackageSession newPackageSession) {
+        if (Objects.isNull(oldPackageSession) || Objects.isNull(newPackageSession)) {
+            return false;
+        }
+
+        List<Subject> existingSubjects = subjectRepository.findDistinctSubjectsByPackageSessionId(oldPackageSession.getId());
+        List<Subject> newSubjects = new ArrayList<>();
+        copySubjects(existingSubjects,newSubjects);
+        List<SubjectPackageSession> subjectPackageSessions = createSubjectPackageSessions(newSubjects, newPackageSession);
+
+        subjectRepository.saveAll(newSubjects);
+        subjectPackageSessionRepository.saveAll(subjectPackageSessions);
+        for (int i = 0;i < newSubjects.size();i++) {
+            moduleManager.copyModulesOfSubject(existingSubjects.get(i),newSubjects.get(i),oldPackageSession,newPackageSession);
+        }
+        return true;
+    }
+
+    private void copySubjects(List<Subject> existingSubjects,List<Subject>newSubjects) {
+        for (Subject subject : existingSubjects) {
+            Subject newSubject = new Subject();
+            newSubject.setSubjectName(subject.getSubjectName());
+            newSubject.setSubjectCode(subject.getSubjectCode());
+            newSubject.setCredit(subject.getCredit());
+            newSubject.setThumbnailId(subject.getThumbnailId());
+            newSubject.setStatus(SubjectStatusEnum.ACTIVE.name());
+            newSubjects.add(newSubject);
+        }
+    }
+
+    private List<SubjectPackageSession> createSubjectPackageSessions(List<Subject> subjects, PackageSession packageSession) {
+        List<SubjectPackageSession> subjectPackageSessions = new ArrayList<>();
+        for (Subject subject : subjects) {
+            SubjectPackageSession subjectPackageSession = new SubjectPackageSession();
+            subjectPackageSession.setSubject(subject);
+            subjectPackageSession.setPackageSession(packageSession);
+            subjectPackageSessions.add(subjectPackageSession);
+        }
+        return subjectPackageSessions;
+    }
+
 }

@@ -28,19 +28,21 @@ public class LearnerTrackingService {
     private final VideoTrackedRepository videoTrackedRepository;
     private final LearnerOperationService learnerOperationService;
     private final LearnerTrackingAsyncService learnerTrackingAsyncService;
-
+    private final ConcentrationScoreService concentrationScoreService;
     @Autowired
     public LearnerTrackingService(
             ActivityLogRepository activityLogRepository,
             DocumentTrackedRepository documentTrackedRepository,
             VideoTrackedRepository videoTrackedRepository,
             LearnerOperationService learnerOperationService,
-            LearnerTrackingAsyncService learnerTrackingAsyncService) {
+            LearnerTrackingAsyncService learnerTrackingAsyncService,
+            ConcentrationScoreService concentrationScoreService) {
         this.activityLogRepository = activityLogRepository;
         this.documentTrackedRepository = documentTrackedRepository;
         this.videoTrackedRepository = videoTrackedRepository;
         this.learnerOperationService = learnerOperationService;
         this.learnerTrackingAsyncService = learnerTrackingAsyncService;
+        this.concentrationScoreService = concentrationScoreService;
     }
 
     @Transactional
@@ -52,6 +54,7 @@ public class LearnerTrackingService {
 
         saveDocumentTracking(activityLogDTO, activityLog);
         learnerTrackingAsyncService.updateLearnerOperationsForDocument(user.getUserId(), slideId, chapterId, activityLogDTO);
+        concentrationScoreService.addConcentrationScore(activityLogDTO.getConcentrationScore(), activityLog);
         return activityLog.toActivityLogDTO();
     }
 
@@ -64,6 +67,7 @@ public class LearnerTrackingService {
 
         saveVideoTracking(activityLogDTO, activityLog);
         learnerTrackingAsyncService.updateLearnerOperationsForVideo(user.getUserId(), slideId, chapterId, activityLogDTO);
+        concentrationScoreService.addConcentrationScore(activityLogDTO.getConcentrationScore(), activityLog);
         return activityLog.toActivityLogDTO();
     }
 

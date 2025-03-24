@@ -22,4 +22,5 @@ public class ActivityLogDTO {
     private List<VideoActivityLogDTO> videos;
     private List<DocumentActivityLogDTO> documents;
     private boolean newActivity;
+    private ConcentrationScoreDTO concentrationScore;
 }

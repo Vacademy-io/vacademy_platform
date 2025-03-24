@@ -20,8 +20,8 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
     @Query(value = "UPDATE assessment_user_registration SET status = 'DELETED' WHERE assessment_id = ?1 AND user_id IN ?2 AND (institute_id = ?3 OR ?3 IS NULL AND institute_id IS NULL)", nativeQuery = true)
     void softDeleteByAssessmentIdAndUserIdsAndInstituteId(String assessmentId, List<String> userIds, String instituteId);
 
-    @Query("SELECT a FROM AssessmentUserRegistration a WHERE a.userId = :userId AND a.instituteId = :instituteId ORDER BY a.createdAt DESC")
-    Optional<AssessmentUserRegistration> findTopByUserIdAndInstituteId(@Param("userId") String userId, @Param("instituteId") String instituteId);
+    @Query("SELECT a FROM AssessmentUserRegistration a WHERE a.username = :username AND a.instituteId = :instituteId ORDER BY a.createdAt DESC LIMIT 1")
+    Optional<AssessmentUserRegistration> findTopByUserNameAndInstituteId(@Param("username") String username, @Param("instituteId") String instituteId);
 
     @Query(value = "SELECT * FROM assessment_user_registration a WHERE a.user_id = :userId AND a.assessment_id = :assessmentId ORDER BY a.created_at DESC", nativeQuery = true)
     Optional<AssessmentUserRegistration> findTopByUserIdAndAssessmentId(@Param("userId") String userId, @Param("assessmentId") String assessmentId);

@@ -83,6 +83,9 @@ public class AuthManager {
         if(Objects.isNull(registerRequest)) throw new VacademyException("Invalid Request");
 
         String userName = registerRequest.getUserName().trim().toLowerCase();
+        Optional<User> userOptional = userRepository.findByUsername(userName);
+
+        if(userOptional.isPresent()) throw new VacademyException("User Already Exist");
 
         InstituteInfoDTO instituteInfoDTO = registerRequest.getInstitute();
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(applicationName, HttpMethod.POST.name(), adminCoreServiceBaseUrl, AuthConstants.CREATE_INSTITUTES_PATH, instituteInfoDTO);

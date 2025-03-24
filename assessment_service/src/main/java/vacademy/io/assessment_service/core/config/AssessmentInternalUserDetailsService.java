@@ -44,7 +44,7 @@ public class AssessmentInternalUserDetailsService {
             usernameWithoutInstitute = stringUsernameSplit[1];
         }
 
-        Optional<AssessmentUserRegistration> user = assessmentUserRegistrationRepository.findTopByUserIdAndInstituteId(usernameWithoutInstitute, instituteId);
+        Optional<AssessmentUserRegistration> user = assessmentUserRegistrationRepository.findTopByUserNameAndInstituteId(usernameWithoutInstitute, instituteId);
 
         if (user.isEmpty()) {
             throw new UsernameNotFoundException("User not found");

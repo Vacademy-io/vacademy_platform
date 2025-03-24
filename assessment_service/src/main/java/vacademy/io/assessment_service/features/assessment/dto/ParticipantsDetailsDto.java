@@ -14,7 +14,7 @@ public interface ParticipantsDetailsDto {
     String getAttemptId();
     String getStudentName();
     Date getAttemptDate();
-    Date getAndTime();
+    Date getEndTime();
     Long getDuration();
     Double getScore();
     String getUserId();

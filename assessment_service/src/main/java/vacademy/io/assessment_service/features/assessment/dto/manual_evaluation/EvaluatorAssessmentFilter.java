@@ -1,4 +1,4 @@
-package vacademy.io.assessment_service.features.assessment.dto.admin_get_dto;
+package vacademy.io.assessment_service.features.assessment.dto.manual_evaluation;
 
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
@@ -15,7 +15,7 @@ import java.util.Map;
 @AllArgsConstructor
 @NoArgsConstructor
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-public class AdminAssessmentFilter {
+public class EvaluatorAssessmentFilter {
     private String name;
     private List<String> batchIds;
     private List<String> subjectsIds;
@@ -23,7 +23,7 @@ public class AdminAssessmentFilter {
     private Boolean getLiveAssessments;
     private Boolean getPassedAssessments;
     private Boolean getUpcomingAssessments;
-    private List<String> evaluationTypes = new ArrayList<>();
+    private List<String> userIds;
     private List<String> instituteIds = new ArrayList<>();
     private List<String> assessmentStatuses = new ArrayList<>();
     private List<String> assessmentModes = new ArrayList<>();

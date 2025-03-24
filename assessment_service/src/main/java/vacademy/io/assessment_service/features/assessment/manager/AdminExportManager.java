@@ -202,7 +202,7 @@ public class AdminExportManager {
             response.add(ParticipantsDetailExportDto.builder()
                     .attemptDate(participantsDetailsDto.getAttemptDate())
                     .duration(participantsDetailsDto.getDuration())
-                    .endTime(participantsDetailsDto.getAndTime())
+                    .endTime(participantsDetailsDto.getEndTime())
                     .score(participantsDetailsDto.getScore())
                     .studentName(participantsDetailsDto.getStudentName()).build());
         });

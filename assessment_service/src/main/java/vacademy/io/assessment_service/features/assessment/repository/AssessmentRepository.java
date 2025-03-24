@@ -140,7 +140,7 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
             "FROM public.assessment a " +
             "LEFT JOIN public.assessment_batch_registration abr ON a.id = abr.assessment_id " +
             "LEFT JOIN public.assessment_institute_mapping aim ON a.id = aim.assessment_id " +
-            "LEFT JOIN public.assessment_user_registration aur ON a.id = aur.assessment_id AND aur.user_id IN (:userIds) " +
+            "LEFT JOIN public.assessment_user_registration aur ON a.id = aur.assessment_id AND aur.user_id IN :userIds " +
             "LEFT JOIN ( " +
             "SELECT sa.registration_id, sa.status, sa.start_time, sa.id, " +
             "ROW_NUMBER() OVER (PARTITION BY sa.registration_id ORDER BY sa.start_time DESC) AS rn , COUNT(*) OVER (PARTITION BY sa.registration_id) AS total_attempts " +
@@ -180,7 +180,7 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
                             "SELECT DISTINCT a.id FROM public.assessment a " +
                             "LEFT JOIN public.assessment_batch_registration abr ON a.id = abr.assessment_id " +
                             "LEFT JOIN public.assessment_institute_mapping aim ON a.id = aim.assessment_id " +
-                            "LEFT JOIN public.assessment_user_registration aur ON a.id = aur.assessment_id AND aur.user_id IN (:userIds) " +
+                            "LEFT JOIN public.assessment_user_registration aur ON a.id = aur.assessment_id AND aur.user_id IN :userIds " +
                             "LEFT JOIN ( " +
                             "SELECT sa.registration_id, sa.status, sa.start_time, sa.id, " +
                             "ROW_NUMBER() OVER (PARTITION BY sa.registration_id ORDER BY sa.start_time DESC) AS rn , COUNT(*) OVER (PARTITION BY sa.registration_id) AS total_attempts " +

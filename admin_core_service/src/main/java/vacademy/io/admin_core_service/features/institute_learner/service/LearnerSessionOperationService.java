@@ -1,9 +1,9 @@
 package vacademy.io.admin_core_service.features.institute_learner.service;
 
 import jakarta.transaction.Transactional;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import vacademy.io.admin_core_service.features.institute_learner.dto.LearnerBatchRegisterDTO;
+import vacademy.io.admin_core_service.features.institute_learner.dto.LearnerBatchRegisterRequestDTO;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
@@ -12,47 +12,61 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.session.PackageSession;
 
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
+@RequiredArgsConstructor
 public class LearnerSessionOperationService {
 
-    @Autowired
-    private StudentSessionRepository studentSessionRepository;
-
-    @Autowired
-    private PackageSessionRepository packageSessionRepository;
+    private final StudentSessionRepository studentSessionRepository;
+    private final PackageSessionRepository packageSessionRepository;
 
     @Transactional
-    public String addPackageSessionsToLearner(LearnerBatchRegisterDTO learnerBatchRegisterDTO, CustomUserDetails customUserDetails) {
-        List<String> packageSessionIds = getPackageSessionIds(learnerBatchRegisterDTO.getCommaSeparatedPackageSessionIds());
-        List<StudentSessionInstituteGroupMapping>mappings = new ArrayList<>();
-        StudentSessionInstituteGroupMapping studentSessionInstituteGroupMapping = new StudentSessionInstituteGroupMapping();
-        for(String packageSessionId : packageSessionIds) {
-            StudentSessionInstituteGroupMapping existingMapping = getStudentSessionInstituteMappingByUserIdAndInstituteId(learnerBatchRegisterDTO.getUserId(),learnerBatchRegisterDTO.getInstituteId());
-            PackageSession packageSession = packageSessionRepository.findById(packageSessionId).orElseThrow(() -> new VacademyException("Package Session not found"));
-            studentSessionInstituteGroupMapping.setUserId(learnerBatchRegisterDTO.getUserId());
-            studentSessionInstituteGroupMapping.setPackageSession(packageSession);
-            studentSessionInstituteGroupMapping.setInstitute(existingMapping.getInstitute());
-            studentSessionInstituteGroupMapping.setGroup(existingMapping.getGroup());
-            studentSessionInstituteGroupMapping.setStatus(LearnerSessionStatusEnum.ACTIVE.name());
-            studentSessionInstituteGroupMapping.setEnrolledDate(new Date());
-            studentSessionInstituteGroupMapping.setInstituteEnrolledNumber(existingMapping.getInstituteEnrolledNumber());
-//            studentSessionInstituteGroupMapping.set
-            mappings.add(studentSessionInstituteGroupMapping);
-        }
+    public String addPackageSessionsToLearner(LearnerBatchRegisterRequestDTO requestDTO, CustomUserDetails userDetails) {
+        List<String> packageSessionIds = extractPackageSessionIds(requestDTO.getCommaSeparatedPackageSessionIds());
+        List<PackageSession> packageSessions = fetchPackageSessions(packageSessionIds);
+
+        List<StudentSessionInstituteGroupMapping> mappings = requestDTO.getUserIds().stream()
+                .map(userId -> createStudentMappings(userId, requestDTO.getInstituteId(), packageSessions))
+                .flatMap(List::stream)
+                .collect(Collectors.toList());
+
         studentSessionRepository.saveAll(mappings);
         return "success";
     }
 
-    public StudentSessionInstituteGroupMapping getStudentSessionInstituteMappingByUserIdAndInstituteId(String userId,String instituteId){
-        return studentSessionRepository.findByInstituteIdAndUserIdNative(instituteId,userId).orElseThrow(() -> new VacademyException("Student Session not found"));
+    private List<StudentSessionInstituteGroupMapping> createStudentMappings(String userId, String instituteId, List<PackageSession> packageSessions) {
+        StudentSessionInstituteGroupMapping existingMapping = getStudentSessionMapping(userId, instituteId);
+
+        return packageSessions.stream()
+                .map(packageSession -> buildStudentSessionMapping(userId, packageSession, existingMapping))
+                .collect(Collectors.toList());
     }
 
-    private List<String> getPackageSessionIds(String packageSessionIds) {
-        return Arrays.stream(packageSessionIds.trim().split(",")).toList();
+    private StudentSessionInstituteGroupMapping buildStudentSessionMapping(String userId, PackageSession packageSession, StudentSessionInstituteGroupMapping existingMapping) {
+        StudentSessionInstituteGroupMapping mapping = new StudentSessionInstituteGroupMapping();
+        mapping.setUserId(userId);
+        mapping.setPackageSession(packageSession);
+        mapping.setInstitute(existingMapping.getInstitute());
+        mapping.setGroup(existingMapping.getGroup());
+        mapping.setStatus(LearnerSessionStatusEnum.ACTIVE.name());
+        mapping.setEnrolledDate(new Date());
+        mapping.setInstituteEnrolledNumber(existingMapping.getInstituteEnrolledNumber());
+        return mapping;
+    }
+
+    private StudentSessionInstituteGroupMapping getStudentSessionMapping(String userId, String instituteId) {
+        return studentSessionRepository.findByInstituteIdAndUserIdNative(instituteId, userId)
+                .orElseThrow(() -> new VacademyException("Student Session not found"));
+    }
+
+    private List<PackageSession> fetchPackageSessions(List<String> packageSessionIds) {
+        return packageSessionRepository.findAllById(packageSessionIds);
+    }
+
+    private List<String> extractPackageSessionIds(String packageSessionIds) {
+        return List.of(packageSessionIds.trim().split(","));
     }
 }

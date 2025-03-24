@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.assessment_service.features.question_bank.dto.AddQuestionPaperDTO;
 import vacademy.io.assessment_service.features.question_bank.dto.AddedQuestionPaperResponseDto;
+import vacademy.io.assessment_service.features.question_bank.dto.EditQuestionPaperDTO;
 import vacademy.io.assessment_service.features.question_bank.dto.UpdateQuestionPaperStatus;
 import vacademy.io.assessment_service.features.question_bank.manager.AddQuestionPaperFromImportManager;
 import vacademy.io.assessment_service.features.question_bank.manager.EditQuestionPaperManager;
@@ -33,9 +34,13 @@ public class AddQuestionPaperController {
     }
 
     @PatchMapping("/edit")
-    public ResponseEntity<Boolean> editQuestionPaper(@RequestAttribute("user") CustomUserDetails user, @RequestBody AddQuestionPaperDTO questionRequestBody) {
+    public ResponseEntity<Boolean> editQuestionPaper(@RequestAttribute("user") CustomUserDetails user, @RequestBody EditQuestionPaperDTO questionRequestBody) {
 
-        return ResponseEntity.ok(addQuestionPaperFromImportManager.editQuestionPaper(user, questionRequestBody));
+        try {
+            return ResponseEntity.ok(addQuestionPaperFromImportManager.editQuestionPaper(user, questionRequestBody));
+        } catch (JsonProcessingException e) {
+            throw new VacademyException(e.getMessage());
+        }
 
     }
 

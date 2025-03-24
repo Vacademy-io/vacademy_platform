@@ -10,6 +10,7 @@ import vacademy.io.assessment_service.features.evaluation.service.QuestionEvalua
 import vacademy.io.assessment_service.features.question_bank.dto.AddQuestionDTO;
 import vacademy.io.assessment_service.features.question_bank.dto.AddQuestionPaperDTO;
 import vacademy.io.assessment_service.features.question_bank.dto.AddedQuestionPaperResponseDto;
+import vacademy.io.assessment_service.features.question_bank.dto.EditQuestionPaperDTO;
 import vacademy.io.assessment_service.features.question_bank.entity.QuestionPaper;
 import vacademy.io.assessment_service.features.question_bank.repository.QuestionPaperRepository;
 import vacademy.io.assessment_service.features.question_core.dto.*;
@@ -28,6 +29,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+
+import static vacademy.io.assessment_service.features.assessment.enums.AssessmentStatus.DELETED;
 
 @Component
 public class AddQuestionPaperFromImportManager {
@@ -60,7 +63,7 @@ public class AddQuestionPaperFromImportManager {
         List<Question> questions = new ArrayList<>();
         List<Option> options = new ArrayList<>();
         for (int i = 0; i < questionRequestBody.getQuestions().size(); i++) {
-            Question question = makeQuestionAndOptionFromImportQuestion(questionRequestBody.getQuestions().get(i), isPublicPaper);
+            Question question = makeQuestionAndOptionFromImportQuestion(questionRequestBody.getQuestions().get(i), isPublicPaper, null);
 
             options.addAll(question.getOptions());
             if (questionRequestBody.getQuestions().get(i).getParentRichText() != null) {
@@ -108,7 +111,10 @@ public class AddQuestionPaperFromImportManager {
         List<Option> newOptions = new ArrayList<>();
 
         for (var importQuestion : questionRequestBody.getQuestions()) {
-            Question question = makeQuestionAndOptionFromImportQuestion(importQuestion, isPublicPaper);
+            Question question = makeQuestionAndOptionFromImportQuestion(importQuestion, isPublicPaper, null);
+            if (importQuestion.getParentRichText() != null) {
+                question.setParentRichText(AssessmentRichTextData.fromDTO(importQuestion.getParentRichText()));
+            }
             newQuestions.add(question);
             newOptions.addAll(question.getOptions());
         }
@@ -138,10 +144,10 @@ public class AddQuestionPaperFromImportManager {
     }
 
 
-    public Question makeQuestionAndOptionFromImportQuestion(QuestionDTO questionRequest, Boolean isPublic) throws JsonProcessingException {
+    public Question makeQuestionAndOptionFromImportQuestion(QuestionDTO questionRequest, Boolean isPublic, Question existingQuestion) throws JsonProcessingException {
         // Todo: check Question Validation
 
-        Question question = initializeQuestion(questionRequest);
+        Question question = initializeQuestion(questionRequest, existingQuestion);
 
         List<Option> options = new ArrayList<>();
         List<String> correctOptionIds = new ArrayList<>();
@@ -170,22 +176,68 @@ public class AddQuestionPaperFromImportManager {
 
     }
 
-    public Boolean editQuestionPaper(CustomUserDetails user, AddQuestionPaperDTO questionRequestBody) {
+    public Boolean editQuestionPaper(CustomUserDetails user, EditQuestionPaperDTO questionRequestBody) throws JsonProcessingException {
         Optional<QuestionPaper> questionPaper = questionPaperRepository.findById(questionRequestBody.getId());
 
         if (questionPaper.isEmpty())
             return false;
 
-        return true;
-        // todo : edit question paper
+        // Update title only if it's not null
+        if (questionRequestBody.getTitle() != null) {
+            questionPaper.get().setTitle(questionRequestBody.getTitle());
+        }
 
+        // Update createdBy and access level
+        questionPaper.get().setCreatedByUserId(user.getUserId());
+
+        // Save updated question paper
+        questionPaper = Optional.of(questionPaperRepository.save(questionPaper.get()));
+
+        // Process and insert new questions directly (no need to check for duplicates)
+        List<Question> newQuestions = new ArrayList<>();
+        List<Option> newOptions = new ArrayList<>();
+
+        for (var importQuestion : questionRequestBody.getAddedQuestions()) {
+            Question question = makeQuestionAndOptionFromImportQuestion(importQuestion, false, null);
+            if (importQuestion.getParentRichText() != null) {
+                question.setParentRichText(AssessmentRichTextData.fromDTO(importQuestion.getParentRichText()));
+            }
+            newQuestions.add(question);
+            newOptions.addAll(question.getOptions());
+        }
+
+        for (var importQuestion : questionRequestBody.getUpdatedQuestions()) {
+            Optional<Question> existingQuestion = questionRepository.findById(importQuestion.getId());
+
+            if (existingQuestion.isEmpty())
+                continue;
+            Question question = makeQuestionAndOptionFromImportQuestion(importQuestion, false, existingQuestion.get());
+            if (importQuestion.getParentRichText() != null) {
+                question.setParentRichText(AssessmentRichTextData.fromDTO(importQuestion.getParentRichText()));
+            }
+            newQuestions.add(question);
+            newOptions.addAll(question.getOptions());
+        }
+
+        for (var importQuestion : questionRequestBody.getDeletedQuestions()) {
+            Optional<Question> existingQuestion = questionRepository.findById(importQuestion.getId());
+
+            if (existingQuestion.isEmpty())
+                continue;
+            existingQuestion.get().setStatus(DELETED.name());
+        }
+
+        questionRepository.saveAll(newQuestions);
+        optionRepository.saveAll(newOptions);
+
+        return true;
     }
 
     public AddQuestionDTO addPrivateQuestions(CustomUserDetails user, AddQuestionDTO questionRequestBody, boolean isPublicQuestion) throws JsonProcessingException {
 
         List<Option> options = new ArrayList<>();
         for (int i = 0; i < questionRequestBody.getQuestions().size(); i++) {
-            Question question = makeQuestionAndOptionFromImportQuestion(questionRequestBody.getQuestions().get(i), isPublicQuestion);
+            Question question = makeQuestionAndOptionFromImportQuestion(questionRequestBody.getQuestions().get(i), isPublicQuestion, null);
             options.addAll(question.getOptions());
             question = questionRepository.save(question);
             questionRequestBody.getQuestions().get(i).setId(question.getId());
@@ -196,8 +248,12 @@ public class AddQuestionPaperFromImportManager {
         return questionRequestBody;
     }
 
-    private Question initializeQuestion(QuestionDTO questionRequest) {
+    private Question initializeQuestion(QuestionDTO questionRequest, Question existingQuestion) {
         Question question = new Question();
+        if(existingQuestion != null) {
+            question = existingQuestion;
+        }
+
         question.setTextData(AssessmentRichTextData.fromDTO(questionRequest.getText()));
         if (questionRequest.getExplanationText() != null) {
             question.setExplanationTextData(AssessmentRichTextData.fromDTO(questionRequest.getExplanationText()));

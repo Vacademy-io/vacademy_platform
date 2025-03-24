@@ -4,11 +4,12 @@ import com.fasterxml.jackson.databind.PropertyNamingStrategy;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.Data;
 
+import java.util.List;
+
 @Data
 @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
-public class LearnerBatchRegisterDTO {
-    private String userId;
-    private Integer expiryDays;
+public class LearnerBatchRegisterRequestDTO {
+    private List<String> userIds;
     private String instituteId;
     private String commaSeparatedPackageSessionIds;
 }

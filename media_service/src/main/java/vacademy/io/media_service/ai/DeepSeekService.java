@@ -6,6 +6,7 @@ import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import vacademy.io.media_service.dto.TextDTO;
 
 import java.util.Map;
 
@@ -20,49 +21,94 @@ public class DeepSeekService {
     }
 
 
+    public String getQuestionsWithDeepSeekFromTextPrompt(String textPrompt, String numberOfQuestions, String typeOfQuestion, String classLevel, String topics) {
+
+        String template = """
+                Text raw prompt :  {textPrompt}
+                    
+                        Prompt:
+                        use the Text raw prompt to generate {numberOfQuestions} {typeOfQuestion} questions for the class level {classLevel} and topics {topics}, return the output in JSON format as follows:
+                                {{
+                                         "questions": [
+                                             {{
+                                                 "question_number": "number",
+                                                 "question": {{
+                                                     "type": "HTML",
+                                                     "content": "string" // Include img tags if present
+                                                 }},
+                                                 "options": [
+                                                     {{
+                                                         "type": "HTML",
+                                                         "content": "string" // Include img tags if present
+                                                     }}
+                                                 ],
+                                                 "correct_options": "number[]",
+                                                 "ans": "string",
+                                                 "exp": "string",
+                                                 "question_type": "MCQS | MCQM | ONE_WORD | LONG_ANSWER | NUMERIC",
+                                                 "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
+                                                 "level": "easy | medium | hard"
+                                             }}
+                                         ],
+                                         "title": "string" // Suitable title for the question paper
+                                     }}
+                            
+                        For LONG_ANSWER, NUMERIC, and ONE_WORD question types:
+                        - Leave 'correct_options' empty but fill 'ans' and 'exp'
+                        - Omit 'options' field entirely
+                        """;
+
+        Prompt prompt = new PromptTemplate(template).create(Map.of("textPrompt", textPrompt, "numberOfQuestions", numberOfQuestions, "typeOfQuestion", typeOfQuestion));
+
+        ChatResponse response = chatModel.call(
+                prompt);
+
+        return response.getResult().getOutput().toString();
+    }
+
 
     public String getQuestionsWithDeepSeekFromHTML(String htmlData) {
 
         String template = """
-    HTML raw data :  {htmlData}
-    
-            Prompt:
-            Convert the given HTML file containing questions into the following JSON format:
-                    {{
-                             "questions": [
-                                 {{
-                                     "question_number": "number",
-                                     "question": {{
-                                         "type": "HTML",
-                                         "content": "string" // Include img tags if present
-                                     }},
-                                     "options": [
-                                         {{
-                                             "type": "HTML",
-                                             "content": "string" // Include img tags if present
-                                         }}
-                                     ],
-                                     "correct_options": "number[]",
-                                     "ans": "string",
-                                     "exp": "string",
-                                     "question_type": "MCQS | MCQM | ONE_WORD | LONG_ANSWER | NUMERIC",
-                                     "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
-                                     "level": "easy | medium | hard"
-                                 }}
-                             ],
-                             "title": "string" // Suitable title for the question paper
-                         }}
-                
-            For LONG_ANSWER, NUMERIC, and ONE_WORD question types:
-            - Leave 'correct_options' empty but fill 'ans' and 'exp'
-            - Omit 'options' field entirely
-            """;
-            
+                HTML raw data :  {htmlData}
+                    
+                        Prompt:
+                        Convert the given HTML file containing questions into the following JSON format:
+                                {{
+                                         "questions": [
+                                             {{
+                                                 "question_number": "number",
+                                                 "question": {{
+                                                     "type": "HTML",
+                                                     "content": "string" // Include img tags if present
+                                                 }},
+                                                 "options": [
+                                                     {{
+                                                         "type": "HTML",
+                                                         "content": "string" // Include img tags if present
+                                                     }}
+                                                 ],
+                                                 "correct_options": "number[]",
+                                                 "ans": "string",
+                                                 "exp": "string",
+                                                 "question_type": "MCQS | MCQM | ONE_WORD | LONG_ANSWER | NUMERIC",
+                                                 "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
+                                                 "level": "easy | medium | hard"
+                                             }}
+                                         ],
+                                         "title": "string" // Suitable title for the question paper
+                                     }}
+                            
+                        For LONG_ANSWER, NUMERIC, and ONE_WORD question types:
+                        - Leave 'correct_options' empty but fill 'ans' and 'exp'
+                        - Omit 'options' field entirely
+                        """;
+
         Prompt prompt = new PromptTemplate(template).create(Map.of("htmlData", htmlData));
 
         ChatResponse response = chatModel.call(
                 prompt);
-            
+
         return response.getResult().getOutput().toString();
     }
 }

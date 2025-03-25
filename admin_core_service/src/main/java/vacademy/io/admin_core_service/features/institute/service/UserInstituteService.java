@@ -113,6 +113,7 @@ public class UserInstituteService {
         institute.setWebsiteUrl(instituteInfo.getWebsiteUrl());
         institute.setLogoFileId(instituteInfo.getInstituteLogoFileId());
         institute.setLetterHeadFileId(instituteInfo.getLetterHeadFileId());
+        institute.setInstituteType(instituteInfo.getType());
         return institute;
     }
 

@@ -24,12 +24,11 @@ public class AdminAssessmentAccessController {
     public ResponseEntity<AllAdminAssessmentResponse> getAllAssessment(@RequestAttribute("user") CustomUserDetails user,
                                                                        @RequestBody AdminAssessmentFilter filter,
                                                                        @RequestParam(name = "userRole") String userRole,
-                                                                       @RequestParam(name = "userId") String userId,
                                                                        @RequestParam(value = "pageNo", defaultValue = DEFAULT_PAGE_NUMBER, required = false) int pageNo,
                                                                        @RequestParam(value = "pageSize", defaultValue = DEFAULT_PAGE_SIZE, required = false) int pageSize,
                                                                        @RequestParam(name = "instituteId", required = false) String instituteId){
 
-        return adminAssessmentAccessManager.getAllManualAssessment(filter,pageNo,pageSize,instituteId, userId, userRole);
+        return adminAssessmentAccessManager.getAllManualAssessment(user,filter,pageNo,pageSize,instituteId, userRole);
 
     }
 }

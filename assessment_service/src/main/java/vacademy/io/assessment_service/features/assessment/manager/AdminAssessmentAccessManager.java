@@ -1,6 +1,5 @@
 package vacademy.io.assessment_service.features.assessment.manager;
 
-import org.docx4j.org.apache.xpath.operations.Bool;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -13,6 +12,7 @@ import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.Admi
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.AllAdminAssessmentResponse;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentRepository;
 import vacademy.io.assessment_service.features.assessment.service.assessment_get.AssessmentMapper;
+import vacademy.io.common.auth.model.CustomUserDetails;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -27,7 +27,7 @@ public class AdminAssessmentAccessManager {
     AssessmentRepository assessmentRepository;
 
 
-    public ResponseEntity<AllAdminAssessmentResponse> getAllManualAssessment(AdminAssessmentFilter adminAssessmentFilter, int pageNo, int pageSize, String instituteId, String userId, String userRole) {
+    public ResponseEntity<AllAdminAssessmentResponse> getAllManualAssessment(CustomUserDetails user, AdminAssessmentFilter adminAssessmentFilter, int pageNo, int pageSize, String instituteId, String userRole) {
         // Create a sorting object based on the provided sort columns
         Sort thisSort = createSortObject(adminAssessmentFilter.getSortColumns());
         Page<Object[]> assessmentsPage;
@@ -37,7 +37,7 @@ public class AdminAssessmentAccessManager {
 
         makeFilterFieldEmptyArrayIfNull(adminAssessmentFilter);
 
-        assessmentsPage = assessmentRepository.filterAssessmentsForManualType(adminAssessmentFilter.getName(), adminAssessmentFilter.getBatchIds().isEmpty() ? null : true, adminAssessmentFilter.getBatchIds(), adminAssessmentFilter.getSubjectsIds().isEmpty() ? null : true, adminAssessmentFilter.getSubjectsIds(), adminAssessmentFilter.getAssessmentStatuses(), adminAssessmentFilter.getGetLiveAssessments(), adminAssessmentFilter.getGetPassedAssessments(), adminAssessmentFilter.getGetUpcomingAssessments(), adminAssessmentFilter.getAssessmentModes(), adminAssessmentFilter.getAccessStatuses(), adminAssessmentFilter.getInstituteIds(), userRole, userId,pageable);
+        assessmentsPage = assessmentRepository.filterAssessmentsForManualType(adminAssessmentFilter.getName(), adminAssessmentFilter.getBatchIds().isEmpty() ? null : true, adminAssessmentFilter.getBatchIds(), adminAssessmentFilter.getSubjectsIds().isEmpty() ? null : true, adminAssessmentFilter.getSubjectsIds(), adminAssessmentFilter.getAssessmentStatuses(), adminAssessmentFilter.getGetLiveAssessments(), adminAssessmentFilter.getGetPassedAssessments(), adminAssessmentFilter.getGetUpcomingAssessments(), adminAssessmentFilter.getAssessmentModes(), adminAssessmentFilter.getAccessStatuses(), adminAssessmentFilter.getInstituteIds(), userRole,user.getUserId() ,pageable);
         List<AdminBasicAssessmentListItemDto> content = assessmentsPage.stream().map(AssessmentMapper::toDto).collect(Collectors.toList());
         int queryPageNo = assessmentsPage.getNumber();
         int queryPageSize = assessmentsPage.getSize();

@@ -75,48 +75,118 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
                                      Pageable pageable);
 
 
-    @Query(value = "SELECT DISTINCT a.id, a.name, a.play_mode, a.evaluation_type, a.submission_type, a.duration, " +
-            "a.assessment_visibility, a.status, a.registration_close_date, a.registration_open_date, " +
-            "a.expected_participants, a.cover_file_id, a.bound_start_time, a.bound_end_time, " +
-            "a.created_at, a.updated_at, " +
-            "(SELECT COUNT(*) FROM public.assessment_user_registration ur WHERE ur.assessment_id = a.id) AS user_registrations, " +
-            "(SELECT ARRAY_AGG(abr.batch_id) FROM public.assessment_batch_registration abr WHERE abr.assessment_id = a.id) AS batch_ids, " +
-            "aim.subject_id, aim.assessment_url " +
-            "FROM public.assessment a " +
-            "LEFT JOIN public.assessment_batch_registration abr ON a.id = abr.assessment_id " +
-            "LEFT JOIN public.assessment_institute_mapping aim ON a.id = aim.assessment_id " +
-            "LEFT JOIN public.assessment_user_access aua ON a.id = aua.assessment_id " +
-            "WHERE (:name IS NULL OR :name = '' OR LOWER(a.name) LIKE LOWER(CONCAT('%', :name, '%'))) " +
-            "AND (:checkBatches IS NULL OR abr.batch_id IN :batchIds) " +
-            "AND (:checkSubjects IS NULL OR aim.subject_id IN :subjectsIds) " +
-            "AND (:instituteIds IS NULL OR aim.institute_id IN :instituteIds) " +
-            "AND (:assessmentStatuses IS NULL OR a.status IN :assessmentStatuses) " +
-            "AND (:accessStatuses IS NULL OR a.assessment_visibility IN :accessStatuses) " +
-            "AND (:userIds IS NULL OR aua.user_id IN :userIds) " +
-            "AND (:liveAssessments IS NULL OR :liveAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' BETWEEN a.bound_start_time AND a.bound_end_time)) " +
-            "AND (:passedAssessments IS NULL OR :passedAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' > a.bound_end_time)) " +
-            "AND (:upcomingAssessments IS NULL OR :upcomingAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' < a.bound_start_time)) " +
-            "AND (:assessmentModes IS NULL OR a.play_mode IN :assessmentModes) " +
-            "AND a.status <> 'DELETED' " +
-            "AND a.evaluation_type = 'MANUAL' " +
-            "GROUP BY a.id, aim.subject_id, aim.assessment_url", // Group by necessary columns to ensure distinct results
-            countQuery = "SELECT COUNT(DISTINCT a.id) FROM public.assessment a " +
-                    "LEFT JOIN public.assessment_batch_registration abr ON a.id = abr.assessment_id " +
-                    "LEFT JOIN public.assessment_institute_mapping aim ON a.id = aim.assessment_id " +
-                    "LEFT JOIN public.assessment_user_access aua ON a.id = aua.assessment_id " +
-                    "WHERE (:name IS NULL OR :name = '' OR LOWER(a.name) LIKE LOWER(CONCAT('%', :name, '%'))) " +
-                    "AND (:checkBatches IS NULL OR abr.batch_id IN :batchIds) " +
-                    "AND (:checkSubjects IS NULL  OR aim.subject_id IN :subjectsIds) " +
-                    "AND (:instituteIds IS NULL OR aim.institute_id IN :instituteIds) " +
-                    "AND (:assessmentStatuses IS NULL OR a.status IN :assessmentStatuses) " +
-                    "AND (:accessStatuses IS NULL OR a.assessment_visibility IN :accessStatuses) " +
-                    "AND (:userIds IS NULL OR aua.user_id IN :userIds) " +
-                    "AND (:liveAssessments IS NULL OR :liveAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' BETWEEN a.bound_start_time AND a.bound_end_time)) " +
-                    "AND (:passedAssessments IS NULL OR :passedAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' > a.bound_end_time)) " +
-                    "AND (:upcomingAssessments IS NULL OR :upcomingAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' < a.bound_start_time)) " +
-                    "AND a.status <> 'DELETED' " +
-                    "AND a.evaluation_type = 'MANUAL' " +
-                    "AND (:assessmentModes IS NULL OR a.play_mode IN :assessmentModes)",
+    @Query(value = """
+            select * from(
+            (SELECT DISTINCT a.id, a.name, a.play_mode, a.evaluation_type, a.submission_type, a.duration,\s
+                   a.assessment_visibility, a.status, a.registration_close_date, a.registration_open_date,\s
+                   a.expected_participants, a.cover_file_id, a.bound_start_time, a.bound_end_time,\s
+                   a.created_at, a.updated_at,\s
+                   (SELECT COUNT(*) FROM public.assessment_user_registration ur WHERE ur.assessment_id = a.id) AS user_registrations,\s
+                   (SELECT ARRAY_AGG(abr.batch_id) FROM public.assessment_batch_registration abr WHERE abr.assessment_id = a.id) AS batch_ids,\s
+                   aim.subject_id, aim.assessment_url\s
+            FROM public.assessment a\s
+            LEFT JOIN public.assessment_batch_registration abr ON a.id = abr.assessment_id\s
+            LEFT JOIN public.assessment_institute_mapping aim ON a.id = aim.assessment_id\s
+            LEFT JOIN public.assessment_user_access aua ON a.id = aua.assessment_id\s
+            WHERE (:name IS NULL OR :name = '' OR LOWER(a.name) LIKE LOWER(CONCAT('%', :name, '%')))\s
+            AND (:checkBatches IS NULL OR abr.batch_id IN :batchIds)\s
+            AND (:checkSubjects IS NULL OR aim.subject_id IN :subjectsIds)\s
+            AND (:instituteIds IS NULL OR aim.institute_id IN :instituteIds)\s
+            AND (:assessmentStatuses IS NULL OR a.status IN :assessmentStatuses)\s
+            AND (:accessStatuses IS NULL OR a.assessment_visibility IN :accessStatuses)\s
+            AND (:liveAssessments IS NULL OR :liveAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' BETWEEN a.bound_start_time AND a.bound_end_time))\s
+            AND (:passedAssessments IS NULL OR :passedAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' > a.bound_end_time))\s
+            AND (:upcomingAssessments IS NULL OR :upcomingAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' < a.bound_start_time))\s
+            AND (:assessmentModes IS NULL OR a.play_mode IN :assessmentModes)\s
+            AND a.status <> 'DELETED'\s
+            AND a.evaluation_type = 'MANUAL'\s
+            and (:userRole IS NULL OR :userRole = '' OR LOWER(aim.comma_separated_evaluation_roles) LIKE LOWER(CONCAT('%', :userRole, '%')))\s
+            GROUP BY a.id, aim.subject_id, aim.assessment_url)
+            union (
+            SELECT DISTINCT a.id, a.name, a.play_mode, a.evaluation_type, a.submission_type, a.duration,\s
+                   a.assessment_visibility, a.status, a.registration_close_date, a.registration_open_date,\s
+                   a.expected_participants, a.cover_file_id, a.bound_start_time, a.bound_end_time,\s
+                   a.created_at, a.updated_at,\s
+                   (SELECT COUNT(*) FROM public.assessment_user_registration ur WHERE ur.assessment_id = a.id) AS user_registrations,\s
+                   (SELECT ARRAY_AGG(abr.batch_id) FROM public.assessment_batch_registration abr WHERE abr.assessment_id = a.id) AS batch_ids,\s
+                   aim.subject_id, aim.assessment_url\s
+            FROM public.assessment a\s
+            LEFT JOIN public.assessment_batch_registration abr ON a.id = abr.assessment_id\s
+            LEFT JOIN public.assessment_institute_mapping aim ON a.id = aim.assessment_id\s
+            LEFT JOIN public.assessment_user_access aua ON a.id = aua.assessment_id\s
+            WHERE (:name IS NULL OR :name = '' OR LOWER(a.name) LIKE LOWER(CONCAT('%', :name, '%')))\s
+            AND (:checkBatches IS NULL OR abr.batch_id IN :batchIds)\s
+            AND (:checkSubjects IS NULL OR aim.subject_id IN :subjectsIds)\s
+            AND (:instituteIds IS NULL OR aim.institute_id IN :instituteIds)\s
+            AND (:assessmentStatuses IS NULL OR a.status IN :assessmentStatuses)\s
+            AND (:accessStatuses IS NULL OR a.assessment_visibility IN :accessStatuses)\s
+            AND (:liveAssessments IS NULL OR :liveAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' BETWEEN a.bound_start_time AND a.bound_end_time))\s
+            AND (:passedAssessments IS NULL OR :passedAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' > a.bound_end_time))\s
+            AND (:upcomingAssessments IS NULL OR :upcomingAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' < a.bound_start_time))\s
+            AND (:assessmentModes IS NULL OR a.play_mode IN :assessmentModes)\s
+            AND a.status <> 'DELETED'\s
+            AND a.evaluation_type = 'MANUAL'\s
+            and (:userId IS NULL OR :userId = '' OR LOWER(aim.comma_separated_evaluation_user_ids) LIKE LOWER(CONCAT('%', :userId, '%')))\s
+            GROUP BY a.id, aim.subject_id, aim.assessment_url
+            )
+            )
+            """,
+            countQuery = """
+                    select count(*) from(
+                    (SELECT DISTINCT a.id, a.name, a.play_mode, a.evaluation_type, a.submission_type, a.duration,\s
+                           a.assessment_visibility, a.status, a.registration_close_date, a.registration_open_date,\s
+                           a.expected_participants, a.cover_file_id, a.bound_start_time, a.bound_end_time,\s
+                           a.created_at, a.updated_at,\s
+                           (SELECT COUNT(*) FROM public.assessment_user_registration ur WHERE ur.assessment_id = a.id) AS user_registrations,\s
+                           (SELECT ARRAY_AGG(abr.batch_id) FROM public.assessment_batch_registration abr WHERE abr.assessment_id = a.id) AS batch_ids,\s
+                           aim.subject_id, aim.assessment_url\s
+                    FROM public.assessment a\s
+                    LEFT JOIN public.assessment_batch_registration abr ON a.id = abr.assessment_id\s
+                    LEFT JOIN public.assessment_institute_mapping aim ON a.id = aim.assessment_id\s
+                    LEFT JOIN public.assessment_user_access aua ON a.id = aua.assessment_id\s
+                    WHERE (:name IS NULL OR :name = '' OR LOWER(a.name) LIKE LOWER(CONCAT('%', :name, '%')))\s
+                    AND (:checkBatches IS NULL OR abr.batch_id IN :batchIds)\s
+                    AND (:checkSubjects IS NULL OR aim.subject_id IN :subjectsIds)\s
+                    AND (:instituteIds IS NULL OR aim.institute_id IN :instituteIds)\s
+                    AND (:assessmentStatuses IS NULL OR a.status IN :assessmentStatuses)\s
+                    AND (:accessStatuses IS NULL OR a.assessment_visibility IN :accessStatuses)\s
+                    AND (:liveAssessments IS NULL OR :liveAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' BETWEEN a.bound_start_time AND a.bound_end_time))\s
+                    AND (:passedAssessments IS NULL OR :passedAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' > a.bound_end_time))\s
+                    AND (:upcomingAssessments IS NULL OR :upcomingAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' < a.bound_start_time))\s
+                    AND (:assessmentModes IS NULL OR a.play_mode IN :assessmentModes)\s
+                    AND a.status <> 'DELETED'\s
+                    AND a.evaluation_type = 'MANUAL'\s
+                    and (:userRole IS NULL OR :userRole = '' OR LOWER(aim.comma_separated_evaluation_roles) LIKE LOWER(CONCAT('%', :userRole, '%')))\s
+                    GROUP BY a.id, aim.subject_id, aim.assessment_url)
+                    union (
+                    SELECT DISTINCT a.id, a.name, a.play_mode, a.evaluation_type, a.submission_type, a.duration,\s
+                           a.assessment_visibility, a.status, a.registration_close_date, a.registration_open_date,\s
+                           a.expected_participants, a.cover_file_id, a.bound_start_time, a.bound_end_time,\s
+                           a.created_at, a.updated_at,\s
+                           (SELECT COUNT(*) FROM public.assessment_user_registration ur WHERE ur.assessment_id = a.id) AS user_registrations,\s
+                           (SELECT ARRAY_AGG(abr.batch_id) FROM public.assessment_batch_registration abr WHERE abr.assessment_id = a.id) AS batch_ids,\s
+                           aim.subject_id, aim.assessment_url\s
+                    FROM public.assessment a\s
+                    LEFT JOIN public.assessment_batch_registration abr ON a.id = abr.assessment_id\s
+                    LEFT JOIN public.assessment_institute_mapping aim ON a.id = aim.assessment_id\s
+                    LEFT JOIN public.assessment_user_access aua ON a.id = aua.assessment_id\s
+                    WHERE (:name IS NULL OR :name = '' OR LOWER(a.name) LIKE LOWER(CONCAT('%', :name, '%')))\s
+                    AND (:checkBatches IS NULL OR abr.batch_id IN :batchIds)\s
+                    AND (:checkSubjects IS NULL OR aim.subject_id IN :subjectsIds)\s
+                    AND (:instituteIds IS NULL OR aim.institute_id IN :instituteIds)\s
+                    AND (:assessmentStatuses IS NULL OR a.status IN :assessmentStatuses)\s
+                    AND (:accessStatuses IS NULL OR a.assessment_visibility IN :accessStatuses)\s
+                    AND (:liveAssessments IS NULL OR :liveAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' BETWEEN a.bound_start_time AND a.bound_end_time))\s
+                    AND (:passedAssessments IS NULL OR :passedAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' > a.bound_end_time))\s
+                    AND (:upcomingAssessments IS NULL OR :upcomingAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' < a.bound_start_time))\s
+                    AND (:assessmentModes IS NULL OR a.play_mode IN :assessmentModes)\s
+                    AND a.status <> 'DELETED'\s
+                    AND a.evaluation_type = 'MANUAL'\s
+                    and (:userId IS NULL OR :userId = '' OR LOWER(aim.comma_separated_evaluation_user_ids) LIKE LOWER(CONCAT('%', :userId, '%')))\s
+                    GROUP BY a.id, aim.subject_id, aim.assessment_url
+                    )
+                    )
+                    """,
             nativeQuery = true)
     Page<Object[]> filterAssessmentsForManualType(@Param("name") String name,
                                                   @Param("checkBatches") Boolean checkBatches,
@@ -130,7 +200,8 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
                                                   @Param("assessmentModes") List<String> assessmentModes,
                                                   @Param("accessStatuses") List<String> accessStatuses,
                                                   @Param("instituteIds") List<String> instituteIds,
-                                                  @Param("userIds") List<String> userIds,
+                                                  @Param("userRole") String userRole,
+                                                  @Param("userId") String userId,
                                                   Pageable pageable);
 
     @Query(value = "(SELECT DISTINCT a.id, a.name, a.play_mode, a.evaluation_type, a.submission_type, a.duration, " +

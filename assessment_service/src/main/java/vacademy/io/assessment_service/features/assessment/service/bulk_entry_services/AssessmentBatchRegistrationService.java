@@ -31,6 +31,10 @@ public class AssessmentBatchRegistrationService {
         repository.softDeleteByIds(ids, instituteId, assessmentId);
     }
 
+    public void hardDeleteRegistrationsByIds(List<String> ids, String instituteId, String assessmentId) {
+        repository.hardDeleteByIds(ids, instituteId, assessmentId);
+    }
+
     public Integer countAssessmentsForBatch(String batchId, CustomUserDetails userDetails, String instituteId) {
         return repository.countDistinctAssessmentsByBatchAndFilters(batchId,instituteId,List.of(CompanyStatus.ACTIVE.name()),List.of(AssessmentStatus.PUBLISHED.name()));
     }

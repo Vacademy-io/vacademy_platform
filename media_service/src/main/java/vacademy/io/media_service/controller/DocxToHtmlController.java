@@ -111,7 +111,7 @@ public class DocxToHtmlController {
             tempFile.delete(); // Clean up temporary file
         } catch (Exception e) {
             e.printStackTrace();
-            throw new RuntimeException("Error converting DOCX to HTML", e);
+            throw new VacademyException("Failed to process question settings "+ e.getMessage());
         }
 
         return html;

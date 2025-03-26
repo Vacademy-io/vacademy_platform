@@ -229,9 +229,6 @@ public class DeepSeekService {
         );
 
 
-        List<String> correctOptionIds = new ArrayList<>();
-        List<OptionDTO> options = new ArrayList<>();
-
         // Process Options
         for (AiGeneratedQuestisonJsonDto.Option optionDTO : questionRequest.getOptions()) {
             question.getOptions().add(new OptionDTO(String.valueOf(question.getOptions().size()), new AssessmentRichTextDataDTO(null, "HTML", optionDTO.getContent())));

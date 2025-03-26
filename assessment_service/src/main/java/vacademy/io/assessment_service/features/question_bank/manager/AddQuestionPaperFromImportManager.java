@@ -285,7 +285,6 @@ public class AddQuestionPaperFromImportManager {
         List<Option> options = new ArrayList<>();
 
         // Process Options
-        int index = 0;
         for (AiGeneratedQuestisonJsonDto.Option optionDTO : questionRequest.getOptions()) {
             Option option = new Option();
             UUID optionId = UUID.randomUUID();
@@ -296,7 +295,6 @@ public class AddQuestionPaperFromImportManager {
             option.setText(assessmentRichTextData);
             option.setQuestion(question);
             options.add(option);
-            index++;
         }
 
         // Save Question & Options
@@ -319,7 +317,7 @@ public class AddQuestionPaperFromImportManager {
         try {
             question.setAutoEvaluationJson(questionEvaluationService.setEvaluationJson(requestEvaluation));
         } catch (Exception e) {
-            throw new RuntimeException("Failed to process question settings", e);
+            throw new VacademyException("Failed to process question settings " + e.getMessage());
         }
 
         return question;
@@ -348,7 +346,7 @@ public class AddQuestionPaperFromImportManager {
         try {
             question.setAutoEvaluationJson(questionEvaluationService.setEvaluationJson(requestEvaluation));
         } catch (Exception e) {
-            throw new RuntimeException("Failed to process question settings", e);
+            throw new VacademyException("Failed to process question settings "+ e.getMessage());
         }
 
         return question;
@@ -381,7 +379,7 @@ public class AddQuestionPaperFromImportManager {
         try {
             question.setAutoEvaluationJson(questionEvaluationService.setEvaluationJson(requestEvaluation));
         } catch (Exception e) {
-            throw new RuntimeException("Failed to process question settings", e);
+            throw new VacademyException("Failed to process question settings "+ e.getMessage());
         }
 
         return question;

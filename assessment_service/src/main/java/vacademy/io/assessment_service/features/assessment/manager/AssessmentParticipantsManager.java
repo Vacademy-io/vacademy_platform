@@ -232,7 +232,8 @@ public class AssessmentParticipantsManager {
         }
 
         if (!ObjectUtils.isEmpty(openTestDetails.getRegistrationFormDetails())) {
-            addCustomRegistrationFieldsToAsessment(openTestDetails, assessment);
+            addCustomRegistrationFieldsToAssessment(openTestDetails, assessment);
+            updateCustomRegistrationFieldsToAssessment(openTestDetails, assessment);
             removeAddedFieldsIfAny(openTestDetails, assessment);
         }
 

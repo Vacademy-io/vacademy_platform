@@ -7,9 +7,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.assessment_service.features.evaluation.service.QuestionEvaluationService;
-import vacademy.io.assessment_service.features.question_bank.dto.AddQuestionDTO;
-import vacademy.io.assessment_service.features.question_bank.dto.AddQuestionPaperDTO;
-import vacademy.io.assessment_service.features.question_bank.dto.AddedQuestionPaperResponseDto;
+import vacademy.io.assessment_service.features.question_bank.dto.*;
 import vacademy.io.assessment_service.features.question_bank.entity.QuestionPaper;
 import vacademy.io.assessment_service.features.question_bank.repository.QuestionPaperRepository;
 import vacademy.io.assessment_service.features.question_core.dto.*;
@@ -21,6 +19,7 @@ import vacademy.io.assessment_service.features.question_core.enums.QuestionRespo
 import vacademy.io.assessment_service.features.question_core.enums.QuestionTypes;
 import vacademy.io.assessment_service.features.question_core.repository.OptionRepository;
 import vacademy.io.assessment_service.features.question_core.repository.QuestionRepository;
+import vacademy.io.assessment_service.features.rich_text.dto.AssessmentRichTextDataDTO;
 import vacademy.io.assessment_service.features.rich_text.entity.AssessmentRichTextData;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
@@ -28,6 +27,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Component
 public class AddQuestionPaperFromImportManager {
@@ -85,6 +85,29 @@ public class AddQuestionPaperFromImportManager {
     }
 
     @Transactional
+    public AddedQuestionPaperResponseDto addAiGeneratedQuestionPaper(CustomUserDetails user, AiGeneratedQuestionPaperJsonDto questionRequestBody) throws JsonProcessingException {
+        QuestionPaper questionPaper = new QuestionPaper();
+        questionPaper.setTitle(questionRequestBody.getTitle());
+        questionPaper.setCreatedByUserId(user.getUserId());
+
+        questionPaper = questionPaperRepository.save(questionPaper);
+
+        questionPaper.setAccess(QuestionAccessLevel.PUBLIC.name());
+
+        questionPaper = questionPaperRepository.save(questionPaper);
+
+        List<Question> questions = formatQuestions(questionRequestBody.getQuestions());
+//        questions = questionRepository.saveAll(questions);
+
+        List<String> savedQuestionIds = questions.stream().map(Question::getId).toList();
+
+        questionPaperRepository.bulkInsertQuestionsToQuestionPaper(questionPaper.getId(), savedQuestionIds);
+
+
+        return new AddedQuestionPaperResponseDto(questionPaper.getId());
+    }
+
+    @Transactional
     public Boolean updateQuestionPaper(CustomUserDetails user, AddQuestionPaperDTO questionRequestBody, Boolean isPublicPaper) throws JsonProcessingException {
 
         // Fetch the existing question paper by ID
@@ -137,6 +160,267 @@ public class AddQuestionPaperFromImportManager {
         return true;
     }
 
+    public List<Question> formatQuestions(AiGeneratedQuestisonJsonDto[] questions) {
+        if (questions == null || questions.length == 0) {
+            throw new IllegalArgumentException("Question array cannot be null or empty");
+        }
+
+        List<Question> formattedQuestions = new ArrayList<>();
+
+        for (AiGeneratedQuestisonJsonDto question : questions) {
+            if (question == null) continue; // Avoid NullPointerException if any element is null
+
+            switch (question.getQuestionType()) {  // Accessing enum correctly
+                case MCQS:
+                    formattedQuestions.add(handleMCQS(question));
+                    break;
+                case MCQM:
+                    formattedQuestions.add(handleMCQM(question));
+                    break;
+                case ONE_WORD:
+                    formattedQuestions.add(handleOneWord(question));
+
+                    break;
+                case LONG_ANSWER:
+                    formattedQuestions.add(handleLongAnswer(question));
+                    break;
+                default:
+                    throw new IllegalArgumentException("Unsupported question type: " + question.getQuestionType());
+            }
+        }
+
+        return formattedQuestions;
+    }
+
+    public Question handleMCQS(AiGeneratedQuestisonJsonDto questionRequest) {
+        Question question = new Question();
+        question.setAccessLevel("PUBLIC");
+        question.setQuestionResponseType(QuestionResponseTypes.OPTION.name());
+        question.setQuestionType(AiGeneratedQuestisonJsonDto.QuestionType.MCQS.name());
+
+        // Set Explanation
+        AssessmentRichTextData assessmentRichTextDataExp = new AssessmentRichTextData();
+        assessmentRichTextDataExp.setContent(questionRequest.getExp());
+        assessmentRichTextDataExp.setType("HTML");
+        question.setExplanationTextData(assessmentRichTextDataExp);
+
+        // Set Question Text
+        AssessmentRichTextData assessmentRichTextDataQuestion = new AssessmentRichTextData();
+        assessmentRichTextDataQuestion.setContent(questionRequest.getQuestion().getContent());
+        assessmentRichTextDataQuestion.setType("HTML");
+        question.setTextData(assessmentRichTextDataQuestion);
+
+        // Initialize Evaluation
+        MCQEvaluationDTO requestEvaluation = new MCQEvaluationDTO();
+        requestEvaluation.setType(QuestionTypes.MCQS.name());
+        MCQEvaluationDTO.MCQData mcqData = new MCQEvaluationDTO.MCQData();
+
+        List<String> correctOptionIds = new ArrayList<>();
+        List<Option> options = new ArrayList<>();
+
+        // Process Options
+        int index = 0;
+        for (AiGeneratedQuestisonJsonDto.Option optionDTO : questionRequest.getOptions()) {
+            Option option = new Option();
+            UUID optionId = UUID.randomUUID();
+            option.setId(optionId.toString());
+            AssessmentRichTextData assessmentRichTextData = new AssessmentRichTextData();
+            assessmentRichTextData.setContent(optionDTO.getContent());
+            assessmentRichTextData.setType("HTML");
+            option.setText(assessmentRichTextData);
+            option.setQuestion(question);
+            options.add(option);
+            index++;
+        }
+
+        // Save Question & Options
+        question = questionRepository.save(question);
+        options = optionRepository.saveAll(options); // Ensure options are saved
+
+        // Assign Correct Option IDs After Saving
+        List<Option> savedOptions = optionRepository.saveAll(options); // Save options first
+
+// Assign correct option IDs after saving
+        for (int i = 0; i < savedOptions.size(); i++) {
+            if (questionRequest.getCorrectOptions().contains(i)) {
+                correctOptionIds.add(savedOptions.get(i).getId());
+            }
+        }
+
+        mcqData.setCorrectOptionIds(correctOptionIds);
+        requestEvaluation.setData(mcqData);
+
+        try {
+            question.setAutoEvaluationJson(questionEvaluationService.setEvaluationJson(requestEvaluation));
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to process question settings", e);
+        }
+
+        return question;
+    }
+
+    public Question handleMCQM(AiGeneratedQuestisonJsonDto questionRequest) {
+        Question question = new Question();
+        question.setAccessLevel("PUBLIC");
+        question.setQuestionResponseType(QuestionResponseTypes.OPTION.name());
+        question.setQuestionType(AiGeneratedQuestisonJsonDto.QuestionType.MCQM.name());
+
+        // Set Explanation
+        AssessmentRichTextData assessmentRichTextDataExp = new AssessmentRichTextData();
+        assessmentRichTextDataExp.setContent(questionRequest.getExp());
+        assessmentRichTextDataExp.setType("HTML");
+        question.setExplanationTextData(assessmentRichTextDataExp);
+
+        // Set Question Text
+        AssessmentRichTextData assessmentRichTextDataQuestion = new AssessmentRichTextData();
+        assessmentRichTextDataQuestion.setContent(questionRequest.getQuestion().getContent());
+        assessmentRichTextDataQuestion.setType("HTML");
+        question.setTextData(assessmentRichTextDataQuestion);
+
+        // Initialize Evaluation
+        MCQEvaluationDTO requestEvaluation = new MCQEvaluationDTO();
+        requestEvaluation.setType(QuestionTypes.MCQM.name());
+        MCQEvaluationDTO.MCQData mcqData = new MCQEvaluationDTO.MCQData();
+
+        List<String> correctOptionIds = new ArrayList<>();
+        List<Option> options = new ArrayList<>();
+
+        // Process Options
+        int index = 0;
+        for (AiGeneratedQuestisonJsonDto.Option optionDTO : questionRequest.getOptions()) {
+            Option option = new Option();
+            UUID optionId = UUID.randomUUID();
+            option.setId(optionId.toString());
+            AssessmentRichTextData assessmentRichTextData = new AssessmentRichTextData();
+            assessmentRichTextData.setContent(optionDTO.getContent());
+            assessmentRichTextData.setType("HTML");
+            option.setText(assessmentRichTextData);
+            option.setQuestion(question);
+            options.add(option);
+            index++;
+        }
+
+        // Save Question & Options
+        question = questionRepository.save(question);
+        options = optionRepository.saveAll(options); // Ensure options are saved
+
+        // Assign Correct Option IDs After Saving
+        List<Option> savedOptions = optionRepository.saveAll(options); // Save options first
+
+// Assign correct option IDs after saving
+        for (int i = 0; i < savedOptions.size(); i++) {
+            if (questionRequest.getCorrectOptions().contains(i)) {
+                correctOptionIds.add(savedOptions.get(i).getId());
+            }
+        }
+
+        mcqData.setCorrectOptionIds(correctOptionIds);
+        requestEvaluation.setData(mcqData);
+
+        try {
+            question.setAutoEvaluationJson(questionEvaluationService.setEvaluationJson(requestEvaluation));
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to process question settings", e);
+        }
+
+        return question;
+    }
+
+    public Question handleOneWord(AiGeneratedQuestisonJsonDto questionRequest) {
+        Question question = new Question();
+        question.setAccessLevel("PUBLIC");
+        question.setQuestionResponseType(QuestionResponseTypes.ONE_WORD.name());
+        question.setQuestionType(AiGeneratedQuestisonJsonDto.QuestionType.ONE_WORD.name());
+        AssessmentRichTextData assessmentRichTextDataExp = new AssessmentRichTextData();
+        assessmentRichTextDataExp.setContent(questionRequest.getExp());
+        assessmentRichTextDataExp.setType("HTML");
+        question.setExplanationTextData(assessmentRichTextDataExp);
+        AssessmentRichTextData assessmentRichTextDataQuestion = new AssessmentRichTextData();
+        assessmentRichTextDataQuestion.setContent(questionRequest.getQuestion().getContent());
+        assessmentRichTextDataQuestion.setType("HTML");
+        question.setTextData(assessmentRichTextDataQuestion);
+
+        OneWordEvaluationDTO requestEvaluation = new OneWordEvaluationDTO();
+        OneWordEvaluationDTO.OneWordEvaluationData data = new OneWordEvaluationDTO.OneWordEvaluationData();
+        requestEvaluation.setType(QuestionTypes.ONE_WORD.name());
+        data.setAnswer(questionRequest.getAns());
+        requestEvaluation.setData(data);
+
+        try {
+            question.setAutoEvaluationJson(questionEvaluationService.setEvaluationJson(requestEvaluation));
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to process question settings", e);
+        }
+
+        return question;
+    }
+
+    public Question handleLongAnswer(AiGeneratedQuestisonJsonDto questionRequest) {
+        Question question = new Question();
+        question.setAccessLevel("PUBLIC");
+        question.setQuestionResponseType(QuestionResponseTypes.LONG_ANSWER.name());
+        question.setQuestionType(AiGeneratedQuestisonJsonDto.QuestionType.LONG_ANSWER.name());
+        AssessmentRichTextData assessmentRichTextDataExp = new AssessmentRichTextData();
+        assessmentRichTextDataExp.setContent(questionRequest.getExp());
+        assessmentRichTextDataExp.setType("HTML");
+        question.setExplanationTextData(assessmentRichTextDataExp);
+        AssessmentRichTextData assessmentRichTextDataQuestion = new AssessmentRichTextData();
+        assessmentRichTextDataQuestion.setContent(questionRequest.getQuestion().getContent());
+        assessmentRichTextDataQuestion.setType("HTML");
+        question.setTextData(assessmentRichTextDataQuestion);
+
+        LongAnswerEvaluationDTO requestEvaluation = new LongAnswerEvaluationDTO();
+        LongAnswerEvaluationDTO.LongAnswerEvaluationData data = new LongAnswerEvaluationDTO.LongAnswerEvaluationData();
+        requestEvaluation.setType(QuestionTypes.LONG_ANSWER.name());
+        AssessmentRichTextDataDTO assessmentRichTextDataAns = new AssessmentRichTextDataDTO();
+        assessmentRichTextDataAns.setType("HTML");
+        assessmentRichTextDataAns.setContent(questionRequest.getAns());
+        data.setAnswer(assessmentRichTextDataAns);
+        requestEvaluation.setData(data);
+        question = questionRepository.save(question);
+
+        try {
+            question.setAutoEvaluationJson(questionEvaluationService.setEvaluationJson(requestEvaluation));
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to process question settings", e);
+        }
+
+        return question;
+
+    }
+//        TODO: handle numeric type question
+//    public Question handleNumeric(AiGeneratedQuestisonJsonDto questionRequest) {
+//        Question question = new Question();
+//        question.setAccessLevel("PUBLIC");
+//        question.setQuestionResponseType(QuestionResponseTypes.INTEGER.name());
+//        question.setQuestionType(AiGeneratedQuestisonJsonDto.QuestionType.NUMERIC.name());
+//        AssessmentRichTextData assessmentRichTextDataExp = new AssessmentRichTextData();
+//        assessmentRichTextDataExp.setContent(questionRequest.getExp());
+//        assessmentRichTextDataExp.setType("HTML");
+//        question.setExplanationTextData(assessmentRichTextDataExp);
+//        AssessmentRichTextData assessmentRichTextDataQuestion = new AssessmentRichTextData();
+//        assessmentRichTextDataQuestion.setContent(questionRequest.getQuestion().getContent());
+//        assessmentRichTextDataQuestion.setType("HTML");
+//        question.setTextData(assessmentRichTextDataQuestion);
+//
+//        NumericalEvaluationDto requestEvaluation = new NumericalEvaluationDto();
+//        NumericalEvaluationDto.NumericalData data = new NumericalEvaluationDto.NumericalData();
+//        requestEvaluation.setType(QuestionTypes.NUMERIC.name());
+//        AssessmentRichTextDataDTO assessmentRichTextDataAns = new AssessmentRichTextDataDTO();
+//        assessmentRichTextDataAns.setType("HTML");
+//        assessmentRichTextDataAns.setContent(questionRequest.getAns());
+//        data.setValidAnswers(questionRequest.getAns().t);
+//        requestEvaluation.setData(data);
+//        question = questionRepository.save(question);
+//
+//        try {
+//            question.setAutoEvaluationJson(questionEvaluationService.setEvaluationJson(requestEvaluation));
+//        } catch (Exception e) {
+//            throw new RuntimeException("Failed to process question settings", e);
+//        }
+//
+//        return question;
+//    }
 
     public Question makeQuestionAndOptionFromImportQuestion(QuestionDTO questionRequest, Boolean isPublic) throws JsonProcessingException {
         // Todo: check Question Validation
@@ -156,10 +440,10 @@ public class AddQuestionPaperFromImportManager {
                 handleMCQQuestion(question, questionRequest, question.getOptions(), correctOptionIds);
                 break;
             case ONE_WORD:
-                handleOneWordQuestion(question , questionRequest);
+                handleOneWordQuestion(question, questionRequest);
                 break;
             case LONG_ANSWER:
-                handleLongAnswerQuestion(question , questionRequest);
+                handleLongAnswerQuestion(question, questionRequest);
                 break;
             default:
                 throw new IllegalArgumentException("Unsupported question type: " + questionRequest.getQuestionType());

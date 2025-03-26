@@ -12,6 +12,7 @@ import vacademy.io.admin_core_service.features.institute_learner.entity.StudentS
 
 import java.util.Date;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface StudentSessionRepository extends CrudRepository<StudentSessionInstituteGroupMapping, String> {
@@ -97,4 +98,7 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
             @Param("instituteId") String instituteId,
             @Param("status") List<String> status
     );
+
+    @Query(value = "SELECT * FROM student_session_institute_group_mapping WHERE institute_id = :instituteId AND user_id = :userId LIMIT 1", nativeQuery = true)
+    Optional<StudentSessionInstituteGroupMapping> findByInstituteIdAndUserIdNative(@Param("instituteId") String instituteId, @Param("userId") String userId);
 }

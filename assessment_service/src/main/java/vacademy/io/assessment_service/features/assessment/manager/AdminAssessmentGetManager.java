@@ -16,8 +16,6 @@ import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.*;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.request.RevaluateRequest;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.*;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
-import vacademy.io.assessment_service.features.assessment.entity.AssessmentSectionMapping;
-import vacademy.io.assessment_service.features.assessment.entity.QuestionAssessmentSectionMapping;
 import vacademy.io.assessment_service.features.assessment.entity.Section;
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentModeEnum;
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentStatus;
@@ -84,7 +82,7 @@ public class AdminAssessmentGetManager {
 
         makeFilterFieldEmptyArrayIfNull(adminAssessmentFilter);
 
-        assessmentsPage = assessmentRepository.filterAssessments(adminAssessmentFilter.getName(), adminAssessmentFilter.getBatchIds().isEmpty() ? null : true, adminAssessmentFilter.getBatchIds(), adminAssessmentFilter.getSubjectsIds().isEmpty() ? null : true, adminAssessmentFilter.getSubjectsIds(), adminAssessmentFilter.getAssessmentStatuses(), adminAssessmentFilter.getGetLiveAssessments(), adminAssessmentFilter.getGetPassedAssessments(), adminAssessmentFilter.getGetUpcomingAssessments(), adminAssessmentFilter.getAssessmentModes(), adminAssessmentFilter.getAccessStatuses(), adminAssessmentFilter.getInstituteIds(), pageable);
+        assessmentsPage = assessmentRepository.filterAssessments(adminAssessmentFilter.getName(), adminAssessmentFilter.getBatchIds().isEmpty() ? null : true, adminAssessmentFilter.getBatchIds(), adminAssessmentFilter.getSubjectsIds().isEmpty() ? null : true, adminAssessmentFilter.getSubjectsIds(), adminAssessmentFilter.getAssessmentStatuses(), adminAssessmentFilter.getGetLiveAssessments(), adminAssessmentFilter.getGetPassedAssessments(), adminAssessmentFilter.getGetUpcomingAssessments(), adminAssessmentFilter.getAssessmentModes(), adminAssessmentFilter.getAccessStatuses(), adminAssessmentFilter.getInstituteIds(), adminAssessmentFilter.getEvaluationTypes(),pageable);
         List<AdminBasicAssessmentListItemDto> content = assessmentsPage.stream().map(AssessmentMapper::toDto).collect(Collectors.toList());
         int queryPageNo = assessmentsPage.getNumber();
         int queryPageSize = assessmentsPage.getSize();
@@ -106,6 +104,9 @@ public class AdminAssessmentGetManager {
         }
         if (adminAssessmentFilter.getInstituteIds() == null) {
             adminAssessmentFilter.setInstituteIds(new ArrayList<>());
+        }
+        if (adminAssessmentFilter.getEvaluationTypes() == null) {
+            adminAssessmentFilter.setEvaluationTypes(new ArrayList<>());
         }
     }
 

@@ -1,5 +1,6 @@
 package vacademy.io.assessment_service.features.assessment.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.persistence.*;
 import lombok.Data;
@@ -26,6 +27,7 @@ public class StudentAttempt {
 
     @ManyToOne
     @JoinColumn(name = "registration_id")
+    @JsonIgnore
     private AssessmentUserRegistration registration;
 
     @Column(name = "attempt_number", nullable = false)

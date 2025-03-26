@@ -56,6 +56,9 @@ public class Question {
     @Column(name = "evaluation_type")
     private String evaluationType;
 
+    @Column(name = "status")
+    private String status;
+
     @Column(name = "default_question_time_mins")
     private Integer defaultQuestionTimeMins;
 

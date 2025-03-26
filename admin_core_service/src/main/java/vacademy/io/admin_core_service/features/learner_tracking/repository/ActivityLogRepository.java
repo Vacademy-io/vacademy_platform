@@ -297,7 +297,14 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
     )
     SELECT 
         ds.activity_date,
-        COALESCE(SUM(EXTRACT(EPOCH FROM (a.end_time - a.start_time))) / 60, 0)
+        COALESCE(
+            CASE 
+                WHEN COUNT(DISTINCT ssig.user_id) > 0 
+                THEN SUM(EXTRACT(EPOCH FROM (a.end_time - a.start_time))) / 60 / COUNT(DISTINCT ssig.user_id)
+                ELSE 0 
+            END, 
+            0
+        ) AS avg_time_spent_per_student
     FROM date_series ds
     LEFT JOIN student_session_institute_group_mapping ssig 
         ON ssig.package_session_id = :packageSessionId
@@ -308,7 +315,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
     GROUP BY ds.activity_date
     ORDER BY ds.activity_date
 """, nativeQuery = true)
-    List<Object[]> getBatchAvgDailyTimeSpent(
+    List<Object[]> getAvgTimeSpentPerStudent(
             @Param("startDate") String startDate,
             @Param("endDate") String endDate,
             @Param("packageSessionId") String packageSessionId,

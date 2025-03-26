@@ -100,7 +100,7 @@ public class BatchReportService {
      * Retrieves daily learner time spent by batch.
      */
     private List<BatchAvgDailyTimeSpentDTO> getAvgTimeSpent(BatchReportFilterDTO batchReportFilterDTO) {
-        List<Object[]> rawData = activityLogRepository.getBatchAvgDailyTimeSpent(
+        List<Object[]> rawData = activityLogRepository.getAvgTimeSpentPerStudent(
                 batchReportFilterDTO.getStartDate().toString(),
                 batchReportFilterDTO.getEndDate().toString(),
                 batchReportFilterDTO.getPackageSessionId(),

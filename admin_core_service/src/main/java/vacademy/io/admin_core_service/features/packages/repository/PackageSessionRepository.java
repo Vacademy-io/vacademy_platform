@@ -101,10 +101,11 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
     FROM PackageSession ps
     JOIN ps.level l
     JOIN ps.packageEntity p
-    LEFT JOIN StudentSessionInstituteGroupMapping ssigm ON ssigm.packageSession.id = ps.id
+    LEFT JOIN StudentSessionInstituteGroupMapping ssigm 
+        ON ssigm.packageSession.id = ps.id 
+        AND ssigm.status IN :studentSessionStatuses
     WHERE p.id = :packageId
-      AND ps.status IN :packageSessionStatuses 
-      AND ssigm.status IN :studentSessionStatuses
+      AND ps.status IN :packageSessionStatuses
     GROUP BY ps.id, p.packageName, l.levelName, ps.status, ps.startTime
     ORDER BY ps.startTime DESC
 """)
@@ -113,5 +114,4 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
             @Param("packageSessionStatuses") List<String> packageSessionStatuses,
             @Param("studentSessionStatuses") List<String> studentSessionStatuses
     );
-
 }

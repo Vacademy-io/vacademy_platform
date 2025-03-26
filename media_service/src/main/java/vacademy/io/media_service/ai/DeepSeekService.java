@@ -237,7 +237,7 @@ public class DeepSeekService {
         try {
             question.setAutoEvaluationJson(setEvaluationJson(requestEvaluation));
         } catch (Exception e) {
-            throw new RuntimeException("Failed to process question settings", e);
+            throw new VacademyException("Failed to process question settings "+ e.getMessage());
         }
 
         return question;

@@ -11,6 +11,7 @@ import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.zwobble.mammoth.DocumentConverter;
@@ -31,6 +32,7 @@ import java.text.DecimalFormat;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import static org.zwobble.mammoth.internal.util.Base64Encoding.streamToBase64;
 
@@ -49,6 +51,24 @@ public class DocxToHtmlController {
     public String index() {
         return "Hello World";
     }
+
+    @PostMapping("/base64-to-network-images")
+    public ResponseEntity<byte[]> htmlImageProcessing(@RequestParam("file") MultipartFile file) {
+        try {
+            String html = new String(file.getBytes(), StandardCharsets.UTF_8);
+            String networkHtml = htmlImageConverter.convertBase64ImagesToNetworkImages(html);
+            byte[] fileContent = networkHtml.getBytes(StandardCharsets.UTF_8);
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentDisposition(ContentDisposition.attachment().filename("processed.html").build());
+            headers.setContentType(MediaType.APPLICATION_OCTET_STREAM); // Ensures download
+
+            return new ResponseEntity<>(fileContent, headers, HttpStatus.OK);
+        } catch (IOException e) {
+            throw new VacademyException(e.getMessage());
+        }
+    }
+
 
     @PostMapping("/doc-to-html")
     public List<QuestionDTO> docToHtml(
@@ -91,7 +111,7 @@ public class DocxToHtmlController {
             tempFile.delete(); // Clean up temporary file
         } catch (Exception e) {
             e.printStackTrace();
-            throw new RuntimeException("Error converting DOCX to HTML", e);
+            throw new VacademyException("Failed to process question settings "+ e.getMessage());
         }
 
         return html;
@@ -438,7 +458,15 @@ public class DocxToHtmlController {
                         MCQEvaluationDTO.MCQData mcqData = new MCQEvaluationDTO.MCQData();
 
                         try {
-                            mcqData.setCorrectOptionIds(List.of(getAnswerId(contentAfterAns).toString()));
+                            List<String> correctOptionIds = Arrays.stream(contentAfterAns.split(","))
+                                    .map(String::trim) // Remove spaces
+                                    .map(option -> getAnswerId(option).toString()) // Convert to ID
+                                    .toList();
+                            if(correctOptionIds.size() > 1){
+                                mcqEvaluation.setType(QuestionTypes.MCQM.name());
+                                question.setQuestionType(QuestionTypes.MCQM.name());
+                            }
+                            mcqData.setCorrectOptionIds(correctOptionIds);
                             mcqEvaluation.setData(mcqData);
 
                             question.setAutoEvaluationJson(setEvaluationJson(mcqEvaluation));

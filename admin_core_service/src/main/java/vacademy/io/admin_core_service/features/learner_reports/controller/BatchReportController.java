@@ -23,7 +23,7 @@ public class BatchReportController {
     }
 
     @PostMapping
-    public ResponseEntity<BatchReportDTO> getPercentageCourseCompleted(
+    public ResponseEntity<BatchReportDTO> getBatchReportDetails(
             @RequestBody BatchReportFilterDTO batchReportFilterDTO,
             @RequestAttribute("user") CustomUserDetails userDetails) {
         return ResponseEntity.ok(batchReportService.getBatchReport(batchReportFilterDTO, userDetails));
@@ -32,7 +32,7 @@ public class BatchReportController {
     @PostMapping("/leaderboard")
     public ResponseEntity<Page<LearnerActivityDataProjection>> getBatchActivityDataWithRanks(
             @RequestBody BatchReportFilterDTO batchReportFilterDTO,
-            @RequestParam(value = "pageNo", defaultValue = vacademy.io.common.auth.config.PageConstants.DEFAULT_PAGE_NUMBER) Integer pageNo,
+            @RequestParam(value = "pageNo", defaultValue = PageConstants.DEFAULT_PAGE_NUMBER) Integer pageNo,
             @RequestParam(value = "pageSize", defaultValue = PageConstants.DEFAULT_PAGE_SIZE) Integer pageSize,
             @RequestAttribute("user") CustomUserDetails userDetails) {
         return ResponseEntity.ok(

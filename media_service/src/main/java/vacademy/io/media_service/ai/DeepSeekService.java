@@ -6,7 +6,6 @@ import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import vacademy.io.media_service.dto.TextDTO;
 
 import java.util.Map;
 
@@ -58,7 +57,7 @@ public class DeepSeekService {
                         - Omit 'options' field entirely
                         """;
 
-        Prompt prompt = new PromptTemplate(template).create(Map.of("textPrompt", textPrompt, "numberOfQuestions", numberOfQuestions, "typeOfQuestion", typeOfQuestion));
+        Prompt prompt = new PromptTemplate(template).create(Map.of("textPrompt", textPrompt, "numberOfQuestions", numberOfQuestions, "typeOfQuestion", typeOfQuestion, "classLevel", classLevel, "topics", topics));
 
         ChatResponse response = chatModel.call(
                 prompt);

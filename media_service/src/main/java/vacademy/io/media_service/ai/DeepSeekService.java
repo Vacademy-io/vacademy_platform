@@ -8,6 +8,7 @@ import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.media_service.dto.*;
 import vacademy.io.media_service.enums.QuestionResponseType;
 import vacademy.io.media_service.enums.QuestionTypes;
@@ -184,8 +185,6 @@ public class DeepSeekService {
         );
 
 
-        List<String> correctOptionIds = new ArrayList<>();
-        List<OptionDTO> options = new ArrayList<>();
 
         // Process Options
         for (AiGeneratedQuestisonJsonDto.Option optionDTO : questionRequest.getOptions()) {
@@ -195,7 +194,7 @@ public class DeepSeekService {
         try {
             question.setAutoEvaluationJson(setEvaluationJson(requestEvaluation));
         } catch (Exception e) {
-            throw new RuntimeException("Failed to process question settings", e);
+            throw new VacademyException("Failed to process question settings" + e.getMessage());
         }
 
         return question;

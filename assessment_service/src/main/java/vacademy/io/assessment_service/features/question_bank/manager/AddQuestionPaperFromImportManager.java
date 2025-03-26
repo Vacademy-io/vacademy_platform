@@ -22,6 +22,7 @@ import vacademy.io.assessment_service.features.question_core.repository.Question
 import vacademy.io.assessment_service.features.rich_text.dto.AssessmentRichTextDataDTO;
 import vacademy.io.assessment_service.features.rich_text.entity.AssessmentRichTextData;
 import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -219,7 +220,6 @@ public class AddQuestionPaperFromImportManager {
         List<Option> options = new ArrayList<>();
 
         // Process Options
-        int index = 0;
         for (AiGeneratedQuestisonJsonDto.Option optionDTO : questionRequest.getOptions()) {
             Option option = new Option();
             UUID optionId = UUID.randomUUID();
@@ -230,7 +230,6 @@ public class AddQuestionPaperFromImportManager {
             option.setText(assessmentRichTextData);
             option.setQuestion(question);
             options.add(option);
-            index++;
         }
 
         // Save Question & Options
@@ -253,7 +252,7 @@ public class AddQuestionPaperFromImportManager {
         try {
             question.setAutoEvaluationJson(questionEvaluationService.setEvaluationJson(requestEvaluation));
         } catch (Exception e) {
-            throw new RuntimeException("Failed to process question settings", e);
+            throw new VacademyException("Failed to process question settings"+ e.getMessage());
         }
 
         return question;

@@ -112,6 +112,14 @@ public class AssessmentParticipantsManager {
             throw new VacademyException("Assessment not found");
         }
 
+        if (!assessmentRegistrationsDto.isClosedTest()) {
+            if (assessmentRegistrationsDto.getOpenTestDetails() == null || assessmentRegistrationsDto.getOpenTestDetails().getRegistrationStartDate() == null || assessmentRegistrationsDto.getOpenTestDetails().getRegistrationEndDate() == null) {
+                throw new VacademyException("Please provide open test details");
+            }
+            assessmentOptional.get().setAssessmentVisibility(AssessmentVisibility.PUBLIC.name());
+            assessmentRepository.save(assessmentOptional.get());
+        }
+
         preRegisterBatches(assessmentRegistrationsDto.getAddedPreRegisterBatchesDetails(), instituteId, assessmentOptional.get());
         preRegisterParticipant(user, assessmentRegistrationsDto.getAddedPreRegisterStudentsDetails(), instituteId, assessmentOptional);
         removeBatches(assessmentRegistrationsDto.getDeletedPreRegisterBatchesDetails(), instituteId, assessmentOptional.get());
@@ -237,16 +245,36 @@ public class AssessmentParticipantsManager {
         }
     }
 
-    private void addCustomRegistrationFieldsToAsessment(AssessmentRegistrationsDto.OpenTestDetails openTestDetails, Assessment assessment) {
+    private void addCustomRegistrationFieldsToAssessment(AssessmentRegistrationsDto.OpenTestDetails openTestDetails, Assessment assessment) {
         List<AssessmentCustomField> customFields = new ArrayList<>();
         for (RegistrationFieldDto registrationFieldDto : openTestDetails.getRegistrationFormDetails().getAddedCustomAddedFields()) {
             customFields.add(createRegistrationField(registrationFieldDto, assessment));
         }
         assessmentCustomFieldRepository.saveAll(customFields);
     }
+    private void updateCustomRegistrationFieldsToAssessment(AssessmentRegistrationsDto.OpenTestDetails openTestDetails, Assessment assessment) {
+        List<AssessmentCustomField> customFields = new ArrayList<>();
+        for (RegistrationFieldDto registrationFieldDto : openTestDetails.getRegistrationFormDetails().getUpdatedCustomAddedFields()) {
+            Optional<AssessmentCustomField> assessmentCustomField = assessmentCustomFieldRepository.findByFieldKeyAndAssessment(registrationFieldDto.getKey(), assessment);
+            if (assessmentCustomField.isEmpty()) continue;
+            customFields.add(updateRegistrationField(assessmentCustomField.get(), registrationFieldDto, assessment));
+        }
+        assessmentCustomFieldRepository.saveAll(customFields);
+    }
 
     private AssessmentCustomField createRegistrationField(RegistrationFieldDto registrationFieldDto, Assessment assessment) {
         AssessmentCustomField assessmentCustomField = new AssessmentCustomField();
+        assessmentCustomField.setAssessment(assessment);
+        assessmentCustomField.setFieldKey(registrationFieldDto.getName().toLowerCase().trim().replace(" ", "_"));
+        assessmentCustomField.setFieldName(registrationFieldDto.getName().trim());
+        assessmentCustomField.setFieldType(registrationFieldDto.getType().trim());
+        assessmentCustomField.setIsMandatory(registrationFieldDto.getIsMandatory());
+        assessmentCustomField.setStatus(ACTIVE.name());
+        assessmentCustomField.setCommaSeparatedOptions(registrationFieldDto.getCommaSeparatedOptions());
+        return assessmentCustomField;
+    }
+
+    private AssessmentCustomField updateRegistrationField(AssessmentCustomField assessmentCustomField, RegistrationFieldDto registrationFieldDto, Assessment assessment) {
         assessmentCustomField.setAssessment(assessment);
         assessmentCustomField.setFieldKey(registrationFieldDto.getName().toLowerCase().trim().replace(" ", "_"));
         assessmentCustomField.setFieldName(registrationFieldDto.getName().trim());
@@ -274,12 +302,12 @@ public class AssessmentParticipantsManager {
 
     private void removeBatches(List<String> deletedBatches, String instituteId, Assessment assessment) {
         if (deletedBatches.isEmpty()) return;
-        assessmentBatchRegistrationService.softDeleteRegistrationsByIds(deletedBatches, instituteId, assessment.getId());
+        assessmentBatchRegistrationService.hardDeleteRegistrationsByIds(deletedBatches, instituteId, assessment.getId());
     }
 
     private void removeParticipants(List<BasicParticipantDTO> deletedParticipants, String instituteId, Assessment assessment) {
         if (deletedParticipants.isEmpty()) return;
-        assessmentUserRegistrationRepository.softDeleteByAssessmentIdAndUserIdsAndInstituteId(assessment.getId(), deletedParticipants.stream().map(BasicParticipantDTO::getUserId).toList(), instituteId);
+        assessmentUserRegistrationRepository.hardDeleteByAssessmentIdAndUserIdsAndInstituteId(assessment.getId(), deletedParticipants.stream().map(BasicParticipantDTO::getUserId).toList(), instituteId);
     }
 
     AssessmentBatchRegistration addBatchToAssessment(String instituteId, String batchId, Assessment assessment) {
@@ -588,7 +616,7 @@ public class AssessmentParticipantsManager {
 
 
     public ResponseEntity<StudentReportOverallDetailDto> getStudentReportDetails(CustomUserDetails userDetails, String assessmentId, String attemptId, String instituteId) {
-        return ResponseEntity.ok(createStudentReportDetailResponse(assessmentId,attemptId,instituteId));
+        return ResponseEntity.ok(createStudentReportDetailResponse(assessmentId, attemptId, instituteId));
     }
 
     public StudentReportOverallDetailDto createStudentReportDetailResponse(String assessmentId, String attemptId, String instituteId) {
@@ -771,12 +799,11 @@ public class AssessmentParticipantsManager {
         Optional<Assessment> assessmentOptional = assessmentRepository.findById(assessmentId);
         if (assessmentOptional.isEmpty()) throw new VacademyException("No Assessment Found");
 
-        try{
+        try {
             // Call the async method
             releaseResultWrapper(assessmentOptional.get(), instituteId, request, type);
-        }
-        catch (Exception e){
-            log.error("[FAILED TO RELEASE] "+e.getMessage());
+        } catch (Exception e) {
+            log.error("[FAILED TO RELEASE] " + e.getMessage());
         }
 
         return ResponseEntity.ok("Done");
@@ -785,7 +812,7 @@ public class AssessmentParticipantsManager {
 
     @Async
     public CompletableFuture<Void> releaseResultWrapper(Assessment assessment, String instituteId, ReleaseRequestDto request, String type) {
-        return CompletableFuture.runAsync(() -> processReleaseParticipants(assessment,instituteId,request,type))
+        return CompletableFuture.runAsync(() -> processReleaseParticipants(assessment, instituteId, request, type))
                 .thenRun(() -> sendNotificationToAdmin(instituteId));
     }
 
@@ -797,8 +824,7 @@ public class AssessmentParticipantsManager {
         switch (type) {
             case "ASSESSMENT_ALL" -> handleReleaseResultForAllAssessment(assessment, instituteId);
             case "PARTICIPANTS" -> handleReleaseResultForParticipants(assessment, instituteId, request);
-            case "ASSESSMENT_CUSTOM" ->
-                    handleReleaseResultForCustomAssessmentSelection(assessment, instituteId);
+            case "ASSESSMENT_CUSTOM" -> handleReleaseResultForCustomAssessmentSelection(assessment, instituteId);
             default -> throw new VacademyException("Invalid Type");
         }
     }
@@ -819,9 +845,9 @@ public class AssessmentParticipantsManager {
     /**
      * Generates reports for the given student attempts and sends notifications via email.
      *
-     * @param attemptList  The list of student attempts.
-     * @param assessment   The assessment details.
-     * @param instituteId  The ID of the institute.
+     * @param attemptList The list of student attempts.
+     * @param assessment  The assessment details.
+     * @param instituteId The ID of the institute.
      */
     private void createParticipantsReportAndSendEmail(List<StudentAttempt> attemptList, Assessment assessment, String instituteId) {
         attemptList.forEach(attempt -> {

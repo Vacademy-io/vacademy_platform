@@ -1,4 +1,4 @@
-package vacademy.io.assessment_service.features.assessment.controller;
+package vacademy.io.assessment_service.features.assessment.controller.assessment_steps;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;

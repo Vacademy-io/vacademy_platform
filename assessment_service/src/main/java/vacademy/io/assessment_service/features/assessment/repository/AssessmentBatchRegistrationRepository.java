@@ -21,6 +21,12 @@ public interface AssessmentBatchRegistrationRepository extends JpaRepository<Ass
     @Query(value = "UPDATE assessment_batch_registration SET status = 'DELETED' WHERE id IN ?1 AND institute_id = ?2 AND assessment_id = ?3", nativeQuery = true)
     void softDeleteByIds(List<String> ids, String instituteId, String assessmentId);
 
+
+    @Modifying
+    @Transactional
+    @Query(value = "DELETE FROM assessment_batch_registration WHERE id IN ?1 AND institute_id = ?2 AND assessment_id = ?3", nativeQuery = true)
+    void hardDeleteByIds(List<String> ids, String instituteId, String assessmentId);
+
     @Query("SELECT COUNT(DISTINCT abr.assessment.id) " +
             "FROM AssessmentBatchRegistration abr " +
             "WHERE abr.batchId = :batchId " +

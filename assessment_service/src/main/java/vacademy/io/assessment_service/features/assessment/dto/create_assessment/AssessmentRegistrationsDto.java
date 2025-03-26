@@ -46,6 +46,7 @@ public class AssessmentRegistrationsDto {
         @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
         public static class RegistrationFormDetails {
             private List<RegistrationFieldDto> addedCustomAddedFields = new ArrayList<>();
+            private List<RegistrationFieldDto> updatedCustomAddedFields = new ArrayList<>();
             private List<RegistrationFieldDto> removedCustomAddedFields = new ArrayList<>();
         }
 

@@ -45,10 +45,14 @@ public class AssessmentPublicPageManager {
 
         Assessment assessment = assessmentInstituteMapping.get().getAssessment();
 
-        if (assessment.getRegistrationOpenDate() == null || assessment.getRegistrationCloseDate() == null) {
-            throw new VacademyException("Assessment not found");
+        if(assessment.getBoundEndTime() != null && assessment.getBoundEndTime().before(new Date())) {
+            throw new VacademyException("Assessment is ended");
         }
 
+        if (assessment.getRegistrationOpenDate() == null || assessment.getRegistrationCloseDate() == null) {
+            // Private Assessments
+            return ResponseEntity.ok(GetAssessmentPublicResponseDto.builder().instituteId(assessmentInstituteMapping.get().getInstituteId()).assessmentPublicDto(new AssessmentPublicDto(assessment)).serverTimeInGmt(DateUtil.getCurrentUtcTime()).canRegister(false).errorMessage("Assessment is Private").build());
+        }
 
 
         if (assessment.getRegistrationOpenDate().before(new Date()) && assessment.getRegistrationCloseDate().after(new Date())) {

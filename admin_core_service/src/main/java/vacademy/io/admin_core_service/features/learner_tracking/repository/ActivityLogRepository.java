@@ -5,7 +5,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import vacademy.io.admin_core_service.features.learner_reports.dto.ChapterSlideProgressProjection;
 import vacademy.io.admin_core_service.features.learner_reports.dto.LearnerActivityDataProjection;
+import vacademy.io.admin_core_service.features.learner_reports.dto.SubjectProgressProjection;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.LearnerActivityProjection;
 import vacademy.io.admin_core_service.features.learner_tracking.entity.ActivityLog;
 
@@ -322,5 +324,230 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
             @Param("statusList") List<String> statusList
     );
 
+    @Query(value = """
+    WITH SubjectModules AS (
+        SELECT 
+            smm.subject_id, 
+            smm.module_id,
+            s.subject_name, 
+            m.module_name
+        FROM subject_session ss
+        JOIN subject_module_mapping smm ON ss.subject_id = smm.subject_id
+        JOIN subject s ON ss.subject_id = s.id
+        JOIN modules m ON smm.module_id = m.id
+        WHERE ss.session_id = :sessionId
+        AND s.status IN (:subjectStatusList)
+        AND m.status IN (:moduleStatusList)
+    ),
+    ModuleChapters AS (
+        SELECT 
+            sm.subject_id, 
+            sm.module_id, 
+            sm.subject_name, 
+            sm.module_name, 
+            mcm.chapter_id
+        FROM SubjectModules sm
+        JOIN module_chapter_mapping mcm ON sm.module_id = mcm.module_id
+    ),
+    ChapterSlides AS (
+        SELECT 
+            mc.subject_id, 
+            mc.module_id, 
+            mc.subject_name, 
+            mc.module_name, 
+            mc.chapter_id, 
+            cts.slide_id
+        FROM ModuleChapters mc
+        JOIN chapter_to_slides cts ON mc.chapter_id = cts.chapter_id
+        JOIN slide s ON cts.slide_id = s.id
+        JOIN chapter c ON mc.chapter_id = c.id
+        JOIN chapter_package_session_mapping cpsm ON c.id = cpsm.chapter_id
+        WHERE c.status IN (:chapterStatusList)
+        AND cpsm.package_session_id = :sessionId
+        AND cts.status IN (:chapterSlideStatusList)
+        AND s.status IN (:slideStatusList)
+    ),
+    SlideActivity AS (
+        SELECT 
+            cs.subject_id, 
+            cs.module_id, 
+            cs.subject_name, 
+            cs.module_name, 
+            cs.chapter_id, 
+            SUM(EXTRACT(EPOCH FROM (al.end_time - al.start_time))) AS total_time_seconds
+        FROM ChapterSlides cs
+        JOIN activity_log al ON cs.slide_id = al.slide_id
+        JOIN student_session_institute_group_mapping ssigm 
+            ON al.user_id = ssigm.user_id
+            AND ssigm.package_session_id = :sessionId
+        WHERE ssigm.status IN (:learnerStatusList)
+        GROUP BY cs.subject_id, cs.module_id, cs.subject_name, cs.module_name, cs.chapter_id
+    ),
+    DistinctUsers AS (
+        SELECT 
+            COUNT(DISTINCT user_id) AS user_count
+        FROM student_session_institute_group_mapping
+        WHERE package_session_id = :sessionId
+        AND status IN (:learnerStatusList)
+    ),
+    ModuleTime AS (
+        SELECT 
+            sa.subject_id, 
+            sa.module_id, 
+            sa.subject_name, 
+            sa.module_name, 
+            SUM(sa.total_time_seconds) AS total_module_time_seconds
+        FROM SlideActivity sa
+        GROUP BY sa.subject_id, sa.module_id, sa.subject_name, sa.module_name
+    ),
+    AvgTimeSpent AS (
+        SELECT 
+            mt.subject_id, 
+            mt.module_id, 
+            mt.subject_name, 
+            mt.module_name, 
+            (mt.total_module_time_seconds / 60) / du.user_count AS avg_time_per_user_minutes
+        FROM ModuleTime mt
+        CROSS JOIN DistinctUsers du
+    ),
+    ModuleCompletion AS (
+        SELECT 
+            mc.subject_id, 
+            mc.module_id, 
+            mc.subject_name, 
+            mc.module_name, 
+            lo.user_id,
+            AVG(
+                CAST(NULLIF(lo.value, '') AS FLOAT)
+            ) AS avg_completion_per_student
+        FROM learner_operation lo
+        JOIN ModuleChapters mc ON lo.source_id = mc.chapter_id
+        WHERE lo.operation = 'PERCENTAGE_CHAPTER_COMPLETED'
+        AND lo.value ~ '^[0-9\\.]+$' -- Ensure only numeric values
+        GROUP BY mc.subject_id, mc.module_id, mc.subject_name, mc.module_name, lo.user_id
+    ),
+    FinalModuleCompletion AS (
+        SELECT 
+            subject_id, 
+            module_id, 
+            subject_name, 
+            module_name, 
+            AVG(avg_completion_per_student) AS module_completion_percentage
+        FROM ModuleCompletion
+        GROUP BY subject_id, module_id, subject_name, module_name
+    )
+    SELECT 
+        sm.subject_id AS subjectId, 
+        sm.subject_name AS subjectName, 
+        json_agg(
+            jsonb_build_object(
+                'module_id', sm.module_id,
+                'module_name', sm.module_name,
+                'module_completion_percentage', COALESCE(fmc.module_completion_percentage, 0),
+                'avg_time_spent_minutes', COALESCE(ats.avg_time_per_user_minutes, 0)
+            )
+        ) AS modules
+    FROM SubjectModules sm
+    LEFT JOIN FinalModuleCompletion fmc 
+        ON sm.module_id = fmc.module_id 
+        AND sm.subject_id = fmc.subject_id
+    LEFT JOIN AvgTimeSpent ats 
+        ON sm.module_id = ats.module_id 
+        AND sm.subject_id = ats.subject_id
+    GROUP BY sm.subject_id, sm.subject_name
+""", nativeQuery = true)
+    List<SubjectProgressProjection> getModuleCompletionAndTimeSpent(
+            @Param("sessionId") String sessionId,
+            @Param("subjectStatusList") List<String> subjectStatusList,
+            @Param("moduleStatusList") List<String> moduleStatusList,
+            @Param("chapterStatusList") List<String> chapterStatusList,
+            @Param("chapterSlideStatusList") List<String> chapterSlideStatusList,
+            @Param("slideStatusList") List<String> slideStatusList,
+            @Param("learnerStatusList") List<String> learnerStatusList
+    );
+
+    @Query(value = """
+    WITH Chapters AS (
+        SELECT 
+            mc.chapter_id, 
+            ch.chapter_name AS chapter_name
+        FROM module_chapter_mapping mc
+        JOIN chapter_package_session_mapping cps ON mc.chapter_id = cps.chapter_id 
+            AND cps.status IN (:chapterPackageStatusList)
+        JOIN chapter ch ON mc.chapter_id = ch.id 
+            AND ch.status IN (:chapterStatusList)
+        WHERE mc.module_id = :moduleId
+    ),
+    Slides AS (
+        SELECT 
+            csm.chapter_id,
+            s.id AS slide_id,
+            s.title AS slide_title,
+            s.source_type AS slide_source_type
+        FROM chapter_to_slides csm
+        JOIN Chapters c ON csm.chapter_id = c.chapter_id
+        JOIN slide s ON csm.slide_id = s.id 
+            AND s.status IN (:slideStatusList)
+        WHERE csm.status IN (:chapterSlideStatusList)
+    ),
+    ActivityLogs AS (
+        SELECT 
+            al.id AS activity_id, 
+            al.slide_id, 
+            al.start_time, 
+            al.end_time, 
+            al.user_id
+        FROM activity_log al
+        JOIN Slides s ON al.slide_id = s.slide_id
+    ),
+    StudentCount AS (
+        SELECT COUNT(DISTINCT ssigm.user_id) AS distinct_users
+        FROM student_session_institute_group_mapping ssigm
+        WHERE ssigm.package_session_id = :packageSessionId
+          AND ssigm.status IN (:learnerStatusList)
+    ),
+    AvgTimeSpent AS (
+        SELECT 
+            al.slide_id,
+            (EXTRACT(EPOCH FROM SUM(al.end_time - al.start_time)) / 60) / 
+            NULLIF((SELECT distinct_users FROM StudentCount), 0) AS avg_time_spent
+        FROM ActivityLogs al
+        GROUP BY al.slide_id
+    ),
+    AvgConcentrationScore AS (
+        SELECT 
+            al.slide_id,
+            SUM(cs.concentration_score) / NULLIF(COUNT(cs.id), 0) AS avg_concentration_score
+        FROM concentration_score cs
+        JOIN ActivityLogs al ON cs.activity_id = al.activity_id
+        GROUP BY al.slide_id
+    )
+    SELECT 
+        c.chapter_id AS chapterId,
+        c.chapter_name AS chapterName,
+        JSON_AGG(
+            JSON_BUILD_OBJECT(
+                'slide_id', s.slide_id,
+                'slide_title', s.slide_title,
+                'slide_source_type', s.slide_source_type,
+                'avg_time_spent', COALESCE(a.avg_time_spent, 0.0),
+                'avg_concentration_score', COALESCE(cscore.avg_concentration_score, 0.0)
+            )
+        ) AS slides
+    FROM Chapters c
+    JOIN Slides s ON c.chapter_id = s.chapter_id
+    LEFT JOIN AvgTimeSpent a ON s.slide_id = a.slide_id
+    LEFT JOIN AvgConcentrationScore cscore ON s.slide_id = cscore.slide_id
+    GROUP BY c.chapter_id, c.chapter_name
+    """, nativeQuery = true)
+    List<ChapterSlideProgressProjection> getChapterSlideProgress(
+            @Param("moduleId") String moduleId,
+            @Param("packageSessionId") String packageSessionId,
+            @Param("chapterPackageStatusList") List<String> chapterPackageStatusList,
+            @Param("chapterStatusList") List<String> chapterStatusList,
+            @Param("slideStatusList") List<String> slideStatusList,
+            @Param("chapterSlideStatusList") List<String> chapterSlideStatusList,
+            @Param("learnerStatusList") List<String> learnerStatusList
+    );
 
 }

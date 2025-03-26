@@ -4,12 +4,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import vacademy.io.admin_core_service.features.learner_reports.dto.BatchReportDTO;
-import vacademy.io.admin_core_service.features.learner_reports.dto.BatchReportFilterDTO;
-import vacademy.io.admin_core_service.features.learner_reports.dto.LearnerActivityDataProjection;
+import vacademy.io.admin_core_service.features.learner_reports.dto.*;
 import vacademy.io.admin_core_service.features.learner_reports.service.BatchReportService;
 import vacademy.io.common.auth.config.PageConstants;
 import vacademy.io.common.auth.model.CustomUserDetails;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/admin-core-service/learner-management/batch-report")
@@ -39,4 +39,25 @@ public class BatchReportController {
                 batchReportService.getBatchActivityData(batchReportFilterDTO, pageNo, pageSize, userDetails)
         );
     }
+
+    @GetMapping("/subject-wise-progress")
+    public ResponseEntity<List<SubjectProgressDTO>> getSubjectWiseProgress(
+            @RequestParam String packageSessionId,
+            @RequestAttribute("user") CustomUserDetails userDetails) {
+        return ResponseEntity.ok(
+                batchReportService.getSubjectProgressReport(packageSessionId, userDetails)
+        );
+    }
+
+    @GetMapping("/chapter-wise-progress")
+    public ResponseEntity<List<ChapterSlideProgressDTO>> getChapterWiseProgress(
+            @RequestParam String packageSessionId,
+            @RequestParam String moduleId,
+            @RequestAttribute("user") CustomUserDetails userDetails) {
+        return ResponseEntity.ok(
+                batchReportService.getChapterSlideProgress(moduleId,packageSessionId, userDetails)
+        );
+    }
+
+
 }

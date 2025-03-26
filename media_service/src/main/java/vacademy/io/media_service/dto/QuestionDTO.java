@@ -46,6 +46,8 @@ public class QuestionDTO {
         this.previewId = questionNumber;
     }
 
+    public QuestionDTO(){}
+
     public void appendQuestionHtml(String s) {
         String updatedHtml = (this.text.getContent() == null) ? "" : this.text.getContent() + s;
         this.text.setContent(updatedHtml);

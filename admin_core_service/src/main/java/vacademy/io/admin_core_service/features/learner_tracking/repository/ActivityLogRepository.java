@@ -313,7 +313,8 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
         AND ssig.status IN (:statusList)
     LEFT JOIN activity_log a 
         ON ssig.user_id = a.user_id 
-        AND DATE(a.start_time) = ds.activity_date
+        AND DATE(a.created_at) BETWEEN CAST(:startDate AS DATE) AND CAST(:endDate AS DATE)  -- Ensure logs fall within the range
+        AND DATE(a.created_at) = ds.activity_date  -- Ensure logs are mapped correctly to each generated date
     GROUP BY ds.activity_date
     ORDER BY ds.activity_date
 """, nativeQuery = true)

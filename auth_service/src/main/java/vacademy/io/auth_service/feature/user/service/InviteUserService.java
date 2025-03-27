@@ -46,7 +46,7 @@ public class InviteUserService {
 
     private void setRandomCredentials(UserDTO userDTO) {
         userDTO.setPassword(RandomCredentialGenerator.generateRandomPassword());
-        userDTO.setUsername(RandomCredentialGenerator.generateRandomUsername());
+        userDTO.setUsername(RandomCredentialGenerator.generateRandomUsername(userDTO.getFullName()));
     }
 
     private User updateUserDetails(UserDTO userDTO) {

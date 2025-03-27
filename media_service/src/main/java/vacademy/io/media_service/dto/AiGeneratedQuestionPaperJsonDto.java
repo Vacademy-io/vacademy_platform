@@ -11,5 +11,5 @@ import lombok.Setter;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class AiGeneratedQuestionPaperJsonDto {
     private String title;
-    private AiGeneratedQuestisonJsonDto[] questions;
+    private AiGeneratedQuestionJsonDto[] questions;
 }

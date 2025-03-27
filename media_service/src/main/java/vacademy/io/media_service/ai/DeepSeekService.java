@@ -16,7 +16,6 @@ import vacademy.io.media_service.enums.QuestionTypes;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -124,14 +123,14 @@ public class DeepSeekService {
         return response.getResult().getOutput().toString();
     }
 
-    public List<QuestionDTO> formatQuestions(AiGeneratedQuestisonJsonDto[] questions) {
+    public List<QuestionDTO> formatQuestions(AiGeneratedQuestionJsonDto[] questions) {
         if (questions == null || questions.length == 0) {
             throw new IllegalArgumentException("Question array cannot be null or empty");
         }
 
         List<QuestionDTO> formattedQuestions = new ArrayList<>();
 
-        for (AiGeneratedQuestisonJsonDto question : questions) {
+        for (AiGeneratedQuestionJsonDto question : questions) {
             if (question == null) continue; // Avoid NullPointerException if any element is null
 
             switch (question.getQuestionType()) {  // Accessing enum correctly
@@ -156,11 +155,11 @@ public class DeepSeekService {
         return formattedQuestions;
     }
 
-    public QuestionDTO handleMCQS(AiGeneratedQuestisonJsonDto questionRequest) {
+    public QuestionDTO handleMCQS(AiGeneratedQuestionJsonDto questionRequest) {
         QuestionDTO question = new QuestionDTO();
         question.setAccessLevel("PUBLIC");
         question.setQuestionResponseType(QuestionResponseType.OPTION.name());
-        question.setQuestionType(AiGeneratedQuestisonJsonDto.QuestionType.MCQS.name());
+        question.setQuestionType(AiGeneratedQuestionJsonDto.QuestionType.MCQS.name());
 
         // Set Explanation
         AssessmentRichTextDataDTO assessmentRichTextDataExp = new AssessmentRichTextDataDTO();
@@ -187,7 +186,7 @@ public class DeepSeekService {
 
 
         // Process Options
-        for (AiGeneratedQuestisonJsonDto.Option optionDTO : questionRequest.getOptions()) {
+        for (AiGeneratedQuestionJsonDto.Option optionDTO : questionRequest.getOptions()) {
             question.getOptions().add(new OptionDTO(String.valueOf(question.getOptions().size()), new AssessmentRichTextDataDTO(null, "HTML", optionDTO.getContent())));
         }
 
@@ -200,11 +199,11 @@ public class DeepSeekService {
         return question;
     }
 
-    public QuestionDTO handleMCQM(AiGeneratedQuestisonJsonDto questionRequest) {
+    public QuestionDTO handleMCQM(AiGeneratedQuestionJsonDto questionRequest) {
         QuestionDTO question = new QuestionDTO();
         question.setAccessLevel("PUBLIC");
         question.setQuestionResponseType(QuestionResponseType.OPTION.name());
-        question.setQuestionType(AiGeneratedQuestisonJsonDto.QuestionType.MCQM.name());
+        question.setQuestionType(AiGeneratedQuestionJsonDto.QuestionType.MCQM.name());
 
         // Set Explanation
         AssessmentRichTextDataDTO assessmentRichTextDataExp = new AssessmentRichTextDataDTO();
@@ -230,7 +229,7 @@ public class DeepSeekService {
 
 
         // Process Options
-        for (AiGeneratedQuestisonJsonDto.Option optionDTO : questionRequest.getOptions()) {
+        for (AiGeneratedQuestionJsonDto.Option optionDTO : questionRequest.getOptions()) {
             question.getOptions().add(new OptionDTO(String.valueOf(question.getOptions().size()), new AssessmentRichTextDataDTO(null, "HTML", optionDTO.getContent())));
         }
 
@@ -243,11 +242,11 @@ public class DeepSeekService {
         return question;
     }
 
-    public QuestionDTO handleOneWord(AiGeneratedQuestisonJsonDto questionRequest) {
+    public QuestionDTO handleOneWord(AiGeneratedQuestionJsonDto questionRequest) {
         QuestionDTO question = new QuestionDTO();
         question.setAccessLevel("PUBLIC");
         question.setQuestionResponseType(QuestionResponseType.ONE_WORD.name());
-        question.setQuestionType(AiGeneratedQuestisonJsonDto.QuestionType.ONE_WORD.name());
+        question.setQuestionType(AiGeneratedQuestionJsonDto.QuestionType.ONE_WORD.name());
 
         AssessmentRichTextDataDTO assessmentRichTextDataExp = new AssessmentRichTextDataDTO();
         assessmentRichTextDataExp.setContent(questionRequest.getExp());
@@ -274,11 +273,11 @@ public class DeepSeekService {
         return question;
     }
 
-    public QuestionDTO handleLongAnswer(AiGeneratedQuestisonJsonDto questionRequest) {
+    public QuestionDTO handleLongAnswer(AiGeneratedQuestionJsonDto questionRequest) {
         QuestionDTO question = new QuestionDTO();
         question.setAccessLevel("PUBLIC");
         question.setQuestionResponseType(QuestionResponseType.LONG_ANSWER.name());
-        question.setQuestionType(AiGeneratedQuestisonJsonDto.QuestionType.LONG_ANSWER.name());
+        question.setQuestionType(AiGeneratedQuestionJsonDto.QuestionType.LONG_ANSWER.name());
         AssessmentRichTextDataDTO assessmentRichTextDataExp = new AssessmentRichTextDataDTO();
         assessmentRichTextDataExp.setContent(questionRequest.getExp());
         assessmentRichTextDataExp.setType("HTML");
@@ -347,6 +346,9 @@ public class DeepSeekService {
 
         return jsonString; // Return the JSON string for confirmation or further processing
     }
+
+
+
 
 
 }

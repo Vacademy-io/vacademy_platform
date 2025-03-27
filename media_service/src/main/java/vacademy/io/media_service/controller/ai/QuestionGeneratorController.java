@@ -1,6 +1,7 @@
 package vacademy.io.media_service.controller.ai;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.batik.transcoder.TranscoderException;
 import org.apache.batik.transcoder.TranscoderInput;
@@ -52,7 +53,7 @@ public class QuestionGeneratorController {
 
 
     @PostMapping("/from-html")
-    public ResponseEntity<String> fromHtml(
+    public ResponseEntity<AutoQuestionPaperResponse> fromHtml(
             @RequestParam("file") MultipartFile file) {
 
         // Check if the uploaded file is HTML
@@ -68,7 +69,7 @@ public class QuestionGeneratorController {
             // Process the raw output to get valid JSON
             String validJson = JsonUtils.extractAndSanitizeJson(rawOutput);
 
-            return ResponseEntity.ok(removeExtraSlashes(validJson));
+            return ResponseEntity.ok(createAutoQuestionPaperResponse(removeExtraSlashes(validJson)));
 
         } catch (IOException e) {
             throw new VacademyException(e.getMessage());
@@ -76,7 +77,7 @@ public class QuestionGeneratorController {
     }
 
     @PostMapping("/from-not-html")
-    public ResponseEntity<String> fromNotHtml(
+    public ResponseEntity<AutoQuestionPaperResponse> fromNotHtml(
             @RequestParam("file") MultipartFile file) {
 
         // Check if the uploaded file is HTML
@@ -92,7 +93,7 @@ public class QuestionGeneratorController {
             // Process the raw output to get valid JSON
             String validJson = JsonUtils.extractAndSanitizeJson(rawOutput);
 
-            return ResponseEntity.ok(removeExtraSlashes(validJson));
+            return ResponseEntity.ok(createAutoQuestionPaperResponse(removeExtraSlashes(validJson)));
 
         } catch (IOException e) {
             throw new VacademyException(e.getMessage());
@@ -100,7 +101,7 @@ public class QuestionGeneratorController {
     }
 
     @PostMapping("/from-text")
-    public ResponseEntity<String> fromHtml(
+    public ResponseEntity<AutoQuestionPaperResponse> fromHtml(
             @RequestBody TextDTO textPrompt) {
 
         String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromTextPrompt(textPrompt.getText(), textPrompt.getNum().toString(), textPrompt.getQuestionType(), textPrompt.getClassLevel(), textPrompt.getTopics()));
@@ -108,7 +109,7 @@ public class QuestionGeneratorController {
         // Process the raw output to get valid JSON
         String validJson = JsonUtils.extractAndSanitizeJson(rawOutput);
 
-        return ResponseEntity.ok(removeExtraSlashes(validJson));
+        return ResponseEntity.ok(createAutoQuestionPaperResponse(removeExtraSlashes(validJson)));
     }
 
     private boolean isHtmlFile(MultipartFile file) {
@@ -116,8 +117,8 @@ public class QuestionGeneratorController {
     }
 
     public static String removeExtraSlashes(String input) {
-        // Regular expression to match <img src=\"...\"> and replace with <img src="...">
-        String regex = "<img src=\\\"(.*?)\\\">";
+        // Regular expression to match <img src="..."> and replace with <img src="...">
+        String regex = "<img src=\\\\\"(.*?)\\\\\">";
         String replacement = "<img src=\"$1\">";
 
         // Compile the pattern and create a matcher
@@ -128,5 +129,20 @@ public class QuestionGeneratorController {
         return matcher.replaceAll(replacement);
     }
 
+    public AutoQuestionPaperResponse createAutoQuestionPaperResponse(String htmlResponse) {
+        AutoQuestionPaperResponse autoQuestionPaperResponse = new AutoQuestionPaperResponse();
+        ObjectMapper objectMapper = new ObjectMapper();
+
+        try {
+            AiGeneratedQuestionPaperJsonDto response = objectMapper.readValue(htmlResponse, new TypeReference<AiGeneratedQuestionPaperJsonDto>() {});
+
+            autoQuestionPaperResponse.setQuestions(deepSeekService.formatQuestions(response.getQuestions()));
+            autoQuestionPaperResponse.setTitle(response.getTitle());
+        } catch (IOException e) {
+            throw new VacademyException(e.getMessage());
+        }
+
+        return autoQuestionPaperResponse;
+    }
 
 }

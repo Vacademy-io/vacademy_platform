@@ -2,55 +2,97 @@ package vacademy.io.community_service.feature.filter.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.UuidGenerator;
+import vacademy.io.community_service.feature.filter.dto.QuestionDTO;
 
-import java.time.LocalDateTime;
+
+import java.sql.Timestamp;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "question")
 @Getter
 @Setter
-@NoArgsConstructor
 @AllArgsConstructor
+@NoArgsConstructor
+@Builder
 public class Question {
 
     @Id
-    @Column(name = "id")
+    @Column(name = "id", nullable = false)
+    @UuidGenerator
     private String id;
-
-    @Column(name = "text_id")
-    private String textId;
 
     @Column(name = "media_id")
     private String mediaId;
 
-    @Column(name = "created_at")
-    private LocalDateTime createdAt;
+    // One-to-One mapping with AssessmentRichTextData for parent_rich_text_id
+    @OneToOne(cascade = CascadeType.ALL)
+    @JoinColumn(name = "parent_rich_text_id", referencedColumnName = "id", insertable = true, updatable = true)
+    private AssessmentRichTextData parentRichText;
 
-    @Column(name = "updated_at")
-    private LocalDateTime updatedAt;
+    @Column(name = "created_at", insertable = false, updatable = false)
+    private Timestamp createdAt;
 
-    @Column(name = "question_response_type")
+    @Column(name = "updated_at", insertable = false, updatable = false)
+    private Timestamp updatedAt;
+
+    @Column(name = "question_response_type", nullable = false)
     private String questionResponseType;
 
-    @Column(name = "question_type")
+    @Column(name = "question_type", nullable = false)
     private String questionType;
 
-    @Column(name = "access_level")
+    @Column(name = "access_level", nullable = false)
     private String accessLevel;
 
-    @Column(name = "auto_evaluation_json", columnDefinition = "TEXT")
+    @Column(name = "auto_evaluation_json")
     private String autoEvaluationJson;
+
+    @Column(name = "options_json")
+    private String optionsJson;
 
     @Column(name = "evaluation_type")
     private String evaluationType;
 
-    @Column(name = "explanation_text_id")
-    private String explanationTextId;
+    @Column(name = "status")
+    private String status;
 
     @Column(name = "default_question_time_mins")
     private Integer defaultQuestionTimeMins;
 
-    @Column(name = "parent_rich_text_id")
-    private String parentRichTextId;
-}
+    // One-to-One mapping with AssessmentRichTextData for text_id
+    @OneToOne(cascade = CascadeType.ALL)
+    @JoinColumn(name = "text_id", referencedColumnName = "id", insertable = true, updatable = true)
+    private AssessmentRichTextData textData;
 
+    // One-to-One mapping with AssessmentRichTextData for explanation_text_id
+    @OneToOne(cascade = CascadeType.ALL)
+    @JoinColumn(name = "explanation_text_id", referencedColumnName = "id", insertable = true, updatable = true)
+    private AssessmentRichTextData explanationTextData;
+
+    @OneToMany(mappedBy = "question", fetch = FetchType.LAZY)
+    private List<Option> options = new ArrayList<>();
+
+
+    public Question(QuestionDTO questionDTO) {
+        this.id = questionDTO.getId();
+        this.mediaId = questionDTO.getMediaId();
+        this.createdAt = (Timestamp) questionDTO.getCreatedAt();
+        this.updatedAt = (Timestamp) questionDTO.getUpdatedAt();
+        this.questionResponseType = questionDTO.getQuestionResponseType();
+        this.questionType = questionDTO.getQuestionType();
+        this.accessLevel = questionDTO.getAccessLevel();
+        this.autoEvaluationJson = questionDTO.getAutoEvaluationJson();
+        this.evaluationType = questionDTO.getEvaluationType();
+        this.defaultQuestionTimeMins = questionDTO.getDefaultQuestionTimeMins();
+        this.textData = AssessmentRichTextData.fromDTO(questionDTO.getText());
+        this.explanationTextData = AssessmentRichTextData.fromDTO(questionDTO.getExplanationText());
+        this.parentRichText = AssessmentRichTextData.fromDTO(questionDTO.getParentRichText());
+    }
+
+    public Question(String id) {
+        this.id = id;
+    }
+}

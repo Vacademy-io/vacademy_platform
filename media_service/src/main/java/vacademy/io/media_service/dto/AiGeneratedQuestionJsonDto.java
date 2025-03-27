@@ -10,7 +10,7 @@ import java.util.List;
 @Getter
 @Setter
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-public class AiGeneratedQuestisonJsonDto {
+public class AiGeneratedQuestionJsonDto {
     private Integer questionNumber;
     private QuestionContent question;
     private List<Option> options;

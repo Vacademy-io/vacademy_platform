@@ -37,5 +37,22 @@ public interface ConcentrationScoreRepository extends JpaRepository<Concentratio
             @Param("statusList") List<String> statusList
     );
 
+    @Query(value = """ 
+    SELECT 
+        CASE 
+            WHEN COUNT(*) > 0 THEN SUM(cs.concentration_score) / COUNT(*) 
+            ELSE NULL 
+        END AS avg_concentration_score
+    FROM concentration_score cs
+    JOIN activity_log al ON cs.activity_id = al.id
+    WHERE 
+        al.user_id = :userId
+        AND al.created_at BETWEEN :startDate AND :endDate
+    """, nativeQuery = true)
+    Double findAverageConcentrationScoreOfLearner(
+            @Param("startDate") Date startDate,
+            @Param("endDate") Date endDate,
+            @Param("userId") String userId
+    );
 
 }

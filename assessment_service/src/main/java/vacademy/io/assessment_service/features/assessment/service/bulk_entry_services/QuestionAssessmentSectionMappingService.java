@@ -9,6 +9,8 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.stream.StreamSupport;
 
 @Service
 public class QuestionAssessmentSectionMappingService {
@@ -20,8 +22,9 @@ public class QuestionAssessmentSectionMappingService {
         return repository.findByQuestionIdAndSectionId(questionId, sectionId).orElse(null);
     }
 
-    public void addMultipleMappings(List<QuestionAssessmentSectionMapping> mappings) {
-        repository.saveAll(mappings);
+    public List<QuestionAssessmentSectionMapping> addMultipleMappings(List<QuestionAssessmentSectionMapping> mappings) {
+        return StreamSupport.stream(repository.saveAll(mappings).spliterator(), false)
+                .collect(Collectors.toList());
     }
 
     public void softDeleteMappingsByQuestionIdsAndSectionId(List<String> questionIds, String sectionId) {
@@ -30,5 +33,9 @@ public class QuestionAssessmentSectionMappingService {
 
     public List<QuestionAssessmentSectionMapping> getQuestionAssessmentSectionMappingBySectionIds(List<String> sectionIds) {
         return repository.getQuestionAssessmentSectionMappingBySectionIds(sectionIds);
+    }
+
+    public List<QuestionAssessmentSectionMapping> getQuestionAssessmentSectionByAssessment(String assessmentId){
+        return repository.getQuestionAssessmentSectionMappingByAssessmentId(assessmentId);
     }
 }

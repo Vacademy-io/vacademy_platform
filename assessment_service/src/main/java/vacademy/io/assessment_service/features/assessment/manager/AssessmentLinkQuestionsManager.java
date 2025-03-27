@@ -1,6 +1,7 @@
 package vacademy.io.assessment_service.features.assessment.manager;
 
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
@@ -11,11 +12,13 @@ import vacademy.io.assessment_service.features.assessment.dto.AssessmentSaveResp
 import vacademy.io.assessment_service.features.assessment.dto.SectionAddEditRequestDto;
 import vacademy.io.assessment_service.features.assessment.dto.create_assessment.AddQuestionsAssessmentDetailsDTO;
 import vacademy.io.assessment_service.features.assessment.dto.create_assessment.BasicAssessmentDetailsDTO;
-import vacademy.io.assessment_service.features.assessment.entity.Assessment;
-import vacademy.io.assessment_service.features.assessment.entity.AssessmentInstituteMapping;
-import vacademy.io.assessment_service.features.assessment.entity.QuestionAssessmentSectionMapping;
-import vacademy.io.assessment_service.features.assessment.entity.Section;
+import vacademy.io.assessment_service.features.assessment.dto.manual_evaluation.QuestionSetOrderDto;
+import vacademy.io.assessment_service.features.assessment.dto.manual_evaluation.SectionSetOrderDto;
+import vacademy.io.assessment_service.features.assessment.dto.manual_evaluation.SetOrderDto;
+import vacademy.io.assessment_service.features.assessment.entity.*;
 import vacademy.io.assessment_service.features.assessment.enums.ProblemRandomType;
+import vacademy.io.assessment_service.features.assessment.enums.SetStatusEnum;
+import vacademy.io.assessment_service.features.assessment.repository.AssessmentSetMappingRepository;
 import vacademy.io.assessment_service.features.assessment.repository.SectionRepository;
 import vacademy.io.assessment_service.features.assessment.service.assessment_get.AssessmentService;
 import vacademy.io.assessment_service.features.assessment.service.bulk_entry_services.QuestionAssessmentSectionMappingService;
@@ -26,6 +29,7 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 import static org.hibernate.event.internal.EntityState.DELETED;
 import static org.hibernate.resource.transaction.spi.TransactionStatus.ACTIVE;
@@ -42,6 +46,9 @@ public class AssessmentLinkQuestionsManager {
     @Autowired
     QuestionAssessmentSectionMappingService questionAssessmentSectionMappingService;
 
+    @Autowired
+    AssessmentSetMappingRepository assessmentSetMappingRepository;
+
     @Transactional
     public ResponseEntity<AssessmentSaveResponseDto> saveQuestionsToAssessment(CustomUserDetails user, AddQuestionsAssessmentDetailsDTO addQuestionsAssessmentDetailsDTO, String assessmentId, String instituteId, String type) {
 
@@ -53,6 +60,9 @@ public class AssessmentLinkQuestionsManager {
 
         for (SectionAddEditRequestDto sectionAddEditRequestDto : addQuestionsAssessmentDetailsDTO.getAddedSections()) {
             addSectionToAssessment(user, sectionAddEditRequestDto, assessmentOptional.get(), instituteId, type);
+        }
+        if(!Objects.isNull(addQuestionsAssessmentDetailsDTO.getAddedSections()) && !addQuestionsAssessmentDetailsDTO.getAddedSections().isEmpty()){
+            createDefaultSetForAssessment(assessmentOptional.get(), Optional.empty());
         }
 
         for (SectionAddEditRequestDto sectionAddEditRequestDto : addQuestionsAssessmentDetailsDTO.getUpdatedSections()) {
@@ -85,8 +95,106 @@ public class AssessmentLinkQuestionsManager {
         for (int i = 0; i < sectionAddEditRequestDto.getQuestionAndMarking().size(); i++) {
             mappings.add(createFromQuestionSectionAddEditRequestDto(sectionAddEditRequestDto.getQuestionAndMarking().get(i), newSection, assessment));
         }
-        questionAssessmentSectionMappingService.addMultipleMappings(mappings);
+        List<QuestionAssessmentSectionMapping> sectionMappings = questionAssessmentSectionMappingService.addMultipleMappings(mappings);
     }
+
+    private void createDefaultSetForAssessment(Assessment assessment, Optional<List<QuestionAssessmentSectionMapping>> sectionMappings) {
+        String setName = "SET A";
+        if(sectionMappings.isPresent()){
+            AssessmentSetMapping setMapping = AssessmentSetMapping.builder()
+                    .setName(setName)
+                    .status(SetStatusEnum.ACTIVE.name())
+                    .json(createOrderJsonFromAssessment(sectionMappings.get()))
+                    .assessment(assessment).build();
+
+            assessmentSetMappingRepository.save(setMapping);
+        }
+        else{
+            List<QuestionAssessmentSectionMapping> sectionMappingList = questionAssessmentSectionMappingService.getQuestionAssessmentSectionByAssessment(assessment.getId());
+            AssessmentSetMapping setMapping = AssessmentSetMapping.builder()
+                    .setName(setName)
+                    .status(SetStatusEnum.ACTIVE.name())
+                    .json(createOrderJsonFromAssessment(sectionMappingList))
+                    .assessment(assessment).build();
+
+            assessmentSetMappingRepository.save(setMapping);
+        }
+    }
+
+
+    private String createOrderJsonFromAssessment(List<QuestionAssessmentSectionMapping> sectionMappings) {
+        try {
+            ObjectMapper objectMapper = new ObjectMapper();
+            SetOrderDto setOrder = createAssessmentSetOrderDto(sectionMappings);
+            return objectMapper.writeValueAsString(setOrder);
+        }
+        catch (Exception e){
+            throw new VacademyException("Failed to create Json String: " + e.getMessage());
+        }
+    }
+
+    private SetOrderDto createAssessmentSetOrderDto(List<QuestionAssessmentSectionMapping> sectionMappings) {
+        if (Objects.isNull(sectionMappings)) {
+            throw new VacademyException("Section Mapping is Null");
+        }
+        if (sectionMappings.isEmpty()) {
+            return SetOrderDto.builder().build();
+        }
+
+        // Group by section
+        Map<String, List<QuestionAssessmentSectionMapping>> sectionMap = sectionMappings.stream()
+                .filter(Objects::nonNull) // Ensure no null elements in the list
+                .collect(Collectors.groupingBy(mapping -> {
+                    Section section = mapping.getSection();
+                    return section.getId();
+                }));
+
+        List<SectionSetOrderDto> sectionDtos = sectionMap.values().stream()
+                .map(questionAssessmentSectionMappings -> {
+                    Section firstSection = questionAssessmentSectionMappings.get(0).getSection(); // Get the first mapping's section
+                    if(Objects.isNull(firstSection)) throw new VacademyException("Section Not Found");
+                    String sectionId = firstSection.getId();
+                    Integer sectionOrder = firstSection.getSectionOrder();
+
+                    List<QuestionSetOrderDto> questionDtos = questionAssessmentSectionMappings.stream()
+                            .map(mapping -> {
+                                Question question = mapping.getQuestion();
+                                if(Objects.isNull(question)) throw new VacademyException("Question Not Found");
+
+                                String questionId = question.getId();
+                                Integer order = mapping.getQuestionOrder();
+
+                                return QuestionSetOrderDto.builder()
+                                        .questionId(questionId)
+                                        .order(order)
+                                        .build();
+
+                            })
+                            .filter(q -> q.getQuestionId() != null) // Remove invalid questions
+                            .collect(Collectors.toList());
+
+                    return SectionSetOrderDto.builder()
+                            .sectionId(sectionId)
+                            .order(sectionOrder)
+                            .questions(questionDtos)
+                            .build();
+                })
+                .filter(s -> s.getSectionId() != null) // Remove invalid sections
+                .collect(Collectors.toList());
+
+        // Extract assessment details from the first valid mapping
+        QuestionAssessmentSectionMapping firstMapping = sectionMappings.get(0);
+        Section firstSection = firstMapping.getSection();
+        String assessmentId = firstSection.getAssessment().getId();
+        String assessmentName = firstSection.getAssessment().getName();
+
+        return SetOrderDto.builder()
+                .assessmentId(assessmentId)
+                .assessmentName(assessmentName)
+                .sections(sectionDtos)
+                .build();
+    }
+
 
     QuestionAssessmentSectionMapping createFromQuestionSectionAddEditRequestDto
             (SectionAddEditRequestDto.QuestionAndMarking questionAndMarking, Section section, Assessment assessment) {

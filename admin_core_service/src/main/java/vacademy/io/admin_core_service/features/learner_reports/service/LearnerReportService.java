@@ -3,10 +3,7 @@ package vacademy.io.admin_core_service.features.learner_reports.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.chapter.enums.ChapterStatus;
@@ -22,16 +19,20 @@ import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
-@Slf4j
 @Service
-@RequiredArgsConstructor
-public class BatchReportService {
+public class LearnerReportService {
 
-    private final ActivityLogRepository activityLogRepository;
-    private final ConcentrationScoreRepository concentrationScoreRepository;
+    @Autowired
+    private ActivityLogRepository activityLogRepository;
+
+    @Autowired
+    private ConcentrationScoreRepository concentrationScoreRepository;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
+
 
     private static final List<String> ACTIVE_LEARNERS = List.of(LearnerStatusEnum.ACTIVE.name());
     private static final List<String> ACTIVE_SUBJECTS = List.of(SubjectStatusEnum.ACTIVE.name());
@@ -39,29 +40,40 @@ public class BatchReportService {
     private static final List<String> ACTIVE_CHAPTERS = List.of(ChapterStatus.ACTIVE.name());
     private static final List<String> VALID_SLIDE_STATUSES = List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name());
 
-    public ProgressReportDTO getBatchReport(ReportFilterDTO filter, CustomUserDetails userDetails) {
-        validateBatchReportFilter(filter);
+
+    public ProgressReportDTO getLearnerProgressReport(ReportFilterDTO filterDTO, CustomUserDetails userDetails){
+        validateBatchReportFilter(filterDTO);
         return new ProgressReportDTO(
-                getPercentageCourseCompleted(filter),
-                getAverageTimeSpent(filter),
-                getAverageConcentrationScore(filter),
-                getAvgTimeSpent(filter)
+                getPercentageCourseCompleted(filterDTO),
+                getAverageTimeSpent(filterDTO),
+                getAverageConcentrationScore(filterDTO),
+                getTimeSpentEachDay(filterDTO)
         );
     }
 
-    public Page<LearnerActivityDataProjection> getBatchActivityData(ReportFilterDTO filter, Integer pageNo, Integer pageSize, CustomUserDetails userDetails) {
-        return activityLogRepository.getBatchActivityDataWithRankPaginated(
+    private List<AvgDailyTimeSpentDTO> getTimeSpentEachDay(ReportFilterDTO filter) {
+        return activityLogRepository.getTimeSpentByLearnerPerDay(
+                        filter.getStartDate().toString(),
+                        filter.getEndDate().toString(),
+                        filter.getUserId()
+                )
+                .stream()
+                .map(row -> new AvgDailyTimeSpentDTO(row[0].toString(), ((Number) row[1]).doubleValue()))
+                .collect(Collectors.toList());
+    }
+
+    private Double getAverageTimeSpent(ReportFilterDTO filter) {
+        return activityLogRepository.findTimeSpentByLearner(
                 filter.getStartDate(),
                 filter.getEndDate(),
-                filter.getPackageSessionId(),
-                ACTIVE_LEARNERS,
-                PageRequest.of(pageNo, pageSize)
+                filter.getUserId()
         );
     }
 
     private Double getPercentageCourseCompleted(ReportFilterDTO filter) {
-        return activityLogRepository.getBatchCourseCompletionPercentage(
+        return activityLogRepository.getLearnerCourseCompletionPercentage(
                 filter.getPackageSessionId(),
+                filter.getUserId(),
                 filter.getStartDate(),
                 filter.getEndDate(),
                 ACTIVE_SUBJECTS,
@@ -69,35 +81,6 @@ public class BatchReportService {
                 ACTIVE_CHAPTERS,
                 VALID_SLIDE_STATUSES
         );
-    }
-
-    private Double getAverageConcentrationScore(ReportFilterDTO filter) {
-        return concentrationScoreRepository.findAverageConcentrationScoreByBatch(
-                filter.getStartDate(),
-                filter.getEndDate(),
-                filter.getPackageSessionId(),
-                ACTIVE_LEARNERS
-        );
-    }
-
-    private Double getAverageTimeSpent(ReportFilterDTO filter) {
-        return activityLogRepository.findAverageTimeSpentByBatch(
-                filter.getStartDate(),
-                filter.getEndDate(),
-                filter.getPackageSessionId(),
-                ACTIVE_LEARNERS
-        );
-    }
-
-    private List<AvgDailyTimeSpentDTO> getAvgTimeSpent(ReportFilterDTO filter) {
-        return activityLogRepository.getAvgTimeSpentPerStudent(
-                        filter.getStartDate().toString(),
-                        filter.getEndDate().toString(),
-                        filter.getPackageSessionId(),
-                        ACTIVE_LEARNERS)
-                .stream()
-                .map(row -> new AvgDailyTimeSpentDTO(row[0].toString(), ((Number) row[1]).doubleValue()))
-                .collect(Collectors.toList());
     }
 
     private void validateBatchReportFilter(ReportFilterDTO filter) {
@@ -109,34 +92,49 @@ public class BatchReportService {
         }
     }
 
-    public List<SubjectProgressDTO> getSubjectProgressReport(String packageSessionId, CustomUserDetails userDetails) {
-        return activityLogRepository.getModuleCompletionAndTimeSpent(
-                        packageSessionId, ACTIVE_SUBJECTS, ACTIVE_MODULES, ACTIVE_CHAPTERS, VALID_SLIDE_STATUSES, VALID_SLIDE_STATUSES, ACTIVE_LEARNERS)
+    private Double getAverageConcentrationScore(ReportFilterDTO filter) {
+        return concentrationScoreRepository.findAverageConcentrationScoreOfLearner(
+                filter.getStartDate(),
+                filter.getEndDate(),
+                filter.getUserId()
+        );
+    }
+
+    public List<SubjectProgressDTO> getSubjectProgressReport(String packageSessionId, String userId, CustomUserDetails userDetails) {
+        return activityLogRepository.getModuleCompletionByUser(
+                        packageSessionId,
+                        userId,
+                        ACTIVE_SUBJECTS,
+                        ACTIVE_MODULES,
+                        ACTIVE_CHAPTERS,
+                        VALID_SLIDE_STATUSES,
+                        VALID_SLIDE_STATUSES)
                 .stream()
                 .map(this::mapToSubjectProgressDTO)
                 .collect(Collectors.toList());
     }
 
-    private SubjectProgressDTO mapToSubjectProgressDTO(SubjectProgressProjection projection) {
+    private SubjectProgressDTO mapToSubjectProgressDTO(Object[] result) {
         try {
             SubjectProgressDTO dto = new SubjectProgressDTO();
-            dto.setSubjectId(projection.getSubjectId());
-            dto.setSubjectName(projection.getSubjectName());
-            log.info("Processing subject: {}", projection.getSubjectName());
+            dto.setSubjectId((String) result[0]); // subject_id
+            dto.setSubjectName((String) result[1]); // subject_name
 
+            // Convert JSON string (modules) to List<ModuleProgressDTO>
+            String modulesJson = (String) result[2];
             List<SubjectProgressDTO.ModuleProgressDTO> modules = objectMapper.readValue(
-                    projection.getModules(), new TypeReference<>() {});
+                    modulesJson, new TypeReference<>() {});
+
             dto.setModules(modules);
             return dto;
         } catch (JsonProcessingException e) {
-            log.error("Failed to parse module progress data", e);
             throw new RuntimeException("Failed to parse module progress data", e);
         }
     }
 
-    public List<ChapterSlideProgressDTO> getChapterSlideProgress(String moduleId, String packageSessionId, CustomUserDetails userDetails) {
-        return activityLogRepository.getChapterSlideProgress(
-                        moduleId, packageSessionId, ACTIVE_CHAPTERS, ACTIVE_CHAPTERS, VALID_SLIDE_STATUSES, VALID_SLIDE_STATUSES, ACTIVE_LEARNERS)
+    public List<ChapterSlideProgressDTO> getChapterSlideProgress(String moduleId,String userId, CustomUserDetails userDetails) {
+        return activityLogRepository.getChapterSlideProgressForLearner(
+                        moduleId, userId, ACTIVE_CHAPTERS, ACTIVE_CHAPTERS, VALID_SLIDE_STATUSES, VALID_SLIDE_STATUSES)
                 .stream()
                 .map(this::mapToDTO)
                 .collect(Collectors.toList());
@@ -154,8 +152,8 @@ public class BatchReportService {
 
             return dto;
         } catch (JsonProcessingException e) {
-            log.error("Failed to parse slides data", e);
             throw new RuntimeException("Failed to parse slides data", e);
         }
     }
+
 }

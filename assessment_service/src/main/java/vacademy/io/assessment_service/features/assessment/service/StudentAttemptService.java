@@ -4,11 +4,14 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.assessment_service.features.assessment.dto.QuestionWiseBasicDetailDto;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.request.RevaluateRequest;
+import vacademy.io.assessment_service.features.assessment.dto.manual_evaluation.ManualAttemptResponseDto;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.entity.QuestionAssessmentSectionMapping;
 import vacademy.io.assessment_service.features.assessment.entity.Section;
@@ -382,4 +385,8 @@ public class StudentAttemptService {
         return studentAttemptRepository.findById(id);
     }
 
+    public Page<ManualAttemptResponseDto> getAllManualAssignedAttempt(String userId, String assessmentId, String instituteId,String name, List<String> evaluationStatus, Pageable pageable) {
+        if(Objects.isNull(evaluationStatus)) evaluationStatus = new ArrayList<>();
+        return studentAttemptRepository.findAllAssignedAttemptForUserIdWithFilter(userId,instituteId,assessmentId,name,evaluationStatus, pageable);
+    }
 }

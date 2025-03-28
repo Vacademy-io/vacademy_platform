@@ -19,4 +19,8 @@ public interface ParticipantsDetailsDto {
     Double getScore();
     String getUserId();
     String getBatchId();
+    String getEvaluationStatus();
+    String getReportReleaseResultStatus();
+    Date getLastReportReleaseDate();
+
 }

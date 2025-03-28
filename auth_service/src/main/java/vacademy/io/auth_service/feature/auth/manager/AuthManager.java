@@ -27,6 +27,7 @@ import vacademy.io.common.auth.entity.RefreshToken;
 import vacademy.io.common.auth.entity.Role;
 import vacademy.io.common.auth.entity.User;
 import vacademy.io.common.auth.entity.UserRole;
+import vacademy.io.common.auth.enums.UserRoleStatus;
 import vacademy.io.common.auth.repository.RoleRepository;
 import vacademy.io.common.auth.repository.UserRepository;
 import vacademy.io.common.auth.repository.UserRoleRepository;
@@ -40,6 +41,7 @@ import vacademy.io.common.institute.dto.InstituteInfoDTO;
 import vacademy.io.common.notification.dto.GenericEmailRequest;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 import static vacademy.io.auth_service.feature.auth.constants.AuthConstants.ADMIN_ROLE;
 
@@ -151,6 +153,9 @@ public class AuthManager {
 
             List<UserRole> userRoles = userRoleRepository.findByUser(user);
 
+            if (!userRoles.isEmpty()) {
+                userRoleRepository.updateUserRoleStatusByInstituteIdAndUserId(UserRoleStatus.ACTIVE.name(),userRoles.get(0).getInstituteId(),List.of(user.getId()));
+            }
 
             RefreshToken refreshToken = refreshTokenService.createRefreshToken(authRequestDTO.getUserName(), authRequestDTO.getClientName());
             return JwtResponseDto.builder().accessToken(jwtService.generateToken(user, userRoles)).refreshToken(refreshToken.getToken()).build();

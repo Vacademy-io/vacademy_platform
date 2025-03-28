@@ -883,6 +883,7 @@ public class AssessmentParticipantsManager {
             // Send notification to the student
             reportMap.put(attempt, participantPdfReport);
         });
+        System.out.println("e are here");
         sendNotificationToStudent(reportMap,assessment.getId());
     }
 

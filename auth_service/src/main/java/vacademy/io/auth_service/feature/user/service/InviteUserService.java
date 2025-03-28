@@ -25,6 +25,7 @@ public class InviteUserService {
 
     public String inviteUser(UserDTO userDTO, String instituteId, CustomUserDetails customUserDetails) {
         setRandomCredentials(userDTO);
+        userDTO.setRootUser(true);
         User user = userService.createUserFromUserDto(userDTO);
         userService.addUserRoles(instituteId, userDTO.getRoles(), user, UserRoleStatus.INVITED.name());
         sendInvitationEmail(userDTO);

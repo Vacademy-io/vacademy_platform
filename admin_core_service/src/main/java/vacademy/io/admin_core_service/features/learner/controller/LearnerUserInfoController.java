@@ -34,4 +34,12 @@ public class LearnerUserInfoController {
         return ResponseEntity.ok(learnerService.editLearnerDetails(learnerDetailsEditDTO, user));
 
     }
+
+    @PutMapping("/edit-face-file")
+    public ResponseEntity<String> editFaceFile(@RequestParam String faceFileId,
+                                               @RequestAttribute("user") CustomUserDetails user) {
+
+        return ResponseEntity.ok(learnerService.updateFaceFileId(faceFileId, user));
+
+    }
 }

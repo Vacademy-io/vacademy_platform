@@ -23,20 +23,20 @@ public class BatchReportController {
     }
 
     @PostMapping
-    public ResponseEntity<BatchReportDTO> getBatchReportDetails(
-            @RequestBody BatchReportFilterDTO batchReportFilterDTO,
+    public ResponseEntity<ProgressReportDTO> getBatchReportDetails(
+            @RequestBody ReportFilterDTO reportFilterDTO,
             @RequestAttribute("user") CustomUserDetails userDetails) {
-        return ResponseEntity.ok(batchReportService.getBatchReport(batchReportFilterDTO, userDetails));
+        return ResponseEntity.ok(batchReportService.getBatchReport(reportFilterDTO, userDetails));
     }
 
     @PostMapping("/leaderboard")
     public ResponseEntity<Page<LearnerActivityDataProjection>> getBatchActivityDataWithRanks(
-            @RequestBody BatchReportFilterDTO batchReportFilterDTO,
+            @RequestBody ReportFilterDTO reportFilterDTO,
             @RequestParam(value = "pageNo", defaultValue = PageConstants.DEFAULT_PAGE_NUMBER) Integer pageNo,
             @RequestParam(value = "pageSize", defaultValue = PageConstants.DEFAULT_PAGE_SIZE) Integer pageSize,
             @RequestAttribute("user") CustomUserDetails userDetails) {
         return ResponseEntity.ok(
-                batchReportService.getBatchActivityData(batchReportFilterDTO, pageNo, pageSize, userDetails)
+                batchReportService.getBatchActivityData(reportFilterDTO, pageNo, pageSize, userDetails)
         );
     }
 

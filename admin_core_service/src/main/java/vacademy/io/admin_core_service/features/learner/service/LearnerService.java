@@ -33,7 +33,18 @@ public class LearnerService {
         if (StringUtils.hasText(learnerDetailsEditDTO.getMotherName())) student.setMotherName(learnerDetailsEditDTO.getMotherName());
         if (StringUtils.hasText(learnerDetailsEditDTO.getParentsMobileNumber())) student.setParentsMobileNumber(learnerDetailsEditDTO.getParentsMobileNumber());
         if (StringUtils.hasText(learnerDetailsEditDTO.getParentsEmail())) student.setParentsEmail(learnerDetailsEditDTO.getParentsEmail());
+        if (StringUtils.hasText(learnerDetailsEditDTO.getFaceFileId())) student.setFaceFileId(learnerDetailsEditDTO.getFaceFileId());
         instituteStudentRepository.save(student);
         return "success";
+    }
+
+    public String updateFaceFileId(String faceFileId,CustomUserDetails userDetails) {
+        if (StringUtils.hasText(userDetails.getId()) && StringUtils.hasText(faceFileId)) {
+            Student student = instituteStudentRepository.findTopByUserId(userDetails.getId()).orElseThrow(() -> new VacademyException("User not found"));
+            student.setFaceFileId(faceFileId);
+            instituteStudentRepository.save(student);
+            return "success";
+        }
+        return "failed";
     }
 }

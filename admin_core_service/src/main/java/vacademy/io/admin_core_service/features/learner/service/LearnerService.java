@@ -4,12 +4,16 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
+import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository;
+import vacademy.io.admin_core_service.features.learner.dto.LearnerDetailsDTO;
 import vacademy.io.admin_core_service.features.learner.dto.LearnerDetailsEditDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
+import java.util.List;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 @Service
 public class LearnerService {
@@ -46,5 +50,10 @@ public class LearnerService {
             return "success";
         }
         return "failed";
+    }
+
+    public List<LearnerDetailsDTO> getStudentsByPackageSessionId(String packageSessionId,String instituteId,CustomUserDetails user) {
+        return instituteStudentRepository.findStudentsByPackageSessionIdAndInstituteIdAndStatus(packageSessionId,instituteId, List.of(LearnerStatusEnum.ACTIVE.name())).stream()
+                .map(student -> new LearnerDetailsDTO(student.getFullName(),student.getUserId())).collect(Collectors.toList());
     }
 }

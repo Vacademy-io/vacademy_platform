@@ -179,5 +179,15 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                 WHERE c.id = :chapterId
             """)
     List<Student> findStudentsByChapterId(@Param("chapterId") String chapterId);
+
+    @Query("SELECT s FROM Student s " +
+            "JOIN StudentSessionInstituteGroupMapping m ON s.userId = m.userId " +
+            "WHERE m.packageSession.id = :packageSessionId " +
+            "AND m.institute.id = :instituteId " +
+            "AND m.status IN :statuses " +
+            "ORDER BY s.fullName ASC")
+    List<Student> findStudentsByPackageSessionIdAndInstituteIdAndStatus(@Param("packageSessionId") String packageSessionId,
+                                                                        @Param("instituteId") String instituteId,
+                                                                        @Param("statuses") List<String> statuses);
 }
 

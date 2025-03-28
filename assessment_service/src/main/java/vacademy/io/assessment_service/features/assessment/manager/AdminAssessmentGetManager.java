@@ -170,12 +170,13 @@ public class AdminAssessmentGetManager {
         Map<String, List<AssessmentQuestionPreviewDto>> questionMapping = assessmentLinkQuestionsManager.getQuestionsOfSection(user, assessmentId, sectionId);
 
         if (questionMapping == null || !questionMapping.containsKey(sectionId)) {
-            throw new VacademyException("No questions found for section: " + sectionId);
+            return QuestionInsightsResponse.builder().questionInsightDto(new ArrayList<>()).build();
         }
 
         List<AssessmentQuestionPreviewDto> questionPreviewDtos = questionMapping.get(sectionId);
         if (questionPreviewDtos == null || questionPreviewDtos.isEmpty()) {
-            throw new VacademyException("No questions available in the section.");
+            return QuestionInsightsResponse.builder()
+                    .questionInsightDto(new ArrayList<>()).build();
         }
 
         // Process insights for each question

@@ -3,8 +3,15 @@ package vacademy.io.assessment_service.features.assessment.manager;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
+import vacademy.io.assessment_service.features.assessment.dto.manual_evaluation.ManualAttemptFilter;
+import vacademy.io.assessment_service.features.assessment.dto.manual_evaluation.ManualAttemptResponse;
+import vacademy.io.assessment_service.features.assessment.dto.manual_evaluation.ManualAttemptResponseDto;
 import vacademy.io.assessment_service.features.assessment.dto.manual_evaluation.ManualSubmitMarksRequest;
 import vacademy.io.assessment_service.features.assessment.entity.*;
 import vacademy.io.assessment_service.features.assessment.enums.AttemptResultStatusEnum;
@@ -19,6 +26,7 @@ import vacademy.io.assessment_service.features.learner_assessment.service.Questi
 import vacademy.io.assessment_service.features.question_core.entity.Question;
 import vacademy.io.assessment_service.features.question_core.repository.QuestionRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.core.standard_classes.ListService;
 import vacademy.io.common.core.utils.DateUtil;
 import vacademy.io.common.exceptions.VacademyException;
 
@@ -243,10 +251,46 @@ public class AdminManualEvaluationManager {
 
             // Convert JSON string to Map
             Map<String, Object> jsonMap = objectMapper.readValue(attemptOptional.get().getAttemptData(), Map.class);
+            String fileId = (String) jsonMap.get("fileId");
 
-            return  ResponseEntity.ok((String) jsonMap.get("fileId"));
+            attemptOptional.get().setResultStatus(AttemptResultStatusEnum.EVALUATING.name());
+            studentAttemptService.updateStudentAttempt(attemptOptional.get());
+
+            return  ResponseEntity.ok(fileId);
         } catch (Exception e) {
             throw new VacademyException("Failed to get Attempt: " +e.getMessage());
         }
     }
+
+    public ResponseEntity<ManualAttemptResponse> getAssignedAttempt(CustomUserDetails userDetails, ManualAttemptFilter filter, String assessmentId, String instituteId, int pageNo, int pageSize) {
+        if(Objects.isNull(filter)) throw new VacademyException("Invalid Request");
+
+        Sort sortColumns = ListService.createSortObject(filter.getSortColumns());
+        Pageable pageable = PageRequest.of(pageNo,pageSize,sortColumns);
+
+
+        Page<ManualAttemptResponseDto> paginatedResponse = studentAttemptService.getAllManualAssignedAttempt(userDetails.getUserId(),assessmentId,instituteId,filter.getName(), filter.getEvaluationStatus(), pageable);
+
+        return ResponseEntity.ok(createAllAttemptResponse(paginatedResponse));
+    }
+
+    private ManualAttemptResponse createAllAttemptResponse(Page<ManualAttemptResponseDto> paginatedResponse) {
+        if(Objects.isNull(paginatedResponse)) return ManualAttemptResponse.builder()
+                .content(new ArrayList<>())
+                .last(true)
+                .pageNo(0)
+                .pageSize(0)
+                .totalElements(0)
+                .totalPages(0).build();
+
+
+        return ManualAttemptResponse.builder()
+                .totalPages(paginatedResponse.getTotalPages())
+                .pageSize(paginatedResponse.getSize())
+                .last(paginatedResponse.isLast())
+                .content(paginatedResponse.getContent())
+                .totalElements(paginatedResponse.getTotalElements())
+                .pageNo(paginatedResponse.getNumber()).build();
+    }
+
 }

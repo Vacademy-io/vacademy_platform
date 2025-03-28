@@ -11,8 +11,10 @@ import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.resp
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.MarksRankDto;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.ParticipantsQuestionOverallDetailDto;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.StudentReportDto;
+import vacademy.io.assessment_service.features.assessment.dto.manual_evaluation.ManualAttemptResponseDto;
 import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
 
+import java.util.Date;
 import java.util.List;
 
 @Repository
@@ -60,6 +62,7 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                     WITH RankedAttempts AS (
                                     SELECT
                                         sa.id AS attemptId,
+                                        ROW_NUMBER() OVER (PARTITION BY aur.user_id ORDER BY sa.created_at DESC) AS rn
                                     FROM student_attempt sa
                                     JOIN assessment_user_registration aur ON aur.id = sa.registration_id
                                     WHERE aur.assessment_id = :assessmentId
@@ -71,10 +74,9 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                                     SELECT COUNT(*) AS totalParticipants FROM RankedAttempts WHERE rn = 1
                                 )
                                 SELECT
-                                    count(attemptId)
+                                    count(*)
                                 FROM RankedAttempts as ra, TotalParticipants as t
                                 WHERE rn = 1
-                                ORDER BY achievedMarks DESC, completionTimeInSeconds ASC
         """,
             nativeQuery = true)
     Page<LeaderBoardDto> findLeaderBoardForAssessmentAndInstituteIdWithoutSearch(
@@ -516,6 +518,40 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
     public List<LeaderBoardDto> findLeaderBoardForAssessmentAndInstituteId(@Param("assessmentId") String assessmentId,
                                                                            @Param("instituteId") String instituteId,
                                                                            @Param("statusList") List<String> statusList);
+
+    @Query(value = """
+            SELECT sa.id as attemptId,
+            aur.user_id as userId,
+            sa.result_status as evaluationStatus,
+            sa.submit_time as submitTime,
+            aur.participant_name as participantName
+            FROM student_attempt as sa
+            JOIN assessment_user_registration aur ON aur.id = sa.registration_id
+            JOIN assessment_institute_mapping aim ON aim.assessment_id = aur.assessment_id
+            WHERE aim.assessment_id = :assessmentId
+            AND aim.institute_id = :instituteId
+            AND (LOWER(sa.comma_separated_evaluator_user_ids) LIKE LOWER(CONCAT('%', :userId, '%')))
+            AND (:evaluationStatus IS NULL OR sa.result_status IN (:evaluationStatus))
+            AND (:name IS NULL OR :name = '' OR LOWER(aur.participant_name) LIKE LOWER(CONCAT('%', :name, '%')))
+            AND (sa.status = 'ENDED')
+            """,countQuery = """
+            SELECT count(*)
+            FROM student_attempt as sa
+            JOIN assessment_user_registration aur ON aur.id = sa.registration_id
+            JOIN assessment_institute_mapping aim ON aim.assessment_id = aur.assessment_id
+            WHERE aim.assessment_id = :assessmentId
+            AND aim.institute_id = :instituteId
+            AND (LOWER(sa.comma_separated_evaluator_user_ids) LIKE LOWER(CONCAT('%', :userId, '%')))
+            AND (:evaluationStatus IS NULL OR sa.result_status IN (:evaluationStatus))
+            AND (:name IS NULL OR :name = '' OR LOWER(aur.participant_name) LIKE LOWER(CONCAT('%', :name, '%')))
+            AND (sa.status = 'ENDED')
+            """, nativeQuery = true)
+    Page<ManualAttemptResponseDto> findAllAssignedAttemptForUserIdWithFilter(@Param("userId") String userId,
+                                                                             @Param("instituteId") String instituteId,
+                                                                             @Param("assessmentId") String assessmentId,
+                                                                             @Param("name") String name,
+                                                                             @Param("evaluationStatus") List<String> evaluationStatus,
+                                                                             Pageable pageable);
 }
 
 

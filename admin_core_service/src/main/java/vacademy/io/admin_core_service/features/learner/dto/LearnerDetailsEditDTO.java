@@ -20,4 +20,5 @@ public class LearnerDetailsEditDTO {
     private String motherName;
     private String parentsMobileNumber;
     private String parentsEmail;
+    private String faceFileId;
 }

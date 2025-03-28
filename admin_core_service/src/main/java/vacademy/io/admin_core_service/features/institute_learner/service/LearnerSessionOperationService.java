@@ -25,27 +25,27 @@ public class LearnerSessionOperationService {
 
     @Transactional
     public String addPackageSessionsToLearner(LearnerBatchRegisterRequestDTO requestDTO, CustomUserDetails userDetails) {
-        List<String> packageSessionIds = extractPackageSessionIds(requestDTO.getCommaSeparatedPackageSessionIds());
-        List<PackageSession> packageSessions = fetchPackageSessions(packageSessionIds);
 
         List<StudentSessionInstituteGroupMapping> mappings = requestDTO.getUserIds().stream()
-                .map(userId -> createStudentMappings(userId, requestDTO.getInstituteId(), packageSessions))
-                .flatMap(List::stream)
+                .flatMap(userId -> createStudentMappings(userId, requestDTO.getInstituteId(), requestDTO.getLearnerBatchRegisterInfos()).stream())
                 .collect(Collectors.toList());
 
         studentSessionRepository.saveAll(mappings);
         return "success";
     }
 
-    private List<StudentSessionInstituteGroupMapping> createStudentMappings(String userId, String instituteId, List<PackageSession> packageSessions) {
+    private List<StudentSessionInstituteGroupMapping> createStudentMappings(String userId, String instituteId, List<LearnerBatchRegisterRequestDTO.LearnerBatchRegisterInfo> packageSessionDetails) {
         StudentSessionInstituteGroupMapping existingMapping = getStudentSessionMapping(userId, instituteId);
 
-        return packageSessions.stream()
-                .map(packageSession -> buildStudentSessionMapping(userId, packageSession, existingMapping))
+        return packageSessionDetails.stream()
+                .map(packageInfo -> buildStudentSessionMapping(userId, packageInfo.getAccessDays(), packageInfo.getPackageSessionId(), existingMapping))
                 .collect(Collectors.toList());
     }
 
-    private StudentSessionInstituteGroupMapping buildStudentSessionMapping(String userId, PackageSession packageSession, StudentSessionInstituteGroupMapping existingMapping) {
+    private StudentSessionInstituteGroupMapping buildStudentSessionMapping(String userId, Integer accessDays, String packageSessionId, StudentSessionInstituteGroupMapping existingMapping) {
+        PackageSession packageSession = packageSessionRepository.findById(packageSessionId)
+                .orElseThrow(() -> new VacademyException("Package session not found"));
+
         StudentSessionInstituteGroupMapping mapping = new StudentSessionInstituteGroupMapping();
         mapping.setUserId(userId);
         mapping.setPackageSession(packageSession);
@@ -54,6 +54,7 @@ public class LearnerSessionOperationService {
         mapping.setStatus(LearnerSessionStatusEnum.ACTIVE.name());
         mapping.setEnrolledDate(new Date());
         mapping.setInstituteEnrolledNumber(existingMapping.getInstituteEnrolledNumber());
+        mapping.setExpiryDate(makeExpiryDate(existingMapping.getEnrolledDate(), accessDays));
         return mapping;
     }
 
@@ -62,11 +63,18 @@ public class LearnerSessionOperationService {
                 .orElseThrow(() -> new VacademyException("Student Session not found"));
     }
 
-    private List<PackageSession> fetchPackageSessions(List<String> packageSessionIds) {
+    private List<PackageSession> fetchPackageSessions(List<LearnerBatchRegisterRequestDTO.LearnerBatchRegisterInfo> packageSessionDetails) {
+        List<String> packageSessionIds = packageSessionDetails.stream()
+                .map(LearnerBatchRegisterRequestDTO.LearnerBatchRegisterInfo::getPackageSessionId)
+                .collect(Collectors.toList());
         return packageSessionRepository.findAllById(packageSessionIds);
     }
 
-    private List<String> extractPackageSessionIds(String packageSessionIds) {
-        return List.of(packageSessionIds.trim().split(","));
+    private Date makeExpiryDate(Date enrollmentDate, Integer accessDays) {
+        if (enrollmentDate == null || accessDays == null) {
+            return null;
+        }
+        Date expiryDate = new Date(enrollmentDate.getTime() + (long) accessDays * 24 * 60 * 60 * 1000);
+        return expiryDate;
     }
 }

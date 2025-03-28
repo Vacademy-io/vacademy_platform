@@ -30,14 +30,6 @@ public class AddPublicQuestionPaperController {
         }
     }
 
-    @PostMapping("add-ai-question-paper")
-    public  ResponseEntity<AddedQuestionPaperResponseDto> addAiQuestionPaper(@RequestAttribute("user") CustomUserDetails user, @RequestBody AiGeneratedQuestionPaperJsonDto questionRequestBody){
-        try {
-            return ResponseEntity.ok(addQuestionPaperFromImportManager.addAiGeneratedQuestionPaper(user, questionRequestBody));
-        } catch (JsonProcessingException e) {
-            throw new VacademyException(e.getMessage());
-        }
-    }
 
     @PostMapping("/update")
     public ResponseEntity<Boolean> updateQuestionPaper(@RequestAttribute("user") CustomUserDetails user, @RequestBody AddQuestionPaperDTO questionRequestBody) {

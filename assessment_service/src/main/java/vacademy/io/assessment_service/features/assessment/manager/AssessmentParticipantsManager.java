@@ -118,6 +118,9 @@ public class AssessmentParticipantsManager {
             }
             assessmentOptional.get().setAssessmentVisibility(AssessmentVisibility.PUBLIC.name());
             assessmentRepository.save(assessmentOptional.get());
+        } else {
+            assessmentOptional.get().setAssessmentVisibility(AssessmentVisibility.PRIVATE.name());
+            assessmentRepository.save(assessmentOptional.get());
         }
 
         preRegisterBatches(assessmentRegistrationsDto.getAddedPreRegisterBatchesDetails(), instituteId, assessmentOptional.get());
@@ -253,6 +256,7 @@ public class AssessmentParticipantsManager {
         }
         assessmentCustomFieldRepository.saveAll(customFields);
     }
+
     private void updateCustomRegistrationFieldsToAssessment(AssessmentRegistrationsDto.OpenTestDetails openTestDetails, Assessment assessment) {
         List<AssessmentCustomField> customFields = new ArrayList<>();
         for (RegistrationFieldDto registrationFieldDto : openTestDetails.getRegistrationFormDetails().getUpdatedCustomAddedFields()) {

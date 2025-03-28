@@ -18,4 +18,5 @@ public class RolesBatchesAndUsersDto {
     private List<String> batchIds = new ArrayList<>();
     private List<String> roles = new ArrayList<>();
     private List<String> userIds = new ArrayList<>();
+    private String accessSetting;
 }

@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import vacademy.io.assessment_service.features.assessment.dto.manual_evaluation.ManualSubmitMarksRequest;
 import vacademy.io.assessment_service.features.assessment.entity.*;
+import vacademy.io.assessment_service.features.assessment.enums.AttemptResultStatusEnum;
 import vacademy.io.assessment_service.features.assessment.enums.EvaluationLogSourceEnum;
 import vacademy.io.assessment_service.features.assessment.enums.EvaluationLogsTypeEnum;
 import vacademy.io.assessment_service.features.assessment.enums.QuestionResponseEnum;
@@ -98,11 +99,23 @@ public class AdminManualEvaluationManager {
                     .computeIfAbsent(mark.getSectionId(), k -> new ArrayList<>())
                     .add(mark);
         }
-        updateMarksForSectionQuestionMarkMapping(assessment,attempt,sectionQuestionMarkMapping);
+        Double totalMarks = updateMarksForSectionQuestionMarkMappingAndGetTotalMarks(assessment,attempt,sectionQuestionMarkMapping);
+        updateAttemptStatus(attempt, totalMarks, request);
     }
 
-    private void updateMarksForSectionQuestionMarkMapping(Assessment assessment, StudentAttempt attempt, Map<String, List<ManualSubmitMarksRequest.SubmitMarksDto>> sectionQuestionMarkMapping) {
+    private void updateAttemptStatus(StudentAttempt attempt, Double totalMarks, ManualSubmitMarksRequest request) {
+        attempt.setTotalMarks(totalMarks);
+        attempt.setResultMarks(totalMarks);
+        attempt.setResultStatus(AttemptResultStatusEnum.COMPLETED.name());
+        attempt.setEvaluatedFileId(request.getFileId());
+
+        studentAttemptService.updateStudentAttempt(attempt);
+    }
+
+    private Double updateMarksForSectionQuestionMarkMappingAndGetTotalMarks(Assessment assessment, StudentAttempt attempt, Map<String, List<ManualSubmitMarksRequest.SubmitMarksDto>> sectionQuestionMarkMapping) {
         List<QuestionWiseMarks> allQuestionAttempts = new ArrayList<>();
+        Double totalMarks = 0.0;
+
         // Iterating over the map
         for (Map.Entry<String, List<ManualSubmitMarksRequest.SubmitMarksDto>> entry : sectionQuestionMarkMapping.entrySet()) {
             String sectionId = entry.getKey();
@@ -123,6 +136,7 @@ public class AdminManualEvaluationManager {
                     existingMarks.setMarks(dto.getMarks() != null ? dto.getMarks() : 0);
                     existingMarks.setStatus(dto.getStatus() != null ? dto.getStatus() : QuestionResponseEnum.PENDING.name());
                     allQuestionAttempts.add(existingMarks);
+                    totalMarks+=dto.getMarks() != null ? dto.getMarks() : 0;
                 } else {
                     // Create new entry
                     allQuestionAttempts.add(QuestionWiseMarks.builder()
@@ -133,11 +147,15 @@ public class AdminManualEvaluationManager {
                             .status(dto.getStatus() != null ? dto.getStatus() : QuestionResponseEnum.PENDING.name())
                             .studentAttempt(attempt)
                             .build());
+
+                    totalMarks+=dto.getMarks() != null ? dto.getMarks() : 0;
                 }
             }
         }
 
         questionWiseMarksService.createQuestionWiseMarks(allQuestionAttempts);
+
+        return totalMarks;
     }
 
 
@@ -202,6 +220,7 @@ public class AdminManualEvaluationManager {
             String updatedAttemptJson = updateJson(attemptOptional.get().getAttemptData(), "fileId",fileId);
 
             attemptOptional.get().setAttemptData(updatedAttemptJson);
+            attemptOptional.get().setEvaluatedFileId(fileId);
             studentAttemptService.updateStudentAttempt(attemptOptional.get());
 
             return ResponseEntity.ok("Done");

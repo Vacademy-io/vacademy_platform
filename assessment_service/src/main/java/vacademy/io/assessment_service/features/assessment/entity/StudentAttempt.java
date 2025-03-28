@@ -85,6 +85,12 @@ public class StudentAttempt {
     @JoinColumn(name = "set_id")
     private AssessmentSetMapping assessmentSetMapping;
 
+    @Column(name = "comma_separated_evaluator_user_ids")
+    private String commaSeparatedEvaluatorUserIds;
+
+    @Column(name = "evaluated_file_id")
+    private String evaluatedFileId;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;
 

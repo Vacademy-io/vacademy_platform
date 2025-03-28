@@ -60,4 +60,7 @@ public class AssessmentInstituteMapping {
     @Column(name = "subject_id", length = 255)
     private String subjectId;
 
+    @Column(name = "evaluation_setting")
+    private String evaluationSetting;
+
 }

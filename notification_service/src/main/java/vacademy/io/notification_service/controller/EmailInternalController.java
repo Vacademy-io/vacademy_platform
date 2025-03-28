@@ -6,6 +6,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import vacademy.io.common.notification.dto.AttachmentNotificationDTO;
 import vacademy.io.common.notification.dto.GenericEmailRequest;
 import vacademy.io.notification_service.dto.NotificationDTO;
 import vacademy.io.notification_service.features.email_otp.service.InviteNewUserService;
@@ -29,6 +30,11 @@ public class EmailInternalController {
     @PostMapping("/send-email-to-users")
     public ResponseEntity<String> sendEmailsToUsers(@RequestBody NotificationDTO emailToUsersDTO) {
        return ResponseEntity.ok(notificationService.sendNotification(emailToUsersDTO));
+    }
+
+    @PostMapping("/send-attachment-notification")
+    public ResponseEntity<String> sendEmailsToUsers(@RequestBody AttachmentNotificationDTO emailToUsersDTO) {
+        return ResponseEntity.ok(notificationService.sendAttachmentNotification(emailToUsersDTO));
     }
 
 }

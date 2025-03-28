@@ -3,6 +3,8 @@ package vacademy.io.notification_service.service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import vacademy.io.common.notification.dto.AttachmentNotificationDTO;
+import vacademy.io.common.notification.dto.AttachmentUsersDTO;
 import vacademy.io.notification_service.dto.NotificationDTO;
 import vacademy.io.notification_service.dto.NotificationToUserDTO;
 import vacademy.io.notification_service.features.notification_log.entity.NotificationLog;
@@ -10,6 +12,7 @@ import vacademy.io.notification_service.features.notification_log.repository.Not
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 
@@ -69,4 +72,45 @@ public class NotificationService {
         log.setNotificationDate(LocalDateTime.now());
         return log;
     }
+
+    @Transactional
+    public String sendAttachmentNotification(AttachmentNotificationDTO attachmentNotificationDTO) {
+        List<AttachmentUsersDTO> users = attachmentNotificationDTO.getUsers();
+        List<NotificationLog> notificationLogs = new ArrayList<>();
+
+        try {
+            for (AttachmentUsersDTO user : users) {
+                String parsedBody = parsePlaceholders(attachmentNotificationDTO.getBody(), user.getPlaceholders());
+                String notificationType = attachmentNotificationDTO.getNotificationType();
+                String channelId = user.getChannelId();
+                String userId = user.getUserId();
+
+                // Create and store log
+                NotificationLog log = createNotificationLog(notificationType, channelId, parsedBody,
+                        attachmentNotificationDTO.getSource(),
+                        attachmentNotificationDTO.getSourceId(), userId);
+                notificationLogs.add(log);
+
+                // Handle Email Notifications
+                if ("EMAIL".equalsIgnoreCase(notificationType)) {
+                    byte[] decodedAttachment = user.getAttachment() != null ?
+                            Base64.getDecoder().decode(user.getAttachment()) : null;
+
+                    emailSenderService.sendAttachmentEmail(channelId, attachmentNotificationDTO.getSubject(),
+                            "email-service", parsedBody, decodedAttachment,
+                            attachmentNotificationDTO.getAttachmentName());
+                } else {
+                    throw new IllegalArgumentException("Unsupported notification type: " + notificationType);
+                }
+            }
+
+            // Save all logs in a batch
+            notificationLogRepository.saveAll(notificationLogs);
+            return "Notification sent successfully";
+
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to send notification: " + e.getMessage(), e);
+        }
+    }
+
 }

@@ -265,4 +265,9 @@ public class UserService {
         return userRepository.findById(userId).orElseThrow(() -> new UserNotFoundException("User with Id " + userId + " not found"));
     }
 
+    public List<UserWithRolesDTO> getUsersByInstituteIdAndStatus(String instituteId, List<String> statuses,List<String> roles) {
+        return userRepository.findUsersByStatusAndInstitute(statuses,roles, instituteId)
+                .stream()
+                .map(UserWithRolesDTO::new).collect(Collectors.toList());
+    }
 }

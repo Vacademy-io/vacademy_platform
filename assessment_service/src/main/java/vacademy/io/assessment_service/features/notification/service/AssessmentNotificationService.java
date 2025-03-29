@@ -8,10 +8,12 @@ import vacademy.io.assessment_service.features.assessment.entity.AssessmentUserR
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentStatus;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentRepository;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentUserRegistrationRepository;
+import vacademy.io.assessment_service.features.auth_service.service.AuthService;
 import vacademy.io.assessment_service.features.notification.dto.NotificationDTO;
 import vacademy.io.assessment_service.features.notification.dto.NotificationToUserDTO;
 import vacademy.io.assessment_service.features.notification.enums.NotificationSourceEnum;
 import vacademy.io.assessment_service.features.notification.enums.NotificationType;
+import vacademy.io.common.auth.dto.UserWithRolesDTO;
 import vacademy.io.common.auth.enums.CompanyStatus;
 
 import java.util.HashMap;
@@ -26,6 +28,7 @@ public class AssessmentNotificationService {
     private final AssessmentUserRegistrationRepository assessmentUserRegistrationRepository;
     private final AssessmentRepository assessmentRepository;
     private final NotificationService notificationService;
+    private final AuthService authService;
 
     @Value("${scheduling.time.frame}")
     private Integer timeFrameInMinutes;
@@ -162,4 +165,31 @@ public class AssessmentNotificationService {
             notificationService.sendEmailToUsers(notificationDTO);
         }
     }
+
+    public void sendNotificationsToAdminsAfterReleasingTheResult(Assessment assessment, String instituteId) {
+
+        NotificationDTO notificationDTO = new NotificationDTO();
+        notificationDTO.setBody(AssessmentNotificaionEmailBody.getEmailBodyForAdminsForResultRelease(assessment.getName(), assessment.getBoundStartTime().toString()));
+        notificationDTO.setSource(NotificationSourceEnum.ASSESSMENT.name());
+        notificationDTO.setSubject("Assessment result released");
+        notificationDTO.setSourceId(assessment.getId());
+        notificationDTO.setNotificationType(NotificationType.EMAIL.name());
+        List<UserWithRolesDTO>users = authService.getUsersByRoles(List.of("ADMIN"),instituteId);
+        List<NotificationToUserDTO> notificationToUsers = users.stream()
+                .map(user -> {
+                    NotificationToUserDTO notificationToUser = new NotificationToUserDTO();
+                    notificationToUser.setUserId(user.getId());
+                    notificationToUser.setChannelId(user.getEmail());
+
+                    Map<String, String> placeholders = new HashMap<>();
+                    placeholders.put("user_name", user.getFullName());
+                    notificationToUser.setPlaceholders(placeholders);
+                    return notificationToUser;
+                }).collect(Collectors.toList());
+
+        notificationDTO.setUsers(notificationToUsers);
+        notificationService.sendEmailToUsers(notificationDTO);
+    }
+
+
 }

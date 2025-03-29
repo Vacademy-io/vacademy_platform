@@ -104,4 +104,8 @@ public class RoleService {
         }
         return "Status updated successfully";
     }
+
+    public List<UserWithRolesDTO> getUsersByInstituteIdAndStatus(String instituteId, UserRoleFilterDTO filterDTO) {
+        return userService.getUsersByInstituteIdAndStatus(instituteId, filterDTO.getStatus(),filterDTO.getRoles());
+    }
 }

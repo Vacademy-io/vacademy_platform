@@ -37,6 +37,8 @@ import vacademy.io.assessment_service.features.assessment.service.bulk_entry_ser
 import vacademy.io.assessment_service.features.evaluation.service.QuestionEvaluationService;
 import vacademy.io.assessment_service.features.learner_assessment.entity.QuestionWiseMarks;
 import vacademy.io.assessment_service.features.learner_assessment.service.QuestionWiseMarksService;
+import vacademy.io.assessment_service.features.notification.service.AssessmentNotificationService;
+import vacademy.io.assessment_service.features.notification.service.NotificationService;
 import vacademy.io.assessment_service.features.question_core.dto.MCQEvaluationDTO;
 import vacademy.io.assessment_service.features.question_core.entity.Option;
 import vacademy.io.assessment_service.features.question_core.entity.Question;
@@ -106,6 +108,8 @@ public class AssessmentParticipantsManager {
     @Autowired
     AssessmentReportNotificationService assessmentReportNotificationService;
 
+    @Autowired
+    AssessmentNotificationService assessmentNotificationService;
 
     @Transactional
     public ResponseEntity<AssessmentSaveResponseDto> saveParticipantsToAssessment(CustomUserDetails user, AssessmentRegistrationsDto assessmentRegistrationsDto, String assessmentId, String instituteId, String type) {
@@ -807,7 +811,7 @@ public class AssessmentParticipantsManager {
 
         Optional<Assessment> assessmentOptional = assessmentRepository.findById(assessmentId);
         if (assessmentOptional.isEmpty()) throw new VacademyException("No Assessment Found");
-
+//        sendNotificationToAdmin(assessmentOptional.get(),instituteId);
         try {
             // Call the async method
             releaseResultWrapper(assessmentOptional.get(), instituteId, request, type);
@@ -822,11 +826,11 @@ public class AssessmentParticipantsManager {
     @Async
     public CompletableFuture<Void> releaseResultWrapper(Assessment assessment, String instituteId, ReleaseRequestDto request, String type) {
         return CompletableFuture.runAsync(() -> processReleaseParticipants(assessment, instituteId, request, type))
-                .thenRun(() -> sendNotificationToAdmin(instituteId));
+                .thenRun(() -> sendNotificationToAdmin(assessment,instituteId));
     }
 
-    private void sendNotificationToAdmin(String instituteId) {
-        //TODO: Send email for successfully releasing result
+    private void sendNotificationToAdmin(Assessment assessment,String instituteId) {
+        assessmentNotificationService.sendNotificationsToAdminsAfterReleasingTheResult(assessment, instituteId);
     }
 
     private void processReleaseParticipants(Assessment assessment, String instituteId, ReleaseRequestDto request, String type) {

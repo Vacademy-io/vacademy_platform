@@ -3,10 +3,12 @@ package vacademy.io.common.auth.dto;
 import com.fasterxml.jackson.databind.PropertyNamingStrategy;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 import vacademy.io.common.auth.entity.UserRole;
 
 @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
 @Data
+@NoArgsConstructor
 public class UserRoleDTO {
     private String roleName;
     private String status;

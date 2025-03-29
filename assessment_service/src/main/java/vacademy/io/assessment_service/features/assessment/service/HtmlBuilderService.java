@@ -196,7 +196,7 @@ public class HtmlBuilderService {
         html.append("<div class=\"container\">");
         html.append("<div class=\"header\">").append(title).append("</div>");
         html.append("<div class=\"section\">");
-        if(!Objects.isNull(studentReportOverallDetailDto)){
+        if(!Objects.isNull(studentReportOverallDetailDto) && !Objects.isNull(studentReportOverallDetailDto.getQuestionOverallDetailDto())){
             html.append("<div class=\"title\">The Human Eye and The Colourful World</div>");
             html.append("<div class=\"info\">Subject: Physics | Attempt Date: ")
                     .append(studentReportOverallDetailDto.getQuestionOverallDetailDto().getStartTime()!=null ? studentReportOverallDetailDto.getQuestionOverallDetailDto().getStartTime().toString() : "-")

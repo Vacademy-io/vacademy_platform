@@ -26,6 +26,7 @@ import vacademy.io.assessment_service.features.learner_assessment.dto.status_jso
 import vacademy.io.assessment_service.features.learner_assessment.entity.QuestionWiseMarks;
 import vacademy.io.assessment_service.features.learner_assessment.enums.AssessmentAttemptResultEnum;
 import vacademy.io.assessment_service.features.learner_assessment.service.QuestionWiseMarksService;
+import vacademy.io.assessment_service.features.notification.service.AssessmentNotificationService;
 import vacademy.io.assessment_service.features.question_core.entity.Question;
 import vacademy.io.assessment_service.features.question_core.repository.QuestionRepository;
 import vacademy.io.common.exceptions.VacademyException;
@@ -59,6 +60,9 @@ public class StudentAttemptService {
 
     @Autowired
     SectionRepository sectionRepository;
+
+    @Autowired
+    AssessmentNotificationService assessmentNotificationService;
 
     public StudentAttempt updateStudentAttempt(StudentAttempt studentAttempt){
         return studentAttemptRepository.save(studentAttempt);
@@ -287,26 +291,26 @@ public class StudentAttemptService {
     }
 
     @Async
-    public CompletableFuture<Void> revaluateForAllParticipantsWrapper(String assessmentId, String instituteId) {
-        return CompletableFuture.runAsync(() -> revaluateForAllParticipants(assessmentId))
-                .thenRun(() -> sendEmail(instituteId));
+    public CompletableFuture<Void> revaluateForAllParticipantsWrapper(Assessment assessment, String instituteId) {
+        return CompletableFuture.runAsync(() -> revaluateForAllParticipants(assessment.getId()))
+                .thenRun(() -> sendEmail(instituteId,assessment));
     }
 
     @Async
-    public CompletableFuture<Void> revaluateForParticipantIdsWrapper(String assessmentId, List<String> allAttemptIds, String instituteId) {
+    public CompletableFuture<Void> revaluateForParticipantIdsWrapper(Assessment assessment, List<String> allAttemptIds, String instituteId) {
         List<StudentAttempt> allAttempts = StreamSupport
                 .stream(studentAttemptRepository.findAllById(allAttemptIds).spliterator(), false)
                 .toList();
 
         return CompletableFuture.runAsync(() -> revaluateAssessmentForAttempts(allAttempts))
-                .thenRun(() -> sendEmail(instituteId));
+                .thenRun(() -> sendEmail(instituteId,assessment));
     }
 
     @Async
     public CompletableFuture<Void> revaluateCustomParticipantAndQuestionsWrapper(Assessment assessment, RevaluateRequest request, String instituteId) {
 
         return CompletableFuture.runAsync(() -> revaluateForCustomParticipantsAndQuestions(assessment, request))
-                .thenRun(() -> sendEmail(instituteId));
+                .thenRun(() -> sendEmail(instituteId,assessment));
     }
 
 
@@ -373,9 +377,8 @@ public class StudentAttemptService {
     }
 
 
-    private void sendEmail(String instituteId) {
-        log.info("Email Sent: " + instituteId);
-        //TODO Sent Email
+    private void sendEmail(String instituteId,Assessment assessment) {
+       assessmentNotificationService.sendNotificationsToAdminsAfterReevaluating(assessment, instituteId);
     }
 
     public Optional<StudentAttempt> getStudentAttemptById(String id){

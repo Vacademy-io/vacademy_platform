@@ -287,8 +287,8 @@ public class AdminAssessmentGetManager {
                 .orElseThrow(() -> new VacademyException("Assessment Not Found"));
 
         return switch (RevaluateRequestEnum.valueOf(methodType)) {
-            case ENTIRE_ASSESSMENT -> revaluateForAllParticipants(assessment.getId(), instituteId);
-            case ENTIRE_ASSESSMENT_PARTICIPANTS -> revaluateAssessmentForParticipantsAndAllAssessment(assessment.getId(), request, instituteId);
+            case ENTIRE_ASSESSMENT -> revaluateForAllParticipants(assessment, instituteId);
+            case ENTIRE_ASSESSMENT_PARTICIPANTS -> revaluateAssessmentForParticipantsAndAllAssessment(assessment, request, instituteId);
             case PARTICIPANTS_AND_QUESTIONS -> revaluateAssessmentForParticipantsAndQuestions(assessment, request, instituteId);
             default -> ResponseEntity.ok("Invalid Request");
         };
@@ -307,10 +307,10 @@ public class AdminAssessmentGetManager {
         return ResponseEntity.ok("Done");
     }
 
-    private ResponseEntity<String> revaluateAssessmentForParticipantsAndAllAssessment(String assessmentId, RevaluateRequest request, String instituteId) {
+    private ResponseEntity<String> revaluateAssessmentForParticipantsAndAllAssessment(Assessment assessment, RevaluateRequest request, String instituteId) {
         if(Objects.isNull(request) || Objects.isNull(request.getAttemptIds())) throw new VacademyException("Invalid Request");
         try{
-            studentAttemptService.revaluateForParticipantIdsWrapper(assessmentId, request.getAttemptIds(), instituteId);
+            studentAttemptService.revaluateForParticipantIdsWrapper(assessment, request.getAttemptIds(), instituteId);
         }
         catch (Exception e){
             log.error("[REVALUATE ERROR]: " + e.getMessage());
@@ -319,9 +319,9 @@ public class AdminAssessmentGetManager {
         return ResponseEntity.ok("Done");
     }
 
-    private ResponseEntity<String> revaluateForAllParticipants(String assessmentId, String instituteId) {
+    private ResponseEntity<String> revaluateForAllParticipants(Assessment assessment, String instituteId) {
         try{
-            studentAttemptService.revaluateForAllParticipantsWrapper(assessmentId, instituteId);
+            studentAttemptService.revaluateForAllParticipantsWrapper(assessment, instituteId);
         }
         catch (Exception e){
             log.error("[REVALUATE ERROR]: " + e.getMessage());

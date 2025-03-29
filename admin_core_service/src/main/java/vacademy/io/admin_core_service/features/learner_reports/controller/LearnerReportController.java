@@ -3,10 +3,7 @@ package vacademy.io.admin_core_service.features.learner_reports.controller;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import vacademy.io.admin_core_service.features.learner_reports.dto.ChapterSlideProgressDTO;
-import vacademy.io.admin_core_service.features.learner_reports.dto.ProgressReportDTO;
-import vacademy.io.admin_core_service.features.learner_reports.dto.ReportFilterDTO;
-import vacademy.io.admin_core_service.features.learner_reports.dto.SubjectProgressDTO;
+import vacademy.io.admin_core_service.features.learner_reports.dto.*;
 import vacademy.io.admin_core_service.features.learner_reports.service.LearnerReportService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
@@ -42,6 +39,15 @@ public class LearnerReportController {
             @RequestAttribute("user") CustomUserDetails userDetails) {
         return ResponseEntity.ok(
                 learnerReportService.getChapterSlideProgress(moduleId,userId, userDetails)
+        );
+    }
+
+    @PostMapping("/slide-wise-progress")
+    public ResponseEntity<List<SlideProgressProjection>> getSlideWiseProgress(
+            @RequestBody ReportFilterDTO reportFilterDTO,
+            @RequestAttribute("user") CustomUserDetails userDetails) {
+        return ResponseEntity.ok(
+                learnerReportService.getSlideProgressForLearner(reportFilterDTO,userDetails)
         );
     }
 

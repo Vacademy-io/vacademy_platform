@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import vacademy.io.admin_core_service.features.learner_reports.dto.ChapterSlideProgressProjection;
 import vacademy.io.admin_core_service.features.learner_reports.dto.LearnerActivityDataProjection;
+import vacademy.io.admin_core_service.features.learner_reports.dto.SlideProgressProjection;
 import vacademy.io.admin_core_service.features.learner_reports.dto.SubjectProgressProjection;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.LearnerActivityProjection;
 import vacademy.io.admin_core_service.features.learner_tracking.entity.ActivityLog;
@@ -869,6 +870,105 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
             @Param("chapterStatusList") List<String> chapterStatusList,
             @Param("slideStatusList") List<String> slideStatusList,
             @Param("chapterSlideStatusList") List<String> chapterSlideStatusList
+    );
+
+    @Query(value = """
+    WITH SubjectModules AS (
+        SELECT 
+            smm.subject_id, 
+            smm.module_id, 
+            s.subject_name, 
+            m.module_name
+        FROM subject_session ss
+        JOIN subject_module_mapping smm ON ss.subject_id = smm.subject_id
+        JOIN subject s ON ss.subject_id = s.id
+        JOIN modules m ON smm.module_id = m.id
+        WHERE ss.session_id = :sessionId
+        AND s.status IN (:subjectStatusList)  
+        AND m.status IN (:moduleStatusList)
+    ),
+    ModuleChapters AS (
+        SELECT 
+            sm.subject_id, 
+            sm.subject_name, 
+            sm.module_id, 
+            sm.module_name, 
+            mcm.chapter_id
+        FROM SubjectModules sm
+        JOIN module_chapter_mapping mcm ON sm.module_id = mcm.module_id
+        JOIN chapter c ON mcm.chapter_id = c.id
+        WHERE c.status IN (:chapterStatusList)  
+    ),
+    ChapterSlides AS (
+        SELECT 
+            mc.subject_id, 
+            mc.subject_name, 
+            mc.module_id, 
+            mc.module_name, 
+            mc.chapter_id, 
+            c.chapter_name,  
+            cts.slide_id, 
+            s.title AS slide_title
+        FROM ModuleChapters mc
+        JOIN chapter_to_slides cts ON mc.chapter_id = cts.chapter_id
+        JOIN slide s ON cts.slide_id = s.id
+        JOIN chapter c ON mc.chapter_id = c.id  
+        JOIN chapter_package_session_mapping cpsm ON c.id = cpsm.chapter_id
+        WHERE cpsm.package_session_id = :sessionId
+        AND s.status IN (:slideStatusList)  
+        AND cpsm.status IN (:chapterStatusList)  
+    ),
+    SlideActivity AS (
+        SELECT 
+            cs.subject_id, 
+            cs.subject_name,  
+            cs.module_id, 
+            cs.module_name, 
+            cs.chapter_id, 
+            cs.chapter_name,  
+            cs.slide_id, 
+            cs.slide_title, 
+            SUM(EXTRACT(EPOCH FROM (al.end_time - al.start_time)) / 60) AS time_spent_minutes
+        FROM ChapterSlides cs
+        JOIN activity_log al ON cs.slide_id = al.slide_id
+        WHERE al.user_id = :userId
+        AND al.created_at BETWEEN :startDate AND :endDate
+        GROUP BY cs.subject_id, cs.subject_name, cs.module_id, cs.module_name, 
+                 cs.chapter_id, cs.chapter_name, cs.slide_id, cs.slide_title
+    ),
+    SlideConcentration AS (
+        SELECT 
+            al.slide_id, 
+            AVG(cs.concentration_score) AS avg_concentration_score
+        FROM activity_log al
+        JOIN concentration_score cs ON al.id = cs.activity_id
+        WHERE al.user_id = :userId
+        AND al.created_at BETWEEN :startDate AND :endDate
+        GROUP BY al.slide_id
+    )
+    SELECT 
+        sa.slide_id AS slideId,
+        sa.slide_title AS slideTitle,
+        sa.chapter_id AS chapterId,
+        sa.chapter_name AS chapterName,  
+        sa.module_id AS moduleId,
+        sa.module_name AS moduleName,
+        sa.subject_id AS subjectId,  
+        sa.subject_name AS subjectName,  
+        COALESCE(sc.avg_concentration_score, 0) AS concentrationScore,
+        COALESCE(sa.time_spent_minutes, 0) AS timeSpent
+    FROM SlideActivity sa
+    LEFT JOIN SlideConcentration sc ON sa.slide_id = sc.slide_id
+    """, nativeQuery = true)
+    List<SlideProgressProjection> getSlideActivityWithFilters(
+            @Param("sessionId") String sessionId,
+            @Param("userId") String userId,
+            @Param("startDate") Date startDate,
+            @Param("endDate") Date endDate,
+            @Param("subjectStatusList") List<String> subjectStatusList,
+            @Param("moduleStatusList") List<String> moduleStatusList,
+            @Param("chapterStatusList") List<String> chapterStatusList,
+            @Param("slideStatusList") List<String> slideStatusList
     );
 
 

@@ -32,7 +32,10 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
     Optional<AssessmentUserRegistration> findTopByUserIdAndAssessmentId(@Param("userId") String userId, @Param("assessmentId") String assessmentId);
 
     @Query(value = """
-            select aur.id as registrationId,sa.id as attemptId, aur.participant_name as studentName, sa.start_time as attemptDate,sa.submit_time as endTime ,sa.total_time_in_seconds as duration, sa.result_marks as score, aur.user_id as userId, aur.source_id as batchId from assessment_user_registration aur
+            select aur.id as registrationId,sa.id as attemptId, aur.participant_name as studentName, sa.start_time as attemptDate,sa.submit_time as endTime ,sa.total_time_in_seconds as duration, sa.result_marks as score, aur.user_id as userId, aur.source_id as batchId,
+             sa.report_release_status as reportReleaseResultStatus,
+            sa.report_last_release_date as lastReportReleaseDate,
+            sa.result_status as evaluationStatus from assessment_user_registration aur
             join student_attempt sa on sa.registration_id = aur.id
             where aur.assessment_id = :assessmentId
             and aur.institute_id = :instituteId
@@ -91,7 +94,10 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
         SELECT aur.id as registrationId, sa.id as attemptId, aur.participant_name as studentName,
                sa.start_time as attemptDate, sa.submit_time as endTime,
                sa.total_time_in_seconds as duration, sa.result_marks as score,
-               aur.user_id as userId, aur.source_id as batchId
+               aur.user_id as userId, aur.source_id as batchId,
+               sa.report_release_status as reportReleaseResultStatus,
+            sa.report_last_release_date as lastReportReleaseDate,
+            sa.result_status as evaluationStatus
         FROM assessment_user_registration aur
         JOIN student_attempt sa ON sa.registration_id = aur.id
         WHERE aur.assessment_id = :assessmentId
@@ -134,7 +140,10 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
 
 
     @Query(value = """
-            select aur.id as registrationId,sa.id as attemptId, aur.participant_name as studentName, sa.start_time as attemptDate,sa.submit_time as endTime ,sa.total_time_in_seconds as duration, sa.result_marks as score, aur.user_id as userId  from assessment_user_registration aur
+            select aur.id as registrationId,sa.id as attemptId, aur.participant_name as studentName, sa.start_time as attemptDate,sa.submit_time as endTime ,sa.total_time_in_seconds as duration, sa.result_marks as score, aur.user_id as userId,
+              sa.report_release_status as reportReleaseResultStatus,
+            sa.report_last_release_date as lastReportReleaseDate,
+            sa.result_status as evaluationStatus from assessment_user_registration aur
             join student_attempt sa on sa.registration_id = aur.id
             where aur.assessment_id = :assessmentId
             and aur.institute_id = :instituteId
@@ -186,7 +195,10 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
 
 
     @Query(value = """
-            select aur.id as registrationId,sa.id as attemptId, aur.participant_name as studentName, sa.start_time as attemptDate,sa.submit_time as endTime ,sa.total_time_in_seconds as duration, sa.result_marks as score, aur.user_id as userId  from assessment_user_registration aur
+            select aur.id as registrationId,sa.id as attemptId, aur.participant_name as studentName, sa.start_time as attemptDate,sa.submit_time as endTime ,sa.total_time_in_seconds as duration, sa.result_marks as score, aur.user_id as userId,
+              sa.report_release_status as reportReleaseResultStatus,
+            sa.report_last_release_date as lastReportReleaseDate,
+            sa.result_status as evaluationStatus from assessment_user_registration aur
             join student_attempt sa on sa.registration_id = aur.id
             where aur.assessment_id = :assessmentId
             and aur.institute_id = :instituteId
@@ -227,7 +239,9 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
 
     @Query(value = """
             select aur.id as registrationId,sa.id as attemptId, aur.participant_name as studentName, sa.start_time as attemptDate,sa.submit_time as endTime ,sa.total_time_in_seconds as duration, sa.result_marks as score, aur.user_id as userId
-            FROM assessment_user_registration aur
+            sa.report_release_status as reportReleaseResultStatus,
+            sa.report_last_release_date as lastReportReleaseDate,
+            sa.result_status as evaluationStatus FROM assessment_user_registration aur
             LEFT JOIN student_attempt sa ON aur.id = sa.registration_id
             where aur.assessment_id = :assessmentId
             and aur.institute_id = :instituteId
@@ -269,7 +283,9 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
 
     @Query(value = """
             select aur.id as registrationId,sa.id as attemptId, aur.participant_name as studentName, sa.start_time as attemptDate,sa.submit_time as endTime ,sa.total_time_in_seconds as duration, sa.result_marks as score, aur.user_id as userId
-            FROM assessment_user_registration aur
+            sa.report_release_status as reportReleaseResultStatus,
+            sa.report_last_release_date as lastReportReleaseDate,
+            sa.result_status as evaluationStatus FROM assessment_user_registration aur
             LEFT JOIN student_attempt sa ON aur.id = sa.registration_id
             where aur.assessment_id = :assessmentId
             and aur.institute_id = :instituteId

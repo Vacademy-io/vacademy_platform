@@ -27,6 +27,7 @@ import vacademy.io.assessment_service.features.assessment.entity.AssessmentBatch
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentCustomField;
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentUserRegistration;
 import vacademy.io.assessment_service.features.assessment.enums.*;
+import vacademy.io.assessment_service.features.assessment.notification.AssessmentReportNotificationService;
 import vacademy.io.assessment_service.features.assessment.repository.*;
 import vacademy.io.assessment_service.features.assessment.service.HtmlBuilderService;
 import vacademy.io.assessment_service.features.assessment.service.QuestionBasedStrategyFactory;
@@ -36,6 +37,8 @@ import vacademy.io.assessment_service.features.assessment.service.bulk_entry_ser
 import vacademy.io.assessment_service.features.evaluation.service.QuestionEvaluationService;
 import vacademy.io.assessment_service.features.learner_assessment.entity.QuestionWiseMarks;
 import vacademy.io.assessment_service.features.learner_assessment.service.QuestionWiseMarksService;
+import vacademy.io.assessment_service.features.notification.service.AssessmentNotificationService;
+import vacademy.io.assessment_service.features.notification.service.NotificationService;
 import vacademy.io.assessment_service.features.question_core.dto.MCQEvaluationDTO;
 import vacademy.io.assessment_service.features.question_core.entity.Option;
 import vacademy.io.assessment_service.features.question_core.entity.Question;
@@ -102,6 +105,11 @@ public class AssessmentParticipantsManager {
     @Autowired
     SectionRepository sectionRepository;
 
+    @Autowired
+    AssessmentReportNotificationService assessmentReportNotificationService;
+
+    @Autowired
+    AssessmentNotificationService assessmentNotificationService;
 
     @Transactional
     public ResponseEntity<AssessmentSaveResponseDto> saveParticipantsToAssessment(CustomUserDetails user, AssessmentRegistrationsDto assessmentRegistrationsDto, String assessmentId, String instituteId, String type) {
@@ -803,13 +811,13 @@ public class AssessmentParticipantsManager {
 
         Optional<Assessment> assessmentOptional = assessmentRepository.findById(assessmentId);
         if (assessmentOptional.isEmpty()) throw new VacademyException("No Assessment Found");
-
-        try {
-            // Call the async method
-            releaseResultWrapper(assessmentOptional.get(), instituteId, request, type);
-        } catch (Exception e) {
-            log.error("[FAILED TO RELEASE] " + e.getMessage());
-        }
+        sendNotificationToAdmin(assessmentOptional.get(),instituteId);
+//        try {
+//            // Call the async method
+//            releaseResultWrapper(assessmentOptional.get(), instituteId, request, type);
+//        } catch (Exception e) {
+//            log.error("[FAILED TO RELEASE] " + e.getMessage());
+//        }
 
         return ResponseEntity.ok("Done");
     }
@@ -818,11 +826,11 @@ public class AssessmentParticipantsManager {
     @Async
     public CompletableFuture<Void> releaseResultWrapper(Assessment assessment, String instituteId, ReleaseRequestDto request, String type) {
         return CompletableFuture.runAsync(() -> processReleaseParticipants(assessment, instituteId, request, type))
-                .thenRun(() -> sendNotificationToAdmin(instituteId));
+                .thenRun(() -> sendNotificationToAdmin(assessment,instituteId));
     }
 
-    private void sendNotificationToAdmin(String instituteId) {
-        //TODO: Send email for successfully releasing result
+    private void sendNotificationToAdmin(Assessment assessment,String instituteId) {
+        assessmentNotificationService.sendNotificationsToAdminsAfterReleasingTheResult(assessment, instituteId);
     }
 
     private void processReleaseParticipants(Assessment assessment, String instituteId, ReleaseRequestDto request, String type) {
@@ -855,6 +863,7 @@ public class AssessmentParticipantsManager {
      * @param instituteId The ID of the institute.
      */
     private void createParticipantsReportAndSendEmail(List<StudentAttempt> attemptList, Assessment assessment, String instituteId) {
+        Map<StudentAttempt, byte[]> reportMap = new HashMap<>();
         attemptList.forEach(attempt -> {
             // Generate student report details
             StudentReportOverallDetailDto studentReportOverallDetailDto = createStudentReportDetailResponse(
@@ -876,8 +885,9 @@ public class AssessmentParticipantsManager {
             updateAttemptDataReleaseData(attempt);
 
             // Send notification to the student
-            sendNotificationToStudent(participantPdfReport);
+            reportMap.put(attempt, participantPdfReport);
         });
+        sendNotificationToStudent(reportMap,assessment.getId());
     }
 
     /**
@@ -896,8 +906,8 @@ public class AssessmentParticipantsManager {
      *
      * @param participantPdfReport The generated PDF report as a byte array.
      */
-    private void sendNotificationToStudent(byte[] participantPdfReport) {
-        // TODO: Implement email notification logic to send the report
+    private void sendNotificationToStudent(Map<StudentAttempt, byte[]> participantPdfReport,String assessmentId) {
+        assessmentReportNotificationService.sendAssessmentReportsToLearners(participantPdfReport,assessmentId);
         log.info("Notification Check");
     }
 

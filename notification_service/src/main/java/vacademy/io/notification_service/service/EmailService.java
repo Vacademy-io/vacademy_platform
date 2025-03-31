@@ -1,5 +1,6 @@
 package vacademy.io.notification_service.service;
 
+import jakarta.activation.DataHandler;
 import jakarta.mail.Message;
 import jakarta.mail.MessagingException;
 import jakarta.mail.Session;
@@ -7,6 +8,7 @@ import jakarta.mail.internet.InternetAddress;
 import jakarta.mail.internet.MimeBodyPart;
 import jakarta.mail.internet.MimeMessage;
 import jakarta.mail.internet.MimeMultipart;
+import jakarta.mail.util.ByteArrayDataSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,6 +18,7 @@ import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import javax.sql.DataSource;
 import java.util.Properties;
 
 @Service
@@ -229,6 +232,61 @@ public class EmailService {
             e.printStackTrace();
             logger.error("An error occurred while preparing the HTML email", e);
             throw new RuntimeException("An error occurred while preparing the HTML email", e);
+        }
+    }
+
+    public void sendAttachmentEmail(String to, String subject, String service, String body, byte[] attachment, String attachmentName) {
+        try {
+            logger.info("Preparing to send email to: {} with subject: {}", to, subject);
+
+            final String emailSubject = (subject != null && !subject.isEmpty()) ? subject : "This is a very important email";
+            final String emailBody = body;
+
+            emailDispatcher.sendEmail(() -> {
+                try {
+                    logger.info("Setting up email session and message...");
+                    Session session = Session.getDefaultInstance(new Properties(), null);
+                    MimeMessage message = new MimeMessage(session);
+
+                    message.setRecipient(Message.RecipientType.TO, new InternetAddress(to));
+                    message.setFrom(new InternetAddress(from));
+                    message.setSubject(emailSubject);
+
+                    MimeMultipart multipart = new MimeMultipart();
+
+                    // Add HTML body
+                    MimeBodyPart htmlPart = new MimeBodyPart();
+                    htmlPart.setContent(emailBody, "text/html; charset=utf-8");
+                    multipart.addBodyPart(htmlPart);
+
+                    // Add attachment if present
+                    if (attachment != null && attachment.length > 0) {
+                        MimeBodyPart attachmentPart = new MimeBodyPart();
+                        ByteArrayDataSource dataSource = new ByteArrayDataSource(attachment, "application/pdf"); // Change MIME type as needed
+                        attachmentPart.setDataHandler(new DataHandler(dataSource));
+                        attachmentPart.setFileName(attachmentName != null ? attachmentName : "attachment.pdf");
+                        multipart.addBodyPart(attachmentPart);
+                    }
+
+                    message.setContent(multipart);
+
+                    logger.info("Sending email to: {}", to);
+                    mailSender.send(message);
+                    logger.info("Email successfully sent to: {}", to);
+
+                } catch (MessagingException e) {
+                    logger.error("Error while preparing or sending the email", e);
+                    throw new RuntimeException("Failed to send email with attachment", e);
+                }
+            });
+
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            logger.error("Email sending interrupted due to rate limiting", e);
+            throw new RuntimeException("Failed to send email due to rate limiting", e);
+        } catch (Exception e) {
+            logger.error("An error occurred while preparing the email", e);
+            throw new RuntimeException("An error occurred while preparing the email", e);
         }
     }
 

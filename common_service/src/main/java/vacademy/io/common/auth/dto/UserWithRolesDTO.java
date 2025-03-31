@@ -14,7 +14,6 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 @Data
-@NoArgsConstructor
 @AllArgsConstructor
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -35,6 +34,10 @@ public class UserWithRolesDTO {
     private String profilePicFileId;
     private List<UserRoleDTO> roles;
     private String status;
+
+    public UserWithRolesDTO() {
+        // Default constructor
+    }
 
     public UserWithRolesDTO(User user) {
         this.id = user.getId();

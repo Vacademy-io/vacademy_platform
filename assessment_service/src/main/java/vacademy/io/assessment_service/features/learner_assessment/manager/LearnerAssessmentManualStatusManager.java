@@ -1,7 +1,6 @@
 package vacademy.io.assessment_service.features.learner_assessment.manager;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
@@ -9,36 +8,27 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
+import vacademy.io.assessment_service.features.assessment.dto.manual_evaluation.EvaluationSettingDto;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
+import vacademy.io.assessment_service.features.assessment.entity.AssessmentInstituteMapping;
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentSetMapping;
-import vacademy.io.assessment_service.features.assessment.entity.Section;
 import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
-import vacademy.io.assessment_service.features.assessment.enums.QuestionResponseEnum;
 import vacademy.io.assessment_service.features.assessment.enums.ReleaseResultStatusEnum;
+import vacademy.io.assessment_service.features.assessment.repository.AssessmentInstituteMappingRepository;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentSetMappingRepository;
-import vacademy.io.assessment_service.features.assessment.repository.SectionRepository;
-import vacademy.io.assessment_service.features.assessment.repository.StudentAttemptRepository;
 import vacademy.io.assessment_service.features.assessment.service.StudentAttemptService;
 import vacademy.io.assessment_service.features.learner_assessment.dto.AssessmentAttemptUpdateRequest;
 import vacademy.io.assessment_service.features.learner_assessment.dto.status_json.manual.LearnerManualAttemptDataDto;
 import vacademy.io.assessment_service.features.learner_assessment.dto.status_json.manual.ManualAssessmentAttemptDto;
-import vacademy.io.assessment_service.features.learner_assessment.dto.status_json.manual.ManualQuestionAttemptDto;
-import vacademy.io.assessment_service.features.learner_assessment.dto.status_json.manual.ManualSectionAttemptDto;
 import vacademy.io.assessment_service.features.learner_assessment.entity.QuestionWiseMarks;
 import vacademy.io.assessment_service.features.learner_assessment.enums.AssessmentAttemptEnum;
 import vacademy.io.assessment_service.features.learner_assessment.enums.AssessmentAttemptResultEnum;
-import vacademy.io.assessment_service.features.learner_assessment.repository.QuestionWiseMarksRepository;
 import vacademy.io.assessment_service.features.learner_assessment.service.QuestionWiseMarksService;
-import vacademy.io.assessment_service.features.question_core.entity.Question;
-import vacademy.io.assessment_service.features.question_core.repository.QuestionRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.core.utils.DateUtil;
 import vacademy.io.common.exceptions.VacademyException;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
 @Slf4j
@@ -54,20 +44,25 @@ public class LearnerAssessmentManualStatusManager {
     @Autowired
     AssessmentSetMappingRepository assessmentSetMappingRepository;
 
+    @Autowired
+    AssessmentInstituteMappingRepository assessmentInstituteMappingRepository;
+
     /**
      * Submits a manual assessment attempt.
      *
-     * @param userDetails   The authenticated user details.
-     * @param assessmentId  The ID of the assessment being submitted.
-     * @param attemptId     The ID of the attempt.
-     * @param request       The request containing assessment update data.
+     * @param userDetails  The authenticated user details.
+     * @param assessmentId The ID of the assessment being submitted.
+     * @param attemptId    The ID of the attempt.
+     * @param request      The request containing assessment update data.
+     * @param instituteId
      * @return ResponseEntity containing a success message or an error.
      * @throws VacademyException if the attempt or assessment is invalid.
      */
     public ResponseEntity<String> submitManualAssessment(CustomUserDetails userDetails,
                                                          String assessmentId,
                                                          String attemptId,
-                                                         AssessmentAttemptUpdateRequest request) {
+                                                         AssessmentAttemptUpdateRequest request,
+                                                         String instituteId) {
         try {
             // Fetch student attempt from the database
             Optional<StudentAttempt> attemptOptional = studentAttemptService.getStudentAttemptById(attemptId);
@@ -87,7 +82,7 @@ public class LearnerAssessmentManualStatusManager {
             }
 
             // Process and update the attempt for manual submission
-            updateAttemptForManualSubmit(assessment, attemptOptional.get(), request);
+            updateAttemptForManualSubmit(assessment, attemptOptional.get(), request,instituteId);
 
             return ResponseEntity.ok("Done");
         } catch (Exception e) {
@@ -101,12 +96,13 @@ public class LearnerAssessmentManualStatusManager {
      * @param assessment     The assessment associated with the attempt.
      * @param studentAttempt The attempt being updated.
      * @param request        The request containing the JSON data.
+     * @param instituteId
      * @throws JsonProcessingException if JSON parsing fails.
      */
     @Transactional
     private void updateAttemptForManualSubmit(Assessment assessment,
                                               StudentAttempt studentAttempt,
-                                              AssessmentAttemptUpdateRequest request) throws JsonProcessingException {
+                                              AssessmentAttemptUpdateRequest request, String instituteId) throws JsonProcessingException {
 
         // Validate request
         if (Objects.isNull(request) || Objects.isNull(request.getJsonContent())) {
@@ -134,6 +130,7 @@ public class LearnerAssessmentManualStatusManager {
         studentAttempt.setClientLastSync(DateUtil.convertStringToUTCDate(clientSyncTime));
         studentAttempt.setTotalTimeInSeconds(assessmentAttemptDto.getTimeElapsedInSeconds());
         studentAttempt.setAssessmentSetMapping(setMapping.get());
+        studentAttempt.setCommaSeparatedEvaluatorUserIds(convertListToCommaSeparatedString(getEvaluatorsForAttempt(assessment.getId(), instituteId)));
 
         // Save the updated attempt
         studentAttemptService.updateStudentAttempt(studentAttempt);
@@ -144,6 +141,42 @@ public class LearnerAssessmentManualStatusManager {
         } catch (Exception e) {
             log.error(e.getMessage());
         }
+    }
+
+    private List<String> getEvaluatorsForAttempt(String assessmentId, String instituteId) {
+        try{
+            Optional<AssessmentInstituteMapping> assessmentInstituteMapping = assessmentInstituteMappingRepository.findByAssessmentIdAndInstituteId(assessmentId,instituteId);
+            if(assessmentInstituteMapping.isEmpty()) throw new VacademyException("Institute Mapping not Found");
+
+            if(Objects.isNull(assessmentInstituteMapping.get().getEvaluationSetting())) return new ArrayList<>();
+
+            ObjectMapper objectMapper = new ObjectMapper();
+            EvaluationSettingDto settingDto = objectMapper.readValue(assessmentInstituteMapping.get().getEvaluationSetting(), EvaluationSettingDto.class);
+
+            return getEvaluatorsFromEvaluationSetting(settingDto);
+        } catch (Exception e) {
+            throw new VacademyException("Failed To Convert: " + e.getMessage());
+        }
+    }
+
+    private List<String> getEvaluatorsFromEvaluationSetting(EvaluationSettingDto settingDto) {
+        if(Objects.isNull(settingDto) || Objects.isNull(settingDto.getUsers())) return new ArrayList<>();
+        List<String> userIds = new ArrayList<>();
+
+        settingDto.getUsers().forEach(users->{
+            userIds.add(users.getUserId());
+        });
+
+        return getRandomUserId(userIds);
+    }
+
+    public static List<String> getRandomUserId(List<String> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return Collections.emptyList(); // Return empty list if no users
+        }
+        Random random = new Random();
+        String randomUserId = userIds.get(random.nextInt(userIds.size()));
+        return Collections.singletonList(randomUserId); // Return as List<String>
     }
 
     /**
@@ -165,6 +198,11 @@ public class LearnerAssessmentManualStatusManager {
                         assessment, studentAttempt, jsonContent, attemptData
                 )
         );
+    }
+
+    public String convertListToCommaSeparatedString(List<String> list) {
+        if(Objects.isNull(list) || list.isEmpty()) return null;
+        return String.join(",", list);
     }
 
 

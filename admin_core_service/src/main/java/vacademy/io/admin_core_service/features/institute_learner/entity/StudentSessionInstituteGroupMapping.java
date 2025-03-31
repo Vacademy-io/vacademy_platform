@@ -30,6 +30,9 @@ public class StudentSessionInstituteGroupMapping {
     @Column(name = "enrolled_date")
     private Date enrolledDate;
 
+    @Column(name = "expiry_date")
+    private Date expiryDate;
+
     @Column(name = "status")
     private String status;
 

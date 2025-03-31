@@ -156,4 +156,18 @@ public class LearnerReportService {
         }
     }
 
+    public List<SlideProgressProjection> getSlideProgressForLearner(ReportFilterDTO filterDTO,CustomUserDetails userDetails) {
+       return activityLogRepository
+               .getSlideActivityWithFilters(
+                       filterDTO.getPackageSessionId(),
+                       filterDTO.getUserId(),
+                       filterDTO.getStartDate(),
+                       filterDTO.getEndDate(),
+                       ACTIVE_SUBJECTS,
+                       ACTIVE_MODULES,
+                       ACTIVE_CHAPTERS,
+                       VALID_SLIDE_STATUSES
+               );
+    }
+
 }

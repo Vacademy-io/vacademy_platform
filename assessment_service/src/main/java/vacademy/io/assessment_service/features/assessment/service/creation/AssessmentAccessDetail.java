@@ -35,10 +35,10 @@ public class AssessmentAccessDetail extends IStep {
         if (assessmentInstituteMapping.isEmpty()) return;
         Map<String, Object> savedData = new HashMap<>();
 
-        savedData.put(AccessControlEnum.CREATION_ACCESS.name().toLowerCase(), new RolesBatchesAndUsersDto(null, getDetailsFromCommaSeparatedString(assessmentInstituteMapping.get().getCommaSeparatedCreationRoles()), getDetailsFromCommaSeparatedString(assessmentInstituteMapping.get().getCommaSeparatedCreationUserIds())));
-        savedData.put(AccessControlEnum.EVALUATION_ACCESS.name().toLowerCase(), new RolesBatchesAndUsersDto(null, getDetailsFromCommaSeparatedString(assessmentInstituteMapping.get().getCommaSeparatedEvaluationRoles()), getDetailsFromCommaSeparatedString(assessmentInstituteMapping.get().getCommaSeparatedEvaluationUserIds())));
-        savedData.put(AccessControlEnum.LIVE_ASSESSMENT_ACCESS.name().toLowerCase(), new RolesBatchesAndUsersDto(null, getDetailsFromCommaSeparatedString(assessmentInstituteMapping.get().getCommaSeparatedLiveViewRoles()), getDetailsFromCommaSeparatedString(assessmentInstituteMapping.get().getCommaSeparatedLiveViewUserIds())));
-        savedData.put(AccessControlEnum.REPORT_AND_SUBMISSION_ACCESS.name().toLowerCase(), new RolesBatchesAndUsersDto(null, getDetailsFromCommaSeparatedString(assessmentInstituteMapping.get().getCommaSeparatedSubmissionViewRoles()), getDetailsFromCommaSeparatedString(assessmentInstituteMapping.get().getCommaSeparatedSubmissionViewUserIds())));
+        savedData.put(AccessControlEnum.CREATION_ACCESS.name().toLowerCase(), new RolesBatchesAndUsersDto(null, getDetailsFromCommaSeparatedString(assessmentInstituteMapping.get().getCommaSeparatedCreationRoles()), getDetailsFromCommaSeparatedString(assessmentInstituteMapping.get().getCommaSeparatedCreationUserIds()),null));
+        savedData.put(AccessControlEnum.EVALUATION_ACCESS.name().toLowerCase(), new RolesBatchesAndUsersDto(null, getDetailsFromCommaSeparatedString(assessmentInstituteMapping.get().getCommaSeparatedEvaluationRoles()), getDetailsFromCommaSeparatedString(assessmentInstituteMapping.get().getCommaSeparatedEvaluationUserIds()), assessmentInstituteMapping.get().getEvaluationSetting()));
+        savedData.put(AccessControlEnum.LIVE_ASSESSMENT_ACCESS.name().toLowerCase(), new RolesBatchesAndUsersDto(null, getDetailsFromCommaSeparatedString(assessmentInstituteMapping.get().getCommaSeparatedLiveViewRoles()), getDetailsFromCommaSeparatedString(assessmentInstituteMapping.get().getCommaSeparatedLiveViewUserIds()),null));
+        savedData.put(AccessControlEnum.REPORT_AND_SUBMISSION_ACCESS.name().toLowerCase(), new RolesBatchesAndUsersDto(null, getDetailsFromCommaSeparatedString(assessmentInstituteMapping.get().getCommaSeparatedSubmissionViewRoles()), getDetailsFromCommaSeparatedString(assessmentInstituteMapping.get().getCommaSeparatedSubmissionViewUserIds()),null));
 
         setSavedData(savedData);
     }

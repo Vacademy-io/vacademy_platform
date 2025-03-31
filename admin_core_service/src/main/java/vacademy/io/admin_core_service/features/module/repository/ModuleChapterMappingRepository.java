@@ -60,4 +60,5 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
             @Param("slideStatuses") List<String> slideStatuses
     );
 
+    boolean existsByChapterIdAndModuleId(String chapterId, String moduleId);
 }

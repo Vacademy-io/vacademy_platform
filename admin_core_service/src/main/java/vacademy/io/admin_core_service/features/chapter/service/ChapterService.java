@@ -60,9 +60,18 @@ public class ChapterService {
     }
 
     private void processChapterModuleMapping(Chapter chapter, List<Module> modules) {
-        List<ModuleChapterMapping>moduleChapterMappings = modules.stream()
-                .map(module -> new ModuleChapterMapping(chapter, module)).collect(Collectors.toList());
-        moduleChapterMappingRepository.saveAll(moduleChapterMappings);
+        List<ModuleChapterMapping> newMappings = new ArrayList<>();
+
+        for (Module module : modules) {
+            boolean exists = moduleChapterMappingRepository.existsByChapterIdAndModuleId(chapter.getId(), module.getId());
+            if (!exists) {
+                newMappings.add(new ModuleChapterMapping(chapter, module));
+            }
+        }
+
+        if (!newMappings.isEmpty()) {
+            moduleChapterMappingRepository.saveAll(newMappings);
+        }
     }
 
     private void processPackageSessionMappings(Chapter chapter, String commaSeparatedPackageSessionIds, Integer chapterOrder) {
@@ -99,7 +108,7 @@ public class ChapterService {
     }
 
     @Transactional
-    public String updateChapter(String chapterId, ChapterDTO chapterDTO, String commaSeparatedPackageSessionIds, CustomUserDetails user) {
+    public String updateChapter(String chapterId,String moduleId, ChapterDTO chapterDTO, String commaSeparatedPackageSessionIds, CustomUserDetails user) {
         // Validate chapter ID
         if (chapterId == null) {
             throw new VacademyException("Chapter ID cannot be null");
@@ -118,10 +127,15 @@ public class ChapterService {
         // Save the updated chapter
         chapterRepository.save(chapter);
 
+        Optional<SubjectModuleMapping>subjectModuleMapping = subjectModuleMappingRepository.findByModuleId(moduleId);
+
+        List<Module>modules = subjectService.processSubjectsAndModules(Arrays.stream(getPackageSessionIds(commaSeparatedPackageSessionIds)).toList(), subjectModuleMapping.get().getSubject(), subjectModuleMapping.get().getModule());
+        processChapterModuleMapping(chapter,modules);
+
         // Update the chapter-package session mappings
         updateChapterPackageSessionMapping(chapter, commaSeparatedPackageSessionIds, chapterDTO.getChapterOrder());
 
-        // Return success message
+
         return "Chapter updated successfully";
     }
 

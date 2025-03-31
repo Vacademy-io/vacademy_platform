@@ -4,6 +4,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.institute_learner.dto.StudentDTO;
+import vacademy.io.admin_core_service.features.learner.dto.LearnerBatchDetail;
 import vacademy.io.admin_core_service.features.learner.dto.LearnerDetailsDTO;
 import vacademy.io.admin_core_service.features.learner.dto.LearnerDetailsEditDTO;
 import vacademy.io.admin_core_service.features.learner.manager.LearnerProfileManager;
@@ -48,5 +49,10 @@ public class LearnerUserInfoController {
     public ResponseEntity<List<LearnerDetailsDTO>> getLearnerDetails(@RequestParam("packageSessionId") String packageSessionId, @RequestParam("instituteId") String instituteId, @RequestAttribute("user") CustomUserDetails user) {
 
         return ResponseEntity.ok(learnerService.getStudentsByPackageSessionId(packageSessionId, instituteId, user));
+    }
+
+    @GetMapping("/batch-details")
+    public ResponseEntity<LearnerBatchDetail> getBatchDetails(@RequestParam("packageSessionId") String packageSessionId, @RequestParam("instituteId") String instituteId, @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(learnerProfileManager.getLearnerBatchDetail(user,packageSessionId,instituteId));
     }
 }

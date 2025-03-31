@@ -33,6 +33,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                s.source_type AS sourceType, 
                s.status AS status, 
                s.image_file_id AS imageFileId, 
+               s.last_sync_date AS lastSyncDate,
                ds.id AS documentId, 
                ds.title AS documentTitle, 
                ds.cover_file_id AS documentCoverFileId, 

@@ -5,7 +5,9 @@ import lombok.Getter;
 import lombok.Setter;
 import vacademy.io.admin_core_service.features.slide.dto.AddDocumentSlideDTO;
 import vacademy.io.admin_core_service.features.slide.dto.AddVideoSlideDTO;
+import vacademy.io.admin_core_service.features.slide.enums.SlideStatus;
 
+import java.sql.Date;
 import java.sql.Timestamp;
 
 @Entity
@@ -35,6 +37,9 @@ public class Slide {
 
     @Column(name = "status")
     private String status;
+
+    @Column(name = "last_sync_date")
+    private Timestamp lastSyncDate;
 
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "id", referencedColumnName = "id", insertable = false, updatable = false)
@@ -68,6 +73,9 @@ public class Slide {
         this.description = addVideoSlideDTO.getDescription();
         this.status = status;
         this.id = addVideoSlideDTO.getId();
+        if (status.equals(SlideStatus.PUBLISHED.name())) {
+            this.lastSyncDate = new Timestamp(System.currentTimeMillis());
+        }
     }
 
     public Slide() {

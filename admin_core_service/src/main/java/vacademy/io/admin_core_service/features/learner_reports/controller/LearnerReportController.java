@@ -4,6 +4,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.learner_reports.dto.*;
+import vacademy.io.admin_core_service.features.learner_reports.service.BatchReportService;
 import vacademy.io.admin_core_service.features.learner_reports.service.LearnerReportService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
@@ -16,10 +17,16 @@ public class LearnerReportController {
     @Autowired
     private LearnerReportService learnerReportService;
 
+    @Autowired
+    private BatchReportService batchReportService;
+
     @PostMapping
-    public ResponseEntity<ProgressReportDTO> getLearnerProgressReport(@RequestBody ReportFilterDTO filterDTO
+    public ResponseEntity<LearnerProgressReportDTO> getLearnerProgressReport(@RequestBody ReportFilterDTO filterDTO
     , @RequestAttribute("user") CustomUserDetails userDetails) {
-        return ResponseEntity.ok(learnerReportService.getLearnerProgressReport(filterDTO, userDetails));
+        LearnerProgressReportDTO learnerProgressReportDTO = new LearnerProgressReportDTO();
+        learnerProgressReportDTO.setLearnerProgressReport(learnerReportService.getLearnerProgressReport(filterDTO, userDetails));
+        learnerProgressReportDTO.setBatchProgressReport(batchReportService.getBatchReport(filterDTO, userDetails));
+        return ResponseEntity.ok(learnerProgressReportDTO);
     }
 
     @GetMapping("/subject-wise-progress")

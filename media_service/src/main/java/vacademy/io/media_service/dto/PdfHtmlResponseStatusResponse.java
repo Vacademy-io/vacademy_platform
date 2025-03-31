@@ -12,8 +12,6 @@ import java.util.List;
 @AllArgsConstructor
 @NoArgsConstructor
 @ToString
-public class AutoQuestionPaperResponse {
-    private List<QuestionDTO> questions;
-    private String title;
-    private List<String> tags;
+public class PdfHtmlResponseStatusResponse {
+    private String html;
 }

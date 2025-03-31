@@ -146,7 +146,6 @@ public class AddQuestionPaperFromImportManager {
     public Question makeQuestionAndOptionFromImportQuestion(QuestionDTO questionRequest, Boolean isPublic, Question existingQuestion) throws JsonProcessingException {        // Todo: check Question Validation
 
         Question question = initializeQuestion(questionRequest, existingQuestion);
-        List<Option> options = new ArrayList<>();
         List<String> correctOptionIds = new ArrayList<>();
 
         switch (QuestionTypes.valueOf(questionRequest.getQuestionType())) {
@@ -249,7 +248,15 @@ public class AddQuestionPaperFromImportManager {
     private Question initializeQuestion(QuestionDTO questionRequest, Question existingQuestion) {
         Question question = new Question();
 
-        question.setTextData(AssessmentRichTextData.fromDTO(questionRequest.getText()));
+        if (existingQuestion != null) {
+            question = existingQuestion;
+        }
+        if (questionRequest.getParentRichText() != null) {
+            question.setParentRichText(AssessmentRichTextData.fromDTO(questionRequest.getParentRichText()));
+        }
+        if (questionRequest.getText() != null) {
+            question.setTextData(AssessmentRichTextData.fromDTO(questionRequest.getText()));
+        }
         if (questionRequest.getExplanationText() != null) {
             question.setExplanationTextData(AssessmentRichTextData.fromDTO(questionRequest.getExplanationText()));
         }
@@ -293,57 +300,100 @@ public class AddQuestionPaperFromImportManager {
         return correctOptionIds;
     }
 
+
     private void handleNumericQuestion(Question question, QuestionDTO questionRequest) throws JsonProcessingException {
+        // Retrieve the numerical evaluation from the request
         NumericalEvaluationDto requestNumericalEvaluation = (NumericalEvaluationDto) questionEvaluationService.getEvaluationJson(
                 questionRequest.getAutoEvaluationJson(), NumericalEvaluationDto.class);
 
+        // Create a new NumericalEvaluationDto object
         NumericalEvaluationDto numericalEvaluation = new NumericalEvaluationDto();
         numericalEvaluation.setType(QuestionTypes.NUMERIC.name());
-        numericalEvaluation.setData(new NumericalEvaluationDto.NumericalData(requestNumericalEvaluation.getData().getValidAnswers()));
 
+        // Check if valid answers are not null before setting them
+        if (requestNumericalEvaluation.getData() != null && requestNumericalEvaluation.getData().getValidAnswers() != null) {
+            numericalEvaluation.setData(new NumericalEvaluationDto.NumericalData(requestNumericalEvaluation.getData().getValidAnswers()));
+        }
+
+        // Set the auto evaluation JSON only if numerical evaluation is not null
         question.setAutoEvaluationJson(questionEvaluationService.setEvaluationJson(numericalEvaluation));
-        question.setOptionsJson(questionRequest.getOptionsJson());
+
+        // Set options JSON only if it's not null
+        if (questionRequest.getOptionsJson() != null) {
+            question.setOptionsJson(questionRequest.getOptionsJson());
+        }
+
+        // Set question response type only if it's not null; otherwise, set a default value
         if (questionRequest.getQuestionResponseType() != null) {
             question.setQuestionResponseType(questionRequest.getQuestionResponseType());
-        } else question.setQuestionResponseType(QuestionResponseTypes.INTEGER.name());
+        } else {
+            question.setQuestionResponseType(QuestionResponseTypes.INTEGER.name());
+        }
     }
 
+
     private void handleOneWordQuestion(Question question, QuestionDTO questionRequest) throws JsonProcessingException {
+        // Retrieve the one-word evaluation from the request
         OneWordEvaluationDTO requestOneWordEvaluation = (OneWordEvaluationDTO) questionEvaluationService.getEvaluationJson(
                 questionRequest.getAutoEvaluationJson(), OneWordEvaluationDTO.class);
 
+        // Create a new OneWordEvaluationDTO object
         OneWordEvaluationDTO oneWordEvaluation = new OneWordEvaluationDTO();
         oneWordEvaluation.setType(QuestionTypes.ONE_WORD.name());
-        oneWordEvaluation.setData(new OneWordEvaluationDTO.OneWordEvaluationData(requestOneWordEvaluation.getData().getAnswer()));
 
+        // Check if valid answer is not null before setting it
+        if (requestOneWordEvaluation != null && requestOneWordEvaluation.getData() != null
+                && requestOneWordEvaluation.getData().getAnswer() != null) {
+            oneWordEvaluation.setData(new OneWordEvaluationDTO.OneWordEvaluationData(requestOneWordEvaluation.getData().getAnswer()));
+        }
+
+        // Set the auto evaluation JSON only if one-word evaluation is not null
         question.setAutoEvaluationJson(questionEvaluationService.setEvaluationJson(oneWordEvaluation));
+
+        // Set question response type only if it's not null; otherwise, set a default value
         if (questionRequest.getQuestionResponseType() != null) {
             question.setQuestionResponseType(questionRequest.getQuestionResponseType());
-        } else question.setQuestionResponseType(QuestionResponseTypes.ONE_WORD.name());
+        } else {
+            question.setQuestionResponseType(QuestionResponseTypes.ONE_WORD.name());
+        }
     }
 
+
     private void handleLongAnswerQuestion(Question question, QuestionDTO questionRequest) throws JsonProcessingException {
+        // Retrieve the long answer evaluation from the request
         LongAnswerEvaluationDTO requestLongAnswerEvaluation = (LongAnswerEvaluationDTO) questionEvaluationService.getEvaluationJson(
                 questionRequest.getAutoEvaluationJson(), LongAnswerEvaluationDTO.class);
 
+        // Create a new LongAnswerEvaluationDTO object
         LongAnswerEvaluationDTO longAnswerEvaluation = new LongAnswerEvaluationDTO();
         longAnswerEvaluation.setType(QuestionTypes.LONG_ANSWER.name());
-        longAnswerEvaluation.setData(new LongAnswerEvaluationDTO.LongAnswerEvaluationData(requestLongAnswerEvaluation.getData().getAnswer()));
 
+        // Check if valid answer is not null before setting it
+        if (requestLongAnswerEvaluation != null && requestLongAnswerEvaluation.getData() != null
+                && requestLongAnswerEvaluation.getData().getAnswer() != null) {
+            longAnswerEvaluation.setData(new LongAnswerEvaluationDTO.LongAnswerEvaluationData(requestLongAnswerEvaluation.getData().getAnswer()));
+        }
+
+        // Set the auto evaluation JSON only if long answer evaluation is not null
         question.setAutoEvaluationJson(questionEvaluationService.setEvaluationJson(longAnswerEvaluation));
+
+        // Set question response type only if it's not null; otherwise, set a default value
         if (questionRequest.getQuestionResponseType() != null) {
             question.setQuestionResponseType(questionRequest.getQuestionResponseType());
-        } else question.setQuestionResponseType(QuestionResponseTypes.LONG_ANSWER.name());
+        } else {
+            question.setQuestionResponseType(QuestionResponseTypes.LONG_ANSWER.name());
+        }
     }
 
 
     private void handleMCQQuestion(Question question, QuestionDTO questionRequest, List<Option> options, List<String> correctOptionIds) throws JsonProcessingException {
 
         MCQEvaluationDTO mcqEvaluation = new MCQEvaluationDTO();
-        mcqEvaluation.setType(question.getQuestionType());
-        mcqEvaluation.setData(new MCQEvaluationDTO.MCQData(correctOptionIds));
-
-        question.setAutoEvaluationJson(questionEvaluationService.setEvaluationJson(mcqEvaluation));
+        if (question.getQuestionType() != null) mcqEvaluation.setType(question.getQuestionType());
+        if(correctOptionIds != null) {
+            mcqEvaluation.setData(new MCQEvaluationDTO.MCQData(correctOptionIds));
+            question.setAutoEvaluationJson(questionEvaluationService.setEvaluationJson(mcqEvaluation));
+        }
     }
 
 

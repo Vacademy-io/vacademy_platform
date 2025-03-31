@@ -13,6 +13,7 @@ import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.zwobble.mammoth.DocumentConverter;
@@ -23,9 +24,7 @@ import vacademy.io.media_service.dto.*;
 import vacademy.io.media_service.enums.NumericQuestionTypes;
 import vacademy.io.media_service.enums.QuestionResponseType;
 import vacademy.io.media_service.enums.QuestionTypes;
-import vacademy.io.media_service.service.DocConverterService;
-import vacademy.io.media_service.service.EvaluationJsonToMapConverter;
-import vacademy.io.media_service.service.HtmlImageConverter;
+import vacademy.io.media_service.service.*;
 import vacademy.io.media_service.util.JsonUtils;
 
 import java.io.*;
@@ -49,8 +48,46 @@ public class QuestionGeneratorController {
     private ObjectMapper objectMapper;
 
     @Autowired
+    private FileService fileService;
+
+    @Autowired
     private DocConverterService docConverterService;
 
+    @Autowired
+    private NewDocConverterService newDocConverterService;
+
+    public static String removeExtraSlashes(String input) {
+        // Regular expression to match <img src="..."> and replace with <img src="...">
+        String regex = "<img src=\\\\\"(.*?)\\\\\">";
+        String replacement = "<img src=\"$1\">";
+
+        // Compile the pattern and create a matcher
+        Pattern pattern = Pattern.compile(regex);
+        Matcher matcher = pattern.matcher(input);
+
+        // Replace all occurrences of the pattern with the replacement string
+        return matcher.replaceAll(replacement);
+    }
+
+    public static String extractBody(String html) {
+        if (html == null || html.isEmpty()) {
+            return "";
+        }
+
+        // Regex to match the content between <body> and </body> tags
+        Pattern pattern = Pattern.compile(
+                "<body[^>]*>(.*?)</body>",
+                Pattern.CASE_INSENSITIVE | Pattern.DOTALL // Handle case and multi-line content
+        );
+
+        Matcher matcher = pattern.matcher(html);
+        if (matcher.find()) {
+            // Extract the content (group 1) between the tags
+            return matcher.group(1).trim(); // Trim to remove leading/trailing whitespace
+        } else {
+            return html;
+        }
+    }
 
     @PostMapping("/from-html")
     public ResponseEntity<AutoQuestionPaperResponse> fromHtml(
@@ -63,7 +100,8 @@ public class QuestionGeneratorController {
 
         try {
             String html = new String(file.getBytes(), StandardCharsets.UTF_8);
-            String networkHtml = htmlImageConverter.convertBase64ImagesToNetworkImages(html);
+            String htmlBody = extractBody(html);
+            String networkHtml = htmlImageConverter.convertBase64AndSVGToUrls(htmlBody);
             String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromHTML(networkHtml));
 
             // Process the raw output to get valid JSON
@@ -87,7 +125,8 @@ public class QuestionGeneratorController {
 
         try {
             String html = docConverterService.convertDocument(file);
-            String networkHtml = htmlImageConverter.convertBase64ImagesToNetworkImages(html);
+            String htmlBody = extractBody(html);
+            String networkHtml = htmlImageConverter.convertBase64AndSVGToUrls(htmlBody);
             String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromHTML(networkHtml));
 
             // Process the raw output to get valid JSON
@@ -99,6 +138,42 @@ public class QuestionGeneratorController {
             throw new VacademyException(e.getMessage());
         }
     }
+
+    @PostMapping("/math-parser/from-not-html")
+    public ResponseEntity<AutoDocumentSubmitResponse> fromNotHtmlMathParser(
+            @RequestParam("file") MultipartFile file) {
+
+        if (isHtmlFile(file)) {
+            throw new VacademyException("Invalid file format. Please do not upload an HTML file.");
+        }
+
+        try {
+            String publicUrl = fileService.uploadFile(file);
+            if (!StringUtils.hasText(publicUrl)) {
+                throw new VacademyException("Error uploading file");
+            }
+            String pdfId = newDocConverterService.startProcessing(publicUrl);
+            if (!StringUtils.hasText(pdfId)) {
+                throw new VacademyException("Error processing file");
+            }
+
+            return ResponseEntity.ok(new AutoDocumentSubmitResponse(pdfId));
+
+        } catch (Exception e) {
+            throw new VacademyException(e.getMessage());
+        }
+    }
+
+
+    @GetMapping("/math-parser/pdf-to-html")
+    public ResponseEntity<PdfHtmlResponseStatusResponse> getMathParserPdfHtml(@RequestParam String pdfId) throws IOException {
+        String html = newDocConverterService.getConvertedHtml(pdfId);
+        String htmlBody = extractBody(html);
+        String networkHtml = htmlImageConverter.convertBase64AndSVGToUrls(htmlBody);
+
+        return ResponseEntity.ok(new PdfHtmlResponseStatusResponse(networkHtml));
+    }
+
 
     @PostMapping("/from-text")
     public ResponseEntity<AutoQuestionPaperResponse> fromHtml(
@@ -116,25 +191,13 @@ public class QuestionGeneratorController {
         return "text/html".equals(file.getContentType());
     }
 
-    public static String removeExtraSlashes(String input) {
-        // Regular expression to match <img src="..."> and replace with <img src="...">
-        String regex = "<img src=\\\\\"(.*?)\\\\\">";
-        String replacement = "<img src=\"$1\">";
-
-        // Compile the pattern and create a matcher
-        Pattern pattern = Pattern.compile(regex);
-        Matcher matcher = pattern.matcher(input);
-
-        // Replace all occurrences of the pattern with the replacement string
-        return matcher.replaceAll(replacement);
-    }
-
     public AutoQuestionPaperResponse createAutoQuestionPaperResponse(String htmlResponse) {
         AutoQuestionPaperResponse autoQuestionPaperResponse = new AutoQuestionPaperResponse();
         ObjectMapper objectMapper = new ObjectMapper();
 
         try {
-            AiGeneratedQuestionPaperJsonDto response = objectMapper.readValue(htmlResponse, new TypeReference<AiGeneratedQuestionPaperJsonDto>() {});
+            AiGeneratedQuestionPaperJsonDto response = objectMapper.readValue(htmlResponse, new TypeReference<AiGeneratedQuestionPaperJsonDto>() {
+            });
 
             autoQuestionPaperResponse.setQuestions(deepSeekService.formatQuestions(response.getQuestions()));
             autoQuestionPaperResponse.setTitle(response.getTitle());

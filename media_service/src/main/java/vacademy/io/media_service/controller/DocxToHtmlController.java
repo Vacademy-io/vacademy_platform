@@ -35,6 +35,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import static org.zwobble.mammoth.internal.util.Base64Encoding.streamToBase64;
+import static vacademy.io.media_service.controller.ai.QuestionGeneratorController.extractBody;
 
 
 @RestController
@@ -56,7 +57,8 @@ public class DocxToHtmlController {
     public ResponseEntity<byte[]> htmlImageProcessing(@RequestParam("file") MultipartFile file) {
         try {
             String html = new String(file.getBytes(), StandardCharsets.UTF_8);
-            String networkHtml = htmlImageConverter.convertBase64ImagesToNetworkImages(html);
+            String htmlBody = extractBody(html);
+            String networkHtml = htmlImageConverter.convertBase64AndSVGToUrls(htmlBody);
             byte[] fileContent = networkHtml.getBytes(StandardCharsets.UTF_8);
 
             HttpHeaders headers = new HttpHeaders();
@@ -92,7 +94,9 @@ public class DocxToHtmlController {
         // Process DOCX file to HTML
         String html = convertDocxToHtml(file);
         try {
-            String networkHtml = htmlImageConverter.convertBase64ImagesToNetworkImages(html);
+
+            String htmlBody = extractBody(html);
+            String networkHtml = htmlImageConverter.convertBase64AndSVGToUrls(htmlBody);
             return extractQuestions(networkHtml, questionIdentifier, optionIdentifier, answerIdentifier, explanationIdentifier);
 
         } catch (IOException e) {
@@ -201,7 +205,8 @@ public class DocxToHtmlController {
     private List<QuestionDTO> extractQuestionsFromHtml(MultipartFile file, String questionIdentifier, String optionIdentifier, String answerIdentifier, String explanationIdentifier) {
         try {
             String html = new String(file.getBytes(), StandardCharsets.UTF_8);
-            String networkHtml = htmlImageConverter.convertBase64ImagesToNetworkImages(html);
+            String htmlBody = extractBody(html);
+            String networkHtml = htmlImageConverter.convertBase64AndSVGToUrls(htmlBody);
             return extractQuestions(networkHtml, questionIdentifier, optionIdentifier, answerIdentifier, explanationIdentifier);
         } catch (IOException e) {
             e.printStackTrace();

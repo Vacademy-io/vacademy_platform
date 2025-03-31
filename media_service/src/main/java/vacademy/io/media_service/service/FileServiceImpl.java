@@ -56,10 +56,10 @@ public class FileServiceImpl implements FileService {
     public String uploadFile(MultipartFile multipartFile) throws IOException {
 
         String key = "SERVICE_UPLOAD/" + UUID.randomUUID() + "_" + multipartFile.getOriginalFilename();
-        s3Client.putObject(bucketName, key, multipartFile.getInputStream(), null);
+        s3Client.putObject(publicBucket, key, multipartFile.getInputStream(), null);
         FileMetadata metadata = new FileMetadata(multipartFile.getName(), Objects.isNull(multipartFile.getContentType()) ? "unknown" : multipartFile.getContentType(), key, "SERVICE_UPLOAD", "SERVICE_UPLOAD");
         fileMetadataRepository.save(metadata);
-        return MediaConstant.s3baseurl + key;
+        return "https://" + publicBucket + ".s3.amazonaws.com/" + key;
     }
 
 

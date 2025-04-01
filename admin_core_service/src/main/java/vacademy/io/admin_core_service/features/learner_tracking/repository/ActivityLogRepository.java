@@ -872,13 +872,13 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
             @Param("chapterSlideStatusList") List<String> chapterSlideStatusList
     );
 
-    @Query(value = """
+    @Query(value = """ 
     WITH SubjectModules AS (
         SELECT 
-            smm.subject_id, 
-            smm.module_id, 
-            s.subject_name, 
-            m.module_name
+            smm.subject_id AS subject_id, 
+            smm.module_id AS module_id, 
+            s.subject_name AS subject_name, 
+            m.module_name AS module_name
         FROM subject_session ss
         JOIN subject_module_mapping smm ON ss.subject_id = smm.subject_id
         JOIN subject s ON ss.subject_id = s.id
@@ -889,11 +889,11 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
     ),
     ModuleChapters AS (
         SELECT 
-            sm.subject_id, 
-            sm.subject_name, 
-            sm.module_id, 
-            sm.module_name, 
-            mcm.chapter_id
+            sm.subject_id AS subject_id, 
+            sm.subject_name AS subject_name, 
+            sm.module_id AS module_id, 
+            sm.module_name AS module_name, 
+            mcm.chapter_id AS chapter_id
         FROM SubjectModules sm
         JOIN module_chapter_mapping mcm ON sm.module_id = mcm.module_id
         JOIN chapter c ON mcm.chapter_id = c.id
@@ -901,13 +901,13 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
     ),
     ChapterSlides AS (
         SELECT 
-            mc.subject_id, 
-            mc.subject_name, 
-            mc.module_id, 
-            mc.module_name, 
-            mc.chapter_id, 
-            c.chapter_name,  
-            cts.slide_id, 
+            mc.subject_id AS subject_id, 
+            mc.subject_name AS subject_name, 
+            mc.module_id AS module_id, 
+            mc.module_name AS module_name, 
+            mc.chapter_id AS chapter_id, 
+            c.chapter_name AS chapter_name,  
+            cts.slide_id AS slide_id, 
             s.title AS slide_title
         FROM ModuleChapters mc
         JOIN chapter_to_slides cts ON mc.chapter_id = cts.chapter_id
@@ -920,47 +920,59 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
     ),
     SlideActivity AS (
         SELECT 
-            cs.subject_id, 
-            cs.subject_name,  
-            cs.module_id, 
-            cs.module_name, 
-            cs.chapter_id, 
-            cs.chapter_name,  
-            cs.slide_id, 
-            cs.slide_title, 
-            SUM(EXTRACT(EPOCH FROM (al.end_time - al.start_time)) / 60) AS time_spent_minutes
+            al.id AS activity_id, 
+            cs.subject_id AS subject_id, 
+            cs.subject_name AS subject_name,  
+            cs.module_id AS module_id, 
+            cs.module_name AS module_name, 
+            cs.chapter_id AS chapter_id, 
+            cs.chapter_name AS chapter_name,  
+            cs.slide_id AS slide_id, 
+            cs.slide_title AS slide_title, 
+            DATE(al.created_at) AS activity_date,
+            COALESCE(SUM(EXTRACT(EPOCH FROM (al.end_time - al.start_time)) / 60), 0) AS time_spent_minutes
         FROM ChapterSlides cs
         JOIN activity_log al ON cs.slide_id = al.slide_id
         WHERE al.user_id = :userId
         AND al.created_at BETWEEN :startDate AND :endDate
-        GROUP BY cs.subject_id, cs.subject_name, cs.module_id, cs.module_name, 
-                 cs.chapter_id, cs.chapter_name, cs.slide_id, cs.slide_title
+        GROUP BY al.id, cs.subject_id, cs.subject_name, cs.module_id, cs.module_name, 
+                 cs.chapter_id, cs.chapter_name, cs.slide_id, cs.slide_title, DATE(al.created_at)  
     ),
     SlideConcentration AS (
         SELECT 
-            al.slide_id, 
-            AVG(cs.concentration_score) AS avg_concentration_score
+            al.id AS activity_id, 
+            al.slide_id AS slide_id, 
+            COALESCE(AVG(cs.concentration_score), 0) AS avg_concentration_score
         FROM activity_log al
         JOIN concentration_score cs ON al.id = cs.activity_id
         WHERE al.user_id = :userId
         AND al.created_at BETWEEN :startDate AND :endDate
-        GROUP BY al.slide_id
+        GROUP BY al.id, al.slide_id
     )
     SELECT 
-        sa.slide_id AS slideId,
-        sa.slide_title AS slideTitle,
-        sa.chapter_id AS chapterId,
-        sa.chapter_name AS chapterName,  
-        sa.module_id AS moduleId,
-        sa.module_name AS moduleName,
-        sa.subject_id AS subjectId,  
-        sa.subject_name AS subjectName,  
-        COALESCE(sc.avg_concentration_score, 0) AS concentrationScore,
-        COALESCE(sa.time_spent_minutes, 0) AS timeSpent
+        sa.activity_date AS date,
+        CAST(
+            JSONB_AGG(
+                JSONB_BUILD_OBJECT(
+                    'slide_id', sa.slide_id,
+                    'slide_title', sa.slide_title,
+                    'chapter_id', sa.chapter_id,
+                    'chapter_name', sa.chapter_name,
+                    'module_id', sa.module_id,
+                    'module_name', sa.module_name,
+                    'subject_id', sa.subject_id,
+                    'subject_name', sa.subject_name,
+                    'concentration_score', COALESCE(sc.avg_concentration_score, 0),
+                    'time_spent', COALESCE(sa.time_spent_minutes, 0)
+                )
+            ) AS TEXT
+        ) AS slide_details
     FROM SlideActivity sa
-    LEFT JOIN SlideConcentration sc ON sa.slide_id = sc.slide_id
-    """, nativeQuery = true)
-    List<SlideProgressProjection> getSlideActivityWithFilters(
+    LEFT JOIN SlideConcentration sc ON sa.activity_id = sc.activity_id
+    GROUP BY sa.activity_date
+    ORDER BY sa.activity_date
+""", nativeQuery = true)
+    List<Object[]> getSlideActivityByDate(
             @Param("sessionId") String sessionId,
             @Param("userId") String userId,
             @Param("startDate") Date startDate,
@@ -970,6 +982,5 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
             @Param("chapterStatusList") List<String> chapterStatusList,
             @Param("slideStatusList") List<String> slideStatusList
     );
-
 
 }

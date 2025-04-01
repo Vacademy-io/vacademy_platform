@@ -50,7 +50,7 @@ public class LearnerReportController {
     }
 
     @PostMapping("/slide-wise-progress")
-    public ResponseEntity<List<SlideProgressProjection>> getSlideWiseProgress(
+    public ResponseEntity<List<SlideProgressDateWiseDTO>> getSlideWiseProgress(
             @RequestBody ReportFilterDTO reportFilterDTO,
             @RequestAttribute("user") CustomUserDetails userDetails) {
         return ResponseEntity.ok(

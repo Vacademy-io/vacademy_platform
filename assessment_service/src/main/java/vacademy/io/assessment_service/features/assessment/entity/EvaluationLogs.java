@@ -4,9 +4,12 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 import org.hibernate.annotations.UuidGenerator;
+import vacademy.io.assessment_service.features.assessment.dto.EvaluationLogDto;
 
 import java.util.Date;
 
@@ -14,6 +17,8 @@ import java.util.Date;
 @Table(name = "evaluation_logs")
 @Data
 @Builder
+@AllArgsConstructor
+@NoArgsConstructor
 public class EvaluationLogs {
     @Id
     @UuidGenerator
@@ -46,4 +51,18 @@ public class EvaluationLogs {
 
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Date updatedAt;
+
+
+    public EvaluationLogDto getEvaluationDto(){
+        return EvaluationLogDto.builder()
+                .id(this.id)
+                .sourceId(this.source)
+                .sourceId(this.sourceId)
+                .type(this.type)
+                .learnerId(this.learnerId)
+                .dataJson(this.dataJson)
+                .authorId(this.authorId)
+                .dateAndTime(this.dateAndTime)
+                .build();
+    }
 }

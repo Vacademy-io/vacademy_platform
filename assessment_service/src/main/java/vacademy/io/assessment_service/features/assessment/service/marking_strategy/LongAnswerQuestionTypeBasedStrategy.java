@@ -4,12 +4,9 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.long_answer.LONG_ANSWERCorrectAnswerDto;
-import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.long_answer.LONG_ANSWERMarkingDto;
-import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.long_answer.LONG_ANSWERResponseDto;
-import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.one_word.ONE_WORDCorrectAnswerDto;
-import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.one_word.ONE_WORDMarkingDto;
-import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.one_word.ONE_WORDResponseDto;
+import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.long_answer.LongAanswerCorrectAnswerDto;
+import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.long_answer.LongAnswerMarkingDto;
+import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.long_answer.LongAnswerResponseDto;
 import vacademy.io.assessment_service.features.assessment.enums.QuestionResponseEnum;
 import vacademy.io.assessment_service.features.assessment.service.IQuestionTypeBasedStrategy;
 import java.util.Set;
@@ -18,13 +15,13 @@ import java.util.HashSet;
 
 @Slf4j
 @Component
-public class LONG_ANSWERQuestionTypeBasedStrategy extends IQuestionTypeBasedStrategy {
+public class LongAnswerQuestionTypeBasedStrategy extends IQuestionTypeBasedStrategy {
     @Override
     public double calculateMarks(String markingJsonStr, String correctAnswerJsonStr, String responseJson) {
         try {
-            ONE_WORDMarkingDto markingDto = (ONE_WORDMarkingDto) validateAndGetMarkingData(markingJsonStr);
-            ONE_WORDCorrectAnswerDto correctAnswerDto = (ONE_WORDCorrectAnswerDto) validateAndGetCorrectAnswerData(correctAnswerJsonStr);
-            ONE_WORDResponseDto responseDto = (ONE_WORDResponseDto) validateAndGetResponseData(responseJson);
+            LongAnswerMarkingDto markingDto = (LongAnswerMarkingDto) validateAndGetMarkingData(markingJsonStr);
+            LongAanswerCorrectAnswerDto correctAnswerDto = (LongAanswerCorrectAnswerDto) validateAndGetCorrectAnswerData(correctAnswerJsonStr);
+            LongAnswerResponseDto responseDto = (LongAnswerResponseDto) validateAndGetResponseData(responseJson);
 
             // Validate input objects and avoid NullPointerException
             if (correctAnswerDto == null || markingDto == null || responseDto == null) {
@@ -43,7 +40,7 @@ public class LONG_ANSWERQuestionTypeBasedStrategy extends IQuestionTypeBasedStra
             String attemptedAnswer = responseDto.getResponseData().getAnswer().toLowerCase();
 
             // Extract marking scheme details safely
-            ONE_WORDMarkingDto.DataFields markingData = markingDto.getData();
+            LongAnswerMarkingDto.DataFields markingData = markingDto.getData();
             if (markingData == null) {
                 setAnswerStatus(QuestionResponseEnum.INCORRECT.name());
                 return 0.0;
@@ -51,9 +48,6 @@ public class LONG_ANSWERQuestionTypeBasedStrategy extends IQuestionTypeBasedStra
 
             double totalMarks = markingData.getTotalMark();
             double negativeMarks = markingData.getNegativeMark();
-//            double negativePercentage = markingData.getNegativeMarkingPercentage();
-//            double partialMarking = markingData.getPartialMarking();
-//            double partialMarkingPercentage = markingData.getPartialMarkingPercentage();
 
             // If the student did not attempt the question, return 0 marks
             if ( attemptedAnswer.isEmpty()) {
@@ -64,7 +58,7 @@ public class LONG_ANSWERQuestionTypeBasedStrategy extends IQuestionTypeBasedStra
             // Check if the answer is completely correct
             if (attemptedAnswer.equals(correctAnswer)) {
                 setAnswerStatus(QuestionResponseEnum.CORRECT.name());
-                return calculateMarks(attemptedAnswer , correctAnswer , totalMarks , negativeMarks);
+                return calculateMarksViaMatching(attemptedAnswer , correctAnswer , totalMarks , negativeMarks);
             }
 
             // If incorrect response, apply negative marking
@@ -81,22 +75,22 @@ public class LONG_ANSWERQuestionTypeBasedStrategy extends IQuestionTypeBasedStra
     @Override
     public Object validateAndGetMarkingData(String markingJson) throws JsonProcessingException {
         ObjectMapper objectMapper = new ObjectMapper();
-        return objectMapper.readValue(markingJson, LONG_ANSWERMarkingDto.class);
+        return objectMapper.readValue(markingJson, LongAnswerMarkingDto.class);
     }
 
     @Override
     public Object validateAndGetCorrectAnswerData(String correctAnswerJson) throws JsonProcessingException {
         ObjectMapper objectMapper = new ObjectMapper();
-        return objectMapper.readValue(correctAnswerJson, LONG_ANSWERCorrectAnswerDto.class);
+        return objectMapper.readValue(correctAnswerJson, LongAanswerCorrectAnswerDto.class);
     }
 
     @Override
     public Object validateAndGetResponseData(String responseJson) throws JsonProcessingException {
         ObjectMapper objectMapper = new ObjectMapper();
-        return objectMapper.readValue(responseJson, LONG_ANSWERResponseDto.class);
+        return objectMapper.readValue(responseJson, LongAnswerResponseDto.class);
     }
 
-    public static double calculateMarks(String correctAnswer, String studentAnswer, double totalMarks, double negativeMarks) {
+    public static double calculateMarksViaMatching(String correctAnswer, String studentAnswer, double totalMarks, double negativeMarks) {
         // Convert answers to sets of words (ignore case & split by spaces)
         Set<String> correctWords = new HashSet<>(Arrays.asList(correctAnswer.toLowerCase().split("\\s+")));
         Set<String> studentWords = new HashSet<>(Arrays.asList(studentAnswer.toLowerCase().split("\\s+")));

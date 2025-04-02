@@ -5,7 +5,7 @@ import lombok.Setter;
 
 @Getter
 @Setter
-public class LONG_ANSWERMarkingDto {
+public class LongAnswerMarkingDto {
     private String type;
     private DataFields data;
 

@@ -18,8 +18,8 @@ public class QuestionBasedStrategyFactory {
     static {
         strategies.put(QuestionTypes.MCQM.name(), new MCQMQuestionTypeBasedStrategy());
         strategies.put(QuestionTypes.MCQS.name(), new MCQSQuestionTypeBasedStrategy());
-        strategies.put(QuestionTypes.ONE_WORD.name(), new ONE_WORDQuestionTypeBasedStrategy());
-        strategies.put(QuestionTypes.LONG_ANSWER.name(), new LONG_ANSWERQuestionTypeBasedStrategy());
+        strategies.put(QuestionTypes.ONE_WORD.name(), new OneWordQuestionTypeBasedStrategy());
+        strategies.put(QuestionTypes.LONG_ANSWER.name(), new LongAnswerQuestionTypeBasedStrategy());
         strategies.put(QuestionTypes.NUMERIC.name(), new NUMERICQuestionTypeBasedStrategy());
         // Add more strategies here
     }

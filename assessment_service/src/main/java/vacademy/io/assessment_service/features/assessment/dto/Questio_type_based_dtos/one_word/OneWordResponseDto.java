@@ -1,11 +1,11 @@
-package vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.long_answer;
+package vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.one_word;
 
 import lombok.Getter;
 import lombok.Setter;
 
 @Getter
 @Setter
-public class LONG_ANSWERResponseDto {
+public class OneWordResponseDto {
     private String questionId;
     private int questionDurationLeftInSeconds;
     private int timeTakenInSeconds;

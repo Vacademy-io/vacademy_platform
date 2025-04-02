@@ -4,21 +4,21 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.one_word.ONE_WORDCorrectAnswerDto;
-import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.one_word.ONE_WORDMarkingDto;
-import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.one_word.ONE_WORDResponseDto;
+import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.one_word.OneWordCorrectAnswerDto;
+import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.one_word.OneWordMarkingDto;
+import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.one_word.OneWordResponseDto;
 import vacademy.io.assessment_service.features.assessment.enums.QuestionResponseEnum;
 import vacademy.io.assessment_service.features.assessment.service.IQuestionTypeBasedStrategy;
 
 @Slf4j
 @Component
-public class ONE_WORDQuestionTypeBasedStrategy extends IQuestionTypeBasedStrategy {
+public class OneWordQuestionTypeBasedStrategy extends IQuestionTypeBasedStrategy {
     @Override
     public double calculateMarks(String markingJsonStr, String correctAnswerJsonStr, String responseJson) {
         try {
-            ONE_WORDMarkingDto markingDto = (ONE_WORDMarkingDto) validateAndGetMarkingData(markingJsonStr);
-            ONE_WORDCorrectAnswerDto correctAnswerDto = (ONE_WORDCorrectAnswerDto) validateAndGetCorrectAnswerData(correctAnswerJsonStr);
-            ONE_WORDResponseDto responseDto = (ONE_WORDResponseDto) validateAndGetResponseData(responseJson);
+            OneWordMarkingDto markingDto = (OneWordMarkingDto) validateAndGetMarkingData(markingJsonStr);
+            OneWordCorrectAnswerDto correctAnswerDto = (OneWordCorrectAnswerDto) validateAndGetCorrectAnswerData(correctAnswerJsonStr);
+            OneWordResponseDto responseDto = (OneWordResponseDto) validateAndGetResponseData(responseJson);
 
             // Validate input objects and avoid NullPointerException
             if (correctAnswerDto == null || markingDto == null || responseDto == null) {
@@ -37,7 +37,7 @@ public class ONE_WORDQuestionTypeBasedStrategy extends IQuestionTypeBasedStrateg
             String attemptedAnswer = responseDto.getResponseData().getAnswer().toLowerCase();
 
             // Extract marking scheme details safely
-            ONE_WORDMarkingDto.DataFields markingData = markingDto.getData();
+            OneWordMarkingDto.DataFields markingData = markingDto.getData();
             if (markingData == null) {
                 setAnswerStatus(QuestionResponseEnum.INCORRECT.name());
                 return 0.0;
@@ -72,19 +72,19 @@ public class ONE_WORDQuestionTypeBasedStrategy extends IQuestionTypeBasedStrateg
     @Override
     public Object validateAndGetMarkingData(String markingJson) throws JsonProcessingException {
         ObjectMapper objectMapper = new ObjectMapper();
-        return objectMapper.readValue(markingJson, ONE_WORDMarkingDto.class);
+        return objectMapper.readValue(markingJson, OneWordMarkingDto.class);
     }
 
     @Override
     public Object validateAndGetCorrectAnswerData(String correctAnswerJson) throws JsonProcessingException {
         ObjectMapper objectMapper = new ObjectMapper();
-        return objectMapper.readValue(correctAnswerJson, ONE_WORDCorrectAnswerDto.class);
+        return objectMapper.readValue(correctAnswerJson, OneWordCorrectAnswerDto.class);
     }
 
     @Override
     public Object validateAndGetResponseData(String responseJson) throws JsonProcessingException {
         ObjectMapper objectMapper = new ObjectMapper();
-        return objectMapper.readValue(responseJson, ONE_WORDResponseDto.class);
+        return objectMapper.readValue(responseJson, OneWordResponseDto.class);
     }
 
 }

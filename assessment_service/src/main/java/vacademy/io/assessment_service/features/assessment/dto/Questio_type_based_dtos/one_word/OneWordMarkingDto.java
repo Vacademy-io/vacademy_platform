@@ -5,7 +5,7 @@ import lombok.Setter;
 
 @Getter
 @Setter
-public class ONE_WORDMarkingDto {
+public class OneWordMarkingDto {
     private String type;
     private DataFields data;
 

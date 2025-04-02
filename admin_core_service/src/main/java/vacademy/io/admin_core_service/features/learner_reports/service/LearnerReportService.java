@@ -2,6 +2,7 @@ package vacademy.io.admin_core_service.features.learner_reports.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -17,6 +18,8 @@ import vacademy.io.admin_core_service.features.subject.enums.SubjectStatusEnum;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.logging.Logger;
@@ -156,18 +159,37 @@ public class LearnerReportService {
         }
     }
 
-    public List<SlideProgressProjection> getSlideProgressForLearner(ReportFilterDTO filterDTO,CustomUserDetails userDetails) {
-       return activityLogRepository
-               .getSlideActivityWithFilters(
-                       filterDTO.getPackageSessionId(),
-                       filterDTO.getUserId(),
-                       filterDTO.getStartDate(),
-                       filterDTO.getEndDate(),
-                       ACTIVE_SUBJECTS,
-                       ACTIVE_MODULES,
-                       ACTIVE_CHAPTERS,
-                       VALID_SLIDE_STATUSES
-               );
+    public List<SlideProgressDateWiseDTO> getSlideProgressForLearner(ReportFilterDTO filterDTO, CustomUserDetails userDetails) {
+        List<Object[]> rawResults = activityLogRepository.getSlideActivityByDate(
+                filterDTO.getPackageSessionId(),
+                filterDTO.getUserId(),
+                filterDTO.getStartDate(),
+                filterDTO.getEndDate(),
+                ACTIVE_SUBJECTS,
+                ACTIVE_MODULES,
+                ACTIVE_CHAPTERS,
+                VALID_SLIDE_STATUSES
+        );
+
+        List<SlideProgressDateWiseDTO> progressList = new ArrayList<>();
+        ObjectMapper objectMapper = new ObjectMapper();
+
+        for (Object[] row : rawResults) {
+            try {
+                String date = row[0].toString();  // Extract date
+                String jsonString = row[1].toString();  // Extract JSON string
+
+                List<SlideProgressDTO> slideDetails = objectMapper.readValue(
+                        jsonString, new TypeReference<List<SlideProgressDTO>>() {}
+                );
+
+                progressList.add(new SlideProgressDateWiseDTO(date, slideDetails));
+            } catch (JsonProcessingException e) {
+                e.printStackTrace(); // Log properly
+            }
+        }
+
+        return progressList;
     }
 
 }

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.PropertyNamingStrategy;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import vacademy.io.admin_core_service.features.slide.dto.LearnerRecentSlides;
 import vacademy.io.admin_core_service.features.slide.dto.SlideDetailProjection;
 
 import java.util.List;
@@ -14,7 +15,7 @@ import java.util.List;
 public class LeanerDashBoardDetailDTO {
     private Integer courses;
     private Integer testsAssigned;
-    private List<SlideDetailProjection> slides;
+    private List<LearnerRecentSlides> slides;
 
     public LeanerDashBoardDetailDTO() {
     }

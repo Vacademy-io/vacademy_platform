@@ -19,6 +19,8 @@ import vacademy.io.admin_core_service.features.slide.repository.VideoRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
+import java.sql.Date;
+import java.sql.Timestamp;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -85,6 +87,9 @@ public class SlideService {
         Optional.ofNullable(title).filter(t -> !t.isEmpty()).ifPresent(slide::setTitle);
         Optional.ofNullable(imageFileId).filter(i -> !i.isEmpty()).ifPresent(slide::setImageFileId);
         Optional.ofNullable(status).filter(s -> !s.isEmpty()).ifPresent(slide::setStatus);
+        if (status.equalsIgnoreCase(SlideStatus.PUBLISHED.name())) {
+            slide.setLastSyncDate(new Timestamp(System.currentTimeMillis()));
+        }
         slideRepository.save(slide);
     }
 

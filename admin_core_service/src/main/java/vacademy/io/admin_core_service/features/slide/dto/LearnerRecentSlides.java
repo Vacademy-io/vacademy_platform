@@ -2,12 +2,12 @@ package vacademy.io.admin_core_service.features.slide.dto;
 
 import com.fasterxml.jackson.databind.PropertyNamingStrategy;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
+import lombok.Data;
 
-import java.sql.Date;
 import java.sql.Timestamp;
 
 @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
-public interface SlideDetailProjection {
+public interface LearnerRecentSlides {
     String getSlideId();
     String getSlideTitle();
     String getSlideDescription();
@@ -26,5 +26,11 @@ public interface SlideDetailProjection {
     Integer getSlideOrder(); // Added slide order field
     String getPublishedUrl();
     String getPublishedData();
-    Timestamp getLastSyncDate();
+    Long getVideoLastTimeStamp();
+    Long getDocumentLastPage();
+    String getPackageId();
+    String getLevelId();
+    String getSubjectId();
+    String getChapterId();
+    String getModuleId();
 }

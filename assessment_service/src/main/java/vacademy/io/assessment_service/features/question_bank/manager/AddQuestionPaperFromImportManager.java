@@ -115,7 +115,9 @@ public class AddQuestionPaperFromImportManager {
                 question.setParentRichText(AssessmentRichTextData.fromDTO(importQuestion.getParentRichText()));
             }
             newQuestions.add(question);
-            newOptions.addAll(question.getOptions());
+            List<Option> questionOptions = question.getOptions();
+            question.setOptions(new ArrayList<>());
+            newOptions.addAll(questionOptions);
         }
 
         // Save new questions and options
@@ -199,7 +201,9 @@ public class AddQuestionPaperFromImportManager {
                 question.setParentRichText(AssessmentRichTextData.fromDTO(importQuestion.getParentRichText()));
             }
             newQuestions.add(question);
-            newOptions.addAll(question.getOptions());
+            List<Option> questionOptions = question.getOptions();
+            question.setOptions(new ArrayList<>());
+            newOptions.addAll(questionOptions);
         }
 
         for (var importQuestion : questionRequestBody.getUpdatedQuestions()) {
@@ -212,7 +216,9 @@ public class AddQuestionPaperFromImportManager {
                 question.setParentRichText(AssessmentRichTextData.fromDTO(importQuestion.getParentRichText()));
             }
             newQuestions.add(question);
-            newOptions.addAll(question.getOptions());
+            List<Option> questionOptions = question.getOptions();
+            question.setOptions(new ArrayList<>());
+            newOptions.addAll(questionOptions);
         }
 
         for (var importQuestion : questionRequestBody.getDeletedQuestions()) {

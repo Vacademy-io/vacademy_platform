@@ -90,6 +90,7 @@ public class Question {
         this.textData = AssessmentRichTextData.fromDTO(questionDTO.getText());
         this.explanationTextData = AssessmentRichTextData.fromDTO(questionDTO.getExplanationText());
         this.parentRichText = AssessmentRichTextData.fromDTO(questionDTO.getParentRichText());
+        this.optionsJson = questionDTO.getOptionsJson();
     }
 
     public Question(String id) {

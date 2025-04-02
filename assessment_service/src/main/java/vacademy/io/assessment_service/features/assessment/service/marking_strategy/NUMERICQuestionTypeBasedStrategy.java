@@ -3,25 +3,24 @@ package vacademy.io.assessment_service.features.assessment.service.marking_strat
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Component;
-import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.mcqs.MCQSCorrectAnswerDto;
-import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.mcqs.MCQSMarkingDto;
-import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.mcqs.MCQSResponseDto;
+import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.numeric.NUMERICCorrectAnswerDto;
+import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.numeric.NUMERICMarkingDto;
+import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.numeric.NUMERICResponseDto;
 import vacademy.io.assessment_service.features.assessment.enums.QuestionResponseEnum;
 import vacademy.io.assessment_service.features.assessment.service.IQuestionTypeBasedStrategy;
 
 import java.util.List;
-import java.util.Optional;
 
 @Component
-public class MCQSQuestionTypeBasedStrategy extends IQuestionTypeBasedStrategy {
+public class NUMERICQuestionTypeBasedStrategy extends IQuestionTypeBasedStrategy {
 
 
     @Override
     public double calculateMarks(String markingJsonStr, String correctAnswerJsonStr, String responseJson) {
         try {
-            MCQSMarkingDto markingDto = (MCQSMarkingDto) validateAndGetMarkingData(markingJsonStr);
-            MCQSCorrectAnswerDto correctAnswerDto = (MCQSCorrectAnswerDto) validateAndGetCorrectAnswerData(correctAnswerJsonStr);
-            MCQSResponseDto responseDto = (MCQSResponseDto) validateAndGetResponseData(responseJson);
+            NUMERICMarkingDto markingDto = (NUMERICMarkingDto) validateAndGetMarkingData(markingJsonStr);
+            NUMERICCorrectAnswerDto correctAnswerDto = (NUMERICCorrectAnswerDto) validateAndGetCorrectAnswerData(correctAnswerJsonStr);
+            NUMERICResponseDto responseDto = (NUMERICResponseDto) validateAndGetResponseData(responseJson);
 
             // Validate input objects and prevent NullPointerException
             if (correctAnswerDto == null || markingDto == null || responseDto == null) {
@@ -30,19 +29,13 @@ public class MCQSQuestionTypeBasedStrategy extends IQuestionTypeBasedStrategy {
             }
 
             // Extracting correct answer
-            String correctOptionId = Optional.ofNullable(correctAnswerDto.getData())
-                    .map(MCQSCorrectAnswerDto.DataFields::getCorrectOptionIds)
-                    .filter(ids -> !ids.isEmpty())
-                    .map(ids -> ids.get(0))  // Only one correct answer for MCQS
-                    .orElse(null);
+            List<Double> validAnswers = correctAnswerDto.getData().getValidAnswer();
 
             // Extracting student's selected answer
-            List<String> attemptedOptionIds = Optional.ofNullable(responseDto.getResponseData())
-                    .map(MCQSResponseDto.ResponseData::getOptionIds)
-                    .orElse(List.of());
+            Double attemptedAnswer = responseDto.getResponseData().getValidAnswer();
 
             // Extract marking scheme details safely
-            MCQSMarkingDto.DataFields markingData = markingDto.getData();
+            NUMERICMarkingDto.DataFields markingData = markingDto.getData();
             if (markingData == null) {
                 setAnswerStatus(QuestionResponseEnum.INCORRECT.name());
                 return 0.0;
@@ -53,13 +46,13 @@ public class MCQSQuestionTypeBasedStrategy extends IQuestionTypeBasedStrategy {
             int negativePercentage = markingData.getNegativeMarkingPercentage();
 
             // If no answer was attempted, return 0 marks
-            if (attemptedOptionIds.isEmpty()) {
+            if (attemptedAnswer == null) {
                 setAnswerStatus(QuestionResponseEnum.PENDING.name());
                 return 0.0;
             }
 
             // If the selected option is correct, award full marks
-            if (attemptedOptionIds.size() == 1 && attemptedOptionIds.get(0).equals(correctOptionId)) {
+            if (validAnswers.contains(attemptedAnswer)) {
                 setAnswerStatus(QuestionResponseEnum.CORRECT.name());
                 return totalMarks;
             }
@@ -77,18 +70,18 @@ public class MCQSQuestionTypeBasedStrategy extends IQuestionTypeBasedStrategy {
     @Override
     public Object validateAndGetMarkingData(String markingJson) throws JsonProcessingException {
         ObjectMapper objectMapper = new ObjectMapper();
-        return objectMapper.readValue(markingJson, MCQSMarkingDto.class);
+        return objectMapper.readValue(markingJson, NUMERICMarkingDto.class);
     }
 
     @Override
     public Object validateAndGetCorrectAnswerData(String correctAnswerJson) throws JsonProcessingException {
         ObjectMapper objectMapper = new ObjectMapper();
-        return objectMapper.readValue(correctAnswerJson, MCQSCorrectAnswerDto.class);
+        return objectMapper.readValue(correctAnswerJson, NUMERICCorrectAnswerDto.class);
     }
 
     @Override
     public Object validateAndGetResponseData(String responseJson) throws JsonProcessingException {
         ObjectMapper objectMapper = new ObjectMapper();
-        return objectMapper.readValue(responseJson, MCQSResponseDto.class);
+        return objectMapper.readValue(responseJson, NUMERICResponseDto.class);
     }
 }

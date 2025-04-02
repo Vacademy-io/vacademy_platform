@@ -45,7 +45,6 @@ public class ONE_WORDQuestionTypeBasedStrategy extends IQuestionTypeBasedStrateg
 
             double totalMarks = markingData.getTotalMark();
             double negativeMarks = markingData.getNegativeMark();
-            double negativePercentage = markingData.getNegativeMarkingPercentage();
 
             // If the student did not attempt the question, return 0 marks
             if ( attemptedAnswer.isEmpty()) {

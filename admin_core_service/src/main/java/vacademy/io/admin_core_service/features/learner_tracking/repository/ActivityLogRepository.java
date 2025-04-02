@@ -266,20 +266,17 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
         ON a.id = cs.activity_id
     WHERE ssig.package_session_id = :packageSessionId
     AND ssig.status IN (:statusList)
-    GROUP BY s.id, s.full_name, s.email
-""", countQuery = """
-    SELECT COUNT(s.id)
+    GROUP BY s.user_id, s.full_name, s.email
+""",
+            countQuery = """
+    SELECT COUNT(DISTINCT s.user_id)
     FROM student s
     JOIN student_session_institute_group_mapping ssig 
         ON s.user_id = ssig.user_id
-    LEFT JOIN activity_log a 
-        ON ssig.user_id = a.user_id 
-        AND a.start_time BETWEEN :startTime AND :endTime
-    LEFT JOIN concentration_score cs 
-        ON a.id = cs.activity_id
     WHERE ssig.package_session_id = :packageSessionId
     AND ssig.status IN (:statusList)
-""", nativeQuery = true)
+""",
+            nativeQuery = true)
     Page<LearnerActivityDataProjection> getBatchActivityDataWithRankPaginated(
             @Param("startTime") Date startTime,
             @Param("endTime") Date endTime,
@@ -287,7 +284,6 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
             @Param("statusList") List<String> statusList,
             Pageable pageable
     );
-
 
 
     @Query(value = """

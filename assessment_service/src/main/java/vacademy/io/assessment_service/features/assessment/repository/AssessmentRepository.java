@@ -5,6 +5,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.CrudRepository;
 import org.springframework.data.repository.query.Param;
+import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.AssessmentCountResponse;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 
 import java.util.List;
@@ -314,4 +315,16 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
             @Param("timeFrameInMinutes") Integer timeFrameInMinutes,
             @Param("statusList") List<String> statusList);
 
+
+    @Query(value = """
+            SELECT
+                COUNT(CASE WHEN a.status = 'PUBLISHED' AND NOW() BETWEEN a.bound_start_time AND a.bound_end_time THEN 1 END) AS liveCount,
+                COUNT(CASE WHEN a.status = 'PUBLISHED' AND NOW() < a.bound_start_time THEN 1 END) AS upcomingCount,
+                COUNT(CASE WHEN a.status = 'PUBLISHED' AND NOW() > a.bound_end_time THEN 1 END) AS previousCount,
+                COUNT(CASE WHEN a.status = 'DRAFT' THEN 1 END) AS draftCount
+            FROM assessment a
+            JOIN assessment_institute_mapping aim ON a.id = aim.assessment_id
+            WHERE aim.institute_id = :instituteId
+            """,nativeQuery = true)
+    AssessmentCountResponse getAssessmentAllTypeCount(@Param("instituteId") String instituteId);
 }

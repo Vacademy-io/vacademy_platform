@@ -202,7 +202,6 @@ public class AddQuestionPaperFromImportManager {
             }
             newQuestions.add(question);
             List<Option> questionOptions = question.getOptions();
-            question.setOptions(new ArrayList<>());
             newOptions.addAll(questionOptions);
         }
 
@@ -217,7 +216,6 @@ public class AddQuestionPaperFromImportManager {
             }
             newQuestions.add(question);
             List<Option> questionOptions = question.getOptions();
-            question.setOptions(new ArrayList<>());
             newOptions.addAll(questionOptions);
         }
 
@@ -227,6 +225,7 @@ public class AddQuestionPaperFromImportManager {
             if (existingQuestion.isEmpty())
                 continue;
             existingQuestion.get().setStatus(DELETED.name());
+            newQuestions.add(existingQuestion.get());
         }
 
         questionRepository.saveAll(newQuestions);
@@ -302,6 +301,7 @@ public class AddQuestionPaperFromImportManager {
             }
             options.add(option);
         }
+        question.setOptions(new ArrayList<>());
         question.setOptions(options);
         return correctOptionIds;
     }

@@ -238,7 +238,7 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
 
 
     @Query(value = """
-            select aur.id as registrationId,sa.id as attemptId, aur.participant_name as studentName, sa.start_time as attemptDate,sa.submit_time as endTime ,sa.total_time_in_seconds as duration, sa.result_marks as score, aur.user_id as userId
+            select aur.id as registrationId,sa.id as attemptId, aur.participant_name as studentName, sa.start_time as attemptDate,sa.submit_time as endTime ,sa.total_time_in_seconds as duration, sa.result_marks as score, aur.user_id as userId,
             sa.report_release_status as reportReleaseResultStatus,
             sa.report_last_release_date as lastReportReleaseDate,
             sa.result_status as evaluationStatus FROM assessment_user_registration aur
@@ -282,7 +282,7 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
 
 
     @Query(value = """
-            select aur.id as registrationId,sa.id as attemptId, aur.participant_name as studentName, sa.start_time as attemptDate,sa.submit_time as endTime ,sa.total_time_in_seconds as duration, sa.result_marks as score, aur.user_id as userId
+            select aur.id as registrationId,sa.id as attemptId, aur.participant_name as studentName, sa.start_time as attemptDate,sa.submit_time as endTime ,sa.total_time_in_seconds as duration, sa.result_marks as score, aur.user_id as userId,
             sa.report_release_status as reportReleaseResultStatus,
             sa.report_last_release_date as lastReportReleaseDate,
             sa.result_status as evaluationStatus FROM assessment_user_registration aur

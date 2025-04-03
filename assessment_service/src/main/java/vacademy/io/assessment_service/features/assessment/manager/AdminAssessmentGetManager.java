@@ -348,4 +348,9 @@ public class AdminAssessmentGetManager {
                 .totalAchievableMarks(totalMarks)
                 .sectionWiseAchievableMarks(sectionMarksMapping).build();
     }
+
+    public ResponseEntity<AssessmentCountResponse> getAssessmentCount(CustomUserDetails userDetails, String instituteId) {
+        AssessmentCountResponse response = assessmentRepository.getAssessmentAllTypeCount(instituteId);
+        return ResponseEntity.ok(response);
+    }
 }

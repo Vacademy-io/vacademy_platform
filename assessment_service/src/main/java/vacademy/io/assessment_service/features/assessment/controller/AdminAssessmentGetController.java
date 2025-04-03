@@ -87,4 +87,10 @@ public class AdminAssessmentGetController {
                                                                             @RequestParam(name = "assessmentId") String assessmentId){
         return adminAssessmentGetManager.initTotalAssessmentMarks(user, assessmentId);
     }
+
+    @GetMapping("/dashboard/get-count")
+    public ResponseEntity<AssessmentCountResponse> getAssessmentCount(@RequestAttribute("user") CustomUserDetails userDetails,
+                                                                      @RequestParam(name = "instituteId") String instituteId){
+        return adminAssessmentGetManager.getAssessmentCount(userDetails, instituteId);
+    }
 }

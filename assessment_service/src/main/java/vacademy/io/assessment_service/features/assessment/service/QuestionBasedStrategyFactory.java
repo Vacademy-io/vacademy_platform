@@ -7,8 +7,7 @@ import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based
 import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.mcqs.MCQSResponseDto;
 import vacademy.io.assessment_service.features.assessment.dto.QuestionWiseBasicDetailDto;
 import vacademy.io.assessment_service.features.assessment.enums.QuestionResponseEnum;
-import vacademy.io.assessment_service.features.assessment.service.marking_strategy.MCQMQuestionTypeBasedStrategy;
-import vacademy.io.assessment_service.features.assessment.service.marking_strategy.MCQSQuestionTypeBasedStrategy;
+import vacademy.io.assessment_service.features.assessment.service.marking_strategy.*;
 import vacademy.io.assessment_service.features.question_core.enums.QuestionTypes;
 
 import java.util.*;
@@ -19,6 +18,9 @@ public class QuestionBasedStrategyFactory {
     static {
         strategies.put(QuestionTypes.MCQM.name(), new MCQMQuestionTypeBasedStrategy());
         strategies.put(QuestionTypes.MCQS.name(), new MCQSQuestionTypeBasedStrategy());
+        strategies.put(QuestionTypes.ONE_WORD.name(), new OneWordQuestionTypeBasedStrategy());
+        strategies.put(QuestionTypes.LONG_ANSWER.name(), new LongAnswerQuestionTypeBasedStrategy());
+        strategies.put(QuestionTypes.NUMERIC.name(), new NUMERICQuestionTypeBasedStrategy());
         // Add more strategies here
     }
 

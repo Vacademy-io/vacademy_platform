@@ -1,6 +1,7 @@
 package vacademy.io.auth_service.feature.notification.service;
 
 public class NotificationEmailBody {
+    private static String frontendLoginUrl = "https://dash.vacademy.io/login";
     public static String forgetPasswordEmailBody(String service, String name, String username, String password) {
         return """
     <!DOCTYPE html>
@@ -76,82 +77,95 @@ public class NotificationEmailBody {
     </html>
     """.formatted(name, username, password, service);
     }
-
     public static String createWelcomeEmailBody(String service, String name, String username, String password) {
         return """
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Welcome to %s</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-            background-color: #F4F4F4; 
-        }
-        .container {
-            max-width: 600px;
-            margin: 40px auto;
-            padding: 20px;
-            background-color: #FFFFFF;
-            border: 1px solid #FF5722; /* Orange-Red */
-            border-radius: 10px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-        }
-        .header {
-            background: linear-gradient(45deg, #FF5722, #D84315); /* Red-Orange Mix */
-            color: #FFF;
-            padding: 15px;
-            text-align: center;
-            border-radius: 10px 10px 0 0;
-        }
-        .content {
-            padding: 20px;
-            font-size: 16px;
-            color: #333;
-        }
-        .footer {
-            background: linear-gradient(45deg, #FF5722, #D84315);
-            color: #FFF;
-            padding: 10px;
-            text-align: center;
-            border-radius: 0 0 10px 10px;
-        }
-        .credentials {
-            font-size: 18px;
-            font-weight: bold;
-            color: #D84315;
-            text-align: center;
-            padding: 10px;
-            background-color: #FFCCBC; /* Light Orange */
-            border: 2px solid #D84315;
-            border-radius: 5px;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h2>Welcome to %s</h2>
-        </div>
-        <div class="content">
-            <p>Dear %s,</p>
-            <p>Welcome! We're excited to have you on board. Below are your login credentials for future reference:</p>
-            <div class="credentials">
-                <p><strong>Username:</strong> %s</p>
-                <p><strong>Password:</strong> %s</p>
-            </div>
-            <p>Please keep these details safe and consider updating your password for security.</p>
-            <p>Enjoy your experience with %s!</p>
-        </div>
-        <div class="footer">
-            <p>Best regards, <br> %s Team</p>
-        </div>
-    </div>
-</body>
-</html>
-""".formatted(service, service, name, username, password, service, service);
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Welcome to %s</title>
+                <style>
+                    body {
+                        font-family: Arial, sans-serif;
+                        margin: 0;
+                        padding: 0;
+                        background-color: #F4F4F4; 
+                    }
+                    .container {
+                        max-width: 600px;
+                        margin: 40px auto;
+                        padding: 20px;
+                        background-color: #FFFFFF;
+                        border: 1px solid #FF5722;
+                        border-radius: 10px;
+                        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+                    }
+                    .header {
+                        background: linear-gradient(45deg, #FF5722, #D84315);
+                        color: #FFF;
+                        padding: 15px;
+                        text-align: center;
+                        border-radius: 10px 10px 0 0;
+                    }
+                    .content {
+                        padding: 20px;
+                        font-size: 16px;
+                        color: #333;
+                    }
+                    .footer {
+                        background: linear-gradient(45deg, #FF5722, #D84315);
+                        color: #FFF;
+                        padding: 10px;
+                        text-align: center;
+                        border-radius: 0 0 10px 10px;
+                    }
+                    .credentials {
+                        font-size: 18px;
+                        font-weight: bold;
+                        color: #D84315;
+                        text-align: center;
+                        padding: 10px;
+                        background-color: #FFCCBC;
+                        border: 2px solid #D84315;
+                        border-radius: 5px;
+                    }
+                    .login-button {
+                        display: inline-block;
+                        margin-top: 20px;
+                        padding: 10px 20px;
+                        background-color: #FF5722;
+                        color: white;
+                        text-decoration: none;
+                        border-radius: 5px;
+                        font-weight: bold;
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="header">
+                        <h2>Welcome to %s</h2>
+                    </div>
+                    <div class="content">
+                        <p>Dear %s,</p>
+                        <p>Welcome! We're excited to have you on board. Below are your login credentials for future reference:</p>
+                        <div class="credentials">
+                            <p><strong>Username:</strong> %s</p>
+                            <p><strong>Password:</strong> %s</p>
+                        </div>
+                        <p>Please keep these details safe and consider updating your password for security.</p>
+                        <p>You can log in using the button below:</p>
+                        <p style="text-align:center;">
+                            <a class="login-button" href="%s" target="_blank">Login to Your Account</a>
+                        </p>
+                        <p>Enjoy your experience with %s!</p>
+                    </div>
+                    <div class="footer">
+                        <p>Best regards, <br> %s Team</p>
+                    </div>
+                </div>
+            </body>
+            </html>
+        """.formatted(service, service, name, username, password, frontendLoginUrl, service, service);
     }
 
 }

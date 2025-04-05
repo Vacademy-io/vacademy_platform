@@ -11,10 +11,7 @@ import vacademy.io.admin_core_service.features.learner_reports.service.BatchRepo
 import vacademy.io.common.auth.config.PageConstants;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 
 @RestController
@@ -33,7 +30,7 @@ public class BatchReportController {
             @RequestBody ReportFilterDTO reportFilterDTO,
             @RequestAttribute("user") CustomUserDetails userDetails) {
         if (userDetails.getUserId().equalsIgnoreCase("bb4ac8b0-8855-4a86-9e27-4ea62c99fd41")){
-            return ResponseEntity.ok(generateSingleProgressReportWithMoreDays());
+            return ResponseEntity.ok(generateSingleProgressReportWithMoreDays(reportFilterDTO.getStartDate(),reportFilterDTO.getEndDate()));
         }
         return ResponseEntity.ok(batchReportService.getBatchReport(reportFilterDTO, userDetails));
     }
@@ -77,23 +74,54 @@ public class BatchReportController {
         );
     }
 
-    public static ProgressReportDTO generateSingleProgressReportWithMoreDays() {
-        List<AvgDailyTimeSpentDTO> dailyTimeSpent = Arrays.asList(
-                new AvgDailyTimeSpentDTO("2025-03-25", 50.0),
-                new AvgDailyTimeSpentDTO("2025-03-26", 55.0),
-                new AvgDailyTimeSpentDTO("2025-03-27", 60.0),
-                new AvgDailyTimeSpentDTO("2025-03-28", 65.0),
-                new AvgDailyTimeSpentDTO("2025-03-29", 70.0),
-                new AvgDailyTimeSpentDTO("2025-03-30", 75.0),
-                new AvgDailyTimeSpentDTO("2025-03-31", 80.0)
-        );
+    public static ProgressReportDTO generateSingleProgressReportWithMoreDays(Date startDate, Date endDate) {
+        List<AvgDailyTimeSpentDTO> dailyTimeSpent = new ArrayList<>();
+        Calendar calendar = Calendar.getInstance();
+        calendar.setTime(startDate);
+
+        double totalTime = 0.0;
+        int count = 0;
+
+        while (!calendar.getTime().after(endDate)) {
+            Date currentDate = calendar.getTime();
+
+            // Create fluctuation: alternate between low, medium, and high
+            double value;
+            switch (count % 3) {
+                case 0:
+                    value = getRandomDouble(30, 50); // low
+                    break;
+                case 1:
+                    value = getRandomDouble(60, 80); // high
+                    break;
+                default:
+                    value = getRandomDouble(45, 65); // medium
+            }
+
+            totalTime += value;
+            dailyTimeSpent.add(new AvgDailyTimeSpentDTO(
+                    new java.text.SimpleDateFormat("yyyy-MM-dd").format(currentDate),
+                    Math.round(value * 10.0) / 10.0
+            ));
+
+            calendar.add(Calendar.DATE, 1);
+            count++;
+        }
+
+        double avg = dailyTimeSpent.isEmpty() ? 0.0 : totalTime / dailyTimeSpent.size();
+        double completion = avg > 50 ? getRandomDouble(70, 100) : getRandomDouble(40, 60);
+        double concentration = getRandomDouble(65, 90);
 
         return new ProgressReportDTO(
-                88.0,
-                110.0,
-                92.5,
+                completion,
+                avg,
+                concentration,
                 dailyTimeSpent
         );
+    }
+
+    private static double getRandomDouble(double min, double max) {
+        return Math.round((Math.random() * (max - min) + min) * 10.0) / 10.0;
     }
 
     public static Page<LearnerActivityDataProjection> generateDummyLeaderboardPage(int pageNo, int pageSize) {

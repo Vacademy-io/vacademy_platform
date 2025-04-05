@@ -50,9 +50,6 @@ public class LearnerUserInfoController {
 
     @GetMapping("/learner-details")
     public ResponseEntity<List<LearnerDetailsDTO>> getLearnerDetails(@RequestParam("packageSessionId") String packageSessionId, @RequestParam("instituteId") String instituteId, @RequestAttribute("user") CustomUserDetails user) {
-        if (user.getUserId().equalsIgnoreCase("bb4ac8b0-8855-4a86-9e27-4ea62c99fd41")) {
-            return ResponseEntity.ok(generateDummyLearnerDetails());
-        }
         return ResponseEntity.ok(learnerService.getStudentsByPackageSessionId(packageSessionId, instituteId, user));
     }
 
@@ -61,17 +58,4 @@ public class LearnerUserInfoController {
         return ResponseEntity.ok(learnerProfileManager.getLearnerBatchDetail(user,packageSessionId,instituteId));
     }
 
-    private List<LearnerDetailsDTO> generateDummyLearnerDetails() {
-        List<String> names = Arrays.asList(
-                "Punit Punde", "Shrishti Gupta", "Ratan Mishra", "Prathemesh Ingale", "Raj Shkeher",
-                "Shiva Raj", "Piyush Raj", "Namita Dhawan", "Shubhahit Jain", "Riya Jain"
-        );
-
-        List<LearnerDetailsDTO> learners = new ArrayList<>();
-        for (int i = 0; i < names.size(); i++) {
-            learners.add(new LearnerDetailsDTO(names.get(i), UUID.nameUUIDFromBytes(names.get(i).getBytes()).toString()));
-        }
-
-        return learners;
-    }
 }

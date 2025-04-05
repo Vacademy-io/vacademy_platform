@@ -8,9 +8,8 @@ import vacademy.io.admin_core_service.features.learner_reports.service.BatchRepo
 import vacademy.io.admin_core_service.features.learner_reports.service.LearnerReportService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
-import java.util.Arrays;
-import java.util.List;
-import java.util.UUID;
+import java.time.LocalDate;
+import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 
 @RestController
@@ -26,8 +25,8 @@ public class LearnerReportController {
     @PostMapping
     public ResponseEntity<LearnerProgressReportDTO> getLearnerProgressReport(@RequestBody ReportFilterDTO filterDTO,
                                                                              @RequestAttribute("user") CustomUserDetails userDetails) {
-        if (userDetails.getUserId().equalsIgnoreCase("bb4ac8b0-8855-4a86-9e27-4ea62c99fd41")){
-            return ResponseEntity.ok(generateDummyVedProgress());
+        if (userDetails.getUserId().equalsIgnoreCase("bb4ac8b0-8855-4a86-9e27-4ea62c99fd41")) {
+            return ResponseEntity.ok(generateDummyVedProgress(filterDTO));
         }
         LearnerProgressReportDTO learnerProgressReportDTO = new LearnerProgressReportDTO();
         learnerProgressReportDTO.setLearnerProgressReport(learnerReportService.getLearnerProgressReport(filterDTO, userDetails));
@@ -41,7 +40,7 @@ public class LearnerReportController {
             @RequestParam String userId,
             @RequestAttribute("user") CustomUserDetails userDetails) {
 
-        if (userDetails.getUserId().equalsIgnoreCase("bb4ac8b0-8855-4a86-9e27-4ea62c99fd41")){
+        if (userDetails.getUserId().equalsIgnoreCase("bb4ac8b0-8855-4a86-9e27-4ea62c99fd41")) {
             return ResponseEntity.ok(generateDummySubjectProgress());
         }
         return ResponseEntity.ok(learnerReportService.getSubjectProgressReport(packageSessionId, userId, userDetails));
@@ -65,17 +64,21 @@ public class LearnerReportController {
             @RequestAttribute("user") CustomUserDetails userDetails) {
 
         if (userDetails.getUserId().equalsIgnoreCase("bb4ac8b0-8855-4a86-9e27-4ea62c99fd41")) {
-            return ResponseEntity.ok(generateDummyVedSlideProgress());
+            return ResponseEntity.ok(generateDummyVedSlideProgress(reportFilterDTO));
         }
         return ResponseEntity.ok(learnerReportService.getSlideProgressForLearner(reportFilterDTO, userDetails));
     }
 
-    private LearnerProgressReportDTO generateDummyVedProgress() {
-        List<AvgDailyTimeSpentDTO> dummyTimeList = List.of(
-                new AvgDailyTimeSpentDTO("2025-03-30", 45.0),
-                new AvgDailyTimeSpentDTO("2025-03-31", 50.0),
-                new AvgDailyTimeSpentDTO("2025-04-01", 35.0)
-        );
+    private LearnerProgressReportDTO generateDummyVedProgress(ReportFilterDTO filterDTO) {
+        List<AvgDailyTimeSpentDTO> dummyTimeList = new ArrayList<>();
+        LocalDate startDate = filterDTO.getStartDate().toLocalDate();
+        LocalDate endDate = filterDTO.getEndDate().toLocalDate();
+
+        for (LocalDate date = startDate; !date.isAfter(endDate); date = date.plusDays(1)) {
+            double randomTime = randomDouble(30, 60);
+            dummyTimeList.add(new AvgDailyTimeSpentDTO(date.toString(), randomTime));
+        }
+
         ProgressReportDTO dummyProgress = new ProgressReportDTO(
                 78.5,
                 43.3,
@@ -145,34 +148,29 @@ public class LearnerReportController {
         return List.of(chapter);
     }
 
-    private List<SlideProgressDateWiseDTO> generateDummyVedSlideProgress() {
-        SlideProgressDTO slide1 = new SlideProgressDTO(
-                "slide1",
-                "Rigveda Hymns",
-                "ch1",
-                "Essence of Rigveda",
-                "m1",
-                "Rigveda",
-                "ved001",
-                "Ved",
-                90.0,
-                "00:12:34"
-        );
-        SlideProgressDTO slide2 = new SlideProgressDTO(
-                "slide2",
-                "Samveda Chants",
-                "ch1",
-                "Essence of Samveda",
-                "m1",
-                "Samveda",
-                "ved001",
-                "Ved",
-                85.0,
-                "00:10:20"
-        );
-        SlideProgressDateWiseDTO day1 = new SlideProgressDateWiseDTO("2025-04-01", List.of(slide1));
-        SlideProgressDateWiseDTO day2 = new SlideProgressDateWiseDTO("2025-04-02", List.of(slide2));
-        return List.of(day1, day2);
-    }
+    private List<SlideProgressDateWiseDTO> generateDummyVedSlideProgress(ReportFilterDTO filterDTO) {
+        List<SlideProgressDateWiseDTO> slideProgressList = new ArrayList<>();
+        LocalDate startDate = filterDTO.getStartDate().toLocalDate();
+        LocalDate endDate = filterDTO.getEndDate().toLocalDate();
+        int count = 0;
 
+        for (LocalDate date = startDate; !date.isAfter(endDate); date = date.plusDays(1)) {
+            SlideProgressDTO slide = new SlideProgressDTO(
+                    "slide" + count,
+                    "Slide Title " + (count + 1),
+                    "ch1",
+                    "Essence of Slide " + (count + 1),
+                    "m1",
+                    "Module Name",
+                    "ved001",
+                    "Ved",
+                    randomDouble(70, 100),
+                    "00:0" + (5 + count % 5) + ":00"
+            );
+            slideProgressList.add(new SlideProgressDateWiseDTO(date.toString(), List.of(slide)));
+            count++;
+        }
+
+        return slideProgressList;
+    }
 }

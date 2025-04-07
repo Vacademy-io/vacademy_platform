@@ -9,7 +9,7 @@ import vacademy.io.admin_core_service.features.institute_learner.repository.Inst
 import vacademy.io.admin_core_service.features.notification.dto.NotificationDTO;
 import vacademy.io.admin_core_service.features.notification.dto.NotificationToUserDTO;
 import vacademy.io.admin_core_service.features.notification.enums.NotificationSourceEnum;
-import vacademy.io.admin_core_service.features.notification.enums.NotificationType;
+import vacademy.io.admin_core_service.features.notification.enums.CommunicationType;
 import vacademy.io.admin_core_service.features.notification.service.NotificationService;
 import vacademy.io.admin_core_service.features.slide.entity.Slide;
 import vacademy.io.common.exceptions.VacademyException;
@@ -70,7 +70,7 @@ public class SlideNotificationService {
     private NotificationDTO prepareNotificationDTO(Slide slide, List<NotificationToUserDTO> notificationUsers) {
         NotificationDTO notificationDTO = new NotificationDTO();
         notificationDTO.setBody(SlideNotificationEmailBody.NEW_SLIDE_EMAIL_TEMPLATE);
-        notificationDTO.setNotificationType(NotificationType.EMAIL.name());
+        notificationDTO.setNotificationType(CommunicationType.EMAIL.name());
         notificationDTO.setSubject("New Study Material Available");
         notificationDTO.setSource(NotificationSourceEnum.SLIDE.name());
         notificationDTO.setSourceId(slide.getId());

@@ -4,7 +4,7 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.notification.dto.NotificationDTO;
 import vacademy.io.admin_core_service.features.notification.dto.NotificationToUserDTO;
-import vacademy.io.admin_core_service.features.notification.enums.NotificationType;
+import vacademy.io.admin_core_service.features.notification.enums.CommunicationType;
 import vacademy.io.admin_core_service.features.notification.service.NotificationService;
 import vacademy.io.common.notification.dto.GenericEmailRequest;
 
@@ -25,7 +25,7 @@ public class LearnerInvitationNotification {
         CompletableFuture.runAsync(() -> {
             try {
                 NotificationDTO notificationDTO = new NotificationDTO();
-                notificationDTO.setNotificationType(NotificationType.EMAIL.name());
+                notificationDTO.setNotificationType(CommunicationType.EMAIL.name());
                 notificationDTO.setSubject("Invitation to join " + instituteName);
                 notificationDTO.setSource("LEARNER_INVITATION");
                 notificationDTO.setSourceId(invitationCode);
@@ -66,7 +66,7 @@ public class LearnerInvitationNotification {
         CompletableFuture.runAsync(() -> {
             try {
                 NotificationDTO notificationDTO = new NotificationDTO();
-                notificationDTO.setNotificationType(NotificationType.EMAIL.name());
+                notificationDTO.setNotificationType(CommunicationType.EMAIL.name());
                 notificationDTO.setSubject("Status updated for your request to " + instituteName);
                 notificationDTO.setSource("LEARNER_INVITATION");
                 notificationDTO.setSourceId(instituteId);

@@ -127,7 +127,7 @@ public class StudentBulkInitUploadManager {
                     "Invalid email format", order++, List.of("john@example.com", "doe@example.com", "smith@example.com"));
             headers.add(emailHeader);
         } else {
-            emailHeader = createRegexHeader("regex", false, "PARENTS_EMAIL",
+            emailHeader = createRegexHeader("regex", true, "PARENTS_EMAIL",
                     "^(?![\\s\\S])|^((?!\\.)[\\w\\-_.]*[^.])(@\\w+)(\\.\\w+(\\.\\w+)?[^.\\W])$",
                     "Invalid email format", order++, List.of("john@example.com", "doe@example.com", "smith@example.com"));
             headers.add(emailHeader);

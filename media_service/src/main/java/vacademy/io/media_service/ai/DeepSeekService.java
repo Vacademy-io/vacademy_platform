@@ -45,13 +45,13 @@ public class DeepSeekService {
 
 
 
-    public String getQuestionsWithDeepSeekFromTextPrompt(String textPrompt, String numberOfQuestions, String typeOfQuestion, String classLevel, String topics) {
+    public String getQuestionsWithDeepSeekFromTextPrompt(String textPrompt, String numberOfQuestions, String typeOfQuestion, String classLevel, String topics, String language) {
 
         String template = """
                 Text raw prompt :  {textPrompt}
                     
                         Prompt:
-                        use the Text raw prompt to generate {numberOfQuestions} {typeOfQuestion} questions for the class level {classLevel} and topics {topics}, return the output in JSON format as follows:
+                        use the Text raw prompt to generate {numberOfQuestions} {typeOfQuestion} questions for the class level {classLevel} and topics {topics} in {language}, return the output in JSON format as follows:
                                 {{
                                          "questions": [
                                              {{
@@ -88,7 +88,7 @@ public class DeepSeekService {
                         
                         """;
 
-        Prompt prompt = new PromptTemplate(template).create(Map.of("textPrompt", textPrompt, "numberOfQuestions", numberOfQuestions, "typeOfQuestion", typeOfQuestion, "classLevel", classLevel, "topics", topics));
+        Prompt prompt = new PromptTemplate(template).create(Map.of("textPrompt", textPrompt, "numberOfQuestions", numberOfQuestions, "typeOfQuestion", typeOfQuestion, "classLevel", classLevel, "topics", topics, "language", language));
 
         ChatResponse response = chatModel.call(
                 prompt);
@@ -235,10 +235,61 @@ public class DeepSeekService {
     }
 
 
-    public String getQuestionsWithDeepSeekFromAudio(String audioString) {
+    public String evaluateManualAnswerSheet(String htmlAnswerData, String htmlQuestionData, Double maxMarks, String evaluationDifficulty) {
+        HtmlJsonProcessor htmlJsonProcessor = new HtmlJsonProcessor();
+        String unTaggedHtml = htmlJsonProcessor.removeTags(htmlAnswerData);
+
+        String template = """
+                Question :  {htmlQuestionData}
+                
+                Answer By Student :  {htmlAnswerData}
+                
+                Maximum Marks :{maxMarks}
+                
+                Evaluation Difficulty :{evaluationDifficulty} 
+                    
+                        Prompt:
+                        Evaluate the Answer against the Question and give marks out of maximum marks, evaluate on given evaluation difficulty
+                        - Give details of what is wrong referring to the specific part of answer
+                        
+                        JSON format : 
+                        
+                                {{
+                                         "marks_obtained": double value of marks obtained out of max marks,
+                                         "answer_tips": ["<div>part of answer -> this part can be written with better english</div>", "string2", "string3"] // html string list of tips on how to write the answer linking to the students answer use html tags to add styling,
+                                         "explanation": "<div>explanation and comparison with correct answer</div>" // html string of correct explanation to the students answer use html tags to add styling,
+                                         "topic_wise_understanding": ["<div><b>sub topic</b> -> how is the understanding of the topic for this student</div>", "string2", "string3"] // html string list of topic wise understanding and analysis use html tags to add styling,
+                                }}
+                            
+                      
+           
+                        """;
+
+        Prompt prompt = new PromptTemplate(template).create(Map.of("htmlQuestionData", htmlQuestionData, "htmlAnswerData", htmlAnswerData, "maxMarks", maxMarks, "evaluationDifficulty", evaluationDifficulty));
+
+        ChatResponse response = chatModel.call(
+                prompt);
+
+        String  resultJson = response.getResult().getOutput().toString();
+        String validJson = JsonUtils.extractAndSanitizeJson(resultJson);
+        try {
+            String restoredJson = htmlJsonProcessor.restoreTagsInJson(validJson);
+            return restoredJson;
+        } catch (Exception e) {
+            throw new VacademyException(e.getMessage());
+        }
+    }
+
+
+
+    public String getQuestionsWithDeepSeekFromAudio(String audioString, String difficulty, String numQuestions, String optionalPrompt, String language) {
         String template = """
                 Class Lecture raw data :  {classLecture}
-                    
+                Questions Difficulty :  {difficulty}
+                Number of Questions :  {numQuestions}
+                Optional Teacher Prompt :  {optionalPrompt}
+                Language of questions:  {language}
+                
                         Prompt:
                         From the given audio lecture compile hard and medium questions, try engaging questions, convert it into the following JSON format:
                         
@@ -276,11 +327,9 @@ public class DeepSeekService {
                         For LONG_ANSWER, NUMERIC, and ONE_WORD question types:
                         - Leave 'correct_options' empty but fill 'ans' and 'exp'
                         - Omit 'options' field entirely
-                        
-                        Make 20 - 30 questions in language of lecture
                         """;
 
-        Prompt prompt = new PromptTemplate(template).create(Map.of("classLecture", audioString));
+        Prompt prompt = new PromptTemplate(template).create(Map.of("classLecture", audioString, "difficulty", difficulty, "numQuestions", numQuestions, "optionalPrompt", optionalPrompt));
 
         ChatResponse response = chatModel.call(
                 prompt);

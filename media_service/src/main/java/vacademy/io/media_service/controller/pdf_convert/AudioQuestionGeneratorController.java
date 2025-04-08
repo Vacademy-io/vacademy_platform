@@ -55,8 +55,7 @@ public class AudioQuestionGeneratorController {
 
 
     @PostMapping("/audio-parser/start-process-audio")
-    public ResponseEntity<AutoDocumentSubmitResponse> startProcessPdf(
-            @RequestParam("file") MultipartFile file) {
+    public ResponseEntity<AutoDocumentSubmitResponse> startProcessPdf(@RequestParam("file") MultipartFile file) {
 
         try {
             FileDetailsDTO fileDetailsDTO = fileService.uploadFileWithDetails(file);
@@ -78,8 +77,7 @@ public class AudioQuestionGeneratorController {
 
 
     @PostMapping("/audio-parser/start-process-audio-file-id")
-    public ResponseEntity<AutoDocumentSubmitResponse> startProcessPdf(
-            @RequestBody FileIdSubmitRequest file) {
+    public ResponseEntity<AutoDocumentSubmitResponse> startProcessPdf(@RequestBody FileIdSubmitRequest file) {
 
         try {
             var fileDetailsDTOs = fileService.getMultipleFileDetailsWithExpiryAndId(file.getFileId(), 7);
@@ -100,9 +98,24 @@ public class AudioQuestionGeneratorController {
     }
 
 
-
     @GetMapping("/audio-parser/audio-to-questions")
-    public ResponseEntity<AutoQuestionPaperResponse> getMathParserPdfHtml(@RequestParam String audioId) throws IOException {
+    public ResponseEntity<AutoQuestionPaperResponse> getMathParserPdfHtml(@RequestParam String audioId, @RequestParam(required = false) String numQuestions, @RequestParam(required = false) String prompt, @RequestParam(required = false) String difficulty, @RequestParam(required = false) String language) throws IOException {
+
+        if (difficulty == null) {
+            difficulty = "hard and medium";
+        }
+
+        if (numQuestions == null) {
+            numQuestions = "20";
+        }
+
+        if (prompt == null) {
+            prompt = "";
+        }
+
+        if(language == null) {
+            language = "english";
+        }
 
         var fileConversionStatus = fileConversionStatusService.findByVendorFileId(audioId);
 
@@ -114,7 +127,7 @@ public class AudioQuestionGeneratorController {
 
 
             fileConversionStatusService.updateHtmlText(audioId, convertedText);
-            String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromAudio(convertedText));
+            String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromAudio(convertedText, numQuestions, prompt, difficulty, language));
 
             // Process the raw output to get valid JSON
             String validJson = JsonUtils.extractAndSanitizeJson(rawOutput);
@@ -122,7 +135,7 @@ public class AudioQuestionGeneratorController {
             return ResponseEntity.ok(createAutoQuestionPaperResponse(removeExtraSlashes(validJson)));
         }
 
-        String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromAudio(fileConversionStatus.get().getHtmlText()));
+        String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromAudio(fileConversionStatus.get().getHtmlText(), numQuestions, prompt, difficulty, language));
 
         // Process the raw output to get valid JSON
         String validJson = JsonUtils.extractAndSanitizeJson(rawOutput);

@@ -14,12 +14,8 @@ import java.util.List;
 @NoArgsConstructor
 @ToString
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class AIManualEvaluationQuestionPaperResponse {
+public class AIManualEvaluationQuestionPaperRequest {
     private String htmlQuestion;
-    private String htmlAnswer;
-    private Double marksObtained;
     private Double totalMarks;
-    private List<String> answerTips;
-    private String explanation;
-    private List<String> topicWiseUnderstanding;
+    private String evaluationDifficulty;
 }

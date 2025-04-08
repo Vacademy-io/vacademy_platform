@@ -161,7 +161,7 @@ public class PDFQuestionGeneratorController {
         return ResponseEntity.ok(createAutoQuestionPaperResponse(removeExtraSlashes(validJson)));
     }
 
-    @GetMapping("/math-parser/html-to-questions")
+    @PostMapping("/math-parser/html-to-questions")
     public ResponseEntity<AutoQuestionPaperResponse> getMathParserHtmlToQuestions(@RequestBody HtmlResponse html) throws IOException {
 
 
@@ -223,8 +223,20 @@ public class PDFQuestionGeneratorController {
     }
 
 
-    @GetMapping("/math-parser/check-manual-answer")
-    public ResponseEntity<AutoQuestionPaperResponse> getEvaluationForQuestions(@RequestParam String pdfId, @RequestParam String requiredTopics) throws IOException {
+    @PostMapping("/math-parser/check-manual-answer")
+    public ResponseEntity<AIManualEvaluationQuestionPaperResponse> getEvaluationForQuestions(@RequestParam String pdfId, @RequestBody AIManualEvaluationQuestionPaperRequest aiManualEvaluationQuestionPaperRequest) throws IOException {
+
+        if (aiManualEvaluationQuestionPaperRequest == null) {
+            throw new VacademyException("Please provide request body");
+        }
+
+        if (aiManualEvaluationQuestionPaperRequest.getTotalMarks() == null) {
+            aiManualEvaluationQuestionPaperRequest.setTotalMarks(100D);
+        }
+
+        if (aiManualEvaluationQuestionPaperRequest.getEvaluationDifficulty() == null) {
+            aiManualEvaluationQuestionPaperRequest.setEvaluationDifficulty("hard and medium");
+        }
 
         var fileConversionStatus = fileConversionStatusService.findByVendorFileId(pdfId);
 
@@ -237,28 +249,27 @@ public class PDFQuestionGeneratorController {
             String networkHtml = htmlImageConverter.convertBase64ToUrls(htmlBody);
 
             fileConversionStatusService.updateHtmlText(pdfId, networkHtml);
-            String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromHTMLOfTopics(networkHtml, requiredTopics));
+            String rawOutput = (deepSeekService.evaluateManualAnswerSheet(networkHtml, aiManualEvaluationQuestionPaperRequest.getHtmlQuestion(), aiManualEvaluationQuestionPaperRequest.getTotalMarks(), aiManualEvaluationQuestionPaperRequest.getEvaluationDifficulty()));
 
             // Process the raw output to get valid JSON
             String validJson = JsonUtils.extractAndSanitizeJson(rawOutput);
 
-            return ResponseEntity.ok(createAutoQuestionPaperResponse(removeExtraSlashes(validJson)));
+            return ResponseEntity.ok(createManualEvaluationPaperResponse(aiManualEvaluationQuestionPaperRequest, removeExtraSlashes(validJson)));
         }
 
-        String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromHTMLOfTopics(fileConversionStatus.get().getHtmlText(), requiredTopics));
+        String rawOutput = (deepSeekService.evaluateManualAnswerSheet(fileConversionStatus.get().getHtmlText(), aiManualEvaluationQuestionPaperRequest.getHtmlQuestion(), aiManualEvaluationQuestionPaperRequest.getTotalMarks(), aiManualEvaluationQuestionPaperRequest.getEvaluationDifficulty()));
 
         // Process the raw output to get valid JSON
         String validJson = JsonUtils.extractAndSanitizeJson(rawOutput);
-        return ResponseEntity.ok(createAutoQuestionPaperResponse(removeExtraSlashes(validJson)));
+        return ResponseEntity.ok(createManualEvaluationPaperResponse(aiManualEvaluationQuestionPaperRequest, removeExtraSlashes(validJson)));
     }
-
 
 
     @PostMapping("/from-text")
     public ResponseEntity<AutoQuestionPaperResponse> fromHtml(
             @RequestBody TextDTO textPrompt) {
 
-        String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromTextPrompt(textPrompt.getText(), textPrompt.getNum().toString(), textPrompt.getQuestionType(), textPrompt.getClassLevel(), textPrompt.getTopics()));
+        String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromTextPrompt(textPrompt.getText(), textPrompt.getNum().toString(), textPrompt.getQuestionType(), textPrompt.getClassLevel(), textPrompt.getTopics(), textPrompt.getQuestionLanguage()));
 
         // Process the raw output to get valid JSON
         String validJson = JsonUtils.extractAndSanitizeJson(rawOutput);
@@ -292,7 +303,22 @@ public class PDFQuestionGeneratorController {
         return autoQuestionPaperResponse;
     }
 
+    public AIManualEvaluationQuestionPaperResponse createManualEvaluationPaperResponse(AIManualEvaluationQuestionPaperRequest manualEvaluationQuestionPaperRequest, String aiJsonResponse) {
+        AutoQuestionPaperResponse autoQuestionPaperResponse = new AutoQuestionPaperResponse();
+        ObjectMapper objectMapper = new ObjectMapper();
 
+        try {
+            AIManualEvaluationQuestionPaperResponse response = objectMapper.readValue(aiJsonResponse, new TypeReference<AIManualEvaluationQuestionPaperResponse>() {
+            });
+            response.setHtmlQuestion(manualEvaluationQuestionPaperRequest.getHtmlQuestion());
+            response.setTotalMarks(manualEvaluationQuestionPaperRequest.getTotalMarks());
+            return response;
+        } catch (IOException e) {
+            throw new VacademyException(e.getMessage());
+        }
+
+
+    }
 
 
 }

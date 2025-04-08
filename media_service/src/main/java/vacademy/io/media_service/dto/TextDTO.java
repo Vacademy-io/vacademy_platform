@@ -24,4 +24,5 @@ public class TextDTO {
     private String classLevel;
     private String topics;
     private String questionType;
+    private String questionLanguage;
 }

@@ -99,4 +99,9 @@ public class UserController {
         return ResponseEntity.ok(userService.getUsersCredentials(userIds));
     }
 
+    @PostMapping("/users-credential")
+    public ResponseEntity<List<UserCredentials>> getUsersCredentials(@RequestBody List<String>userIds, @RequestAttribute("user") CustomUserDetails customUserDetails) {
+        return ResponseEntity.ok(userService.getUsersCredentials(userIds));
+    }
+
 }

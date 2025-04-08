@@ -811,13 +811,13 @@ public class AssessmentParticipantsManager {
 
         Optional<Assessment> assessmentOptional = assessmentRepository.findById(assessmentId);
         if (assessmentOptional.isEmpty()) throw new VacademyException("No Assessment Found");
-        sendNotificationToAdmin(assessmentOptional.get(),instituteId);
-//        try {
-//            // Call the async method
-//            releaseResultWrapper(assessmentOptional.get(), instituteId, request, type);
-//        } catch (Exception e) {
-//            log.error("[FAILED TO RELEASE] " + e.getMessage());
-//        }
+
+        try {
+            // Call the async method
+            releaseResultWrapper(assessmentOptional.get(), instituteId, request, type);
+        } catch (Exception e) {
+            log.error("[FAILED TO RELEASE] " + e.getMessage());
+        }
 
         return ResponseEntity.ok("Done");
     }

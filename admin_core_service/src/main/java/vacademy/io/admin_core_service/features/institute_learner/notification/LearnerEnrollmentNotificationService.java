@@ -8,7 +8,7 @@ import vacademy.io.admin_core_service.features.notification.config.NotificationC
 import vacademy.io.admin_core_service.features.notification.dto.NotificationDTO;
 import vacademy.io.admin_core_service.features.notification.dto.NotificationToUserDTO;
 import vacademy.io.admin_core_service.features.notification.enums.NotificationSourceEnum;
-import vacademy.io.admin_core_service.features.notification.enums.NotificationType;
+import vacademy.io.admin_core_service.features.notification.enums.CommunicationType;
 import vacademy.io.admin_core_service.features.notification.service.NotificationService;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
@@ -49,7 +49,7 @@ public class LearnerEnrollmentNotificationService {
         NotificationDTO notificationDTO = new NotificationDTO();
         notificationDTO.setSubject("Welcome to " + institute.getInstituteName());
         notificationDTO.setBody(LearnerEnrollmentEmailBody.NEW_CREDENTIALS_EMAIL_TEMPLATE);
-        notificationDTO.setNotificationType(NotificationType.EMAIL.name());
+        notificationDTO.setNotificationType(CommunicationType.EMAIL.name());
         notificationDTO.setSource(NotificationSourceEnum.INSTITUTE.name());
         notificationDTO.setSourceId(institute.getId());
         notificationDTO.setUsers(createUserNotifications(students, institute));

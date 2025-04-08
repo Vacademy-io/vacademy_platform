@@ -11,7 +11,6 @@ public class ClientAuthenticationService {
     ClientAuthenticationRepository clientAuthenticationRepository;
 
     public boolean validateClient(String clientName, String clientToken) {
-
         return clientAuthenticationRepository.validateClient(clientName, clientToken);
     }
 }

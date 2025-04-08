@@ -273,6 +273,7 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                 )
             WHERE aim.institute_id = :instituteId
             AND COALESCE(sa.status, 'PENDING') IN (:statusList)
+            AND (:releaseResultStatus IS NULL OR sa.report_release_status IN (:releaseResultStatus))
             and a.status = 'PUBLISHED'
             """,countQuery = """
             SELECT COUNT(*)
@@ -293,11 +294,13 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                 )
             WHERE aim.institute_id = :instituteId
             AND COALESCE(sa.status, 'PENDING') IN (:statusList)
+            AND (:releaseResultStatus IS NULL OR sa.report_release_status IN (:releaseResultStatus))
             and a.status = 'PUBLISHED'
             """, nativeQuery = true)
     Page<StudentReportDto> findAssessmentForUserWithFilter(@Param("userId") String userId,
                                                      @Param("instituteId") String instituteId,
                                                      @Param("statusList") List<String> statusList,
+                                                     @Param("releaseResultStatus") List<String> releaseStatus,
                                                      Pageable pageable);
 
 
@@ -340,6 +343,7 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                     OR a.name LIKE :name || '%'
                    )
             AND COALESCE(sa.status, 'PENDING') IN (:statusList)
+            AND (:releaseResultStatus IS NULL OR sa.report_release_status IN (:releaseResultStatus))
             and a.status = 'PUBLISHED'
             """,countQuery = """
             SELECT COUNT(*)
@@ -366,12 +370,14 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                     OR a.name LIKE :name || '%'
                    )
             AND COALESCE(sa.status, 'PENDING') IN (:statusList)
+            AND (:releaseResultStatus IS NULL OR sa.report_release_status IN (:releaseResultStatus))
             and a.status = 'PUBLISHED'
             """, nativeQuery = true)
     Page<StudentReportDto> findAssessmentForUserWithFilterAndSearch(@Param("name") String name,
                                                                     @Param("userId") String userId,
                                                                     @Param("instituteId") String instituteId,
                                                                     @Param("statusList") List<String> statusList,
+                                                                    @Param("releaseResultStatus") List<String> releaseStatus,
                                                                     Pageable pageable);
 
     @Query(value = """

@@ -17,5 +17,6 @@ import java.util.Map;
 public class StudentReportFilter {
     private String name;
     private List<String> status;
+    private List<String> releaseResultStatus;
     Map<String, String> sortColumns;
 }

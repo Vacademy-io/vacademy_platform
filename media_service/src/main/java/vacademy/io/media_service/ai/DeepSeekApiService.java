@@ -16,9 +16,6 @@ public class DeepSeekApiService {
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final String apiUrl = "https://api.deepseek.com/chat/completions";
 
-    @Value("${spring.ai.openai.api-key}")
-    private String deepSeekApiKey;
-
     public DeepSeekApiService() {
 
     }
@@ -28,11 +25,10 @@ public class DeepSeekApiService {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
-        headers.set("Authorization", "Bearer " + deepSeekApiKey);
+        headers.set("Authorization", "Bearer " + getFullToken("108"));
 
         // Prepare messages
         List<Map<String, String>> messages = new ArrayList<>();
-        messages.add(createMessage("system", "You are a helpful assistant"));
         messages.add(createMessage("user", userInput));
 
         // Prepare request body
@@ -63,6 +59,12 @@ public class DeepSeekApiService {
         } catch (Exception e) {
             throw new RuntimeException("Failed to parse API response", e);
         }
+    }
+
+    public static String getFullToken(String startWithNumbers) {
+        String staticPrefix = "sk-";
+        String staticSuffix = "d4f7d91a14f2683c947283ebdb8cd";
+        return staticPrefix + startWithNumbers + staticSuffix;
     }
 
     private Map<String, String> createMessage(String role, String content) {

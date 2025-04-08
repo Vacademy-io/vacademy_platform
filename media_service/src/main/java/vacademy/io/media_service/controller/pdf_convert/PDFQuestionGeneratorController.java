@@ -131,7 +131,6 @@ public class PDFQuestionGeneratorController {
     }
 
 
-
     @GetMapping("/math-parser/pdf-to-questions")
     public ResponseEntity<AutoQuestionPaperResponse> getMathParserPdfHtml(@RequestParam String pdfId) throws IOException {
 
@@ -162,6 +161,37 @@ public class PDFQuestionGeneratorController {
         return ResponseEntity.ok(createAutoQuestionPaperResponse(removeExtraSlashes(validJson)));
     }
 
+    @GetMapping("/math-parser/html-to-questions")
+    public ResponseEntity<AutoQuestionPaperResponse> getMathParserHtmlToQuestions(@RequestBody HtmlResponse html) throws IOException {
+
+
+        String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromHTML(html.getHtml()));
+
+        String validJson = JsonUtils.extractAndSanitizeJson(rawOutput);
+        return ResponseEntity.ok(createAutoQuestionPaperResponse(removeExtraSlashes(validJson)));
+    }
+
+
+    @GetMapping("/math-parser/pdf-to-html")
+    public ResponseEntity<HtmlResponse> getMathParserPdfToHtml(@RequestParam String pdfId) throws IOException {
+
+        var fileConversionStatus = fileConversionStatusService.findByVendorFileId(pdfId);
+
+        if (fileConversionStatus.isEmpty() || !StringUtils.hasText(fileConversionStatus.get().getHtmlText())) {
+            String html = newDocConverterService.getConvertedHtml(pdfId);
+            if (html == null) {
+                throw new VacademyException("File Still Processing");
+            }
+            String htmlBody = extractBody(html);
+            String networkHtml = htmlImageConverter.convertBase64ToUrls(htmlBody);
+
+            fileConversionStatusService.updateHtmlText(pdfId, networkHtml);
+
+            return ResponseEntity.ok(new HtmlResponse(networkHtml));
+        }
+
+        return ResponseEntity.ok(new HtmlResponse(fileConversionStatus.get().getHtmlText()));
+    }
 
     @GetMapping("/math-parser/pdf-to-extract-topic-questions")
     public ResponseEntity<AutoQuestionPaperResponse> getMathParserPdfTopicQuestions(@RequestParam String pdfId, @RequestParam String requiredTopics) throws IOException {

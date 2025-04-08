@@ -37,6 +37,9 @@ public class DeepSeekService {
     private final ChatModel chatModel;
 
     @Autowired
+    private DeepSeekApiService deepSeekApiService;
+
+    @Autowired
     public DeepSeekService(ChatModel chatModel) {
         this.chatModel = chatModel;
     }
@@ -90,9 +93,11 @@ public class DeepSeekService {
 
         Prompt prompt = new PromptTemplate(template).create(Map.of("textPrompt", textPrompt, "numberOfQuestions", numberOfQuestions, "typeOfQuestion", typeOfQuestion, "classLevel", classLevel, "topics", topics, "language", language));
 
-        ChatResponse response = chatModel.call(
-                prompt);
-        String  resultJson = response.getResult().getOutput().toString();
+        DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek-chat", prompt.getContents().trim(), 8192);
+        if(response.getChoices().isEmpty()) {
+            throw new VacademyException("No response from DeepSeek");
+        }
+        String resultJson = response.getChoices().get(0).getMessage().getContent();
         String validJson = JsonUtils.extractAndSanitizeJson(resultJson);
 
         return validJson;
@@ -152,10 +157,11 @@ public class DeepSeekService {
 
         Prompt prompt = new PromptTemplate(template).create(Map.of("htmlData", unTaggedHtml));
 
-        ChatResponse response = chatModel.call(
-                prompt);
-
-        String  resultJson = response.getResult().getOutput().toString();
+        DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek-chat", prompt.getContents().trim(), 8192);
+        if(response.getChoices().isEmpty()) {
+            throw new VacademyException("No response from DeepSeek");
+        }
+        String resultJson = response.getChoices().get(0).getMessage().getContent();
         String validJson = JsonUtils.extractAndSanitizeJson(resultJson);
         try {
             String restoredJson = htmlJsonProcessor.restoreTagsInJson(validJson);
@@ -221,10 +227,11 @@ public class DeepSeekService {
 
         Prompt prompt = new PromptTemplate(template).create(Map.of("htmlData", unTaggedHtml, "requiredTopics", requiredTopics));
 
-        ChatResponse response = chatModel.call(
-                prompt);
-
-        String  resultJson = response.getResult().getOutput().toString();
+        DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek-chat", prompt.getContents().trim(), 8192);
+        if(response.getChoices().isEmpty()) {
+            throw new VacademyException("No response from DeepSeek");
+        }
+        String resultJson = response.getChoices().get(0).getMessage().getContent();
         String validJson = JsonUtils.extractAndSanitizeJson(resultJson);
         try {
             String restoredJson = htmlJsonProcessor.restoreTagsInJson(validJson);
@@ -267,10 +274,11 @@ public class DeepSeekService {
 
         Prompt prompt = new PromptTemplate(template).create(Map.of("htmlQuestionData", htmlQuestionData, "htmlAnswerData", htmlAnswerData, "maxMarks", maxMarks, "evaluationDifficulty", evaluationDifficulty));
 
-        ChatResponse response = chatModel.call(
-                prompt);
-
-        String  resultJson = response.getResult().getOutput().toString();
+        DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek-chat", prompt.getContents().trim(), 8192);
+        if(response.getChoices().isEmpty()) {
+            throw new VacademyException("No response from DeepSeek");
+        }
+        String resultJson = response.getChoices().get(0).getMessage().getContent();
         String validJson = JsonUtils.extractAndSanitizeJson(resultJson);
         try {
             String restoredJson = htmlJsonProcessor.restoreTagsInJson(validJson);
@@ -331,10 +339,11 @@ public class DeepSeekService {
 
         Prompt prompt = new PromptTemplate(template).create(Map.of("classLecture", audioString, "difficulty", difficulty, "numQuestions", numQuestions, "optionalPrompt", optionalPrompt));
 
-        ChatResponse response = chatModel.call(
-                prompt);
-
-        String  resultJson = response.getResult().getOutput().toString();
+        DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek-chat", prompt.getContents().trim(), 8192);
+        if(response.getChoices().isEmpty()) {
+            throw new VacademyException("No response from DeepSeek");
+        }
+        String resultJson = response.getChoices().get(0).getMessage().getContent();
         String validJson = JsonUtils.extractAndSanitizeJson(resultJson);
         return validJson;
     }

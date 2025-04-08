@@ -1,35 +1,20 @@
 package vacademy.io.media_service.controller.ai;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.apache.batik.transcoder.TranscoderException;
-import org.apache.batik.transcoder.TranscoderInput;
-import org.apache.batik.transcoder.TranscoderOutput;
-import org.apache.batik.transcoder.wmf.tosvg.WMFTranscoder;
-import org.jsoup.Jsoup;
-import org.jsoup.nodes.Document;
-import org.jsoup.nodes.Element;
-import org.jsoup.select.Elements;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-import org.zwobble.mammoth.DocumentConverter;
-import org.zwobble.mammoth.Result;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.media_service.ai.DeepSeekService;
 import vacademy.io.media_service.dto.*;
-import vacademy.io.media_service.enums.NumericQuestionTypes;
-import vacademy.io.media_service.enums.QuestionResponseType;
-import vacademy.io.media_service.enums.QuestionTypes;
 import vacademy.io.media_service.service.*;
 import vacademy.io.media_service.util.JsonUtils;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
-import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -101,7 +86,7 @@ public class QuestionGeneratorController {
         try {
             String html = new String(file.getBytes(), StandardCharsets.UTF_8);
             String htmlBody = extractBody(html);
-            String networkHtml = htmlImageConverter.convertBase64AndSVGToUrls(htmlBody);
+            String networkHtml = htmlImageConverter.convertBase64ToUrls(htmlBody);
             String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromHTML(networkHtml));
 
             // Process the raw output to get valid JSON
@@ -126,7 +111,7 @@ public class QuestionGeneratorController {
         try {
             String html = docConverterService.convertDocument(file);
             String htmlBody = extractBody(html);
-            String networkHtml = htmlImageConverter.convertBase64AndSVGToUrls(htmlBody);
+            String networkHtml = htmlImageConverter.convertBase64ToUrls(htmlBody);
             String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromHTML(networkHtml));
 
             // Process the raw output to get valid JSON
@@ -169,7 +154,7 @@ public class QuestionGeneratorController {
     public ResponseEntity<PdfHtmlResponseStatusResponse> getMathParserPdfHtml(@RequestParam String pdfId) throws IOException {
         String html = newDocConverterService.getConvertedHtml(pdfId);
         String htmlBody = extractBody(html);
-        String networkHtml = htmlImageConverter.convertBase64AndSVGToUrls(htmlBody);
+        String networkHtml = htmlImageConverter.convertBase64ToUrls(htmlBody);
 
         return ResponseEntity.ok(new PdfHtmlResponseStatusResponse(networkHtml));
     }
@@ -201,6 +186,11 @@ public class QuestionGeneratorController {
 
             autoQuestionPaperResponse.setQuestions(deepSeekService.formatQuestions(response.getQuestions()));
             autoQuestionPaperResponse.setTitle(response.getTitle());
+            autoQuestionPaperResponse.setTags(response.getTags());
+            autoQuestionPaperResponse.setClasses(response.getClasses());
+            autoQuestionPaperResponse.setSubjects(response.getSubjects());
+            autoQuestionPaperResponse.setDifficulty(response.getDifficulty());
+
         } catch (IOException e) {
             throw new VacademyException(e.getMessage());
         }

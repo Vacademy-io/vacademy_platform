@@ -15,6 +15,8 @@ import java.util.Map;
 public interface FileService {
     String uploadFile(MultipartFile multipartFile) throws FileUploadException, IOException;
 
+    FileDetailsDTO uploadFileWithDetails(MultipartFile multipartFile) throws FileUploadException, IOException;
+
     Object downloadFile(String fileName) throws FileDownloadException, IOException;
 
     PreSignedUrlResponse getPreSignedUrl(String fileName, String fileType, String source, String sourceId);

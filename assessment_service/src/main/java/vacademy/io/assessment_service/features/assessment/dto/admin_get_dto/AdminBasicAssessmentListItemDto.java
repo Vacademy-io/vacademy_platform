@@ -42,5 +42,6 @@ public class AdminBasicAssessmentListItemDto {
     private Date updatedAt;
     private String subjectId;
     private String joinLink;
+    private Long userAttemptCount;
 
 }

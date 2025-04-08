@@ -30,6 +30,7 @@ public class AssessmentMapper {
                 .batchIds((assessment[17] == null) ? new ArrayList<>() : Arrays.asList((String[]) assessment[17]))
                 .subjectId((String) assessment[18])
                 .joinLink((String) assessment[19])
+                .userAttemptCount((Long) assessment[20])
                 .build();
 
         return dto;

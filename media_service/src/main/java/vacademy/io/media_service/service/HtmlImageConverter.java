@@ -10,7 +10,6 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.UUID;
 import java.util.regex.Matcher;
@@ -105,36 +104,10 @@ public class HtmlImageConverter {
     }
 
 
-    public String convertBase64AndSVGToUrls(String html) throws IOException {
-        // First, replace inline SVG elements with img tags pointing to network URLs
-        String processedHtml = replaceInlineSVG(html);
-        // Then replace base64 images in img tags with network URLs
-        processedHtml = convertBase64ImagesToNetworkImages(processedHtml);
-        return processedHtml;
-    }
-
-    private String replaceInlineSVG(String html) throws IOException {
-        // Regex to match <svg> elements, optionally wrapped in <mjx-container> tags
-        String svgPattern = "(?is)(?:<mjx-container\\b[^>]*>\\s*)?(<svg\\b([^>]*)>(.*?)</svg>)\\s*(?:</mjx-container>\\s*)?";
-        Pattern pattern = Pattern.compile(svgPattern);
-        Matcher matcher = pattern.matcher(html);
-        StringBuffer updatedHtml = new StringBuffer();
-
-        while (matcher.find()) {
-            String entireSvg = matcher.group(1); // Captured SVG element without mjx-container
-            String svgAttributes = matcher.group(2); // Attributes from the SVG tag
-
-            // Encode the entire SVG content as base64
-            String base64Data = Base64.getEncoder().encodeToString(entireSvg.getBytes(StandardCharsets.UTF_8));
-            // Upload as SVG; imageFormat is "svg+xml" to trigger correct handling in upload method
-            String networkImageUrl = uploadBase64File(base64Data, "svg+xml");
-
-            // Preserve original SVG attributes in the new img tag, replacing the entire matched content (including mjx-container if present)
-            String replacement = String.format("<img %s src=\"%s\" />", svgAttributes, networkImageUrl);
-            matcher.appendReplacement(updatedHtml, Matcher.quoteReplacement(replacement));
-        }
-        matcher.appendTail(updatedHtml);
-        return updatedHtml.toString();
+    public String convertBase64ToUrls(String html) throws IOException {
+        // replace base64 images in img tags with network URLs
+        html = convertBase64ImagesToNetworkImages(html);
+        return html;
     }
 
 

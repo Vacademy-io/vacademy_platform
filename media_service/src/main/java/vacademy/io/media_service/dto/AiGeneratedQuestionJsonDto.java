@@ -1,4 +1,8 @@
 package vacademy.io.media_service.dto;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonSetter;
+import com.fasterxml.jackson.annotation.Nulls;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.Getter;
@@ -10,8 +14,10 @@ import java.util.List;
 @Getter
 @Setter
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class AiGeneratedQuestionJsonDto {
     private Integer questionNumber;
+    @JsonSetter(nulls = Nulls.SKIP, contentNulls = Nulls.SKIP)
     private QuestionContent question;
     private List<Option> options;
     private List<Integer> correctOptions;
@@ -95,6 +101,7 @@ public class AiGeneratedQuestionJsonDto {
     }
 
     // Inner classes
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public static class QuestionContent {
         private ContentType type;
         private String content;

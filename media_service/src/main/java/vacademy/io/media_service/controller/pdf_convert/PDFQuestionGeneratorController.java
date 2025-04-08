@@ -1,0 +1,268 @@
+package vacademy.io.media_service.controller.pdf_convert;
+
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Comment;
+import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Element;
+import org.jsoup.select.Elements;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.util.ObjectUtils;
+import org.springframework.util.StringUtils;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.common.media.dto.FileDetailsDTO;
+import vacademy.io.media_service.ai.DeepSeekService;
+import vacademy.io.media_service.dto.*;
+import vacademy.io.media_service.service.*;
+import vacademy.io.media_service.util.JsonUtils;
+
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+
+@RestController
+@RequestMapping("/media-service/ai/get-question-pdf")
+public class PDFQuestionGeneratorController {
+
+    @Autowired
+    HtmlImageConverter htmlImageConverter;
+    @Autowired
+    DeepSeekService deepSeekService;
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    @Autowired
+    private FileService fileService;
+
+    @Autowired
+    private FileConversionStatusService fileConversionStatusService;
+
+    @Autowired
+    private NewDocConverterService newDocConverterService;
+
+    public static String removeExtraSlashes(String input) {
+        // Regular expression to match <img src="..."> and replace with <img src="...">
+        String regex = "<img src=\\\\\"(.*?)\\\\\">";
+        String replacement = "<img src=\"$1\">";
+
+        // Compile the pattern and create a matcher
+        Pattern pattern = Pattern.compile(regex);
+        Matcher matcher = pattern.matcher(input);
+
+        // Replace all occurrences of the pattern with the replacement string
+        return matcher.replaceAll(replacement);
+    }
+
+    public static String extractBody(String html) {
+        if (html == null || html.isEmpty()) {
+            return "";
+        }
+
+        // Regex to match the content between <body> and </body> tags
+        Pattern pattern = Pattern.compile(
+                "<body[^>]*>(.*?)</body>",
+                Pattern.CASE_INSENSITIVE | Pattern.DOTALL // Handle case and multi-line content
+        );
+
+        Matcher matcher = pattern.matcher(html);
+        if (matcher.find()) {
+            // Extract the content (group 1) between the tags
+            return matcher.group(1).trim(); // Trim to remove leading/trailing whitespace
+        } else {
+            return html;
+        }
+    }
+
+
+    @PostMapping("/math-parser/start-process-pdf")
+    public ResponseEntity<AutoDocumentSubmitResponse> startProcessPdf(
+            @RequestParam("file") MultipartFile file) {
+
+        if (isHtmlFile(file)) {
+            throw new VacademyException("Invalid file format. Please do not upload an HTML file.");
+        }
+
+        try {
+            FileDetailsDTO fileDetailsDTO = fileService.uploadFileWithDetails(file);
+            if (ObjectUtils.isEmpty(fileDetailsDTO) || !StringUtils.hasText(fileDetailsDTO.getUrl())) {
+                throw new VacademyException("Error uploading file");
+            }
+            String pdfId = newDocConverterService.startProcessing(fileDetailsDTO.getUrl());
+            if (!StringUtils.hasText(pdfId)) {
+                throw new VacademyException("Error processing file");
+            }
+            fileConversionStatusService.startProcessing(pdfId, "mathpix", fileDetailsDTO.getId());
+
+            return ResponseEntity.ok(new AutoDocumentSubmitResponse(pdfId));
+
+        } catch (Exception e) {
+            throw new VacademyException(e.getMessage());
+        }
+    }
+
+
+    @PostMapping("/math-parser/start-process-pdf-file-id")
+    public ResponseEntity<AutoDocumentSubmitResponse> startProcessPdf(
+            @RequestBody FileIdSubmitRequest file) {
+
+        try {
+            var fileDetailsDTOs = fileService.getMultipleFileDetailsWithExpiryAndId(file.getFileId(), 7);
+            if (ObjectUtils.isEmpty(fileDetailsDTOs) || fileDetailsDTOs.isEmpty()) {
+                throw new VacademyException("Error uploading file");
+            }
+            String pdfId = newDocConverterService.startProcessing(fileDetailsDTOs.get(0).getUrl());
+            if (!StringUtils.hasText(pdfId)) {
+                throw new VacademyException("Error processing file");
+            }
+            fileConversionStatusService.startProcessing(pdfId, "mathpix", fileDetailsDTOs.get(0).getId());
+
+            return ResponseEntity.ok(new AutoDocumentSubmitResponse(pdfId));
+
+        } catch (Exception e) {
+            throw new VacademyException(e.getMessage());
+        }
+    }
+
+
+
+    @GetMapping("/math-parser/pdf-to-questions")
+    public ResponseEntity<AutoQuestionPaperResponse> getMathParserPdfHtml(@RequestParam String pdfId) throws IOException {
+
+        var fileConversionStatus = fileConversionStatusService.findByVendorFileId(pdfId);
+
+        if (fileConversionStatus.isEmpty() || !StringUtils.hasText(fileConversionStatus.get().getHtmlText())) {
+            String html = newDocConverterService.getConvertedHtml(pdfId);
+            if (html == null) {
+                throw new VacademyException("File Still Processing");
+            }
+            String htmlBody = extractBody(html);
+            String networkHtml = htmlImageConverter.convertBase64ToUrls(htmlBody);
+
+            fileConversionStatusService.updateHtmlText(pdfId, networkHtml);
+            String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromHTML(networkHtml));
+
+            // Process the raw output to get valid JSON
+            String validJson = JsonUtils.extractAndSanitizeJson(rawOutput);
+
+            return ResponseEntity.ok(createAutoQuestionPaperResponse(removeExtraSlashes(validJson)));
+
+        }
+
+        String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromHTML(fileConversionStatus.get().getHtmlText()));
+
+        // Process the raw output to get valid JSON
+        String validJson = JsonUtils.extractAndSanitizeJson(rawOutput);
+        return ResponseEntity.ok(createAutoQuestionPaperResponse(removeExtraSlashes(validJson)));
+    }
+
+
+    @GetMapping("/math-parser/pdf-to-extract-topic-questions")
+    public ResponseEntity<AutoQuestionPaperResponse> getMathParserPdfTopicQuestions(@RequestParam String pdfId, @RequestParam String requiredTopics) throws IOException {
+
+        var fileConversionStatus = fileConversionStatusService.findByVendorFileId(pdfId);
+
+        if (fileConversionStatus.isEmpty() || !StringUtils.hasText(fileConversionStatus.get().getHtmlText())) {
+            String html = newDocConverterService.getConvertedHtml(pdfId);
+            if (html == null) {
+                throw new VacademyException("File Still Processing");
+            }
+            String htmlBody = extractBody(html);
+            String networkHtml = htmlImageConverter.convertBase64ToUrls(htmlBody);
+
+            fileConversionStatusService.updateHtmlText(pdfId, networkHtml);
+            String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromHTMLOfTopics(networkHtml, requiredTopics));
+
+            // Process the raw output to get valid JSON
+            String validJson = JsonUtils.extractAndSanitizeJson(rawOutput);
+
+            return ResponseEntity.ok(createAutoQuestionPaperResponse(removeExtraSlashes(validJson)));
+        }
+
+        String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromHTMLOfTopics(fileConversionStatus.get().getHtmlText(), requiredTopics));
+
+        // Process the raw output to get valid JSON
+        String validJson = JsonUtils.extractAndSanitizeJson(rawOutput);
+        return ResponseEntity.ok(createAutoQuestionPaperResponse(removeExtraSlashes(validJson)));
+    }
+
+
+    @GetMapping("/math-parser/check-manual-answer")
+    public ResponseEntity<AutoQuestionPaperResponse> getEvaluationForQuestions(@RequestParam String pdfId, @RequestParam String requiredTopics) throws IOException {
+
+        var fileConversionStatus = fileConversionStatusService.findByVendorFileId(pdfId);
+
+        if (fileConversionStatus.isEmpty() || !StringUtils.hasText(fileConversionStatus.get().getHtmlText())) {
+            String html = newDocConverterService.getConvertedHtml(pdfId);
+            if (html == null) {
+                throw new VacademyException("File Still Processing");
+            }
+            String htmlBody = extractBody(html);
+            String networkHtml = htmlImageConverter.convertBase64ToUrls(htmlBody);
+
+            fileConversionStatusService.updateHtmlText(pdfId, networkHtml);
+            String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromHTMLOfTopics(networkHtml, requiredTopics));
+
+            // Process the raw output to get valid JSON
+            String validJson = JsonUtils.extractAndSanitizeJson(rawOutput);
+
+            return ResponseEntity.ok(createAutoQuestionPaperResponse(removeExtraSlashes(validJson)));
+        }
+
+        String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromHTMLOfTopics(fileConversionStatus.get().getHtmlText(), requiredTopics));
+
+        // Process the raw output to get valid JSON
+        String validJson = JsonUtils.extractAndSanitizeJson(rawOutput);
+        return ResponseEntity.ok(createAutoQuestionPaperResponse(removeExtraSlashes(validJson)));
+    }
+
+
+
+    @PostMapping("/from-text")
+    public ResponseEntity<AutoQuestionPaperResponse> fromHtml(
+            @RequestBody TextDTO textPrompt) {
+
+        String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromTextPrompt(textPrompt.getText(), textPrompt.getNum().toString(), textPrompt.getQuestionType(), textPrompt.getClassLevel(), textPrompt.getTopics()));
+
+        // Process the raw output to get valid JSON
+        String validJson = JsonUtils.extractAndSanitizeJson(rawOutput);
+
+        return ResponseEntity.ok(createAutoQuestionPaperResponse(removeExtraSlashes(validJson)));
+    }
+
+    private boolean isHtmlFile(MultipartFile file) {
+        return "text/html".equals(file.getContentType());
+    }
+
+    public AutoQuestionPaperResponse createAutoQuestionPaperResponse(String htmlResponse) {
+        AutoQuestionPaperResponse autoQuestionPaperResponse = new AutoQuestionPaperResponse();
+        ObjectMapper objectMapper = new ObjectMapper();
+
+        try {
+            AiGeneratedQuestionPaperJsonDto response = objectMapper.readValue(htmlResponse, new TypeReference<AiGeneratedQuestionPaperJsonDto>() {
+            });
+
+            autoQuestionPaperResponse.setQuestions(deepSeekService.formatQuestions(response.getQuestions()));
+            autoQuestionPaperResponse.setTitle(response.getTitle());
+            autoQuestionPaperResponse.setTags(response.getTags());
+            autoQuestionPaperResponse.setClasses(response.getClasses());
+            autoQuestionPaperResponse.setSubjects(response.getSubjects());
+            autoQuestionPaperResponse.setDifficulty(response.getDifficulty());
+
+        } catch (IOException e) {
+            throw new VacademyException(e.getMessage());
+        }
+
+        return autoQuestionPaperResponse;
+    }
+
+
+
+
+}

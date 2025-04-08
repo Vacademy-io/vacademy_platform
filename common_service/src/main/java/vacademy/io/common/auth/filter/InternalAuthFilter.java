@@ -25,19 +25,12 @@ public class InternalAuthFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
 
-        if (request.getRequestURI().startsWith("/internal/")) {
-            String authorizationHeader = request.getHeader("Authorization");
-
-            if (authorizationHeader != null && authorizationHeader.startsWith("Basic ")) {
-                String base64Credentials = authorizationHeader.substring("Basic ".length());
-                String credentials = new String(Base64.getDecoder().decode(base64Credentials));
-                StringTokenizer tokenizer = new StringTokenizer(credentials, ":");
-                String clientName = tokenizer.nextToken();
-                String clientToken = tokenizer.nextToken();
+        if (request.getRequestURI().contains("internal")) {
+                String clientName = request.getHeader("clientName");
+                String clientToken = request.getHeader("Signature");
 
 
                 boolean isValidClient = clientAuthenticationService.validateClient(clientName, clientToken);
-
                 if (isValidClient) {
                     SecurityContextHolder.getContext().setAuthentication(new ClientAuthentication(clientName, clientToken));
                     filterChain.doFilter(request, response);
@@ -45,10 +38,6 @@ public class InternalAuthFilter extends OncePerRequestFilter {
                     response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
                     response.getWriter().write("Invalid client authentication");
                 }
-            } else {
-                response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-                response.getWriter().write("Authorization header missing or invalid");
-            }
         } else {
             filterChain.doFilter(request, response);
             return;

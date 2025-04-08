@@ -102,7 +102,7 @@ public class StudentListManager {
 
     public ResponseEntity<byte[]> getStudentsBasicDetailsCsv(CustomUserDetails user, StudentListFilter studentListFilter, int pageNo, int pageSize) {
         // Get the total number of pages
-        int totalPages = getLinkedStudents(user, studentListFilter, 0, 100).getBody().getTotalPages();
+        int totalPages = getLinkedStudents(user, studentListFilter, pageNo, pageSize).getBody().getTotalPages();
 
         // Map to store students and List to collect user IDs
         Map<String, StudentDTO> studentMap = new HashMap<>();
@@ -125,9 +125,9 @@ public class StudentListManager {
             StudentDTO studentDTO = studentMap.get(userCredential.getUserId());
             studentBasicDetailsDTOS.add(new StudentBasicDetailsDTO(
                     studentDTO.getFullName(),
-                    userCredential.getPassword(),
+                    studentDTO.getInstituteEnrollmentId(),
                     userCredential.getUsername(),
-                    studentDTO.getInstituteEnrollmentId()
+                    userCredential.getPassword()
             ));
         }
 

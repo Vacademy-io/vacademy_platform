@@ -31,7 +31,9 @@ public class AssessmentReportNotificationService {
             user.setPlaceholders(Map.of("learner_name", studentAttempt.getRegistration().getParticipantName()));
             // Convert byte[] to Base64 String
             String encodedAttachment = Base64.getEncoder().encodeToString(reportData);
-            user.setAttachment(encodedAttachment);
+            AttachmentUsersDTO.AttachmentDTO attachment = new AttachmentUsersDTO.AttachmentDTO();
+            attachment.setAttachmentName("report.pdf");
+            user.setAttachments(List.of(attachment));
 
             usersList.add(user);
         }
@@ -41,7 +43,8 @@ public class AssessmentReportNotificationService {
     }
 
     private AttachmentNotificationDTO getAttachmentNotificationDTO(List<AttachmentUsersDTO> usersList, String assessmentId) {
-        AttachmentNotificationDTO attachmentNotificationDTO = new AttachmentNotificationDTO();
+        AttachmentNotificationDTO attachmentNotificationDTO =
+                AttachmentNotificationDTO.builder().build();
         attachmentNotificationDTO.setBody(AssessmentNotificationEmailBody.getAssessmentReportBody());
         attachmentNotificationDTO.setSubject("Assessment Report");
         attachmentNotificationDTO.setSource("ASSESSMENT_REPORT");

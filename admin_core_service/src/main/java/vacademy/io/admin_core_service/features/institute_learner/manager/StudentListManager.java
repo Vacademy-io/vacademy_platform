@@ -85,15 +85,14 @@ public class StudentListManager {
     public ResponseEntity<byte[]> getStudentsCsvExport(CustomUserDetails user, StudentListFilter studentListFilter, int pageNo, int pageSize) {
 
         // Get the total number of pages for the given filter
-        int totalPages = getLinkedStudents(user, studentListFilter, 0, 100).getBody().getTotalPages();
-
+        int totalPages = getLinkedStudents(user, studentListFilter, pageNo, pageSize).getBody().getTotalPages();
         // List to store all employees
         List<StudentDTO> allStudents = new ArrayList<>();
 
         // Loop through all pages and append data
         for (int page = 0; page < totalPages; page++) {
             // Retrieve employees for the current page and add them to the list
-            List<StudentDTO> employees = getLinkedStudents(user, studentListFilter, page, 100).getBody().getContent();
+            List<StudentDTO> employees = getLinkedStudents(user, studentListFilter, page, pageSize).getBody().getContent();
             allStudents.addAll(employees);
         }
 
@@ -110,7 +109,7 @@ public class StudentListManager {
 
         // Fetch students across all pages
         for (int page = 0; page < totalPages; page++) {
-            for (StudentDTO student : getLinkedStudents(user, studentListFilter, page, 100).getBody().getContent()) {
+            for (StudentDTO student : getLinkedStudents(user, studentListFilter, page, pageSize).getBody().getContent()) {
                 studentMap.put(student.getUserId(), student);
                 userIds.add(student.getUserId());
             }

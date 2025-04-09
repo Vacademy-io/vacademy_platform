@@ -41,6 +41,8 @@ public class QuestionDTO {
     private List<OptionDTO> options = new ArrayList<>();
     private List<String> errors = new ArrayList<>();
     private List<String> warnings = new ArrayList<>();
+    private List<String> tags;
+    private AiGeneratedQuestionJsonDto.DifficultyLevel level;
 
     public QuestionDTO(String questionNumber) {
         this.previewId = questionNumber;

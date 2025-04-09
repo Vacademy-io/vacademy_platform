@@ -1,5 +1,11 @@
 package vacademy.io.media_service.service;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import com.fasterxml.jackson.databind.annotation.JsonNaming;
+import lombok.Getter;
+import lombok.Setter;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
@@ -95,16 +101,25 @@ public class NewDocConverterService {
 
         HttpEntity<PdfProcessingRequest> requestEntity = new HttpEntity<>(requestBody, headers);
 
-        ResponseEntity<PdfProcessingResponse> response = restTemplate.exchange(
+        ResponseEntity<String> response = restTemplate.exchange(
                 API_PDF_URL,
                 HttpMethod.POST,
                 requestEntity,
-                PdfProcessingResponse.class
+                String.class
         );
 
-        if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
-            return response.getBody().getPdfId();
+        // Handle response
+        ObjectMapper objectMapper = new ObjectMapper();
+
+        if (response.getStatusCode() == HttpStatus.OK) {
+            try {
+                PdfProcessingResponse pdfProcessingResponse = objectMapper.readValue(response.getBody(), PdfProcessingResponse.class);
+                return pdfProcessingResponse.getPdfId();
+            } catch (IOException e) {
+                // Handle exception or log error
+            }
         }
+
         return null;
     }
 
@@ -129,6 +144,10 @@ public class NewDocConverterService {
     }
 
     // Response class
+    @Getter
+    @Setter
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonIgnoreProperties(ignoreUnknown = true)
     private static class PdfProcessingResponse {
         private String pdfId;
 

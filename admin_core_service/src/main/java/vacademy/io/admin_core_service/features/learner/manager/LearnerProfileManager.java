@@ -37,7 +37,7 @@ public class LearnerProfileManager {
         if (optionalEntry.isEmpty()) {
             Optional<Student> student = instituteStudentRepository.findTopByUserId(user.getUserId());
             if (student.isEmpty()) {
-                throw new VacademyException("User not found");
+                return ResponseEntity.status(201).body(Collections.emptyList());
             }
             return ResponseEntity.status(201).body(Collections.singletonList(new StudentDTO(student.get())));
         }

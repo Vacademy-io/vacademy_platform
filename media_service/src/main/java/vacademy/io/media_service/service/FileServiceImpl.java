@@ -23,6 +23,7 @@ import vacademy.io.media_service.entity.FileMetadata;
 import vacademy.io.media_service.entity.UserToFile;
 import vacademy.io.media_service.enums.FileStatusEnum;
 import vacademy.io.media_service.exceptions.FileDownloadException;
+import vacademy.io.media_service.exceptions.FileUploadException;
 import vacademy.io.media_service.repository.FileMetadataRepository;
 import vacademy.io.media_service.repository.UserToFileRepository;
 
@@ -60,6 +61,29 @@ public class FileServiceImpl implements FileService {
         FileMetadata metadata = new FileMetadata(multipartFile.getName(), Objects.isNull(multipartFile.getContentType()) ? "unknown" : multipartFile.getContentType(), key, "SERVICE_UPLOAD", "SERVICE_UPLOAD");
         fileMetadataRepository.save(metadata);
         return "https://" + publicBucket + ".s3.amazonaws.com/" + key;
+    }
+
+    @Override
+    public FileDetailsDTO uploadFileWithDetails(MultipartFile multipartFile) throws FileUploadException, IOException {
+        String key = "SERVICE_UPLOAD/" + UUID.randomUUID() + "_" + multipartFile.getOriginalFilename();
+        s3Client.putObject(publicBucket, key, multipartFile.getInputStream(), null);
+        FileMetadata fileMetadata = new FileMetadata(multipartFile.getName(), Objects.isNull(multipartFile.getContentType()) ? "unknown" : multipartFile.getContentType(), key, "SERVICE_UPLOAD", "SERVICE_UPLOAD");
+        fileMetadata = fileMetadataRepository.save(fileMetadata);
+        String url =  "https://" + publicBucket + ".s3.amazonaws.com/" + key;
+
+        FileDetailsDTO.FileDetailsDTOBuilder builder = FileDetailsDTO.builder()
+                .expiry(addTime(100))
+                .fileName(fileMetadata.getFileName())
+                .fileType(fileMetadata.getFileType())
+                .id(fileMetadata.getId())
+                .source(fileMetadata.getSource())
+                .sourceId(fileMetadata.getSourceId())
+                .url(url)
+                .createdOn(fileMetadata.getCreatedOn())
+                .updatedOn(fileMetadata.getUpdatedOn());
+
+
+        return builder.build();
     }
 
 

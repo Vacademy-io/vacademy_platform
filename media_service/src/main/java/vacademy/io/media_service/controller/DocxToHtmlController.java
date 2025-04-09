@@ -25,14 +25,10 @@ import vacademy.io.media_service.service.EvaluationJsonToMapConverter;
 import vacademy.io.media_service.service.HtmlImageConverter;
 
 import java.io.*;
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
-import java.text.DecimalFormat;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 import static org.zwobble.mammoth.internal.util.Base64Encoding.streamToBase64;
 import static vacademy.io.media_service.controller.ai.QuestionGeneratorController.extractBody;
@@ -58,7 +54,7 @@ public class DocxToHtmlController {
         try {
             String html = new String(file.getBytes(), StandardCharsets.UTF_8);
             String htmlBody = extractBody(html);
-            String networkHtml = htmlImageConverter.convertBase64AndSVGToUrls(htmlBody);
+            String networkHtml = htmlImageConverter.convertBase64ToUrls(htmlBody);
             byte[] fileContent = networkHtml.getBytes(StandardCharsets.UTF_8);
 
             HttpHeaders headers = new HttpHeaders();
@@ -96,7 +92,7 @@ public class DocxToHtmlController {
         try {
 
             String htmlBody = extractBody(html);
-            String networkHtml = htmlImageConverter.convertBase64AndSVGToUrls(htmlBody);
+            String networkHtml = htmlImageConverter.convertBase64ToUrls(htmlBody);
             return extractQuestions(networkHtml, questionIdentifier, optionIdentifier, answerIdentifier, explanationIdentifier);
 
         } catch (IOException e) {
@@ -206,7 +202,7 @@ public class DocxToHtmlController {
         try {
             String html = new String(file.getBytes(), StandardCharsets.UTF_8);
             String htmlBody = extractBody(html);
-            String networkHtml = htmlImageConverter.convertBase64AndSVGToUrls(htmlBody);
+            String networkHtml = htmlImageConverter.convertBase64ToUrls(htmlBody);
             return extractQuestions(networkHtml, questionIdentifier, optionIdentifier, answerIdentifier, explanationIdentifier);
         } catch (IOException e) {
             e.printStackTrace();

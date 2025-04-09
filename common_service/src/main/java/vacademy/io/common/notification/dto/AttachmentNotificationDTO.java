@@ -1,10 +1,12 @@
 package vacademy.io.common.notification.dto;
 
+import lombok.Builder;
 import lombok.Data;
 
 import java.util.List;
 
 @Data
+@Builder
 public class AttachmentNotificationDTO {
     private String body;
     private String notificationType;

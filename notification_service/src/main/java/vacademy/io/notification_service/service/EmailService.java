@@ -9,6 +9,7 @@ import jakarta.mail.internet.MimeBodyPart;
 import jakarta.mail.internet.MimeMessage;
 import jakarta.mail.internet.MimeMultipart;
 import jakarta.mail.util.ByteArrayDataSource;
+import jdk.dynalink.linker.LinkerServices;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,6 +20,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import javax.sql.DataSource;
+import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 
 @Service
@@ -235,7 +238,7 @@ public class EmailService {
         }
     }
 
-    public void sendAttachmentEmail(String to, String subject, String service, String body, byte[] attachment, String attachmentName) {
+    public void sendAttachmentEmail(String to, String subject, String service, String body, Map<String, byte[]> attachments) {
         try {
             logger.info("Preparing to send email to: {} with subject: {}", to, subject);
 
@@ -259,13 +262,18 @@ public class EmailService {
                     htmlPart.setContent(emailBody, "text/html; charset=utf-8");
                     multipart.addBodyPart(htmlPart);
 
-                    // Add attachment if present
-                    if (attachment != null && attachment.length > 0) {
-                        MimeBodyPart attachmentPart = new MimeBodyPart();
-                        ByteArrayDataSource dataSource = new ByteArrayDataSource(attachment, "application/pdf"); // Change MIME type as needed
-                        attachmentPart.setDataHandler(new DataHandler(dataSource));
-                        attachmentPart.setFileName(attachmentName != null ? attachmentName : "attachment.pdf");
-                        multipart.addBodyPart(attachmentPart);
+                    // Add attachments by filename
+                    if (attachments != null && !attachments.isEmpty()) {
+                        for (Map.Entry<String, byte[]> entry : attachments.entrySet()) {
+                            byte[] data = entry.getValue();
+                            if (data != null && data.length > 0) {
+                                MimeBodyPart attachmentPart = new MimeBodyPart();
+                                ByteArrayDataSource dataSource = new ByteArrayDataSource(data, "application/pdf");
+                                attachmentPart.setDataHandler(new DataHandler(dataSource));
+                                attachmentPart.setFileName(entry.getKey());
+                                multipart.addBodyPart(attachmentPart);
+                            }
+                        }
                     }
 
                     message.setContent(multipart);
@@ -276,7 +284,7 @@ public class EmailService {
 
                 } catch (MessagingException e) {
                     logger.error("Error while preparing or sending the email", e);
-                    throw new RuntimeException("Failed to send email with attachment", e);
+                    throw new RuntimeException("Failed to send email with attachments", e);
                 }
             });
 
@@ -289,5 +297,7 @@ public class EmailService {
             throw new RuntimeException("An error occurred while preparing the email", e);
         }
     }
+
+
 
 }

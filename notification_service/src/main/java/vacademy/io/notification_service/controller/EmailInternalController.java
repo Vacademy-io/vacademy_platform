@@ -12,6 +12,8 @@ import vacademy.io.notification_service.dto.NotificationDTO;
 import vacademy.io.notification_service.features.email_otp.service.InviteNewUserService;
 import vacademy.io.notification_service.service.NotificationService;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("notification-service/internal/common/v1")
 public class EmailInternalController {
@@ -29,12 +31,11 @@ public class EmailInternalController {
 
     @PostMapping("/send-email-to-users")
     public ResponseEntity<String> sendEmailsToUsers(@RequestBody NotificationDTO emailToUsersDTO) {
-       return ResponseEntity.ok(notificationService.sendNotification(emailToUsersDTO));
+        return ResponseEntity.ok(notificationService.sendNotification(emailToUsersDTO));
     }
 
     @PostMapping("/send-attachment-notification")
-    public ResponseEntity<String> sendEmailsToUsers(@RequestBody AttachmentNotificationDTO emailToUsersDTO) {
-        return ResponseEntity.ok(notificationService.sendAttachmentNotification(emailToUsersDTO));
+    public ResponseEntity<Boolean> sendEmailsToUsers(@RequestBody List<AttachmentNotificationDTO> emailToUsersDTOs) {
+        return ResponseEntity.ok(notificationService.sendAttachmentNotification(emailToUsersDTOs));
     }
-
 }

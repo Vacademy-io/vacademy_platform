@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -74,43 +75,57 @@ public class NotificationService {
     }
 
     @Transactional
-    public String sendAttachmentNotification(AttachmentNotificationDTO attachmentNotificationDTO) {
-        List<AttachmentUsersDTO> users = attachmentNotificationDTO.getUsers();
+    public Boolean sendAttachmentNotification(List<AttachmentNotificationDTO> attachmentNotificationDTOs) {
         List<NotificationLog> notificationLogs = new ArrayList<>();
 
         try {
-            for (AttachmentUsersDTO user : users) {
-                String parsedBody = parsePlaceholders(attachmentNotificationDTO.getBody(), user.getPlaceholders());
-                String notificationType = attachmentNotificationDTO.getNotificationType();
-                String channelId = user.getChannelId();
-                String userId = user.getUserId();
+            for (AttachmentNotificationDTO attachmentNotificationDTO : attachmentNotificationDTOs) {
+                List<AttachmentUsersDTO> users = attachmentNotificationDTO.getUsers();
 
-                // Create and store log
-                NotificationLog log = createNotificationLog(notificationType, channelId, parsedBody,
-                        attachmentNotificationDTO.getSource(),
-                        attachmentNotificationDTO.getSourceId(), userId);
-                notificationLogs.add(log);
+                for (AttachmentUsersDTO user : users) {
+                    String parsedBody = parsePlaceholders(attachmentNotificationDTO.getBody(), user.getPlaceholders());
+                    String notificationType = attachmentNotificationDTO.getNotificationType();
+                    String channelId = "punitpunde@gmail.com"; // Consider fetching dynamically based on user
+                    String userId = user.getUserId();
 
-                // Handle Email Notifications
-                if ("EMAIL".equalsIgnoreCase(notificationType)) {
-                    byte[] decodedAttachment = user.getAttachment() != null ?
-                            Base64.getDecoder().decode(user.getAttachment()) : null;
+                    // Create and store log
+                    NotificationLog log = createNotificationLog(
+                            notificationType,
+                            channelId,
+                            parsedBody,
+                            attachmentNotificationDTO.getSource(),
+                            attachmentNotificationDTO.getSourceId(),
+                            userId
+                    );
+                    notificationLogs.add(log);
 
-                    emailSenderService.sendAttachmentEmail(channelId, attachmentNotificationDTO.getSubject(),
-                            "email-service", parsedBody, decodedAttachment,
-                            attachmentNotificationDTO.getAttachmentName());
-                } else {
-                    throw new IllegalArgumentException("Unsupported notification type: " + notificationType);
+                    if ("EMAIL".equalsIgnoreCase(notificationType)) {
+                        Map<String, byte[]> base64AttachmentNameAndAttachment = user.getAttachments().stream()
+                                .collect(Collectors.toMap(
+                                        AttachmentUsersDTO.AttachmentDTO::getAttachmentName,
+                                        a -> Base64.getDecoder().decode(a.getAttachment())
+                                ));
+
+                        emailSenderService.sendAttachmentEmail(
+                                channelId,
+                                attachmentNotificationDTO.getSubject(),
+                                "email-service",
+                                parsedBody,
+                                base64AttachmentNameAndAttachment
+                        );
+                    } else {
+                        throw new IllegalArgumentException("Unsupported notification type: " + notificationType);
+                    }
                 }
             }
 
-            // Save all logs in a batch
             notificationLogRepository.saveAll(notificationLogs);
-            return "Notification sent successfully";
+            return true;
 
         } catch (Exception e) {
             throw new RuntimeException("Failed to send notification: " + e.getMessage(), e);
         }
     }
+
 
 }

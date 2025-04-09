@@ -10,9 +10,11 @@ import vacademy.io.admin_core_service.features.notification.enums.NotificationSo
 import vacademy.io.admin_core_service.features.notification.enums.NotificationType;
 import vacademy.io.admin_core_service.features.notification.repository.NotificationSettingRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -88,6 +90,63 @@ public class LMSReportSettingService {
         addOrUpdateInstituteLmsReportSetting(userId, NotificationSourceEnum.LEARNER.name(), NotificationType.BATCH_PROGRESS_REPORT_FOR_PARENT.name(), parentSetting.getCommaSeparatedCommunicationTypes(), parentSetting.getBatchProgressReport(),studentSetting.getCommaSeparatedEmailIds(),parentSetting.getCommaSeparatedMobileNumber());
 
         return "success";
+    }
+
+    public LmsReportNotificationSettingDTO getLmsReportNotificationSettingForInstitute(String instituteId, CustomUserDetails userDetails) {
+        LmsReportNotificationSettingDTO dto = new LmsReportNotificationSettingDTO();
+        dto.setLearnerSetting(buildReportSetting(NotificationSourceEnum.INSTITUTE.name(), instituteId, false));
+        dto.setParentSetting(buildReportSetting(NotificationSourceEnum.INSTITUTE.name(), instituteId, true));
+        return dto;
+    }
+
+    public LmsReportNotificationSettingDTO getLmsReportNotificationSettingForLearner(String userId,String instituteId, CustomUserDetails userDetails) {
+        LmsReportNotificationSettingDTO dto = new LmsReportNotificationSettingDTO();
+
+        Optional<NotificationSetting>optionalNotificationSetting = notificationSettingRepository.findBySourceAndSourceIdAndTypeAndStatusIn(
+                NotificationSourceEnum.LEARNER.name(),
+                userId,
+                NotificationType.LEARNER_PROGRESS_REPORT.name(),
+                List.of(NotificationSettingStatusEnum.ACTIVE.name())
+        );
+        if (optionalNotificationSetting.isPresent()) {
+            dto.setLearnerSetting(buildReportSetting(NotificationSourceEnum.LEARNER.name(), userId, false));
+            dto.setParentSetting(buildReportSetting(NotificationSourceEnum.LEARNER.name(), userId, true));
+        }
+        else{
+            dto.setLearnerSetting(buildReportSetting(NotificationSourceEnum.INSTITUTE.name(), instituteId, false));
+            dto.setParentSetting(buildReportSetting(NotificationSourceEnum.INSTITUTE.name(), instituteId, true));
+        }
+        return dto;
+    }
+
+    private LmsReportNotificationSettingDTO.ReportNotificationSetting buildReportSetting(String source, String sourceId, boolean isParent) {
+        NotificationType learnerType = isParent ? NotificationType.LEARNER_PROGRESS_REPORT_FOR_PARENT : NotificationType.LEARNER_PROGRESS_REPORT;
+        NotificationType batchType = isParent ? NotificationType.BATCH_PROGRESS_REPORT_FOR_PARENT : NotificationType.BATCH_PROGRESS_REPORT;
+
+        NotificationSetting learnerSetting = getNotificationSettingBySourceAndSourceIdAndType(source, sourceId, learnerType.name());
+        NotificationSetting batchSetting = getNotificationSettingBySourceAndSourceIdAndType(source, sourceId, batchType.name());
+
+        return LmsReportNotificationSettingDTO.ReportNotificationSetting.builder()
+                .commaSeparatedCommunicationTypes(learnerSetting.getCommaSeparatedCommunicationTypes())
+                .commaSeparatedEmailIds(learnerSetting.getCommaSeparatedEmailIds())
+                .commaSeparatedMobileNumber(learnerSetting.getCommaSeparatedMobileNumbers())
+                .learnerProgressReport(mapToFrequency(learnerSetting))
+                .batchProgressReport(mapToFrequency(batchSetting))
+                .build();
+    }
+
+    private LmsReportNotificationSettingDTO.NotificationFrequency mapToFrequency(NotificationSetting setting) {
+        return LmsReportNotificationSettingDTO.NotificationFrequency.builder()
+                .daily(setting.getDaily())
+                .weekly(setting.getWeekly())
+                .monthly(setting.getMonthly())
+                .build();
+    }
+
+    public NotificationSetting getNotificationSettingBySourceAndSourceIdAndType(String source, String sourceId, String type) {
+        return notificationSettingRepository
+                .findBySourceAndSourceIdAndTypeAndStatusIn(source, sourceId, type, List.of(NotificationSettingStatusEnum.ACTIVE.name()))
+                .orElseThrow(() -> new VacademyException("Notification Setting not found"));
     }
 
 }

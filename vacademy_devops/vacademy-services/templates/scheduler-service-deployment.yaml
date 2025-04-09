@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scheduler-service
+  namespace: default
+  labels:
+    app: scheduler-service
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: scheduler-service
+  template:
+    metadata:
+      labels:
+        app: scheduler-service
+    spec:
+      containers:
+        - name: scheduler-service
+          image: {{ .Values.services.scheduler_service.image.repository }}:{{ .Values.services.scheduler_service.image.tag }}
+          imagePullPolicy: Always
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "100Mi"
+            limits:
+              cpu: "100m"
+              memory: "200Mi"
+          livenessProbe:
+            httpGet:
+              path: /scheduler-service/actuator/health
+              port: {{ .Values.services.scheduler_service.port }}
+              scheme: HTTP
+            initialDelaySeconds: 180
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+            successThreshold: 1
+          startupProbe:
+            httpGet:
+              path: /scheduler-service/actuator/health
+              port: {{ .Values.services.scheduler_service.port }}
+              scheme: HTTP
+            initialDelaySeconds: 180
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 30
+            successThreshold: 1
+          readinessProbe:
+            httpGet:
+              path: /scheduler-service/actuator/health
+              port: {{ .Values.services.scheduler_service.port }}
+              scheme: HTTP
+            initialDelaySeconds: 180
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+            successThreshold: 1
+          ports:
+            - containerPort: {{ .Values.services.scheduler_service.port }}

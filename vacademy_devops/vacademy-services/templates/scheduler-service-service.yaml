@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: scheduler-service
+  namespace: default
+spec:
+  selector:
+    app: scheduler-service
+  ports:
+    - name: http
+      port: {{ .Values.services.scheduler_service.port }}
+      targetPort: {{ .Values.services.scheduler_service.port }}
+  type: NodePort

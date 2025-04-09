@@ -8,5 +8,7 @@
     <file url="file://$PROJECT_DIR$/community_service/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/media_service/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/notification_service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/scheduler_service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/scheduler_service/src/main/resources" charset="UTF-8" />
   </component>
 </project>

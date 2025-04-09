@@ -2,10 +2,11 @@ package vacademy.io.admin_core_service.features.learner_reports.dto.report_notif
 
 import com.fasterxml.jackson.databind.PropertyNamingStrategy;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
+import lombok.Builder;
 import lombok.Data;
 
-@JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
 @Data
+@JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
 public class LmsReportNotificationSettingDTO {
 
     // Notification settings for student and parent
@@ -13,6 +14,8 @@ public class LmsReportNotificationSettingDTO {
     private ReportNotificationSetting parentSetting;
 
     @Data
+    @Builder
+    @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
     public static class ReportNotificationSetting {
         // EMAIL, WHATSAPP (comma-separated)
         private String commaSeparatedCommunicationTypes;
@@ -28,6 +31,8 @@ public class LmsReportNotificationSettingDTO {
     }
 
     @Data
+    @Builder
+    @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
     public static class NotificationFrequency {
         private Boolean daily;
         private Boolean weekly;

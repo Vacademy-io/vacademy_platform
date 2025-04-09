@@ -38,8 +38,8 @@ public class DeepSeekApiService {
         requestBody.put("max_tokens", maxTokens);
         requestBody.put("frequency_penalty", 0);
         requestBody.put("presence_penalty", 0);
-        requestBody.put("temperature", 1);
-        requestBody.put("top_p", 1);
+        requestBody.put("temperature", 0.7);           // Less randomness for JSON
+        requestBody.put("top_p", 0.9);                 // Slightly narrower sampling
         requestBody.put("response_format", Collections.singletonMap("type", "json_object"));
         requestBody.put("stream", false);
 

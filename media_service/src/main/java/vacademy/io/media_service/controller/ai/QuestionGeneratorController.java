@@ -75,7 +75,7 @@ public class QuestionGeneratorController {
     }
 
     @PostMapping("/from-html")
-    public ResponseEntity<AutoQuestionPaperResponse> fromHtml(
+    public ResponseEntity<AutoQuestionPaperResponse> fromHtml(@RequestParam(required = false) String userPrompt,
             @RequestParam("file") MultipartFile file) {
 
         // Check if the uploaded file is HTML
@@ -87,7 +87,7 @@ public class QuestionGeneratorController {
             String html = new String(file.getBytes(), StandardCharsets.UTF_8);
             String htmlBody = extractBody(html);
             String networkHtml = htmlImageConverter.convertBase64ToUrls(htmlBody);
-            String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromHTML(networkHtml));
+            String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromHTML(networkHtml, userPrompt));
 
             // Process the raw output to get valid JSON
             String validJson = JsonUtils.extractAndSanitizeJson(rawOutput);
@@ -100,19 +100,14 @@ public class QuestionGeneratorController {
     }
 
     @PostMapping("/from-not-html")
-    public ResponseEntity<AutoQuestionPaperResponse> fromNotHtml(
+    public ResponseEntity<AutoQuestionPaperResponse> fromNotHtml( @RequestParam(required = false) String userPrompt,
             @RequestParam("file") MultipartFile file) {
-
-        // Check if the uploaded file is HTML
-        if (isHtmlFile(file)) {
-            return fromHtml(file);
-        }
 
         try {
             String html = docConverterService.convertDocument(file);
             String htmlBody = extractBody(html);
             String networkHtml = htmlImageConverter.convertBase64ToUrls(htmlBody);
-            String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromHTML(networkHtml));
+            String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromHTML(networkHtml, userPrompt));
 
             // Process the raw output to get valid JSON
             String validJson = JsonUtils.extractAndSanitizeJson(rawOutput);

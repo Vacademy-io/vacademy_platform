@@ -104,9 +104,13 @@ public class DeepSeekService {
     }
 
 
-    public String getQuestionsWithDeepSeekFromHTML(String htmlData) {
+    public String getQuestionsWithDeepSeekFromHTML(String htmlData, String userPrompt) {
         HtmlJsonProcessor htmlJsonProcessor = new HtmlJsonProcessor();
         String unTaggedHtml = htmlJsonProcessor.removeTags(htmlData);
+
+        if(userPrompt == null) {
+            userPrompt = "Include ALL questions in the response. Do not truncate or omit any questions.";
+        }
 
         String template = """
                 HTML raw data :  {htmlData}
@@ -152,10 +156,11 @@ public class DeepSeekService {
                         
                         Also keep the DS_TAGS field intact in html
                         And do not try to calculate right ans, only add if available in input
-                        Give the complete result to all possible questions
+                        
+                        IMPORTANT: {userPrompt}
                         """;
 
-        Prompt prompt = new PromptTemplate(template).create(Map.of("htmlData", unTaggedHtml));
+        Prompt prompt = new PromptTemplate(template).create(Map.of("htmlData", unTaggedHtml, "userPrompt", userPrompt));
 
         DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek-chat", prompt.getContents().trim(), 8192);
         if(response.getChoices().isEmpty()) {

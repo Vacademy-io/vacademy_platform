@@ -132,7 +132,7 @@ public class PDFQuestionGeneratorController {
 
 
     @GetMapping("/math-parser/pdf-to-questions")
-    public ResponseEntity<AutoQuestionPaperResponse> getMathParserPdfHtml(@RequestParam String pdfId) throws IOException {
+    public ResponseEntity<AutoQuestionPaperResponse> getMathParserPdfHtml(@RequestParam String pdfId, @RequestParam(required = false) String userPrompt) throws IOException {
 
         var fileConversionStatus = fileConversionStatusService.findByVendorFileId(pdfId);
 
@@ -145,7 +145,7 @@ public class PDFQuestionGeneratorController {
             String networkHtml = htmlImageConverter.convertBase64ToUrls(htmlBody);
 
             fileConversionStatusService.updateHtmlText(pdfId, networkHtml);
-            String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromHTML(networkHtml));
+            String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromHTML(networkHtml, userPrompt));
 
             // Process the raw output to get valid JSON
             String validJson = JsonUtils.extractAndSanitizeJson(rawOutput);
@@ -154,7 +154,7 @@ public class PDFQuestionGeneratorController {
 
         }
 
-        String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromHTML(fileConversionStatus.get().getHtmlText()));
+        String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromHTML(fileConversionStatus.get().getHtmlText(), userPrompt));
 
         // Process the raw output to get valid JSON
         String validJson = JsonUtils.extractAndSanitizeJson(rawOutput);
@@ -162,10 +162,10 @@ public class PDFQuestionGeneratorController {
     }
 
     @PostMapping("/math-parser/html-to-questions")
-    public ResponseEntity<AutoQuestionPaperResponse> getMathParserHtmlToQuestions(@RequestBody HtmlResponse html) throws IOException {
+    public ResponseEntity<AutoQuestionPaperResponse> getMathParserHtmlToQuestions(@RequestBody HtmlResponse html, @RequestParam(required = false) String userPrompt) throws IOException {
 
 
-        String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromHTML(html.getHtml()));
+        String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromHTML(html.getHtml(), userPrompt));
 
         String validJson = JsonUtils.extractAndSanitizeJson(rawOutput);
         return ResponseEntity.ok(createAutoQuestionPaperResponse(removeExtraSlashes(validJson)));

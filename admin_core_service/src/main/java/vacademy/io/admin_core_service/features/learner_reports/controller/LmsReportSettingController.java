@@ -21,7 +21,7 @@ public class LmsReportSettingController {
             @RequestBody LmsReportNotificationSettingDTO dto,
             @RequestAttribute("user") CustomUserDetails user
     ) {
-        return ResponseEntity.ok(lmsReportSettingService.addOrUpdateLmsReportSetting(dto, instituteId, user));
+        return ResponseEntity.ok(lmsReportSettingService.addOrUpdateInstituteLmsReportSetting(dto, instituteId, user));
     }
 
     // Update or add settings for learner

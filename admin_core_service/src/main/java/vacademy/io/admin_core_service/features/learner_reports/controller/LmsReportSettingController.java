@@ -15,7 +15,7 @@ public class LmsReportSettingController {
     private final LMSReportSettingService lmsReportSettingService;
 
     // Update or add settings for institute
-    @PostMapping("/institute/update")
+    @PostMapping("/institute/update/{instituteId}")
     public ResponseEntity<String> updateInstituteReportSettings(
             @PathVariable String instituteId,
             @RequestBody LmsReportNotificationSettingDTO dto,

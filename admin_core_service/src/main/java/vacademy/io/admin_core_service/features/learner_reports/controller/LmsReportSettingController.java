@@ -15,13 +15,13 @@ public class LmsReportSettingController {
     private final LMSReportSettingService lmsReportSettingService;
 
     // Update or add settings for institute
-    @PostMapping("/institute/update")
+    @PostMapping("/institute/update/{instituteId}")
     public ResponseEntity<String> updateInstituteReportSettings(
             @PathVariable String instituteId,
             @RequestBody LmsReportNotificationSettingDTO dto,
             @RequestAttribute("user") CustomUserDetails user
     ) {
-        return ResponseEntity.ok(lmsReportSettingService.addOrUpdateLmsReportSetting(dto, instituteId, user));
+        return ResponseEntity.ok(lmsReportSettingService.addOrUpdateInstituteLmsReportSetting(dto, instituteId, user));
     }
 
     // Update or add settings for learner

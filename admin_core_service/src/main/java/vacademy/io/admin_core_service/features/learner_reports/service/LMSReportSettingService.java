@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.learner_reports.dto.report_notification.LmsReportNotificationSettingDTO;
 import vacademy.io.admin_core_service.features.notification.entity.NotificationSetting;
+import vacademy.io.admin_core_service.features.notification.enums.CommunicationType;
 import vacademy.io.admin_core_service.features.notification.enums.NotificationSettingStatusEnum;
 import vacademy.io.admin_core_service.features.notification.enums.NotificationSourceEnum;
 import vacademy.io.admin_core_service.features.notification.enums.NotificationType;
@@ -44,6 +45,7 @@ public class LMSReportSettingService {
         setting.setSource(NotificationSourceEnum.INSTITUTE.name());
         setting.setSourceId(sourceId);
         setting.setStatus(NotificationSettingStatusEnum.ACTIVE.name());
+        setting.setCommaSeparatedCommunicationTypes(CommunicationType.EMAIL.name() + "," + CommunicationType.WHATSAPP.name());
         return setting;
     }
 

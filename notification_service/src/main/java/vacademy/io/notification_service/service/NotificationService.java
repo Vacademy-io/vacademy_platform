@@ -85,7 +85,7 @@ public class NotificationService {
                 for (AttachmentUsersDTO user : users) {
                     String parsedBody = parsePlaceholders(attachmentNotificationDTO.getBody(), user.getPlaceholders());
                     String notificationType = attachmentNotificationDTO.getNotificationType();
-                    String channelId = "punitpunde@gmail.com"; // Consider fetching dynamically based on user
+                    String channelId = user.getChannelId();
                     String userId = user.getUserId();
 
                     // Create and store log

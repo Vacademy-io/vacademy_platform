@@ -12,7 +12,10 @@ import vacademy.io.admin_core_service.features.notification.constants.Notificati
 import vacademy.io.admin_core_service.features.notification.dto.NotificationDTO;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
 import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.common.notification.dto.AttachmentNotificationDTO;
 import vacademy.io.common.notification.dto.GenericEmailRequest;
+
+import java.util.List;
 
 @Service
 public class NotificationService {
@@ -52,4 +55,20 @@ public class NotificationService {
             throw new VacademyException(e.getMessage());
         }
     }
+
+    public Boolean sendAttachmentEmail(List<AttachmentNotificationDTO> attachmentNotificationDTOs) {
+
+        ResponseEntity<String> response = internalClientUtils.makeHmacRequest(clientName, HttpMethod.POST.name(), notificationServerBaseUrl, NotificationConstant.SEND_ATTACHMENT_EMAIL, attachmentNotificationDTOs);
+
+        ObjectMapper objectMapper = new ObjectMapper();
+        try {
+            Boolean isMailSent = objectMapper.readValue(response.getBody(), new TypeReference<Boolean>() {
+            });
+
+            return isMailSent;
+        } catch (JsonProcessingException e) {
+            throw new VacademyException(e.getMessage());
+        }
+    }
+
 }

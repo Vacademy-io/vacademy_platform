@@ -49,4 +49,13 @@ public class LearnerReportController {
 
         return ResponseEntity.ok(learnerReportService.getChapterSlideProgress(moduleId, userId, userDetails));
     }
+
+    @PostMapping("/slide-wise-progress")
+    public ResponseEntity<List<SlideProgressDateWiseDTO>> getSlideWiseProgress(
+            @RequestBody ReportFilterDTO reportFilterDTO,
+            @RequestAttribute("user") CustomUserDetails userDetails) {
+        return ResponseEntity.ok(
+                learnerReportService.getSlideProgressForLearner(reportFilterDTO,userDetails)
+        );
+    }
 }

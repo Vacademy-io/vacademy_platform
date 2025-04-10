@@ -1,10 +1,11 @@
-package vacademy.io.community_service.feature.filter.entity;
+package vacademy.io.community_service.feature.presentation.entity.question;
 
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import vacademy.io.community_service.feature.rich_text.entity.AssessmentRichTextData;
 
 import java.sql.Timestamp;
 

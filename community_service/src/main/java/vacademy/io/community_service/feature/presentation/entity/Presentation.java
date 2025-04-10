@@ -28,6 +28,9 @@ public class Presentation {
     @Column(name = "description", length = 955)
     private String description;
 
+    @Column(name = "institute_id", length = 955)
+    private String instituteId;
+
     @Column(name = "cover_file_id", length = 255)
     private String coverFileId;
 

@@ -3,8 +3,8 @@ package vacademy.io.community_service.feature.filter.service;
 
 import org.springframework.stereotype.Service;
 import vacademy.io.community_service.feature.filter.repository.QuestionPaperRepository;
-import vacademy.io.community_service.feature.filter.repository.QuestionRepository;
 import vacademy.io.community_service.feature.filter.enums.EntityName;
+import vacademy.io.community_service.feature.presentation.repository.QuestionRepository;
 
 @Service
 public class EntityValidationService {

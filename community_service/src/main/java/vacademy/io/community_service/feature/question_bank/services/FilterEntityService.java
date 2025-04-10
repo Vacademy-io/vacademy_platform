@@ -7,7 +7,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.community_service.feature.filter.repository.EntityTagsRepository;
 import vacademy.io.community_service.feature.filter.repository.QuestionPaperRepository;
-import vacademy.io.community_service.feature.filter.repository.QuestionRepository;
+import vacademy.io.community_service.feature.presentation.repository.QuestionRepository;
 import vacademy.io.community_service.feature.question_bank.dto.FilteredEntityResponseDto;
 import vacademy.io.community_service.feature.question_bank.dto.RequestDto;
 import vacademy.io.community_service.feature.question_bank.dto.TagFilterRequestDto;

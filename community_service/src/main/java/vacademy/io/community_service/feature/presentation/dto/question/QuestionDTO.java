@@ -1,4 +1,4 @@
-package vacademy.io.community_service.feature.filter.dto;
+package vacademy.io.community_service.feature.presentation.dto.question;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
@@ -9,6 +9,8 @@ import lombok.Setter;
 import vacademy.io.community_service.feature.filter.service.EvaluationJsonToMapConverter;
 import vacademy.io.community_service.feature.presentation.entity.question.Option;
 import vacademy.io.community_service.feature.presentation.entity.question.Question;
+import vacademy.io.community_service.feature.rich_text.dto.AssessmentRichTextDataDTO;
+
 
 import java.util.ArrayList;
 import java.util.Date;

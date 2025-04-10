@@ -1,9 +1,10 @@
-package vacademy.io.community_service.feature.filter.entity;
+package vacademy.io.community_service.feature.presentation.entity.question;
 
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.UuidGenerator;
-import vacademy.io.community_service.feature.filter.dto.QuestionDTO;
+import vacademy.io.community_service.feature.presentation.dto.question.QuestionDTO;
+import vacademy.io.community_service.feature.rich_text.entity.AssessmentRichTextData;
 
 
 import java.sql.Timestamp;
@@ -90,6 +91,7 @@ public class Question {
         this.textData = AssessmentRichTextData.fromDTO(questionDTO.getText());
         this.explanationTextData = AssessmentRichTextData.fromDTO(questionDTO.getExplanationText());
         this.parentRichText = AssessmentRichTextData.fromDTO(questionDTO.getParentRichText());
+        this.optionsJson = questionDTO.getOptionsJson();
     }
 
     public Question(String id) {

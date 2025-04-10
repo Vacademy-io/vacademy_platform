@@ -1,4 +1,4 @@
-package vacademy.io.community_service.feature.filter.dto;
+package vacademy.io.community_service.feature.presentation.dto.question;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
@@ -7,6 +7,8 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.Setter;
 import vacademy.io.community_service.feature.presentation.entity.question.Option;
+import vacademy.io.community_service.feature.rich_text.dto.AssessmentRichTextDataDTO;
+
 
 @Getter
 @Setter

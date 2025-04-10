@@ -1,4 +1,4 @@
-package vacademy.io.community_service.feature.filter.dto;
+package vacademy.io.community_service.feature.rich_text.dto;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;

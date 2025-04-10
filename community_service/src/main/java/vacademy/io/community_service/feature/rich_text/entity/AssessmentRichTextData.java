@@ -1,4 +1,4 @@
-package vacademy.io.community_service.feature.filter.entity;
+package vacademy.io.community_service.feature.rich_text.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -6,7 +6,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import lombok.*;
 import org.hibernate.annotations.UuidGenerator;
-import vacademy.io.community_service.feature.filter.dto.AssessmentRichTextDataDTO;
+import vacademy.io.community_service.feature.rich_text.dto.AssessmentRichTextDataDTO;
 
 @Entity
 @Table(name = "assessment_rich_text_data")

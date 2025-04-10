@@ -1,4 +1,4 @@
-package vacademy.io.community_service.feature.filter.dto;
+package vacademy.io.community_service.feature.presentation.dto.question;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
@@ -9,6 +9,8 @@ import lombok.Setter;
 import vacademy.io.community_service.feature.filter.service.EvaluationJsonToMapConverter;
 import vacademy.io.community_service.feature.presentation.entity.question.Option;
 import vacademy.io.community_service.feature.presentation.entity.question.Question;
+import vacademy.io.community_service.feature.rich_text.dto.AssessmentRichTextDataDTO;
+
 
 import java.util.ArrayList;
 import java.util.Date;
@@ -20,7 +22,7 @@ import java.util.Map;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 @JsonIgnoreProperties(ignoreUnknown = true)
 @AllArgsConstructor
-public class QuestionDTO {
+public class PreviewQuestionDTO {
 
     private String id;
     private String previewId;
@@ -34,23 +36,20 @@ public class QuestionDTO {
     private String questionType;
     private String accessLevel;
     private String autoEvaluationJson;
-    private String optionsJson;
     private Map<String, Object> parsedEvaluationObject;
     private String evaluationType;
     private AssessmentRichTextDataDTO explanationText;
-    private String parentRichTextId;
-    private AssessmentRichTextDataDTO parentRichText;
     private Integer defaultQuestionTimeMins;
     private List<OptionDTO> options = new ArrayList<>();
     private List<String> errors = new ArrayList<>();
     private List<String> warnings = new ArrayList<>();
 
     // Default constructor
-    public QuestionDTO() {
+    public PreviewQuestionDTO() {
     }
 
     // Constructor from Question entity
-    public QuestionDTO(Question question, Boolean provideSolution) {
+    public PreviewQuestionDTO(Question question, Boolean provideSolution) {
         this.id = question.getId();
         this.mediaId = question.getMediaId();
         this.createdAt = question.getCreatedAt(); // Convert Timestamp to String
@@ -58,7 +57,6 @@ public class QuestionDTO {
         this.questionResponseType = question.getQuestionResponseType();
         this.questionType = question.getQuestionType();
         this.accessLevel = question.getAccessLevel();
-        this.optionsJson = question.getOptionsJson();
         if (provideSolution) {
             this.autoEvaluationJson = question.getAutoEvaluationJson();
             this.evaluationType = question.getEvaluationType();
@@ -75,10 +73,6 @@ public class QuestionDTO {
             this.explanationText = new AssessmentRichTextDataDTO(question.getExplanationTextData());
         }
 
-        if(question.getParentRichText() != null){
-            this.parentRichText = new AssessmentRichTextDataDTO((question.getParentRichText()));
-        }
-
         if (question.getOptions() != null) {
             for (Option option : question.getOptions()) {
                 this.options.add(new OptionDTO(option));
@@ -87,7 +81,7 @@ public class QuestionDTO {
     }
 
 
-    public QuestionDTO(String questionNumber) {
+    public PreviewQuestionDTO(String questionNumber) {
         this.previewId = questionNumber;
     }
 

@@ -19,6 +19,9 @@ public class PresentationSlide {
     @Column(name = "title", length = 255)
     private String title;
 
+    @Column(name = "status", length = 255)
+    private String status;
+
     @ManyToOne
     @JoinColumn(name = "presentation_id", referencedColumnName = "id")
     private Presentation presentation;
@@ -33,10 +36,10 @@ public class PresentationSlide {
     private String interactionStatus;
 
     @Column(name = "slide_order")
-    private Integer slide_order;
+    private Integer slideOrder;
 
     @Column(name = "default_time")
-    private LocalDateTime defaultTime;
+    private Integer defaultTime;
 
     @Column(name = "content", columnDefinition = "text")
     private String content;

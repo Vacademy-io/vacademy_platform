@@ -120,6 +120,7 @@ public class SubjectService {
      * @return A message indicating successful deletion.
      * @throws VacademyException If the subject ID is null or the subject is not found.
      */
+    @Transactional
     public String deleteSubject(List<String> subjectIds, CustomUserDetails user) {
         if (subjectIds == null || subjectIds.isEmpty()) {
             throw new VacademyException("Subject IDs cannot be null or empty");
@@ -128,8 +129,9 @@ public class SubjectService {
         List<Subject> subjects = subjectRepository.findAllById(subjectIds);
 
         subjects.forEach(subject -> subject.setStatus(SubjectStatusEnum.DELETED.name()));
-        subjectRepository.saveAll(subjects);
 
+        subjectRepository.saveAll(subjects);
+        chapterPackageSessionMappingRepository.softDeleteChapterMappingsWithoutActiveSubjects(subjectIds);
         return "Subjects deleted successfully";
     }
 

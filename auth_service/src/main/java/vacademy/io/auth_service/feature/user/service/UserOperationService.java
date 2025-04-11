@@ -1,15 +1,19 @@
 package vacademy.io.auth_service.feature.user.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import vacademy.io.auth_service.feature.notification.dto.NotificationDTO;
 import vacademy.io.auth_service.feature.notification.dto.NotificationToUserDTO;
 import vacademy.io.auth_service.feature.notification.enums.NotificationSource;
 import vacademy.io.auth_service.feature.notification.service.NotificationEmailBody;
 import vacademy.io.auth_service.feature.notification.service.NotificationService;
+import vacademy.io.common.auth.dto.UserCredentials;
 import vacademy.io.common.auth.entity.User;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.auth.repository.UserRepository;
+import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.common.notification.dto.GenericEmailRequest;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -52,8 +56,8 @@ public class UserOperationService {
         List<NotificationToUserDTO> notifyUsers = new ArrayList<>();
 
         for (User user : users) {
-            if (user == null || user.getId() == null || user.getEmail() == null || user.getUsername() == null || user.getPassword() == null) {
-                continue; // skip null or incomplete users
+            if (user.getId() == null || user.getEmail() == null || user.getUsername() == null || user.getPassword() == null) {
+                continue;
             }
 
             NotificationToUserDTO notification = new NotificationToUserDTO();
@@ -72,5 +76,32 @@ public class UserOperationService {
 
         notificationDTO.setUsers(notifyUsers);
         return notificationService.sendEmailToUsers(notificationDTO);
+    }
+
+    public String updateUserPassword(UserCredentials userCredentials, CustomUserDetails userDetails) {
+        User user = userRepository.findById(userCredentials.getUserId())
+                .orElseThrow(() -> new VacademyException("User not found"));
+        user.setPassword(userCredentials.getPassword());
+        user.setUsername(userCredentials.getUsername());
+        userRepository.save(user);
+        sendPasswordToUser(user);
+        return "Password updated successfully";
+    }
+
+    @Async
+    public String sendPasswordToUser(User user) {
+        String emailBody = NotificationEmailBody.sendUpdatedUserPasswords(
+                "auth-service", user.getFullName(), user.getUsername(), user.getPassword());
+
+        GenericEmailRequest genericEmailRequest = new GenericEmailRequest();
+        genericEmailRequest.setTo(user.getEmail());
+        genericEmailRequest.setSubject("Your Updated Account Credentials for Accessing the App");
+        genericEmailRequest.setBody(emailBody);
+
+        if (!notificationService.sendGenericHtmlMail(genericEmailRequest)) {
+            throw new VacademyException("Email not sent");
+        }
+
+        return "Email sent successfully";
     }
 }

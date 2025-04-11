@@ -9,6 +9,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import vacademy.io.auth_service.feature.notification.constants.NotificationConstant;
+import vacademy.io.auth_service.feature.notification.dto.NotificationDTO;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.notification.dto.EmailOTPRequest;
@@ -66,5 +67,18 @@ public class NotificationService {
         } catch (JsonProcessingException e) {
             throw new VacademyException(e.getMessage());
         }
+    }
+
+    public String sendEmailToUsers(NotificationDTO notificationDTO) {
+        // Removed the redundant 'clientName' parameter, we can use the injected clientName field here
+        ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                clientName, // Directly use the injected 'clientName'
+                HttpMethod.POST.name(),
+                notificationServerBaseUrl,
+                NotificationConstant.EMAIL_TO_USERS,
+                notificationDTO
+        );
+        return response.getBody();
+
     }
 }

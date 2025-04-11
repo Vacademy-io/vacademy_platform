@@ -93,7 +93,7 @@ public class DeepSeekService {
 
         Prompt prompt = new PromptTemplate(template).create(Map.of("textPrompt", textPrompt, "numberOfQuestions", numberOfQuestions, "typeOfQuestion", typeOfQuestion, "classLevel", classLevel, "topics", topics, "language", language));
 
-        DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek-chat", prompt.getContents().trim(), 8192);
+        DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek-ai/DeepSeek-V3-0324", prompt.getContents().trim(), 100000);
         if(response.getChoices().isEmpty()) {
             throw new VacademyException("No response from DeepSeek");
         }
@@ -162,7 +162,7 @@ public class DeepSeekService {
 
         Prompt prompt = new PromptTemplate(template).create(Map.of("htmlData", unTaggedHtml, "userPrompt", userPrompt));
 
-        DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek-chat", prompt.getContents().trim(), 8192);
+        DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek-ai/DeepSeek-V3-0324", prompt.getContents().trim(), 100000);
         if(response.getChoices().isEmpty()) {
             throw new VacademyException("No response from DeepSeek");
         }
@@ -232,7 +232,7 @@ public class DeepSeekService {
 
         Prompt prompt = new PromptTemplate(template).create(Map.of("htmlData", unTaggedHtml, "requiredTopics", requiredTopics));
 
-        DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek-chat", prompt.getContents().trim(), 8192);
+        DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek-ai/DeepSeek-V3-0324", prompt.getContents().trim(), 100000);
         if(response.getChoices().isEmpty()) {
             throw new VacademyException("No response from DeepSeek");
         }
@@ -279,7 +279,7 @@ public class DeepSeekService {
 
         Prompt prompt = new PromptTemplate(template).create(Map.of("htmlQuestionData", htmlQuestionData, "htmlAnswerData", htmlAnswerData, "maxMarks", maxMarks, "evaluationDifficulty", evaluationDifficulty));
 
-        DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek-chat", prompt.getContents().trim(), 8192);
+        DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek-ai/DeepSeek-V3-0324", prompt.getContents().trim(), 100000);
         if(response.getChoices().isEmpty()) {
             throw new VacademyException("No response from DeepSeek");
         }
@@ -344,7 +344,7 @@ public class DeepSeekService {
 
         Prompt prompt = new PromptTemplate(template).create(Map.of("classLecture", audioString, "difficulty", difficulty, "numQuestions", numQuestions, "optionalPrompt", optionalPrompt));
 
-        DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek-chat", prompt.getContents().trim(), 8192);
+        DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek-ai/DeepSeek-V3-0324", prompt.getContents().trim(), 100000);
         if(response.getChoices().isEmpty()) {
             throw new VacademyException("No response from DeepSeek");
         }

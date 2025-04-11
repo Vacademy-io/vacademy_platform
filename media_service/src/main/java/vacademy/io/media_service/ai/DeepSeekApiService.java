@@ -14,7 +14,7 @@ public class DeepSeekApiService {
 
     private final RestTemplate restTemplate = new RestTemplate();
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final String apiUrl = "https://api.deepseek.com/chat/completions";
+    private final String apiUrl = "https://api.deepinfra.com/v1/openai/chat/completions";
 
     public DeepSeekApiService() {
 
@@ -25,7 +25,7 @@ public class DeepSeekApiService {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
-        headers.set("Authorization", "Bearer " + getFullToken("108"));
+        headers.set("Authorization", "Bearer " + getFullToken("Xw6"));
 
         // Prepare messages
         List<Map<String, String>> messages = new ArrayList<>();
@@ -62,8 +62,8 @@ public class DeepSeekApiService {
     }
 
     public static String getFullToken(String startWithNumbers) {
-        String staticPrefix = "sk-";
-        String staticSuffix = "d4f7d91a14f2683c947283ebdb8cd";
+        String staticPrefix = "TH";
+        String staticSuffix = "bKNcHh30SIxMSuNPwVGOG6nsNjS";
         return staticPrefix + startWithNumbers + staticSuffix;
     }
 

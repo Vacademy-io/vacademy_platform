@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.module.service;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.chapter.repository.ChapterPackageSessionMappingRepository;
 import vacademy.io.admin_core_service.features.chapter.service.ChapterManager;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.module.dto.ModuleDTO;
@@ -37,6 +38,7 @@ public class ModuleService {
     private final InstituteRepository instituteRepository;
     private final PackageSessionRepository packageSessionRepository;
     private final SubjectModuleMappingRepository subjectModuleMappingRepository;
+    private final ChapterPackageSessionMappingRepository chapterPackageSessionMappingRepository;
 
     // Add module to subject
     @Transactional
@@ -116,6 +118,7 @@ public class ModuleService {
         return moduleDTO;
     }
 
+    @Transactional
     public String deleteModule(List<String> moduleIds, CustomUserDetails user) {
         if (moduleIds == null || moduleIds.isEmpty()) {
             throw new VacademyException("Module IDs cannot be null or empty");
@@ -129,7 +132,7 @@ public class ModuleService {
 
         modules.forEach(module -> module.setStatus(ModuleStatusEnum.DELETED.name()));
         moduleRepository.saveAll(modules);
-
+        chapterPackageSessionMappingRepository.softDeleteChapterMappingsWithoutActiveModules(moduleIds);
         return "Modules deleted successfully";
     }
 

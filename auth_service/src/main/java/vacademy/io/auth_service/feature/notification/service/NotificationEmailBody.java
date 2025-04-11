@@ -168,4 +168,93 @@ public class NotificationEmailBody {
         """.formatted(service, service, name, username, password, frontendLoginUrl, service, service);
     }
 
+    public static String sendUserPasswords(String service) {
+        return """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Login Credentials</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #FFF7E1;
+        }
+        .container {
+            max-width: 600px;
+            margin: 40px auto;
+            padding: 20px;
+            background-color: #FFFFFF;
+            border: 1px solid #ED7424;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        .header {
+            background-color: #ED7424;
+            color: #FFF;
+            padding: 15px;
+            text-align: center;
+            border-radius: 10px 10px 0 0;
+        }
+        .content {
+            padding: 20px;
+            font-size: 16px;
+            color: #333;
+        }
+        .footer {
+            background-color: #ED7424;
+            color: #FFF;
+            padding: 10px;
+            text-align: center;
+            border-radius: 0 0 10px 10px;
+        }
+        .credentials {
+            font-size: 18px;
+            font-weight: bold;
+            color: #ED7424;
+            text-align: center;
+            padding: 10px;
+            background-color: #FFFAE1;
+            border: 2px solid #ED7424;
+            border-radius: 5px;
+        }
+        .login-button {
+            display: inline-block;
+            margin-top: 20px;
+            padding: 12px 20px;
+            background-color: #ED7424;
+            color: #FFF;
+            text-decoration: none;
+            font-weight: bold;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>Access Your Account</h2>
+        </div>
+        <div class="content">
+            <p>Dear User,</p>
+            <p>These are your credentials to access the app:</p>
+            <div class="credentials">
+                <p><strong>Username:</strong> {{username}}</p>
+                <p><strong>Password:</strong> {{password}}</p>
+            </div>
+            <p>Please use these details to log in and consider changing your password for security.</p>
+            <div style="text-align: center;">
+                <a href="https://learner.vacademy.io/login" class="login-button">Login Now</a>
+            </div>
+        </div>
+        <div class="footer">
+            <p>Best regards, <br> %s</p>
+        </div>
+    </div>
+</body>
+</html>
+""".formatted(service);
+    }
+
 }

@@ -2,6 +2,7 @@ package vacademy.io.auth_service.feature.notification.service;
 
 public class NotificationEmailBody {
     private static String frontendLoginUrl = "https://dash.vacademy.io/login";
+    private static String LEARNER_LOGIN_URL = "https://learner.vacademy.io/login";
     public static String forgetPasswordEmailBody(String service, String name, String username, String password) {
         return """
     <!DOCTYPE html>
@@ -256,5 +257,96 @@ public class NotificationEmailBody {
 </html>
 """.formatted(service);
     }
+
+    public static String sendUpdatedUserPasswords(String service, String name, String username, String password) {
+        return """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Updated Login Credentials - %s</title>
+            <style>
+                body {
+                    font-family: Arial, sans-serif;
+                    margin: 0;
+                    padding: 0;
+                    background-color: #F4F4F4; 
+                }
+                .container {
+                    max-width: 600px;
+                    margin: 40px auto;
+                    padding: 20px;
+                    background-color: #FFFFFF;
+                    border: 1px solid #FF5722;
+                    border-radius: 10px;
+                    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+                }
+                .header {
+                    background: linear-gradient(45deg, #FF5722, #D84315);
+                    color: #FFF;
+                    padding: 15px;
+                    text-align: center;
+                    border-radius: 10px 10px 0 0;
+                }
+                .content {
+                    padding: 20px;
+                    font-size: 16px;
+                    color: #333;
+                }
+                .footer {
+                    background: linear-gradient(45deg, #FF5722, #D84315);
+                    color: #FFF;
+                    padding: 10px;
+                    text-align: center;
+                    border-radius: 0 0 10px 10px;
+                }
+                .credentials {
+                    font-size: 18px;
+                    font-weight: bold;
+                    color: #D84315;
+                    text-align: center;
+                    padding: 10px;
+                    background-color: #FFCCBC;
+                    border: 2px solid #D84315;
+                    border-radius: 5px;
+                }
+                .login-button {
+                    display: inline-block;
+                    margin-top: 20px;
+                    padding: 10px 20px;
+                    background-color: #FF5722;
+                    color: white;
+                    text-decoration: none;
+                    border-radius: 5px;
+                    font-weight: bold;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h2>Your Credentials Have Been Updated - %s</h2>
+                </div>
+                <div class="content">
+                    <p>Dear %s,</p>
+                    <p>We wanted to let you know that your login credentials have been updated. Please find the new credentials below:</p>
+                    <div class="credentials">
+                        <p><strong>Username:</strong> %s</p>
+                        <p><strong>Password:</strong> %s</p>
+                    </div>
+                    <p>We recommend logging in as soon as possible and updating your password for added security.</p>
+                    <p style="text-align:center;">
+                        <a class="login-button" href="%s" target="_blank">Login to Your Account</a>
+                    </p>
+               
+                </div>
+                <div class="footer">
+                    <p>Best regards,<br> %s Team</p>
+                </div>
+            </div>
+        </body>
+        </html>
+    """.formatted(service, service, name, username, password, LEARNER_LOGIN_URL, service, service);
+    }
+
 
 }

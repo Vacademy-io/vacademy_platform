@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.slide.repository;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import vacademy.io.admin_core_service.features.slide.dto.LearnerRecentSlides;
 import vacademy.io.admin_core_service.features.slide.dto.SlideCountProjection;
 import vacademy.io.admin_core_service.features.slide.dto.SlideDetailProjection;
 import vacademy.io.admin_core_service.features.slide.dto.SlideDetailWithOperationProjection;
@@ -224,4 +225,69 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
             @Param("chapterId") String chapterId,
             @Param("status") List<String> status
     );
+
+    @Query(value = """
+    SELECT 
+        DISTINCT s.id AS slideId, 
+        s.title AS slideTitle, 
+        s.description AS slideDescription, 
+        s.source_type AS sourceType, 
+        s.status AS status, 
+        s.image_file_id AS imageFileId, 
+        
+        ds.id AS documentId, 
+        ds.title AS documentTitle, 
+        ds.cover_file_id AS documentCoverFileId, 
+        ds.type AS documentType,
+        
+        vs.id AS videoId, 
+        vs.title AS videoTitle, 
+        vs.description AS videoDescription, 
+        vs.published_url AS publishedUrl,
+        ds.published_data AS publishedData,
+        cts.slide_order AS slideOrder, 
+        -- Parse the value from learner_operation to Long based on the operation field
+        CASE 
+            WHEN lo.operation = 'VIDEO_LAST_TIMESTAMP' THEN CAST(lo.value AS BIGINT)  
+            ELSE NULL
+        END AS videoLastTimestamp,
+        CASE 
+            WHEN lo.operation = 'DOCUMENT_LAST_PAGE' THEN CAST(lo.value AS BIGINT)  
+            ELSE NULL
+        END AS documentLastPage,
+        -- New fields: Package, Level, Subject, Chapter, Module
+        ps.package_id AS packageId, 
+        ps.level_id AS levelId,
+        ch.id AS chapterId,
+        m.id AS moduleId,
+        sub.id AS subjectId
+    FROM slide s 
+    JOIN activity_log al ON al.slide_id = s.id 
+    JOIN chapter_to_slides cts ON s.id = cts.slide_id AND cts.status IN :chapterSlideStatus  
+    JOIN chapter ch ON cts.chapter_id = ch.id AND ch.status IN :chapterStatus  
+    JOIN package_session ps ON ps.id = :packageSessionId AND ps.status IN :packageSessionStatus  
+    JOIN module_chapter_mapping mtc ON mtc.chapter_id = ch.id  
+    JOIN modules m ON mtc.module_id = m.id AND m.status IN :moduleStatus 
+    JOIN subject_module_mapping smm ON smm.module_id = m.id  
+    JOIN subject sub ON smm.subject_id = sub.id AND sub.status IN :subjectStatus  
+    LEFT JOIN document_slide ds ON ds.id = s.source_id AND s.source_type = 'DOCUMENT' 
+    LEFT JOIN video vs ON vs.id = s.source_id AND s.source_type = 'VIDEO' 
+    LEFT JOIN learner_operation lo ON lo.user_id = :userId 
+                                    AND lo.source = 'SLIDE' 
+                                    AND lo.source_id = s.id  
+                                    
+    WHERE al.user_id = :userId 
+    AND s.status IN :slideStatus  
+    AND (al.percentage_watched IS NULL OR al.percentage_watched != 100) 
+    LIMIT 5
+""", nativeQuery = true)
+    List<LearnerRecentSlides> findRecentIncompleteSlides(
+            @Param("userId") String userId,
+            @Param("packageSessionId") String packageSessionId,
+            @Param("slideStatus") List<String> slideStatus,
+            @Param("chapterSlideStatus") List<String> chapterSlideStatus,
+            @Param("chapterStatus") List<String> chapterStatus,
+            @Param("moduleStatus") List<String> moduleStatus,
+            @Param("subjectStatus") List<String> subjectStatus,
+            @Param("packageSessionStatus") List<String> packageSessionStatus);
 }

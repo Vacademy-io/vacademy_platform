@@ -154,6 +154,7 @@ public class AddQuestionPaperFromImportManager {
             case NUMERIC:
                 handleNumericQuestion(question, questionRequest);
                 break;
+            case TRUE_FALSE:
             case MCQS:
             case MCQM:
                 correctOptionIds = createOptions(question, questionRequest);
@@ -270,6 +271,7 @@ public class AddQuestionPaperFromImportManager {
             case "NUMERIC":
                 question.setQuestionResponseType(QuestionResponseTypes.INTEGER.name());
                 break;
+            case"TRUE_FALSE":
             case "MCQS":
             case "MCQM":
                 question.setQuestionResponseType(QuestionResponseTypes.OPTION.name());

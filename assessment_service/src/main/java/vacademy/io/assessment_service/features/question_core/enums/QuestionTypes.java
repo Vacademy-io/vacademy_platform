@@ -4,7 +4,7 @@ public enum QuestionTypes {
     MCQS,
     ONE_WORD ,
     LONG_ANSWER,
-    TF,
+    TRUE_FALSE,
     MATCH,
     MCQM,
     FILL_IN_THE_BLANK,

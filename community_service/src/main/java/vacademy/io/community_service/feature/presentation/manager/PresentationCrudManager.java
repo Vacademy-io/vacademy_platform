@@ -69,7 +69,7 @@ public class PresentationCrudManager {
                 List<Question> addedQuestions = addQuestionManager.addQuestions(List.of(presentationSlideDto.getAddedQuestion()));
                 if(addedQuestions != null && !addedQuestions.isEmpty()) presentationSlide.setSourceId(addedQuestions.get(0).getId());
             }
-            if (presentationSlideDto.getUpdatedQuestion() != null){
+            if (presentationSlideDto.getUpdatedQuestion() != null ){
                 List<Question> updatedQuestions = addQuestionManager.saveEditQuestions(List.of(presentationSlideDto.getUpdatedQuestion()));
                 if(updatedQuestions != null && !updatedQuestions.isEmpty()) presentationSlide.setSourceId(updatedQuestions.get(0).getId());
             }
@@ -163,7 +163,7 @@ public class PresentationCrudManager {
     }
 
     List<PresentationSlideDto> getPresentationSlides(Presentation presentation) {
-        List<PresentationSlide> presentationSlides = presentationSlideRepository.findAllByPresentationIdAndStatusIn(presentation, List.of("PUBLISHED"));
+        List<PresentationSlide> presentationSlides = presentationSlideRepository.findAllByPresentationAndStatusIn(presentation, List.of("PUBLISHED"));
         List<PresentationSlideDto> presentationSlideDtos = new ArrayList<>();
         for (PresentationSlide presentationSlide : presentationSlides) {
             PresentationSlideDto presentationSlideDto = new PresentationSlideDto();

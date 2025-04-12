@@ -69,62 +69,16 @@ public class AddQuestionManager {
 
     }
 
-    public Boolean editQuestionPaper(List<QuestionDTO> addedQuestions, List<QuestionDTO> editedQuestions, List<QuestionDTO> deletedQuestions) throws JsonProcessingException {
-        // Process and insert new questions directly (no need to check for duplicates)
-        List<Question> newQuestions = new ArrayList<>();
-        List<Option> newOptions = new ArrayList<>();
-
-        for (var importQuestion : addedQuestions) {
-            Question question = makeQuestionAndOptionFromImportQuestion(importQuestion, false, null);
-            if (importQuestion.getParentRichText() != null) {
-                question.setParentRichText(AssessmentRichTextData.fromDTO(importQuestion.getParentRichText()));
-            }
-            newQuestions.add(question);
-            List<Option> questionOptions = question.getOptions();
-            newOptions.addAll(questionOptions);
-        }
-
-        for (var importQuestion : editedQuestions) {
-            Optional<Question> existingQuestion = questionRepository.findById(importQuestion.getId());
-
-            if (existingQuestion.isEmpty())
-                continue;
-            Question question = makeQuestionAndOptionFromImportQuestion(importQuestion, false, existingQuestion.get());
-            if (importQuestion.getParentRichText() != null) {
-                question.setParentRichText(AssessmentRichTextData.fromDTO(importQuestion.getParentRichText()));
-            }
-            newQuestions.add(question);
-            List<Option> questionOptions = question.getOptions();
-            newOptions.addAll(questionOptions);
-        }
-
-        for (var importQuestion : deletedQuestions) {
-            Optional<Question> existingQuestion = questionRepository.findById(importQuestion.getId());
-
-            if (existingQuestion.isEmpty())
-                continue;
-            existingQuestion.get().setStatus(DELETED.name());
-            newQuestions.add(existingQuestion.get());
-        }
-
-        questionRepository.saveAll(newQuestions);
-        optionRepository.saveAll(newOptions);
-
-        return true;
-
-    }
 
     public List<Question> addQuestions(List<QuestionDTO> questions) {
         List<Question> newQuestions = new ArrayList<>();
         List<Option> newOptions = new ArrayList<>();
         for (var importQuestion : questions) {
-            Optional<Question> existingQuestion = questionRepository.findById(importQuestion.getId());
-
-            if (existingQuestion.isEmpty())
+            if (importQuestion.getId() != null)
                 continue;
             Question question = null;
             try {
-                question = makeQuestionAndOptionFromImportQuestion(importQuestion, false, existingQuestion.get());
+                question = makeQuestionAndOptionFromImportQuestion(importQuestion, false, null);
             } catch (JsonProcessingException e) {
                 throw new VacademyException(e.getMessage());
             }

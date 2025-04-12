@@ -9,5 +9,5 @@ import java.util.List;
 
 public interface PresentationSlideRepository extends JpaRepository<PresentationSlide, String> {
 
-    List<PresentationSlide> findAllByPresentationIdAndStatusIn(Presentation presentation, List<String> status);
+    List<PresentationSlide> findAllByPresentationAndStatusIn(Presentation presentation, List<String> status);
 }

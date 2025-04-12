@@ -16,6 +16,7 @@ import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.entity.QuestionAssessmentSectionMapping;
 import vacademy.io.assessment_service.features.assessment.entity.Section;
 import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
+import vacademy.io.assessment_service.features.assessment.enums.AttemptResultStatusEnum;
 import vacademy.io.assessment_service.features.assessment.repository.QuestionAssessmentSectionMappingRepository;
 import vacademy.io.assessment_service.features.assessment.repository.SectionRepository;
 import vacademy.io.assessment_service.features.assessment.repository.StudentAttemptRepository;
@@ -27,6 +28,7 @@ import vacademy.io.assessment_service.features.learner_assessment.dto.status_jso
 import vacademy.io.assessment_service.features.learner_assessment.dto.status_json.SectionAttemptData;
 import vacademy.io.assessment_service.features.learner_assessment.dto.status_json.manual.LearnerManualAttemptDataDto;
 import vacademy.io.assessment_service.features.learner_assessment.entity.QuestionWiseMarks;
+import vacademy.io.assessment_service.features.learner_assessment.enums.AssessmentAttemptEnum;
 import vacademy.io.assessment_service.features.learner_assessment.enums.AssessmentAttemptResultEnum;
 import vacademy.io.assessment_service.features.learner_assessment.service.QuestionWiseMarksService;
 import vacademy.io.assessment_service.features.notification.service.AssessmentNotificationService;
@@ -391,5 +393,9 @@ public class StudentAttemptService {
     public Page<ManualAttemptResponseDto> getAllManualAssignedAttempt(String userId, String assessmentId, String instituteId,String name, List<String> evaluationStatus, Pageable pageable) {
         if(Objects.isNull(evaluationStatus)) evaluationStatus = new ArrayList<>();
         return studentAttemptRepository.findAllAssignedAttemptForUserIdWithFilter(userId,instituteId,assessmentId,name,evaluationStatus, pageable);
+    }
+
+    public List<StudentAttempt> getAllLiveAttempt() {
+        return studentAttemptRepository.findByStatusNotIn(List.of(AssessmentAttemptEnum.LIVE.name()));
     }
 }

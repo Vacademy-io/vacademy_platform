@@ -41,9 +41,14 @@ public class CourseService {
 
     @Transactional
     public String addCourse(AddCourseDTO addCourseDTO, CustomUserDetails user, String instituteId) {
-        validateRequest(addCourseDTO);
-        PackageEntity packageEntity = getCourse(addCourseDTO);
-        PackageEntity savedPackage = packageRepository.save(packageEntity);
+        PackageEntity savedPackage = null;
+
+        if (addCourseDTO.getNewCourse()){
+            PackageEntity packageEntity = getCourse(addCourseDTO);
+            savedPackage = packageRepository.save(packageEntity);
+        }else{
+            savedPackage = packageRepository.findById(addCourseDTO.getId()).orElseThrow(() -> new VacademyException("Course not found"));
+        }
         createPackageInstitute(savedPackage, instituteId);
         if (addCourseDTO.getContainLevels()) {
             createPackageSession(savedPackage, addCourseDTO.getSessions(), user);
@@ -80,6 +85,7 @@ public class CourseService {
     }
 
     public PackageEntity getCourse(AddCourseDTO addCourseDTO) {
+        validateRequest(addCourseDTO);
         PackageEntity packageEntity = new PackageEntity();
         packageEntity.setPackageName(addCourseDTO.getCourseName());
         packageEntity.setThumbnailFileId(addCourseDTO.getThumbnailFileId());

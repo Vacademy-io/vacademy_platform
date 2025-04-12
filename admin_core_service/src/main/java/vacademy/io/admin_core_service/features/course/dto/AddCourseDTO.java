@@ -14,6 +14,8 @@ import java.util.List;
 @Setter
 @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
 public class AddCourseDTO {
+    private String id;
+    private Boolean newCourse;
     private String courseName;
     private String thumbnailFileId;
     private Boolean containLevels;

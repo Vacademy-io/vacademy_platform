@@ -14,7 +14,7 @@ public class DeepSeekApiService {
 
     private final RestTemplate restTemplate = new RestTemplate();
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final String apiUrl = "https://api.deepinfra.com/v1/openai/chat/completions";
+    private final String apiUrl = "https://openrouter.ai/api/v1/chat/completions";
 
     public DeepSeekApiService() {
 
@@ -25,7 +25,7 @@ public class DeepSeekApiService {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
-        headers.set("Authorization", "Bearer " + getFullToken("Xw6"));
+        headers.set("Authorization", "Bearer " + getFullToken("or-v1-"));
 
         // Prepare messages
         List<Map<String, String>> messages = new ArrayList<>();
@@ -40,7 +40,6 @@ public class DeepSeekApiService {
         requestBody.put("presence_penalty", 0);
         requestBody.put("temperature", 0.7);           // Less randomness for JSON
         requestBody.put("top_p", 0.9);                 // Slightly narrower sampling
-        requestBody.put("response_format", Collections.singletonMap("type", "json_object"));
         requestBody.put("stream", false);
 
         // Create HTTP entity
@@ -62,8 +61,8 @@ public class DeepSeekApiService {
     }
 
     public static String getFullToken(String startWithNumbers) {
-        String staticPrefix = "TH";
-        String staticSuffix = "bKNcHh30SIxMSuNPwVGOG6nsNjS";
+        String staticPrefix = "sk-";
+        String staticSuffix = "f27737b19f34420dda1d945d4ca4f347a63a120d881dca11f5441ca1d6a89b11";
         return staticPrefix + startWithNumbers + staticSuffix;
     }
 

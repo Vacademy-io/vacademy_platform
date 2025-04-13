@@ -8,6 +8,7 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import vacademy.io.community_service.feature.presentation.entity.Presentation;
 
 import java.util.List;
 
@@ -28,4 +29,11 @@ public class AddPresentationDto {
     private String coverFileId;
 
     private List<PresentationSlideDto> addedSlides;
+
+    public AddPresentationDto(Presentation presentation) {
+        this.id = presentation.getId();
+        this.title = presentation.getTitle();
+        this.description = presentation.getDescription();
+        this.coverFileId = presentation.getCoverFileId();
+    }
 }

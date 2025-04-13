@@ -12,6 +12,8 @@ import vacademy.io.community_service.feature.presentation.dto.question.EditPrese
 import vacademy.io.community_service.feature.presentation.entity.Presentation;
 import vacademy.io.community_service.feature.presentation.manager.PresentationCrudManager;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/community-service/presentation")
 public class AddEditPresentationController {
@@ -32,6 +34,11 @@ public class AddEditPresentationController {
     @GetMapping("/get-presentation")
     public ResponseEntity<AddPresentationDto> getPresentation(@RequestParam String presentationId) {
         return presentationCrudManager.getPresentation(presentationId);
+    }
+
+    @GetMapping("/get-all-presentation")
+    public ResponseEntity<List<AddPresentationDto>> getAllPresentation(@RequestParam String instituteId) {
+        return presentationCrudManager.getAllPresentation(instituteId);
     }
 
 }

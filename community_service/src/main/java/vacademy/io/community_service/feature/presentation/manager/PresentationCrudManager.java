@@ -67,11 +67,13 @@ public class PresentationCrudManager {
             } else presentationSlide = createNewPresentationSlide(presentation, presentationSlideDto);
             if (presentationSlideDto.getAddedQuestion() != null) {
                 List<Question> addedQuestions = addQuestionManager.addQuestions(List.of(presentationSlideDto.getAddedQuestion()));
-                if(addedQuestions != null && !addedQuestions.isEmpty()) presentationSlide.setSourceId(addedQuestions.get(0).getId());
+                if (addedQuestions != null && !addedQuestions.isEmpty())
+                    presentationSlide.setSourceId(addedQuestions.get(0).getId());
             }
-            if (presentationSlideDto.getUpdatedQuestion() != null ){
+            if (presentationSlideDto.getUpdatedQuestion() != null) {
                 List<Question> updatedQuestions = addQuestionManager.saveEditQuestions(List.of(presentationSlideDto.getUpdatedQuestion()));
-                if(updatedQuestions != null && !updatedQuestions.isEmpty()) presentationSlide.setSourceId(updatedQuestions.get(0).getId());
+                if (updatedQuestions != null && !updatedQuestions.isEmpty())
+                    presentationSlide.setSourceId(updatedQuestions.get(0).getId());
             }
             presentationSlides.add(presentationSlide);
         }
@@ -175,7 +177,7 @@ public class PresentationCrudManager {
             presentationSlideDto.setDefaultTime(presentationSlide.getDefaultTime());
             presentationSlideDto.setContent(presentationSlide.getContent());
             presentationSlideDto.setSlideOrder(presentationSlide.getSlideOrder());
-            if(presentationSlideDto.getSource().equalsIgnoreCase("question")) {
+            if (presentationSlideDto.getSource().equalsIgnoreCase("question")) {
                 Question question = questionRepository.findById(presentationSlideDto.getSourceId()).get();
                 presentationSlideDto.setAddedQuestion(new QuestionDTO(question, true));
             }
@@ -183,5 +185,12 @@ public class PresentationCrudManager {
 
         }
         return presentationSlideDtos;
+    }
+
+    public ResponseEntity<List<AddPresentationDto>> getAllPresentation(String instituteId) {
+
+        if (instituteId == null)
+            throw new VacademyException("Institute id not found");
+        return ResponseEntity.ok(presentationRepository.findAllByInstituteIdAndStatusIn(instituteId, List.of("PUBLISHED")).stream().map(AddPresentationDto::new).toList());
     }
 }

@@ -39,6 +39,7 @@ public class AddEditPresentationController {
     @GetMapping("/get-all-presentation")
     public ResponseEntity<List<AddPresentationDto>> getAllPresentation(@RequestParam String instituteId) {
         return presentationCrudManager.getAllPresentation(instituteId);
+
     }
 
 }

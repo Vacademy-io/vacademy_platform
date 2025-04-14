@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import vacademy.io.admin_core_service.features.packages.dto.BatchProjection;
+import vacademy.io.admin_core_service.features.session.dto.BatchInstituteProjection;
 import vacademy.io.common.institute.entity.PackageEntity;
 import vacademy.io.common.institute.entity.session.PackageSession;
 
@@ -114,4 +115,17 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
             @Param("packageSessionStatuses") List<String> packageSessionStatuses,
             @Param("studentSessionStatuses") List<String> studentSessionStatuses
     );
+
+    @Query("""
+    SELECT 
+        CONCAT(l.levelName, ' ', p.packageName) AS batchName,
+        i.instituteName AS instituteName
+    FROM PackageSession ps
+    JOIN ps.level l
+    JOIN ps.packageEntity p
+    JOIN PackageInstitute pi ON pi.packageEntity.id = p.id
+    JOIN pi.instituteEntity i
+    WHERE ps.id = :packageSessionId
+""")
+    Optional<BatchInstituteProjection> findBatchAndInstituteByPackageSessionId(@Param("packageSessionId") String packageSessionId);
 }

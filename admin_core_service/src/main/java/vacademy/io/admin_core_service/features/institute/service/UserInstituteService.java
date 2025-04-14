@@ -125,7 +125,7 @@ public class UserInstituteService {
         Integer emptyOrNullFieldsCount = instituteRepository.findCountForNullOrEmptyFields(instituteId);
         Integer percentage = (((11 - emptyOrNullFieldsCount) * 100) / 11);
         Long batchCount = packageSessionRepository.findCountPackageSessionsByInstituteId(instituteId);
-        Long studentCount = studentSessionRepository.countStudentsByInstituteIdAndStatusNotIn(instituteId, List.of("DELETED"));
+        Long studentCount = studentSessionRepository.countStudentsByInstituteIdAndStatusNotIn(instituteId, List.of("DELETED","INACTIVE","TERMINATED"));
         Long courseCount = packageRepository.countDistinctPackagesByInstituteId(instituteId);
         Long levelCount = packageRepository.countDistinctLevelsByInstituteId(instituteId);
         Long subjectCount = subjectPackageSessionRepository.countDistinctSubjectsByInstituteId(instituteId);

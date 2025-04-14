@@ -52,7 +52,10 @@ public class StudentBulkInitUploadManager {
         enumValues.put("GENDER", Arrays.asList("MALE", "FEMALE", "OTHER"));
         headers.add(createEnumHeader("enum", false, "GENDER", Arrays.asList("MALE", "FEMALE", "OTHER"), order++, List.of("MALE", "FEMALE", "OTHER")));
         // Adding date header
-        Header enrollmentDateHeader = createDateHeader("date", false, "ENROLLMENT_DATE", "dd-MM-yyyy", order++, List.of("01-11-2000", "21-01-2001", "11-12-2002"));
+        Header enrollmentDateHeader = createRegexHeader("regex", false, "ENROLLMENT_DATE",
+                "^(0[1-9]|[12][0-9]|3[01])([./-])(0[1-9]|1[0-2])\\2\\d{4}$",
+                "Date must be in format dd/mm/yyyy, dd-mm-yyyy, or dd.mm.yyyy",
+                order++, List.of("01-11-2000", "21/01/2001", "11.12.2002"));
         headers.add(enrollmentDateHeader);
 
         if (!autoGenerateConfig.isAutoGenerateEnrollmentId()) {
@@ -63,7 +66,10 @@ public class StudentBulkInitUploadManager {
 
 
         // Adding date header
-        Header dateHeader = createDateHeader("date", true, "DATE_OF_BIRTH", "dd-MM-yyyy", order++, List.of("01-11-2000", "21-01-2001", "11-12-2002"));
+        Header dateHeader = createRegexHeader("regex", true, "DATE_OF_BIRTH",
+                "^(0[1-9]|[12][0-9]|3[01])([./-])(0[1-9]|1[0-2])\\2\\d{4}$",
+                "Date must be in format dd/mm/yyyy, dd-mm-yyyy, or dd.mm.yyyy",
+                order++, List.of("01/11/2000", "21-01-2001", "11.12.2002"));
         headers.add(dateHeader);
 
 

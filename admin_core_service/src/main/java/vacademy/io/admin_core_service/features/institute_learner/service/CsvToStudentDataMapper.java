@@ -67,12 +67,23 @@ public class CsvToStudentDataMapper {
         if (dateStr == null || dateStr.isEmpty()) {
             return null;
         }
-        SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd");
-        try {
-            return formatter.parse(dateStr);
-        } catch (ParseException e) {
-            return null;
+
+        String[] formats = {
+                "dd/MM/yyyy",
+                "dd-MM-yyyy",
+                "dd.MM.yyyy"
+        };
+
+        for (String format : formats) {
+            try {
+                SimpleDateFormat formatter = new SimpleDateFormat(format);
+                formatter.setLenient(false);
+                return formatter.parse(dateStr);
+            } catch (ParseException ignored) {
+            }
         }
+
+        return null;
     }
 
     private static String getFieldValue(CSVRecord record, String fieldName) {

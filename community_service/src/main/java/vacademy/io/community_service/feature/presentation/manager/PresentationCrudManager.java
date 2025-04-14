@@ -54,7 +54,7 @@ public class PresentationCrudManager {
     }
 
     private Presentation createPresentation(AddPresentationDto addPresentationDto, String instituteId) {
-        return Presentation.builder().title(addPresentationDto.getTitle()).coverFileId(addPresentationDto.getCoverFileId()).description(addPresentationDto.getDescription()).instituteId(instituteId).build();
+        return Presentation.builder().title(addPresentationDto.getTitle()).coverFileId(addPresentationDto.getCoverFileId()).description(addPresentationDto.getDescription()).instituteId(instituteId).status("PUBLISHED").build();
     }
 
     private List<PresentationSlide> addEditQuestionSlides(Presentation presentation, List<PresentationSlideDto> questionSlides) {

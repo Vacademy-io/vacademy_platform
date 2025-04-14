@@ -31,6 +31,9 @@ public class Presentation {
     @Column(name = "institute_id", length = 955)
     private String instituteId;
 
+    @Column(name = "status", length = 955)
+    private String status;
+
     @Column(name = "cover_file_id", length = 255)
     private String coverFileId;
 

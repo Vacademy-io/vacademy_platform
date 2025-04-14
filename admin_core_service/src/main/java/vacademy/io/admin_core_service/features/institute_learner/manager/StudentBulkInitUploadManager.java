@@ -50,7 +50,7 @@ public class StudentBulkInitUploadManager {
 
         Map<String, List<String>> enumValues = new HashMap<>();
         enumValues.put("GENDER", Arrays.asList("MALE", "FEMALE", "OTHER"));
-        headers.add(createEnumHeader("enum", false, "GENDER", Arrays.asList("MALE", "FEMALE", "OTHER"), order++, List.of("MALE", "FEMALE", "OTHER")));
+        headers.add(createHeader("gender", false, "GENDER", order++, Arrays.asList("MALE", "FEMALE", "OTHERS")));
         // Adding date header
         Header enrollmentDateHeader = createRegexHeader("regex", false, "ENROLLMENT_DATE",
                 "^(0[1-9]|[12][0-9]|3[01])([./-])(0[1-9]|1[0-2])\\2\\d{4}$",
@@ -61,8 +61,8 @@ public class StudentBulkInitUploadManager {
         if (!autoGenerateConfig.isAutoGenerateEnrollmentId()) {
             headers.add(createHeader("string", false, "ENROLLMENT_NUMBER", order++, List.of("1234", "5678", "9012")));
         }
-        headers.add(createRegexHeader("regex", false, "MOBILE_NUMBER", "^\\d+$",
-                "Mobile number must contain only digits", order++, List.of("911234567890", "919876543210", "911234567891")));
+        headers.add(createRegexHeader("regex", false, "MOBILE_NUMBER", "^\\+\\d{1,3}-\\d{6,14}$",
+                "Mobile number must be in format +<country_code>-<number>", order++, List.of("+91-9123456789", "+1-9876543210", "+44-712345678901")));
 
 
         // Adding date header
@@ -121,11 +121,11 @@ public class StudentBulkInitUploadManager {
             headers.add(createHeader("string", true, "MOTHER_NAME", order++, List.of("John Henry", "Doe Walker", "Smith Jones")));
         }
         if (optionalFieldsConfig.isIncludeParentsMobileNumber()) {
-            headers.add(createRegexHeader("regex", false, "PARENTS_MOBILE_NUMBER", "^\\d+$",
-                    "Mobile number must contain only digits", order++, List.of("911234567890", "919876543210", "911234567891")));
+            headers.add(createRegexHeader("regex", false, "PARENTS_MOBILE_NUMBER", "^\\+\\d{1,3}-\\d{6,14}$",
+                    "Mobile number must be in format +<country_code>-<number>", order++, List.of("+91-9123456789", "+1-9876543210", "+44-712345678901")));
         } else {
-            headers.add(createRegexHeader("regex", true, "PARENTS_MOBILE_NUMBER", "^\\d+$",
-                    "Mobile number must contain only digits", order++, List.of("911234567890", "919876543210", "911234567891")));
+            headers.add(createRegexHeader("regex", true, "PARENTS_MOBILE_NUMBER", "^\\+\\d{1,3}-\\d{6,14}$",
+                    "Mobile number must be in format +<country_code>-<number>", order++, List.of("+91-9123456789", "+1-9876543210", "+44-712345678901")));
         }
         if (optionalFieldsConfig.isIncludeParentsEmail()) {
             emailHeader = createRegexHeader("regex", false, "PARENTS_EMAIL",

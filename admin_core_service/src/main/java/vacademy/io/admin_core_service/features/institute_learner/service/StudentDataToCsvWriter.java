@@ -22,7 +22,7 @@ public class StudentDataToCsvWriter {
 
         CSVFormat csvFormat = CSVFormat.DEFAULT
                 .withHeader(headers)
-                .withQuote(null);
+                .withQuote('"'); // Enable quoting
 
         try (CSVPrinter csvPrinter = new CSVPrinter(writer, csvFormat)) {
             for (InstituteStudentDTO student : students) {
@@ -55,6 +55,7 @@ public class StudentDataToCsvWriter {
             }
         }
     }
+
 
     private static String getFieldValue(CSVRecord record, String fieldName) {
         return record.isMapped(fieldName) ? record.get(fieldName) : null;

@@ -48,7 +48,6 @@ public class StudentBulkUploadManager {
             List<InstituteStudentDTO>notifyStudents = new ArrayList<>();
             for (InstituteStudentDTO student : students) {
                 try {
-                    System.out.println("student : " + student);
                     InstituteStudentDTO instituteStudentDTO = studentRegistrationManager.addStudentToInstitute(user, student, bulkUploadInitRequest);
                     notifyStudents.add(instituteStudentDTO);
                     student.setStatus(true);

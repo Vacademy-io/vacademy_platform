@@ -979,4 +979,45 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
             @Param("slideStatusList") List<String> slideStatusList
     );
 
+    @Query(value = """
+    SELECT 
+        s.user_id AS userId, 
+        s.full_name AS fullName, 
+        s.email AS email, 
+        COALESCE(AVG(cs.concentration_score), 0) AS avgConcentration, 
+        COALESCE(SUM(EXTRACT(EPOCH FROM (a.end_time - a.start_time))), 0) AS totalTime, 
+        COALESCE(SUM(EXTRACT(EPOCH FROM (a.end_time - a.start_time))) / NULLIF(COUNT(DISTINCT DATE(a.start_time)), 0), 0) AS dailyAvgTime,
+        DENSE_RANK() OVER (ORDER BY 
+            COALESCE(SUM(EXTRACT(EPOCH FROM (a.end_time - a.start_time))), 0) DESC,
+            COALESCE(AVG(cs.concentration_score), 0) DESC
+        ) AS rank
+    FROM student s
+    JOIN student_session_institute_group_mapping ssig 
+        ON s.user_id = ssig.user_id
+    LEFT JOIN activity_log a 
+        ON ssig.user_id = a.user_id 
+        AND a.start_time BETWEEN :startTime AND :endTime
+    LEFT JOIN concentration_score cs 
+        ON a.id = cs.activity_id
+    WHERE ssig.package_session_id = :packageSessionId
+    AND ssig.status IN (:statusList)
+    GROUP BY s.user_id, s.full_name, s.email
+""",
+            countQuery = """
+    SELECT COUNT(DISTINCT s.user_id)
+    FROM student s
+    JOIN student_session_institute_group_mapping ssig 
+        ON s.user_id = ssig.user_id
+    WHERE ssig.package_session_id = :packageSessionId
+    AND ssig.status IN (:statusList)
+""",
+            nativeQuery = true)
+    List<LearnerActivityDataProjection> getBatchActivityDataWithRank(
+            @Param("startTime") Date startTime,
+            @Param("endTime") Date endTime,
+            @Param("packageSessionId") String packageSessionId,
+            @Param("statusList") List<String> statusList
+    );
+
+
 }

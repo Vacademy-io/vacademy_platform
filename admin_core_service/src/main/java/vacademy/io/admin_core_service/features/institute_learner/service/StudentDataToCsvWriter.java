@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.institute_learner.service;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVPrinter;
 import org.apache.commons.csv.CSVRecord;
+import org.apache.commons.csv.QuoteMode;
 import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteStudentDTO;
 
 import java.io.IOException;
@@ -22,7 +23,8 @@ public class StudentDataToCsvWriter {
 
         CSVFormat csvFormat = CSVFormat.DEFAULT
                 .withHeader(headers)
-                .withQuote('"'); // Enable quoting
+                .withQuote('"')
+                .withQuoteMode(QuoteMode.MINIMAL); // Quote only when needed
 
         try (CSVPrinter csvPrinter = new CSVPrinter(writer, csvFormat)) {
             for (InstituteStudentDTO student : students) {
@@ -55,7 +57,6 @@ public class StudentDataToCsvWriter {
             }
         }
     }
-
 
     private static String getFieldValue(CSVRecord record, String fieldName) {
         return record.isMapped(fieldName) ? record.get(fieldName) : null;

@@ -61,4 +61,21 @@ public class LmsReportExportController {
         return new ResponseEntity<>(pdfBytes, headers, HttpStatus.OK);
     }
 
+    @PostMapping(value = "/learner-module-progress-report", produces = MediaType.APPLICATION_PDF_VALUE)
+    public ResponseEntity<byte[]> downloadSubjectWiseProgress(@RequestParam String userId,
+                                                              @RequestParam String moduleId,
+                                                              @RequestParam String packageSessionId,
+                                                              @RequestAttribute("user") CustomUserDetails userDetails) {
+        byte[] pdfBytes = lmsReportExportService.generateModuleProgressReport(moduleId,userId,packageSessionId,userDetails);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_PDF);
+        headers.setContentDisposition(ContentDisposition
+                .builder("attachment")
+                .filename("Learner_Report.pdf")
+                .build());
+
+        return new ResponseEntity<>(pdfBytes, headers, HttpStatus.OK);
+    }
+
 }

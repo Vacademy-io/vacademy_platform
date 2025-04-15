@@ -903,7 +903,134 @@ public class HtmlBuilderService {
         return html.toString();
     }
 
+    public static String getModuleWiseReportHtml(List<ChapterSlideProgressDTO> chapters,
+                                                 String learnerName,
+                                                 String dateGenerated,
+                                                 String subject,
+                                                 String module,
+                                                 String course,
+                                                 String sessionName,
+                                                 String levelName) {
+        String htmlTemplate = """
+<html>
+<head>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    .header { font-size: 22px; font-weight: bold; color: #e65100; margin-bottom: 20px; }
+    .info-table { width: 100%%; margin-bottom: 20px; }
+    .info-table td { padding: 5px 10px; vertical-align: top; }
+    .chapter-title { font-size: 16px; font-weight: bold; color: #f57c00; margin: 20px 0 10px; }
+    table { border-collapse: collapse; width: 100%%; margin-bottom: 20px; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    th { background-color: #fde7cc; }
+    tr:nth-child(even) { background-color: #f9f9f9; }
+    .icon { text-align: center; }
+  </style>
+</head>
+<body>
+  <div class='header'>Module Detail Report</div>
 
+  <table class='info-table'>
+    <tr>
+      <td><strong>Name:</strong> %s</td>
+      <td><strong>Date:</strong> %s</td>
+    </tr>
+    <tr>
+      <td><strong>Course:</strong> %s</td>
+      <td><strong>Session:</strong> %s</td>
+    </tr>
+    <tr>
+      <td><strong>Subject:</strong> %s</td>
+      <td><strong>Module:</strong> %s</td>
+    </tr>
+    <tr>
+      <td colspan="2"><strong>Level:</strong> %s</td>
+    </tr>
+  </table>
 
+  %s
+
+</body>
+</html>
+""";
+
+        StringBuilder chapterTables = new StringBuilder();
+
+        for (ChapterSlideProgressDTO chapter : chapters) {
+            chapterTables.append("<div class='chapter-title'>Chapter&nbsp;&nbsp;<span style='color: #e65100;'>")
+                    .append(escapeHtml(chapter.getChapterName()))
+                    .append("</span></div>");
+
+            chapterTables.append("""
+<table>
+  <thead>
+    <tr>
+      <th class="icon">▶️</th>
+      <th>Study Slide</th>
+      <th>Concentration Score</th>
+      <th>Batch Concentration Score (Avg)</th>
+      <th>Time spent</th>
+      <th>Last Active</th>
+    </tr>
+  </thead>
+  <tbody>
+""");
+
+            for (ChapterSlideProgressDTO.SlideProgressDTO slide : chapter.getSlides()) {
+                chapterTables.append("<tr>");
+                chapterTables.append("<td class='icon'>▶️</td>");
+                chapterTables.append("<td>").append(escapeHtml(slide.getSlideTitle())).append("</td>");
+                chapterTables.append("<td>").append(formatPercentage(slide.getAvgConcentrationScore())).append("</td>");
+                chapterTables.append("<td>").append(formatPercentage(getBatchAvgConcentration(chapter.getChapterName(), slide.getSlideTitle()))).append("</td>");
+                chapterTables.append("<td>").append(formatDuration(slide.getAvgTimeSpent())).append("</td>");
+                chapterTables.append("<td>").append(getLastActiveDate(chapter.getChapterName(), slide.getSlideTitle())).append("</td>");
+                chapterTables.append("</tr>");
+            }
+
+            chapterTables.append("</tbody></table>");
+        }
+
+        return String.format(htmlTemplate,
+                escapeHtml(learnerName),
+                escapeHtml(dateGenerated),
+                escapeHtml(course),
+                escapeHtml(sessionName),
+                escapeHtml(subject),
+                escapeHtml(module),
+                escapeHtml(levelName),
+                chapterTables.toString());
+    }
+
+    private static String formatPercentage(Double val) {
+        return val == null ? "N/A" : String.format("%.2f%%", val);
+    }
+
+    private static String formatDuration(Double minutes) {
+        if (minutes == null) return "N/A";
+        int totalMinutes = minutes.intValue();
+        int hours = totalMinutes / 60;
+        int mins = totalMinutes % 60;
+        return hours + "h " + mins + "m";
+    }
+
+    private static String escapeHtml(String input) {
+        if (input == null) return "";
+        return input.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;");
+    }
+
+    // Placeholder for batch concentration
+    private static Double getBatchAvgConcentration(String chapter, String slide) {
+        // Replace with real logic
+        return 72.16;
+    }
+
+    // Placeholder for last active date
+    private static String getLastActiveDate(String chapter, String slide) {
+        // Replace with actual date logic
+        return "13/10/2024, 11:00 AM";
+    }
 
 }

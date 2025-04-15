@@ -15,6 +15,7 @@ import vacademy.io.common.exceptions.VacademyException;
 import java.io.ByteArrayOutputStream;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.Date;
 import java.util.List;
 
 @Service
@@ -103,6 +104,20 @@ public class LmsReportExportService {
             Student student = fetchStudent(userDetails);
             BatchInstituteProjection projection = fetchBatchAndInstitute(reportFilterDTO);
             String html = HtmlBuilderService.getSubjectWiseProgressReportHtml(subjectProgressDTOS,student.getFullName(),projection.getBatchName(), projection.getInstituteName());
+            return convertHtmlToPdf(html);
+        }
+        catch (Exception e) {
+            e.printStackTrace();
+            throw new VacademyException("PDF generation failed: " + e.getMessage());
+        }
+    }
+
+    public byte[] generateModuleProgressReport(String moduleId,String userId,String packageSessionId, CustomUserDetails userDetails) {
+        try {
+            List<ChapterSlideProgressDTO>chapterSlideProgress = learnerReportService.getChapterSlideProgress(moduleId,userId,userDetails);
+            Student student = fetchStudent(userDetails);
+//            BatchInstituteProjection projection = fetchBatchAndInstitute(reportFilterDTO);
+            String html = HtmlBuilderService.getModuleWiseReportHtml(chapterSlideProgress,student.getFullName(),new Date().toString(),"Premium Pro Group","M1" ,"Bhopal","202025","202025");
             return convertHtmlToPdf(html);
         }
         catch (Exception e) {

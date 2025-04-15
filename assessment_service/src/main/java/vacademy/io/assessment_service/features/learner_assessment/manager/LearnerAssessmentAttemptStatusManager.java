@@ -10,6 +10,7 @@ import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
 import vacademy.io.assessment_service.features.assessment.enums.DurationDistributionEnum;
 import vacademy.io.assessment_service.features.assessment.repository.StudentAttemptRepository;
+import vacademy.io.assessment_service.features.assessment.service.AttemptDataParserService;
 import vacademy.io.assessment_service.features.assessment.service.StudentAttemptService;
 import vacademy.io.assessment_service.features.learner_assessment.dto.AssessmentAttemptUpdateRequest;
 import vacademy.io.assessment_service.features.learner_assessment.dto.DataDurationDistributionDto;
@@ -17,7 +18,6 @@ import vacademy.io.assessment_service.features.learner_assessment.dto.LearnerAss
 import vacademy.io.assessment_service.features.learner_assessment.dto.LearnerAssessmentStartPreviewResponse;
 import vacademy.io.assessment_service.features.learner_assessment.dto.response.AssessmentRestartResponse;
 import vacademy.io.assessment_service.features.learner_assessment.dto.response.BasicLevelAnnouncementDto;
-import vacademy.io.assessment_service.features.learner_assessment.dto.status_json.LearnerAssessmentAttemptDataDto;
 import vacademy.io.assessment_service.features.learner_assessment.dto.response.LearnerUpdateStatusResponse;
 import vacademy.io.assessment_service.features.announcement.entity.AssessmentAnnouncement;
 import vacademy.io.assessment_service.features.learner_assessment.enums.AssessmentAttemptEnum;
@@ -40,13 +40,16 @@ import java.util.*;
 public class LearnerAssessmentAttemptStatusManager {
 
     @Autowired
-    private StudentAttemptRepository studentAttemptRepository;
+    StudentAttemptRepository studentAttemptRepository;
 
     @Autowired
-    private AnnouncementService announcementService;
+    AnnouncementService announcementService;
 
     @Autowired
-    private StudentAttemptService studentAttemptService;
+    StudentAttemptService studentAttemptService;
+
+    @Autowired
+    AttemptDataParserService attemptDataParserService;
 
     @Autowired
     LearnerAssessmentAttemptStartManager learnerAssessmentAttemptStartManager;
@@ -76,16 +79,14 @@ public class LearnerAssessmentAttemptStatusManager {
         if (AssessmentAttemptEnum.PREVIEW.name().equals(studentAttempt.get().getStatus()))
             throw new VacademyException("Currently Assessment is in preview");
 
-        // Validate and create LearnerAssessmentStatusJson object
-        LearnerAssessmentAttemptDataDto assessmentStatusJson = studentAttemptService.validateAndCreateJsonObject(request.getJsonContent());
         StudentAttempt attempt = new StudentAttempt();
 
         // Handle cases where the attempt status is either 'ENDED' or 'LIVE'
         if (AssessmentAttemptEnum.ENDED.name().equals(studentAttempt.get().getStatus()))
-            attempt = handleAttemptEndedStatus(studentAttempt, assessmentStatusJson, request.getJsonContent());
+            attempt = handleAttemptEndedStatus(studentAttempt, request.getJsonContent());
 
         if (AssessmentAttemptEnum.LIVE.name().equals(studentAttempt.get().getStatus()))
-            attempt = handleAttemptLiveStatus(studentAttempt, assessmentStatusJson, request.getJsonContent());
+            attempt = handleAttemptLiveStatus(studentAttempt, request.getJsonContent());
 
         try{
             // Update the student attempt asynchronously
@@ -129,11 +130,10 @@ public class LearnerAssessmentAttemptStatusManager {
      * Handles the case where the student attempt status is 'ENDED'.
      *
      * @param studentAttemptOptional the optional student attempt
-     * @param assessmentStatusJson   the assessment status in JSON format
      * @param attemptDataJson        the attempt data in JSON format
      * @return                       the updated student attempt
      */
-    private StudentAttempt handleAttemptEndedStatus(Optional<StudentAttempt> studentAttemptOptional, LearnerAssessmentAttemptDataDto assessmentStatusJson, String attemptDataJson) {
+    private StudentAttempt handleAttemptEndedStatus(Optional<StudentAttempt> studentAttemptOptional,  String attemptDataJson) {
         // Check if student attempt data has changed
         if(Objects.isNull(studentAttemptOptional.get().getAttemptData()) || !studentAttemptOptional.get().getAttemptData().equals(attemptDataJson)){
             StudentAttempt studentAttempt = studentAttemptOptional.get();
@@ -143,7 +143,7 @@ public class LearnerAssessmentAttemptStatusManager {
             Date utcDate = Date.from(utcNow.toInstant());
             studentAttempt.setServerLastSync(utcDate);  // Set server sync time
 
-            studentAttempt.setClientLastSync(DateUtil.convertStringToUTCDate(assessmentStatusJson.getClientLastSync())); // Set client sync time
+            studentAttempt.setClientLastSync(DateUtil.convertStringToUTCDate(attemptDataParserService.getClientLastSyncTime(attemptDataJson))); // Set client sync time
             return studentAttemptRepository.save(studentAttempt); // Save updated attempt
         }
 
@@ -154,11 +154,10 @@ public class LearnerAssessmentAttemptStatusManager {
      * Handles the case where the student attempt status is 'LIVE'.
      *
      * @param studentAttemptOptional the optional student attempt
-     * @param assessmentStatusJson   the assessment status in JSON format
      * @param attemptDataJson        the attempt data in JSON format
      * @return                       the updated student attempt
      */
-    private StudentAttempt handleAttemptLiveStatus(Optional<StudentAttempt> studentAttemptOptional, LearnerAssessmentAttemptDataDto assessmentStatusJson, String attemptDataJson) {
+    private StudentAttempt handleAttemptLiveStatus(Optional<StudentAttempt> studentAttemptOptional, String attemptDataJson) {
         StudentAttempt studentAttempt = studentAttemptOptional.get();
         studentAttempt.setAttemptData(attemptDataJson);
 
@@ -166,7 +165,7 @@ public class LearnerAssessmentAttemptStatusManager {
         Date utcDate = Date.from(utcNow.toInstant());
         studentAttempt.setServerLastSync(utcDate);  // Set server sync time
 
-        studentAttempt.setClientLastSync(DateUtil.convertStringToDate(assessmentStatusJson.getClientLastSync())); // Set client sync time
+        studentAttempt.setClientLastSync(DateUtil.convertStringToDate(attemptDataParserService.getClientLastSyncTime(attemptDataJson))); // Set client sync time
         return studentAttemptRepository.save(studentAttempt); // Save updated attempt
     }
 
@@ -293,19 +292,15 @@ public class LearnerAssessmentAttemptStatusManager {
             if(AssessmentAttemptEnum.ENDED.name().equals(studentAttempt.get().getStatus()))
                 throw new VacademyException("Assessment Already Ended");
 
-            LearnerAssessmentAttemptDataDto requestAttemptDto = request.getJsonContent()!=null ? studentAttemptService.validateAndCreateJsonObject(request.getJsonContent()) : null;
-
-            LearnerUpdateStatusResponse updateStatusResponse = handleStatusResponse(studentAttempt, assessment, requestAttemptDto, request.getJsonContent());
+            LearnerUpdateStatusResponse updateStatusResponse = handleStatusResponse(studentAttempt, assessment, request.getJsonContent());
 
             Optional<StudentAttempt> newSavedAttempt = studentAttemptRepository.findById(studentAttempt.get().getId());
             if(newSavedAttempt.isEmpty()) throw new VacademyException("Attempt Not Found");
 
-            LearnerAssessmentAttemptDataDto attemptDataDto = newSavedAttempt.get().getAttemptData()!=null ? studentAttemptService.validateAndCreateJsonObject(studentAttempt.get().getAttemptData()) : null;
-
             return ResponseEntity.ok(AssessmentRestartResponse.builder()
                     .startAssessmentResponse(createStartAssessmentResponse(studentAttempt))
                     .previewResponse(createLearnerAssessmentPreview(studentAttempt, assessment))
-                    .learnerAssessmentAttemptDataDto(attemptDataDto)
+                    .attemptDataJson(newSavedAttempt.get().getAttemptData())
                     .updateStatusResponse(updateStatusResponse).build());
         }
         catch (Exception e){
@@ -323,8 +318,8 @@ public class LearnerAssessmentAttemptStatusManager {
 
     }
 
-    private LearnerUpdateStatusResponse handleStatusResponse(Optional<StudentAttempt> studentAttempt, Assessment assessment, LearnerAssessmentAttemptDataDto requestAttemptDataDto, String requestJsonContent) {
-        List<LearnerUpdateStatusResponse.DurationResponse> dataDurationResponse = restartAssessmentService.getNewDurationForAssessment(studentAttempt,assessment,requestAttemptDataDto!=null ? Optional.of(requestAttemptDataDto) : Optional.empty(), requestJsonContent);
+    private LearnerUpdateStatusResponse handleStatusResponse(Optional<StudentAttempt> studentAttempt, Assessment assessment, String requestJsonContent) {
+        List<LearnerUpdateStatusResponse.DurationResponse> dataDurationResponse = restartAssessmentService.getNewDurationForAssessment(studentAttempt,assessment, requestJsonContent);
 
         List<AssessmentAnnouncement> allAnnouncement = announcementService.getAnnouncementForAssessment(assessment.getId());
         List<BasicLevelAnnouncementDto> allAnnouncementResponse = announcementService.createBasicLevelAnnouncementDto(allAnnouncement);

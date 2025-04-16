@@ -5,6 +5,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.ActivityLogDTO;
+import vacademy.io.admin_core_service.features.learner_tracking.dto.ConcentrationScoreDTO;
 
 import java.sql.Timestamp;
 import java.util.List;
@@ -53,6 +54,9 @@ public class ActivityLog {
     @OneToMany(mappedBy = "activityLog", fetch = FetchType.LAZY)
     private List<VideoTracked> videoTracked;
 
+    @OneToOne(mappedBy = "activityLog", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
+    private ConcentrationScore concentrationScore;
+
     public ActivityLog(ActivityLogDTO activityLogDTO, String userId, String slideId) {
         this.id = activityLogDTO.getId();
         this.sourceId = activityLogDTO.getSourceId();
@@ -84,6 +88,8 @@ public class ActivityLog {
         activityLogDTO.setVideos(videoTracked != null
                 ? videoTracked.stream().map(VideoTracked::videoActivityLogDTO).toList()
                 : List.of());
+        ConcentrationScoreDTO concentrationScoreDTO = concentrationScore != null ? concentrationScore.toConcentrationScoreDTO() : null;
+        activityLogDTO.setConcentrationScore(concentrationScoreDTO);
         return activityLogDTO;
     }
 

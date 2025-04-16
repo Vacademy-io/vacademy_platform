@@ -19,6 +19,6 @@ import java.util.Date;
 public class AssessmentRestartResponse {
     LearnerAssessmentStartAssessmentResponse startAssessmentResponse;
     LearnerAssessmentStartPreviewResponse previewResponse;
-    LearnerAssessmentAttemptDataDto learnerAssessmentAttemptDataDto;
+    String attemptDataJson;
     LearnerUpdateStatusResponse updateStatusResponse;
 }

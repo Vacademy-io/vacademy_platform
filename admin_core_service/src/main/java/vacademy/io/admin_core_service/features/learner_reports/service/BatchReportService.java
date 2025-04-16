@@ -158,4 +158,14 @@ public class BatchReportService {
             throw new RuntimeException("Failed to parse slides data", e);
         }
     }
+
+    public List<LearnerActivityDataProjection> getBatchActivityDataLeaderBoard(ReportFilterDTO filter, CustomUserDetails userDetails) {
+        // Simply call the method to retrieve all records (no pagination)
+        return activityLogRepository.getBatchActivityDataWithRank(
+                filter.getStartDate(),
+                filter.getEndDate(),
+                filter.getPackageSessionId(),
+                ACTIVE_LEARNERS
+        );
+    }
 }

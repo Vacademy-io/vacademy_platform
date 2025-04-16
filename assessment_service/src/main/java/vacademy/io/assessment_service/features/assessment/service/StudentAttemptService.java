@@ -19,24 +19,18 @@ import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
 import vacademy.io.assessment_service.features.assessment.repository.QuestionAssessmentSectionMappingRepository;
 import vacademy.io.assessment_service.features.assessment.repository.SectionRepository;
 import vacademy.io.assessment_service.features.assessment.repository.StudentAttemptRepository;
-import vacademy.io.assessment_service.features.assessment.service.marking_strategy.MCQMQuestionTypeBasedStrategy;
-import vacademy.io.assessment_service.features.assessment.service.marking_strategy.MCQSQuestionTypeBasedStrategy;
 import vacademy.io.assessment_service.features.learner_assessment.constants.AttemptJsonConstants;
 import vacademy.io.assessment_service.features.learner_assessment.dto.status_json.LearnerAssessmentAttemptDataDto;
-import vacademy.io.assessment_service.features.learner_assessment.dto.status_json.QuestionAttemptData;
-import vacademy.io.assessment_service.features.learner_assessment.dto.status_json.SectionAttemptData;
 import vacademy.io.assessment_service.features.learner_assessment.dto.status_json.manual.LearnerManualAttemptDataDto;
 import vacademy.io.assessment_service.features.learner_assessment.entity.QuestionWiseMarks;
 import vacademy.io.assessment_service.features.learner_assessment.enums.AssessmentAttemptResultEnum;
 import vacademy.io.assessment_service.features.learner_assessment.service.QuestionWiseMarksService;
 import vacademy.io.assessment_service.features.notification.service.AssessmentNotificationService;
 import vacademy.io.assessment_service.features.question_core.entity.Question;
-import vacademy.io.assessment_service.features.question_core.repository.QuestionRepository;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
-import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
 @Slf4j
@@ -47,16 +41,7 @@ public class StudentAttemptService {
     StudentAttemptRepository studentAttemptRepository;
 
     @Autowired
-    QuestionRepository questionRepository;
-
-    @Autowired
     QuestionAssessmentSectionMappingRepository questionAssessmentSectionMappingRepository;
-
-    @Autowired
-    MCQMQuestionTypeBasedStrategy mcqmMarkingStrategy;
-
-    @Autowired
-    MCQSQuestionTypeBasedStrategy mcqsMarkingStrategy;
 
     @Autowired
     QuestionWiseMarksService questionWiseMarksService;
@@ -66,6 +51,9 @@ public class StudentAttemptService {
 
     @Autowired
     AssessmentNotificationService assessmentNotificationService;
+
+    @Autowired
+    AttemptDataParserService attemptDataParserService;
 
     public StudentAttempt updateStudentAttempt(StudentAttempt studentAttempt){
         return studentAttemptRepository.save(studentAttempt);
@@ -90,11 +78,10 @@ public class StudentAttemptService {
         if(studentAttemptOptional.isEmpty()) throw new VacademyException("Student Attempt Not Found");
 
         String attemptData = studentAttemptOptional.get().getAttemptData();
-        LearnerAssessmentAttemptDataDto attemptDataObject = validateAndCreateJsonObject(attemptData);
 
-        Long timeElapsedInSeconds = attemptDataObject.getAssessment().getTimeElapsedInSeconds();
+        Long timeElapsedInSeconds = attemptDataParserService.getTimeElapsedInSecondsFromAttemptData(attemptData);
 
-        double totalMarks = calculateTotalMarksForAttemptAndUpdateQuestionWiseMarks(studentAttemptOptional, attemptDataObject);
+        double totalMarks = calculateTotalMarksForAttemptAndUpdateQuestionWiseMarks(studentAttemptOptional);
 
         StudentAttempt attempt = studentAttemptOptional.get();
 
@@ -111,11 +98,10 @@ public class StudentAttemptService {
         if(studentAttemptOptional.isEmpty()) throw new VacademyException("Student Attempt Not Found");
 
         String attemptData = studentAttemptOptional.get().getAttemptData();
-        LearnerAssessmentAttemptDataDto attemptDataObject = validateAndCreateJsonObject(attemptData);
 
-        Long timeElapsedInSeconds = attemptDataObject.getAssessment().getTimeElapsedInSeconds();
+        Long timeElapsedInSeconds = attemptDataParserService.getTimeElapsedInSecondsFromAttemptData(attemptData);
 
-        double totalMarks = calculateTotalMarksForAttemptAndUpdateQuestionWiseMarks(studentAttemptOptional, attemptDataObject);
+        double totalMarks = calculateTotalMarksForAttemptAndUpdateQuestionWiseMarks(studentAttemptOptional);
 
         StudentAttempt attempt = studentAttemptOptional.get();
         attempt.setTotalMarks(totalMarks);
@@ -127,12 +113,12 @@ public class StudentAttemptService {
 
 
     @Transactional
-    public Double calculateTotalMarksForAttemptAndUpdateQuestionWiseMarks(Optional<StudentAttempt> studentAttemptOptional, LearnerAssessmentAttemptDataDto attemptDataObject)  {
+    public Double calculateTotalMarksForAttemptAndUpdateQuestionWiseMarks(Optional<StudentAttempt> studentAttemptOptional)  {
         try{
             if(studentAttemptOptional.isEmpty()) throw new VacademyException("Student Attempt Not Found");
             if(Objects.isNull(studentAttemptOptional.get().getAttemptData())) throw new VacademyException("Attempt Data Not Found");
 
-            return calculateTotalMarks(attemptDataObject, studentAttemptOptional);
+            return calculateTotalMarks(studentAttemptOptional);
         }
         catch (Exception e){
             throw new VacademyException("Failed to calculate marks: " +e.getMessage());
@@ -144,15 +130,14 @@ public class StudentAttemptService {
      * they answered and their responses. It iterates over the sections and questions, applying the
      * appropriate marking strategy for each question type.
      *
-     * @param learnerAssessmentData - The learner's assessment data containing sections and responses.
      * @param studentAttemptOptional - The student's attempt details, wrapped in an Optional.
      * @return The total marks for the learner's attempt.
      * @throws Exception - If any error occurs during the calculation.
      */
-    public double calculateTotalMarks(LearnerAssessmentAttemptDataDto learnerAssessmentData, Optional<StudentAttempt> studentAttemptOptional) throws Exception {
+    public double calculateTotalMarks(Optional<StudentAttempt> studentAttemptOptional) throws Exception {
         double totalMarks = 0.0;
 
-        if (studentAttemptOptional.isEmpty() || !learnerAssessmentData.getAttemptId().equals(studentAttemptOptional.get().getId())) {
+        if (studentAttemptOptional.isEmpty()) {
             return 0.0;
         }
 
@@ -160,28 +145,31 @@ public class StudentAttemptService {
         Assessment assessment = studentAttempt.getRegistration().getAssessment();
         String attemptData = studentAttempt.getAttemptData();
 
-        for (SectionAttemptData section : learnerAssessmentData.getSections()) {
+        List<String> sectionList = attemptDataParserService.extractSectionJsonStrings(attemptData);
+
+        for (String section : sectionList) {
             totalMarks += calculateMarksForSection(section, attemptData, assessment, studentAttempt);
         }
 
         return totalMarks;
     }
 
-    private double calculateMarksForSection(SectionAttemptData section, String attemptData, Assessment assessment, StudentAttempt studentAttempt) {
+    private double calculateMarksForSection(String sectionJson, String attemptData, Assessment assessment, StudentAttempt studentAttempt) {
         double sectionMarks = 0.0;
+        List<String> questionJsons = attemptDataParserService.extractQuestionJsonsFromSection(sectionJson);
 
-        for (QuestionAttemptData question : section.getQuestions()) {
-            sectionMarks += calculateMarksForQuestion(section, question, attemptData, assessment, studentAttempt);
+        for (String question : questionJsons) {
+            sectionMarks += calculateMarksForQuestion(sectionJson, question, attemptData, assessment, studentAttempt);
         }
 
         return sectionMarks;
     }
 
-    private double calculateMarksForQuestion(SectionAttemptData section, QuestionAttemptData question, String attemptData, Assessment assessment, StudentAttempt studentAttempt) {
-        String sectionId = section.getSectionId() != null ? section.getSectionId() : "";
-        String questionId = question.getQuestionId() != null ? question.getQuestionId() : "";
-        QuestionAttemptData.OptionsJson responseData = question.getResponseData();
-        String type = responseData != null ? responseData.getType() : "";
+    private double calculateMarksForQuestion(String sectionJson, String questionJson, String attemptData, Assessment assessment, StudentAttempt studentAttempt) {
+        String sectionId = attemptDataParserService.extractSectionIdFromSectionJson(sectionJson);
+        String questionId = attemptDataParserService.extractQuestionIdFromQuestionJson(questionJson);
+
+        String type = attemptDataParserService.extractResponseTypeFromQuestionJson(questionJson);
 
         Optional<QuestionAssessmentSectionMapping> questionAssessmentSectionMapping =
                 questionAssessmentSectionMappingRepository.findByQuestionIdAndSectionId(questionId, sectionId);
@@ -207,7 +195,7 @@ public class StudentAttemptService {
         if(sectionOptional.isEmpty()) throw new VacademyException("Section Not Found");
 
         questionWiseMarksService.updateQuestionWiseMarksForEveryQuestion(
-                assessment, studentAttempt, questionAsked, questionWiseResponseData, question.getTimeTakenInSeconds(),answerStatus, sectionOptional.get(), marksObtained
+                assessment, studentAttempt, questionAsked, questionWiseResponseData, attemptDataParserService.extractTimeTakenInSecondsFromQuestionJson(questionJson),answerStatus, sectionOptional.get(), marksObtained
         );
 
         return marksObtained;
@@ -346,8 +334,6 @@ public class StudentAttemptService {
         StudentAttempt studentAttempt = studentAttemptOptional.get();
         String jsonAttemptData = studentAttempt.getAttemptData();
         if(Objects.isNull(jsonAttemptData)) return 0.0;
-
-        LearnerAssessmentAttemptDataDto attemptData = validateAndCreateJsonObject(jsonAttemptData);
 
         Optional<QuestionAssessmentSectionMapping> questionAssessmentSectionMapping =
                 questionAssessmentSectionMappingRepository.findByQuestionIdAndSectionId(questionId, sectionId);

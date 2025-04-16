@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import vacademy.io.admin_core_service.features.learner_tracking.dto.ConcentrationScoreDTO;
 
 @Entity
 @Table(name = "concentration_score")
@@ -38,5 +39,15 @@ public class ConcentrationScore {
         this.answerTimesInSec = answerTimesInSec;
         this.activityLog = activityLog;
         this.id = id;
+    }
+
+    public ConcentrationScoreDTO toConcentrationScoreDTO() {
+        ConcentrationScoreDTO concentrationScoreDTO = new ConcentrationScoreDTO();
+        concentrationScoreDTO.setId(id);
+        concentrationScoreDTO.setConcentrationScore(concentrationScore);
+        concentrationScoreDTO.setTabSwitchCount(tabSwitchCount);
+        concentrationScoreDTO.setPauseCount(pauseCount);
+        concentrationScoreDTO.setAnswerTimesInSeconds(answerTimesInSec);
+        return concentrationScoreDTO;
     }
 }

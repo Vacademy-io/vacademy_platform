@@ -15,7 +15,7 @@ public class SectionDTO {
     private AssessmentRichTextDataDTO description;
     private Double totalMarks;
     private Double cutOfMarks;
-    private Integer marksPerQuestion;
+    private Double marksPerQuestion;
     private Integer sectionOrder;
     private List<SectionQuestionsDTO>questions;
     private boolean newSection;

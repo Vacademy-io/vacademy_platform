@@ -342,7 +342,7 @@ public class DeepSeekService {
                         - Omit 'options' field entirely
                         """;
 
-        Prompt prompt = new PromptTemplate(template).create(Map.of("classLecture", audioString, "difficulty", difficulty, "numQuestions", numQuestions, "optionalPrompt", optionalPrompt));
+        Prompt prompt = new PromptTemplate(template).create(Map.of("classLecture", audioString, "difficulty", difficulty, "numQuestions", numQuestions, "optionalPrompt", optionalPrompt, "language","en"));
 
         DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
         if(response.getChoices().isEmpty()) {

@@ -415,6 +415,7 @@ public class DeepSeekService {
                         .map(String::valueOf)
                         .collect(Collectors.toList())
         );
+        requestEvaluation.setData(mcqData);
 
 
 

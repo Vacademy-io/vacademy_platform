@@ -1,0 +1,14 @@
+package vacademy.io.assessment_service.features.assessment_free_tool.dto;
+
+import com.fasterxml.jackson.databind.PropertyNamingStrategy;
+import com.fasterxml.jackson.databind.annotation.JsonNaming;
+import lombok.Data;
+
+@JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
+@Data
+public class AddAssessmentDTO {
+    private String name;
+    private String playMode;
+    private String evaluationType;
+    
+}

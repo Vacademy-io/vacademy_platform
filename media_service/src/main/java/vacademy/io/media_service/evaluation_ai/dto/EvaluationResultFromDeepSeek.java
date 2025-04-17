@@ -37,6 +37,7 @@ public class EvaluationResultFromDeepSeek {
         private double marksObtained;
         private double totalMarks;
         private String feedback;
+        private String description; // why makrs are given and dedcuted
         private String verdict; // correct/partially correct/incorrect/null
     }
 }

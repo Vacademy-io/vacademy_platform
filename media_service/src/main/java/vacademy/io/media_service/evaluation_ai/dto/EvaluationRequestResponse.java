@@ -1,7 +1,6 @@
 package vacademy.io.media_service.evaluation_ai.dto;
 
 import com.fasterxml.jackson.databind.PropertyNamingStrategy;
-import com.fasterxml.jackson.databind.annotation.JsonAppend;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.Data;
 

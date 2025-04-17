@@ -17,7 +17,10 @@ import vacademy.io.media_service.service.FileConversionStatusService;
 import vacademy.io.media_service.service.FileService;
 import vacademy.io.media_service.service.NewDocConverterService;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -30,13 +33,15 @@ public class AiAnswerEvaluationService {
     private final NewDocConverterService newDocConverterService;
     private final DeepSeekApiService deepSeekApiService;
     private final TaskStatusRepository taskStatusRepository;
+    private final AssessmentService assessmentService;
 
     public EvaluationRequestResponse evaluateAnswers(
-            AiEvaluationMetadata metadata,
+            String assessmentId,
             List<EvaluationUserDTO> evaluationUsers
     ) {
+        AiEvaluationMetadata metadata = assessmentService.getAssessmentMetadata(assessmentId);
         // Generate a task ID for the group evaluation
-        String taskId = createNewTask("GROUP_" + UUID.randomUUID());
+        String taskId = createNewTask(UUID.randomUUID().toString());
 
         // Prepare and return immediate response
         EvaluationRequestResponse response = new EvaluationRequestResponse();
@@ -57,7 +62,7 @@ public class AiAnswerEvaluationService {
                     ));
                 }
                 String prompt = generatePromptForMultipleUsers(metadata, userHtmlDataList);
-                String result = evaluateWithRetry(prompt, 10);
+                String result = evaluateWithRetry(prompt, 5);
                 updateTask(taskId, result, TaskStatusEnum.COMPLETED.name());
             } catch (Exception e) {
                 updateTask(taskId, e.getMessage(), TaskStatusEnum.FAILED.name());
@@ -74,6 +79,20 @@ public class AiAnswerEvaluationService {
         promptBuilder.append("""
         You are an AI examiner. Multiple students have submitted their full assessments in HTML format.
         Use the provided assessment metadata to evaluate each student's answers individually.
+
+        For each question, provide:
+        - `feedback`: A brief explanation of the correctness or issues in the answer (e.g., missing important points).
+        - `description`: A brief reason for awarding or deducting marks (e.g., minor mistake, unclear answer, partial correctness).
+        - `markingJson`: A breakdown of the marks distribution for each question. The total marks for the question should be distributed across different criteria (e.g., Diagram, Explanation, Example).
+          Example format:
+          "markingJson": {
+            "totalMarks": 10,
+            "criteria": [
+              {"name": "Diagram", "marks": 4},
+              {"name": "Explanation", "marks": 3},
+              {"name": "Example", "marks": 3}
+            ]
+          }
 
         Respond strictly in JSON format matching this structure:
 
@@ -101,7 +120,16 @@ public class AiAnswerEvaluationService {
                       "marks_obtained": <numeric>,
                       "total_marks": <numeric>,
                       "feedback": "<string>",
-                      "verdict": "correct/partially correct/incorrect/null"
+                      "description": "<string>",
+                      "verdict": "correct/partially correct/incorrect/null",
+                      "markingJson": {
+                        "totalMarks": <numeric>,
+                        "criteria": [
+                          {"name": "Diagram", "marks": <numeric>},
+                          {"name": "Explanation", "marks": <numeric>},
+                          {"name": "Example", "marks": <numeric>}
+                        ]
+                      }
                     }
                   ]
                 }
@@ -239,7 +267,9 @@ public class AiAnswerEvaluationService {
         return matcher.find() ? matcher.group(1).trim() : html;
     }
 
-    public EvaluationRequestResponse getTaskUpdate(String taskId) {
+    public EvaluationRequestResponse
+
+    getTaskUpdate(String taskId) {
         TaskStatus task = taskStatusRepository.findById(taskId)
                 .orElseThrow(() -> new VacademyException("Task not found"));
 

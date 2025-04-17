@@ -49,4 +49,6 @@ public interface QuestionAssessmentSectionMappingRepository extends CrudReposito
                                                                          @Param("statusList") List<String> statusList);
     boolean existsBySection_Assessment_IdAndSection_IdAndQuestion_Id(String assessmentId, String sectionId, String questionId);
 
+    @Query("SELECT qasm FROM QuestionAssessmentSectionMapping qasm WHERE qasm.section.id = :sectionId")
+    List<QuestionAssessmentSectionMapping> findBySectionId(@Param("sectionId") String sectionId);
 }

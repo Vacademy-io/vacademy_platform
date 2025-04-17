@@ -2,13 +2,7 @@ package vacademy.io.media_service.ai;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.jsoup.Jsoup;
-import org.jsoup.nodes.Comment;
-import org.jsoup.nodes.Document;
-import org.jsoup.nodes.Element;
-import org.jsoup.select.Elements;
 import org.springframework.ai.chat.model.ChatModel;
-import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,10 +15,8 @@ import vacademy.io.media_service.service.HtmlJsonProcessor;
 import vacademy.io.media_service.util.JsonUtils;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -653,5 +645,84 @@ public class DeepSeekService {
         }
 
         return result.toString();
+    }
+
+    public String getQuestionsWithDeepSeekFromHTMLWithTopics(String htmlData, String userPrompt) {
+        HtmlJsonProcessor htmlJsonProcessor = new HtmlJsonProcessor();
+        String unTaggedHtml = htmlJsonProcessor.removeTags(htmlData);
+
+        if (userPrompt == null) {
+            userPrompt = "Include first 20 questions in the response. Do not truncate or omit any questions." +
+                    "Ensure all questions include their respective topics in the tags field." +
+                    "If multiple questions belong to the same topic, their tags should be identical.";
+        }
+
+        String template = """
+        HTML raw data :  {htmlData}
+                
+        Prompt:
+        Convert the given HTML file containing questions into the following JSON format:
+        - Preserve all DS_TAGs in HTML content in comments.
+        
+        JSON format : 
+        
+                {{
+                    "questions": [
+                        {{
+                            "question_number": "number",
+                            "question": {{
+                                "type": "HTML",
+                                "content": "string" // Include img tags if present
+                            }},
+                            "options": [
+                                {{
+                                    "type": "HTML",
+                                    "content": "string" // Include img tags if present
+                                }}
+                            ],
+                            "correct_options": "number[]",
+                            "ans": "string",
+                            "exp": "string",
+                            "question_type": "MCQS | MCQM | ONE_WORD | LONG_ANSWER | NUMERIC",
+                            "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"], // must include topic name
+                            "level": "easy | medium | hard"
+                        }}
+                    ],
+                    "title": "string", // Suitable title for the question paper
+                    "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"], // multiple chapter and topic names for question paper
+                    "difficulty": "easy | medium | hard",
+                    "subjects": ["subject1", "subject2", "subject3", "subject4", "subject5"], // multiple subject names for question paper
+                    "classes": ["class 1", "class 2", "class 3", "class 4", "class 5", "class 6", "class 7", "class 8", "class 9", "class 10", "class 11", "class 12", "engineering", "medical", "commerce", "law"]
+                }}
+        
+        For LONG_ANSWER, NUMERIC, and ONE_WORD question types:
+        - Leave 'correct_options' empty but fill 'ans' and 'exp'
+        - Omit 'options' field entirely
+        
+        Tagging Rules:
+        - Every question must include its topic in the "tags" field.
+        - Questions belonging to the same topic must have identical "tags".
+        - If a topic is not directly extractable from the question, use headings or context from the HTML.
+        
+        Also keep the DS_TAGS field intact in HTML.
+        Do not try to calculate correct answers — only include if already available in the input.
+        
+        IMPORTANT: {userPrompt}
+        """;
+
+        Prompt prompt = new PromptTemplate(template).create(Map.of("htmlData", unTaggedHtml, "userPrompt", userPrompt));
+
+        DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
+        if(response.getChoices().isEmpty()) {
+            throw new VacademyException("No response from DeepSeek");
+        }
+        String resultJson = response.getChoices().get(0).getMessage().getContent();
+        String validJson = JsonUtils.extractAndSanitizeJson(resultJson);
+        try {
+            String restoredJson = htmlJsonProcessor.restoreTagsInJson(validJson);
+            return restoredJson;
+        } catch (Exception e) {
+            throw new VacademyException(e.getMessage());
+        }
     }
 }

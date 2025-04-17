@@ -161,6 +161,36 @@ public class PDFQuestionGeneratorController {
         return ResponseEntity.ok(createAutoQuestionPaperResponse(removeExtraSlashes(validJson)));
     }
 
+    @GetMapping("/math-parser/topic-wise/pdf-to-questions")
+    public ResponseEntity<AutoQuestionPaperResponse> getMathParserPdfWithTopicHtml(@RequestParam String pdfId, @RequestParam(required = false) String userPrompt) throws IOException {
+
+        var fileConversionStatus = fileConversionStatusService.findByVendorFileId(pdfId);
+
+        if (fileConversionStatus.isEmpty() || !StringUtils.hasText(fileConversionStatus.get().getHtmlText())) {
+            String html = newDocConverterService.getConvertedHtml(pdfId);
+            if (html == null) {
+                throw new VacademyException("File Still Processing");
+            }
+            String htmlBody = extractBody(html);
+            String networkHtml = htmlImageConverter.convertBase64ToUrls(htmlBody);
+
+            fileConversionStatusService.updateHtmlText(pdfId, networkHtml);
+            String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromHTMLWithTopics(networkHtml, userPrompt));
+
+            // Process the raw output to get valid JSON
+            String validJson = JsonUtils.extractAndSanitizeJson(rawOutput);
+
+            return ResponseEntity.ok(createAutoQuestionPaperResponse(removeExtraSlashes(validJson)));
+
+        }
+
+        String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromHTMLWithTopics(fileConversionStatus.get().getHtmlText(), userPrompt));
+
+        // Process the raw output to get valid JSON
+        String validJson = JsonUtils.extractAndSanitizeJson(rawOutput);
+        return ResponseEntity.ok(createAutoQuestionPaperResponse(removeExtraSlashes(validJson)));
+    }
+
     @PostMapping("/math-parser/html-to-questions")
     public ResponseEntity<AutoQuestionPaperResponse> getMathParserHtmlToQuestions(@RequestBody HtmlResponse html, @RequestParam(required = false) String userPrompt) throws IOException {
 

@@ -12,7 +12,7 @@ import java.util.*;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping("/media-service/evaluation")
+@RequestMapping("/media-service/ai/evaluation-tool")
 public class AiEvaluationController {
 
     private final AiAnswerEvaluationService aiAnswerEvaluationService;

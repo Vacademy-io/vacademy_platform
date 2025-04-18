@@ -17,6 +17,7 @@ public class EvaluationResultFromDeepSeek {
         private double totalMarksObtained;
         private double totalMarks;
         private String overallVerdict; // pass/fail/absent/etc.
+        private String overallDescription;
         private List<SectionWiseResult> sectionWiseResults;
     }
 
@@ -39,5 +40,6 @@ public class EvaluationResultFromDeepSeek {
         private String feedback;
         private String description; // why makrs are given and dedcuted
         private String verdict; // correct/partially correct/incorrect/null
+        private String questionText;
     }
 }

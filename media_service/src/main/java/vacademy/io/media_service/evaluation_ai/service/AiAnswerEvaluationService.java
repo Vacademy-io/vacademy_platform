@@ -63,6 +63,9 @@ public class AiAnswerEvaluationService {
                 }
                 String prompt = generatePromptForMultipleUsers(metadata, userHtmlDataList);
                 String result = evaluateWithRetry(prompt, 5);
+                if (StringUtils.hasText(result) == false){
+                    throw new VacademyException("Evaluation Failed");
+                }
                 updateTask(taskId, result, TaskStatusEnum.COMPLETED.name());
             } catch (Exception e) {
                 updateTask(taskId, e.getMessage(), TaskStatusEnum.FAILED.name());
@@ -163,6 +166,7 @@ public class AiAnswerEvaluationService {
         int attempt = 0;
         while (attempt < maxAttempts) {
             try {
+                System.out.println("Prompt: " + prompt);
                 return getEvaluationFromAI(prompt);
             } catch (Exception e) {
                 attempt++;

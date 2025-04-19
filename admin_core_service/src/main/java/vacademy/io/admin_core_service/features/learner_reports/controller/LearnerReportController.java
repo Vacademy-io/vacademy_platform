@@ -33,7 +33,7 @@ public class LearnerReportController {
     }
 
     @GetMapping("/subject-wise-progress")
-    public ResponseEntity<List<SubjectProgressDTO>> getSubjectWiseProgress(
+    public ResponseEntity<List<LearnerSubjectWiseProgressReportDTO>> getSubjectWiseProgress(
             @RequestParam String packageSessionId,
             @RequestParam String userId,
             @RequestAttribute("user") CustomUserDetails userDetails) {

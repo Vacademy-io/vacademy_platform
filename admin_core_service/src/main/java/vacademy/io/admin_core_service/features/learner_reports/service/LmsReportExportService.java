@@ -100,7 +100,7 @@ public class LmsReportExportService {
 
     public byte[] generateSubjectWiseLearnerProgressReport(ReportFilterDTO reportFilterDTO, CustomUserDetails userDetails) {
         try {
-            List<SubjectProgressDTO>subjectProgressDTOS = learnerReportService.getSubjectProgressReport(reportFilterDTO.getPackageSessionId(), reportFilterDTO.getUserId(), userDetails);
+            List<LearnerSubjectWiseProgressReportDTO>subjectProgressDTOS = learnerReportService.getSubjectProgressReport(reportFilterDTO.getPackageSessionId(), reportFilterDTO.getUserId(), userDetails);
             Student student = fetchStudent(reportFilterDTO.getUserId());
             BatchInstituteProjection projection = fetchBatchAndInstitute(reportFilterDTO);
             String html = HtmlBuilderService.getSubjectWiseProgressReportHtml(subjectProgressDTOS,student.getFullName(),projection.getBatchName(), projection.getInstituteName());

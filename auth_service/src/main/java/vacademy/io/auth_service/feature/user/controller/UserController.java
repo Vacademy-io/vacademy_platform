@@ -48,7 +48,8 @@ public class UserController {
 
             if (user == null)
                 user = userService.createUserFromUserDto(userDTO);
-
+            else
+                user = userService.updateUser(user,userDTO);
             userService.addUserRoles(instituteId, userDTO.getRoles(), user,UserRoleStatus.ACTIVE.name());
             return ResponseEntity.ok(new UserDTO(user));
         } catch (Exception e) {

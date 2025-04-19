@@ -42,6 +42,8 @@ public class CsvToStudentDataMapper {
                     getFieldValue(record, "MOTHER_NAME"),
                     getFieldValue(record, "PARENTS_MOBILE_NUMBER"),
                     getFieldValue(record, "PARENTS_EMAIL"),
+                    getFieldValue(record, "PARENTS_TO_MOTHER_MOBILE_NUMBER"),
+                    getFieldValue(record, "PARENTS_TO_MOTHER_EMAIL"),
                     getFieldValue(record, "LINKED_INSTITUTE_NAME")
             );
 

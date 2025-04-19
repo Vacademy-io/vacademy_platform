@@ -53,6 +53,13 @@ public class Student {
     private String motherName;
     @Column(name = "parents_mobile_number")
     private String parentsMobileNumber;
+
+    @Column(name = "parents_to_mother_mobile_number")
+    private String parentToMotherMobileNumber;
+
+    @Column(name = "parents_to_mother_email")
+    private String parentsToMotherEmail;
+
     @Column(name = "parents_email")
     private String parentsEmail;
     @Column(name = "linked_institute_name")

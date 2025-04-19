@@ -1,7 +1,11 @@
 package vacademy.io.media_service.ai;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.chat.prompt.PromptTemplate;
@@ -20,6 +24,7 @@ import java.util.Map;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 public class DeepSeekService {
 
@@ -94,8 +99,6 @@ public class DeepSeekService {
 
         return validJson;
     }
-
-
     public String getQuestionsWithDeepSeekFromHTML(String htmlData, String userPrompt) {
         HtmlJsonProcessor htmlJsonProcessor = new HtmlJsonProcessor();
         String unTaggedHtml = htmlJsonProcessor.removeTags(htmlData);
@@ -167,6 +170,162 @@ public class DeepSeekService {
             throw new VacademyException(e.getMessage());
         }
     }
+
+
+    public String getQuestionsWithDeepSeekFromHTMLRecursive(String htmlData, String userPrompt, String restoredJson, int attempt) {
+        try{
+            if (attempt >= 5) {
+                return restoredJson != null ? restoredJson : "";
+            }
+            String allQuestionNumbers = getCommaSeparatedQuestionNumbers(restoredJson);
+            log.info("Total Questions: " + allQuestionNumbers);
+            HtmlJsonProcessor htmlJsonProcessor = new HtmlJsonProcessor();
+            String unTaggedHtml = htmlJsonProcessor.removeTags(htmlData);
+
+            if (userPrompt == null) {
+                userPrompt = "Include first 20 questions in the response. Do not truncate or omit any questions.";
+            }
+
+            String template = """
+        HTML raw data : {htmlData}
+        Already extracted question Numbers : {allQuestionNumbers}
+
+        Prompt:
+        Convert the given HTML file containing questions into the following JSON format:
+        - Preserve all DS_TAGs in HTML content in comments.
+        - If 'Already extracted question Number' is empty, start fresh from the beginning of the HTML.
+        - If it is not empty, continue generating from where the last question left off based on the existing data.
+        - Avoid duplication of previously extracted questions.
+        
+        JSON format:
+            {{
+                "questions": [
+                    {{
+                        "question_number": "number",
+                        "question": {{
+                            "type": "HTML",
+                            "content": "string"
+                        }},
+                        "options": [
+                            {{
+                                "type": "HTML",
+                                "content": "string"
+                            }}
+                        ],
+                        "correct_options": "number[]",
+                        "ans": "string",
+                        "exp": "string",
+                        "question_type": "MCQS | MCQM | ONE_WORD | LONG_ANSWER | NUMERIC",
+                        "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
+                        "level": "easy | medium | hard"
+                    }}
+                ],
+                "title": "string",
+                "currently_completed_question_serials": [1,2,3],
+                "is_process_completed": true,false
+                "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
+                "difficulty": "easy | medium | hard",
+                "subjects": ["subject1", "subject2", "subject3", "subject4", "subject5"],
+                "classes": ["class 1", "class 2", "class 3", "class 4", "class 5", "class 6", "class 7", "class 8", "class 9", "class 10", "class 11", "class 12", "engineering", "medical", "commerce", "law"]
+            }}
+
+        For LONG_ANSWER, NUMERIC, and ONE_WORD types:
+        - Leave 'correct_options' empty but fill 'ans' and 'exp'
+        - Omit 'options' field
+
+        Tagging Rules:
+        - Every question must include its topic in the "tags" field.
+        - Questions of the same topic must share identical tags.
+        - Refer to previously extracted JSON to maintain topic consistency.
+        
+        currently_completed_question_serials RULE:
+        - Every Question number generated should be in currently_completed_question_serials
+        
+        is_process_completed RULE:
+        - If {allQuestionNumbers} and currently_completed_question_serials all together matches user requirement then mark true otherwise false
+
+        IMPORTANT: {userPrompt}
+        """;
+
+            Prompt prompt = new PromptTemplate(template).create(Map.of(
+                    "htmlData", unTaggedHtml,
+                    "restoredJson", restoredJson == null ? "" : restoredJson,
+                    "userPrompt", userPrompt,
+                    "allQuestionNumbers", allQuestionNumbers
+            ));
+
+            DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
+            if (response.getChoices().isEmpty()) {
+                throw new VacademyException("No response from DeepSeek");
+            }
+
+            String resultJson = response.getChoices().get(0).getMessage().getContent();
+            log.info("Result Json: " + resultJson);
+            String validJson = JsonUtils.extractAndSanitizeJson(resultJson);
+            String restored;
+
+            try {
+                restored = htmlJsonProcessor.restoreTagsInJson(validJson);
+            } catch (Exception e) {
+                throw new VacademyException(e.getMessage());
+            }
+
+            String mergedJson = mergeQuestionsJson(restoredJson, restored);
+            int currentQuestionCount = getQuestionCount(mergedJson);
+
+
+            log.info("question Size: " + currentQuestionCount);
+            log.info("attempt: " +attempt);
+
+            if (getIsProcessCompleted(mergedJson)) {
+                return mergedJson;
+            }
+            // Recurse for remaining questions
+            return getQuestionsWithDeepSeekFromHTMLRecursive(htmlData, userPrompt, mergedJson, attempt + 1);
+        } catch (Exception e) {
+            return restoredJson;
+        }
+    }
+
+    public String getCommaSeparatedQuestionNumbers(String json) {
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode rootNode = mapper.readTree(json);
+            JsonNode questionsNode = rootNode.get("questions");
+
+            if (questionsNode == null || !questionsNode.isArray()) {
+                return "";
+            }
+
+            List<String> questionNumbers = new ArrayList<>();
+            for (JsonNode question : questionsNode) {
+                String number = question.get("question_number").asText();
+                questionNumbers.add(number);
+            }
+
+            return String.join(",", questionNumbers);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return "";
+        }
+    }
+    public Boolean getIsProcessCompleted(String json) {
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode rootNode = mapper.readTree(json);
+
+            JsonNode isCompletedNode = rootNode.get("is_process_completed");
+            if (isCompletedNode != null && isCompletedNode.isBoolean()) {
+                return isCompletedNode.asBoolean();
+            }
+            return null; // or false as a fallback
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+
 
 
     public String getQuestionsWithDeepSeekFromHTMLOfTopics(String htmlData, String requiredTopics) {
@@ -723,6 +882,41 @@ public class DeepSeekService {
             return restoredJson;
         } catch (Exception e) {
             throw new VacademyException(e.getMessage());
+        }
+    }
+
+    public int getQuestionCount(String jsonString) {
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode root = mapper.readTree(jsonString);
+            JsonNode questions = root.get("questions");
+            return questions != null && questions.isArray() ? questions.size() : 0;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return 0;
+        }
+    }
+
+    public static String mergeQuestionsJson(String oldJson, String newJson) {
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+
+            JsonNode oldNode = oldJson == null || oldJson.isBlank() ? mapper.readTree("{\"questions\":[]}") : mapper.readTree(oldJson);
+            JsonNode newNode = mapper.readTree(newJson);
+
+            ArrayNode mergedQuestions = mapper.createArrayNode();
+            if (oldNode.has("questions")) {
+                mergedQuestions.addAll((ArrayNode) oldNode.get("questions"));
+            }
+            if (newNode.has("questions")) {
+                mergedQuestions.addAll((ArrayNode) newNode.get("questions"));
+            }
+
+            ((ObjectNode) oldNode).set("questions", mergedQuestions);
+
+            return mapper.writerWithDefaultPrettyPrinter().writeValueAsString(oldNode);
+        } catch (Exception e) {
+            return oldJson != null ? oldJson : newJson;
         }
     }
 }

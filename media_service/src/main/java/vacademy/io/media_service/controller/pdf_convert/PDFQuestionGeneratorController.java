@@ -145,7 +145,7 @@ public class PDFQuestionGeneratorController {
             String networkHtml = htmlImageConverter.convertBase64ToUrls(htmlBody);
 
             fileConversionStatusService.updateHtmlText(pdfId, networkHtml);
-            String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromHTML(networkHtml, userPrompt));
+            String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromHTMLRecursive(networkHtml, userPrompt,"",0));
 
             // Process the raw output to get valid JSON
             String validJson = JsonUtils.extractAndSanitizeJson(rawOutput);
@@ -154,7 +154,7 @@ public class PDFQuestionGeneratorController {
 
         }
 
-        String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromHTML(fileConversionStatus.get().getHtmlText(), userPrompt));
+        String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromHTMLRecursive(fileConversionStatus.get().getHtmlText(), userPrompt,"",0));
 
         // Process the raw output to get valid JSON
         String validJson = JsonUtils.extractAndSanitizeJson(rawOutput);

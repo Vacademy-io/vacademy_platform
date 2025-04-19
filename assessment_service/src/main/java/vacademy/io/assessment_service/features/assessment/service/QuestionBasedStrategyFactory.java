@@ -21,6 +21,7 @@ public class QuestionBasedStrategyFactory {
         strategies.put(QuestionTypes.ONE_WORD.name(), new OneWordQuestionTypeBasedStrategy());
         strategies.put(QuestionTypes.LONG_ANSWER.name(), new LongAnswerQuestionTypeBasedStrategy());
         strategies.put(QuestionTypes.NUMERIC.name(), new NUMERICQuestionTypeBasedStrategy());
+        strategies.put(QuestionTypes.TRUE_FALSE.name(), new MCQSQuestionTypeBasedStrategy());
         // Add more strategies here
     }
 
@@ -71,7 +72,7 @@ public class QuestionBasedStrategyFactory {
 
     public static List<String> getResponseOptionIds(String responseJson, String type) throws JsonProcessingException {
         IQuestionTypeBasedStrategy strategy = getStrategy(type);
-        if(strategy.getType().equals(QuestionTypes.MCQS.name())){
+        if(strategy.getType().equals(QuestionTypes.MCQS.name()) || strategy.getType().equals(QuestionTypes.TRUE_FALSE.name())){
             MCQSResponseDto responseDto = (MCQSResponseDto) verifyResponseJson(responseJson, type);
 
             return responseDto.getResponseData().getOptionIds();
@@ -88,7 +89,7 @@ public class QuestionBasedStrategyFactory {
 
     public static List<String> getCorrectOptionIds(String evaluationJson, String type) throws JsonProcessingException {
         IQuestionTypeBasedStrategy strategy = getStrategy(type);
-        if(strategy.getType().equals(QuestionTypes.MCQS.name())){
+        if(strategy.getType().equals(QuestionTypes.MCQS.name()) || strategy.getType().equals(QuestionTypes.TRUE_FALSE.name())){
             MCQSCorrectAnswerDto optionDto = (MCQSCorrectAnswerDto) verifyCorrectAnswerJson(evaluationJson, type);
 
             return optionDto.getData().getCorrectOptionIds();

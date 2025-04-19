@@ -17,7 +17,6 @@ import vacademy.io.admin_core_service.features.institute_learner.repository.Stud
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
-import vacademy.io.common.core.utils.RandomGenerator;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.*;
@@ -148,13 +147,19 @@ public class StudentRegistrationManager {
                 student.setMotherName(studentExtraDetails.getMothersName());
             }
             if (studentExtraDetails.getParentsMobileNumber() != null) {
-                student.setParentsMobileNumber(studentExtraDetails.getParentsMobileNumber());
+                student.setParentToMotherMobileNumber(studentExtraDetails.getParentsMobileNumber());
             }
             if (studentExtraDetails.getParentsEmail() != null) {
                 student.setParentsEmail(studentExtraDetails.getParentsEmail());
             }
             if (studentExtraDetails.getLinkedInstituteName() != null) {
                 student.setLinkedInstituteName(studentExtraDetails.getLinkedInstituteName());
+            }
+            if (studentExtraDetails.getParentsToMotherEmail() != null) {
+                student.setParentsToMotherEmail(studentExtraDetails.getParentsToMotherEmail());
+            }
+            if (studentExtraDetails.getParentsToMotherMobileNumber() != null) {
+                student.setParentToMotherMobileNumber(studentExtraDetails.getParentsToMotherMobileNumber());
             }
         }
         return instituteStudentRepository.save(student);

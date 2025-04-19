@@ -45,6 +45,8 @@ public class StudentDTO {
     private Date expiryDate;
     private Date createdAt;
     private Date updatedAt;
+    private String parentsToMotherMobileNumber;
+    private String parentsToMotherEmail;
 
     // Constructor that takes a Student entity
     public StudentDTO(Student student) {
@@ -68,6 +70,8 @@ public class StudentDTO {
         this.createdAt = student.getCreatedAt();
         this.updatedAt = student.getUpdatedAt();
         this.faceFileId = student.getFaceFileId();
+        this.parentsToMotherMobileNumber = student.getParentToMotherMobileNumber();
+        this.parentsToMotherEmail = student.getParentsToMotherEmail();
     }
 
     // Constructor that takes an Object[]
@@ -110,6 +114,12 @@ public class StudentDTO {
             }
             if (objects.length > 24) {
                 this.faceFileId = (String) objects[24]; // Additional field from mapping table
+            }
+            if (objects.length > 25) {
+                this.parentsToMotherMobileNumber = (String) objects[25]; // Additional field from mapping table
+            }
+            if (objects.length > 26) {
+                this.parentsToMotherEmail = (String) objects[26]; // Additional field from mapping table
             }
         }
     }

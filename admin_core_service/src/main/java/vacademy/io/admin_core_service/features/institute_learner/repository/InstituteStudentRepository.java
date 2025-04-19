@@ -76,7 +76,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             value = "SELECT DISTINCT s.id, s.username, s.user_id, s.email, s.full_name, s.address_line, s.region, " +
                     "s.city, s.pin_code, s.mobile_number, s.date_of_birth, s.gender, s.fathers_name, " +
                     "s.mothers_name, s.parents_mobile_number, s.parents_email, s.linked_institute_name, " +
-                    "s.created_at, s.updated_at, ssigm.package_session_id, ssigm.institute_enrollment_number, ssigm.status, ssigm.institute_id, ssigm.expiry_date, s.face_file_id " +
+                    "s.created_at, s.updated_at, ssigm.package_session_id, ssigm.institute_enrollment_number, ssigm.status, ssigm.institute_id, ssigm.expiry_date, s.face_file_id,s.parents_to_mother_mobile_number, s.parents_to_mother_email   " +
                     "FROM student s " +
                     "LEFT JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id " +
                     "WHERE (:statuses IS NULL OR ssigm.status IN (:statuses)) " +
@@ -109,7 +109,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             value = "SELECT DISTINCT s.id, s.username, s.user_id, s.email, s.full_name, s.address_line, s.region, " +
                     "s.city, s.pin_code, s.mobile_number, s.date_of_birth, s.gender, s.fathers_name, " +
                     "s.mothers_name, s.parents_mobile_number, s.parents_email, s.linked_institute_name, " +
-                    "s.created_at, s.updated_at, ssigm.package_session_id, ssigm.institute_enrollment_number, ssigm.status, ssigm.institute_id, ssigm.expiry_date, s.face_file_id  " +
+                    "s.created_at, s.updated_at, ssigm.package_session_id, ssigm.institute_enrollment_number, ssigm.status, ssigm.institute_id, ssigm.expiry_date, s.face_file_id,s.parents_to_mother_mobile_number, s.parents_to_mother_email  " +
                     "FROM student s " +
                     "JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id " +
                     "WHERE ( " +
@@ -155,7 +155,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                     "s.city, s.pin_code, s.mobile_number, s.date_of_birth, s.gender, s.fathers_name, " +
                     "s.mothers_name, s.parents_mobile_number, s.parents_email, s.linked_institute_name, " +
                     "s.created_at, s.updated_at, ssigm.package_session_id, ssigm.institute_enrollment_number, ssigm.status, " +
-                    "ssigm.institute_id, ssigm.expiry_date, s.face_file_id " +
+                    "ssigm.institute_id, ssigm.expiry_date, s.face_file_id, s.parents_to_mother_mobile_number, s.parents_to_mother_email " +
                     "FROM student s " +
                     "JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id " +
                     "JOIN package_session ps ON ssigm.package_session_id = ps.id " +

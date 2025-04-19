@@ -65,7 +65,7 @@ public class AdminManualEvaluationManager {
             if(attemptOptional.get().getStatus().equals(AssessmentAttemptEnum.LIVE.name())) throw new VacademyException("Attempt is Currently Live");
 
             Assessment assessment = attemptOptional.get().getRegistration().getAssessment();
-            if(assessment.getId().equals(assessmentId)) throw new VacademyException("Assessment Not Found");
+            if(!assessment.getId().equals(assessmentId)) throw new VacademyException("Assessment Not Found");
 
             updateMarksForAttempt(assessment,attemptOptional.get(),request);
 
@@ -96,9 +96,6 @@ public class AdminManualEvaluationManager {
     @Transactional
     private void updateMarksForAttempt(Assessment assessment, StudentAttempt attempt, ManualSubmitMarksRequest request) {
 
-
-        String setId = request.getSetId();
-        if(Objects.isNull(setId) || setId.isEmpty()) throw new VacademyException("SetId is Null or Empty");
 
         Map<String, List<ManualSubmitMarksRequest.SubmitMarksDto>> sectionQuestionMarkMapping = new HashMap<>();
 

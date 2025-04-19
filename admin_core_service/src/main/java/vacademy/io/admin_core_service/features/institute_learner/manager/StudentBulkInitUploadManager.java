@@ -138,6 +138,8 @@ public class StudentBulkInitUploadManager {
             headers.add(createRegexHeader("regex", true, "PARENTS_MOBILE_NUMBER", "^\\+\\d{1,3}-\\d{6,14}$",
                     "Mobile number must be in format +<country_code>-<number>", order++, List.of("+91-9123456789", "+1-9876543210", "+44-712345678901")));
         }
+        headers.add(createRegexHeader("regex", true, "PARENTS_TO_MOTHER_MOBILE_NUMBER", "^\\+\\d{1,3}-\\d{6,14}$",
+                "Mobile number must be in format +<country_code>-<number>", order++, List.of("+91-9123456789", "+1-9876543210", "+44-712345678901")));
         if (optionalFieldsConfig.isIncludeParentsEmail()) {
             emailHeader = createRegexHeader("regex", false, "PARENTS_EMAIL",
                     "^(?![\\s\\S])|^((?!\\.)[\\w\\-_.]*[^.])(@\\w+)(\\.\\w+(\\.\\w+)?[^.\\W])$",
@@ -149,6 +151,10 @@ public class StudentBulkInitUploadManager {
                     "Invalid email format", order++, List.of("john@example.com", "doe@example.com", "smith@example.com"));
             headers.add(emailHeader);
         }
+        emailHeader = createRegexHeader("regex", true, "PARENTS_TO_MOTHER_EMAIL",
+                "^(?![\\s\\S])|^((?!\\.)[\\w\\-_.]*[^.])(@\\w+)(\\.\\w+(\\.\\w+)?[^.\\W])$",
+                "Invalid email format", order++, List.of("john@example.com", "doe@example.com", "smith@example.com"));
+        headers.add(emailHeader);
         if (optionalFieldsConfig.isIncludeLinkedInstituteName()) {
             headers.add(createHeader("string", false, "LINKED_INSTITUTE_NAME", order++, List.of("St. Joseph coed School", "St. Paul coed School", "St. Xavier coed School")));
         } else {

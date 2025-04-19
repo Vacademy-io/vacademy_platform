@@ -103,29 +103,30 @@ public class LearnerReportService {
         );
     }
 
-    public List<SubjectProgressDTO> getSubjectProgressReport(String packageSessionId, String userId, CustomUserDetails userDetails) {
-        return activityLogRepository.getModuleCompletionByUser(
+    public List<LearnerSubjectWiseProgressReportDTO> getSubjectProgressReport(String packageSessionId, String userId, CustomUserDetails userDetails) {
+        return activityLogRepository.getModuleCompletionByUserAndBatch(
                         packageSessionId,
                         userId,
                         ACTIVE_SUBJECTS,
                         ACTIVE_MODULES,
                         ACTIVE_CHAPTERS,
                         VALID_SLIDE_STATUSES,
-                        VALID_SLIDE_STATUSES)
+                        VALID_SLIDE_STATUSES,
+                        ACTIVE_LEARNERS)
                 .stream()
                 .map(this::mapToSubjectProgressDTO)
                 .collect(Collectors.toList());
     }
 
-    private SubjectProgressDTO mapToSubjectProgressDTO(Object[] result) {
+    private LearnerSubjectWiseProgressReportDTO mapToSubjectProgressDTO(Object[] result) {
         try {
-            SubjectProgressDTO dto = new SubjectProgressDTO();
+            LearnerSubjectWiseProgressReportDTO dto = new LearnerSubjectWiseProgressReportDTO();
             dto.setSubjectId((String) result[0]); // subject_id
             dto.setSubjectName((String) result[1]); // subject_name
 
             // Convert JSON string (modules) to List<ModuleProgressDTO>
             String modulesJson = (String) result[2];
-            List<SubjectProgressDTO.ModuleProgressDTO> modules = objectMapper.readValue(
+            List<LearnerSubjectWiseProgressReportDTO.ModuleProgressDTO> modules = objectMapper.readValue(
                     modulesJson, new TypeReference<>() {});
 
             dto.setModules(modules);

@@ -706,89 +706,84 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
         AND cts.status IN (:chapterSlideStatusList)
         AND s.status IN (:slideStatusList)
     ),
-    SlideActivity AS (
+    LearnerActivity AS (
         SELECT 
             cs.subject_id, 
             cs.module_id, 
-            cs.subject_name, 
-            cs.module_name, 
-            cs.chapter_id, 
-            SUM(EXTRACT(EPOCH FROM (al.end_time - al.start_time))) AS total_time_seconds
+            SUM(EXTRACT(EPOCH FROM (al.end_time - al.start_time))) / 60 AS learner_time
         FROM ChapterSlides cs
         JOIN activity_log al ON cs.slide_id = al.slide_id
         WHERE al.user_id = :userId
-        GROUP BY cs.subject_id, cs.module_id, cs.subject_name, cs.module_name, cs.chapter_id
+        GROUP BY cs.subject_id, cs.module_id
     ),
-    ModuleTime AS (
+    BatchActivity AS (
         SELECT 
-            sa.subject_id, 
-            sa.module_id, 
-            sa.subject_name, 
-            sa.module_name, 
-            SUM(sa.total_time_seconds) AS total_module_time_seconds
-        FROM SlideActivity sa
-        GROUP BY sa.subject_id, sa.module_id, sa.subject_name, sa.module_name
+            cs.subject_id, 
+            cs.module_id, 
+            SUM(EXTRACT(EPOCH FROM (al.end_time - al.start_time))) / COUNT(DISTINCT ssigm.user_id) / 60 AS batch_time
+        FROM ChapterSlides cs
+        JOIN activity_log al ON cs.slide_id = al.slide_id
+        JOIN student_session_institute_group_mapping ssigm 
+            ON al.user_id = ssigm.user_id
+            AND ssigm.package_session_id = :sessionId
+        WHERE ssigm.status IN (:learnerStatusList)
+        GROUP BY cs.subject_id, cs.module_id
     ),
-    AvgTimeSpent AS (
-        SELECT 
-            mt.subject_id, 
-            mt.module_id, 
-            mt.subject_name, 
-            mt.module_name, 
-            (mt.total_module_time_seconds / 60) AS avg_time_per_user_minutes
-        FROM ModuleTime mt
-    ),
-    ModuleCompletion AS (
+    LearnerCompletion AS (
         SELECT 
             mc.subject_id, 
             mc.module_id, 
-            mc.subject_name, 
-            mc.module_name, 
-            CAST(NULLIF(lo.value, '') AS FLOAT) AS user_module_completion_percentage
+            AVG(CAST(NULLIF(lo.value, '') AS FLOAT)) AS learner_completion
         FROM learner_operation lo
         JOIN ModuleChapters mc ON lo.source_id = mc.chapter_id
         WHERE lo.operation = 'PERCENTAGE_CHAPTER_COMPLETED'
-        AND lo.value ~ '^[0-9\\.]+$' -- Ensure only numeric values
-        AND lo.user_id = :userId  -- Fetch only for the specific user
+        AND lo.user_id = :userId
+        AND lo.value ~ '^[0-9\\.]+$'
+        GROUP BY mc.subject_id, mc.module_id
     ),
-    FinalModuleCompletion AS (
+    BatchCompletion AS (
         SELECT 
-            subject_id, 
-            module_id, 
-            subject_name, 
-            module_name, 
-            COALESCE(AVG(user_module_completion_percentage), 0) AS module_completion_percentage
-        FROM ModuleCompletion
-        GROUP BY subject_id, module_id, subject_name, module_name
+            mc.subject_id, 
+            mc.module_id, 
+            AVG(CAST(NULLIF(lo.value, '') AS FLOAT)) AS batch_completion
+        FROM learner_operation lo
+        JOIN ModuleChapters mc ON lo.source_id = mc.chapter_id
+        JOIN student_session_institute_group_mapping ssigm ON lo.user_id = ssigm.user_id
+        WHERE lo.operation = 'PERCENTAGE_CHAPTER_COMPLETED'
+        AND ssigm.package_session_id = :sessionId
+        AND ssigm.status IN (:learnerStatusList)
+        AND lo.value ~ '^[0-9\\.]+$'
+        GROUP BY mc.subject_id, mc.module_id
     )
     SELECT 
-        sm.subject_id AS subjectId, 
-        sm.subject_name AS subjectName, 
+        sm.subject_id,
+        sm.subject_name,
         json_agg(
             jsonb_build_object(
                 'module_id', sm.module_id,
                 'module_name', sm.module_name,
-                'module_completion_percentage', COALESCE(fmc.module_completion_percentage, 0),
-                'avg_time_spent_minutes', COALESCE(ats.avg_time_per_user_minutes, 0)
+                'module_completion_percentage', COALESCE(lc.learner_completion, 0),
+                'avg_time_spent_minutes', COALESCE(la.learner_time, 0),
+                'module_completion_percentage_by_batch', COALESCE(bc.batch_completion, 0),
+                'avg_time_spent_minutes_by_batch', COALESCE(ba.batch_time, 0)
             )
-        ) AS modules
+        ) AS modules_json
     FROM SubjectModules sm
-    LEFT JOIN FinalModuleCompletion fmc 
-        ON sm.module_id = fmc.module_id 
-        AND sm.subject_id = fmc.subject_id
-    LEFT JOIN AvgTimeSpent ats 
-        ON sm.module_id = ats.module_id 
-        AND sm.subject_id = ats.subject_id
+    LEFT JOIN LearnerCompletion lc ON sm.subject_id = lc.subject_id AND sm.module_id = lc.module_id
+    LEFT JOIN BatchCompletion bc ON sm.subject_id = bc.subject_id AND sm.module_id = bc.module_id
+    LEFT JOIN LearnerActivity la ON sm.subject_id = la.subject_id AND sm.module_id = la.module_id
+    LEFT JOIN BatchActivity ba ON sm.subject_id = ba.subject_id AND sm.module_id = ba.module_id
     GROUP BY sm.subject_id, sm.subject_name
-    """, nativeQuery = true)
-    List<Object[]> getModuleCompletionByUser(
+""", nativeQuery = true)
+    List<Object[]> getModuleCompletionByUserAndBatch(
             @Param("sessionId") String sessionId,
             @Param("userId") String userId,
             @Param("subjectStatusList") List<String> subjectStatusList,
             @Param("moduleStatusList") List<String> moduleStatusList,
             @Param("chapterStatusList") List<String> chapterStatusList,
             @Param("chapterSlideStatusList") List<String> chapterSlideStatusList,
-            @Param("slideStatusList") List<String> slideStatusList
+            @Param("slideStatusList") List<String> slideStatusList,
+            @Param("learnerStatusList") List<String> learnerStatusList
     );
 
     @Query(value = """ 

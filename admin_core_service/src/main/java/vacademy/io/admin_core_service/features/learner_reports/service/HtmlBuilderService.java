@@ -841,7 +841,7 @@ public class HtmlBuilderService {
     </html>
     """;
     }
-    public static String getSubjectWiseProgressReportHtml(List<SubjectProgressDTO> subjectWiseProgress,
+    public static String getSubjectWiseProgressReportHtml(List<LearnerSubjectWiseProgressReportDTO> subjectWiseProgress,
                                                           String learnerName,
                                                           String batchName,
                                                           String instituteName) {
@@ -876,12 +876,12 @@ public class HtmlBuilderService {
                 .append("</tr>")
                 .append("</thead><tbody>");
 
-        for (SubjectProgressDTO subject : subjectWiseProgress) {
+        for (LearnerSubjectWiseProgressReportDTO subject : subjectWiseProgress) {
             String subjectName = subject.getSubjectName();
-            List<SubjectProgressDTO.ModuleProgressDTO> modules = subject.getModules();
+            List<LearnerSubjectWiseProgressReportDTO.ModuleProgressDTO> modules = subject.getModules();
 
             for (int i = 0; i < modules.size(); i++) {
-                SubjectProgressDTO.ModuleProgressDTO module = modules.get(i);
+                LearnerSubjectWiseProgressReportDTO.ModuleProgressDTO module = modules.get(i);
                 html.append("<tr>")
                         .append("<td style='padding: 12px; border-bottom: 1px solid #ddd;'>")
                         .append(i == 0 ? subjectName : "")

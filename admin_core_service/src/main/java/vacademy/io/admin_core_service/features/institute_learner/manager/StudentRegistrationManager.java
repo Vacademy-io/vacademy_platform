@@ -147,7 +147,7 @@ public class StudentRegistrationManager {
                 student.setMotherName(studentExtraDetails.getMothersName());
             }
             if (studentExtraDetails.getParentsMobileNumber() != null) {
-                student.setParentToMotherMobileNumber(studentExtraDetails.getParentsMobileNumber());
+                student.setParentsMobileNumber(studentExtraDetails.getParentsMobileNumber());
             }
             if (studentExtraDetails.getParentsEmail() != null) {
                 student.setParentsEmail(studentExtraDetails.getParentsEmail());

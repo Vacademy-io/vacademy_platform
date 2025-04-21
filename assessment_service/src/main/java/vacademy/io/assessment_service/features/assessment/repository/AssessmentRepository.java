@@ -231,6 +231,7 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
             "AND (:liveAssessments IS NULL OR :liveAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' BETWEEN a.bound_start_time AND a.bound_end_time)) " +
             "AND (:passedAssessments IS NULL OR :passedAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' > a.bound_end_time)) " +
             "AND (:upcomingAssessments IS NULL OR :upcomingAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' < a.bound_start_time)) " +
+            "AND (:assessmentTypes IS NULL OR a.assessment_type IN :assessmentTypes) " +
             "AND (:assessmentModes IS NULL OR a.play_mode IN :assessmentModes)) " +
             "UNION " +
             "(SELECT DISTINCT a.id, a.name, a.play_mode, a.evaluation_type, a.submission_type, a.duration, " +
@@ -252,6 +253,7 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
             "AND (:liveAssessments IS NULL OR :liveAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' BETWEEN a.bound_start_time AND a.bound_end_time)) " +
             "AND (:passedAssessments IS NULL OR :passedAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' > a.bound_end_time)) " +
             "AND (:upcomingAssessments IS NULL OR :upcomingAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' < a.bound_start_time)) " +
+            "AND (:assessmentTypes IS NULL OR a.assessment_type IN :assessmentTypes) " +
             "AND (:assessmentModes IS NULL OR a.play_mode IN :assessmentModes))",
             countQuery =
                     "SELECT COUNT(DISTINCT id) FROM (" +
@@ -271,6 +273,7 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
                             "AND (:liveAssessments IS NULL OR :liveAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' BETWEEN a.bound_start_time AND a.bound_end_time)) " +
                             "AND (:passedAssessments IS NULL OR :passedAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' > a.bound_end_time)) " +
                             "AND (:upcomingAssessments IS NULL OR :upcomingAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' < a.bound_start_time)) " +
+                            "AND (:assessmentTypes IS NULL OR a.assessment_type IN :assessmentTypes) " +
                             "AND (:assessmentModes IS NULL OR a.play_mode IN :assessmentModes) " +
                             "UNION  " +
                             "SELECT DISTINCT a.id FROM public.assessment a " +
@@ -289,6 +292,7 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
                             "AND (:passedAssessments IS NULL OR :passedAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' > a.bound_end_time)) " +
                             "AND (:upcomingAssessments IS NULL OR :upcomingAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' < a.bound_start_time)) " +
                             "AND (:assessmentModes IS NULL OR a.play_mode IN :assessmentModes)" +
+                            "AND (:assessmentTypes IS NULL OR a.assessment_type IN :assessmentTypes) " +
                             ") AS combined_results",
             nativeQuery = true)
     Page<Object[]> studentAssessments(@Param("name") String name,
@@ -302,6 +306,7 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
                                       @Param("instituteIds") List<String> instituteIds,
                                       @Param("checkUserIds") Boolean checkUserIds,
                                       @Param("userIds") List<String> userIds,
+                                      @Param("assessmentTypes") List<String> assessmentTypes,
                                       Pageable pageable);
 
     @Query("SELECT a FROM Assessment a " +

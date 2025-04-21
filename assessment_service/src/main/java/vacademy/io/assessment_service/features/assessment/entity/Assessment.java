@@ -119,6 +119,9 @@ public class Assessment {
     @OneToOne(mappedBy = "assessment")
     private AssessmentNotificationMetadata assessmentNotificationMetadata;
 
+    @Column(name = "assessment_type")
+    private String assessmentType;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;
 

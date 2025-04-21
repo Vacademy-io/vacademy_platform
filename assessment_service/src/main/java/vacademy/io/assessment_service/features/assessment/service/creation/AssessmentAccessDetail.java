@@ -31,6 +31,7 @@ public class AssessmentAccessDetail extends IStep {
     public void checkStatusAndFetchData(Optional<Assessment> assessment) {
         setStatus(StepStatus.COMPLETED.name());
         if (assessment.isEmpty()) return;
+        setAssessmentType(assessment.get().getAssessmentType());
         Optional<AssessmentInstituteMapping> assessmentInstituteMapping = getAssessmentUrlByInstituteIdAndAssessmentId(getInstituteId(), assessment.get());
         if (assessmentInstituteMapping.isEmpty()) return;
         Map<String, Object> savedData = new HashMap<>();

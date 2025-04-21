@@ -43,6 +43,7 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
             "AND (:assessmentModes IS NULL OR a.play_mode IN :assessmentModes) " +
             "AND a.status <> 'DELETED' " +
             "AND (:evaluationTypes IS NULL OR a.evaluation_type IN :evaluationTypes) " +
+            "AND (:assessmentTypes IS NULL OR a.assessment_type IN :assessmentTypes)" +
             "GROUP BY a.id, aim.subject_id, aim.assessment_url", // Group by necessary columns to ensure distinct results
             countQuery = "SELECT COUNT(DISTINCT a.id) FROM public.assessment a " +
                     "LEFT JOIN public.assessment_batch_registration abr ON a.id = abr.assessment_id " +
@@ -58,7 +59,8 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
                     "AND (:upcomingAssessments IS NULL OR :upcomingAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' < a.bound_start_time)) " +
                     "AND a.status <> 'DELETED' " +
                     "AND (:evaluationTypes IS NULL OR a.evaluation_type IN :evaluationTypes) " +
-                    "AND (:assessmentModes IS NULL OR a.play_mode IN :assessmentModes)",
+                    "AND (:assessmentModes IS NULL OR a.play_mode IN :assessmentModes)" +
+                    "AND (:assessmentTypes IS NULL OR a.assessment_type IN :assessmentTypes)",
             nativeQuery = true)
     Page<Object[]> filterAssessments(@Param("name") String name,
                                      @Param("checkBatches") Boolean checkBatches,
@@ -73,6 +75,7 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
                                      @Param("accessStatuses") List<String> accessStatuses,
                                      @Param("instituteIds") List<String> instituteIds,
                                      @Param("evaluationTypes") List<String> evaluationType,
+                                     @Param("assessmentTypes") List<String> assessmentType,
                                      Pageable pageable);
 
 
@@ -127,6 +130,7 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
             AND (:assessmentModes IS NULL OR a.play_mode IN :assessmentModes)\s
             AND a.status <> 'DELETED'\s
             AND a.evaluation_type = 'MANUAL'\s
+            AND (:assessmentTypes IS NULL OR a.assessment_type IN :assessmentTypes)
             and (:userId IS NULL OR :userId = '' OR LOWER(aim.comma_separated_evaluation_user_ids) LIKE LOWER(CONCAT('%', :userId, '%')))\s
             GROUP BY a.id, aim.subject_id, aim.assessment_url
             )
@@ -183,6 +187,7 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
                     AND (:assessmentModes IS NULL OR a.play_mode IN :assessmentModes)\s
                     AND a.status <> 'DELETED'\s
                     AND a.evaluation_type = 'MANUAL'\s
+                    AND (:assessmentTypes IS NULL OR a.assessment_type IN :assessmentTypes)
                     and (:userId IS NULL OR :userId = '' OR LOWER(aim.comma_separated_evaluation_user_ids) LIKE LOWER(CONCAT('%', :userId, '%')))\s
                     GROUP BY a.id, aim.subject_id, aim.assessment_url
                     )
@@ -203,6 +208,7 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
                                                   @Param("instituteIds") List<String> instituteIds,
                                                   @Param("userRole") String userRole,
                                                   @Param("userId") String userId,
+                                                  @Param("assessmentTypes") List<String> assessmentType,
                                                   Pageable pageable);
 
     @Query(value = "(SELECT DISTINCT a.id, a.name, a.play_mode, a.evaluation_type, a.submission_type, a.duration, " +

@@ -1,6 +1,7 @@
 package vacademy.io.assessment_service.features.learner_assessment.manager;
 
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -24,6 +25,7 @@ import java.util.stream.Collectors;
 
 import static vacademy.io.common.core.standard_classes.ListService.createSortObject;
 
+@Slf4j
 @Component
 public class LearnerAssessmentGetManager {
 
@@ -47,7 +49,19 @@ public class LearnerAssessmentGetManager {
                 studentAssessmentFilter.setBatchIds(new ArrayList<>());
         }
 
-        assessmentsPage = assessmentRepository.studentAssessments(studentAssessmentFilter.getName(), studentAssessmentFilter.getBatchIds().isEmpty() ? null : true, studentAssessmentFilter.getBatchIds(), List.of(AssessmentStatus.PUBLISHED.name()), studentAssessmentFilter.getGetLiveAssessments(), studentAssessmentFilter.getGetPassedAssessments(), studentAssessmentFilter.getGetUpcomingAssessments(), Arrays.stream(AssessmentModeEnum.values()).map(AssessmentModeEnum::name).toList(), studentAssessmentFilter.getInstituteIds(), true, studentAssessmentFilter.getUserIds(), pageable);
+        log.info("size: " + studentAssessmentFilter.getAssessmentTypes().size());
+        assessmentsPage = assessmentRepository.studentAssessments(studentAssessmentFilter.getName(),
+                studentAssessmentFilter.getBatchIds().isEmpty() ? null : true,
+                studentAssessmentFilter.getBatchIds(),
+                List.of(AssessmentStatus.PUBLISHED.name()),
+                studentAssessmentFilter.getGetLiveAssessments(),
+                studentAssessmentFilter.getGetPassedAssessments(),
+                studentAssessmentFilter.getGetUpcomingAssessments(),
+                Arrays.stream(AssessmentModeEnum.values()).map(AssessmentModeEnum::name).toList(),
+                studentAssessmentFilter.getInstituteIds(), true,
+                studentAssessmentFilter.getUserIds(),
+                studentAssessmentFilter.getAssessmentTypes(),pageable);
+
         List<StudentBasicAssessmentListItemDto> content = assessmentsPage.stream().map(StudentAssessmentMapper::toDto).collect(Collectors.toList());
         int queryPageNo = assessmentsPage.getNumber();
         int queryPageSize = assessmentsPage.getSize();

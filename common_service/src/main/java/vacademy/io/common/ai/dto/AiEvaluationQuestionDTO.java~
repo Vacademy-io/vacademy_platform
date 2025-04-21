@@ -1,8 +1,0 @@
-package vacademy.io.common.ai.dto;
-
-public class AiEvaluationQuestionDTO {
-    private RichTextDataDTO reachText;
-    private RichTextDataDTO explanationText;
-    private Integer questionOrder;
-    private String markingJson;
-}

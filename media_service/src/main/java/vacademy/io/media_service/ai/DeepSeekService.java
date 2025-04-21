@@ -15,12 +15,12 @@ import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.media_service.dto.*;
 import vacademy.io.media_service.enums.QuestionResponseType;
 import vacademy.io.media_service.enums.QuestionTypes;
+import vacademy.io.media_service.enums.TaskStatus;
 import vacademy.io.media_service.service.HtmlJsonProcessor;
+import vacademy.io.media_service.service.TaskStatusService;
 import vacademy.io.media_service.util.JsonUtils;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -35,6 +35,9 @@ public class DeepSeekService {
 
     @Autowired
     private DeepSeekApiService deepSeekApiService;
+
+    @Autowired
+    TaskStatusService taskStatusService;
 
     @Autowired
     public DeepSeekService(ChatModel chatModel) {
@@ -172,7 +175,7 @@ public class DeepSeekService {
     }
 
 
-    public String getQuestionsWithDeepSeekFromHTMLRecursive(String htmlData, String userPrompt, String restoredJson, int attempt) {
+    public String getQuestionsWithDeepSeekFromHTMLRecursive(String htmlData, String userPrompt, String restoredJson, int attempt, TaskStatus taskStatus) {
         try{
             if (attempt >= 5) {
                 return restoredJson != null ? restoredJson : "";
@@ -187,65 +190,57 @@ public class DeepSeekService {
             }
 
             String template = """
-        HTML raw data : {htmlData}
-        Already extracted question Numbers : {allQuestionNumbers}
-
-        Prompt:
-        Convert the given HTML file containing questions into the following JSON format:
-        - Preserve all DS_TAGs in HTML content in comments.
-        - If 'Already extracted question Number' is empty, start fresh from the beginning of the HTML.
-        - If it is not empty, continue generating from where the last question left off based on the existing data.
-        - Avoid duplication of previously extracted questions.
-        
-        JSON format:
-            {{
-                "questions": [
-                    {{
-                        "question_number": "number",
-                        "question": {{
-                            "type": "HTML",
-                            "content": "string"
-                        }},
-                        "options": [
-                            {{
-                                "type": "HTML",
-                                "content": "string"
-                            }}
-                        ],
-                        "correct_options": "number[]",
-                        "ans": "string",
-                        "exp": "string",
-                        "question_type": "MCQS | MCQM | ONE_WORD | LONG_ANSWER | NUMERIC",
-                        "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
-                        "level": "easy | medium | hard"
-                    }}
-                ],
-                "title": "string",
-                "currently_completed_question_serials": [1,2,3],
-                "is_process_completed": true,false
-                "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
-                "difficulty": "easy | medium | hard",
-                "subjects": ["subject1", "subject2", "subject3", "subject4", "subject5"],
-                "classes": ["class 1", "class 2", "class 3", "class 4", "class 5", "class 6", "class 7", "class 8", "class 9", "class 10", "class 11", "class 12", "engineering", "medical", "commerce", "law"]
-            }}
-
-        For LONG_ANSWER, NUMERIC, and ONE_WORD types:
-        - Leave 'correct_options' empty but fill 'ans' and 'exp'
-        - Omit 'options' field
-
-        Tagging Rules:
-        - Every question must include its topic in the "tags" field.
-        - Questions of the same topic must share identical tags.
-        - Refer to previously extracted JSON to maintain topic consistency.
-        
-        currently_completed_question_serials RULE:
-        - Every Question number generated should be in currently_completed_question_serials
-        
-        is_process_completed RULE:
-        - If {allQuestionNumbers} and currently_completed_question_serials all together matches user requirement then mark true otherwise false
-
-        IMPORTANT: {userPrompt}
-        """;
+                HTML raw data :  {htmlData}
+                Already extracted question Number = {allQuestionNumbers}
+                    
+                        Prompt:
+                        Convert the given HTML file containing questions into the following JSON format:
+                         - If 'Already extracted question Number' is empty, start fresh from the beginning of the HTML.
+                         - If it is not empty, continue generating from where the last question left off based on the existing data and avoid duplicate Questions.
+                         - Do not generate any questions if already generated required questions and set is_process_completed true.
+                         - Preserve all DS_TAGs in HTML content in comments
+                        
+                        JSON format : 
+                        
+                                {{
+                                         "questions": [
+                                             {{
+                                                 "question_number": "number",
+                                                 "question": {{
+                                                     "type": "HTML",
+                                                     "content": "string" // Include img tags if present
+                                                 }},
+                                                 "options": [
+                                                     {{
+                                                         "type": "HTML",
+                                                         "content": "string" // Include img tags if present
+                                                     }}
+                                                 ],
+                                                 "correct_options": "number[]",
+                                                 "ans": "string",
+                                                 "exp": "string",
+                                                 "question_type": "MCQS | MCQM | ONE_WORD | LONG_ANSWER | NUMERIC",
+                                                 "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
+                                                 "level": "easy | medium | hard"
+                                             }}
+                                         ],
+                                         "title": "string" // Suitable title for the question paper,
+                                         "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"] // multiple chapter and topic names for question paper,
+                                         "is_process_completed" : true,false // Ensure is_process_completed is set to true only if {userPrompt} is achieved,
+                                         "difficulty": "easy | medium | hard",
+                                         "subjects": ["subject1", "subject2", "subject3", "subject4", "subject5"] // multiple subject names for question paper like maths or thermodynamics or physics etc ,
+                                         "classes": ["class 1" , "class 2" ] // can be of multiple class - | class 3 | class 4 | class 5 | class 6 | class 7 | class 8 | class 9 | class 10 | class 11 | class 12 | engineering | medical | commerce | law
+                                     }}
+                            
+                        For LONG_ANSWER, NUMERIC, and ONE_WORD question types:
+                        - Leave 'correct_options' empty but fill 'ans' and 'exp'
+                        - Omit 'options' field entirely
+                        
+                        Also keep the DS_TAGS field intact in html
+                        And do not try to calculate right ans, only add if available in input
+                        
+                        IMPORTANT: {userPrompt}
+                        """;
 
             Prompt prompt = new PromptTemplate(template).create(Map.of(
                     "htmlData", unTaggedHtml,
@@ -255,20 +250,17 @@ public class DeepSeekService {
             ));
 
             DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
-            if (response.getChoices().isEmpty()) {
-                throw new VacademyException("No response from DeepSeek");
+            if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {
+                taskStatusService.updateTaskStatus(taskStatus,"FAILED",restoredJson);
+                return restoredJson;
             }
 
             String resultJson = response.getChoices().get(0).getMessage().getContent();
             log.info("Result Json: " + resultJson);
             String validJson = JsonUtils.extractAndSanitizeJson(resultJson);
-            String restored;
 
-            try {
-                restored = htmlJsonProcessor.restoreTagsInJson(validJson);
-            } catch (Exception e) {
-                throw new VacademyException(e.getMessage());
-            }
+            String restored = htmlJsonProcessor.restoreTagsInJson(validJson);
+
 
             String mergedJson = mergeQuestionsJson(restoredJson, restored);
             int currentQuestionCount = getQuestionCount(mergedJson);
@@ -278,11 +270,15 @@ public class DeepSeekService {
             log.info("attempt: " +attempt);
 
             if (getIsProcessCompleted(mergedJson)) {
+                taskStatusService.updateTaskStatus(taskStatus,null,mergedJson);
                 return mergedJson;
             }
+
+            taskStatusService.updateTaskStatus(taskStatus,"PROGRESS",restoredJson);
             // Recurse for remaining questions
-            return getQuestionsWithDeepSeekFromHTMLRecursive(htmlData, userPrompt, mergedJson, attempt + 1);
+            return getQuestionsWithDeepSeekFromHTMLRecursive(htmlData, userPrompt, mergedJson, attempt + 1, taskStatus);
         } catch (Exception e) {
+            taskStatusService.updateTaskStatus(taskStatus,"FAILED",restoredJson);
             return restoredJson;
         }
     }
@@ -318,7 +314,7 @@ public class DeepSeekService {
             if (isCompletedNode != null && isCompletedNode.isBoolean()) {
                 return isCompletedNode.asBoolean();
             }
-            return null; // or false as a fallback
+            return false; // or false as a fallback
         } catch (Exception e) {
             e.printStackTrace();
             return false;
@@ -328,17 +324,27 @@ public class DeepSeekService {
 
 
 
-    public String getQuestionsWithDeepSeekFromHTMLOfTopics(String htmlData, String requiredTopics) {
-        HtmlJsonProcessor htmlJsonProcessor = new HtmlJsonProcessor();
-        String unTaggedHtml = htmlJsonProcessor.removeTags(htmlData);
+    public String getQuestionsWithDeepSeekFromHTMLOfTopics(String htmlData, String requiredTopics,String restoredJson, Integer attempt, TaskStatus taskStatus) {
+        try{
+            if (attempt >= 5) {
+                return restoredJson != null ? restoredJson : "";
+            }
+            HtmlJsonProcessor htmlJsonProcessor = new HtmlJsonProcessor();
+            String allQuestionNumbers = getCommaSeparatedQuestionNumbers(restoredJson);
+            String unTaggedHtml = htmlJsonProcessor.removeTags(htmlData);
 
-        String template = """
+            String template = """
                 HTML raw data :  {htmlData}
+                
+                Already extracted question Number = {allQuestionNumbers}
                 
                 Required Topics :  {requiredTopics}
                     
                         Prompt:
                         Convert the given HTML file containing questions, only extract questions from the given topics into the following JSON format:
+                        - If 'Already extracted question Number' is empty, start fresh from the beginning of the HTML.
+                        - If it is not empty, continue generating from where the last question left off based on the existing data and avoid duplicate Questions.
+                        - Do not generate any questions if already generated all questions from Required Topics and set is_process_completed true.
                         - Preserve all DS_TAGs in HTML content in comments
                         
                         JSON format : 
@@ -367,6 +373,7 @@ public class DeepSeekService {
                                          ],
                                          "title": "string" // Suitable title for the question paper,
                                          "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"] // multiple chapter and topic names for question paper,
+                                         "is_process_completed" : true,false // Ensure is_process_completed is set to true only if task is achieved,
                                          "difficulty": "easy | medium | hard",
                                          "subjects": ["subject1", "subject2", "subject3", "subject4", "subject5"] // multiple subject names for question paper like maths or thermodynamics or physics etc ,
                                          "classes": ["class 1" , "class 2" ] // can be of multiple class - | class 3 | class 4 | class 5 | class 6 | class 7 | class 8 | class 9 | class 10 | class 11 | class 12 | engineering | medical | commerce | law
@@ -381,19 +388,38 @@ public class DeepSeekService {
                         Give the complete result to all possible questions
                         """;
 
-        Prompt prompt = new PromptTemplate(template).create(Map.of("htmlData", unTaggedHtml, "requiredTopics", requiredTopics));
+            Prompt prompt = new PromptTemplate(template).create(Map.of("htmlData", unTaggedHtml, "requiredTopics", requiredTopics,
+                    "allQuestionNumbers", allQuestionNumbers,
+                    "restoredJson", restoredJson == null ? "" : restoredJson));
 
-        DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
-        if(response.getChoices().isEmpty()) {
-            throw new VacademyException("No response from DeepSeek");
-        }
-        String resultJson = response.getChoices().get(0).getMessage().getContent();
-        String validJson = JsonUtils.extractAndSanitizeJson(resultJson);
-        try {
-            String restoredJson = htmlJsonProcessor.restoreTagsInJson(validJson);
-            return restoredJson;
+            DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
+            if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {
+                taskStatusService.updateTaskStatus(taskStatus,"FAILED",restoredJson);
+                return restoredJson;
+            }
+
+            String resultJson = response.getChoices().get(0).getMessage().getContent();
+            String validJson = JsonUtils.extractAndSanitizeJson(resultJson);
+            String newRestoredJson = htmlJsonProcessor.restoreTagsInJson(validJson);
+
+            String mergedJson = mergeQuestionsJson(restoredJson, newRestoredJson);
+            int currentQuestionCount = getQuestionCount(mergedJson);
+
+
+            log.info("question Size: " + currentQuestionCount);
+            log.info("attempt: " +attempt);
+
+            if (getIsProcessCompleted(mergedJson)) {
+                taskStatusService.updateTaskStatus(taskStatus,null,mergedJson);
+                return mergedJson;
+            }
+
+            taskStatusService.updateTaskStatus(taskStatus,"PROGRESS",restoredJson);
+            // Recurse for remaining questions
+            return getQuestionsWithDeepSeekFromHTMLOfTopics(htmlData, requiredTopics, mergedJson, attempt + 1, taskStatus);
         } catch (Exception e) {
-            throw new VacademyException(e.getMessage());
+            taskStatusService.updateTaskStatus(taskStatus,"FAILED",restoredJson);
+            throw new RuntimeException(e);
         }
     }
 
@@ -409,7 +435,7 @@ public class DeepSeekService {
                 
                 Maximum Marks :{maxMarks}
                 
-                Evaluation Difficulty :{evaluationDifficulty} 
+                Evaluation Difficulty :{evaluationDifficulty}
                     
                         Prompt:
                         Evaluate the Answer against the Question and give marks out of maximum marks, evaluate on given evaluation difficulty
@@ -901,9 +927,14 @@ public class DeepSeekService {
         try {
             ObjectMapper mapper = new ObjectMapper();
 
-            JsonNode oldNode = oldJson == null || oldJson.isBlank() ? mapper.readTree("{\"questions\":[]}") : mapper.readTree(oldJson);
+            JsonNode oldNode = oldJson == null || oldJson.isBlank()
+                    ? mapper.readTree("{\"questions\":[]}")
+                    : mapper.readTree(oldJson);
             JsonNode newNode = mapper.readTree(newJson);
 
+            ObjectNode mergedNode = (ObjectNode) oldNode;
+
+            // Merge questions
             ArrayNode mergedQuestions = mapper.createArrayNode();
             if (oldNode.has("questions")) {
                 mergedQuestions.addAll((ArrayNode) oldNode.get("questions"));
@@ -911,12 +942,44 @@ public class DeepSeekService {
             if (newNode.has("questions")) {
                 mergedQuestions.addAll((ArrayNode) newNode.get("questions"));
             }
+            mergedNode.set("questions", mergedQuestions);
 
-            ((ObjectNode) oldNode).set("questions", mergedQuestions);
+            // Merge is_process_completed
+            boolean oldCompleted = oldNode.has("is_process_completed") && oldNode.get("is_process_completed").asBoolean();
+            boolean newCompleted = newNode.has("is_process_completed") && newNode.get("is_process_completed").asBoolean();
+            mergedNode.put("is_process_completed", newCompleted);
 
-            return mapper.writerWithDefaultPrettyPrinter().writeValueAsString(oldNode);
+            // Merge title (keep old if exists)
+            if (!oldNode.has("title") && newNode.has("title")) {
+                mergedNode.put("title", newNode.get("title").asText());
+            }
+
+            // Merge difficulty (keep old if exists)
+            if (!oldNode.has("difficulty") && newNode.has("difficulty")) {
+                mergedNode.put("difficulty", newNode.get("difficulty").asText());
+            }
+
+            // Merge tags, subjects, classes
+            mergeStringArrayField(mergedNode, oldNode, newNode, "tags", mapper);
+            mergeStringArrayField(mergedNode, oldNode, newNode, "subjects", mapper);
+            mergeStringArrayField(mergedNode, oldNode, newNode, "classes", mapper);
+
+            return mapper.writerWithDefaultPrettyPrinter().writeValueAsString(mergedNode);
         } catch (Exception e) {
             return oldJson != null ? oldJson : newJson;
         }
+    }
+
+    private static void mergeStringArrayField(ObjectNode mergedNode, JsonNode oldNode, JsonNode newNode, String fieldName, ObjectMapper mapper) {
+        Set<String> uniqueValues = new LinkedHashSet<>();
+        if (oldNode.has(fieldName)) {
+            oldNode.get(fieldName).forEach(n -> uniqueValues.add(n.asText()));
+        }
+        if (newNode.has(fieldName)) {
+            newNode.get(fieldName).forEach(n -> uniqueValues.add(n.asText()));
+        }
+        ArrayNode mergedArray = mapper.createArrayNode();
+        uniqueValues.forEach(mergedArray::add);
+        mergedNode.set(fieldName, mergedArray);
     }
 }

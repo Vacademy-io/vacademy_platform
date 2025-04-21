@@ -17,7 +17,6 @@ import vacademy.io.admin_core_service.features.institute_learner.repository.Stud
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
-import vacademy.io.common.core.utils.RandomGenerator;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.*;
@@ -59,7 +58,7 @@ public class StudentRegistrationManager {
     }
 
 
-    private UserDTO createUserFromAuthService(UserDTO userDTO, String instituteId) {
+    public UserDTO createUserFromAuthService(UserDTO userDTO, String instituteId) {
         try {
             ObjectMapper objectMapper = new ObjectMapper();
             ResponseEntity<String> response = internalClientUtils.makeHmacRequest(applicationName, HttpMethod.POST.name(), authServerBaseUrl, StudentConstants.addUserRoute + "?instituteId=" + instituteId, userDTO);
@@ -100,7 +99,7 @@ public class StudentRegistrationManager {
     }
 
 
-    private Student createStudentFromRequest(UserDTO userDTO, StudentExtraDetails studentExtraDetails) {
+    public Student createStudentFromRequest(UserDTO userDTO, StudentExtraDetails studentExtraDetails) {
         Student student = new Student();
         Optional<Student> existingStudent = getExistingStudentByUserNameAndUserId(userDTO.getUsername(), userDTO.getId());
         if (existingStudent.isPresent()) {
@@ -156,6 +155,12 @@ public class StudentRegistrationManager {
             if (studentExtraDetails.getLinkedInstituteName() != null) {
                 student.setLinkedInstituteName(studentExtraDetails.getLinkedInstituteName());
             }
+            if (studentExtraDetails.getParentsToMotherEmail() != null) {
+                student.setParentsToMotherEmail(studentExtraDetails.getParentsToMotherEmail());
+            }
+            if (studentExtraDetails.getParentsToMotherMobileNumber() != null) {
+                student.setParentToMotherMobileNumber(studentExtraDetails.getParentsToMotherMobileNumber());
+            }
         }
         return instituteStudentRepository.save(student);
     }
@@ -170,13 +175,13 @@ public class StudentRegistrationManager {
         }
     }
 
-    private List<String> getStudentRoles() {
+    public List<String> getStudentRoles() {
         List<String> roles = new ArrayList<>();
         roles.add(StudentConstants.studentRole);
         return roles;
     }
 
-    private Date makeExpiryDate(Date enrollmentDate, String accessDays) {
+    public Date makeExpiryDate(Date enrollmentDate, String accessDays) {
         try {
             if (enrollmentDate == null || accessDays == null) {
                 return null;
@@ -193,7 +198,7 @@ public class StudentRegistrationManager {
         return instituteStudentRepository.findByUsernameAndUserId(username, userId);
     }
 
-    private InstituteStudentDTO updateAsPerConfig(InstituteStudentDTO instituteStudentDTO, BulkUploadInitRequest bulkUploadInitRequest) {
+    public InstituteStudentDTO updateAsPerConfig(InstituteStudentDTO instituteStudentDTO, BulkUploadInitRequest bulkUploadInitRequest) {
         if (Objects.isNull(bulkUploadInitRequest)) {
             return instituteStudentDTO;
         }

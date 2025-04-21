@@ -270,4 +270,25 @@ public class UserService {
                 .stream()
                 .map(UserWithRolesDTO::new).collect(Collectors.toList());
     }
+
+    public User updateUser(User user, UserDTO userDTO) {
+        if (StringUtils.hasText(userDTO.getUsername())) user.setUsername(userDTO.getUsername());
+        if (StringUtils.hasText(userDTO.getEmail())) user.setEmail(userDTO.getEmail());
+        if (StringUtils.hasText(userDTO.getFullName())) user.setFullName(userDTO.getFullName());
+        if (StringUtils.hasText(userDTO.getAddressLine())) user.setAddressLine(userDTO.getAddressLine());
+        if (StringUtils.hasText(userDTO.getCity())) user.setCity(userDTO.getCity());
+        if (StringUtils.hasText(userDTO.getPinCode())) user.setPinCode(userDTO.getPinCode());
+        if (StringUtils.hasText(userDTO.getMobileNumber())) user.setMobileNumber(userDTO.getMobileNumber());
+        if (userDTO.getDateOfBirth() != null) user.setDateOfBirth(userDTO.getDateOfBirth());
+        if (StringUtils.hasText(userDTO.getGender())) user.setGender(userDTO.getGender());
+        if (StringUtils.hasText(userDTO.getProfilePicFileId())) user.setProfilePicFileId(userDTO.getProfilePicFileId());
+
+        // Only set password if it's provided
+        if (StringUtils.hasText(userDTO.getPassword())) user.setPassword(userDTO.getPassword());
+
+        // isRootUser is primitive boolean, so check if change is desired
+        user.setRootUser(userDTO.isRootUser());
+        return userRepository.save(user);
+    }
+
 }

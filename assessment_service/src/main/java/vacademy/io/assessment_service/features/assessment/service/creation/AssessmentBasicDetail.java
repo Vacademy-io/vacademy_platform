@@ -22,6 +22,7 @@ public class AssessmentBasicDetail extends IStep {
     public void checkStatusAndFetchData(Optional<Assessment> assessment) {
         setStatus(StepStatus.INCOMPLETE.name());
         if (assessment.isEmpty()) return;
+        setAssessmentType(assessment.get().getAssessmentType());
 
         Map<String, Object> savedData = new HashMap<>();
         savedData.put(AssessmentCreationEnum.ASSESSMENT_URL.name().toLowerCase(), getAssessmentUrlByInstituteId(this.getInstituteId(), assessment.get()));

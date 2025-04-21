@@ -2,9 +2,13 @@ package vacademy.io.admin_core_service.features.institute_learner.controller;
 
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.admin_core_service.features.institute_learner.dto.BulkUploadInitRequest;
+import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteStudentDTO;
 import vacademy.io.admin_core_service.features.institute_learner.dto.LearnerBatchRegisterRequestDTO;
 import vacademy.io.admin_core_service.features.institute_learner.dto.StudentStatusUpdateRequestWrapper;
+import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
 import vacademy.io.admin_core_service.features.institute_learner.manager.StudentSessionManager;
 import vacademy.io.admin_core_service.features.institute_learner.service.LearnerSessionOperationService;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -34,6 +38,14 @@ public class InstituteStudentOperationController {
             @RequestAttribute("user")CustomUserDetails user) {
 
         return learnerSessionOperationService.addPackageSessionsToLearner(learnerBatchRegister, user);
+    }
+
+    @PostMapping("/re-enroll-learner")
+    public ResponseEntity<?> reEnrollLearner(
+            @RequestBody InstituteStudentDTO instituteStudentDTO,
+            @RequestAttribute("user")CustomUserDetails user) {
+
+        return ResponseEntity.ok(learnerSessionOperationService.reEnrollStudent(user,instituteStudentDTO));
     }
 
 }

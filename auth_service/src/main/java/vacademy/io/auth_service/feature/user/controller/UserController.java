@@ -42,13 +42,14 @@ public class UserController {
 
     @PostMapping("/internal/create-user-or-get-existing")
     @Transactional
-    public ResponseEntity<UserDTO> createUserOrGetExisting(@RequestBody UserDTO userDTO, @RequestParam("instituteId") String instituteId) {
+    public ResponseEntity<UserDTO> createUserOrGetExisting(@RequestBody UserDTO userDTO, @RequestParam(name = "instituteId",required = false) String instituteId) {
         try {
             User user = userService.getUserDetailsByUsername(userDTO.getUsername());
 
             if (user == null)
                 user = userService.createUserFromUserDto(userDTO);
-
+            else
+                user = userService.updateUser(user,userDTO);
             userService.addUserRoles(instituteId, userDTO.getRoles(), user,UserRoleStatus.ACTIVE.name());
             return ResponseEntity.ok(new UserDTO(user));
         } catch (Exception e) {

@@ -35,7 +35,7 @@ public class LearnerService {
         if (StringUtils.hasText(learnerDetailsEditDTO.getInstituteName())) student.setLinkedInstituteName(learnerDetailsEditDTO.getInstituteName());
         if (StringUtils.hasText(learnerDetailsEditDTO.getFatherName())) student.setFatherName(learnerDetailsEditDTO.getFatherName());
         if (StringUtils.hasText(learnerDetailsEditDTO.getMotherName())) student.setMotherName(learnerDetailsEditDTO.getMotherName());
-        if (StringUtils.hasText(learnerDetailsEditDTO.getParentsMobileNumber())) student.setParentsMobileNumber(learnerDetailsEditDTO.getParentsMobileNumber());
+        if (StringUtils.hasText(learnerDetailsEditDTO.getParentsMobileNumber())) student.setParentToMotherMobileNumber(learnerDetailsEditDTO.getParentsMobileNumber());
         if (StringUtils.hasText(learnerDetailsEditDTO.getParentsEmail())) student.setParentsEmail(learnerDetailsEditDTO.getParentsEmail());
         if (StringUtils.hasText(learnerDetailsEditDTO.getFaceFileId())) student.setFaceFileId(learnerDetailsEditDTO.getFaceFileId());
         instituteStudentRepository.save(student);

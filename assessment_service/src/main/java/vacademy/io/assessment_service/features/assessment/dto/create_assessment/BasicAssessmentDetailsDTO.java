@@ -14,6 +14,7 @@ import lombok.NoArgsConstructor;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class BasicAssessmentDetailsDTO {
     private String status;
+    private String assessmentType;
     private TestCreation testCreation;
     private LiveDateRange testBoundation;
     private Integer assessmentPreviewTime;

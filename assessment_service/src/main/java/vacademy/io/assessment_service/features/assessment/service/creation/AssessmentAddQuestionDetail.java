@@ -28,6 +28,7 @@ public class AssessmentAddQuestionDetail extends IStep {
     public void checkStatusAndFetchData(Optional<Assessment> assessment) {
         setStatus(StepStatus.INCOMPLETE.name());
         if (assessment.isEmpty()) return;
+        setAssessmentType(assessment.get().getAssessmentType());
 
         Map<String, Object> savedData = new HashMap<>();
         Set<Section> sections = assessment.get().getSections().stream().filter((s) -> !"DELETED".equals(s.getStatus())).collect(Collectors.toSet());

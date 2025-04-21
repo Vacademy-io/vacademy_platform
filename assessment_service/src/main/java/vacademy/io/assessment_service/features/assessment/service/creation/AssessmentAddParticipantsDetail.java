@@ -26,6 +26,7 @@ public class AssessmentAddParticipantsDetail extends IStep {
     public void checkStatusAndFetchData(Optional<Assessment> assessment) {
         setStatus(StepStatus.INCOMPLETE.name());
         if (assessment.isEmpty()) return;
+        setAssessmentType(assessment.get().getAssessmentType());
 
         Map<String, Object> savedData = new HashMap<>();
         savedData.put(ParticipantsCreationEnum.PRE_BATCH_REGISTRATIONS.name().toLowerCase(), assessment.get().getBatchRegistrations());

@@ -36,6 +36,9 @@ public class VideoSlide {
     @Column(name = "published_url", length = 255)
     private String publishedUrl;
 
+    @Column(name = "source_type", length = 255)
+    private String sourceType;//YOUTUBE,DRIVE
+
     @Column(name = "published_video_length")
     private Long publishedVideoLengthInMillis;
 
@@ -61,6 +64,7 @@ public class VideoSlide {
                 this.publishedVideoLengthInMillis = addVideoSlideDTO.getPublishedVideoLengthInMillis();
             }
         }
+        this.setSourceType(addVideoSlideDTO.getSourceType());
     }
 
     public VideoSlide() {

@@ -54,4 +54,6 @@ public interface SlideDetailWithOperationProjection {
     String getPublishedUrl();
 
     String getPublishedData();
+
+    String getVideoSourceType();
 }

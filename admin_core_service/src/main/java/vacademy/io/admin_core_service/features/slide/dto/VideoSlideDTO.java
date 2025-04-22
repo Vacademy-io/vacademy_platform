@@ -14,4 +14,5 @@ public class VideoSlideDTO {
     private Long videoLengthInMillis;
     private String publishedUrl;
     private Long publishedVideoLengthInMillis;
+    private String sourceType; // Drive, Video
 }

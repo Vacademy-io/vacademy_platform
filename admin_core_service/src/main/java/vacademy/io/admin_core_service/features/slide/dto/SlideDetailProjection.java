@@ -27,4 +27,5 @@ public interface SlideDetailProjection {
     String getPublishedUrl();
     String getPublishedData();
     Timestamp getLastSyncDate();
+    String getVideoSourceType();
 }

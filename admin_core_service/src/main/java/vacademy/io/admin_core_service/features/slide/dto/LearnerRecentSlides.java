@@ -22,6 +22,7 @@ public interface LearnerRecentSlides {
     String getVideoId();
     String getVideoTitle();
     String getVideoUrl();
+    String getVideoSourceType();
     String getVideoDescription();
     Integer getSlideOrder(); // Added slide order field
     String getPublishedUrl();

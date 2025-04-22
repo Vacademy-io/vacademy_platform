@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.slide.service;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.chapter.entity.Chapter;
 import vacademy.io.admin_core_service.features.chapter.entity.ChapterToSlides;
 import vacademy.io.admin_core_service.features.chapter.repository.ChapterRepository;
@@ -141,6 +142,15 @@ public class SlideService {
                 .orElseThrow(() -> new VacademyException("Video slide not found"));
         Optional.ofNullable(videoSlideDTO.getDescription()).filter(d -> !d.trim().isEmpty()).ifPresent(videoSlide::setDescription);
         Optional.ofNullable(videoSlideDTO.getTitle()).filter(t -> !t.trim().isEmpty()).ifPresent(videoSlide::setTitle);
+        if (StringUtils.hasText(videoSlideDTO.getUrl())){
+            videoSlide.setUrl(videoSlideDTO.getUrl());
+        }
+        if (StringUtils.hasText(videoSlideDTO.getPublishedUrl())){
+            videoSlide.setPublishedUrl(videoSlideDTO.getPublishedUrl());
+        }
+        if (StringUtils.hasText(videoSlideDTO.getSourceType())){
+            videoSlide.setSourceType(videoSlideDTO.getSourceType());
+        }
         if (status.equalsIgnoreCase(SlideStatus.PUBLISHED.name())){
             handlePublishedVideoSlide(videoSlide,videoSlideDTO);
         }else if(status.equalsIgnoreCase(SlideStatus.DRAFT.name())){

@@ -145,7 +145,7 @@ public class AddQuestionPaperFromImportManager {
     }
 
 
-    public Question makeQuestionAndOptionFromImportQuestion(QuestionDTO questionRequest, Boolean isPublic, Question existingQuestion) throws JsonProcessingException {        // Todo: check Question Validation
+    public Question  makeQuestionAndOptionFromImportQuestion(QuestionDTO questionRequest, Boolean isPublic, Question existingQuestion) throws JsonProcessingException {        // Todo: check Question Validation
 
         Question question = initializeQuestion(questionRequest, existingQuestion);
         List<String> correctOptionIds = new ArrayList<>();
@@ -215,8 +215,9 @@ public class AddQuestionPaperFromImportManager {
             if (importQuestion.getParentRichText() != null) {
                 question.setParentRichText(AssessmentRichTextData.fromDTO(importQuestion.getParentRichText()));
             }
-            newQuestions.add(question);
             List<Option> questionOptions = question.getOptions();
+            question.setOptions(new ArrayList<>());
+            newQuestions.add(question);
             newOptions.addAll(questionOptions);
         }
 
@@ -294,6 +295,12 @@ public class AddQuestionPaperFromImportManager {
             Option option = new Option();
             UUID optionId = UUID.randomUUID();
             option.setId(optionId.toString());
+            if(optionDTO.getId() != null) {
+                Optional<Option> existingOption = optionRepository.findById(optionDTO.getId());
+                if(existingOption.isPresent()) {
+                    option = existingOption.get();
+                }
+            }
             option.setText(AssessmentRichTextData.fromDTO(optionDTO.getText()));
             option.setQuestion(question);
             option.setMediaId(optionDTO.getMediaId());

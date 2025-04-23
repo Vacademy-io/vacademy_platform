@@ -31,12 +31,12 @@ public class TaskStatusManager {
     @Autowired
     DeepSeekService deepSeekService;
 
-    public ResponseEntity<List<TaskStatusDto>> getAllTasks(CustomUserDetails userDetails, String instituteId, String taskType) {
+    public ResponseEntity<List<TaskStatusDto>> getAllTasks(String instituteId, String taskType) {
         List<TaskStatusDto> allTaskStatus = taskStatusService.getAllTaskStatusDtoForInstituteIdAndTaskType(instituteId, taskType);
         return ResponseEntity.ok(allTaskStatus);
     }
 
-    public ResponseEntity<AutoQuestionPaperResponse> getAllQuestions(CustomUserDetails userDetails, String taskId) {
+    public ResponseEntity<AutoQuestionPaperResponse> getAllQuestions(String taskId) {
         Optional<TaskStatus> taskStatus = taskStatusService.getTaskStatusById(taskId);
         if(taskStatus.isEmpty()) throw new VacademyException("Task Not Found");
 

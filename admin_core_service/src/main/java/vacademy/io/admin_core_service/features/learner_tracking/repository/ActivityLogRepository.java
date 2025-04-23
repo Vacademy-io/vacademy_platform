@@ -463,40 +463,58 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
             @Param("slideStatusList") List<String> slideStatusList,
             @Param("learnerStatusList") List<String> learnerStatusList
     );
-
     @Query(value = """
-    WITH Chapters AS (
-        SELECT 
-            mc.chapter_id, 
-            ch.chapter_name AS chapter_name
+    WITH RawChapters AS (
+        SELECT
+            mc.chapter_id,
+            ch.chapter_name
         FROM module_chapter_mapping mc
-        JOIN chapter_package_session_mapping cps ON mc.chapter_id = cps.chapter_id 
-            AND cps.status IN (:chapterPackageStatusList)
-        JOIN chapter ch ON mc.chapter_id = ch.id 
-            AND ch.status IN (:chapterStatusList)
+        JOIN chapter_package_session_mapping cps
+            ON mc.chapter_id = cps.chapter_id AND cps.status IN (:chapterPackageStatusList)
+        JOIN chapter ch
+            ON mc.chapter_id = ch.id AND ch.status IN (:chapterStatusList)
         WHERE mc.module_id = :moduleId
     ),
+    Chapters AS (
+        SELECT DISTINCT chapter_id, chapter_name FROM RawChapters
+    ),
     Slides AS (
-        SELECT 
+        SELECT DISTINCT
             csm.chapter_id,
             s.id AS slide_id,
             s.title AS slide_title,
             s.source_type AS slide_source_type
         FROM chapter_to_slides csm
         JOIN Chapters c ON csm.chapter_id = c.chapter_id
-        JOIN slide s ON csm.slide_id = s.id 
-            AND s.status IN (:slideStatusList)
+        JOIN slide s ON csm.slide_id = s.id AND s.status IN (:slideStatusList)
         WHERE csm.status IN (:chapterSlideStatusList)
     ),
-    ActivityLogs AS (
-        SELECT 
-            al.id AS activity_id, 
-            al.slide_id, 
-            al.start_time, 
-            al.end_time, 
+    LearnerActivity AS (
+        SELECT
+            al.id AS activity_id,
+            al.slide_id,
+            al.start_time,
+            al.end_time,
+            al.user_id,
+            al.created_at
+        FROM activity_log al
+        JOIN Slides s ON al.slide_id = s.slide_id
+        WHERE al.user_id = :userId
+    ),
+    BatchActivity AS (
+        SELECT
+            al.slide_id,
+            al.id AS activity_id,
+            al.start_time,
+            al.end_time,
+            al.created_at,
             al.user_id
         FROM activity_log al
         JOIN Slides s ON al.slide_id = s.slide_id
+        JOIN student_session_institute_group_mapping ssigm
+            ON al.user_id = ssigm.user_id
+           AND ssigm.package_session_id = :packageSessionId
+        WHERE ssigm.status IN (:learnerStatusList)
     ),
     StudentCount AS (
         SELECT COUNT(DISTINCT ssigm.user_id) AS distinct_users
@@ -504,49 +522,76 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
         WHERE ssigm.package_session_id = :packageSessionId
           AND ssigm.status IN (:learnerStatusList)
     ),
-    AvgTimeSpent AS (
-        SELECT 
-            al.slide_id,
-            (EXTRACT(EPOCH FROM SUM(al.end_time - al.start_time)) / 60) / 
-            NULLIF((SELECT distinct_users FROM StudentCount), 0) AS avg_time_spent
-        FROM ActivityLogs al
-        GROUP BY al.slide_id
+    LearnerTimeScore AS (
+        SELECT
+            slide_id,
+            (EXTRACT(EPOCH FROM SUM(end_time - start_time)) / 60) AS avg_time_spent,
+            MAX(created_at) AS last_active_date
+        FROM LearnerActivity
+        GROUP BY slide_id
     ),
-    AvgConcentrationScore AS (
-        SELECT 
-            al.slide_id,
-            SUM(cs.concentration_score) / NULLIF(COUNT(cs.id), 0) AS avg_concentration_score
+    LearnerConcentration AS (
+        SELECT
+            la.slide_id,
+            CAST(SUM(cs.concentration_score) AS FLOAT) / NULLIF(COUNT(cs.id), 0) AS avg_concentration_score
         FROM concentration_score cs
-        JOIN ActivityLogs al ON cs.activity_id = al.activity_id
-        GROUP BY al.slide_id
+        JOIN LearnerActivity la ON cs.activity_id = la.activity_id
+        GROUP BY la.slide_id
+    ),
+    BatchTimeScore AS (
+        SELECT
+            slide_id,
+            (EXTRACT(EPOCH FROM SUM(end_time - start_time)) / 60) / NULLIF((SELECT distinct_users FROM StudentCount), 0) AS avg_time_spent_by_batch
+        FROM BatchActivity
+        GROUP BY slide_id
+    ),
+    BatchConcentration AS (
+        SELECT
+            ba.slide_id,
+            CAST(SUM(cs.concentration_score) AS FLOAT) / NULLIF(COUNT(cs.id), 0) AS avg_concentration_score_by_batch
+        FROM concentration_score cs
+        JOIN BatchActivity ba ON cs.activity_id = ba.activity_id
+        GROUP BY ba.slide_id
     )
-    SELECT 
+    SELECT
         c.chapter_id AS chapterId,
         c.chapter_name AS chapterName,
-        JSON_AGG(
-            JSON_BUILD_OBJECT(
-                'slide_id', s.slide_id,
-                'slide_title', s.slide_title,
-                'slide_source_type', s.slide_source_type,
-                'avg_time_spent', COALESCE(a.avg_time_spent, 0.0),
-                'avg_concentration_score', COALESCE(cscore.avg_concentration_score, 0.0)
-            )
+        (
+            SELECT JSON_AGG(slide_data)
+            FROM (
+                SELECT DISTINCT ON (s.slide_id)
+                    s.slide_id,
+                    s.slide_title,
+                    s.slide_source_type,
+                    COALESCE(lt.avg_time_spent, 0.0) AS avg_time_spent,
+                    COALESCE(lc.avg_concentration_score, 0.0) AS avg_concentration_score,
+                    COALESCE(CAST(bt.avg_time_spent_by_batch AS TEXT), '0.0') AS avg_time_spent_by_batch,
+                    COALESCE(CAST(bc.avg_concentration_score_by_batch AS TEXT), '0.0') AS avg_concentration_score_by_batch,
+                    TO_CHAR(COALESCE(lt.last_active_date, NOW()), 'HH24:MI DD/MM/YYYY') AS last_active_date
+                                                                                                                   
+                FROM Slides s
+                LEFT JOIN LearnerTimeScore lt ON s.slide_id = lt.slide_id
+                LEFT JOIN LearnerConcentration lc ON s.slide_id = lc.slide_id
+                LEFT JOIN BatchTimeScore bt ON s.slide_id = bt.slide_id
+                LEFT JOIN BatchConcentration bc ON s.slide_id = bc.slide_id
+                WHERE s.chapter_id = c.chapter_id
+                ORDER BY s.slide_id
+            ) slide_data
         ) AS slides
     FROM Chapters c
-    JOIN Slides s ON c.chapter_id = s.chapter_id
-    LEFT JOIN AvgTimeSpent a ON s.slide_id = a.slide_id
-    LEFT JOIN AvgConcentrationScore cscore ON s.slide_id = cscore.slide_id
-    GROUP BY c.chapter_id, c.chapter_name
-    """, nativeQuery = true)
-    List<ChapterSlideProgressProjection> getChapterSlideProgress(
+    ORDER BY c.chapter_id;
+""", nativeQuery = true)
+    List<ChapterSlideProgressProjection> getChapterSlideProgressCombined(
             @Param("moduleId") String moduleId,
             @Param("packageSessionId") String packageSessionId,
+            @Param("userId") String userId,
             @Param("chapterPackageStatusList") List<String> chapterPackageStatusList,
             @Param("chapterStatusList") List<String> chapterStatusList,
             @Param("slideStatusList") List<String> slideStatusList,
             @Param("chapterSlideStatusList") List<String> chapterSlideStatusList,
             @Param("learnerStatusList") List<String> learnerStatusList
     );
+
 
     @Query(value = """
     WITH video_progress AS (
@@ -706,89 +751,84 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
         AND cts.status IN (:chapterSlideStatusList)
         AND s.status IN (:slideStatusList)
     ),
-    SlideActivity AS (
+    LearnerActivity AS (
         SELECT 
             cs.subject_id, 
             cs.module_id, 
-            cs.subject_name, 
-            cs.module_name, 
-            cs.chapter_id, 
-            SUM(EXTRACT(EPOCH FROM (al.end_time - al.start_time))) AS total_time_seconds
+            SUM(EXTRACT(EPOCH FROM (al.end_time - al.start_time))) / 60 AS learner_time
         FROM ChapterSlides cs
         JOIN activity_log al ON cs.slide_id = al.slide_id
         WHERE al.user_id = :userId
-        GROUP BY cs.subject_id, cs.module_id, cs.subject_name, cs.module_name, cs.chapter_id
+        GROUP BY cs.subject_id, cs.module_id
     ),
-    ModuleTime AS (
+    BatchActivity AS (
         SELECT 
-            sa.subject_id, 
-            sa.module_id, 
-            sa.subject_name, 
-            sa.module_name, 
-            SUM(sa.total_time_seconds) AS total_module_time_seconds
-        FROM SlideActivity sa
-        GROUP BY sa.subject_id, sa.module_id, sa.subject_name, sa.module_name
+            cs.subject_id, 
+            cs.module_id, 
+            SUM(EXTRACT(EPOCH FROM (al.end_time - al.start_time))) / COUNT(DISTINCT ssigm.user_id) / 60 AS batch_time
+        FROM ChapterSlides cs
+        JOIN activity_log al ON cs.slide_id = al.slide_id
+        JOIN student_session_institute_group_mapping ssigm 
+            ON al.user_id = ssigm.user_id
+            AND ssigm.package_session_id = :sessionId
+        WHERE ssigm.status IN (:learnerStatusList)
+        GROUP BY cs.subject_id, cs.module_id
     ),
-    AvgTimeSpent AS (
-        SELECT 
-            mt.subject_id, 
-            mt.module_id, 
-            mt.subject_name, 
-            mt.module_name, 
-            (mt.total_module_time_seconds / 60) AS avg_time_per_user_minutes
-        FROM ModuleTime mt
-    ),
-    ModuleCompletion AS (
+    LearnerCompletion AS (
         SELECT 
             mc.subject_id, 
             mc.module_id, 
-            mc.subject_name, 
-            mc.module_name, 
-            CAST(NULLIF(lo.value, '') AS FLOAT) AS user_module_completion_percentage
+            AVG(CAST(NULLIF(lo.value, '') AS FLOAT)) AS learner_completion
         FROM learner_operation lo
         JOIN ModuleChapters mc ON lo.source_id = mc.chapter_id
         WHERE lo.operation = 'PERCENTAGE_CHAPTER_COMPLETED'
-        AND lo.value ~ '^[0-9\\.]+$' -- Ensure only numeric values
-        AND lo.user_id = :userId  -- Fetch only for the specific user
+        AND lo.user_id = :userId
+        AND lo.value ~ '^[0-9\\.]+$'
+        GROUP BY mc.subject_id, mc.module_id
     ),
-    FinalModuleCompletion AS (
+    BatchCompletion AS (
         SELECT 
-            subject_id, 
-            module_id, 
-            subject_name, 
-            module_name, 
-            COALESCE(AVG(user_module_completion_percentage), 0) AS module_completion_percentage
-        FROM ModuleCompletion
-        GROUP BY subject_id, module_id, subject_name, module_name
+            mc.subject_id, 
+            mc.module_id, 
+            AVG(CAST(NULLIF(lo.value, '') AS FLOAT)) AS batch_completion
+        FROM learner_operation lo
+        JOIN ModuleChapters mc ON lo.source_id = mc.chapter_id
+        JOIN student_session_institute_group_mapping ssigm ON lo.user_id = ssigm.user_id
+        WHERE lo.operation = 'PERCENTAGE_CHAPTER_COMPLETED'
+        AND ssigm.package_session_id = :sessionId
+        AND ssigm.status IN (:learnerStatusList)
+        AND lo.value ~ '^[0-9\\.]+$'
+        GROUP BY mc.subject_id, mc.module_id
     )
     SELECT 
-        sm.subject_id AS subjectId, 
-        sm.subject_name AS subjectName, 
+        sm.subject_id,
+        sm.subject_name,
         json_agg(
             jsonb_build_object(
                 'module_id', sm.module_id,
                 'module_name', sm.module_name,
-                'module_completion_percentage', COALESCE(fmc.module_completion_percentage, 0),
-                'avg_time_spent_minutes', COALESCE(ats.avg_time_per_user_minutes, 0)
+                'module_completion_percentage', COALESCE(lc.learner_completion, 0),
+                'avg_time_spent_minutes', COALESCE(la.learner_time, 0),
+                'module_completion_percentage_by_batch', COALESCE(bc.batch_completion, 0),
+                'avg_time_spent_minutes_by_batch', COALESCE(ba.batch_time, 0)
             )
-        ) AS modules
+        ) AS modules_json
     FROM SubjectModules sm
-    LEFT JOIN FinalModuleCompletion fmc 
-        ON sm.module_id = fmc.module_id 
-        AND sm.subject_id = fmc.subject_id
-    LEFT JOIN AvgTimeSpent ats 
-        ON sm.module_id = ats.module_id 
-        AND sm.subject_id = ats.subject_id
+    LEFT JOIN LearnerCompletion lc ON sm.subject_id = lc.subject_id AND sm.module_id = lc.module_id
+    LEFT JOIN BatchCompletion bc ON sm.subject_id = bc.subject_id AND sm.module_id = bc.module_id
+    LEFT JOIN LearnerActivity la ON sm.subject_id = la.subject_id AND sm.module_id = la.module_id
+    LEFT JOIN BatchActivity ba ON sm.subject_id = ba.subject_id AND sm.module_id = ba.module_id
     GROUP BY sm.subject_id, sm.subject_name
-    """, nativeQuery = true)
-    List<Object[]> getModuleCompletionByUser(
+""", nativeQuery = true)
+    List<Object[]> getModuleCompletionByUserAndBatch(
             @Param("sessionId") String sessionId,
             @Param("userId") String userId,
             @Param("subjectStatusList") List<String> subjectStatusList,
             @Param("moduleStatusList") List<String> moduleStatusList,
             @Param("chapterStatusList") List<String> chapterStatusList,
             @Param("chapterSlideStatusList") List<String> chapterSlideStatusList,
-            @Param("slideStatusList") List<String> slideStatusList
+            @Param("slideStatusList") List<String> slideStatusList,
+            @Param("learnerStatusList") List<String> learnerStatusList
     );
 
     @Query(value = """ 
@@ -1019,5 +1059,88 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
             @Param("statusList") List<String> statusList
     );
 
+    @Query(value = """
+    WITH Chapters AS (
+        SELECT 
+            mc.chapter_id, 
+            ch.chapter_name AS chapter_name
+        FROM module_chapter_mapping mc
+        JOIN chapter_package_session_mapping cps ON mc.chapter_id = cps.chapter_id 
+            AND cps.status IN (:chapterPackageStatusList)
+        JOIN chapter ch ON mc.chapter_id = ch.id 
+            AND ch.status IN (:chapterStatusList)
+        WHERE mc.module_id = :moduleId
+    ),
+    Slides AS (
+        SELECT 
+            csm.chapter_id,
+            s.id AS slide_id,
+            s.title AS slide_title,
+            s.source_type AS slide_source_type
+        FROM chapter_to_slides csm
+        JOIN Chapters c ON csm.chapter_id = c.chapter_id
+        JOIN slide s ON csm.slide_id = s.id 
+            AND s.status IN (:slideStatusList)
+        WHERE csm.status IN (:chapterSlideStatusList)
+    ),
+    ActivityLogs AS (
+        SELECT 
+            al.id AS activity_id, 
+            al.slide_id, 
+            al.start_time, 
+            al.end_time, 
+            al.user_id
+        FROM activity_log al
+        JOIN Slides s ON al.slide_id = s.slide_id
+    ),
+    StudentCount AS (
+        SELECT COUNT(DISTINCT ssigm.user_id) AS distinct_users
+        FROM student_session_institute_group_mapping ssigm
+        WHERE ssigm.package_session_id = :packageSessionId
+          AND ssigm.status IN (:learnerStatusList)
+    ),
+    AvgTimeSpent AS (
+        SELECT 
+            al.slide_id,
+            (EXTRACT(EPOCH FROM SUM(al.end_time - al.start_time)) / 60) / 
+            NULLIF((SELECT distinct_users FROM StudentCount), 0) AS avg_time_spent
+        FROM ActivityLogs al
+        GROUP BY al.slide_id
+    ),
+    AvgConcentrationScore AS (
+        SELECT 
+            al.slide_id,
+            SUM(cs.concentration_score) / NULLIF(COUNT(cs.id), 0) AS avg_concentration_score
+        FROM concentration_score cs
+        JOIN ActivityLogs al ON cs.activity_id = al.activity_id
+        GROUP BY al.slide_id
+    )
+    SELECT 
+        c.chapter_id AS chapterId,
+        c.chapter_name AS chapterName,
+        JSON_AGG(
+            JSON_BUILD_OBJECT(
+                'slide_id', s.slide_id,
+                'slide_title', s.slide_title,
+                'slide_source_type', s.slide_source_type,
+                'avg_time_spent', COALESCE(a.avg_time_spent, 0.0),
+                'avg_concentration_score', COALESCE(cscore.avg_concentration_score, 0.0)
+            )
+        ) AS slides
+    FROM Chapters c
+    JOIN Slides s ON c.chapter_id = s.chapter_id
+    LEFT JOIN AvgTimeSpent a ON s.slide_id = a.slide_id
+    LEFT JOIN AvgConcentrationScore cscore ON s.slide_id = cscore.slide_id
+    GROUP BY c.chapter_id, c.chapter_name
+    """, nativeQuery = true)
+    List<ChapterSlideProgressProjection> getChapterSlideProgress(
+            @Param("moduleId") String moduleId,
+            @Param("packageSessionId") String packageSessionId,
+            @Param("chapterPackageStatusList") List<String> chapterPackageStatusList,
+            @Param("chapterStatusList") List<String> chapterStatusList,
+            @Param("slideStatusList") List<String> slideStatusList,
+            @Param("chapterSlideStatusList") List<String> chapterSlideStatusList,
+            @Param("learnerStatusList") List<String> learnerStatusList
+    );
 
 }

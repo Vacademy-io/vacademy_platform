@@ -153,7 +153,7 @@ public class NotificationEmailBody {
                             <p><strong>Username:</strong> %s</p>
                             <p><strong>Password:</strong> %s</p>
                         </div>
-                        <p>Please keep these details safe and consider updating your password for security.</p>
+                        <p>Please keep these details safe. </p>
                         <p>You can log in using the button below:</p>
                         <p style="text-align:center;">
                             <a class="login-button" href="%s" target="_blank">Login to Your Account</a>
@@ -244,7 +244,7 @@ public class NotificationEmailBody {
                 <p><strong>Username:</strong> {{username}}</p>
                 <p><strong>Password:</strong> {{password}}</p>
             </div>
-            <p>Please use these details to log in and consider changing your password for security.</p>
+            <p>Please use these details to log in. </p>
             <div style="text-align: center;">
                 <a href="https://learner.vacademy.io/login" class="login-button">Login Now</a>
             </div>

@@ -103,29 +103,30 @@ public class LearnerReportService {
         );
     }
 
-    public List<SubjectProgressDTO> getSubjectProgressReport(String packageSessionId, String userId, CustomUserDetails userDetails) {
-        return activityLogRepository.getModuleCompletionByUser(
+    public List<LearnerSubjectWiseProgressReportDTO> getSubjectProgressReport(String packageSessionId, String userId, CustomUserDetails userDetails) {
+        return activityLogRepository.getModuleCompletionByUserAndBatch(
                         packageSessionId,
                         userId,
                         ACTIVE_SUBJECTS,
                         ACTIVE_MODULES,
                         ACTIVE_CHAPTERS,
                         VALID_SLIDE_STATUSES,
-                        VALID_SLIDE_STATUSES)
+                        VALID_SLIDE_STATUSES,
+                        ACTIVE_LEARNERS)
                 .stream()
                 .map(this::mapToSubjectProgressDTO)
                 .collect(Collectors.toList());
     }
 
-    private SubjectProgressDTO mapToSubjectProgressDTO(Object[] result) {
+    private LearnerSubjectWiseProgressReportDTO mapToSubjectProgressDTO(Object[] result) {
         try {
-            SubjectProgressDTO dto = new SubjectProgressDTO();
+            LearnerSubjectWiseProgressReportDTO dto = new LearnerSubjectWiseProgressReportDTO();
             dto.setSubjectId((String) result[0]); // subject_id
             dto.setSubjectName((String) result[1]); // subject_name
 
             // Convert JSON string (modules) to List<ModuleProgressDTO>
             String modulesJson = (String) result[2];
-            List<SubjectProgressDTO.ModuleProgressDTO> modules = objectMapper.readValue(
+            List<LearnerSubjectWiseProgressReportDTO.ModuleProgressDTO> modules = objectMapper.readValue(
                     modulesJson, new TypeReference<>() {});
 
             dto.setModules(modules);
@@ -135,21 +136,28 @@ public class LearnerReportService {
         }
     }
 
-    public List<ChapterSlideProgressDTO> getChapterSlideProgress(String moduleId,String userId, CustomUserDetails userDetails) {
-        return activityLogRepository.getChapterSlideProgressForLearner(
-                        moduleId, userId, ACTIVE_CHAPTERS, ACTIVE_CHAPTERS, VALID_SLIDE_STATUSES, VALID_SLIDE_STATUSES)
+    public List<LearnerChapterSlideProgressDTO> getChapterSlideProgress(String moduleId,String userId,String packageSessionId, CustomUserDetails userDetails) {
+        return activityLogRepository.getChapterSlideProgressCombined(
+                        moduleId,
+                        packageSessionId,
+                        userId,
+                        ACTIVE_CHAPTERS,
+                        ACTIVE_CHAPTERS,
+                        VALID_SLIDE_STATUSES,
+                        VALID_SLIDE_STATUSES,
+                        ACTIVE_LEARNERS)
                 .stream()
                 .map(this::mapToDTO)
                 .collect(Collectors.toList());
     }
 
-    private ChapterSlideProgressDTO mapToDTO(ChapterSlideProgressProjection projection) {
+    private LearnerChapterSlideProgressDTO mapToDTO(ChapterSlideProgressProjection projection) {
         try {
-            ChapterSlideProgressDTO dto = new ChapterSlideProgressDTO();
+            LearnerChapterSlideProgressDTO dto = new LearnerChapterSlideProgressDTO();
             dto.setChapterId(projection.getChapterId());
             dto.setChapterName(projection.getChapterName());
 
-            List<ChapterSlideProgressDTO.SlideProgressDTO> slides = objectMapper.readValue(
+            List<LearnerChapterSlideProgressDTO.SlideProgressDTO> slides = objectMapper.readValue(
                     projection.getSlides(), new TypeReference<>() {});
             dto.setSlides(slides);
 

@@ -841,7 +841,7 @@ public class HtmlBuilderService {
     </html>
     """;
     }
-    public static String getSubjectWiseProgressReportHtml(List<SubjectProgressDTO> subjectWiseProgress,
+    public static String getSubjectWiseProgressReportHtml(List<LearnerSubjectWiseProgressReportDTO> subjectWiseProgress,
                                                           String learnerName,
                                                           String batchName,
                                                           String instituteName) {
@@ -876,12 +876,12 @@ public class HtmlBuilderService {
                 .append("</tr>")
                 .append("</thead><tbody>");
 
-        for (SubjectProgressDTO subject : subjectWiseProgress) {
+        for (LearnerSubjectWiseProgressReportDTO subject : subjectWiseProgress) {
             String subjectName = subject.getSubjectName();
-            List<SubjectProgressDTO.ModuleProgressDTO> modules = subject.getModules();
+            List<LearnerSubjectWiseProgressReportDTO.ModuleProgressDTO> modules = subject.getModules();
 
             for (int i = 0; i < modules.size(); i++) {
-                SubjectProgressDTO.ModuleProgressDTO module = modules.get(i);
+                LearnerSubjectWiseProgressReportDTO.ModuleProgressDTO module = modules.get(i);
                 html.append("<tr>")
                         .append("<td style='padding: 12px; border-bottom: 1px solid #ddd;'>")
                         .append(i == 0 ? subjectName : "")
@@ -903,7 +903,7 @@ public class HtmlBuilderService {
         return html.toString();
     }
 
-    public static String getModuleWiseReportHtml(List<ChapterSlideProgressDTO> chapters,
+    public static String getModuleWiseReportHtml(List<LearnerChapterSlideProgressDTO> chapters,
                                                  String learnerName,
                                                  String dateGenerated,
                                                  String subject,
@@ -956,7 +956,7 @@ public class HtmlBuilderService {
 
         StringBuilder chapterTables = new StringBuilder();
 
-        for (ChapterSlideProgressDTO chapter : chapters) {
+        for (LearnerChapterSlideProgressDTO chapter : chapters) {
             chapterTables.append("<div class='chapter-title'>Chapter&nbsp;&nbsp;<span style='color: #e65100;'>")
                     .append(escapeHtml(chapter.getChapterName()))
                     .append("</span></div>");
@@ -976,7 +976,7 @@ public class HtmlBuilderService {
   <tbody>
 """);
 
-            for (ChapterSlideProgressDTO.SlideProgressDTO slide : chapter.getSlides()) {
+            for (LearnerChapterSlideProgressDTO.SlideProgressDTO slide : chapter.getSlides()) {
                 chapterTables.append("<tr>");
                 chapterTables.append("<td class='icon'>▶️</td>");
                 chapterTables.append("<td>").append(escapeHtml(slide.getSlideTitle())).append("</td>");

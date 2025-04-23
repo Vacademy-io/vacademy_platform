@@ -21,6 +21,7 @@ public class StepResponseDto {
     private String status;
     private String instituteId;
     private String type;
+    private String assessmentType;
     private Map<String, Object> savedData = new HashMap<>();
     private List<Map<String, String>> stepKeys = new ArrayList<>();
     private Map<String, StepOption> defaultValues = new HashMap<>();

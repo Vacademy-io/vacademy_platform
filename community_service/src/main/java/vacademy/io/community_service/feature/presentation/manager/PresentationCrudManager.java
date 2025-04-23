@@ -129,9 +129,18 @@ public class PresentationCrudManager {
         if (presentation.isEmpty())
             throw new VacademyException("Presentation not found");
 
-        presentation.get().setTitle(editPresentationDto.getTitle());
-        presentation.get().setDescription(editPresentationDto.getDescription());
-        presentation.get().setCoverFileId(editPresentationDto.getCoverFileId());
+        if (editPresentationDto.getTitle() != null) {
+            presentation.get().setTitle(editPresentationDto.getTitle());
+        }
+        if (editPresentationDto.getDescription() != null) {
+            presentation.get().setDescription(editPresentationDto.getDescription());
+        }
+        if (editPresentationDto.getCoverFileId() != null) {
+            presentation.get().setCoverFileId(editPresentationDto.getCoverFileId());
+        }
+        if (editPresentationDto.getStatus() != null) {
+            presentation.get().setStatus(editPresentationDto.getStatus());
+        }
         presentationRepository.save(presentation.get());
 
         List<PresentationSlideDto> questionSlides = new ArrayList<>();

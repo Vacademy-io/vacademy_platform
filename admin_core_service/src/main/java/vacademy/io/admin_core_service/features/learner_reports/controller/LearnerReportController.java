@@ -33,7 +33,7 @@ public class LearnerReportController {
     }
 
     @GetMapping("/subject-wise-progress")
-    public ResponseEntity<List<SubjectProgressDTO>> getSubjectWiseProgress(
+    public ResponseEntity<List<LearnerSubjectWiseProgressReportDTO>> getSubjectWiseProgress(
             @RequestParam String packageSessionId,
             @RequestParam String userId,
             @RequestAttribute("user") CustomUserDetails userDetails) {
@@ -42,12 +42,13 @@ public class LearnerReportController {
     }
 
     @GetMapping("/chapter-wise-progress")
-    public ResponseEntity<List<ChapterSlideProgressDTO>> getChapterWiseProgress(
+    public ResponseEntity<List<LearnerChapterSlideProgressDTO>> getChapterWiseProgress(
             @RequestParam String userId,
+            @RequestParam String packageSessionId,
             @RequestParam String moduleId,
             @RequestAttribute("user") CustomUserDetails userDetails) {
 
-        return ResponseEntity.ok(learnerReportService.getChapterSlideProgress(moduleId, userId, userDetails));
+        return ResponseEntity.ok(learnerReportService.getChapterSlideProgress(moduleId, userId,packageSessionId, userDetails));
     }
 
     @PostMapping("/slide-wise-progress")

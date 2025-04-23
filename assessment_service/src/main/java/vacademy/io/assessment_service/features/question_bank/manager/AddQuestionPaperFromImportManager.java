@@ -216,7 +216,6 @@ public class AddQuestionPaperFromImportManager {
                 question.setParentRichText(AssessmentRichTextData.fromDTO(importQuestion.getParentRichText()));
             }
             List<Option> questionOptions = question.getOptions();
-            question.setOptions(new ArrayList<>());
             newQuestions.add(question);
             newOptions.addAll(questionOptions);
         }

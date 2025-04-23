@@ -60,4 +60,23 @@ public class DeepSeekAsyncTaskService {
             log.error("Failed To Generate: "+e.getMessage());
         }
     }
+
+    @Async
+    public CompletableFuture<Void> processDeepSeekTaskInBackgroundWrapperForAudioToQuestions(String taskId, String convertedText, String numQuestions, String prompt, String difficulty, String language, String taskName, String instituteId, String audioId) {
+        return CompletableFuture.runAsync(() -> processDeepSeekTaskInBackgroundForAudioToQuestionOfTopic(taskId,convertedText,numQuestions,prompt,taskName, instituteId, audioId, difficulty, language));
+    }
+
+    private void processDeepSeekTaskInBackgroundForAudioToQuestionOfTopic(String taskId, String convertedText, String numQuestions, String prompt, String taskName, String instituteId, String audioId, String difficulty, String language) {
+        try {
+            String restoreJson = (taskId == null || taskId.isBlank()) ? "" : taskStatusService.getResultJsonFromTaskId(taskId);
+
+            TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(taskId, "AUDIO_TO_QUESTIONS", audioId, "AUDIO_ID", taskName,instituteId);
+
+            String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromAudio(convertedText, difficulty, numQuestions, prompt, restoreJson,0,taskStatus));
+
+            taskStatusService.updateTaskStatus(taskStatus, "COMPLETED", rawOutput);
+        } catch (Exception e) {
+            log.error("Failed To Generate: "+e.getMessage());
+        }
+    }
 }

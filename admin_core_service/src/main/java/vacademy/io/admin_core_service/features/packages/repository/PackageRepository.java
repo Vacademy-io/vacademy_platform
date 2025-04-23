@@ -19,29 +19,35 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
     @Query(value = "SELECT DISTINCT s.* FROM session s " +
             "JOIN package_session ps ON s.id = ps.session_id " +
             "JOIN package p ON ps.package_id = p.id " +
-            "JOIN package_institute pi ON p.id = pi.package_id " +  // Ensure to join package_institute to filter by institute
-            "WHERE pi.institute_id = :instituteId AND ps.status != 'DELETED'",
+            "JOIN package_institute pi ON p.id = pi.package_id " +
+            "WHERE pi.institute_id = :instituteId AND ps.status IN (:statusList)",
             nativeQuery = true)
-    List<SessionProjection> findDistinctSessionsByInstituteId(@Param("instituteId") String instituteId);
+    List<SessionProjection> findDistinctSessionsByInstituteIdAndStatusIn(@Param("instituteId") String instituteId,
+                                                                         @Param("statusList") List<String> statusList);
+
 
 
     @Query(value = "SELECT DISTINCT l.* FROM level l " +
             "JOIN package_session ps ON l.id = ps.level_id " +
             "JOIN package p ON ps.package_id = p.id " +
-            "JOIN package_institute pi ON p.id = pi.package_id " +  // Ensure to join package_institute to filter by institute
-            "WHERE pi.institute_id = :instituteId AND l.status = 'ACTIVE' AND ps.status != 'DELETED' ",
+            "JOIN package_institute pi ON p.id = pi.package_id " +
+            "WHERE pi.institute_id = :instituteId AND l.status IN (:statusList) AND ps.status IN (:statusList)",
             nativeQuery = true)
-    List<LevelProjection> findDistinctLevelsByInstituteId(@Param("instituteId") String instituteId);
+    List<LevelProjection> findDistinctLevelsByInstituteIdAndStatusIn(@Param("instituteId") String instituteId,
+                                                                     @Param("statusList") List<String> statusList);
 
     // Get all distinct packages of an institute_id
     @Query(value = "SELECT DISTINCT p.* FROM package p " +
             "JOIN package_institute pi ON p.id = pi.package_id " +
-            "JOIN package_session ps ON p.id = ps.package_id " +  // Join with package_session
+            "JOIN package_session ps ON p.id = ps.package_id " +
             "WHERE pi.institute_id = :instituteId " +
-            "AND p.status != 'DELETED' " +
-            "AND ps.status != 'DELETED'",
+            "AND p.status IN (:packageStatusList) " +
+            "AND ps.status IN (:packageSessionStatusList)",
             nativeQuery = true)
-    List<PackageEntity> findDistinctPackagesByInstituteId(@Param("instituteId") String instituteId);
+    List<PackageEntity> findDistinctPackagesByInstituteIdAndStatuses(
+            @Param("instituteId") String instituteId,
+            @Param("packageStatusList") List<String> packageStatusList,
+            @Param("packageSessionStatusList") List<String> packageSessionStatusList);
 
     // Get all package sessions of an institute_id and of a session_id
     @Query(value = "SELECT ps.id, ps.level_id, ps.session_id, ps.start_time, ps.updated_at, ps.created_at, ps.status, ps.package_id " +

@@ -43,6 +43,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
            vs.id AS videoId, 
            vs.title AS videoTitle, 
            vs.url AS videoUrl, 
+           vs.source_type AS videoSourceType,
            vs.description AS videoDescription, 
            COALESCE(cts.slide_order, 9999) AS slideOrder,
            vs.published_url AS publishedUrl,
@@ -84,6 +85,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                 vs.title AS videoTitle, 
                 vs.description AS videoDescription, 
                 vs.published_url AS publishedUrl,
+                vs.source_type AS videoSourceType,
                 ds.published_data AS publishedData,
                 cts.slide_order AS slideOrder 
                 
@@ -133,7 +135,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                     vs.title AS videoTitle,
                     vs.description AS videoDescription,
                     vs.published_url AS publishedUrl,
-                    
+                    vs.source_type AS videoSourceType,
                     cts.slide_order AS slideOrder,
 
                     COALESCE(NULLIF(doc_percent.value, ''), '0') AS percentageDocumentWatched,
@@ -203,6 +205,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
            ds.cover_file_id AS documentCoverFileId, 
            ds.type AS documentType, 
            vs.id AS videoId, 
+           vs.source_type AS videoSourceType,
            vs.title AS videoTitle, 
            vs.description AS videoDescription, 
            COALESCE(cts.slide_order, 9999) AS slideOrder,
@@ -244,6 +247,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
         vs.title AS videoTitle, 
         vs.description AS videoDescription, 
         vs.published_url AS publishedUrl,
+        vs.source_type AS videoSourceType,
         ds.published_data AS publishedData,
         cts.slide_order AS slideOrder, 
         -- Parse the value from learner_operation to Long based on the operation field

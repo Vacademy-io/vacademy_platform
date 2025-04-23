@@ -6,6 +6,9 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import lombok.Data;
 import org.hibernate.annotations.UuidGenerator;
+import vacademy.io.media_service.dto.task_status.TaskStatusDto;
+
+import java.util.Date;
 
 @Entity
 @Table(name = "task_status")
@@ -32,6 +35,29 @@ public class TaskStatus {
     @Column(name = "input_id")
     private String inputId;
 
+    @Column(name = "task_name")
+    private String taskName;
+
     @Column(name = "input_type")
     private String inputType;
+
+    @Column(name = "created_at", insertable = false, updatable = false)
+    private Date createdAt;
+
+    @Column(name = "updated_at", insertable = false, updatable = false)
+    private Date updatedAt;
+
+
+    public TaskStatusDto getTaskDto(){
+        return TaskStatusDto.builder()
+                .id(this.id)
+                .inputId(this.inputId)
+                .inputType(this.inputType)
+                .taskName(this.taskName)
+                .status(this.status)
+                .resultJson(this.resultJson)
+                .instituteId(this.instituteId)
+                .createdAt(this.createdAt)
+                .updatedAt(this.updatedAt).build();
+    }
 }

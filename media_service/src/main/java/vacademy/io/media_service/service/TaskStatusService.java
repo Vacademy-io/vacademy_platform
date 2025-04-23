@@ -2,9 +2,11 @@ package vacademy.io.media_service.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import vacademy.io.media_service.dto.task_status.TaskStatusDto;
 import vacademy.io.media_service.enums.TaskStatus;
 import vacademy.io.media_service.repository.TaskStatusRepository;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -43,6 +45,10 @@ public class TaskStatusService {
         return taskStatusRepository.findByInstituteId(instituteId);
     }
 
+    public List<TaskStatus> getTaskStatusesByInstituteIdAndTaskType(String instituteId, String taskType) {
+        return taskStatusRepository.findByInstituteIdAndType(instituteId, taskType);
+    }
+
     public List<TaskStatus> getTaskStatusesByInputType(String inputType) {
         return taskStatusRepository.findByInputType(inputType);
     }
@@ -53,26 +59,28 @@ public class TaskStatusService {
 
     }
 
-    public TaskStatus updateTaskStatusOrCreateNewTask(String taskId, String type, String inputId, String inputType) {
+    public TaskStatus updateTaskStatusOrCreateNewTask(String taskId, String type, String inputId, String inputType,String taskName,String instituteId) {
         if(Objects.isNull(taskId)){
-            return createNewTask(type,inputId,inputType);
+            return createNewTask(type,inputId,inputType,taskName,instituteId);
         }
 
         Optional<TaskStatus> taskStatus = taskStatusRepository.findById(taskId);
         if(taskStatus.isEmpty()){
-            return createNewTask(type,inputId,inputType);
+            return createNewTask(type,inputId,inputType,taskName,instituteId);
         }
 
         taskStatus.get().setStatus("PROGRESS");
         return taskStatusRepository.save(taskStatus.get());
     }
 
-    private TaskStatus createNewTask(String type, String inputId, String inputType) {
+    private TaskStatus createNewTask(String type, String inputId, String inputType,String taskName,String instituteId) {
         TaskStatus taskStatus = new TaskStatus();
         taskStatus.setStatus("PROGRESS");
         taskStatus.setType(type);
         taskStatus.setInputId(inputId);
         taskStatus.setInputType(inputType);
+        taskStatus.setTaskName(taskName);
+        taskStatus.setInstituteId(instituteId);
         return taskStatusRepository.save(taskStatus);
     }
 
@@ -86,5 +94,14 @@ public class TaskStatusService {
         if (value != null) {
             setterMethod.accept(value);
         }
+    }
+
+    public List<TaskStatusDto> getAllTaskStatusDtoForInstituteIdAndTaskType(String instituteId, String taskType) {
+        List<TaskStatusDto> responses = new ArrayList<>();
+        getTaskStatusesByInstituteIdAndTaskType(instituteId,taskType).forEach(task->{
+            responses.add(task.getTaskDto());
+        });
+
+        return responses;
     }
 }

@@ -135,7 +135,9 @@ public class PDFQuestionGeneratorController {
     @GetMapping("/math-parser/pdf-to-questions")
     public ResponseEntity<String> getMathParserPdfHtml(@RequestParam String pdfId,
                                                                           @RequestParam(required = false) String userPrompt,
-                                                                          @RequestParam(name = "taskId" , required = false) String taskId) throws IOException {
+                                                                          @RequestParam(name = "taskId" , required = false) String taskId,
+                                                                          @RequestParam(name = "taskName", required = false) String taskName,
+                                                                          @RequestParam(name = "taskName", required = false) String instituteId) throws IOException {
 
         var fileConversionStatus = fileConversionStatusService.findByVendorFileId(pdfId);
 
@@ -148,16 +150,13 @@ public class PDFQuestionGeneratorController {
             String networkHtml = htmlImageConverter.convertBase64ToUrls(htmlBody);
 
             fileConversionStatusService.updateHtmlText(pdfId, networkHtml);
-            deepSeekAsyncTaskService.processDeepSeekTaskInBackgroundWrapperForPdfToQuestions(taskId,pdfId,userPrompt,networkHtml);
+            deepSeekAsyncTaskService.processDeepSeekTaskInBackgroundWrapperForPdfToQuestions(taskId,pdfId,userPrompt,networkHtml,taskName,instituteId);
 
             return ResponseEntity.ok("Done");
         }
 
-        deepSeekAsyncTaskService.processDeepSeekTaskInBackgroundWrapperForPdfToQuestions(taskId,pdfId,userPrompt,fileConversionStatus.get().getHtmlText());
+        deepSeekAsyncTaskService.processDeepSeekTaskInBackgroundWrapperForPdfToQuestions(taskId,pdfId,userPrompt,fileConversionStatus.get().getHtmlText(), taskName,instituteId);
 
-        // Process the raw output to get valid JSON
-//        String validJson = JsonUtils.extractAndSanitizeJson(rawOutput);
-        //createAutoQuestionPaperResponse(removeExtraSlashes(validJson))
         return ResponseEntity.ok("Done");
     }
 
@@ -225,7 +224,9 @@ public class PDFQuestionGeneratorController {
 
     @GetMapping("/math-parser/pdf-to-extract-topic-questions")
     public ResponseEntity<String> getMathParserPdfTopicQuestions(@RequestParam String pdfId, @RequestParam String requiredTopics,
-                                                                 @RequestParam(name = "taskId") String taskId) throws IOException {
+                                                                 @RequestParam(name = "taskId", required = false) String taskId,
+                                                                 @RequestParam(name = "taskName", required = false) String taskName,
+                                                                 @RequestParam(name = "instituteId", required = false) String instituteId) throws IOException {
 
         var fileConversionStatus = fileConversionStatusService.findByVendorFileId(pdfId);
 
@@ -238,16 +239,12 @@ public class PDFQuestionGeneratorController {
             String networkHtml = htmlImageConverter.convertBase64ToUrls(htmlBody);
 
             fileConversionStatusService.updateHtmlText(pdfId, networkHtml);
-            deepSeekAsyncTaskService.processDeepSeekTaskInBackgroundWrapperForPdfToQuestionsOfTopics(taskId,pdfId,networkHtml,requiredTopics);
+            deepSeekAsyncTaskService.processDeepSeekTaskInBackgroundWrapperForPdfToQuestionsOfTopics(taskId,pdfId,networkHtml,requiredTopics,taskName, instituteId);
 
             return ResponseEntity.ok("Done");
         }
 
-        deepSeekAsyncTaskService.processDeepSeekTaskInBackgroundWrapperForPdfToQuestionsOfTopics(taskId,pdfId,fileConversionStatus.get().getHtmlText(),requiredTopics);
-
-        // Process the raw output to get valid JSON
-//        String validJson = JsonUtils.extractAndSanitizeJson(rawOutput);
-//        return ResponseEntity.ok(createAutoQuestionPaperResponse(removeExtraSlashes(validJson)));
+        deepSeekAsyncTaskService.processDeepSeekTaskInBackgroundWrapperForPdfToQuestionsOfTopics(taskId,pdfId,fileConversionStatus.get().getHtmlText(),requiredTopics,taskName, instituteId);
         return ResponseEntity.ok("Done");
 
     }

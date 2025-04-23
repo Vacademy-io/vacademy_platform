@@ -12,5 +12,5 @@ public interface TaskStatusRepository extends JpaRepository<TaskStatus, String> 
     List<TaskStatus> findByInstituteId(String instituteId);
     List<TaskStatus> findByInputType(String inputType);
 
-    List<TaskStatus> findByInstituteIdAndType(String instituteId, String taskType);
+    List<TaskStatus> findByInstituteIdAndType(String instituteId, String type);
 }

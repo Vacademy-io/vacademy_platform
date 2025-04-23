@@ -137,7 +137,7 @@ public class PDFQuestionGeneratorController {
                                                                           @RequestParam(required = false) String userPrompt,
                                                                           @RequestParam(name = "taskId" , required = false) String taskId,
                                                                           @RequestParam(name = "taskName", required = false) String taskName,
-                                                                          @RequestParam(name = "taskName", required = false) String instituteId) throws IOException {
+                                                                          @RequestParam(name = "instituteId", required = false) String instituteId) throws IOException {
 
         var fileConversionStatus = fileConversionStatusService.findByVendorFileId(pdfId);
 

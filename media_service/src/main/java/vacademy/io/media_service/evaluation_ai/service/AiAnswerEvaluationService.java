@@ -66,9 +66,10 @@ public class AiAnswerEvaluationService {
                 if (processedUsers.contains(user.getId())) continue;
                 log.info("Processing user: {}", user.getId());
                 processAndSaveUserEvaluation(user, metadata, assessmentId, resultContainer, processedUsers);
+                finalizeEvaluationResults(taskId, resultContainer,TaskStatusEnum.PROCESSING.name());
             }
+            finalizeEvaluationResults(taskId, resultContainer,TaskStatusEnum.COMPLETED.name());
 
-            finalizeEvaluationResults(taskId, resultContainer);
         } catch (Exception e) {
             log.error("Evaluation failed for taskId={}", taskId, e);
             handleEvaluationFailure(taskId, e);
@@ -95,11 +96,11 @@ public class AiAnswerEvaluationService {
         processedUsers.add(user.getId());
     }
 
-    private void finalizeEvaluationResults(String taskId, EvaluationResultFromDeepSeek results) throws Exception {
+    private void finalizeEvaluationResults(String taskId, EvaluationResultFromDeepSeek results,String status) throws Exception {
         objectMapper.setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
         String json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(results);
         log.info("Finalizing taskId={}, results size={}", taskId, results.getEvaluationResults().size());
-        updateTask(taskId, json, TaskStatusEnum.COMPLETED.name());
+        updateTask(taskId, json, status);
     }
 
     private void handleEvaluationFailure(String taskId, Exception e) {
@@ -151,56 +152,73 @@ public class AiAnswerEvaluationService {
             ObjectMapper objectMapper1 = new ObjectMapper();
             String jsonAssessmentMetadata = objectMapper1.writeValueAsString(metadata);
             return String.format("""
-            You are an AI examiner. A student has submitted a full assessment in HTML format.
-            Use the provided assessment metadata to evaluate the student's answers.
+        You are an AI examiner.
 
-            For each question, provide:
-            - `feedback`: A short explanation of correctness or issues in the answer.
-            - `description`: A brief reason for awarding or deducting marks.
-            - `question_text`: Extract and include the actual question text from the HTML or metadata if available.
-            - Do **not** include any extra fields. Do **not** include `markingJson`.
-            - Maintain the order of questions using `question_order`.
+        A student has submitted answers for an assessment in HTML format.
+        You are provided with:
+        - The **assessment metadata** (includes original questions, structure, and marking scheme).
+        - The **student's HTML answers**.
 
-            Respond strictly in JSON format with **snake_case** field names and match this structure **exactly**:
+        Strict Rules:
+        1. Only use questions from the `AiEvaluationMetadata`. **Ignore any student-written questions** in their HTML. The original questions are in `reach_text` field inside each question object.
+        2. For each question, extract its evaluation **criteria** from the `marking_json` field and grade the answer accordingly.
+        3. Maintain the `question_order` to match the original assessment sequence.
+        4. Your output must follow the **JSON format below exactly**, using `snake_case` keys only.
+        5. Do not include any additional fields. Do not repeat the full `marking_json`.
 
+         Field Usage:
+        - `assessmentName`: Title of the test.
+        - `instruction`: Guidelines for attempting the test.
+        - `sections`: Group of questions.
+        - Each section has:
+          - `name`: Section title.
+          - `cutoffMarks`: Minimum marks to pass this section.
+        - Each question has:
+          - `reach_text`: The actual question to be evaluated.
+          - `marking_json`: The subjective evaluation criteria. Use this to assign partial/full marks.
+
+        Respond in this structure:
+
+        {
+          "user_id": "%s",
+          "name": "%s",
+          "email": "%s",
+          "contact_number": "%s",
+          "total_marks_obtained": <numeric>,
+          "total_marks": <numeric>,
+          "overall_verdict": "pass/fail/absent/etc.",
+          "overall_description": "<brief summary>",
+          "section_wise_results": [
             {
-              "user_id": "%s",
-              "name": "%s",
-              "email": "%s",
-              "contact_number": "%s",
-              "total_marks_obtained": <numeric>,
+              "section_id": "<string>",
+              "section_name": "<string>",
+              "marks_obtained": <numeric>,
               "total_marks": <numeric>,
-              "overall_verdict": "pass/fail/absent/etc.",
-              "overall_description": "<brief summary>",
-              "section_wise_results": [
+              "verdict": "pass/fail/null",
+              "question_wise_results": [
                 {
-                  "section_id": "<string>",
-                  "section_name": "<string>",
+                  "question_id": "<string>",
+                  "question_order": <number>,
                   "marks_obtained": <numeric>,
                   "total_marks": <numeric>,
-                  "verdict": "pass/fail/null",
-                  "question_wise_results": [
-                    {
-                      "question_id": "<string>",
-                      "question_order": <number>,
-                      "marks_obtained": <numeric>,
-                      "total_marks": <numeric>,
-                      "feedback": "<string>",
-                      "description": "<string>",
-                      "verdict": "correct/partially correct/incorrect/not attempted",
-                      "question_text": "<string>"
-                    }
-                  ]
+                  "feedback": "<string>",
+                  "description": "<string>",
+                  "verdict": "correct/partially correct/incorrect/not attempted",
+                  "question_text": "<string>"
                 }
               ]
             }
+          ]
+        }
 
-            Assessment Metadata:
-            %s
+        =============================
+        Assessment Metadata:
+        %s
 
-            Student HTML Answer:
-            %s
-            """,
+        Student HTML Answer:
+        %s
+        =============================
+        """,
                     user.getId(),
                     user.getFullName(),
                     user.getEmail(),
@@ -212,6 +230,7 @@ public class AiAnswerEvaluationService {
             throw new RuntimeException("Failed to serialize assessment metadata", e);
         }
     }
+
 
 
     private EvaluationResultFromDeepSeek.EvaluationResult evaluateWithRetry(String prompt, int maxAttempts) {
@@ -274,6 +293,7 @@ public class AiAnswerEvaluationService {
         TaskStatus task = taskStatusRepository.findById(taskId)
                 .orElseThrow(() -> new VacademyException("Task not found"));
         task.setStatus(status);
+        System.out.println(resultJson);
         task.setResultJson(resultJson);
         return taskStatusRepository.save(task).getId();
     }

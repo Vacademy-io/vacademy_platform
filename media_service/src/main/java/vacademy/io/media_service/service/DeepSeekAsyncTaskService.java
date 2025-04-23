@@ -49,7 +49,7 @@ public class DeepSeekAsyncTaskService {
         try {
             String restoreJson = (taskId == null || taskId.isBlank()) ? "" : taskStatusService.getResultJsonFromTaskId(taskId);
 
-            TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(taskId, "PDF_TO_QUESTIONS", pdfId, "PDF_ID",taskName,instituteId);
+            TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(taskId, "PDF_TO_QUESTIONS_WITH_TOPIC", pdfId, "PDF_ID",taskName,instituteId);
 
             String rawOutput = deepSeekService.getQuestionsWithDeepSeekFromHTMLOfTopics(
                     networkHtml, topics, restoreJson, 0, taskStatus

@@ -19,15 +19,13 @@ public class TaskGetController {
 
 
     @GetMapping("/get-all")
-    public ResponseEntity<List<TaskStatusDto>> getAllTasks(@RequestAttribute("user")CustomUserDetails userDetails,
-                                                           @RequestParam("instituteId") String instituteId,
+    public ResponseEntity<List<TaskStatusDto>> getAllTasks(@RequestParam("instituteId") String instituteId,
                                                            @RequestParam("taskType") String taskType){
-        return taskStatusManager.getAllTasks(userDetails,instituteId,taskType);
+        return taskStatusManager.getAllTasks(instituteId,taskType);
     }
 
     @GetMapping("/get-result")
-    public ResponseEntity<AutoQuestionPaperResponse> getAllQuestions(@RequestAttribute("user")CustomUserDetails userDetails,
-                                                                 @RequestParam("taskId") String taskId){
-        return taskStatusManager.getAllQuestions(userDetails,taskId);
+    public ResponseEntity<AutoQuestionPaperResponse> getAllQuestions(@RequestParam("taskId") String taskId){
+        return taskStatusManager.getAllQuestions(taskId);
     }
 }

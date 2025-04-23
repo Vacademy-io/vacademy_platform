@@ -256,18 +256,12 @@ public class DeepSeekService {
             }
 
             String resultJson = response.getChoices().get(0).getMessage().getContent();
-            log.info("Result Json: " + resultJson);
             String validJson = JsonUtils.extractAndSanitizeJson(resultJson);
 
             String restored = htmlJsonProcessor.restoreTagsInJson(validJson);
 
 
             String mergedJson = mergeQuestionsJson(restoredJson, restored);
-            int currentQuestionCount = getQuestionCount(mergedJson);
-
-
-            log.info("question Size: " + currentQuestionCount);
-            log.info("attempt: " +attempt);
 
             if (getIsProcessCompleted(mergedJson)) {
                 taskStatusService.updateTaskStatus(taskStatus,null,mergedJson);
@@ -472,16 +466,29 @@ public class DeepSeekService {
 
 
 
-    public String getQuestionsWithDeepSeekFromAudio(String audioString, String difficulty, String numQuestions, String optionalPrompt, String language) {
-        String template = """
+    public String getQuestionsWithDeepSeekFromAudio(String audioString, String difficulty, String numQuestions, String optionalPrompt, String oldResponse,int attempt, TaskStatus taskStatus) {
+        try{
+            if(attempt>=5){
+                return oldResponse;
+            }
+            String allQuestionNumbers = getCommaSeparatedQuestionNumbers(oldResponse);
+
+            String template = """
                 Class Lecture raw data :  {classLecture}
                 Questions Difficulty :  {difficulty}
                 Number of Questions :  {numQuestions}
                 Optional Teacher Prompt :  {optionalPrompt}
                 Language of questions:  {language}
+                Already extracted question Number = {allQuestionNumbers}
+                
                 
                         Prompt:
                         From the given audio lecture compile hard and medium questions, try engaging questions, convert it into the following JSON format:
+                          - If 'Already extracted question Number' is empty, start fresh from the beginning of the HTML.
+                         - If it is not empty, continue generating from where the last question left off based on the existing data and avoid duplicate Questions.
+                         - Do not generate any questions if already generated required questions and set is_process_completed true.
+                         - Preserve all DS_TAGs in HTML content in comments
+                        
                         
                         JSON format : 
                         
@@ -509,6 +516,7 @@ public class DeepSeekService {
                                          ],
                                          "title": "string" // Suitable title for the question paper,
                                          "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"] // multiple chapter and topic names for question paper,
+                                         "is_process_completed": true,false // Ensure is_process_completed is set to true only if {optionalPrompt} is achieved,
                                          "difficulty": "easy | medium | hard",
                                          "subjects": ["subject1", "subject2", "subject3", "subject4", "subject5"] // multiple subject names for question paper like maths or thermodynamics or physics etc ,
                                          "classes": ["class 1" , "class 2" ] // can be of multiple class - | class 3 | class 4 | class 5 | class 6 | class 7 | class 8 | class 9 | class 10 | class 11 | class 12 | engineering | medical | commerce | law
@@ -519,15 +527,41 @@ public class DeepSeekService {
                         - Omit 'options' field entirely
                         """;
 
-        Prompt prompt = new PromptTemplate(template).create(Map.of("classLecture", audioString, "difficulty", difficulty, "numQuestions", numQuestions, "optionalPrompt", optionalPrompt, "language","en"));
+            Prompt prompt = new PromptTemplate(template).create(Map.of("classLecture", audioString, "difficulty", difficulty, "numQuestions", numQuestions, "optionalPrompt", optionalPrompt, "language","en",
+                    "allQuestionNumbers",allQuestionNumbers));
 
-        DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
-        if(response.getChoices().isEmpty()) {
-            throw new VacademyException("No response from DeepSeek");
+            DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
+
+            if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {
+                taskStatusService.updateTaskStatus(taskStatus,"FAILED",oldResponse);
+                return oldResponse;
+            }
+            String resultJson = response.getChoices().get(0).getMessage().getContent();
+            String validJson = JsonUtils.extractAndSanitizeJson(resultJson);
+
+            String mergedJson = mergeQuestionsJson(oldResponse, validJson);
+
+            int currentQuestionCount = getQuestionCount(mergedJson);
+            log.info("MergedJson: "  + mergedJson);
+            log.info("Total Questions: " + currentQuestionCount);
+
+            if(getIsProcessCompleted(mergedJson)){
+                taskStatusService.updateTaskStatus(taskStatus,"COMPLETED",mergedJson);
+                return mergedJson;
+            }
+
+
+            if(!Objects.isNull(numQuestions) && numQuestions.isEmpty() && currentQuestionCount>=Integer.parseInt(numQuestions)){
+                taskStatusService.updateTaskStatus(taskStatus,"COMPLETED",mergedJson);
+                return mergedJson;
+            }
+
+            taskStatusService.updateTaskStatus(taskStatus,"PROGRESS",mergedJson);
+            return getQuestionsWithDeepSeekFromAudio(audioString,difficulty,numQuestions,optionalPrompt,mergedJson,attempt+1,taskStatus);
+        } catch (Exception e) {
+            taskStatusService.updateTaskStatus(taskStatus,"FAILED",oldResponse);
+            return oldResponse;
         }
-        String resultJson = response.getChoices().get(0).getMessage().getContent();
-        String validJson = JsonUtils.extractAndSanitizeJson(resultJson);
-        return validJson;
     }
 
     public List<QuestionDTO> formatQuestions(AiGeneratedQuestionJsonDto[] questions) {

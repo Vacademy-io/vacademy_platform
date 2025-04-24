@@ -1,6 +1,5 @@
 package vacademy.io.media_service.controller.pdf_convert;
 
-import lombok.Getter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.StringUtils;
@@ -10,7 +9,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.media_service.dto.chat_with_pdf.ChatWithPdfResponse;
-import vacademy.io.media_service.enums.TaskStatus;
+import vacademy.io.media_service.dto.task_status.TaskStatusDto;
 import vacademy.io.media_service.manager.ChatAiManager;
 import vacademy.io.media_service.service.*;
 import vacademy.io.media_service.service.pdf_covert.PdfHtmlConvertService;
@@ -47,7 +46,8 @@ public class ChatWithPdfController {
     public ResponseEntity<List<ChatWithPdfResponse>> getChat(@RequestParam("pdfId") String pdfId,
                                                              @RequestParam("userPrompt") String userPrompt,
                                                              @RequestParam(value = "taskName", required = false) String taskName,
-                                                             @RequestParam(value = "instituteId", required = false) String instituteId) throws Exception{
+                                                             @RequestParam(value = "instituteId", required = false) String instituteId,
+                                                             @RequestParam(value = "parentId", required = false) String parentId) throws Exception{
 
         var fileConversionStatus = fileConversionStatusService.findByVendorFileId(pdfId);
 
@@ -61,14 +61,24 @@ public class ChatWithPdfController {
 
             fileConversionStatusService.updateHtmlText(pdfId, networkHtml);
 
-            List<ChatWithPdfResponse> response = chatAiManager.generateResponseForPdfChat(pdfId,userPrompt,networkHtml,taskName,instituteId);
+            List<ChatWithPdfResponse> response = chatAiManager.generateResponseForPdfChat(pdfId,userPrompt,networkHtml,taskName,instituteId,parentId);
 
 
             return ResponseEntity.ok(response);
         }
 
-        List<ChatWithPdfResponse> response = chatAiManager.generateResponseForPdfChat(pdfId,userPrompt,fileConversionStatus.get().getHtmlText(),taskName,instituteId);
+        List<ChatWithPdfResponse> response = chatAiManager.generateResponseForPdfChat(pdfId,userPrompt,fileConversionStatus.get().getHtmlText(),taskName,instituteId,parentId);
 
         return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/get-chat")
+    public ResponseEntity<List<ChatWithPdfResponse>> getPreviousChat(@RequestParam("parentId") String parentId){
+        return chatAiManager.getAllChats(parentId);
+    }
+
+    @GetMapping("/get/chat-list")
+    public ResponseEntity<List<TaskStatusDto>> getAllChats(@RequestParam("instituteId") String instituteId){
+        return chatAiManager.getAllChatsList(instituteId);
     }
 }

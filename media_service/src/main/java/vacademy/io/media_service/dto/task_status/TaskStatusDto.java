@@ -24,4 +24,5 @@ public class TaskStatusDto {
     private String inputType;
     private Date createdAt;
     private Date updatedAt;
+    private String parentId;
 }

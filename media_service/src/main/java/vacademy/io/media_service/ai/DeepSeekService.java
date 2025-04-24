@@ -15,7 +15,8 @@ import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.media_service.dto.*;
 import vacademy.io.media_service.enums.QuestionResponseType;
 import vacademy.io.media_service.enums.QuestionTypes;
-import vacademy.io.media_service.enums.TaskStatus;
+import vacademy.io.media_service.entity.TaskStatus;
+import vacademy.io.media_service.enums.TaskStatusEnum;
 import vacademy.io.media_service.service.HtmlJsonProcessor;
 import vacademy.io.media_service.service.TaskStatusService;
 import vacademy.io.media_service.util.JsonUtils;
@@ -251,7 +252,7 @@ public class DeepSeekService {
 
             DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
             if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {
-                taskStatusService.updateTaskStatus(taskStatus,"FAILED",restoredJson);
+                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), restoredJson);
                 return restoredJson;
             }
 
@@ -272,7 +273,7 @@ public class DeepSeekService {
             // Recurse for remaining questions
             return getQuestionsWithDeepSeekFromHTMLRecursive(htmlData, userPrompt, mergedJson, attempt + 1, taskStatus);
         } catch (Exception e) {
-            taskStatusService.updateTaskStatus(taskStatus,"FAILED",restoredJson);
+            taskStatusService.updateTaskStatus(taskStatus,TaskStatusEnum.FAILED.name(), restoredJson);
             return restoredJson;
         }
     }
@@ -388,7 +389,7 @@ public class DeepSeekService {
 
             DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
             if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {
-                taskStatusService.updateTaskStatus(taskStatus,"FAILED",restoredJson);
+                taskStatusService.updateTaskStatus(taskStatus,TaskStatusEnum.FAILED.name(), restoredJson);
                 return restoredJson;
             }
 
@@ -397,11 +398,6 @@ public class DeepSeekService {
             String newRestoredJson = htmlJsonProcessor.restoreTagsInJson(validJson);
 
             String mergedJson = mergeQuestionsJson(restoredJson, newRestoredJson);
-            int currentQuestionCount = getQuestionCount(mergedJson);
-
-
-            log.info("question Size: " + currentQuestionCount);
-            log.info("attempt: " +attempt);
 
             if (getIsProcessCompleted(mergedJson)) {
                 taskStatusService.updateTaskStatus(taskStatus,null,mergedJson);
@@ -412,7 +408,7 @@ public class DeepSeekService {
             // Recurse for remaining questions
             return getQuestionsWithDeepSeekFromHTMLOfTopics(htmlData, requiredTopics, mergedJson, attempt + 1, taskStatus);
         } catch (Exception e) {
-            taskStatusService.updateTaskStatus(taskStatus,"FAILED",restoredJson);
+            taskStatusService.updateTaskStatus(taskStatus,TaskStatusEnum.FAILED.name(), restoredJson);
             throw new RuntimeException(e);
         }
     }
@@ -533,7 +529,7 @@ public class DeepSeekService {
             DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
 
             if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {
-                taskStatusService.updateTaskStatus(taskStatus,"FAILED",oldResponse);
+                taskStatusService.updateTaskStatus(taskStatus,TaskStatusEnum.FAILED.name(), oldResponse);
                 return oldResponse;
             }
             String resultJson = response.getChoices().get(0).getMessage().getContent();
@@ -559,7 +555,7 @@ public class DeepSeekService {
             taskStatusService.updateTaskStatus(taskStatus,"PROGRESS",mergedJson);
             return getQuestionsWithDeepSeekFromAudio(audioString,difficulty,numQuestions,optionalPrompt,mergedJson,attempt+1,taskStatus);
         } catch (Exception e) {
-            taskStatusService.updateTaskStatus(taskStatus,"FAILED",oldResponse);
+            taskStatusService.updateTaskStatus(taskStatus,TaskStatusEnum.FAILED.name(), oldResponse);
             return oldResponse;
         }
     }

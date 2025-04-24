@@ -18,4 +18,5 @@ public class ChatWithPdfResponse {
     private Date createdAt;
     private String question;
     private String response;
+    private String parentId;
 }

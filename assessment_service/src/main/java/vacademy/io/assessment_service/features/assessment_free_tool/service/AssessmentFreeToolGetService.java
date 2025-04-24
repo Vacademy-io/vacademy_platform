@@ -131,7 +131,7 @@ public class AssessmentFreeToolGetService {
             AiEvaluationSectionDTO secDto = new AiEvaluationSectionDTO();
             secDto.setName(section.getName());
             secDto.setCutoffMarks(section.getCutOffMarks());
-
+            secDto.setId(section.getId());
             // 3a. Fetch mappings for this section
             List<QuestionAssessmentSectionMapping> mappings =
                     mappingRepo.findBySectionId(section.getId());

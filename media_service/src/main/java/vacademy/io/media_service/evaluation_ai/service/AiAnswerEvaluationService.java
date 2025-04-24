@@ -1,6 +1,8 @@
+// Filename: AiAnswerEvaluationService.java
 package vacademy.io.media_service.evaluation_ai.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import lombok.RequiredArgsConstructor;
@@ -9,17 +11,20 @@ import org.apache.commons.lang3.RandomStringUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.common.ai.dto.AiEvaluationMetadata;
+import vacademy.io.common.ai.dto.AiEvaluationQuestionDTO;
+import vacademy.io.common.ai.dto.AiEvaluationSectionDTO;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.media_service.ai.DeepSeekApiService;
 import vacademy.io.media_service.dto.DeepSeekResponse;
 import vacademy.io.media_service.entity.TaskStatusEnum;
-import vacademy.io.media_service.entity.TaskStatus;
+import vacademy.io.media_service.enums.TaskStatus;
 import vacademy.io.media_service.enums.TaskTypeEnum;
 import vacademy.io.media_service.evaluation_ai.dto.EvaluationRequestResponse;
 import vacademy.io.media_service.evaluation_ai.dto.EvaluationResultFromDeepSeek;
 import vacademy.io.media_service.evaluation_ai.dto.EvaluationUserDTO;
 import vacademy.io.media_service.evaluation_ai.entity.EvaluationUser;
+import vacademy.io.media_service.evaluation_ai.enums.EvaluationStepsStatusEnum;
 import vacademy.io.media_service.evaluation_ai.repository.UserEvaluationRepository;
 import vacademy.io.media_service.repository.TaskStatusRepository;
 import vacademy.io.media_service.service.FileConversionStatusService;
@@ -46,221 +51,173 @@ public class AiAnswerEvaluationService {
     private final ObjectMapper objectMapper;
 
     public EvaluationRequestResponse evaluateAnswers(String assessmentId, List<EvaluationUserDTO> evaluationUsers) {
+        log.info("Initiating evaluation for assessmentId={}, usersCount={}", assessmentId, evaluationUsers.size());
+
         AiEvaluationMetadata metadata = assessmentService.getAssessmentMetadata(assessmentId);
+        log.info("Retrieved assessment metadata: {}", parseObjectToString(metadata));
+
         String taskId = createNewTask(UUID.randomUUID().toString());
-        EvaluationRequestResponse response = initializeResponse(taskId);
+        log.info("Created new evaluation task with taskId={}", taskId);
 
-        log.info("Starting evaluation for assessmentId={}, usersCount={}", assessmentId, evaluationUsers.size());
+        EvaluationRequestResponse response = initializeResponse(taskId, evaluationUsers);
+        response.setStatus(TaskStatusEnum.PROCESSING.name());
 
-        new Thread(() -> handleEvaluationInBackground(taskId, metadata, assessmentId, evaluationUsers)).start();
+        List<EvaluationResultFromDeepSeek.EvaluationData> evaluationData = createEvaluationResultFromUsers(evaluationUsers);
+        log.info("Prepared evaluation data for users: {}", parseObjectToString(evaluationData));
+
+        EvaluationResultFromDeepSeek evaluationResultFromDeepSeek = new EvaluationResultFromDeepSeek();
+        evaluationResultFromDeepSeek.setEvaluationData(new HashSet<>(evaluationData));
+        String responseJson = parseObjectToString(evaluationResultFromDeepSeek);
+        log.debug("Initial DeepSeek evaluation JSON payload: {}", responseJson);
+
+        response.setResponse(responseJson);
+
+        new Thread(() -> handleEvaluationInBackground(taskId, metadata, assessmentId, evaluationResultFromDeepSeek)).start();
 
         return response;
     }
 
-    private void handleEvaluationInBackground(String taskId, AiEvaluationMetadata metadata, String assessmentId, List<EvaluationUserDTO> users) {
+    private void handleEvaluationInBackground(String taskId, AiEvaluationMetadata metadata, String assessmentId, EvaluationResultFromDeepSeek evaluationResultFromDeepSeek) {
         try {
-            EvaluationResultFromDeepSeek resultContainer = prepareInitialEvaluationData();
-            Set<String> processedUsers = new HashSet<>();
-
-            for (EvaluationUserDTO user : users) {
-                if (processedUsers.contains(user.getId())) continue;
-                log.info("Processing user: {}", user.getId());
-                processAndSaveUserEvaluation(user, metadata, assessmentId, resultContainer, processedUsers);
-                finalizeEvaluationResults(taskId, resultContainer,TaskStatusEnum.PROCESSING.name());
+            for (EvaluationResultFromDeepSeek.EvaluationData evaluationData : evaluationResultFromDeepSeek.getEvaluationData()) {
+                processAndSaveUserEvaluation(evaluationData, metadata, assessmentId, evaluationResultFromDeepSeek, evaluationResultFromDeepSeek, taskId);
             }
-            finalizeEvaluationResults(taskId, resultContainer,TaskStatusEnum.COMPLETED.name());
-
+            finalizeEvaluationResults(taskId, evaluationResultFromDeepSeek);
         } catch (Exception e) {
             log.error("Evaluation failed for taskId={}", taskId, e);
             handleEvaluationFailure(taskId, e);
         }
     }
 
-    private EvaluationResultFromDeepSeek prepareInitialEvaluationData() {
-        EvaluationResultFromDeepSeek resultContainer = new EvaluationResultFromDeepSeek();
-        resultContainer.setEvaluationResults(new HashSet<>());
-        return resultContainer;
+    private void processAndSaveUserEvaluation(EvaluationResultFromDeepSeek.EvaluationData evaluationData,
+                                              AiEvaluationMetadata metadata,
+                                              String assessmentId,
+                                              EvaluationResultFromDeepSeek resultContainer,
+                                              EvaluationResultFromDeepSeek evaluationResultFromDeepSeek,
+                                              String taskId) throws Exception {
+        log.info("Processing evaluation for user: {}", evaluationData.getUserId());
+
+        String htmlAnswer = fetchHtmlAnswer(evaluationData);
+        log.debug("Fetched HTML answer for userId={}: {}", evaluationData.getUserId(), htmlAnswer);
+
+        extractAndSetAnswers(evaluationData, metadata, resultContainer, taskId, htmlAnswer);
+        log.debug("Extracted section-wise answers for userId={}: {}", evaluationData.getUserId(), parseObjectToString(evaluationData.getSectionWiseAnsExtracted()));
+
+        evaluateAndSetResults(evaluationData, metadata, resultContainer, taskId);
+        log.debug("Evaluated answers for userId={}: {}", evaluationData.getUserId(), parseObjectToString(evaluationData.getEvaluationResult()));
+
+        saveEvaluationToDb(evaluationData, assessmentId);
+        log.info("Saved evaluation result to DB for userId={}", evaluationData.getUserId());
     }
 
-    private void processAndSaveUserEvaluation(EvaluationUserDTO user, AiEvaluationMetadata metadata, String assessmentId,
-                                              EvaluationResultFromDeepSeek resultContainer, Set<String> processedUsers) throws Exception {
-
-        EvaluationResultFromDeepSeek.EvaluationResult evaluationResult = processSingleUser(user, metadata, assessmentId, processedUsers);
-        resultContainer.getEvaluationResults().add(evaluationResult);
-
-        UserDTO userDTO = userService.createOrGetExistingUser(createUserDTO(user));
-        user.setId(userDTO.getId());
-
-        String json = buildEvaluationJsonForUser(evaluationResult);
-        createOrUpdateEvaluationUser(user.getId(), "ASSESSMENT", assessmentId, json);
-        processedUsers.add(user.getId());
+    private String fetchHtmlAnswer(EvaluationResultFromDeepSeek.EvaluationData evaluationData) throws Exception {
+        return convertFileToHtml(evaluationData.getResponseId());
     }
 
-    private void finalizeEvaluationResults(String taskId, EvaluationResultFromDeepSeek results,String status) throws Exception {
+    private void extractAndSetAnswers(EvaluationResultFromDeepSeek.EvaluationData evaluationData,
+                                      AiEvaluationMetadata metadata,
+                                      EvaluationResultFromDeepSeek resultContainer,
+                                      String taskId,
+                                      String htmlAnswer) {
+        evaluationData.setStatus(EvaluationStepsStatusEnum.EXTRACTING_ANSWER.name());
+        updateTask(taskId, parseObjectToString(resultContainer), TaskStatusEnum.PROCESSING.name());
+
+        List<EvaluationResultFromDeepSeek.SectionWiseAnsExtracted> extracted =
+                extractSectionWiseAns(metadata.getSections(), htmlAnswer);
+        evaluationData.setSectionWiseAnsExtracted(extracted);
+    }
+
+    private void evaluateAndSetResults(EvaluationResultFromDeepSeek.EvaluationData evaluationData,
+                                       AiEvaluationMetadata metadata,
+                                       EvaluationResultFromDeepSeek resultContainer,
+                                       String taskId) throws Exception {
+        evaluationData.setStatus(EvaluationStepsStatusEnum.EVALUATING.name());
+        updateTask(taskId, parseObjectToString(resultContainer), TaskStatusEnum.PROCESSING.name());
+
+        EvaluationResultFromDeepSeek.EvaluationResult result =
+                evaluateAnswers(evaluationData.getSectionWiseAnsExtracted(), metadata);
+        evaluationData.setEvaluationResult(result);
+        evaluationData.setStatus(EvaluationStepsStatusEnum.EVALUATION_COMPLETED.name());
+
+        resultContainer.getEvaluationData().add(evaluationData);
+        updateTask(taskId, parseObjectToString(resultContainer), TaskStatusEnum.PROCESSING.name());
+    }
+
+    private void saveEvaluationToDb(EvaluationResultFromDeepSeek.EvaluationData evaluationData, String assessmentId) {
+        UserDTO userDTO = userService.createOrGetExistingUser(createUserDTO(evaluationData));
+        evaluationData.setUserId(userDTO.getId());
+
+        createOrUpdateEvaluationUser(
+                evaluationData.getUserId(),
+                "ASSESSMENT",
+                assessmentId,
+                buildEvaluationJsonForUser(evaluationData.getEvaluationResult())
+        );
+    }
+
+    private void finalizeEvaluationResults(String taskId, EvaluationResultFromDeepSeek results) throws Exception {
         objectMapper.setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
         String json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(results);
-        log.info("Finalizing taskId={}, results size={}", taskId, results.getEvaluationResults().size());
-        updateTask(taskId, json, status);
+        log.info("Finalizing taskId={}, results size={}", taskId, results.getEvaluationData().size());
+        updateTask(taskId, json, TaskStatusEnum.COMPLETED.name());
     }
 
     private void handleEvaluationFailure(String taskId, Exception e) {
         updateTask(taskId, "Error occurred: " + e.getMessage(), TaskStatusEnum.FAILED.name());
     }
 
-    private EvaluationRequestResponse initializeResponse(String taskId) {
+    private EvaluationRequestResponse initializeResponse(String taskId, List<EvaluationUserDTO> users) {
         EvaluationRequestResponse response = new EvaluationRequestResponse();
         response.setTaskId(taskId);
         response.setStatus(TaskStatusEnum.PROCESSING.name());
-        response.setResponse("");
         return response;
     }
 
-    private EvaluationResultFromDeepSeek.EvaluationResult processSingleUser(EvaluationUserDTO user,
-                                                                            AiEvaluationMetadata metadata,
-                                                                            String assessmentId,
-                                                                            Set<String> processedUsers) {
+    private List<EvaluationResultFromDeepSeek.EvaluationData> createEvaluationResultFromUsers(List<EvaluationUserDTO> users) {
+        List<EvaluationResultFromDeepSeek.EvaluationData> evaluationDataList = new ArrayList<>();
+        for (EvaluationUserDTO evaluationUserDTO : users) {
+            EvaluationResultFromDeepSeek.EvaluationData evaluationData = new EvaluationResultFromDeepSeek.EvaluationData();
+            evaluationData.setName(evaluationUserDTO.getFullName());
+            evaluationData.setEmail(evaluationUserDTO.getEmail());
+            evaluationData.setUserId(evaluationUserDTO.getId());
+            evaluationData.setStatus(EvaluationStepsStatusEnum.WAITING.name());
+            evaluationData.setResponseId(evaluationUserDTO.getResponseId());
+            evaluationDataList.add(evaluationData);
+        }
+        return evaluationDataList;
+    }
+
+    public String parseObjectToString(Object o) {
         try {
-            String html = convertFileToHtml(user.getResponseId());
-            String prompt = generatePromptForSingleUser(metadata, user, html);
-
-            log.info("Prompt for userId={}:\n{}", user.getId(), prompt);
-
-            return evaluateWithRetry(prompt, 5);
-        } catch (Exception e) {
-            log.error("Error processing user {}", user.getId(), e);
-            throw new VacademyException("Error processing user " + user.getId() + ": " + e.getMessage());
+            return objectMapper.writeValueAsString(o);
+        } catch (JsonProcessingException e) {
+            log.error("Failed to parse object to string", e);
+            throw new VacademyException("Failed to parse object to string");
         }
     }
 
-    private UserDTO createUserDTO(EvaluationUserDTO user) {
+    private UserDTO createUserDTO(EvaluationResultFromDeepSeek.EvaluationData evaluationData) {
         UserDTO dto = new UserDTO();
-        dto.setUsername(generateUsername(user.getFullName()));
+        dto.setUsername(generateUsername(evaluationData.getName()));
         dto.setPassword(generatePassword());
-        dto.setFullName(user.getFullName());
-        dto.setEmail(user.getEmail());
-        dto.setId(user.getId());
+        dto.setFullName(evaluationData.getName());
+        dto.setEmail(evaluationData.getEmail());
+        dto.setId(evaluationData.getUserId());
         return dto;
     }
 
-    private String buildEvaluationJsonForUser(EvaluationResultFromDeepSeek.EvaluationResult evaluationResult) throws Exception {
-        objectMapper.setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
-        return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(evaluationResult);
-    }
-
-    private String generatePromptForSingleUser(AiEvaluationMetadata metadata, EvaluationUserDTO user, String html) {
+    private String buildEvaluationJsonForUser(EvaluationResultFromDeepSeek.EvaluationResult evaluationResult) {
         try {
-            ObjectMapper objectMapper1 = new ObjectMapper();
-            String jsonAssessmentMetadata = objectMapper1.writeValueAsString(metadata);
-            return String.format("""
-        You are an AI examiner.
-
-        A student has submitted answers for an assessment in HTML format.
-        You are provided with:
-        - The **assessment metadata** (includes original questions, structure, and marking scheme).
-        - The **student's HTML answers**.
-
-        Strict Rules:
-        1. Only use questions from the `AiEvaluationMetadata`. **Ignore any student-written questions** in their HTML. The original questions are in `reach_text` field inside each question object.
-        2. For each question, extract its evaluation **criteria** from the `marking_json` field and grade the answer accordingly.
-        3. Maintain the `question_order` to match the original assessment sequence.
-        4. Your output must follow the **JSON format below exactly**, using `snake_case` keys only.
-        5. Do not include any additional fields. Do not repeat the full `marking_json`.
-
-         Field Usage:
-        - `assessmentName`: Title of the test.
-        - `instruction`: Guidelines for attempting the test.
-        - `sections`: Group of questions.
-        - Each section has:
-          - `name`: Section title.
-          - `cutoffMarks`: Minimum marks to pass this section.
-        - Each question has:
-          - `reach_text`: The actual question to be evaluated.
-          - `marking_json`: The subjective evaluation criteria. Use this to assign partial/full marks.
-
-        Respond in this structure:
-
-        {
-          "user_id": "%s",
-          "name": "%s",
-          "email": "%s",
-          "contact_number": "%s",
-          "total_marks_obtained": <numeric>,
-          "total_marks": <numeric>,
-          "overall_verdict": "pass/fail/absent/etc.",
-          "overall_description": "<brief summary>",
-          "section_wise_results": [
-            {
-              "section_id": "<string>",
-              "section_name": "<string>",
-              "marks_obtained": <numeric>,
-              "total_marks": <numeric>,
-              "verdict": "pass/fail/null",
-              "question_wise_results": [
-                {
-                  "question_id": "<string>",
-                  "question_order": <number>,
-                  "marks_obtained": <numeric>,
-                  "total_marks": <numeric>,
-                  "feedback": "<string>",
-                  "description": "<string>",
-                  "verdict": "correct/partially correct/incorrect/not attempted",
-                  "question_text": "<string>"
-                }
-              ]
-            }
-          ]
+            objectMapper.setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
+            return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(evaluationResult);
+        } catch (Exception e) {
+            log.error("Error while converting evaluation result to JSON", e);
+            return null;
         }
-
-        =============================
-        Assessment Metadata:
-        %s
-
-        Student HTML Answer:
-        %s
-        =============================
-        """,
-                    user.getId(),
-                    user.getFullName(),
-                    user.getEmail(),
-                    user.getContactNumber(),
-                    jsonAssessmentMetadata,
-                    html
-            );
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException("Failed to serialize assessment metadata", e);
-        }
-    }
-
-
-
-    private EvaluationResultFromDeepSeek.EvaluationResult evaluateWithRetry(String prompt, int maxAttempts) {
-        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-            try {
-                log.info("Attempt {} to call DeepSeek", attempt);
-                String rawResponse = getEvaluationFromAI(prompt);
-                String cleanedJson = cleanJsonMarkdown(rawResponse);
-                return objectMapper.readValue(cleanedJson, EvaluationResultFromDeepSeek.EvaluationResult.class);
-            } catch (Exception e) {
-                log.warn("DeepSeek call failed on attempt {}: {}", attempt, e.getMessage());
-                if (attempt == maxAttempts) {
-                    log.error("Max attempts reached. Failing evaluation.");
-                    throw new VacademyException("Failed after " + maxAttempts + " attempts. " + e.getMessage());
-                }
-                try {
-                    Thread.sleep(1000);
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                    throw new RuntimeException("Thread interrupted during retry", ie);
-                }
-            }
-        }
-        return null;
     }
 
     private String getEvaluationFromAI(String prompt) {
-        DeepSeekResponse response = deepSeekApiService.getChatCompletion(
-                "deepseek/deepseek-chat-v3-0324:free", prompt, 3000
-        );
+        DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt, 3000);
         return response.getChoices().get(0).getMessage().getContent();
     }
 
@@ -293,7 +250,6 @@ public class AiAnswerEvaluationService {
         TaskStatus task = taskStatusRepository.findById(taskId)
                 .orElseThrow(() -> new VacademyException("Task not found"));
         task.setStatus(status);
-        System.out.println(resultJson);
         task.setResultJson(resultJson);
         return taskStatusRepository.save(task).getId();
     }
@@ -312,7 +268,6 @@ public class AiAnswerEvaluationService {
         EvaluationUser evaluationUser = userEvaluationRepository
                 .findBySourceTypeAndSourceIdAndUserId(source, sourceId, userId)
                 .orElse(new EvaluationUser());
-
         evaluationUser.setUserId(userId);
         evaluationUser.setSourceId(sourceId);
         evaluationUser.setSourceType(source);
@@ -331,9 +286,173 @@ public class AiAnswerEvaluationService {
     }
 
     public String cleanJsonMarkdown(String raw) {
-        return raw
-                .replaceAll("(?i)^```json\\s*", "")
-                .replaceAll("```$", "")
-                .trim();
+        return raw.replaceAll("(?i)^```json\\s*", "").replaceAll("```$", "").trim();
     }
+
+    private List<EvaluationResultFromDeepSeek.SectionWiseAnsExtracted> extractSectionWiseAns(List<AiEvaluationSectionDTO> sections, String htmlAnswerSheet) {
+        String prompt = extractAnsForEachQuestionPromptForDeepSeek(sections, htmlAnswerSheet);
+
+        for (int attempt = 1; attempt <= 5; attempt++) {
+            try {
+                String extractedJson = getEvaluationFromAI(prompt);
+                extractedJson = cleanJsonMarkdown(extractedJson);
+                List<EvaluationResultFromDeepSeek.SectionWiseAnsExtracted> result = objectMapper.readValue(extractedJson, new TypeReference<>() {});
+                return result;
+            } catch (Exception e) {
+                log.warn("Attempt {} failed to parse DeepSeek answer extraction: {}", attempt, e.getMessage());
+                if (attempt == 5) {
+                    log.error("All attempts to parse DeepSeek response failed", e);
+                    throw new VacademyException("Failed to parse section-wise extracted answers after 5 attempts");
+                }
+            }
+        }
+        return Collections.emptyList();
+    }
+
+    private EvaluationResultFromDeepSeek.EvaluationResult evaluateAnswers(List<EvaluationResultFromDeepSeek.SectionWiseAnsExtracted> sectionWiseAnsExtractedss, AiEvaluationMetadata metadata) {
+        String prompt = generatePromptToEvaluateAnswer(sectionWiseAnsExtractedss, metadata);
+
+        for (int attempt = 1; attempt <= 5; attempt++) {
+            try {
+                String evaluationJson = getEvaluationFromAI(prompt);
+                evaluationJson = cleanJsonMarkdown(evaluationJson);
+                log.debug("Parsed answer: {}", objectMapper.writeValueAsString(objectMapper.readValue(evaluationJson, new TypeReference<>() {})));
+                return objectMapper.readValue(evaluationJson, new TypeReference<>() {});
+            } catch (Exception e) {
+                log.error("Attempt {}: Failed to parse evaluation result from DeepSeek", attempt, e);
+                if (attempt == 5) {
+                    throw new RuntimeException("Failed to parse evaluation result after 5 attempts", e);
+                }
+            }
+        }
+
+        throw new RuntimeException("Unexpected error during evaluation parsing");
+    }
+
+    public String extractAnsForEachQuestionPromptForDeepSeek(List<AiEvaluationSectionDTO> sections, String htmlAnswerSheet) {
+        StringBuilder prompt = new StringBuilder();
+
+        prompt.append("""
+        You are an AI assistant tasked with extracting answers from a student's HTML answer sheet.
+
+        DO NOT evaluate the answers or assign any marks.
+        Your ONLY task is to map each question (provided in the assessment metadata) to the answer written by the student.
+        If the student has not written an answer for a question, mark it as "NOT_ATTEMPTED".
+
+        Instructions:
+        - Every question from the metadata must be included in the output.
+        - Group the results section-wise.
+        - Sort questions by their 'question_order'.
+        - For each question, return:
+          - question_id
+          - question_order
+          - question_text
+          - question_wise_ans_extracted: {
+              answer_html,
+              status ("ATTEMPTED" or "NOT_ATTEMPTED")
+            }
+
+        Important: ONLY return the extracted result as a valid **JSON** in the exact structure below.
+        Do NOT include any explanation, extra text, or formatting outside of the JSON.
+
+        JSON Response Format:
+         [
+            {
+              "section_id": "<section_id>",
+              "section_name": "<section_name>",
+              "question_wise_ans_extracted": [
+                {
+                  "question_id": "<question_id>",
+                  "question_order": <order>,
+                  "question_text": "<text>",
+                  "answer_html": "<html>",
+                  "status": "ATTEMPTED" or "NOT_ATTEMPTED"
+                }
+              ]
+            }
+          ]
+
+        Below is the assessment metadata (questions grouped by sections):
+        """);
+
+        for (AiEvaluationSectionDTO section : sections) {
+            prompt.append("Section Name: ").append(section.getName()).append("\n");
+            prompt.append("Section ID: ").append(section.getId()).append("\n");
+            for (AiEvaluationQuestionDTO question : section.getQuestions()) {
+                prompt.append("- Question Order: ").append(question.getQuestionOrder()).append("\n");
+                prompt.append("  Question ID: ").append(question.getReachText().getId()).append("\n");
+                prompt.append("  Question Text: ").append(question.getReachText().getContent()).append("\n");
+            }
+            prompt.append("\n");
+        }
+
+        prompt.append("Below is the HTML answer sheet submitted by the student:\n\n")
+                .append(htmlAnswerSheet.trim());
+
+        return prompt.toString();
+    }
+
+
+    public String generatePromptToEvaluateAnswer(List<EvaluationResultFromDeepSeek.SectionWiseAnsExtracted> sectionWiseAnsExtracted, AiEvaluationMetadata metadata) {
+        StringBuilder prompt = new StringBuilder();
+
+        prompt.append("""
+        You are an AI assistant tasked with evaluating the student's answers using the metadata and answer sheet provided.
+
+        Instructions:
+        - For each question:
+            - If the student answered, evaluate and assign appropriate marks with justification.
+            - If the student skipped, mark as "NOT_ATTEMPTED" and give 0 marks.
+        - For each question, provide:
+            - Marks obtained
+            - Total marks
+            - Feedback (short and clear)
+            - Description (why marks were given/deducted)
+            - Verdict (e.g. "Correct", "Partially Correct", "Incorrect", "Not Attempted")
+
+        ⚠️ Important: ONLY return a valid **JSON** response in the exact format below.
+        Do NOT include any explanations, summaries, or additional formatting.
+
+        JSON Response Format:
+        {
+          "total_marks_obtained": <double>,
+          "total_marks": <double>,
+          "overall_verdict": "<verdict>",
+          "overall_description": "<short summary>",
+          "section_wise_results": [
+            {
+              "section_id": "<section_id>",
+              "section_name": "<section_name>",
+              "marks_obtained": <double>,
+              "total_marks": <double>,
+              "verdict": "<section_verdict>",
+              "question_wise_results": [
+                {
+                  "question_id": "<question_id>",
+                  "question_order": <int>,
+                  "question_text": "<text>",
+                  "marks_obtained": <double>,
+                  "total_marks": <double>,
+                  "feedback": "<short comment>",
+                  "description": "<detailed reasoning>",
+                  "verdict": "<Correct/Incorrect/Partially Correct/Not Attempted>"
+                }
+              ]
+            }
+          ]
+        }
+
+        Use the following metadata and student answers for evaluation:
+        """);
+
+        try {
+            prompt.append("\nMetadata:\n").append(objectMapper.writeValueAsString(metadata));
+            prompt.append("\n\nStudent Answers:\n").append(objectMapper.writeValueAsString(sectionWiseAnsExtracted));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        return prompt.toString();
+    }
+
 }

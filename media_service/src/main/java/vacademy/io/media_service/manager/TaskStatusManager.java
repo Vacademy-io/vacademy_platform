@@ -9,6 +9,7 @@ import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.media_service.ai.DeepSeekService;
 import vacademy.io.media_service.dto.AiGeneratedQuestionPaperJsonDto;
 import vacademy.io.media_service.dto.AutoQuestionPaperResponse;
+import vacademy.io.media_service.dto.lecture.LecturePlanDto;
 import vacademy.io.media_service.dto.task_status.TaskStatusDto;
 import vacademy.io.media_service.entity.TaskStatus;
 import vacademy.io.media_service.service.TaskStatusService;
@@ -84,5 +85,27 @@ public class TaskStatusManager {
         }
 
         return autoQuestionPaperResponse;
+    }
+
+    public ResponseEntity<LecturePlanDto> getLecturePlan(String taskId) {
+        Optional<TaskStatus> taskStatus = taskStatusService.getTaskStatusById(taskId);
+        if(taskStatus.isEmpty()) throw new VacademyException("Task Not Found");
+
+        String resultJson = taskStatus.get().getResultJson();
+        if(Objects.isNull(resultJson) || resultJson.isEmpty()) return ResponseEntity.ok(new LecturePlanDto());
+
+        try{
+            String validJson = JsonUtils.extractAndSanitizeJson(resultJson);
+            return ResponseEntity.ok(createLecturePlanDtoFromJson(removeExtraSlashes(validJson)));
+
+        } catch (Exception e) {
+            return ResponseEntity.ok(new LecturePlanDto());
+        }
+    }
+
+    private LecturePlanDto createLecturePlanDtoFromJson(String validJson) throws Exception{
+        ObjectMapper objectMapper = new ObjectMapper();
+        return objectMapper.readValue(validJson, LecturePlanDto.class);
+
     }
 }

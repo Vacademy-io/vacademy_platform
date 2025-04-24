@@ -16,4 +16,5 @@ public class AiEvaluationSectionDTO {
     private List<AiEvaluationQuestionDTO>questions;
     private Double cutoffMarks;
     private String name;
+    private String id;
 }

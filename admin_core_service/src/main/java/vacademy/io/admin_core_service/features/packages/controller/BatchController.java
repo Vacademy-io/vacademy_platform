@@ -27,4 +27,9 @@ public class BatchController {
         List<PackageDTOWithBatchDetails> batchDetails = batchService.getBatchDetails(sessionId,instituteId, user);
         return ResponseEntity.ok(batchDetails);
     }
+
+    @DeleteMapping("/delete-batches")
+    public ResponseEntity<String>deleteBatches(@RequestBody String[]packageSessionIds,@RequestAttribute("user") CustomUserDetails userDetails){
+        return ResponseEntity.ok(batchService.deletePackageSession(packageSessionIds,userDetails));
+    }
 }

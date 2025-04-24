@@ -4,10 +4,17 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import vacademy.io.media_service.ai.DeepSeekLectureService;
 import vacademy.io.media_service.ai.DeepSeekService;
 import vacademy.io.media_service.enums.TaskInputTypeEnum;
 import vacademy.io.media_service.entity.TaskStatus;
+import vacademy.io.media_service.enums.TaskStatusTypeEnum;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.text.SimpleDateFormat;
+import java.util.Base64;
+import java.util.Date;
 import java.util.concurrent.CompletableFuture;
 
 @Slf4j
@@ -19,6 +26,9 @@ public class DeepSeekAsyncTaskService {
 
     @Autowired
     DeepSeekService deepSeekService;
+
+    @Autowired
+    DeepSeekLectureService deepSeekLectureService;
 
     public void processDeepSeekTaskInBackground(String taskId, String pdfId, String userPrompt, String networkHtml, String taskName, String instituteId) {
         try {
@@ -78,6 +88,40 @@ public class DeepSeekAsyncTaskService {
             taskStatusService.updateTaskStatus(taskStatus, "COMPLETED", rawOutput);
         } catch (Exception e) {
             log.error("Failed To Generate: "+e.getMessage());
+        }
+    }
+
+    @Async
+    public CompletableFuture<Void> processDeepSeekTaskInBackgroundWrapperForLecturePlanner(String userPrompt, String lectureDuration, String language, String methodOfTeaching, String taskName, String instituteId,String level) {
+        return CompletableFuture.runAsync(()-> processDeepSeekTaskInBackgroundForLecturePlanner(userPrompt,lectureDuration,language,methodOfTeaching,taskName,instituteId,level));
+    }
+
+    private void processDeepSeekTaskInBackgroundForLecturePlanner(String userPrompt, String lectureDuration, String language, String methodOfTeaching,String taskName,String instituteId,String level) {
+        try {
+
+            TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(null, TaskStatusTypeEnum.LECTURE_PLANNER.name(), generateUniqueId(userPrompt), TaskInputTypeEnum.PROMPT_ID.name(), taskName,instituteId);
+
+            String rawOutput = (deepSeekLectureService.generateLecturePlannerFromPrompt(userPrompt, lectureDuration, language, methodOfTeaching,taskStatus,level,0));
+
+            taskStatusService.updateTaskStatus(taskStatus, "COMPLETED", rawOutput);
+        } catch (Exception e) {
+            log.error("Failed To Generate: "+e.getMessage());
+        }
+    }
+
+    public static String generateUniqueId(String input) {
+        try {
+            String timestamp = new SimpleDateFormat("yyyyMMddHHmmssSSS").format(new Date());
+            String combined = input + "-" + timestamp;
+
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(combined.getBytes(StandardCharsets.UTF_8));
+            String base64Encoded = Base64.getUrlEncoder().withoutPadding().encodeToString(hash);
+
+            // Return first 20 characters for uniqueness + brevity
+            return base64Encoded.substring(0, 20);
+        } catch (Exception e) {
+            throw new RuntimeException("Error generating unique ID", e);
         }
     }
 }

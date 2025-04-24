@@ -5,6 +5,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.media_service.dto.AutoQuestionPaperResponse;
+import vacademy.io.media_service.dto.lecture.LecturePlanDto;
 import vacademy.io.media_service.dto.task_status.TaskStatusDto;
 import vacademy.io.media_service.manager.TaskStatusManager;
 
@@ -28,4 +29,10 @@ public class TaskGetController {
     public ResponseEntity<AutoQuestionPaperResponse> getAllQuestions(@RequestParam("taskId") String taskId){
         return taskStatusManager.getAllQuestions(taskId);
     }
+
+    @GetMapping("/get/lecture-plan")
+    public ResponseEntity<LecturePlanDto> getLecturePlan(@RequestParam("taskId") String taskId){
+        return taskStatusManager.getLecturePlan(taskId);
+    }
+
 }

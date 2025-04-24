@@ -48,8 +48,8 @@ public class DeepSeekLectureService {
                             {{
                                "heading":"String",  //Provide Heading of the Lecture
                                "mode": {methodOfTeaching},    
-                               "Duration": {lectureDuration},
-                               "Language": {language},
+                               "duration": {lectureDuration},
+                               "language": {language},
                                "level": {level},
                                "timeWiseSplit":[
                                                {{ 

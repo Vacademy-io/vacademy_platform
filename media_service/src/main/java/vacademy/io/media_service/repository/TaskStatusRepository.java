@@ -4,7 +4,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
-import vacademy.io.media_service.enums.TaskStatus;
+import vacademy.io.media_service.entity.TaskStatus;
 
 import java.util.List;
 
@@ -43,4 +43,19 @@ public interface TaskStatusRepository extends JpaRepository<TaskStatus, String> 
                                                                               @Param("instituteId") String instituteId,
                                                                               @Param("inputId") String inputId,
                                                                               @Param("inputType") String inputType);
+
+    @Query(value = """
+            SELECT * FROM task_status
+            WHERE id =:parentId
+            OR parent_id =:parentId
+            ORDER BY created_at ASC
+            """,nativeQuery = true)
+    List<TaskStatus> findByParentIdAndTaskWithParentId(@Param("parentId") String parentId);
+
+    @Query(value = """
+            SELECT * FROM task_status
+            WHERE institute_id = :instituteId
+            AND parent_id IS NULL
+            """,nativeQuery = true)
+    List<TaskStatus> findByInstituteIdAndNullParentId(@Param("instituteId") String instituteId);
 }

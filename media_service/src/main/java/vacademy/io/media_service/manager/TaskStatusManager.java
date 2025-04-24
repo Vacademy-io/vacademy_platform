@@ -5,13 +5,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
-import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.media_service.ai.DeepSeekService;
 import vacademy.io.media_service.dto.AiGeneratedQuestionPaperJsonDto;
 import vacademy.io.media_service.dto.AutoQuestionPaperResponse;
 import vacademy.io.media_service.dto.task_status.TaskStatusDto;
-import vacademy.io.media_service.enums.TaskStatus;
+import vacademy.io.media_service.entity.TaskStatus;
 import vacademy.io.media_service.service.TaskStatusService;
 import vacademy.io.media_service.util.JsonUtils;
 

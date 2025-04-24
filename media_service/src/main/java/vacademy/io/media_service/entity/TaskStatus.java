@@ -1,4 +1,4 @@
-package vacademy.io.media_service.enums;
+package vacademy.io.media_service.entity;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.Column;
@@ -44,6 +44,9 @@ public class TaskStatus {
     @Column(name = "input_type")
     private String inputType;
 
+    @Column(name = "parent_id")
+    private String parentId;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;
 
@@ -61,6 +64,7 @@ public class TaskStatus {
                 .resultJson(this.resultJson)
                 .instituteId(this.instituteId)
                 .createdAt(this.createdAt)
+                .parentId(this.parentId)
                 .updatedAt(this.updatedAt).build();
     }
 

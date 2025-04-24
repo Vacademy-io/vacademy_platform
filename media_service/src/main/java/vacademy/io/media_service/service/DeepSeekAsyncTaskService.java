@@ -5,7 +5,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import vacademy.io.media_service.ai.DeepSeekService;
-import vacademy.io.media_service.enums.TaskStatus;
+import vacademy.io.media_service.enums.TaskInputTypeEnum;
+import vacademy.io.media_service.entity.TaskStatus;
 
 import java.util.concurrent.CompletableFuture;
 
@@ -70,7 +71,7 @@ public class DeepSeekAsyncTaskService {
         try {
             String restoreJson = (taskId == null || taskId.isBlank()) ? "" : taskStatusService.getResultJsonFromTaskId(taskId);
 
-            TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(taskId, "AUDIO_TO_QUESTIONS", audioId, "AUDIO_ID", taskName,instituteId);
+            TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(taskId, "AUDIO_TO_QUESTIONS", audioId, TaskInputTypeEnum.AUDIO_ID.name(), taskName,instituteId);
 
             String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromAudio(convertedText, difficulty, numQuestions, prompt, restoreJson,0,taskStatus));
 

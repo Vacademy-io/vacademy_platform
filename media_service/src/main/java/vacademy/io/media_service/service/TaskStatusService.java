@@ -8,7 +8,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import vacademy.io.media_service.dto.chat_with_pdf.ChatWithPdfResponse;
 import vacademy.io.media_service.dto.task_status.TaskStatusDto;
-import vacademy.io.media_service.enums.TaskStatus;
+import vacademy.io.media_service.entity.TaskStatus;
+import vacademy.io.media_service.enums.TaskStatusEnum;
 import vacademy.io.media_service.repository.TaskStatusRepository;
 import vacademy.io.media_service.service.pdf_covert.ConversationDto;
 
@@ -141,15 +142,16 @@ public class TaskStatusService {
         }
     }
 
-    public TaskStatus createNewTaskForResult(String instituteId, String type, String inputId, String inputType, String instituteId1, String rawOutput,String taskName) {
+    public TaskStatus createNewTaskForResult(String instituteId, String type, String inputId, String inputType, String rawOutput,String taskName, String parentId) {
         TaskStatus taskStatus = new TaskStatus();
-        taskStatus.setStatus("PROGRESS");
+        taskStatus.setStatus(TaskStatusEnum.COMPLETED.name());
         taskStatus.setType(type);
         taskStatus.setInputId(inputId);
         taskStatus.setInputType(inputType);
         taskStatus.setTaskName(taskName);
         taskStatus.setInstituteId(instituteId);
         taskStatus.setResultJson(rawOutput);
+        taskStatus.setParentId(parentId);
         return taskStatusRepository.save(taskStatus);
     }
 
@@ -165,5 +167,13 @@ public class TaskStatusService {
             }
         });
         return response;
+    }
+
+    public List<TaskStatus> getAllTaskFromParentIdAndWithParentId(String parentId) {
+        return taskStatusRepository.findByParentIdAndTaskWithParentId(parentId);
+    }
+
+    public List<TaskStatus> getTaskStatusesByInstituteIdAndNoParentId(String instituteId) {
+        return taskStatusRepository.findByInstituteIdAndNullParentId(instituteId);
     }
 }

@@ -14,7 +14,7 @@ import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.media_service.ai.DeepSeekApiService;
 import vacademy.io.media_service.dto.DeepSeekResponse;
 import vacademy.io.media_service.entity.TaskStatusEnum;
-import vacademy.io.media_service.enums.TaskStatus;
+import vacademy.io.media_service.entity.TaskStatus;
 import vacademy.io.media_service.enums.TaskTypeEnum;
 import vacademy.io.media_service.evaluation_ai.dto.EvaluationRequestResponse;
 import vacademy.io.media_service.evaluation_ai.dto.EvaluationResultFromDeepSeek;

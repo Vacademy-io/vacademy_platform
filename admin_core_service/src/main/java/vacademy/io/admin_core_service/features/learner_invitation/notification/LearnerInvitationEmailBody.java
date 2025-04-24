@@ -1,9 +1,10 @@
 package vacademy.io.admin_core_service.features.learner_invitation.notification;
 
 public class LearnerInvitationEmailBody {
-    private static final String LEARNER_INVITATION_FORM_URL = "https://frontend-learner-dashboard-app.pages.dev/login";
+    private static final String LEARNER_INVITATION_FORM_URL = "https://frontend-learner-dashboard-app.pages.dev/learner-invitation-response?instituteId=%s&inviteCode=%s";
     private static final String LEARNER_STATUS_UPDATE_CHECK_URL = "https://frontend-learner-dashboard-app.pages.dev/login";
-    public static String getLearnerInvitationEmailBody(String instituteName, String invitationCode) {
+
+    public static String getLearnerInvitationEmailBody(String instituteName, String instituteId, String invitationCode) {
         return "<!DOCTYPE html>" +
                 "<html>" +
                 "<head>" +
@@ -25,7 +26,7 @@ public class LearnerInvitationEmailBody {
                 "<p><strong>Your unique invitation code:</strong></p>" +
                 "<h3 style='color: #ffa31a;'>" + invitationCode + "</h3>" +
                 "<p>Click the button below to access the registration form:</p>" +
-                "<a href='" + LEARNER_INVITATION_FORM_URL + "?code=" + invitationCode + "' target='_blank' class='btn'>Complete Registration</a>" +
+                "<a href='" + String.format(LEARNER_INVITATION_FORM_URL, instituteId, invitationCode) + "' target='_blank' class='btn'>Complete Registration</a>" +
                 "<p>This link is only valid for a limited time, so kindly complete the process at your earliest convenience.</p>" +
                 "<p>If you have any questions, feel free to reach out to us.</p>" +
                 "<p>Best regards,</p>" +
@@ -35,7 +36,6 @@ public class LearnerInvitationEmailBody {
                 "</body>" +
                 "</html>";
     }
-
 
     public static String getLearnerStatusUpdateEmailBody(String instituteName) {
         return "<!DOCTYPE html>" +
@@ -57,8 +57,7 @@ public class LearnerInvitationEmailBody {
                 "<p>Dear Learner,</p>" +
                 "<p>Thank you for submitting your application to <strong>" + instituteName + "</strong>. You can now track the status of your application and view any updates from the institute.</p>" +
                 "<p>Click the button below to check your status:</p>" +
-                "<a href='" + LEARNER_STATUS_UPDATE_CHECK_URL + "?code=' target='_blank' class='btn'>Check Application Status</a>" +
-                "<p>Please keep this code safe, as you may need it for future reference.</p>" +
+                "<a href='" + LEARNER_STATUS_UPDATE_CHECK_URL + "' target='_blank' class='btn'>Check Application Status</a>" +
                 "<p>If you have any questions or require assistance, feel free to reach out to us.</p>" +
                 "<p>Best regards,</p>" +
                 "<p><strong>" + instituteName + " Team</strong></p>" +
@@ -97,5 +96,4 @@ public class LearnerInvitationEmailBody {
                 "</body>" +
                 "</html>";
     }
-
 }

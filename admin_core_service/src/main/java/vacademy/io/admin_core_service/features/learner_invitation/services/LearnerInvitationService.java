@@ -55,14 +55,14 @@ public class LearnerInvitationService {
 
         List<String> emails = addLearnerInvitationDTO.getEmailsToSendInvitation();
         if (emails != null && !emails.isEmpty()) {
-            sendLearnerInvitationNotificationAsync(emails, institute.getInstituteName(), learnerInvitationDTO.getInviteCode());
+            sendLearnerInvitationNotificationAsync(emails, institute.getInstituteName(),institute.getId(), learnerInvitationDTO.getInviteCode());
         }
 
         return learnerInvitation.mapToDTO();
     }
 
-    public void sendLearnerInvitationNotificationAsync(List<String> emails, String instituteName, String invitationCode) {
-        notification.sendLearnerInvitationNotification(emails, instituteName, invitationCode);
+    public void sendLearnerInvitationNotificationAsync(List<String> emails, String instituteName,String instituteId, String invitationCode) {
+        notification.sendLearnerInvitationNotification(emails, instituteName,instituteId, invitationCode);
     }
 
     private void validateRequest(LearnerInvitationDTO learnerInvitationDTO) {
@@ -164,7 +164,8 @@ public class LearnerInvitationService {
     private LearnerInvitationCustomField updateExistingField(LearnerInvitationCustomField field, LearnerInvitationCustomFieldDTO dto) {
         if (StringUtils.hasText(dto.getFieldName())) field.setFieldName(dto.getFieldName());
         if (StringUtils.hasText(dto.getFieldType())) field.setFieldType(dto.getFieldType());
-        if (StringUtils.hasText(dto.getCommaSeparatedOptions())) field.setCommaSeparatedOptions(dto.getCommaSeparatedOptions());
+        if (StringUtils.hasText(dto.getCommaSeparatedOptions()))
+            field.setCommaSeparatedOptions(dto.getCommaSeparatedOptions());
         if (dto.getIsMandatory() != null) field.setIsMandatory(dto.getIsMandatory());
         if (StringUtils.hasText(dto.getDescription())) field.setDescription(dto.getDescription());
         if (StringUtils.hasText(dto.getDefaultValue())) field.setDefaultValue(dto.getDefaultValue());

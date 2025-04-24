@@ -68,11 +68,7 @@ public class EvaluationResultFromDeepSeek {
         @JsonProperty("question_text")
         private String questionText;
 
-        @JsonProperty("answer_html")
-        private String answerHtml;
 
-        @JsonProperty("status")
-        private String status; // ATTEMPTED, NOT_ATTEMPTED
     }
 
     // STEP 2: Evaluation Result after answer extraction

@@ -40,6 +40,9 @@ public class AudioQuestionGeneratorController {
     @Autowired
     private NewAudioConverterService newAudioConverterService;
 
+    @Autowired
+    DeepSeekAsyncTaskService deepSeekAsyncTaskService;
+
     public static String removeExtraSlashes(String input) {
         // Regular expression to match <img src="..."> and replace with <img src="...">
         String regex = "<img src=\\\\\"(.*?)\\\\\">";
@@ -99,7 +102,10 @@ public class AudioQuestionGeneratorController {
 
 
     @GetMapping("/audio-parser/audio-to-questions")
-    public ResponseEntity<AutoQuestionPaperResponse> getMathParserPdfHtml(@RequestParam String audioId, @RequestParam(required = false) String numQuestions, @RequestParam(required = false) String prompt, @RequestParam(required = false) String difficulty, @RequestParam(required = false) String language) throws IOException {
+    public ResponseEntity<String> getMathParserPdfHtml(@RequestParam String audioId, @RequestParam(required = false) String numQuestions, @RequestParam(required = false) String prompt, @RequestParam(required = false) String difficulty, @RequestParam(required = false) String language,
+                                                                          @RequestParam(name = "taskId" , required = false) String taskId,
+                                                                          @RequestParam(name = "taskName", required = false) String taskName,
+                                                                          @RequestParam(name = "instituteId", required = false) String instituteId) throws IOException {
 
         if (difficulty == null) {
             difficulty = "hard and medium";
@@ -127,19 +133,12 @@ public class AudioQuestionGeneratorController {
 
 
             fileConversionStatusService.updateHtmlText(audioId, convertedText);
-            String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromAudio(convertedText, numQuestions, prompt, difficulty, language));
+            deepSeekAsyncTaskService.processDeepSeekTaskInBackgroundWrapperForAudioToQuestions(taskId,convertedText,numQuestions,prompt,difficulty,language,taskName,instituteId, audioId);
 
-            // Process the raw output to get valid JSON
-            String validJson = JsonUtils.extractAndSanitizeJson(rawOutput);
-
-            return ResponseEntity.ok(createAutoQuestionPaperResponse(removeExtraSlashes(validJson)));
+            return ResponseEntity.ok("Done");
         }
-
-        String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromAudio(fileConversionStatus.get().getHtmlText(), numQuestions, prompt, difficulty, language));
-
-        // Process the raw output to get valid JSON
-        String validJson = JsonUtils.extractAndSanitizeJson(rawOutput);
-        return ResponseEntity.ok(createAutoQuestionPaperResponse(removeExtraSlashes(validJson)));
+        deepSeekAsyncTaskService.processDeepSeekTaskInBackgroundWrapperForAudioToQuestions(taskId,fileConversionStatus.get().getHtmlText(),numQuestions,prompt,difficulty,language,taskName,instituteId, audioId);
+        return ResponseEntity.ok("Done");
     }
 
 

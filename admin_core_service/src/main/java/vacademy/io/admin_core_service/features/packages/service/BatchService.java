@@ -30,4 +30,9 @@ public class BatchService {
         }
         return packageDTOWithBatchDetails;
     }
+
+    public String deletePackageSession(String[] packageSessionIds, CustomUserDetails userDetails){
+        packageSessionRepository.updateStatusByPackageSessionIds(PackageSessionStatusEnum.DELETED.name(),packageSessionIds);
+        return "Package Session deleted successfully.";
+    }
 }

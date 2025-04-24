@@ -17,6 +17,7 @@ public class AiGeneratedQuestionPaperJsonDto {
     private List<String> tags;
     private String difficulty;
     private String description;
+    private Boolean isProcessCompleted;
     private List<String> subjects;
     private List<String> classes;
 }

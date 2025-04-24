@@ -114,7 +114,7 @@ public class LmsReportExportService {
 
     public byte[] generateModuleProgressReport(String moduleId,String userId,String packageSessionId, CustomUserDetails userDetails) {
         try {
-            List<ChapterSlideProgressDTO>chapterSlideProgress = learnerReportService.getChapterSlideProgress(moduleId,userId,userDetails);
+            List<LearnerChapterSlideProgressDTO>chapterSlideProgress = learnerReportService.getChapterSlideProgress(moduleId,userId,packageSessionId,userDetails);
             Student student = fetchStudent(userId);
 //            BatchInstituteProjection projection = fetchBatchAndInstitute(reportFilterDTO);
             String html = HtmlBuilderService.getModuleWiseReportHtml(chapterSlideProgress,student.getFullName(),new Date().toString(),"Premium Pro Group","M1" ,"Bhopal","202025","202025");

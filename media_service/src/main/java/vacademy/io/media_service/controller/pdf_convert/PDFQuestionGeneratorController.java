@@ -2,11 +2,7 @@ package vacademy.io.media_service.controller.pdf_convert;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.jsoup.Jsoup;
-import org.jsoup.nodes.Comment;
-import org.jsoup.nodes.Document;
-import org.jsoup.nodes.Element;
-import org.jsoup.select.Elements;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.ObjectUtils;
@@ -21,12 +17,11 @@ import vacademy.io.media_service.service.*;
 import vacademy.io.media_service.util.JsonUtils;
 
 import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 
+@Slf4j
 @RestController
 @RequestMapping("/media-service/ai/get-question-pdf")
 public class PDFQuestionGeneratorController {
@@ -46,6 +41,12 @@ public class PDFQuestionGeneratorController {
 
     @Autowired
     private NewDocConverterService newDocConverterService;
+
+    @Autowired
+    TaskStatusService taskStatusService;
+
+    @Autowired
+    DeepSeekAsyncTaskService deepSeekAsyncTaskService;
 
     public static String removeExtraSlashes(String input) {
         // Regular expression to match <img src="..."> and replace with <img src="...">
@@ -132,7 +133,11 @@ public class PDFQuestionGeneratorController {
 
 
     @GetMapping("/math-parser/pdf-to-questions")
-    public ResponseEntity<AutoQuestionPaperResponse> getMathParserPdfHtml(@RequestParam String pdfId, @RequestParam(required = false) String userPrompt) throws IOException {
+    public ResponseEntity<String> getMathParserPdfHtml(@RequestParam String pdfId,
+                                                                          @RequestParam(required = false) String userPrompt,
+                                                                          @RequestParam(name = "taskId" , required = false) String taskId,
+                                                                          @RequestParam(name = "taskName", required = false) String taskName,
+                                                                          @RequestParam(name = "instituteId", required = false) String instituteId) throws IOException {
 
         var fileConversionStatus = fileConversionStatusService.findByVendorFileId(pdfId);
 
@@ -145,20 +150,14 @@ public class PDFQuestionGeneratorController {
             String networkHtml = htmlImageConverter.convertBase64ToUrls(htmlBody);
 
             fileConversionStatusService.updateHtmlText(pdfId, networkHtml);
-            String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromHTML(networkHtml, userPrompt));
+            deepSeekAsyncTaskService.processDeepSeekTaskInBackgroundWrapperForPdfToQuestions(taskId,pdfId,userPrompt,networkHtml,taskName,instituteId);
 
-            // Process the raw output to get valid JSON
-            String validJson = JsonUtils.extractAndSanitizeJson(rawOutput);
-
-            return ResponseEntity.ok(createAutoQuestionPaperResponse(removeExtraSlashes(validJson)));
-
+            return ResponseEntity.ok("Done");
         }
 
-        String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromHTML(fileConversionStatus.get().getHtmlText(), userPrompt));
+        deepSeekAsyncTaskService.processDeepSeekTaskInBackgroundWrapperForPdfToQuestions(taskId,pdfId,userPrompt,fileConversionStatus.get().getHtmlText(), taskName,instituteId);
 
-        // Process the raw output to get valid JSON
-        String validJson = JsonUtils.extractAndSanitizeJson(rawOutput);
-        return ResponseEntity.ok(createAutoQuestionPaperResponse(removeExtraSlashes(validJson)));
+        return ResponseEntity.ok("Done");
     }
 
     @GetMapping("/math-parser/topic-wise/pdf-to-questions")
@@ -224,7 +223,10 @@ public class PDFQuestionGeneratorController {
     }
 
     @GetMapping("/math-parser/pdf-to-extract-topic-questions")
-    public ResponseEntity<AutoQuestionPaperResponse> getMathParserPdfTopicQuestions(@RequestParam String pdfId, @RequestParam String requiredTopics) throws IOException {
+    public ResponseEntity<String> getMathParserPdfTopicQuestions(@RequestParam String pdfId, @RequestParam String requiredTopics,
+                                                                 @RequestParam(name = "taskId", required = false) String taskId,
+                                                                 @RequestParam(name = "taskName", required = false) String taskName,
+                                                                 @RequestParam(name = "instituteId", required = false) String instituteId) throws IOException {
 
         var fileConversionStatus = fileConversionStatusService.findByVendorFileId(pdfId);
 
@@ -237,19 +239,14 @@ public class PDFQuestionGeneratorController {
             String networkHtml = htmlImageConverter.convertBase64ToUrls(htmlBody);
 
             fileConversionStatusService.updateHtmlText(pdfId, networkHtml);
-            String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromHTMLOfTopics(networkHtml, requiredTopics));
+            deepSeekAsyncTaskService.processDeepSeekTaskInBackgroundWrapperForPdfToQuestionsOfTopics(taskId,pdfId,networkHtml,requiredTopics,taskName, instituteId);
 
-            // Process the raw output to get valid JSON
-            String validJson = JsonUtils.extractAndSanitizeJson(rawOutput);
-
-            return ResponseEntity.ok(createAutoQuestionPaperResponse(removeExtraSlashes(validJson)));
+            return ResponseEntity.ok("Done");
         }
 
-        String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromHTMLOfTopics(fileConversionStatus.get().getHtmlText(), requiredTopics));
+        deepSeekAsyncTaskService.processDeepSeekTaskInBackgroundWrapperForPdfToQuestionsOfTopics(taskId,pdfId,fileConversionStatus.get().getHtmlText(),requiredTopics,taskName, instituteId);
+        return ResponseEntity.ok("Done");
 
-        // Process the raw output to get valid JSON
-        String validJson = JsonUtils.extractAndSanitizeJson(rawOutput);
-        return ResponseEntity.ok(createAutoQuestionPaperResponse(removeExtraSlashes(validJson)));
     }
 
 

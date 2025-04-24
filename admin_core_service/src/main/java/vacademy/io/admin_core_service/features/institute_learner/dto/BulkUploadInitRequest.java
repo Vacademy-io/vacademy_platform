@@ -31,6 +31,8 @@ public class BulkUploadInitRequest {
         private boolean includeParentsMobileNumber;
         private boolean includeParentsEmail;
         private boolean includeLinkedInstituteName;
+        private boolean includeParentsToMotherEmail;
+        private boolean includeParentsToMotherMobile;
     }
 
     @Data

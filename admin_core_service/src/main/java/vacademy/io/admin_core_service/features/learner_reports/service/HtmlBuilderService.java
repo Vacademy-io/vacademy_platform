@@ -903,7 +903,7 @@ public class HtmlBuilderService {
         return html.toString();
     }
 
-    public static String getModuleWiseReportHtml(List<ChapterSlideProgressDTO> chapters,
+    public static String getModuleWiseReportHtml(List<LearnerChapterSlideProgressDTO> chapters,
                                                  String learnerName,
                                                  String dateGenerated,
                                                  String subject,
@@ -956,7 +956,7 @@ public class HtmlBuilderService {
 
         StringBuilder chapterTables = new StringBuilder();
 
-        for (ChapterSlideProgressDTO chapter : chapters) {
+        for (LearnerChapterSlideProgressDTO chapter : chapters) {
             chapterTables.append("<div class='chapter-title'>Chapter&nbsp;&nbsp;<span style='color: #e65100;'>")
                     .append(escapeHtml(chapter.getChapterName()))
                     .append("</span></div>");
@@ -976,7 +976,7 @@ public class HtmlBuilderService {
   <tbody>
 """);
 
-            for (ChapterSlideProgressDTO.SlideProgressDTO slide : chapter.getSlides()) {
+            for (LearnerChapterSlideProgressDTO.SlideProgressDTO slide : chapter.getSlides()) {
                 chapterTables.append("<tr>");
                 chapterTables.append("<td class='icon'>▶️</td>");
                 chapterTables.append("<td>").append(escapeHtml(slide.getSlideTitle())).append("</td>");

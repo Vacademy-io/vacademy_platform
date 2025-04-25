@@ -73,15 +73,15 @@ public class AiAnswerEvaluationService {
 
         response.setResponse(responseJson);
 
-        new Thread(() -> handleEvaluationInBackground(taskId, metadata, assessmentId, evaluationResultFromDeepSeek)).start();
+        new Thread(() -> handleEvaluationInBackground(taskId, metadata, assessmentId, evaluationResultFromDeepSeek,evaluationData)).start();
 
         return response;
     }
 
-    private void handleEvaluationInBackground(String taskId, AiEvaluationMetadata metadata, String assessmentId, EvaluationResultFromDeepSeek evaluationResultFromDeepSeek) {
+    private void handleEvaluationInBackground(String taskId, AiEvaluationMetadata metadata, String assessmentId, EvaluationResultFromDeepSeek evaluationResultFromDeepSeek, List<EvaluationResultFromDeepSeek.EvaluationData>evaluationData) {
         try {
-            for (EvaluationResultFromDeepSeek.EvaluationData evaluationData : evaluationResultFromDeepSeek.getEvaluationData()) {
-                processAndSaveUserEvaluation(evaluationData, metadata, assessmentId, evaluationResultFromDeepSeek, taskId);
+            for (int i = 0;i < evaluationData.size();i++) {
+                processAndSaveUserEvaluation(evaluationData.get(i), metadata, assessmentId, evaluationResultFromDeepSeek, taskId);
             }
             finalizeEvaluationResults(taskId, evaluationResultFromDeepSeek);
         } catch (Exception e) {

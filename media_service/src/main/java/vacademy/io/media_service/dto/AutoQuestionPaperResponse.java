@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.*;
 
 import java.util.List;
+import java.util.Map;
 
 @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
 @Getter
@@ -22,4 +23,5 @@ public class AutoQuestionPaperResponse {
     private String description;
     private List<String> subjects;
     private List<String> classes;
+    private TopicNumberMapDto topicQuestionMap;
 }

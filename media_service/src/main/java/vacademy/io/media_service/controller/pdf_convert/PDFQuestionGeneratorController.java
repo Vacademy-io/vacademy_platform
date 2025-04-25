@@ -161,7 +161,9 @@ public class PDFQuestionGeneratorController {
     }
 
     @GetMapping("/math-parser/topic-wise/pdf-to-questions")
-    public ResponseEntity<AutoQuestionPaperResponse> getMathParserPdfWithTopicHtml(@RequestParam String pdfId, @RequestParam(required = false) String userPrompt) throws IOException {
+    public ResponseEntity<String> getMathParserPdfWithTopicHtml(@RequestParam String pdfId, @RequestParam(required = false) String userPrompt,
+                                                                                   @RequestParam("instituteId")String instituteId,
+                                                                                   @RequestParam("taskName") String taskName) throws IOException {
 
         var fileConversionStatus = fileConversionStatusService.findByVendorFileId(pdfId);
 
@@ -174,20 +176,16 @@ public class PDFQuestionGeneratorController {
             String networkHtml = htmlImageConverter.convertBase64ToUrls(htmlBody);
 
             fileConversionStatusService.updateHtmlText(pdfId, networkHtml);
-            String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromHTMLWithTopics(networkHtml, userPrompt));
 
-            // Process the raw output to get valid JSON
-            String validJson = JsonUtils.extractAndSanitizeJson(rawOutput);
+            deepSeekAsyncTaskService.processDeepSeekTaskInBackgroundWrapperForSortPdfQuestionsWithTopics(networkHtml, pdfId,userPrompt,instituteId,taskName);
 
-            return ResponseEntity.ok(createAutoQuestionPaperResponse(removeExtraSlashes(validJson)));
+
+
+            return ResponseEntity.ok("Done");
 
         }
-
-        String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromHTMLWithTopics(fileConversionStatus.get().getHtmlText(), userPrompt));
-
-        // Process the raw output to get valid JSON
-        String validJson = JsonUtils.extractAndSanitizeJson(rawOutput);
-        return ResponseEntity.ok(createAutoQuestionPaperResponse(removeExtraSlashes(validJson)));
+        deepSeekAsyncTaskService.processDeepSeekTaskInBackgroundWrapperForSortPdfQuestionsWithTopics(fileConversionStatus.get().getHtmlText(), pdfId,userPrompt,instituteId,taskName);
+        return ResponseEntity.ok("Done");
     }
 
     @PostMapping("/math-parser/html-to-questions")

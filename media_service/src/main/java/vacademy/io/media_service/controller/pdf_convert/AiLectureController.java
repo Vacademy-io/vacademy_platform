@@ -22,7 +22,15 @@ public class AiLectureController {
                                                     @RequestParam(value = "methodOfTeaching",required = false) String methodOfTeaching,
                                                     @RequestParam("taskName") String taskName,
                                                     @RequestParam("instituteId") String instituteId,
-                                                    @RequestParam(value = "level", required = false) String level){
-        return aiLectureManager.generateLecturePlanner(userPrompt,lectureDuration,language,methodOfTeaching,taskName,instituteId,level);
+                                                    @RequestParam(value = "level", required = false) String level) {
+        return aiLectureManager.generateLecturePlanner(userPrompt, lectureDuration, language, methodOfTeaching, taskName, instituteId, level);
+
+    }
+
+    @GetMapping("/generate-feedback")
+    public ResponseEntity<String> getLectureFeedback(@RequestParam("audioId") String audioId,
+                                                     @RequestParam("instituteId") String instituteId,
+                                                     @RequestParam("taskName") String taskName) {
+        return aiLectureManager.generateLectureFeedback(audioId, instituteId,taskName);
     }
 }

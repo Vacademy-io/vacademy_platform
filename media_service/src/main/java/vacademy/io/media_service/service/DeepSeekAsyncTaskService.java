@@ -9,6 +9,7 @@ import vacademy.io.media_service.ai.DeepSeekLectureService;
 import vacademy.io.media_service.ai.DeepSeekService;
 import vacademy.io.media_service.dto.TextDTO;
 import vacademy.io.media_service.dto.audio.AudioConversionDeepLevelResponse;
+import vacademy.io.media_service.entity.TaskStatusEnum;
 import vacademy.io.media_service.enums.TaskInputTypeEnum;
 import vacademy.io.media_service.entity.TaskStatus;
 import vacademy.io.media_service.enums.TaskStatusTypeEnum;
@@ -166,6 +167,7 @@ public class DeepSeekAsyncTaskService {
         return objectMapper.writeValueAsString(convertedAudioResponse);
     }
 
+    @Async
     public CompletableFuture<Void> processDeepSeekTaskInBackgroundWrapperForTextToQuestions(TextDTO textPrompt, String instituteId) {
         return CompletableFuture.runAsync(()->processDeepSeekTaskInBackgroundForTextToQuestions(textPrompt, instituteId));
     }
@@ -174,5 +176,18 @@ public class DeepSeekAsyncTaskService {
         TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(null,TaskStatusTypeEnum.TEXT_TO_QUESTIONS.name(), generateUniqueId(textPrompt.getText()),TaskInputTypeEnum.PROMPT_ID.name(),textPrompt.getTaskName(),instituteId);
         String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromTextPrompt(textPrompt.getText(), textPrompt.getNum().toString(), textPrompt.getQuestionType(), textPrompt.getClassLevel(), textPrompt.getTopics(), textPrompt.getQuestionLanguage(),taskStatus,0,""));
         taskStatusService.updateTaskStatus(taskStatus,"COMPLETED", rawOutput);
+    }
+
+    @Async
+    public CompletableFuture<Void> processDeepSeekTaskInBackgroundWrapperForSortPdfQuestionsWithTopics(String networkHtml,String pdfId, String userPrompt, String instituteId, String taskName) {
+        return CompletableFuture.runAsync(()->processDeepSeekTaskInBackgroundSortPdfQuestionsWithTopics(networkHtml,pdfId,userPrompt, instituteId,taskName));
+    }
+
+
+    private void processDeepSeekTaskInBackgroundSortPdfQuestionsWithTopics(String networkHtml,String pdfId, String userPrompt, String instituteId, String taskName) {
+
+        TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(null,TaskStatusTypeEnum.SORT_QUESTIONS_TOPIC_WISE.name(),pdfId,TaskInputTypeEnum.PDF_ID.name(), taskName,instituteId);
+        String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromHTMLWithTopics(networkHtml,taskStatus,0,""));
+        taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), rawOutput);
     }
 }

@@ -896,22 +896,26 @@ public class DeepSeekService {
         return result.toString();
     }
 
-    public String getQuestionsWithDeepSeekFromHTMLWithTopics(String htmlData, String userPrompt) {
-        HtmlJsonProcessor htmlJsonProcessor = new HtmlJsonProcessor();
-        String unTaggedHtml = htmlJsonProcessor.removeTags(htmlData);
+    public String getQuestionsWithDeepSeekFromHTMLWithTopics(String htmlData,TaskStatus taskStatus, Integer attempt, String oldJson) {
+        try{
+            if(attempt>=3){
+                throw new VacademyException("No response from DeepSeek");
+            }
+            String extractedQuestionNumber = getCommaSeparatedQuestionNumbers(oldJson);
+            HtmlJsonProcessor htmlJsonProcessor = new HtmlJsonProcessor();
+            String unTaggedHtml = htmlJsonProcessor.removeTags(htmlData);
 
-        if (userPrompt == null) {
-            userPrompt = "Include first 20 questions in the response. Do not truncate or omit any questions." +
-                    "Ensure all questions include their respective topics in the tags field." +
-                    "If multiple questions belong to the same topic, their tags should be identical.";
-        }
-
-        String template = """
+            String template = """
         HTML raw data :  {htmlData}
+        Already extracted question numbers: {extractedQuestionNumber}
                 
         Prompt:
-        Convert the given HTML file containing questions into the following JSON format:
-        - Preserve all DS_TAGs in HTML content in comments.
+        Extract all questions from pdf and map all the extracted questions with respective topic and strictly follow Json Format:
+         - Strictly follow this: Do not repeat same question number in two or more topics
+         - If 'Already extracted question Number' is empty, start fresh from the beginning of the HTML.
+         - If it is not empty, continue generating from where the last question left off based on the existing data and avoid duplicate Questions.
+         - Do not extract any questions if already extracted all questions and set is_process_completed true.
+         - Preserve all DS_TAGs in HTML content in comments
         
         JSON format : 
         
@@ -941,7 +945,12 @@ public class DeepSeekService {
                     "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"], // multiple chapter and topic names for question paper
                     "difficulty": "easy | medium | hard",
                     "subjects": ["subject1", "subject2", "subject3", "subject4", "subject5"], // multiple subject names for question paper
-                    "classes": ["class 1", "class 2", "class 3", "class 4", "class 5", "class 6", "class 7", "class 8", "class 9", "class 10", "class 11", "class 12", "engineering", "medical", "commerce", "law"]
+                    "classes": ["class 1", "class 2", "class 3", "class 4", "class 5", "class 6", "class 7", "class 8", "class 9", "class 10", "class 11", "class 12", "engineering", "medical", "commerce", "law"],
+                    "is_process_completed" : true,false // Ensure is_process_completed is set to true only if {userPrompt} is achieved,
+                    "topicQuestionMap":{{
+                                           "topic" : "String"       //Included Topic which are possible in pdf
+                                           "questionNumbers": [number]  //Include all the question numbers which is related to "topic"
+                                       }}
                 }}
         
         For LONG_ANSWER, NUMERIC, and ONE_WORD question types:
@@ -956,22 +965,37 @@ public class DeepSeekService {
         Also keep the DS_TAGS field intact in HTML.
         Do not try to calculate correct answers — only include if already available in the input.
         
-        IMPORTANT: {userPrompt}
+     
         """;
 
-        Prompt prompt = new PromptTemplate(template).create(Map.of("htmlData", unTaggedHtml, "userPrompt", userPrompt));
+            Prompt prompt = new PromptTemplate(template).create(Map.of("htmlData", unTaggedHtml,
+                    "extractedQuestionNumber",extractedQuestionNumber));
 
-        DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
-        if(response.getChoices().isEmpty()) {
-            throw new VacademyException("No response from DeepSeek");
-        }
-        String resultJson = response.getChoices().get(0).getMessage().getContent();
-        String validJson = JsonUtils.extractAndSanitizeJson(resultJson);
-        try {
-            String restoredJson = htmlJsonProcessor.restoreTagsInJson(validJson);
-            return restoredJson;
+            DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
+            if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {
+                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), oldJson);
+                return oldJson;
+            }
+
+            String resultJson = response.getChoices().get(0).getMessage().getContent();
+            String validJson = JsonUtils.extractAndSanitizeJson(resultJson);
+
+            String restored = htmlJsonProcessor.restoreTagsInJson(validJson);
+
+
+            String mergedJson = mergeQuestionsJson(oldJson, restored);
+
+            if (getIsProcessCompleted(mergedJson)) {
+                taskStatusService.updateTaskStatus(taskStatus,TaskStatusEnum.COMPLETED.name(), mergedJson);
+                return mergedJson;
+            }
+
+            taskStatusService.updateTaskStatus(taskStatus,"PROGRESS",mergedJson);
+            // Recurse for remaining questions
+            return getQuestionsWithDeepSeekFromHTMLWithTopics(htmlData, taskStatus, attempt+1, oldJson);
         } catch (Exception e) {
-            throw new VacademyException(e.getMessage());
+            taskStatusService.updateTaskStatus(taskStatus,TaskStatusEnum.FAILED.name(), oldJson);
+            return oldJson;
         }
     }
 

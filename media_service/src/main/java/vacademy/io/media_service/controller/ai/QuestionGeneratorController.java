@@ -155,18 +155,6 @@ public class QuestionGeneratorController {
     }
 
 
-    @PostMapping("/from-text")
-    public ResponseEntity<AutoQuestionPaperResponse> fromHtml(
-            @RequestBody TextDTO textPrompt) {
-
-        String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromTextPrompt(textPrompt.getText(), textPrompt.getNum().toString(), textPrompt.getQuestionType(), textPrompt.getClassLevel(), textPrompt.getTopics(), textPrompt.getQuestionLanguage()));
-
-        // Process the raw output to get valid JSON
-        String validJson = JsonUtils.extractAndSanitizeJson(rawOutput);
-
-        return ResponseEntity.ok(createAutoQuestionPaperResponse(removeExtraSlashes(validJson)));
-    }
-
     private boolean isHtmlFile(MultipartFile file) {
         return "text/html".equals(file.getContentType());
     }

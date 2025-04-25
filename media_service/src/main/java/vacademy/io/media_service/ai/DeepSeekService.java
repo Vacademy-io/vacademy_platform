@@ -49,13 +49,23 @@ public class DeepSeekService {
 
 
 
-    public String getQuestionsWithDeepSeekFromTextPrompt(String textPrompt, String numberOfQuestions, String typeOfQuestion, String classLevel, String topics, String language) {
+    public String getQuestionsWithDeepSeekFromTextPrompt(String textPrompt, String numberOfQuestions, String typeOfQuestion, String classLevel, String topics, String language, TaskStatus taskStatus, Integer attempt, String oldJson) {
+        try{
+            if(attempt>=4) return oldJson;
+            String allQuestionNumbers = getCommaSeparatedQuestionNumbers(oldJson);
+            HtmlJsonProcessor htmlJsonProcessor = new HtmlJsonProcessor();
+            String unTaggedHtml = htmlJsonProcessor.removeTags(textPrompt);
 
-        String template = """
+            String template = """
                 Text raw prompt :  {textPrompt}
+                Already Generated Questions: {allQuestionNumbers}
                     
                         Prompt:
                         use the Text raw prompt to generate {numberOfQuestions} {typeOfQuestion} questions for the class level {classLevel} and topics {topics} in {language}, return the output in JSON format as follows:
+                         - If 'Already extracted question Number' is empty, start fresh from the beginning of the HTML.
+                         - If it is not empty, continue generating from where the last question left off based on the existing data and avoid duplicate Questions.
+                         - Do not generate any questions if already generated {numberOfQuestions} questions and set is_process_completed true.
+                         - Preserve all DS_TAGs in HTML content in comments
                                 {{
                                          "questions": [
                                              {{
@@ -81,6 +91,7 @@ public class DeepSeekService {
                                          "title": "string" // Suitable title for the question paper ,
                                           "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"] // multiple chapter and topic names for question paper,
                                          "difficulty": "easy | medium | hard",
+                                         "is_process_completed": true,false
                                          "subjects": ["subject1", "subject2", "subject3", "subject4", "subject5"] // multiple subject names for question paper like maths or thermodynamics or physics etc ,
                                          "classes": ["class 1" , "class 2" ] // can be of multiple class - | class 3 | class 4 | class 5 | class 6 | class 7 | class 8 | class 9 | class 10 | class 11 | class 12 | engineering | medical | commerce | law
                                     
@@ -92,17 +103,41 @@ public class DeepSeekService {
                         
                         """;
 
-        Prompt prompt = new PromptTemplate(template).create(Map.of("textPrompt", textPrompt, "numberOfQuestions", numberOfQuestions, "typeOfQuestion", typeOfQuestion, "classLevel", classLevel, "topics", topics, "language", language));
+            Prompt prompt = new PromptTemplate(template).create(Map.of("textPrompt", textPrompt, "numberOfQuestions", numberOfQuestions, "typeOfQuestion", typeOfQuestion, "classLevel", classLevel, "topics", topics, "language", language,
+                    "allQuestionNumbers",allQuestionNumbers));
 
-        DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
-        if(response.getChoices().isEmpty()) {
-            throw new VacademyException("No response from DeepSeek");
+            DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
+            if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {
+                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), oldJson);
+                return oldJson;
+            }
+
+            String resultJson = response.getChoices().get(0).getMessage().getContent();
+            String validJson = JsonUtils.extractAndSanitizeJson(resultJson);
+
+            String restored = htmlJsonProcessor.restoreTagsInJson(validJson);
+
+
+            String mergedJson = mergeQuestionsJson(oldJson, restored);
+
+            if (getIsProcessCompleted(mergedJson)) {
+                taskStatusService.updateTaskStatus(taskStatus,TaskStatusEnum.COMPLETED.name(), mergedJson);
+                return mergedJson;
+            }
+            if(getQuestionCount(mergedJson)>=Integer.parseInt(numberOfQuestions)){
+                taskStatusService.updateTaskStatus(taskStatus,TaskStatusEnum.COMPLETED.name(), mergedJson);
+                return mergedJson;
+            }
+
+            taskStatusService.updateTaskStatus(taskStatus,"PROGRESS",mergedJson);
+
+            return getQuestionsWithDeepSeekFromTextPrompt(textPrompt,numberOfQuestions,typeOfQuestion,classLevel,topics,language,taskStatus,attempt+1,mergedJson);
+        } catch (Exception e) {
+            taskStatusService.updateTaskStatus(taskStatus,TaskStatusEnum.FAILED.name(), oldJson);
+            return oldJson;
         }
-        String resultJson = response.getChoices().get(0).getMessage().getContent();
-        String validJson = JsonUtils.extractAndSanitizeJson(resultJson);
-
-        return validJson;
     }
+
     public String getQuestionsWithDeepSeekFromHTML(String htmlData, String userPrompt) {
         HtmlJsonProcessor htmlJsonProcessor = new HtmlJsonProcessor();
         String unTaggedHtml = htmlJsonProcessor.removeTags(htmlData);
@@ -182,7 +217,6 @@ public class DeepSeekService {
                 return restoredJson != null ? restoredJson : "";
             }
             String allQuestionNumbers = getCommaSeparatedQuestionNumbers(restoredJson);
-            log.info("Total Questions: " + allQuestionNumbers);
             HtmlJsonProcessor htmlJsonProcessor = new HtmlJsonProcessor();
             String unTaggedHtml = htmlJsonProcessor.removeTags(htmlData);
 
@@ -265,7 +299,7 @@ public class DeepSeekService {
             String mergedJson = mergeQuestionsJson(restoredJson, restored);
 
             if (getIsProcessCompleted(mergedJson)) {
-                taskStatusService.updateTaskStatus(taskStatus,null,mergedJson);
+                taskStatusService.updateTaskStatus(taskStatus,TaskStatusEnum.COMPLETED.name(), mergedJson);
                 return mergedJson;
             }
 

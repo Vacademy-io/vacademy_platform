@@ -25,4 +25,5 @@ public class TextDTO {
     private String topics;
     private String questionType;
     private String questionLanguage;
+    private String taskName;
 }

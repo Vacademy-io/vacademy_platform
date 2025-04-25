@@ -293,15 +293,13 @@ public class PDFQuestionGeneratorController {
 
 
     @PostMapping("/from-text")
-    public ResponseEntity<AutoQuestionPaperResponse> fromHtml(
-            @RequestBody TextDTO textPrompt) {
+    public ResponseEntity<String> fromHtml(
+            @RequestBody TextDTO textPrompt,
+            @RequestParam("instituteId") String instituteId) {
 
-        String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromTextPrompt(textPrompt.getText(), textPrompt.getNum().toString(), textPrompt.getQuestionType(), textPrompt.getClassLevel(), textPrompt.getTopics(), textPrompt.getQuestionLanguage()));
+        deepSeekAsyncTaskService.processDeepSeekTaskInBackgroundWrapperForTextToQuestions(textPrompt,instituteId);
 
-        // Process the raw output to get valid JSON
-        String validJson = JsonUtils.extractAndSanitizeJson(rawOutput);
-
-        return ResponseEntity.ok(createAutoQuestionPaperResponse(removeExtraSlashes(validJson)));
+        return ResponseEntity.ok("Done");
     }
 
     private boolean isHtmlFile(MultipartFile file) {

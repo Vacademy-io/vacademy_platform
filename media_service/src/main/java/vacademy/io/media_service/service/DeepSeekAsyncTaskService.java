@@ -7,6 +7,7 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import vacademy.io.media_service.ai.DeepSeekLectureService;
 import vacademy.io.media_service.ai.DeepSeekService;
+import vacademy.io.media_service.dto.TextDTO;
 import vacademy.io.media_service.dto.audio.AudioConversionDeepLevelResponse;
 import vacademy.io.media_service.enums.TaskInputTypeEnum;
 import vacademy.io.media_service.entity.TaskStatus;
@@ -163,5 +164,15 @@ public class DeepSeekAsyncTaskService {
     private String getStringFromObject(AudioConversionDeepLevelResponse convertedAudioResponse) throws Exception{
         ObjectMapper objectMapper = new ObjectMapper();
         return objectMapper.writeValueAsString(convertedAudioResponse);
+    }
+
+    public CompletableFuture<Void> processDeepSeekTaskInBackgroundWrapperForTextToQuestions(TextDTO textPrompt, String instituteId) {
+        return CompletableFuture.runAsync(()->processDeepSeekTaskInBackgroundForTextToQuestions(textPrompt, instituteId));
+    }
+
+    private void processDeepSeekTaskInBackgroundForTextToQuestions(TextDTO textPrompt, String instituteId) {
+        TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(null,TaskStatusTypeEnum.TEXT_TO_QUESTIONS.name(), generateUniqueId(textPrompt.getText()),TaskInputTypeEnum.PROMPT_ID.name(),textPrompt.getTaskName(),instituteId);
+        String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromTextPrompt(textPrompt.getText(), textPrompt.getNum().toString(), textPrompt.getQuestionType(), textPrompt.getClassLevel(), textPrompt.getTopics(), textPrompt.getQuestionLanguage(),taskStatus,0,""));
+        taskStatusService.updateTaskStatus(taskStatus,"COMPLETED", rawOutput);
     }
 }

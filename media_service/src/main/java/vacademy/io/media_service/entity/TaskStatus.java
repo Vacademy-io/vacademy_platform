@@ -7,8 +7,11 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import lombok.Data;
 import org.hibernate.annotations.UuidGenerator;
+import org.springframework.http.ResponseEntity;
 import vacademy.io.media_service.dto.chat_with_pdf.ChatResultJsonDto;
 import vacademy.io.media_service.dto.chat_with_pdf.ChatWithPdfResponse;
+import vacademy.io.media_service.dto.lecture.LectureFeedbackDto;
+import vacademy.io.media_service.dto.lecture.LecturePlanDto;
 import vacademy.io.media_service.dto.task_status.TaskStatusDto;
 
 import java.util.Date;
@@ -76,5 +79,10 @@ public class TaskStatus {
                 .response(resultJsonDto.getResponse())
                 .question(resultJsonDto.getUser())
                 .createdAt(this.createdAt).build();
+    }
+
+    public LectureFeedbackDto getLectureFeedbackDto() throws Exception{
+        ObjectMapper objectMapper = new ObjectMapper();
+        return objectMapper.readValue(this.resultJson, LectureFeedbackDto.class);
     }
 }

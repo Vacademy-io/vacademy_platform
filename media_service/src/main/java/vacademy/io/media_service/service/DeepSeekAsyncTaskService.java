@@ -1,11 +1,13 @@
 package vacademy.io.media_service.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import vacademy.io.media_service.ai.DeepSeekLectureService;
 import vacademy.io.media_service.ai.DeepSeekService;
+import vacademy.io.media_service.dto.audio.AudioConversionDeepLevelResponse;
 import vacademy.io.media_service.enums.TaskInputTypeEnum;
 import vacademy.io.media_service.entity.TaskStatus;
 import vacademy.io.media_service.enums.TaskStatusTypeEnum;
@@ -15,6 +17,7 @@ import java.security.MessageDigest;
 import java.text.SimpleDateFormat;
 import java.util.Base64;
 import java.util.Date;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 
 @Slf4j
@@ -123,5 +126,42 @@ public class DeepSeekAsyncTaskService {
         } catch (Exception e) {
             throw new RuntimeException("Error generating unique ID", e);
         }
+    }
+
+
+    @Async
+    public CompletableFuture<Void> processDeepSeekTaskInBackgroundWrapperForLectureFeedback(String text, AudioConversionDeepLevelResponse convertedAudioResponse, String instituteId,String audioId,String taskName) {
+        return CompletableFuture.runAsync(()-> processDeepSeekTaskInBackgroundForLectureFeedback(text,convertedAudioResponse,instituteId,TaskStatusTypeEnum.LECTURE_FEEDBACK.name(), audioId,TaskInputTypeEnum.AUDIO_ID.name(), taskName));
+    }
+
+    private void processDeepSeekTaskInBackgroundForLectureFeedback(String text, AudioConversionDeepLevelResponse convertedAudioResponse, String instituteId, String type, String audioId, String inputType,String taskName) {
+        try {
+            String convertedAudioResponseString = getStringFromObject(convertedAudioResponse);
+            String audioPace = getPaceFromTextAndDuration(text,convertedAudioResponse.getAudioDuration());
+
+            TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(null, TaskStatusTypeEnum.LECTURE_FEEDBACK.name(), audioId, inputType, taskName,instituteId);
+
+            String rawOutput = (deepSeekLectureService.generateLectureFeedback(text,convertedAudioResponseString,taskStatus,0,audioPace));
+
+            taskStatusService.updateTaskStatus(taskStatus, "COMPLETED", rawOutput);
+        } catch (Exception e) {
+            log.error("Failed To Generate: "+e.getMessage());
+        }
+    }
+
+    private String getPaceFromTextAndDuration(String text, Long audioDuration) {
+        if (Objects.isNull(text) || Objects.isNull(audioDuration) || audioDuration == 0) return "0";
+
+        int wordCount = text.trim().isEmpty() ? 0 : text.trim().split("\\s+").length;
+        float audioDurationInMinutes = (float)audioDuration /60f;
+        double pace = (double) wordCount / audioDurationInMinutes;
+
+        return String.format("%.2f", pace); // return pace with 2 decimal points
+    }
+
+
+    private String getStringFromObject(AudioConversionDeepLevelResponse convertedAudioResponse) throws Exception{
+        ObjectMapper objectMapper = new ObjectMapper();
+        return objectMapper.writeValueAsString(convertedAudioResponse);
     }
 }

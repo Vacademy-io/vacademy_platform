@@ -3,12 +3,14 @@ package vacademy.io.media_service.manager;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.media_service.ai.DeepSeekService;
 import vacademy.io.media_service.dto.AiGeneratedQuestionPaperJsonDto;
 import vacademy.io.media_service.dto.AutoQuestionPaperResponse;
+import vacademy.io.media_service.dto.lecture.LectureFeedbackDto;
 import vacademy.io.media_service.dto.lecture.LecturePlanDto;
 import vacademy.io.media_service.dto.task_status.TaskStatusDto;
 import vacademy.io.media_service.entity.TaskStatus;
@@ -107,5 +109,16 @@ public class TaskStatusManager {
         ObjectMapper objectMapper = new ObjectMapper();
         return objectMapper.readValue(validJson, LecturePlanDto.class);
 
+    }
+
+    public ResponseEntity<LectureFeedbackDto> getLectureFeedback(String taskId) {
+        try{
+            Optional<TaskStatus> taskStatus = taskStatusService.getTaskStatusById(taskId);
+            if(taskStatus.isEmpty()) throw new VacademyException(HttpStatus.NOT_FOUND,"Task Not Found");
+
+            return ResponseEntity.ok(taskStatus.get().getLectureFeedbackDto());
+        } catch (Exception e) {
+            return ResponseEntity.ok(new LectureFeedbackDto());
+        }
     }
 }

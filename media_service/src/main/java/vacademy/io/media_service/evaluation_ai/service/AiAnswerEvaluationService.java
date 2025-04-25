@@ -1,3 +1,4 @@
+
 // Filename: AiAnswerEvaluationService.java
 package vacademy.io.media_service.evaluation_ai.service;
 
@@ -96,9 +97,7 @@ public class AiAnswerEvaluationService {
                                               EvaluationResultFromDeepSeek resultContainer,
                                               String taskId) throws Exception {
         log.info("Processing evaluation for user: {}", evaluationData.getUserId());
-        UserDTO userDTO = userService.createOrGetExistingUser(createUserDTO(evaluationData));
 
-        evaluationData.setUserId(userDTO.getId());
         String htmlAnswer = fetchHtmlAnswer(evaluationData);
         log.debug("Fetched HTML answer for userId={}: {}", evaluationData.getUserId(), htmlAnswer);
 
@@ -182,6 +181,8 @@ public class AiAnswerEvaluationService {
             evaluationData.setUserId(evaluationUserDTO.getId());
             evaluationData.setStatus(EvaluationStepsStatusEnum.WAITING.name());
             evaluationData.setResponseId(evaluationUserDTO.getResponseId());
+            UserDTO userDTO = userService.createOrGetExistingUser(createUserDTO(evaluationData));
+            evaluationData.setUserId(userDTO.getId());
             evaluationDataList.add(evaluationData);
         }
         return evaluationDataList;
@@ -370,8 +371,8 @@ public class AiAnswerEvaluationService {
               {
                 "question_id": "<question_id>",
                 "question_order": <order>,
-                "question_text": "[[<text>]]",
-                "answer_html": "[[<html>]]",
+                "question_text": "<text>",
+                "answer_html": "<html>",
                 "status": "ATTEMPTED" or "NOT_ATTEMPTED"
               }
             ]
@@ -414,13 +415,16 @@ public class AiAnswerEvaluationService {
 
         Instructions:
         - For each question:
-            - If the student answered, evaluate and assign appropriate marks with justification.
+            - If the student answered, evaluate the answer based on the evaluation criteria provided in the ai evaluation question metadata. Each criterion has a name and a weight, which determines the marks for the answer.
+            - For each criterion:
+                - Assign marks based on the student's response.
+                - The weight of the criterion will determine how much the answer contributes to the total marks.
             - If the student skipped, mark as "NOT_ATTEMPTED" and give 0 marks.
         - For each question, provide:
             - Marks obtained
-            - Total marks
+            - Total marks (based on all criteria)
             - Feedback (short and clear)
-            - Description (why marks were given/deducted)
+            - Description (why marks were given/deducted based on evaluation criteria)
             - Verdict (e.g. "Correct", "Partially Correct", "Incorrect", "Not Attempted")
 
         ⚠️ Important: ONLY return a valid **JSON** response in the exact format below.
@@ -447,7 +451,7 @@ public class AiAnswerEvaluationService {
                   "marks_obtained": <double>,
                   "total_marks": <double>,
                   "feedback": "<short comment>",
-                  "description": "<detailed reasoning>",
+                  "description": "<detailed reasoning based on evaluation criteria>",
                   "verdict": "<Correct/Incorrect/Partially Correct/Not Attempted>"
                 }
               ]
@@ -467,5 +471,6 @@ public class AiAnswerEvaluationService {
 
         return prompt.toString();
     }
+
 
 }

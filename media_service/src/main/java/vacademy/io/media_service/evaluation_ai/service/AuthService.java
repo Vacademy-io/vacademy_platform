@@ -1,5 +1,6 @@
 package vacademy.io.media_service.evaluation_ai.service;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -33,4 +34,23 @@ public class AuthService {
             throw new VacademyException(e.getMessage());
         }
     }
+
+    public List<UserDTO> getUsersFromAuthServiceByUserIds(List<String> userIds) {
+        try {
+            ObjectMapper objectMapper = new ObjectMapper();
+            ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                    clientName,
+                    HttpMethod.POST.name(),
+                    authServerBaseUrl,
+                    UserServiceRoutes.GET_USERS_FROM_AUTH_SERVICE,
+                    userIds
+            );
+
+            return objectMapper.readValue(response.getBody(), new TypeReference<List<UserDTO>>() {});
+        } catch (Exception e) {
+            throw new VacademyException(e.getMessage());
+        }
+    }
+
+
 }

@@ -25,6 +25,7 @@ import vacademy.io.media_service.evaluation_ai.dto.EvaluationResultFromDeepSeek;
 import vacademy.io.media_service.evaluation_ai.dto.EvaluationUserDTO;
 import vacademy.io.media_service.evaluation_ai.entity.EvaluationUser;
 import vacademy.io.media_service.evaluation_ai.enums.EvaluationStepsStatusEnum;
+import vacademy.io.media_service.evaluation_ai.enums.EvaluationUserSourceEnum;
 import vacademy.io.media_service.evaluation_ai.repository.UserEvaluationRepository;
 import vacademy.io.media_service.repository.TaskStatusRepository;
 import vacademy.io.media_service.service.FileConversionStatusService;
@@ -80,7 +81,7 @@ public class AiAnswerEvaluationService {
     private void handleEvaluationInBackground(String taskId, AiEvaluationMetadata metadata, String assessmentId, EvaluationResultFromDeepSeek evaluationResultFromDeepSeek) {
         try {
             for (EvaluationResultFromDeepSeek.EvaluationData evaluationData : evaluationResultFromDeepSeek.getEvaluationData()) {
-                processAndSaveUserEvaluation(evaluationData, metadata, assessmentId, evaluationResultFromDeepSeek, evaluationResultFromDeepSeek, taskId);
+                processAndSaveUserEvaluation(evaluationData, metadata, assessmentId, evaluationResultFromDeepSeek, taskId);
             }
             finalizeEvaluationResults(taskId, evaluationResultFromDeepSeek);
         } catch (Exception e) {
@@ -93,21 +94,22 @@ public class AiAnswerEvaluationService {
                                               AiEvaluationMetadata metadata,
                                               String assessmentId,
                                               EvaluationResultFromDeepSeek resultContainer,
-                                              EvaluationResultFromDeepSeek evaluationResultFromDeepSeek,
                                               String taskId) throws Exception {
         log.info("Processing evaluation for user: {}", evaluationData.getUserId());
+        UserDTO userDTO = userService.createOrGetExistingUser(createUserDTO(evaluationData));
 
+        evaluationData.setUserId(userDTO.getId());
         String htmlAnswer = fetchHtmlAnswer(evaluationData);
         log.debug("Fetched HTML answer for userId={}: {}", evaluationData.getUserId(), htmlAnswer);
 
         extractAndSetAnswers(evaluationData, metadata, resultContainer, taskId, htmlAnswer);
+        saveEvaluationToDb(evaluationData, assessmentId);
         log.debug("Extracted section-wise answers for userId={}: {}", evaluationData.getUserId(), parseObjectToString(evaluationData.getSectionWiseAnsExtracted()));
 
         evaluateAndSetResults(evaluationData, metadata, resultContainer, taskId);
+        saveEvaluationToDb(evaluationData, assessmentId);
         log.debug("Evaluated answers for userId={}: {}", evaluationData.getUserId(), parseObjectToString(evaluationData.getEvaluationResult()));
 
-        saveEvaluationToDb(evaluationData, assessmentId);
-        log.info("Saved evaluation result to DB for userId={}", evaluationData.getUserId());
     }
 
     private String fetchHtmlAnswer(EvaluationResultFromDeepSeek.EvaluationData evaluationData) throws Exception {
@@ -143,13 +145,11 @@ public class AiAnswerEvaluationService {
         updateTask(taskId, parseObjectToString(resultContainer), TaskStatusEnum.PROCESSING.name());
     }
 
-    private void saveEvaluationToDb(EvaluationResultFromDeepSeek.EvaluationData evaluationData, String assessmentId) {
-        UserDTO userDTO = userService.createOrGetExistingUser(createUserDTO(evaluationData));
-        evaluationData.setUserId(userDTO.getId());
 
+    private void saveEvaluationToDb(EvaluationResultFromDeepSeek.EvaluationData evaluationData, String assessmentId) {
         createOrUpdateEvaluationUser(
                 evaluationData.getUserId(),
-                "ASSESSMENT",
+                EvaluationUserSourceEnum.ASSESSMENT_EVALUATION.name(),
                 assessmentId,
                 buildEvaluationJsonForUser(evaluationData.getEvaluationResult())
         );

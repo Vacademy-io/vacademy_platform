@@ -5,6 +5,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.media_service.dto.AutoQuestionPaperResponse;
+import vacademy.io.media_service.dto.lecture.LectureFeedbackDto;
 import vacademy.io.media_service.dto.lecture.LecturePlanDto;
 import vacademy.io.media_service.dto.task_status.TaskStatusDto;
 import vacademy.io.media_service.manager.TaskStatusManager;
@@ -33,6 +34,12 @@ public class TaskGetController {
     @GetMapping("/get/lecture-plan")
     public ResponseEntity<LecturePlanDto> getLecturePlan(@RequestParam("taskId") String taskId){
         return taskStatusManager.getLecturePlan(taskId);
+    }
+
+
+    @GetMapping("/get/lecture-feedback")
+    public ResponseEntity<LectureFeedbackDto> getLectureFeedbackResponse(@RequestParam("taskId") String taskId){
+        return taskStatusManager.getLectureFeedback(taskId);
     }
 
 }

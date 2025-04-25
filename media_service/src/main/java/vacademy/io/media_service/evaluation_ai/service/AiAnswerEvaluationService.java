@@ -294,8 +294,10 @@ public class AiAnswerEvaluationService {
 
         for (int attempt = 1; attempt <= 5; attempt++) {
             try {
+                System.out.println(attempt);
                 String extractedJson = getEvaluationFromAI(prompt);
                 extractedJson = cleanJsonMarkdown(extractedJson);
+                System.out.println(extractedJson);
                 List<EvaluationResultFromDeepSeek.SectionWiseAnsExtracted> result = objectMapper.readValue(extractedJson, new TypeReference<>() {});
                 return result;
             } catch (Exception e) {
@@ -346,31 +348,35 @@ public class AiAnswerEvaluationService {
         - For each question, return:
           - question_id
           - question_order
-          - question_text
+          - question_text (wrap inside [[ ]] to preserve formatting and HTML safely)
           - question_wise_ans_extracted: {
-              answer_html,
+              answer_html (wrap inside [[ ]] to preserve formatting and HTML safely),
               status ("ATTEMPTED" or "NOT_ATTEMPTED")
             }
 
-        Important: ONLY return the extracted result as a valid **JSON** in the exact structure below.
-        Do NOT include any explanation, extra text, or formatting outside of the JSON.
+        Important:
+        - ONLY return the extracted result as a valid JSON in the exact structure below.
+        - Do NOT include any explanation, extra text, or formatting outside of the JSON.
+        - Use double quotes for all JSON keys and string values.
+        - Ensure all special characters in HTML (like quotes) are escaped properly.
+        - Wrap HTML content and question text in double square brackets [[ ... ]] to prevent breaking the JSON format.
 
         JSON Response Format:
-         [
-            {
-              "section_id": "<section_id>",
-              "section_name": "<section_name>",
-              "question_wise_ans_extracted": [
-                {
-                  "question_id": "<question_id>",
-                  "question_order": <order>,
-                  "question_text": "<text>",
-                  "answer_html": "<html>",
-                  "status": "ATTEMPTED" or "NOT_ATTEMPTED"
-                }
-              ]
-            }
-          ]
+        [
+          {
+            "section_id": "<section_id>",
+            "section_name": "<section_name>",
+            "question_wise_ans_extracted": [
+              {
+                "question_id": "<question_id>",
+                "question_order": <order>,
+                "question_text": "[[<text>]]",
+                "answer_html": "[[<html>]]",
+                "status": "ATTEMPTED" or "NOT_ATTEMPTED"
+              }
+            ]
+          }
+        ]
 
         Below is the assessment metadata (questions grouped by sections):
         """);
@@ -381,13 +387,20 @@ public class AiAnswerEvaluationService {
             for (AiEvaluationQuestionDTO question : section.getQuestions()) {
                 prompt.append("- Question Order: ").append(question.getQuestionOrder()).append("\n");
                 prompt.append("  Question ID: ").append(question.getReachText().getId()).append("\n");
-                prompt.append("  Question Text: ").append(question.getReachText().getContent()).append("\n");
+                prompt.append("  Question Text: [[")
+                        .append(question.getReachText().getContent().replace("\"", "\\\""))
+                        .append("]]\n");
             }
             prompt.append("\n");
         }
 
+        // (Optional) Strip problematic MathJax tags if needed
+        htmlAnswerSheet = htmlAnswerSheet.replaceAll("<mjx-[^>]*>.*?</mjx-[^>]*>", "");
+
         prompt.append("Below is the HTML answer sheet submitted by the student:\n\n")
-                .append(htmlAnswerSheet.trim());
+                .append("[[")
+                .append(htmlAnswerSheet.trim().replace("\"", "\\\""))
+                .append("]]");
 
         return prompt.toString();
     }

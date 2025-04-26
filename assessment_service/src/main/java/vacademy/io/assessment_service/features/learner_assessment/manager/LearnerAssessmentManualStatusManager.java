@@ -112,7 +112,7 @@ public class LearnerAssessmentManualStatusManager {
         // Parse and validate the JSON data
         LearnerManualAttemptDataDto attemptData = studentAttemptService.validateAndCreateManualAttemptJsonObject(request.getJsonContent());
         Optional<AssessmentSetMapping> setMapping = assessmentSetMappingRepository.findById(request.getSetId());
-        if (setMapping.isEmpty()) throw new VacademyException("SetId Not found");
+
 
         if (Objects.isNull(attemptData)) throw new VacademyException("Attempt Data is Null");
 
@@ -129,7 +129,7 @@ public class LearnerAssessmentManualStatusManager {
         studentAttempt.setReportReleaseStatus(ReleaseResultStatusEnum.PENDING.name());
         studentAttempt.setClientLastSync(DateUtil.convertStringToUTCDate(clientSyncTime));
         studentAttempt.setTotalTimeInSeconds(assessmentAttemptDto.getTimeElapsedInSeconds());
-        studentAttempt.setAssessmentSetMapping(setMapping.get());
+        setMapping.ifPresent(studentAttempt::setAssessmentSetMapping);
         studentAttempt.setCommaSeparatedEvaluatorUserIds(convertListToCommaSeparatedString(getEvaluatorsForAttempt(assessment.getId(), instituteId)));
 
         // Save the updated attempt

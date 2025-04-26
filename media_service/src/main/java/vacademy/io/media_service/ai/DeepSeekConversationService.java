@@ -25,17 +25,16 @@ public class DeepSeekConversationService {
                     
                         Prompt:
                           - Use the "User Chat" to generate a meaningful response based on the HTML content.
-                          - Utilize relevant information from the "Last 5 Conversations" (if available) to maintain conversational continuity.
-                          - Preserve all DS_TAGs in HTML content in comments
+                          - Utilize relevant information from the "Last 5 Conversations" (if available) to maintain conversational continuity
                            
                            JSON format : 
                          
                                 {{
                                    "user" : "{userPrompt}", 
-                                   "response" : "String" //Include Response here 
+                                   "response" : "String" //Include Response here in formatted markdown format
                                 }} 
                            
-                        Also keep the DS_TAGS field intact in html                      
+                                  
                         IMPORTANT: {userPrompt}
                         Give the response string in a formatted markdown format
                         """;
@@ -43,7 +42,7 @@ public class DeepSeekConversationService {
         Prompt prompt = new PromptTemplate(template).create(Map.of("userPrompt", userPrompt,
                 "last5Conversation", last5Conversations,"htmlText",htmlText));
 
-        DeepSeekResponse response = deepSeekApiService.getChatCompletion("google/gemini-2.0-flash-exp:free", prompt.getContents().trim(), 30000);
+        DeepSeekResponse response = deepSeekApiService.getChatCompletion("meta-llama/llama-4-maverick:free", prompt.getContents().trim(), 30000);
         if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {
             throw new VacademyException("Failed To generate Response");
         }

@@ -421,7 +421,7 @@ public class DeepSeekService {
                     "allQuestionNumbers", allQuestionNumbers,
                     "restoredJson", restoredJson == null ? "" : restoredJson));
 
-            DeepSeekResponse response = deepSeekApiService.getChatCompletion("google/gemini-2.0-flash-exp:free", prompt.getContents().trim(), 30000);
+            DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
             if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {
                 taskStatusService.updateTaskStatus(taskStatus,TaskStatusEnum.FAILED.name(), restoredJson);
                 return restoredJson;

@@ -435,5 +435,65 @@ public class SlideService {
         chapterToSlidesRepository.saveAll(newChapterToSlides);
     }
 
+    public Slide saveSlide(String slideId,String sourceId, String sourceType, String status,String title, String description, String imageFileId,Integer slideOrder,String chapterId) {
+        Slide slide = new Slide();
+        slide.setId(slideId);
+        slide.setSourceId(sourceId);
+        slide.setSourceType(sourceType);
+        slide.setStatus(status);
+        slide.setTitle(title);
+        slide.setDescription(description);
+        slide.setImageFileId(imageFileId);
+        if (status.equalsIgnoreCase(SlideStatus.PUBLISHED.name())) {
+            slide.setLastSyncDate(new Timestamp(System.currentTimeMillis()));
+        }
+       slide = slideRepository.save(slide);
+        saveChapterSlideMapping(chapterId,slide,slideOrder,status);
+        return slide;
+    }
+
+    public void saveChapterSlideMapping(String chapterId,Slide slide,Integer slideOrder,String status) {
+        Chapter chapter = chapterRepository.findById(chapterId).orElseThrow(() -> new VacademyException("Chapter not found"));
+        ChapterToSlides chapterToSlides = chapterToSlidesRepository.save(new ChapterToSlides(chapter, slide, slideOrder, status));
+    }
+
+    public void updateChapterToSlideMapping(String chapterId,String slideId,Integer slideOrder,String status) {
+        ChapterToSlides chapterToSlides = chapterToSlidesRepository.findByChapterIdAndSlideId(chapterId, slideId).orElseThrow(() -> new VacademyException("Chapter to slide mapping not found!!!"));
+       if (slideOrder != null){
+           chapterToSlides.setSlideOrder(slideOrder);
+       }
+       if (StringUtils.hasText(status)){
+           chapterToSlides.setStatus(status);
+       }
+       chapterToSlidesRepository.save(chapterToSlides);
+    }
+
+
+    public Slide updateSlide(String slideId,String status, String title, String description, String imageFileId, Integer slideOrder, String chapterId) {
+        Slide slide = new Slide();
+
+        if (StringUtils.hasText(slideId)) {
+            slide.setId(slideId);
+        }
+        if (StringUtils.hasText(status)) {
+            slide.setStatus(status);
+            if (status.equalsIgnoreCase(SlideStatus.PUBLISHED.name())) {
+                slide.setLastSyncDate(new Timestamp(System.currentTimeMillis()));
+            }
+        }
+        if (StringUtils.hasText(title)) {
+            slide.setTitle(title);
+        }
+        if (StringUtils.hasText(description)) {
+            slide.setDescription(description);
+        }
+        if (StringUtils.hasText(imageFileId)) {
+            slide.setImageFileId(imageFileId);
+        }
+
+        slide = slideRepository.save(slide);
+        updateChapterToSlideMapping(chapterId,slide.getId(),slideOrder,status);
+        return slide;
+    }
 
 }

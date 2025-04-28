@@ -134,12 +134,12 @@ public class ConstantAiTemplate {
                                         \s
                                                 {{
                                                    "user" : "{userPrompt}",\s
-                                                   "response" : "String" //Include Response here in formatted markdown format
+                                                   "response" : "String" //Include Response here in well formatted html format
                                                 }}\s
                                           \s
                                                  \s
                                         IMPORTANT: {userPrompt}
-                                        Give the response string in a formatted markdown format
+                                        Give the response string in a formatted html format
                 """;
     }
 

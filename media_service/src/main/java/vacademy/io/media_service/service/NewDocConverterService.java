@@ -26,8 +26,8 @@ public class NewDocConverterService {
 
     private static final String API_URL = "https://api.mathpix.com/v3/converter/";
     private static final String API_PDF_URL = "https://api.mathpix.com/v3/pdf/";
-    private static final String APP_ID = "vacademy_8e6a90_aaf3ee";
-    private static final String APP_KEY = "87aa763511856bb12b2d06c71f060e2a4fa5bfe24f31501a206f9fc9f9334631";
+    private static final String APP_ID = "vacademy_8e6a90_950081";
+    private static final String APP_KEY = "b27375705e35a88b52f041c5f8eba2dda6a23f36350300d39854c8301b1a9de4";
 
     private final RestTemplate restTemplate = new RestTemplate();
 

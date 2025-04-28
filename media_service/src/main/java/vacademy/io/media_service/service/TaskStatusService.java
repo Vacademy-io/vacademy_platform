@@ -20,14 +20,13 @@ import java.util.*;
 public class TaskStatusService {
 
     private final TaskStatusRepository taskStatusRepository;
+    @Autowired
+    private ObjectMapper objectMapper;
 
     @Autowired
     public TaskStatusService(TaskStatusRepository taskStatusRepository) {
         this.taskStatusRepository = taskStatusRepository;
     }
-
-    @Autowired
-    private ObjectMapper objectMapper;
 
     public TaskStatus saveTaskStatus(TaskStatus taskStatus) {
         return taskStatusRepository.save(taskStatus);
@@ -67,21 +66,21 @@ public class TaskStatusService {
 
     }
 
-    public TaskStatus updateTaskStatusOrCreateNewTask(String taskId, String type, String inputId, String inputType,String taskName,String instituteId) {
-        if(Objects.isNull(taskId)){
-            return createNewTask(type,inputId,inputType,taskName,instituteId);
+    public TaskStatus updateTaskStatusOrCreateNewTask(String taskId, String type, String inputId, String inputType, String taskName, String instituteId) {
+        if (Objects.isNull(taskId)) {
+            return createNewTask(type, inputId, inputType, taskName, instituteId);
         }
 
         Optional<TaskStatus> taskStatus = taskStatusRepository.findById(taskId);
-        if(taskStatus.isEmpty()){
-            return createNewTask(type,inputId,inputType,taskName,instituteId);
+        if (taskStatus.isEmpty()) {
+            return createNewTask(type, inputId, inputType, taskName, instituteId);
         }
 
         taskStatus.get().setStatus("PROGRESS");
         return taskStatusRepository.save(taskStatus.get());
     }
 
-    private TaskStatus createNewTask(String type, String inputId, String inputType,String taskName,String instituteId) {
+    private TaskStatus createNewTask(String type, String inputId, String inputType, String taskName, String instituteId) {
         TaskStatus taskStatus = new TaskStatus();
         taskStatus.setStatus("PROGRESS");
         taskStatus.setType(type);
@@ -92,16 +91,16 @@ public class TaskStatusService {
         return taskStatusRepository.save(taskStatus);
     }
 
-    public void updateTaskStatus(TaskStatus taskStatus, String status,String resultJson) {
-        updateIfNotNull(status,taskStatus::setStatus);
-        updateIfNotNull(resultJson,taskStatus::setResultJson);
+    public void updateTaskStatus(TaskStatus taskStatus, String status, String resultJson) {
+        updateIfNotNull(status, taskStatus::setStatus);
+        updateIfNotNull(resultJson, taskStatus::setResultJson);
         taskStatusRepository.save(taskStatus);
     }
 
-    public void updateTaskStatusAndStatusMessage(TaskStatus taskStatus, String status,String resultJson, String statusMessage) {
-        updateIfNotNull(status,taskStatus::setStatus);
-        updateIfNotNull(resultJson,taskStatus::setResultJson);
-        updateIfNotNull(statusMessage,taskStatus::setStatusMessage);
+    public void updateTaskStatusAndStatusMessage(TaskStatus taskStatus, String status, String resultJson, String statusMessage) {
+        updateIfNotNull(status, taskStatus::setStatus);
+        updateIfNotNull(resultJson, taskStatus::setResultJson);
+        updateIfNotNull(statusMessage, taskStatus::setStatusMessage);
         taskStatusRepository.save(taskStatus);
     }
 
@@ -113,7 +112,7 @@ public class TaskStatusService {
 
     public List<TaskStatusDto> getAllTaskStatusDtoForInstituteIdAndTaskType(String instituteId, String taskType) {
         List<TaskStatusDto> responses = new ArrayList<>();
-        getTaskStatusesByInstituteIdAndTaskType(instituteId,taskType).forEach(task->{
+        getTaskStatusesByInstituteIdAndTaskType(instituteId, taskType).forEach(task -> {
             responses.add(task.getTaskDto());
         });
 
@@ -138,7 +137,7 @@ public class TaskStatusService {
                 conversations.add(new ConversationDto(user, aiResponse, task.getCreatedAt()));
             } catch (Exception e) {
                 // Optionally log invalid/malformed JSON
-                log.error("ERROR AT CONVERSATION: "+e.getMessage());
+                log.error("ERROR AT CONVERSATION: " + e.getMessage());
             }
         }
 
@@ -149,7 +148,7 @@ public class TaskStatusService {
         }
     }
 
-    public TaskStatus createNewTaskForResult(String instituteId, String type, String inputId, String inputType, String rawOutput,String taskName, String parentId) {
+    public TaskStatus createNewTaskForResult(String instituteId, String type, String inputId, String inputType, String rawOutput, String taskName, String parentId) {
         TaskStatus taskStatus = new TaskStatus();
         taskStatus.setStatus(TaskStatusEnum.COMPLETED.name());
         taskStatus.setType(type);
@@ -164,13 +163,12 @@ public class TaskStatusService {
 
     public List<ChatWithPdfResponse> getChatResponseForTypeAndInputId(String type, String inputType, String inputId, String instituteId) {
         List<ChatWithPdfResponse> response = new ArrayList<>();
-        List<TaskStatus> allTask = taskStatusRepository.findByTypeAndInstituteIdAndInputIdAndInputTypeOrderByASC(type,instituteId,inputId,inputType);
-        allTask.forEach(task->{
-            try{
+        List<TaskStatus> allTask = taskStatusRepository.findByTypeAndInstituteIdAndInputIdAndInputTypeOrderByASC(type, instituteId, inputId, inputType);
+        allTask.forEach(task -> {
+            try {
                 response.add(task.getPdfChatResponse());
-            }
-            catch (Exception e){
-                log.error("Failed To convert: " +e.getMessage()) ;
+            } catch (Exception e) {
+                log.error("Failed To convert: " + e.getMessage());
             }
         });
         return response;
@@ -184,9 +182,9 @@ public class TaskStatusService {
         return taskStatusRepository.findByInstituteIdAndNullParentId(instituteId);
     }
 
-    public void convertMapToJsonAndStore(Map<String, Object> map, TaskStatus taskStatus)throws Exception {
+    public void convertMapToJsonAndStore(Map<String, Object> map, TaskStatus taskStatus) throws Exception {
         ObjectMapper objectMapper = new ObjectMapper();
-        String jsonMap =  objectMapper.writeValueAsString(map);
+        String jsonMap = objectMapper.writeValueAsString(map);
         taskStatus.setDynamicValuesMap(jsonMap);
         taskStatusRepository.save(taskStatus);
     }

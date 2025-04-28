@@ -77,10 +77,9 @@ public class AssessmentFreeToolCreateService {
                     questionsToSave.add(question);
                 }
 
-                if (questionDTO.getQuestionOrder() != null && questionDTO.getMarkingJson() != null &&
-                        !questionAssessmentSectionMappingRepository
-                                .existsBySection_Assessment_IdAndSection_IdAndQuestion_Id(assessment.getId(), section.getId(), question.getId())) {
-                    mappingsToSave.add(prepareMapping(section, question, questionDTO));
+                if (questionDTO.getQuestionOrder() != null && questionDTO.getMarkingJson() != null) {
+                    QuestionAssessmentSectionMapping questionAssessmentSectionMapping = questionAssessmentSectionMappingRepository.findByQuestionIdAndSectionId(question.getId(), section.getId()).orElseThrow(() -> new VacademyException("Mapping not found"));
+                    mappingsToSave.add(prepareMapping(section, question, questionDTO,questionAssessmentSectionMapping));
                 }
             }
         }
@@ -116,8 +115,7 @@ public class AssessmentFreeToolCreateService {
         return question;
     }
 
-    private QuestionAssessmentSectionMapping prepareMapping(Section section, Question question, SectionQuestionsDTO dto) {
-        QuestionAssessmentSectionMapping mapping = new QuestionAssessmentSectionMapping();
+    private QuestionAssessmentSectionMapping prepareMapping(Section section, Question question, SectionQuestionsDTO dto,QuestionAssessmentSectionMapping mapping) {
         mapping.setSection(section);
         mapping.setQuestion(question);
         mapping.setQuestionOrder(dto.getQuestionOrder());

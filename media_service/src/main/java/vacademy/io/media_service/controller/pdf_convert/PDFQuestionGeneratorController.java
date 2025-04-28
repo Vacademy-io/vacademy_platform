@@ -13,6 +13,9 @@ import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.media.dto.FileDetailsDTO;
 import vacademy.io.media_service.ai.DeepSeekService;
 import vacademy.io.media_service.dto.*;
+import vacademy.io.media_service.entity.TaskStatus;
+import vacademy.io.media_service.enums.TaskInputTypeEnum;
+import vacademy.io.media_service.enums.TaskStatusTypeEnum;
 import vacademy.io.media_service.service.*;
 import vacademy.io.media_service.util.JsonUtils;
 
@@ -139,25 +142,27 @@ public class PDFQuestionGeneratorController {
                                                                           @RequestParam(name = "taskName", required = false) String taskName,
                                                                           @RequestParam(name = "instituteId", required = false) String instituteId) throws IOException {
 
-        var fileConversionStatus = fileConversionStatusService.findByVendorFileId(pdfId);
+        TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(taskId, TaskStatusTypeEnum.PDF_TO_QUESTIONS.name(), pdfId, TaskInputTypeEnum.PDF_ID.name(), taskName, instituteId);
 
-        if (fileConversionStatus.isEmpty() || !StringUtils.hasText(fileConversionStatus.get().getHtmlText())) {
-            String html = newDocConverterService.getConvertedHtml(pdfId);
-            if (html == null) {
-                throw new VacademyException("File Still Processing");
-            }
-            String htmlBody = extractBody(html);
-            String networkHtml = htmlImageConverter.convertBase64ToUrls(htmlBody);
+        // Background async processing
+        deepSeekAsyncTaskService.pollAndProcessPdfToQuestions(taskStatus, pdfId, userPrompt);
 
-            fileConversionStatusService.updateHtmlText(pdfId, networkHtml);
-            deepSeekAsyncTaskService.processDeepSeekTaskInBackgroundWrapperForPdfToQuestions(taskId,pdfId,userPrompt,networkHtml,taskName,instituteId);
+        return ResponseEntity.ok(taskStatus.getId());
+    }
 
-            return ResponseEntity.ok("Done");
-        }
+    @GetMapping("/math-parser/image-to-questions")
+    public ResponseEntity<String> getMathParserPdfHtmlFromImage(@RequestParam String pdfId,
+                                                       @RequestParam(required = false) String userPrompt,
+                                                       @RequestParam(name = "taskId" , required = false) String taskId,
+                                                       @RequestParam(name = "taskName", required = false) String taskName,
+                                                       @RequestParam(name = "instituteId", required = false) String instituteId) throws IOException {
 
-        deepSeekAsyncTaskService.processDeepSeekTaskInBackgroundWrapperForPdfToQuestions(taskId,pdfId,userPrompt,fileConversionStatus.get().getHtmlText(), taskName,instituteId);
+        TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(taskId, TaskStatusTypeEnum.IMAGE_TO_QUESTIONS.name(), pdfId, TaskInputTypeEnum.IMAGE_ID.name(), taskName, instituteId);
 
-        return ResponseEntity.ok("Done");
+        // Background async processing
+        deepSeekAsyncTaskService.pollAndProcessPdfToQuestions(taskStatus, pdfId, userPrompt);
+
+        return ResponseEntity.ok(taskStatus.getId());
     }
 
     @GetMapping("/math-parser/topic-wise/pdf-to-questions")
@@ -165,27 +170,11 @@ public class PDFQuestionGeneratorController {
                                                                                    @RequestParam("instituteId")String instituteId,
                                                                                    @RequestParam("taskName") String taskName) throws IOException {
 
-        var fileConversionStatus = fileConversionStatusService.findByVendorFileId(pdfId);
+        TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(null, TaskStatusTypeEnum.SORT_QUESTIONS_TOPIC_WISE.name(), pdfId, TaskInputTypeEnum.PDF_ID.name(), taskName, instituteId);
 
-        if (fileConversionStatus.isEmpty() || !StringUtils.hasText(fileConversionStatus.get().getHtmlText())) {
-            String html = newDocConverterService.getConvertedHtml(pdfId);
-            if (html == null) {
-                throw new VacademyException("File Still Processing");
-            }
-            String htmlBody = extractBody(html);
-            String networkHtml = htmlImageConverter.convertBase64ToUrls(htmlBody);
-
-            fileConversionStatusService.updateHtmlText(pdfId, networkHtml);
-
-            deepSeekAsyncTaskService.processDeepSeekTaskInBackgroundWrapperForSortPdfQuestionsWithTopics(networkHtml, pdfId,userPrompt,instituteId,taskName);
-
-
-
-            return ResponseEntity.ok("Done");
-
-        }
-        deepSeekAsyncTaskService.processDeepSeekTaskInBackgroundWrapperForSortPdfQuestionsWithTopics(fileConversionStatus.get().getHtmlText(), pdfId,userPrompt,instituteId,taskName);
-        return ResponseEntity.ok("Done");
+        // Background async processing
+        deepSeekAsyncTaskService.pollAndProcessSortQuestionTopicWise(taskStatus, pdfId);
+        return ResponseEntity.ok(taskStatus.getId());
     }
 
     @PostMapping("/math-parser/html-to-questions")
@@ -226,24 +215,12 @@ public class PDFQuestionGeneratorController {
                                                                  @RequestParam(name = "taskName", required = false) String taskName,
                                                                  @RequestParam(name = "instituteId", required = false) String instituteId) throws IOException {
 
-        var fileConversionStatus = fileConversionStatusService.findByVendorFileId(pdfId);
 
-        if (fileConversionStatus.isEmpty() || !StringUtils.hasText(fileConversionStatus.get().getHtmlText())) {
-            String html = newDocConverterService.getConvertedHtml(pdfId);
-            if (html == null) {
-                throw new VacademyException("File Still Processing");
-            }
-            String htmlBody = extractBody(html);
-            String networkHtml = htmlImageConverter.convertBase64ToUrls(htmlBody);
+        TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(taskId, TaskStatusTypeEnum.PDF_TO_QUESTIONS_WITH_TOPIC.name(), pdfId, TaskInputTypeEnum.PDF_ID.name(), taskName, instituteId);
 
-            fileConversionStatusService.updateHtmlText(pdfId, networkHtml);
-            deepSeekAsyncTaskService.processDeepSeekTaskInBackgroundWrapperForPdfToQuestionsOfTopics(taskId,pdfId,networkHtml,requiredTopics,taskName, instituteId);
+        deepSeekAsyncTaskService.pollAndProcessPdfExtractTopicQuestions(taskStatus,pdfId,requiredTopics);
 
-            return ResponseEntity.ok("Done");
-        }
-
-        deepSeekAsyncTaskService.processDeepSeekTaskInBackgroundWrapperForPdfToQuestionsOfTopics(taskId,pdfId,fileConversionStatus.get().getHtmlText(),requiredTopics,taskName, instituteId);
-        return ResponseEntity.ok("Done");
+        return ResponseEntity.ok(taskStatus.getId());
 
     }
 
@@ -293,11 +270,12 @@ public class PDFQuestionGeneratorController {
     @PostMapping("/from-text")
     public ResponseEntity<String> fromHtml(
             @RequestBody TextDTO textPrompt,
-            @RequestParam("instituteId") String instituteId) {
+            @RequestParam("instituteId") String instituteId,
+            @RequestParam(value = "taskId", required = false) String taskId) {
+        TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(taskId, TaskStatusTypeEnum.TEXT_TO_QUESTIONS.name(), deepSeekAsyncTaskService.generateUniqueId(textPrompt.getText()), TaskInputTypeEnum.PROMPT_ID.name(), textPrompt.getTaskName(), instituteId);
 
-        deepSeekAsyncTaskService.processDeepSeekTaskInBackgroundWrapperForTextToQuestions(textPrompt,instituteId);
-
-        return ResponseEntity.ok("Done");
+        deepSeekAsyncTaskService.pollAndProcessTextToQuestions(taskStatus,textPrompt);
+        return ResponseEntity.ok(taskStatus.getId());
     }
 
     private boolean isHtmlFile(MultipartFile file) {

@@ -19,5 +19,6 @@ public class SlideDTO {
     private VideoSlideDTO videoSlide;
     private DocumentSlideDTO documentSlide;
     private QuestionSlideDTO questionSlide;
+    private AssignmentSlideDTO assignmentSlide;
     private Boolean isLoaded = false;
 }

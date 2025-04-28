@@ -3,14 +3,12 @@ package vacademy.io.admin_core_service.features.slide.service;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
-import vacademy.io.admin_core_service.features.common.entity.RichTextData;
 import vacademy.io.admin_core_service.features.common.service.RichTextDataService;
 import vacademy.io.admin_core_service.features.slide.dto.OptionDTO;
 import vacademy.io.admin_core_service.features.slide.dto.QuestionSlideDTO;
 import vacademy.io.admin_core_service.features.slide.dto.SlideDTO;
 import vacademy.io.admin_core_service.features.slide.entity.Option;
 import vacademy.io.admin_core_service.features.slide.entity.QuestionSlide;
-import vacademy.io.admin_core_service.features.slide.entity.Slide;
 import vacademy.io.admin_core_service.features.slide.enums.SlideTypeEnum;
 import vacademy.io.admin_core_service.features.slide.repository.OptionRepository;
 import vacademy.io.admin_core_service.features.slide.repository.QuestionSlideRepository;
@@ -21,7 +19,6 @@ import vacademy.io.common.exceptions.VacademyException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Service
@@ -48,7 +45,7 @@ public class QuestionSlideService {
     public String addQuestionSlide(SlideDTO slideDTO, String chapterId) {
         QuestionSlide questionSlide = new QuestionSlide(slideDTO.getQuestionSlide());
         QuestionSlide savedQuestionSlide = questionSlideRepository.save(questionSlide);
-        slideService.saveSlide(slideDTO.getId(), savedQuestionSlide.getId(), SlideTypeEnum.QUESTION_SLIDE.name(),
+        slideService.saveSlide(slideDTO.getId(), savedQuestionSlide.getId(), SlideTypeEnum.QUESTION.name(),
                 slideDTO.getStatus(), slideDTO.getTitle(), slideDTO.getDescription(),
                 slideDTO.getImageFileId(), slideDTO.getSlideOrder(), chapterId);
         return "success";

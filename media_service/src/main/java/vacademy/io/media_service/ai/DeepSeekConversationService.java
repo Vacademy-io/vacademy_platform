@@ -5,7 +5,9 @@ import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.media_service.constant.ConstantAiTemplate;
 import vacademy.io.media_service.dto.DeepSeekResponse;
+import vacademy.io.media_service.enums.TaskStatusTypeEnum;
 import vacademy.io.media_service.util.JsonUtils;
 
 import java.util.Map;
@@ -18,26 +20,7 @@ public class DeepSeekConversationService {
     DeepSeekApiService deepSeekApiService;
 
     public String getResponseForUserPrompt(String userPrompt, String htmlText, String last5Conversations) {
-        String template = """
-                HTML raw data :  {htmlText}
-                User Chat :  {userPrompt}
-                Last 5 Conversations: {last5Conversation}
-                    
-                        Prompt:
-                          - Use the "User Chat" to generate a meaningful response based on the HTML content.
-                          - Utilize relevant information from the "Last 5 Conversations" (if available) to maintain conversational continuity
-                           
-                           JSON format : 
-                         
-                                {{
-                                   "user" : "{userPrompt}", 
-                                   "response" : "String" //Include Response here in formatted markdown format
-                                }} 
-                           
-                                  
-                        IMPORTANT: {userPrompt}
-                        Give the response string in a formatted markdown format
-                        """;
+        String template = ConstantAiTemplate.getTemplateBasedOnType(TaskStatusTypeEnum.CHAT_WITH_PDF);
 
         Prompt prompt = new PromptTemplate(template).create(Map.of("userPrompt", userPrompt,
                 "last5Conversation", last5Conversations,"htmlText",htmlText));

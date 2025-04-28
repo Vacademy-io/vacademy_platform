@@ -60,7 +60,7 @@ public class AiLectureManager {
             // Return first 20 characters for uniqueness + brevity
             return base64Encoded.substring(0, 20);
         } catch (Exception e) {
-            throw new RuntimeException("Error generating unique ID", e);
+            throw new VacademyException("Error generating unique ID"+e.getMessage());
         }
     }
 }

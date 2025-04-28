@@ -143,7 +143,6 @@ public class DeepSeekService {
 
             Map<String, Object> promptMap = Map.of(
                     "htmlData", unTaggedHtml,
-                    "restoredJson", restoredJson == null ? "" : restoredJson,
                     "userPrompt", userPrompt,
                     "allQuestionNumbers", allQuestionNumbers
             );

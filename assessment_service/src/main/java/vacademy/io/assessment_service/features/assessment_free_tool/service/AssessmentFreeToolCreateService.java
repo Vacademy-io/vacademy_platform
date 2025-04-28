@@ -75,6 +75,8 @@ public class AssessmentFreeToolCreateService {
 
                 if (questionDTO.isNewQuestion()) {
                     questionsToSave.add(question);
+                    mappingsToSave.add(prepareMapping(section, question, questionDTO,new QuestionAssessmentSectionMapping()));
+                    continue;
                 }
 
                 if (questionDTO.getQuestionOrder() != null && questionDTO.getMarkingJson() != null) {

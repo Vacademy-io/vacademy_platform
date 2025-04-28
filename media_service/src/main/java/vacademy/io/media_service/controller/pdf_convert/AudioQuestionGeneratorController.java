@@ -12,6 +12,9 @@ import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.media.dto.FileDetailsDTO;
 import vacademy.io.media_service.ai.DeepSeekService;
 import vacademy.io.media_service.dto.*;
+import vacademy.io.media_service.entity.TaskStatus;
+import vacademy.io.media_service.enums.TaskInputTypeEnum;
+import vacademy.io.media_service.enums.TaskStatusTypeEnum;
 import vacademy.io.media_service.service.*;
 import vacademy.io.media_service.util.JsonUtils;
 
@@ -42,6 +45,9 @@ public class AudioQuestionGeneratorController {
 
     @Autowired
     DeepSeekAsyncTaskService deepSeekAsyncTaskService;
+
+    @Autowired
+    TaskStatusService taskStatusService;
 
     public static String removeExtraSlashes(String input) {
         // Regular expression to match <img src="..."> and replace with <img src="...">
@@ -123,22 +129,11 @@ public class AudioQuestionGeneratorController {
             language = "english";
         }
 
-        var fileConversionStatus = fileConversionStatusService.findByVendorFileId(audioId);
+        TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(taskId, TaskStatusTypeEnum.AUDIO_TO_QUESTIONS.name(), audioId, TaskInputTypeEnum.AUDIO_ID.name(), taskName, instituteId);
 
-        if (fileConversionStatus.isEmpty() || !StringUtils.hasText(fileConversionStatus.get().getHtmlText())) {
-            String convertedText = newAudioConverterService.getConvertedAudio(audioId);
-            if (convertedText == null) {
-                throw new VacademyException("File Still Processing");
-            }
-
-
-            fileConversionStatusService.updateHtmlText(audioId, convertedText);
-            deepSeekAsyncTaskService.processDeepSeekTaskInBackgroundWrapperForAudioToQuestions(taskId,convertedText,numQuestions,prompt,difficulty,language,taskName,instituteId, audioId);
-
-            return ResponseEntity.ok("Done");
-        }
-        deepSeekAsyncTaskService.processDeepSeekTaskInBackgroundWrapperForAudioToQuestions(taskId,fileConversionStatus.get().getHtmlText(),numQuestions,prompt,difficulty,language,taskName,instituteId, audioId);
-        return ResponseEntity.ok("Done");
+        // Background async processing
+        deepSeekAsyncTaskService.pollAndProcessAudioToQuestions(taskStatus, audioId, prompt,difficulty,language,numQuestions);
+        return ResponseEntity.ok(taskStatus.getId());
     }
 
 

@@ -56,6 +56,9 @@ public class TaskStatus {
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Date updatedAt;
 
+    @Column(name = "status_message")
+    private String statusMessage;
+
 
     public TaskStatusDto getTaskDto(){
         return TaskStatusDto.builder()

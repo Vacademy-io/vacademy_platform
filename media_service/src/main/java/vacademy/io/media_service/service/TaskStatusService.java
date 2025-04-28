@@ -98,6 +98,13 @@ public class TaskStatusService {
         taskStatusRepository.save(taskStatus);
     }
 
+    public void updateTaskStatusAndStatusMessage(TaskStatus taskStatus, String status,String resultJson, String statusMessage) {
+        updateIfNotNull(status,taskStatus::setStatus);
+        updateIfNotNull(resultJson,taskStatus::setResultJson);
+        updateIfNotNull(statusMessage,taskStatus::setStatusMessage);
+        taskStatusRepository.save(taskStatus);
+    }
+
     private <T> void updateIfNotNull(T value, java.util.function.Consumer<T> setterMethod) {
         if (value != null) {
             setterMethod.accept(value);

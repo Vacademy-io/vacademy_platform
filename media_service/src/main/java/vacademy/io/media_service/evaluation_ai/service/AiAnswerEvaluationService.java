@@ -406,61 +406,67 @@ public class AiAnswerEvaluationService {
         return prompt.toString();
     }
 
-
     public String generatePromptToEvaluateAnswer(List<EvaluationResultFromDeepSeek.SectionWiseAnsExtracted> sectionWiseAnsExtracted, AiEvaluationMetadata metadata) {
         StringBuilder prompt = new StringBuilder();
 
         prompt.append("""
-        You are an AI assistant tasked with evaluating the student's answers using the metadata and answer sheet provided.
+    You are an AI assistant tasked with evaluating the student's answers using the provided metadata and answer sheet.
 
-        Instructions:
-        - For each question:
-            - If the student answered, evaluate the answer based on the evaluation criteria provided in the ai evaluation question metadata. Each criterion has a name and a weight, which determines the marks for the answer.
-            - For each criterion:
-                - Assign marks based on the student's response.
-                - The weight of the criterion will determine how much the answer contributes to the total marks.
-            - If the student skipped, mark as "NOT_ATTEMPTED" and give 0 marks.
-        - For each question, provide:
-            - Marks obtained
-            - Total marks (based on all criteria)
-            - Feedback (short and clear)
-            - Description (why marks were given/deducted based on evaluation criteria)
-            - Verdict (e.g. "Correct", "Partially Correct", "Incorrect", "Not Attempted")
+    Instructions:
+    - For each question:
+      - If the student answered, evaluate the answer based on the evaluation criteria provided in the AI evaluation question metadata. Each criterion has a name and a weight, which determines the marks for the answer.
+      - For each criterion:
+        - Assign marks based on the student's response.
+        - The weight of the criterion determines how much the answer contributes to the total marks.
+      - If the student skipped, mark as "NOT_ATTEMPTED" and assign 0 marks.
+      - ⚠️ If no evaluation criteria (marking JSON) is provided for a question (i.e., the criteria list is empty or null):
+        - In the feedback, clearly mention: "No evaluation criteria provided."
+        - Assign 0 marks for such questions by default.
 
-        ⚠️ Important: ONLY return a valid **JSON** response in the exact format below.
-        Do NOT include any explanations, summaries, or additional formatting.
+    - For each question, provide:
+      - Marks obtained
+      - Total marks (based on all available criteria)
+      - Feedback (short and clear)
+      - Description (brief reasoning on why marks were awarded or deducted based on the evaluation criteria)
+      - Verdict (e.g., "Correct", "Partially Correct", "Incorrect", "Not Attempted")
 
-        JSON Response Format:
+    ⚠️ Important:
+    - ONLY return a valid **JSON** response in the exact format described below.
+    - Do NOT include any explanation, summary, or formatting outside the JSON.
+    - Use double quotes for all JSON keys and string values.
+    - Escape any special characters properly if needed.
+
+    JSON Response Format:
+    {
+      "total_marks_obtained": <double>,
+      "total_marks": <double>,
+      "overall_verdict": "<verdict>",
+      "overall_description": "<short summary>",
+      "section_wise_results": [
         {
-          "total_marks_obtained": <double>,
+          "section_id": "<section_id>",
+          "section_name": "<section_name>",
+          "marks_obtained": <double>,
           "total_marks": <double>,
-          "overall_verdict": "<verdict>",
-          "overall_description": "<short summary>",
-          "section_wise_results": [
+          "verdict": "<section_verdict>",
+          "question_wise_results": [
             {
-              "section_id": "<section_id>",
-              "section_name": "<section_name>",
+              "question_id": "<question_id>",
+              "question_order": <int>,
+              "question_text": "<text>",
               "marks_obtained": <double>,
               "total_marks": <double>,
-              "verdict": "<section_verdict>",
-              "question_wise_results": [
-                {
-                  "question_id": "<question_id>",
-                  "question_order": <int>,
-                  "question_text": "<text>",
-                  "marks_obtained": <double>,
-                  "total_marks": <double>,
-                  "feedback": "<short comment>",
-                  "description": "<detailed reasoning based on evaluation criteria>",
-                  "verdict": "<Correct/Incorrect/Partially Correct/Not Attempted>"
-                }
-              ]
+              "feedback": "<short comment>",
+              "description": "<detailed reasoning based on evaluation criteria>",
+              "verdict": "<Correct/Incorrect/Partially Correct/Not Attempted>"
             }
           ]
         }
+      ]
+    }
 
-        Use the following metadata and student answers for evaluation:
-        """);
+    Below is the metadata and student answers for evaluation:
+    """);
 
         try {
             prompt.append("\nMetadata:\n").append(objectMapper.writeValueAsString(metadata));

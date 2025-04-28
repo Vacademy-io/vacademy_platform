@@ -6,15 +6,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
-import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.media_service.ai.DeepSeekLectureService;
 import vacademy.io.media_service.ai.DeepSeekService;
 import vacademy.io.media_service.dto.TextDTO;
 import vacademy.io.media_service.dto.audio.AudioConversionDeepLevelResponse;
-import vacademy.io.media_service.enums.TaskInputTypeEnum;
 import vacademy.io.media_service.entity.TaskStatus;
 import vacademy.io.media_service.enums.TaskStatusEnum;
-import vacademy.io.media_service.enums.TaskStatusTypeEnum;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -51,11 +48,11 @@ public class DeepSeekAsyncTaskService {
     @Autowired
     NewAudioConverterService newAudioConverterService;
 
-    int PDF_MAX_TRIES = 10;
-    int PDF_DELAY = 3000;
+    int PDF_MAX_TRIES = 15;
+    int PDF_DELAY = 10000;
 
-    int AUDIO_MAX_TRIES = 10;
-    int AUDIO_DELAY = 3000;
+    int AUDIO_MAX_TRIES = 20;
+    int AUDIO_DELAY = 10000;
 
     public void processDeepSeekTaskInBackground(TaskStatus taskStatus, String userPrompt, String networkHtml) {
         try {
@@ -166,12 +163,10 @@ public class DeepSeekAsyncTaskService {
                 taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FILE_PROCESSING.name(), null);
 
                 for (int attempt = 1; attempt <= PDF_MAX_TRIES; attempt++) {
-                    log.info("Polling attempt {} for pdfId {}", attempt, pdfId);
 
                     var fileConversionStatus = fileConversionStatusService.findByVendorFileId(pdfId);
 
                     if (fileConversionStatus.isPresent() && StringUtils.hasText(fileConversionStatus.get().getHtmlText())) {
-                        log.info("HTML found, proceeding with deep seek task");
                         processDeepSeekTaskInBackground(taskStatus, userPrompt, fileConversionStatus.get().getHtmlText());
                         return;
                     }
@@ -183,7 +178,7 @@ public class DeepSeekAsyncTaskService {
                         String networkHtml = htmlImageConverter.convertBase64ToUrls(htmlBody);
                         fileConversionStatusService.updateHtmlText(pdfId, networkHtml);
 
-                        log.info("HTML successfully converted, proceeding with deep seek task");
+
                         processDeepSeekTaskInBackground(taskStatus, userPrompt, networkHtml);
                         return;
                     }
@@ -192,11 +187,9 @@ public class DeepSeekAsyncTaskService {
                 }
 
                 // After retries exhausted
-                log.error("Failed to get HTML after retries, marking task as FAILED");
                 taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, "", null,"Failed To Process PDF");
 
             } catch (Exception e) {
-                log.error("Exception during polling: {}", e.getMessage(), e);
                 taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, TaskStatusEnum.FAILED.name(), null,e.getMessage());
             }
         });
@@ -223,6 +216,7 @@ public class DeepSeekAsyncTaskService {
         }
     }
 
+    @Async
     public CompletableFuture<Void> pollAndProcessSortQuestionTopicWise(TaskStatus taskStatus, String pdfId) {
         return CompletableFuture.runAsync(() -> {
             try {
@@ -230,12 +224,11 @@ public class DeepSeekAsyncTaskService {
                 taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FILE_PROCESSING.name(), null);
 
                 for (int attempt = 1; attempt <= PDF_MAX_TRIES; attempt++) {
-                    log.info("Polling attempt {} for pdfId {}", attempt, pdfId);
 
                     var fileConversionStatus = fileConversionStatusService.findByVendorFileId(pdfId);
 
                     if (fileConversionStatus.isPresent() && StringUtils.hasText(fileConversionStatus.get().getHtmlText())) {
-                        log.info("HTML found, proceeding with deep seek task");
+
                         processDeepSeekTaskInBackgroundSortPdfQuestionsWithTopics(fileConversionStatus.get().getHtmlText(),taskStatus);
                         return;
                     }
@@ -247,7 +240,6 @@ public class DeepSeekAsyncTaskService {
                         String networkHtml = htmlImageConverter.convertBase64ToUrls(htmlBody);
                         fileConversionStatusService.updateHtmlText(pdfId, networkHtml);
 
-                        log.info("HTML successfully converted, proceeding with deep seek task");
                         processDeepSeekTaskInBackgroundSortPdfQuestionsWithTopics(networkHtml,taskStatus);
                         return;
                     }
@@ -256,7 +248,6 @@ public class DeepSeekAsyncTaskService {
                 }
 
                 // After retries exhausted
-                log.error("Failed to get HTML after retries, marking task as FAILED");
                 taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, TaskStatusEnum.FAILED.name(), null,"Failed To Process PDF");
 
             } catch (Exception e) {
@@ -266,6 +257,7 @@ public class DeepSeekAsyncTaskService {
         });
     }
 
+    @Async
     public CompletableFuture<Void> pollAndProcessPdfExtractTopicQuestions(TaskStatus taskStatus, String pdfId, String requiredTopics) {
         return CompletableFuture.runAsync(() -> {
             try {
@@ -273,12 +265,11 @@ public class DeepSeekAsyncTaskService {
                 taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FILE_PROCESSING.name(), null);
 
                 for (int attempt = 1; attempt <= PDF_MAX_TRIES; attempt++) {
-                    log.info("Polling attempt {} for pdfId {}", attempt, pdfId);
 
                     var fileConversionStatus = fileConversionStatusService.findByVendorFileId(pdfId);
 
                     if (fileConversionStatus.isPresent() && StringUtils.hasText(fileConversionStatus.get().getHtmlText())) {
-                        log.info("HTML found, proceeding with deep seek task");
+
                         processDeepSeekTaskInBackgroundForPdftoQuestionOfTopic(taskStatus, requiredTopics, fileConversionStatus.get().getHtmlText());
                         return;
                     }
@@ -290,7 +281,6 @@ public class DeepSeekAsyncTaskService {
                         String networkHtml = htmlImageConverter.convertBase64ToUrls(htmlBody);
                         fileConversionStatusService.updateHtmlText(pdfId, networkHtml);
 
-                        log.info("HTML successfully converted, proceeding with deep seek task");
                         processDeepSeekTaskInBackgroundForPdftoQuestionOfTopic(taskStatus, requiredTopics, networkHtml);
                         return;
                     }
@@ -309,6 +299,7 @@ public class DeepSeekAsyncTaskService {
         });
     }
 
+    @Async
     public CompletableFuture<Void> pollAndProcessAudioToQuestions(TaskStatus taskStatus, String audioId, String prompt, String difficulty, String language, String numQuestions) {
         return CompletableFuture.runAsync(() -> {
             try {
@@ -386,11 +377,9 @@ public class DeepSeekAsyncTaskService {
                 }
 
                 // After retries exhausted
-                log.error("Failed to get HTML after retries, marking task as FAILED");
                 taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, TaskStatusEnum.FAILED.name(), null,"Failed To Process Audio");
 
             } catch (Exception e) {
-                log.error("Exception during polling: {}", e.getMessage(), e);
                 taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, TaskStatusEnum.FAILED.name(), null,e.getMessage());
             }
         });

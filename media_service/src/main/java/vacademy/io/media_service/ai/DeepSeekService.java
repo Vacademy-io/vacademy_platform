@@ -12,11 +12,13 @@ import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.media_service.constant.ConstantAiTemplate;
 import vacademy.io.media_service.dto.*;
 import vacademy.io.media_service.enums.QuestionResponseType;
 import vacademy.io.media_service.enums.QuestionTypes;
 import vacademy.io.media_service.entity.TaskStatus;
 import vacademy.io.media_service.enums.TaskStatusEnum;
+import vacademy.io.media_service.enums.TaskStatusTypeEnum;
 import vacademy.io.media_service.service.HtmlJsonProcessor;
 import vacademy.io.media_service.service.TaskStatusService;
 import vacademy.io.media_service.util.JsonUtils;
@@ -56,55 +58,12 @@ public class DeepSeekService {
             HtmlJsonProcessor htmlJsonProcessor = new HtmlJsonProcessor();
             String unTaggedHtml = htmlJsonProcessor.removeTags(textPrompt);
 
-            String template = """
-                Text raw prompt :  {textPrompt}
-                Already Generated Questions: {allQuestionNumbers}
-                    
-                        Prompt:
-                        use the Text raw prompt to generate {numberOfQuestions} {typeOfQuestion} questions for the class level {classLevel} and topics {topics} in {language}, return the output in JSON format as follows:
-                         - If 'Already extracted question Number' is empty, start fresh from the beginning of the HTML.
-                         - If it is not empty, continue generating from where the last question left off based on the existing data and avoid duplicate Questions.
-                         - Do not generate any questions if already generated {numberOfQuestions} questions and set is_process_completed true.
-                         - Preserve all DS_TAGs in HTML content in comments
-                                {{
-                                         "questions": [
-                                             {{
-                                                 "question_number": "number",
-                                                 "question": {{
-                                                     "type": "HTML",
-                                                     "content": "string" // Include img tags if present
-                                                 }},
-                                                 "options": [
-                                                     {{
-                                                         "type": "HTML",
-                                                         "content": "string" // Include img tags if present
-                                                     }}
-                                                 ],
-                                                 "correct_options": "number[]",
-                                                 "ans": "string",
-                                                 "exp": "string",
-                                                 "question_type": "MCQS | MCQM | ONE_WORD | LONG_ANSWER | NUMERIC",
-                                                 "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
-                                                 "level": "easy | medium | hard"
-                                             }}
-                                         ],
-                                         "title": "string" // Suitable title for the question paper ,
-                                          "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"] // multiple chapter and topic names for question paper,
-                                         "difficulty": "easy | medium | hard",
-                                         "is_process_completed": true,false
-                                         "subjects": ["subject1", "subject2", "subject3", "subject4", "subject5"] // multiple subject names for question paper like maths or thermodynamics or physics etc ,
-                                         "classes": ["class 1" , "class 2" ] // can be of multiple class - | class 3 | class 4 | class 5 | class 6 | class 7 | class 8 | class 9 | class 10 | class 11 | class 12 | engineering | medical | commerce | law
-                                    
-                                     }}
-                            
-                        For LONG_ANSWER, NUMERIC, and ONE_WORD question types:
-                        - Leave 'correct_options' empty but fill 'ans' and 'exp'
-                        - Omit 'options' field entirely
-                        
-                        """;
+            String template = ConstantAiTemplate.getTemplateBasedOnType(TaskStatusTypeEnum.TEXT_TO_QUESTIONS);
 
-            Prompt prompt = new PromptTemplate(template).create(Map.of("textPrompt", textPrompt, "numberOfQuestions", numberOfQuestions, "typeOfQuestion", typeOfQuestion, "classLevel", classLevel, "topics", topics, "language", language,
-                    "allQuestionNumbers",allQuestionNumbers));
+            Map<String, Object> promptMap = Map.of("textPrompt", textPrompt, "numberOfQuestions", numberOfQuestions, "typeOfQuestion", typeOfQuestion, "classLevel", classLevel, "topics", topics, "language", language,
+                    "allQuestionNumbers",allQuestionNumbers);
+            Prompt prompt = new PromptTemplate(template).create(promptMap);
+            taskStatusService.convertMapToJsonAndStore(promptMap,taskStatus);
 
             DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
             if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {
@@ -129,7 +88,7 @@ public class DeepSeekService {
                 return mergedJson;
             }
 
-            taskStatusService.updateTaskStatus(taskStatus,"PROGRESS",mergedJson);
+            taskStatusService.updateTaskStatus(taskStatus,TaskStatusEnum.PROGRESS.name(), mergedJson);
 
             return getQuestionsWithDeepSeekFromTextPrompt(textPrompt,numberOfQuestions,typeOfQuestion,classLevel,topics,language,taskStatus,attempt+1,mergedJson);
         } catch (Exception e) {
@@ -146,53 +105,7 @@ public class DeepSeekService {
             userPrompt = "Include first 20 questions in the response. Do not truncate or omit any questions.";
         }
 
-        String template = """
-                HTML raw data :  {htmlData}
-                    
-                        Prompt:
-                        Convert the given HTML file containing questions into the following JSON format:
-                        - Preserve all DS_TAGs in HTML content in comments
-                        
-                        JSON format : 
-                        
-                                {{
-                                         "questions": [
-                                             {{
-                                                 "question_number": "number",
-                                                 "question": {{
-                                                     "type": "HTML",
-                                                     "content": "string" // Include img tags if present
-                                                 }},
-                                                 "options": [
-                                                     {{
-                                                         "type": "HTML",
-                                                         "content": "string" // Include img tags if present
-                                                     }}
-                                                 ],
-                                                 "correct_options": "number[]",
-                                                 "ans": "string",
-                                                 "exp": "string",
-                                                 "question_type": "MCQS | MCQM | ONE_WORD | LONG_ANSWER | NUMERIC",
-                                                 "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
-                                                 "level": "easy | medium | hard"
-                                             }}
-                                         ],
-                                         "title": "string" // Suitable title for the question paper,
-                                         "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"] // multiple chapter and topic names for question paper,
-                                         "difficulty": "easy | medium | hard",
-                                         "subjects": ["subject1", "subject2", "subject3", "subject4", "subject5"] // multiple subject names for question paper like maths or thermodynamics or physics etc ,
-                                         "classes": ["class 1" , "class 2" ] // can be of multiple class - | class 3 | class 4 | class 5 | class 6 | class 7 | class 8 | class 9 | class 10 | class 11 | class 12 | engineering | medical | commerce | law
-                                     }}
-                            
-                        For LONG_ANSWER, NUMERIC, and ONE_WORD question types:
-                        - Leave 'correct_options' empty but fill 'ans' and 'exp'
-                        - Omit 'options' field entirely
-                        
-                        Also keep the DS_TAGS field intact in html
-                        And do not try to calculate right ans, only add if available in input
-                        
-                        IMPORTANT: {userPrompt}
-                        """;
+        String template = ConstantAiTemplate.getTemplateBasedOnType(TaskStatusTypeEnum.HTML_TO_QUESTIONS);
 
         Prompt prompt = new PromptTemplate(template).create(Map.of("htmlData", unTaggedHtml, "userPrompt", userPrompt));
 
@@ -220,69 +133,24 @@ public class DeepSeekService {
             HtmlJsonProcessor htmlJsonProcessor = new HtmlJsonProcessor();
             String unTaggedHtml = htmlJsonProcessor.removeTags(htmlData);
 
+
+
             if (userPrompt == null) {
                 userPrompt = "Include first 20 questions in the response. Do not truncate or omit any questions.";
             }
 
-            String template = """
-                HTML raw data :  {htmlData}
-                Already extracted question Number = {allQuestionNumbers}
-                    
-                        Prompt:
-                        Convert the given HTML file containing questions into the following JSON format:
-                         - If 'Already extracted question Number' is empty, start fresh from the beginning of the HTML.
-                         - If it is not empty, continue generating from where the last question left off based on the existing data and avoid duplicate Questions.
-                         - Do not generate any questions if already generated required questions and set is_process_completed true.
-                         - Preserve all DS_TAGs in HTML content in comments
-                        
-                        JSON format : 
-                        
-                                {{
-                                         "questions": [
-                                             {{
-                                                 "question_number": "number",
-                                                 "question": {{
-                                                     "type": "HTML",
-                                                     "content": "string" // Include img tags if present
-                                                 }},
-                                                 "options": [
-                                                     {{
-                                                         "type": "HTML",
-                                                         "content": "string" // Include img tags if present
-                                                     }}
-                                                 ],
-                                                 "correct_options": "number[]",
-                                                 "ans": "string",
-                                                 "exp": "string",
-                                                 "question_type": "MCQS | MCQM | ONE_WORD | LONG_ANSWER | NUMERIC",
-                                                 "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
-                                                 "level": "easy | medium | hard"
-                                             }}
-                                         ],
-                                         "title": "string" // Suitable title for the question paper,
-                                         "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"] // multiple chapter and topic names for question paper,
-                                         "is_process_completed" : true,false // Ensure is_process_completed is set to true only if {userPrompt} is achieved,
-                                         "difficulty": "easy | medium | hard",
-                                         "subjects": ["subject1", "subject2", "subject3", "subject4", "subject5"] // multiple subject names for question paper like maths or thermodynamics or physics etc ,
-                                         "classes": ["class 1" , "class 2" ] // can be of multiple class - | class 3 | class 4 | class 5 | class 6 | class 7 | class 8 | class 9 | class 10 | class 11 | class 12 | engineering | medical | commerce | law
-                                     }}
-                            
-                        For LONG_ANSWER, NUMERIC, and ONE_WORD question types:
-                        - Leave 'correct_options' empty but fill 'ans' and 'exp'
-                        - Omit 'options' field entirely
-                        
-                        Also keep the DS_TAGS field intact in html
-                        And do not try to calculate right ans, only add if available in input
-                        
-                        IMPORTANT: {userPrompt}
-                        """;
+            String template = ConstantAiTemplate.getTemplateBasedOnType(TaskStatusTypeEnum.PDF_TO_QUESTIONS);
 
-            Prompt prompt = new PromptTemplate(template).create(Map.of(
+            Map<String, Object> promptMap = Map.of(
                     "htmlData", unTaggedHtml,
                     "restoredJson", restoredJson == null ? "" : restoredJson,
                     "userPrompt", userPrompt,
                     "allQuestionNumbers", allQuestionNumbers
-            ));
+            );
+
+            taskStatusService.convertMapToJsonAndStore(promptMap,taskStatus);
+
+            Prompt prompt = new PromptTemplate(template).create(promptMap);
 
             DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
             if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {
@@ -362,64 +230,15 @@ public class DeepSeekService {
             String allQuestionNumbers = getCommaSeparatedQuestionNumbers(restoredJson);
             String unTaggedHtml = htmlJsonProcessor.removeTags(htmlData);
 
-            String template = """
-                HTML raw data :  {htmlData}
-                
-                Already extracted question Number = {allQuestionNumbers}
-                
-                Required Topics :  {requiredTopics}
-                    
-                        Prompt:
-                        Convert the given HTML file containing questions, only extract questions from the given topics into the following JSON format:
-                        - If 'Already extracted question Number' is empty, start fresh from the beginning of the HTML.
-                        - If it is not empty, continue generating from where the last question left off based on the existing data and avoid duplicate Questions.
-                        - Do not generate any questions if already generated all questions from Required Topics and set is_process_completed true.
-                        - Preserve all DS_TAGs in HTML content in comments
-                        
-                        JSON format : 
-                        
-                                {{
-                                         "questions": [
-                                             {{
-                                                 "question_number": "number",
-                                                 "question": {{
-                                                     "type": "HTML",
-                                                     "content": "string" // Include img tags if present
-                                                 }},
-                                                 "options": [
-                                                     {{
-                                                         "type": "HTML",
-                                                         "content": "string" // Include img tags if present
-                                                     }}
-                                                 ],
-                                                 "correct_options": "number[]",
-                                                 "ans": "string",
-                                                 "exp": "string",
-                                                 "question_type": "MCQS | MCQM | ONE_WORD | LONG_ANSWER | NUMERIC",
-                                                 "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
-                                                 "level": "easy | medium | hard"
-                                             }}
-                                         ],
-                                         "title": "string" // Suitable title for the question paper,
-                                         "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"] // multiple chapter and topic names for question paper,
-                                         "is_process_completed" : true,false // Ensure is_process_completed is set to true only if task is achieved,
-                                         "difficulty": "easy | medium | hard",
-                                         "subjects": ["subject1", "subject2", "subject3", "subject4", "subject5"] // multiple subject names for question paper like maths or thermodynamics or physics etc ,
-                                         "classes": ["class 1" , "class 2" ] // can be of multiple class - | class 3 | class 4 | class 5 | class 6 | class 7 | class 8 | class 9 | class 10 | class 11 | class 12 | engineering | medical | commerce | law
-                                     }}
-                            
-                        For LONG_ANSWER, NUMERIC, and ONE_WORD question types:
-                        - Leave 'correct_options' empty but fill 'ans' and 'exp'
-                        - Omit 'options' field entirely
-                        
-                        Also keep the DS_TAGS field intact in html
-                        And do not try to calculate right ans, only add if available in input
-                        Give the complete result to all possible questions
-                        """;
+            String template = ConstantAiTemplate.getTemplateBasedOnType(TaskStatusTypeEnum.PDF_TO_QUESTIONS_WITH_TOPIC);
 
-            Prompt prompt = new PromptTemplate(template).create(Map.of("htmlData", unTaggedHtml, "requiredTopics", requiredTopics,
+            Map<String,Object> promptMap = Map.of("htmlData", unTaggedHtml, "requiredTopics", requiredTopics,
                     "allQuestionNumbers", allQuestionNumbers,
-                    "restoredJson", restoredJson == null ? "" : restoredJson));
+                    "restoredJson", restoredJson == null ? "" : restoredJson);
+
+            Prompt prompt = new PromptTemplate(template).create();
+
+            taskStatusService.convertMapToJsonAndStore(promptMap,taskStatus);
 
             DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
             if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {
@@ -453,28 +272,7 @@ public class DeepSeekService {
         String unTaggedHtml = htmlJsonProcessor.removeTags(htmlAnswerData);
 
         String template = """
-                Question :  {htmlQuestionData}
                 
-                Answer By Student :  {htmlAnswerData}
-                
-                Maximum Marks :{maxMarks}
-                
-                Evaluation Difficulty :{evaluationDifficulty}
-                    
-                        Prompt:
-                        Evaluate the Answer against the Question and give marks out of maximum marks, evaluate on given evaluation difficulty
-                        - Give details of what is wrong referring to the specific part of answer
-                        
-                        JSON format : 
-                        
-                                {{
-                                         "marks_obtained": double value of marks obtained out of max marks,
-                                         "answer_tips": ["<div>part of answer -> this part can be written with better english</div>", "string2", "string3"] // html string list of tips on how to write the answer linking to the students answer use html tags to add styling,
-                                         "explanation": "<div>explanation and comparison with correct answer</div>" // html string of correct explanation to the students answer use html tags to add styling,
-                                         "topic_wise_understanding": ["<div><b>sub topic</b> -> how is the understanding of the topic for this student</div>", "string2", "string3"] // html string list of topic wise understanding and analysis use html tags to add styling,
-                                }}
-                            
-                      
            
                         """;
 
@@ -503,62 +301,13 @@ public class DeepSeekService {
             }
             String allQuestionNumbers = getCommaSeparatedQuestionNumbers(oldResponse);
 
-            String template = """
-                Class Lecture raw data :  {classLecture}
-                Questions Difficulty :  {difficulty}
-                Number of Questions :  {numQuestions}
-                Optional Teacher Prompt :  {optionalPrompt}
-                Language of questions:  {language}
-                Already extracted question Number = {allQuestionNumbers}
-                
-                
-                        Prompt:
-                        From the given audio lecture compile hard and medium questions, try engaging questions, convert it into the following JSON format:
-                          - If 'Already extracted question Number' is empty, start fresh from the beginning of the HTML.
-                         - If it is not empty, continue generating from where the last question left off based on the existing data and avoid duplicate Questions.
-                         - Do not generate any questions if already generated required questions and set is_process_completed true.
-                         - Preserve all DS_TAGs in HTML content in comments
-                        
-                        
-                        JSON format : 
-                        
-                                {{
-                                         "questions": [
-                                             {{
-                                                 "question_number": "number",
-                                                 "question": {{
-                                                     "type": "HTML",
-                                                     "content": "string" // Include img tags if present
-                                                 }},
-                                                 "options": [
-                                                     {{
-                                                         "type": "HTML",
-                                                         "content": "string" // Include img tags if present
-                                                     }}
-                                                 ],
-                                                 "correct_options": "number[]",
-                                                 "ans": "string",
-                                                 "exp": "string",
-                                                 "question_type": "MCQS | MCQM | ONE_WORD | LONG_ANSWER | NUMERIC",
-                                                 "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
-                                                 "level": "easy | medium | hard"
-                                             }}
-                                         ],
-                                         "title": "string" // Suitable title for the question paper,
-                                         "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"] // multiple chapter and topic names for question paper,
-                                         "is_process_completed": true,false // Ensure is_process_completed is set to true only if {optionalPrompt} is achieved,
-                                         "difficulty": "easy | medium | hard",
-                                         "subjects": ["subject1", "subject2", "subject3", "subject4", "subject5"] // multiple subject names for question paper like maths or thermodynamics or physics etc ,
-                                         "classes": ["class 1" , "class 2" ] // can be of multiple class - | class 3 | class 4 | class 5 | class 6 | class 7 | class 8 | class 9 | class 10 | class 11 | class 12 | engineering | medical | commerce | law
-                                     }}
-                            
-                        For LONG_ANSWER, NUMERIC, and ONE_WORD question types:
-                        - Leave 'correct_options' empty but fill 'ans' and 'exp'
-                        - Omit 'options' field entirely
-                        """;
+            String template = ConstantAiTemplate.getTemplateBasedOnType(TaskStatusTypeEnum.AUDIO_TO_QUESTIONS);
 
-            Prompt prompt = new PromptTemplate(template).create(Map.of("classLecture", audioString, "difficulty", difficulty, "numQuestions", numQuestions, "optionalPrompt", optionalPrompt, "language","en",
-                    "allQuestionNumbers",allQuestionNumbers));
+            Map<String,Object> promptMap = Map.of("classLecture", audioString, "difficulty", difficulty, "numQuestions", numQuestions, "optionalPrompt", optionalPrompt, "language","en",
+                    "allQuestionNumbers",allQuestionNumbers);
+            Prompt prompt = new PromptTemplate(template).create(promptMap);
+
+            taskStatusService.convertMapToJsonAndStore(promptMap,taskStatus);
 
             DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
 
@@ -905,71 +654,13 @@ public class DeepSeekService {
             HtmlJsonProcessor htmlJsonProcessor = new HtmlJsonProcessor();
             String unTaggedHtml = htmlJsonProcessor.removeTags(htmlData);
 
-            String template = """
-        HTML raw data :  {htmlData}
-        Already extracted question numbers: {extractedQuestionNumber}
-                
-        Prompt:
-        Extract all questions from pdf and map all the extracted questions with respective topic and strictly follow Json Format:
-         - Strictly follow this: Do not repeat same question number in two or more topics
-         - If 'Already extracted question Number' is empty, start fresh from the beginning of the HTML.
-         - If it is not empty, continue generating from where the last question left off based on the existing data and avoid duplicate Questions.
-         - Do not extract any questions if already extracted all questions and set is_process_completed true.
-         - Preserve all DS_TAGs in HTML content in comments
-        
-        JSON format : 
-        
-                {{
-                    "questions": [
-                        {{
-                            "question_number": "number",
-                            "question": {{
-                                "type": "HTML",
-                                "content": "string" // Include img tags if present
-                            }},
-                            "options": [
-                                {{
-                                    "type": "HTML",
-                                    "content": "string" // Include img tags if present
-                                }}
-                            ],
-                            "correct_options": "number[]",
-                            "ans": "string",
-                            "exp": "string",
-                            "question_type": "MCQS | MCQM | ONE_WORD | LONG_ANSWER | NUMERIC",
-                            "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"], // must include topic name
-                            "level": "easy | medium | hard"
-                        }}
-                    ],
-                    "title": "string", // Suitable title for the question paper
-                    "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"], // multiple chapter and topic names for question paper
-                    "difficulty": "easy | medium | hard",
-                    "subjects": ["subject1", "subject2", "subject3", "subject4", "subject5"], // multiple subject names for question paper
-                    "classes": ["class 1", "class 2", "class 3", "class 4", "class 5", "class 6", "class 7", "class 8", "class 9", "class 10", "class 11", "class 12", "engineering", "medical", "commerce", "law"],
-                    "is_process_completed" : true,false // Ensure is_process_completed is set to true only if {userPrompt} is achieved,
-                    "topicQuestionMap":{{
-                                           "topic" : "String"       //Included Topic which are possible in pdf
-                                           "questionNumbers": [number]  //Include all the question numbers which is related to "topic"
-                                       }}
-                }}
-        
-        For LONG_ANSWER, NUMERIC, and ONE_WORD question types:
-        - Leave 'correct_options' empty but fill 'ans' and 'exp'
-        - Omit 'options' field entirely
-        
-        Tagging Rules:
-        - Every question must include its topic in the "tags" field.
-        - Questions belonging to the same topic must have identical "tags".
-        - If a topic is not directly extractable from the question, use headings or context from the HTML.
-        
-        Also keep the DS_TAGS field intact in HTML.
-        Do not try to calculate correct answers — only include if already available in the input.
-        
-     
-        """;
+            String template = ConstantAiTemplate.getTemplateBasedOnType(TaskStatusTypeEnum.SORT_QUESTIONS_TOPIC_WISE);
+            Map<String, Object> promptMap = Map.of("htmlData", unTaggedHtml,
+                    "extractedQuestionNumber",extractedQuestionNumber);
 
-            Prompt prompt = new PromptTemplate(template).create(Map.of("htmlData", unTaggedHtml,
-                    "extractedQuestionNumber",extractedQuestionNumber));
+            Prompt prompt = new PromptTemplate(template).create(promptMap);
+
+            taskStatusService.convertMapToJsonAndStore(promptMap, taskStatus);
 
             DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
             if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {

@@ -59,6 +59,9 @@ public class TaskStatus {
     @Column(name = "status_message")
     private String statusMessage;
 
+    @Column(name = "dynamic_values_map")
+    private String dynamicValuesMap;
+
 
     public TaskStatusDto getTaskDto(){
         return TaskStatusDto.builder()

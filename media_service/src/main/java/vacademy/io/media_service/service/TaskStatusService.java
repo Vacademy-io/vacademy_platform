@@ -54,7 +54,7 @@ public class TaskStatusService {
     }
 
     public List<TaskStatus> getTaskStatusesByInstituteIdAndTaskType(String instituteId, String taskType) {
-        return taskStatusRepository.findByInstituteIdAndType(instituteId, taskType);
+        return taskStatusRepository.findByInstituteIdAndTypeOrderByCreatedAtDesc(instituteId, taskType);
     }
 
     public List<TaskStatus> getTaskStatusesByInputType(String inputType) {
@@ -182,5 +182,12 @@ public class TaskStatusService {
 
     public List<TaskStatus> getTaskStatusesByInstituteIdAndNoParentId(String instituteId) {
         return taskStatusRepository.findByInstituteIdAndNullParentId(instituteId);
+    }
+
+    public void convertMapToJsonAndStore(Map<String, Object> map, TaskStatus taskStatus)throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        String jsonMap =  objectMapper.writeValueAsString(map);
+        taskStatus.setDynamicValuesMap(jsonMap);
+        taskStatusRepository.save(taskStatus);
     }
 }

@@ -9,14 +9,24 @@ import java.util.Date;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public interface StudentReportDto {
     String getAssessmentId();
+
     String getAssessmentName();
+
     String getAttemptId();
+
     Date getStartTime();
+
     Date getEndTime();
+
     String getAttemptStatus();
+
     Date getAttemptDate();
+
     Long getDurationInSeconds();
+
     Double getTotalMarks();
+
     String getSubjectId();
+
     String getAssessmentStatus();
 }

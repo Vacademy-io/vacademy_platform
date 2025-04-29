@@ -5,7 +5,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.assessment_service.features.assessment.dto.EvaluationLogDto;
-import vacademy.io.assessment_service.features.assessment.entity.EvaluationLogs;
 import vacademy.io.assessment_service.features.assessment.manager.AdminEvaluationLogsManager;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
@@ -19,8 +18,8 @@ public class AdminEvaluationLogController {
     AdminEvaluationLogsManager adminEvaluationLogsManager;
 
     @GetMapping("/get-all")
-    public ResponseEntity<List<EvaluationLogDto>> evaluationLogs(@RequestAttribute("user")CustomUserDetails userDetails,
-                                                                 @RequestParam("attemptId") String attemptId){
+    public ResponseEntity<List<EvaluationLogDto>> evaluationLogs(@RequestAttribute("user") CustomUserDetails userDetails,
+                                                                 @RequestParam("attemptId") String attemptId) {
         return adminEvaluationLogsManager.getEvaluationLogs(userDetails, attemptId);
     }
 }

@@ -11,8 +11,8 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 @RequestMapping("/community-service/test/v1")
 public class TestController {
 
-    @GetMapping ("/hello")
-    public ResponseEntity<String> hello(@RequestAttribute("user")CustomUserDetails userDetails) {
+    @GetMapping("/hello")
+    public ResponseEntity<String> hello(@RequestAttribute("user") CustomUserDetails userDetails) {
         return ResponseEntity.ok("Hello Community Service");
     }
 

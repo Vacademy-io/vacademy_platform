@@ -5,7 +5,6 @@ import org.hibernate.SessionFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
-import vacademy.io.assessment_service.features.assessment.dto.AssessmentSaveResponseDto;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentInstituteMapping;
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentStatus;
@@ -19,7 +18,8 @@ import java.util.Optional;
 @Service
 public class AssessmentService {
 
-    @Autowired private SessionFactory sessionFactory;
+    @Autowired
+    private SessionFactory sessionFactory;
 
     @Autowired
     private AssessmentRepository assessmentRepository;
@@ -28,7 +28,7 @@ public class AssessmentService {
     private AssessmentInstituteMappingRepository assessmentInstituteMappingRepository;
 
     public Optional<Assessment> getAssessmentWithActiveSections(String assessmentId, String instituteId) {
-        if(assessmentId == null) return Optional.empty();
+        if (assessmentId == null) return Optional.empty();
 
         Session session = sessionFactory.openSession();
         session.enableFilter("activeSections").setParameter("status", "ACTIVE");
@@ -39,7 +39,7 @@ public class AssessmentService {
 
     public ResponseEntity<String> deleteAssessment(CustomUserDetails user, String assessmentId, String instituteId) {
         Optional<AssessmentInstituteMapping> optionalAssessmentInstituteMapping = assessmentInstituteMappingRepository.findByAssessmentIdAndInstituteId(assessmentId, instituteId);
-        if(optionalAssessmentInstituteMapping.isEmpty()) throw new VacademyException("Assessment Not Found");
+        if (optionalAssessmentInstituteMapping.isEmpty()) throw new VacademyException("Assessment Not Found");
 
         Assessment assessment = optionalAssessmentInstituteMapping.get().getAssessment();
         assessment.setStatus(AssessmentStatus.DELETED.name());

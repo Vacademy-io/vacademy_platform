@@ -5,4 +5,5 @@ import org.springframework.stereotype.Repository;
 import vacademy.io.community_service.feature.init.entity.Streams;
 
 @Repository
-public interface StreamsRepository extends JpaRepository<Streams, String> { }
+public interface StreamsRepository extends JpaRepository<Streams, String> {
+}

@@ -18,7 +18,9 @@ import vacademy.io.assessment_service.features.assessment.enums.AttemptResultSta
 import vacademy.io.assessment_service.features.assessment.enums.EvaluationLogSourceEnum;
 import vacademy.io.assessment_service.features.assessment.enums.EvaluationLogsTypeEnum;
 import vacademy.io.assessment_service.features.assessment.enums.QuestionResponseEnum;
-import vacademy.io.assessment_service.features.assessment.repository.*;
+import vacademy.io.assessment_service.features.assessment.repository.AssessmentSetMappingRepository;
+import vacademy.io.assessment_service.features.assessment.repository.EvaluationLogsRepository;
+import vacademy.io.assessment_service.features.assessment.repository.SectionRepository;
 import vacademy.io.assessment_service.features.assessment.service.StudentAttemptService;
 import vacademy.io.assessment_service.features.learner_assessment.entity.QuestionWiseMarks;
 import vacademy.io.assessment_service.features.learner_assessment.enums.AssessmentAttemptEnum;
@@ -56,24 +58,25 @@ public class AdminManualEvaluationManager {
 
 
     public ResponseEntity<String> submitManualEvaluatedMarks(CustomUserDetails userDetails, String assessmentId, String instituteId, String attemptId, ManualSubmitMarksRequest request) {
-        try{
-            if(Objects.isNull(request)) throw new VacademyException("Invalid Request");
+        try {
+            if (Objects.isNull(request)) throw new VacademyException("Invalid Request");
 
             Optional<StudentAttempt> attemptOptional = studentAttemptService.getStudentAttemptById(attemptId);
-            if(attemptOptional.isEmpty()) throw new VacademyException("Attempt Not Found");
+            if (attemptOptional.isEmpty()) throw new VacademyException("Attempt Not Found");
 
-            if(attemptOptional.get().getStatus().equals(AssessmentAttemptEnum.LIVE.name())) throw new VacademyException("Attempt is Currently Live");
+            if (attemptOptional.get().getStatus().equals(AssessmentAttemptEnum.LIVE.name()))
+                throw new VacademyException("Attempt is Currently Live");
 
             Assessment assessment = attemptOptional.get().getRegistration().getAssessment();
-            if(!assessment.getId().equals(assessmentId)) throw new VacademyException("Assessment Not Found");
+            if (!assessment.getId().equals(assessmentId)) throw new VacademyException("Assessment Not Found");
 
-            updateMarksForAttempt(assessment,attemptOptional.get(),request);
+            updateMarksForAttempt(assessment, attemptOptional.get(), request);
 
-            createEvaluationLog(attemptOptional.get(),userDetails,request.getDataJson());
+            createEvaluationLog(attemptOptional.get(), userDetails, request.getDataJson());
 
             return ResponseEntity.ok("Done");
-        }catch (Exception e){
-            throw new VacademyException("Failed To Update Marks: " +e.getMessage());
+        } catch (Exception e) {
+            throw new VacademyException("Failed To Update Marks: " + e.getMessage());
         }
     }
 
@@ -104,7 +107,7 @@ public class AdminManualEvaluationManager {
                     .computeIfAbsent(mark.getSectionId(), k -> new ArrayList<>())
                     .add(mark);
         }
-        Double totalMarks = updateMarksForSectionQuestionMarkMappingAndGetTotalMarks(assessment,attempt,sectionQuestionMarkMapping);
+        Double totalMarks = updateMarksForSectionQuestionMarkMappingAndGetTotalMarks(assessment, attempt, sectionQuestionMarkMapping);
         updateAttemptStatus(attempt, totalMarks, request);
     }
 
@@ -125,7 +128,7 @@ public class AdminManualEvaluationManager {
         for (Map.Entry<String, List<ManualSubmitMarksRequest.SubmitMarksDto>> entry : sectionQuestionMarkMapping.entrySet()) {
             String sectionId = entry.getKey();
             Optional<Section> section = sectionRepository.findById(sectionId); // Finding section (replace Object with actual return type)
-            if(section.isEmpty()) throw new VacademyException("Section Not Found");
+            if (section.isEmpty()) throw new VacademyException("Section Not Found");
 
             for (ManualSubmitMarksRequest.SubmitMarksDto dto : entry.getValue()) {
                 Optional<Question> questionOptional = questionRepository.findById(dto.getQuestionId());
@@ -141,7 +144,7 @@ public class AdminManualEvaluationManager {
                     existingMarks.setMarks(dto.getMarks() != null ? dto.getMarks() : 0);
                     existingMarks.setStatus(dto.getStatus() != null ? dto.getStatus() : QuestionResponseEnum.PENDING.name());
                     allQuestionAttempts.add(existingMarks);
-                    totalMarks+=dto.getMarks() != null ? dto.getMarks() : 0;
+                    totalMarks += dto.getMarks() != null ? dto.getMarks() : 0;
                 } else {
                     // Create new entry
                     allQuestionAttempts.add(QuestionWiseMarks.builder()
@@ -153,7 +156,7 @@ public class AdminManualEvaluationManager {
                             .studentAttempt(attempt)
                             .build());
 
-                    totalMarks+=dto.getMarks() != null ? dto.getMarks() : 0;
+                    totalMarks += dto.getMarks() != null ? dto.getMarks() : 0;
                 }
             }
         }
@@ -165,20 +168,21 @@ public class AdminManualEvaluationManager {
 
 
     public ResponseEntity<String> updateAttemptSet(CustomUserDetails userDetails, String attemptId, String setId) {
-        try{
+        try {
             Optional<StudentAttempt> attemptOptional = studentAttemptService.getStudentAttemptById(attemptId);
-            if(attemptOptional.isEmpty()) throw new VacademyException("Attempt Not Found");
+            if (attemptOptional.isEmpty()) throw new VacademyException("Attempt Not Found");
 
             Optional<AssessmentSetMapping> assessmentSetMapping = assessmentSetMappingRepository.findById(setId);
-            if(assessmentSetMapping.isEmpty()) throw new VacademyException("Set Not Found");
+            if (assessmentSetMapping.isEmpty()) throw new VacademyException("Set Not Found");
 
-            if(attemptOptional.get().getStatus().equals(AssessmentAttemptEnum.PREVIEW.name()) || attemptOptional.get().getStatus().equals(AssessmentAttemptEnum.LIVE.name())){
+            if (attemptOptional.get().getStatus().equals(AssessmentAttemptEnum.PREVIEW.name()) || attemptOptional.get().getStatus().equals(AssessmentAttemptEnum.LIVE.name())) {
                 throw new VacademyException("Attempt is LIVE or PREVIEW");
             }
 
-            if(Objects.isNull(attemptOptional.get().getAttemptData())) throw new VacademyException("No Attempt Data Found");
+            if (Objects.isNull(attemptOptional.get().getAttemptData()))
+                throw new VacademyException("No Attempt Data Found");
 
-            String updatedAttemptJson = updateJson(attemptOptional.get().getAttemptData(), "setId",setId);
+            String updatedAttemptJson = updateJson(attemptOptional.get().getAttemptData(), "setId", setId);
 
             attemptOptional.get().setAssessmentSetMapping(assessmentSetMapping.get());
 
@@ -187,11 +191,11 @@ public class AdminManualEvaluationManager {
 
             return ResponseEntity.ok("Done");
         } catch (Exception e) {
-            throw new VacademyException("Failed to Update: " +e.getMessage());
+            throw new VacademyException("Failed to Update: " + e.getMessage());
         }
     }
 
-    public String updateJson(String jsonString, String node, String newValue){
+    public String updateJson(String jsonString, String node, String newValue) {
         try {
             ObjectMapper objectMapper = new ObjectMapper();
 
@@ -211,18 +215,19 @@ public class AdminManualEvaluationManager {
     }
 
     public ResponseEntity<String> updateAttemptResponse(CustomUserDetails userDetails, String attemptId, String fileId) {
-        try{
+        try {
             Optional<StudentAttempt> attemptOptional = studentAttemptService.getStudentAttemptById(attemptId);
-            if(attemptOptional.isEmpty()) throw new VacademyException("Attempt Not Found");
+            if (attemptOptional.isEmpty()) throw new VacademyException("Attempt Not Found");
 
 
-            if(attemptOptional.get().getStatus().equals(AssessmentAttemptEnum.PREVIEW.name()) || attemptOptional.get().getStatus().equals(AssessmentAttemptEnum.LIVE.name())){
+            if (attemptOptional.get().getStatus().equals(AssessmentAttemptEnum.PREVIEW.name()) || attemptOptional.get().getStatus().equals(AssessmentAttemptEnum.LIVE.name())) {
                 throw new VacademyException("Attempt is LIVE or PREVIEW");
             }
 
-            if(Objects.isNull(attemptOptional.get().getAttemptData())) throw new VacademyException("No Attempt Data Found");
+            if (Objects.isNull(attemptOptional.get().getAttemptData()))
+                throw new VacademyException("No Attempt Data Found");
 
-            String updatedAttemptJson = updateJson(attemptOptional.get().getAttemptData(), "fileId",fileId);
+            String updatedAttemptJson = updateJson(attemptOptional.get().getAttemptData(), "fileId", fileId);
 
             attemptOptional.get().setAttemptData(updatedAttemptJson);
             attemptOptional.get().setEvaluatedFileId(fileId);
@@ -230,19 +235,20 @@ public class AdminManualEvaluationManager {
 
             return ResponseEntity.ok("Done");
         } catch (Exception e) {
-            throw new VacademyException("Failed to Update: " +e.getMessage());
+            throw new VacademyException("Failed to Update: " + e.getMessage());
         }
     }
 
     public ResponseEntity<String> getAttemptData(CustomUserDetails userDetails, String attemptId) {
         try {
             Optional<StudentAttempt> attemptOptional = studentAttemptService.getStudentAttemptById(attemptId);
-            if(attemptOptional.isEmpty()) throw new VacademyException("Attempt Not Found");
+            if (attemptOptional.isEmpty()) throw new VacademyException("Attempt Not Found");
 
-            if(!attemptOptional.get().getStatus().equals(AssessmentAttemptEnum.ENDED.name())){
+            if (!attemptOptional.get().getStatus().equals(AssessmentAttemptEnum.ENDED.name())) {
                 throw new VacademyException("Attempt is LIVE or PREVIEW");
             }
-            if(Objects.isNull(attemptOptional.get().getAttemptData())) throw new VacademyException("No Attempt Data Found");
+            if (Objects.isNull(attemptOptional.get().getAttemptData()))
+                throw new VacademyException("No Attempt Data Found");
 
             ObjectMapper objectMapper = new ObjectMapper();
 
@@ -253,26 +259,26 @@ public class AdminManualEvaluationManager {
             attemptOptional.get().setResultStatus(AttemptResultStatusEnum.EVALUATING.name());
             studentAttemptService.updateStudentAttempt(attemptOptional.get());
 
-            return  ResponseEntity.ok(fileId);
+            return ResponseEntity.ok(fileId);
         } catch (Exception e) {
-            throw new VacademyException("Failed to get Attempt: " +e.getMessage());
+            throw new VacademyException("Failed to get Attempt: " + e.getMessage());
         }
     }
 
     public ResponseEntity<ManualAttemptResponse> getAssignedAttempt(CustomUserDetails userDetails, ManualAttemptFilter filter, String assessmentId, String instituteId, int pageNo, int pageSize) {
-        if(Objects.isNull(filter)) throw new VacademyException("Invalid Request");
+        if (Objects.isNull(filter)) throw new VacademyException("Invalid Request");
 
         Sort sortColumns = ListService.createSortObject(filter.getSortColumns());
-        Pageable pageable = PageRequest.of(pageNo,pageSize,sortColumns);
+        Pageable pageable = PageRequest.of(pageNo, pageSize, sortColumns);
 
 
-        Page<ManualAttemptResponseDto> paginatedResponse = studentAttemptService.getAllManualAssignedAttempt(userDetails.getUserId(),assessmentId,instituteId,filter.getName(), filter.getEvaluationStatus(), pageable);
+        Page<ManualAttemptResponseDto> paginatedResponse = studentAttemptService.getAllManualAssignedAttempt(userDetails.getUserId(), assessmentId, instituteId, filter.getName(), filter.getEvaluationStatus(), pageable);
 
         return ResponseEntity.ok(createAllAttemptResponse(paginatedResponse));
     }
 
     private ManualAttemptResponse createAllAttemptResponse(Page<ManualAttemptResponseDto> paginatedResponse) {
-        if(Objects.isNull(paginatedResponse)) return ManualAttemptResponse.builder()
+        if (Objects.isNull(paginatedResponse)) return ManualAttemptResponse.builder()
                 .content(new ArrayList<>())
                 .last(true)
                 .pageNo(0)

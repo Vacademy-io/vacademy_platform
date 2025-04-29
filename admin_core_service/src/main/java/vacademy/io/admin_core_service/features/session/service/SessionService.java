@@ -10,13 +10,15 @@ import vacademy.io.admin_core_service.features.packages.dto.PackageDTOWithDetail
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
 import vacademy.io.admin_core_service.features.packages.repository.PackageRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
-import vacademy.io.admin_core_service.features.session.dto.*;
+import vacademy.io.admin_core_service.features.session.dto.AddNewSessionDTO;
+import vacademy.io.admin_core_service.features.session.dto.AddSessionDTO;
+import vacademy.io.admin_core_service.features.session.dto.EditSessionDTO;
+import vacademy.io.admin_core_service.features.session.dto.SessionDTOWithDetails;
 import vacademy.io.admin_core_service.features.session.enums.SessionStatusEnum;
 import vacademy.io.admin_core_service.features.session.repository.SessionRepository;
 import vacademy.io.admin_core_service.features.subject.service.SubjectService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
-import vacademy.io.common.institute.dto.LevelDTO;
 import vacademy.io.common.institute.dto.PackageDTO;
 import vacademy.io.common.institute.dto.SessionDTO;
 import vacademy.io.common.institute.entity.Level;
@@ -24,7 +26,9 @@ import vacademy.io.common.institute.entity.PackageEntity;
 import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.common.institute.entity.session.Session;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Service
@@ -36,12 +40,13 @@ public class SessionService {
     private final LevelService levelService;
     private final PackageRepository packageRepository;
     private final SubjectService subjectService;
+
     public Session createOrGetSession(AddSessionDTO sessionDTO) {
         Session session = null;
         if (sessionDTO.getNewSession() == false) {
             session = sessionRepository.findById(sessionDTO.getId()).orElseThrow(() -> new RuntimeException("Session not found for id " + sessionDTO.getId()));
         } else {
-            session = new Session(null, sessionDTO.getSessionName(), sessionDTO.getStatus(),sessionDTO.getStartDate());
+            session = new Session(null, sessionDTO.getSessionName(), sessionDTO.getStatus(), sessionDTO.getStartDate());
         }
         return sessionRepository.save(session);
     }
@@ -49,8 +54,9 @@ public class SessionService {
     public Session getSessionById(String sessionId) {
         return sessionRepository.findById(sessionId).orElseThrow(() -> new VacademyException("Session not found for id " + sessionId));
     }
+
     public List<SessionDTOWithDetails> getSessionsWithDetailsByInstituteId(String instituteId, CustomUserDetails user) {
-        List<PackageSession> packageSessions = packageSessionRepository.findPackageSessionsByInstituteId(instituteId,List.of(PackageSessionStatusEnum.ACTIVE.name(),PackageSessionStatusEnum.HIDDEN.name()));
+        List<PackageSession> packageSessions = packageSessionRepository.findPackageSessionsByInstituteId(instituteId, List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()));
         // Group by Session and process
         return packageSessions.stream()
                 .collect(Collectors.groupingBy(PackageSession::getSession))
@@ -129,7 +135,7 @@ public class SessionService {
         Session session;
 
         if (addNewSessionDTO.isNewSession()) {
-            session = sessionRepository.save(new Session(null, addNewSessionDTO.getSessionName(), addNewSessionDTO.getStatus(),addNewSessionDTO.getStartDate()));
+            session = sessionRepository.save(new Session(null, addNewSessionDTO.getSessionName(), addNewSessionDTO.getStatus(), addNewSessionDTO.getStartDate()));
         } else {
             session = sessionRepository.findById(addNewSessionDTO.getId())
                     .orElseThrow(() -> new VacademyException("Session not found for id " + addNewSessionDTO.getId()));
@@ -171,8 +177,8 @@ public class SessionService {
     }
 
     @Transactional
-    public String deleteSessions(List<String>sessionIds, CustomUserDetails user) {
-        List<Session>sessions = sessionRepository.findAllById(sessionIds);
+    public String deleteSessions(List<String> sessionIds, CustomUserDetails user) {
+        List<Session> sessions = sessionRepository.findAllById(sessionIds);
         for (Session session : sessions) {
             session.setStatus(SessionStatusEnum.DELETED.name());
         }
@@ -187,9 +193,9 @@ public class SessionService {
         }
     }
 
-    public boolean copyStudyMaterial(String fromPackageSessionId,String toPackageSessionId) {
-        PackageSession oldPackageSession = packageSessionRepository.findById(fromPackageSessionId).orElseThrow(()->new VacademyException("Package Session not found"));
-        PackageSession newPackageSession = packageSessionRepository.findById(toPackageSessionId).orElseThrow(()->new VacademyException("Package Session not found"));
+    public boolean copyStudyMaterial(String fromPackageSessionId, String toPackageSessionId) {
+        PackageSession oldPackageSession = packageSessionRepository.findById(fromPackageSessionId).orElseThrow(() -> new VacademyException("Package Session not found"));
+        PackageSession newPackageSession = packageSessionRepository.findById(toPackageSessionId).orElseThrow(() -> new VacademyException("Package Session not found"));
         return subjectService.copySubjectsFromExistingPackageSessionMapping(oldPackageSession, newPackageSession);
     }
 }

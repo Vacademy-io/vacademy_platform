@@ -8,7 +8,6 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import vacademy.io.assessment_service.features.rich_text.dto.AssessmentRichTextDataDTO;
-import vacademy.io.assessment_service.features.rich_text.entity.AssessmentRichTextData;
 
 @Getter
 @Setter

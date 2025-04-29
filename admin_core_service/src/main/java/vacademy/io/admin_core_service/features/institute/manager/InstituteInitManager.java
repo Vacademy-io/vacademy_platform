@@ -64,11 +64,11 @@ public class InstituteInitManager {
         instituteInfoDTO.setLanguage(institute.get().getLanguage());
         instituteInfoDTO.setInstituteThemeCode(institute.get().getInstituteThemeCode());
         instituteInfoDTO.setSubModules(instituteModuleService.getSubmoduleIdsForInstitute(institute.get().getId()));
-        instituteInfoDTO.setSessions(packageRepository.findDistinctSessionsByInstituteIdAndStatusIn(institute.get().getId(),List.of(PackageSessionStatusEnum.ACTIVE.name())).stream().map((SessionDTO::new)).toList());
-        instituteInfoDTO.setBatchesForSessions(packageSessionRepository.findPackageSessionsByInstituteId(institute.get().getId(),List.of(PackageSessionStatusEnum.ACTIVE.name())).stream().map((obj) -> {
+        instituteInfoDTO.setSessions(packageRepository.findDistinctSessionsByInstituteIdAndStatusIn(institute.get().getId(), List.of(PackageSessionStatusEnum.ACTIVE.name())).stream().map((SessionDTO::new)).toList());
+        instituteInfoDTO.setBatchesForSessions(packageSessionRepository.findPackageSessionsByInstituteId(institute.get().getId(), List.of(PackageSessionStatusEnum.ACTIVE.name())).stream().map((obj) -> {
             return new PackageSessionDTO(obj);
         }).toList());
-        instituteInfoDTO.setLevels(packageRepository.findDistinctLevelsByInstituteIdAndStatusIn(institute.get().getId(),List.of(PackageSessionStatusEnum.ACTIVE.name())).stream().map((LevelDTO::new)).toList());
+        instituteInfoDTO.setLevels(packageRepository.findDistinctLevelsByInstituteIdAndStatusIn(institute.get().getId(), List.of(PackageSessionStatusEnum.ACTIVE.name())).stream().map((LevelDTO::new)).toList());
         instituteInfoDTO.setGenders((Stream.of(Gender.values()).map(Enum::name)).toList());
         instituteInfoDTO.setStudentStatuses(List.of("ACTIVE", "INACTIVE"));
         instituteInfoDTO.setSubjects(subjectRepository.findDistinctSubjectsByInstituteId(institute.get().getId()).stream().map((SubjectDTO::new)).toList());

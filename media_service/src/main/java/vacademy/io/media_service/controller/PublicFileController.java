@@ -3,7 +3,6 @@ package vacademy.io.media_service.controller;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.media_service.dto.PreSignedUrlRequest;
 import vacademy.io.media_service.dto.PreSignedUrlResponse;
 import vacademy.io.media_service.exceptions.FileDownloadException;

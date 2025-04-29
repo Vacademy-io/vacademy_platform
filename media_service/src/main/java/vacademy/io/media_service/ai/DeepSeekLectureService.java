@@ -22,32 +22,30 @@ import java.util.Objects;
 public class DeepSeekLectureService {
 
     @Autowired
+    TaskStatusService taskStatusService;
+    @Autowired
     private DeepSeekApiService deepSeekApiService;
 
-    @Autowired
-    TaskStatusService taskStatusService;
-
-
-    public String generateLecturePlannerFromPrompt(String userPrompt, String lectureDuration, String language, String methodOfTeaching, TaskStatus taskStatus,String level,Integer attempt) {
-        if(attempt>=3){
+    public String generateLecturePlannerFromPrompt(String userPrompt, String lectureDuration, String language, String methodOfTeaching, TaskStatus taskStatus, String level, Integer attempt) {
+        if (attempt >= 3) {
             throw new VacademyException("No response from DeepSeek");
         }
-        try{
+        try {
             String template = ConstantAiTemplate.getTemplateBasedOnType(TaskStatusTypeEnum.LECTURE_PLANNER);
 
             Map<String, Object> promptMap = Map.of("userPrompt", userPrompt,
                     "language", (language == null || language.isEmpty()) ? "en" : language,
-                    "lectureDuration",lectureDuration,
-                    "methodOfTeaching",(methodOfTeaching == null || methodOfTeaching.isEmpty()) ? "Concept First" : methodOfTeaching,
-                    "level",level);
+                    "lectureDuration", lectureDuration,
+                    "methodOfTeaching", (methodOfTeaching == null || methodOfTeaching.isEmpty()) ? "Concept First" : methodOfTeaching,
+                    "level", level);
             Prompt prompt = new PromptTemplate(template)
                     .create(promptMap);
 
-            taskStatusService.convertMapToJsonAndStore(promptMap,taskStatus);
+            taskStatusService.convertMapToJsonAndStore(promptMap, taskStatus);
 
             DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
-            if(Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {
-                return generateLecturePlannerFromPrompt(userPrompt,lectureDuration,language,methodOfTeaching,taskStatus,level,attempt+1);
+            if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {
+                return generateLecturePlannerFromPrompt(userPrompt, lectureDuration, language, methodOfTeaching, taskStatus, level, attempt + 1);
             }
             String resultJson = response.getChoices().get(0).getMessage().getContent();
             String validJson = JsonUtils.extractAndSanitizeJson(resultJson);
@@ -57,21 +55,21 @@ public class DeepSeekLectureService {
             return validJson;
         } catch (Exception e) {
             taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), e.getMessage());
-            throw new VacademyException("Failed to generate: " +e.getMessage());
+            throw new VacademyException("Failed to generate: " + e.getMessage());
         }
     }
 
     public String generateLectureFeedback(String text, String convertedAudioResponseString, TaskStatus taskStatus, int attempt, String audioPace) {
 
-        if(attempt>=3){
+        if (attempt >= 3) {
             throw new VacademyException("No response from DeepSeek");
         }
-        try{
+        try {
             String template = ConstantAiTemplate.getTemplateBasedOnType(TaskStatusTypeEnum.LECTURE_FEEDBACK);
 
-            Map<String, Object> promptMap = Map.of("text",text,
-                    "convertedAudioResponseString",convertedAudioResponseString,
-                    "audioPace",audioPace);
+            Map<String, Object> promptMap = Map.of("text", text,
+                    "convertedAudioResponseString", convertedAudioResponseString,
+                    "audioPace", audioPace);
 
             Prompt prompt = new PromptTemplate(template)
                     .create(promptMap);
@@ -80,8 +78,8 @@ public class DeepSeekLectureService {
 
             DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
 
-            if(Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty() || response.getChoices().get(0).getMessage().getContent().isEmpty()) {
-                return generateLectureFeedback(text,convertedAudioResponseString,taskStatus,attempt+1, audioPace);
+            if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty() || response.getChoices().get(0).getMessage().getContent().isEmpty()) {
+                return generateLectureFeedback(text, convertedAudioResponseString, taskStatus, attempt + 1, audioPace);
             }
             String resultJson = response.getChoices().get(0).getMessage().getContent();
             String validJson = JsonUtils.extractAndSanitizeJson(resultJson);
@@ -91,7 +89,7 @@ public class DeepSeekLectureService {
             return validJson;
         } catch (Exception e) {
             taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), e.getMessage());
-            throw new VacademyException("Failed to generate: " +e.getMessage());
+            throw new VacademyException("Failed to generate: " + e.getMessage());
         }
     }
 }

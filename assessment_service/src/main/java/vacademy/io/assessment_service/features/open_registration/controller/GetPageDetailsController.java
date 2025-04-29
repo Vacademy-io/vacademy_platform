@@ -2,16 +2,13 @@ package vacademy.io.assessment_service.features.open_registration.controller;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-import vacademy.io.assessment_service.features.open_registration.dto.AssessmentPublicDto;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 import vacademy.io.assessment_service.features.open_registration.dto.GetAssessmentPublicResponseDto;
 import vacademy.io.assessment_service.features.open_registration.dto.ParticipantPublicResponseDto;
 import vacademy.io.assessment_service.features.open_registration.manager.AssessmentPublicPageManager;
-import vacademy.io.assessment_service.features.question_bank.dto.SingleQuestionPaperResponse;
-import vacademy.io.assessment_service.features.question_core.dto.QuestionDTO;
-import vacademy.io.common.auth.model.CustomUserDetails;
-
-import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/assessment-service/open-registrations/v1")

@@ -3,9 +3,7 @@ package vacademy.io.media_service.manager;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
-import org.springframework.util.StringUtils;
 import vacademy.io.common.exceptions.VacademyException;
-import vacademy.io.media_service.dto.audio.AudioConversionDeepLevelResponse;
 import vacademy.io.media_service.entity.TaskStatus;
 import vacademy.io.media_service.enums.TaskInputTypeEnum;
 import vacademy.io.media_service.enums.TaskStatusTypeEnum;
@@ -35,16 +33,16 @@ public class AiLectureManager {
     @Autowired
     TaskStatusService taskStatusService;
 
-    public ResponseEntity<String> generateLecturePlanner(String userPrompt, String lectureDuration, String language, String methodOfTeaching, String taskName,String instituteId,String level) {
+    public ResponseEntity<String> generateLecturePlanner(String userPrompt, String lectureDuration, String language, String methodOfTeaching, String taskName, String instituteId, String level) {
         TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(null, TaskStatusTypeEnum.LECTURE_PLANNER.name(), generateUniqueId(userPrompt), TaskInputTypeEnum.PROMPT_ID.name(), taskName, instituteId);
-        deepSeekAsyncTaskService.processDeepSeekTaskInBackgroundWrapperForLecturePlanner(taskStatus,userPrompt,lectureDuration,language,methodOfTeaching,level);
+        deepSeekAsyncTaskService.processDeepSeekTaskInBackgroundWrapperForLecturePlanner(taskStatus, userPrompt, lectureDuration, language, methodOfTeaching, level);
         return ResponseEntity.ok(taskStatus.getId());
     }
 
     public ResponseEntity<String> generateLectureFeedback(String audioId, String instituteId, String taskName) {
 
         TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(null, TaskStatusTypeEnum.LECTURE_FEEDBACK.name(), audioId, TaskInputTypeEnum.AUDIO_ID.name(), taskName, instituteId);
-        deepSeekAsyncTaskService.pollAndProcessAudioFeedback(taskStatus,audioId);
+        deepSeekAsyncTaskService.pollAndProcessAudioFeedback(taskStatus, audioId);
         return ResponseEntity.ok(taskStatus.getId());
     }
 
@@ -60,7 +58,7 @@ public class AiLectureManager {
             // Return first 20 characters for uniqueness + brevity
             return base64Encoded.substring(0, 20);
         } catch (Exception e) {
-            throw new VacademyException("Error generating unique ID"+e.getMessage());
+            throw new VacademyException("Error generating unique ID" + e.getMessage());
         }
     }
 }

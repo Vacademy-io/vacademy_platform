@@ -48,14 +48,15 @@ public class AssessmentQuestionPreviewDto {
         }
     }
 
-    public void fillOptionsOfQuestion(Question question){
+    public void fillOptionsOfQuestion(Question question) {
         List<OptionWithoutExplanationDTO> options = new ArrayList<>();
         for (Option option : question.getOptions()) {
             options.add(new OptionWithoutExplanationDTO(option));
         }
         this.options = options;
     }
-    public void fillOptionsExplanationsOfQuestion(Question question){
+
+    public void fillOptionsExplanationsOfQuestion(Question question) {
         List<OptionDTO> options = new ArrayList<>();
         for (Option option : question.getOptions()) {
             options.add(new OptionDTO(option));

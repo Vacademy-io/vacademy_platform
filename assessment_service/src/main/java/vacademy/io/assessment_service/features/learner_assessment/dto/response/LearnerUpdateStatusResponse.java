@@ -21,19 +21,17 @@ public class LearnerUpdateStatusResponse {
     private List<String> control = new ArrayList<>();
 
 
-
     @Getter
     @Setter
     @AllArgsConstructor
     @NoArgsConstructor
     @Builder
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public static class DurationResponse{
+    public static class DurationResponse {
         private String id;
         private String type;
         private Long newMaxTimeInSeconds;
     }
-
 
 
 }

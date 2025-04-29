@@ -47,40 +47,40 @@ public interface ChapterPackageSessionMappingRepository extends JpaRepository<Ch
 
     @Modifying
     @Query(value = """
-    UPDATE chapter_package_session_mapping cpsm
-    SET status = 'DELETED'
-    WHERE cpsm.package_session_id IN (
-        SELECT spsm.session_id
-        FROM subject_session spsm
-        WHERE spsm.subject_id IN (:subjectIds)
-    )
-    AND cpsm.package_session_id NOT IN (
-        SELECT DISTINCT spsm.session_id
-        FROM subject_session spsm
-        JOIN subject s ON s.id = spsm.subject_id
-        WHERE s.status = 'ACTIVE'
-    )
-""", nativeQuery = true)
+                UPDATE chapter_package_session_mapping cpsm
+                SET status = 'DELETED'
+                WHERE cpsm.package_session_id IN (
+                    SELECT spsm.session_id
+                    FROM subject_session spsm
+                    WHERE spsm.subject_id IN (:subjectIds)
+                )
+                AND cpsm.package_session_id NOT IN (
+                    SELECT DISTINCT spsm.session_id
+                    FROM subject_session spsm
+                    JOIN subject s ON s.id = spsm.subject_id
+                    WHERE s.status = 'ACTIVE'
+                )
+            """, nativeQuery = true)
     void softDeleteChapterMappingsWithoutActiveSubjects(@Param("subjectIds") List<String> subjectIds);
 
     @Modifying
     @Query(value = """
-    UPDATE chapter_package_session_mapping cpsm
-    SET status = 'DELETED'
-    WHERE cpsm.package_session_id IN (
-        SELECT spsm.session_id
-        FROM subject_session spsm
-        JOIN subject_module_mapping smm ON smm.subject_id = spsm.subject_id
-        WHERE smm.module_id IN (:moduleIds)
-    )
-    AND cpsm.package_session_id NOT IN (
-        SELECT DISTINCT spsm.session_id
-        FROM subject_session spsm
-        JOIN subject_module_mapping smm ON smm.subject_id = spsm.subject_id
-        JOIN modules m ON m.id = smm.module_id
-        WHERE m.status = 'ACTIVE'
-    )
-""", nativeQuery = true)
+                UPDATE chapter_package_session_mapping cpsm
+                SET status = 'DELETED'
+                WHERE cpsm.package_session_id IN (
+                    SELECT spsm.session_id
+                    FROM subject_session spsm
+                    JOIN subject_module_mapping smm ON smm.subject_id = spsm.subject_id
+                    WHERE smm.module_id IN (:moduleIds)
+                )
+                AND cpsm.package_session_id NOT IN (
+                    SELECT DISTINCT spsm.session_id
+                    FROM subject_session spsm
+                    JOIN subject_module_mapping smm ON smm.subject_id = spsm.subject_id
+                    JOIN modules m ON m.id = smm.module_id
+                    WHERE m.status = 'ACTIVE'
+                )
+            """, nativeQuery = true)
     void softDeleteChapterMappingsWithoutActiveModules(@Param("moduleIds") List<String> moduleIds);
 
 

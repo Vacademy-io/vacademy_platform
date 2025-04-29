@@ -7,7 +7,6 @@ import vacademy.io.auth_service.feature.user.dto.UserRoleFilterDTO;
 import vacademy.io.auth_service.feature.user.service.RoleService;
 import vacademy.io.common.auth.dto.UserWithRolesDTO;
 import vacademy.io.common.auth.enums.UserRoleStatus;
-import vacademy.io.common.auth.model.CustomUserDetails;
 
 import java.util.Arrays;
 import java.util.List;
@@ -20,8 +19,8 @@ public class RoleInternalController {
     private RoleService roleService;
 
     @PostMapping("/users-of-status")
-    public ResponseEntity<List<UserWithRolesDTO>> getUsersOfRole(@RequestBody List<String>roles,
-                                                                   @RequestParam String instituteId) {
+    public ResponseEntity<List<UserWithRolesDTO>> getUsersOfRole(@RequestBody List<String> roles,
+                                                                 @RequestParam String instituteId) {
         UserRoleFilterDTO userRoleFilterDTO = new UserRoleFilterDTO();
         userRoleFilterDTO.setRoles(roles);
         userRoleFilterDTO.setStatus(Arrays.asList(UserRoleStatus.ACTIVE.name()));

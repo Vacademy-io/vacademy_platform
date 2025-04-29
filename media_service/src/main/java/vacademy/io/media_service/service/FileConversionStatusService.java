@@ -3,7 +3,6 @@ package vacademy.io.media_service.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import vacademy.io.common.media.dto.FileDetailsDTO;
 import vacademy.io.media_service.entity.FileConversionStatus;
 import vacademy.io.media_service.repository.FileConversionStatusRepository;
 
@@ -16,7 +15,7 @@ public class FileConversionStatusService {
     FileConversionStatusRepository fileConversionStatusRepository;
 
 
-    public void startProcessing(String vendorId, String vendor, String fileId){
+    public void startProcessing(String vendorId, String vendor, String fileId) {
 
         FileConversionStatus fileConversionStatus = new FileConversionStatus();
         fileConversionStatus.setVendorFileId(vendorId);
@@ -26,7 +25,7 @@ public class FileConversionStatusService {
         fileConversionStatusRepository.save(fileConversionStatus);
     }
 
-    public Optional<FileConversionStatus> findByVendorFileId(String fileId){
+    public Optional<FileConversionStatus> findByVendorFileId(String fileId) {
         return fileConversionStatusRepository.findByVendorFileId(fileId);
     }
 

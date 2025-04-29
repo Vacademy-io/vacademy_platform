@@ -31,39 +31,38 @@ public class ChatAiManager {
     DeepSeekConversationService deepSeekConversationService;
 
 
-    public List<ChatWithPdfResponse> generateResponseForPdfChat(String pdfId, String userPrompt, String htmlText, String taskName, String instituteId,String parentId) {
+    public List<ChatWithPdfResponse> generateResponseForPdfChat(String pdfId, String userPrompt, String htmlText, String taskName, String instituteId, String parentId) {
 
-        String last5Conversations = taskStatusService.getLast5ConversationFromInputIdAndInputType(instituteId,TaskStatusTypeEnum.CHAT_WITH_PDF.name(), pdfId,"PDF_ID");
-        String rawOutput = deepSeekConversationService.getResponseForUserPrompt(userPrompt,htmlText,last5Conversations);
+        String last5Conversations = taskStatusService.getLast5ConversationFromInputIdAndInputType(instituteId, TaskStatusTypeEnum.CHAT_WITH_PDF.name(), pdfId, "PDF_ID");
+        String rawOutput = deepSeekConversationService.getResponseForUserPrompt(userPrompt, htmlText, last5Conversations);
 
-        taskStatusService.createNewTaskForResult(instituteId, TaskStatusTypeEnum.CHAT_WITH_PDF.name(),pdfId, TaskInputTypeEnum.PDF_ID.name(), rawOutput,taskName,parentId);
-        return taskStatusService.getChatResponseForTypeAndInputId(TaskStatusTypeEnum.CHAT_WITH_PDF.name(), TaskInputTypeEnum.PDF_ID.name(), pdfId,instituteId);
+        taskStatusService.createNewTaskForResult(instituteId, TaskStatusTypeEnum.CHAT_WITH_PDF.name(), pdfId, TaskInputTypeEnum.PDF_ID.name(), rawOutput, taskName, parentId);
+        return taskStatusService.getChatResponseForTypeAndInputId(TaskStatusTypeEnum.CHAT_WITH_PDF.name(), TaskInputTypeEnum.PDF_ID.name(), pdfId, instituteId);
     }
 
     public ResponseEntity<List<ChatWithPdfResponse>> getAllChats(String parentId) {
-        try{
+        try {
             List<ChatWithPdfResponse> responses = new ArrayList<>();
             List<TaskStatus> allTasks = taskStatusService.getAllTaskFromParentIdAndWithParentId(parentId);
-            allTasks.forEach(task->{
-                try{
+            allTasks.forEach(task -> {
+                try {
                     responses.add(task.getPdfChatResponse());
-                }
-                catch (Exception e){
-                    log.error("Error Creating Chat: " +e.getMessage());
+                } catch (Exception e) {
+                    log.error("Error Creating Chat: " + e.getMessage());
                 }
 
             });
 
             return ResponseEntity.ok(responses);
         } catch (Exception e) {
-            throw new VacademyException("Failed to get Chats: " +e.getMessage());
+            throw new VacademyException("Failed to get Chats: " + e.getMessage());
         }
     }
 
     public ResponseEntity<List<TaskStatusDto>> getAllChatsList(String instituteId) {
         List<TaskStatusDto> responses = new ArrayList<>();
         List<TaskStatus> allTasks = taskStatusService.getTaskStatusesByInstituteIdAndNoParentId(instituteId);
-        allTasks.forEach(task->{
+        allTasks.forEach(task -> {
             responses.add(task.getTaskDto());
         });
         return ResponseEntity.ok(responses);

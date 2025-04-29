@@ -51,7 +51,7 @@ public class ChapterPackageSessionMapping {
     public ChapterPackageSessionMapping() {
     }
 
-    public ChapterDTO mapToChapterDTO(){
+    public ChapterDTO mapToChapterDTO() {
         ChapterDTO chapterDTO = new ChapterDTO();
         chapterDTO.setId(this.chapter.getId());
         chapterDTO.setChapterName(this.chapter.getChapterName());

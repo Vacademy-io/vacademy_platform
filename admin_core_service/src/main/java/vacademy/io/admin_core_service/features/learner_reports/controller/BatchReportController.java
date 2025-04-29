@@ -2,8 +2,6 @@ package vacademy.io.admin_core_service.features.learner_reports.controller;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.learner_reports.dto.*;
@@ -11,8 +9,7 @@ import vacademy.io.admin_core_service.features.learner_reports.service.BatchRepo
 import vacademy.io.common.auth.config.PageConstants;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
-import java.util.*;
-import java.util.concurrent.ThreadLocalRandom;
+import java.util.List;
 
 @RestController
 @RequestMapping("/admin-core-service/learner-management/batch-report")
@@ -58,7 +55,7 @@ public class BatchReportController {
             @RequestParam String moduleId,
             @RequestAttribute("user") CustomUserDetails userDetails) {
         return ResponseEntity.ok(
-                batchReportService.getChapterSlideProgress(moduleId,packageSessionId, userDetails)
+                batchReportService.getChapterSlideProgress(moduleId, packageSessionId, userDetails)
         );
     }
 }

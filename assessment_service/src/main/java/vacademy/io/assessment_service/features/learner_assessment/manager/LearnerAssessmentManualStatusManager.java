@@ -47,6 +47,15 @@ public class LearnerAssessmentManualStatusManager {
     @Autowired
     AssessmentInstituteMappingRepository assessmentInstituteMappingRepository;
 
+    public static List<String> getRandomUserId(List<String> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return Collections.emptyList(); // Return empty list if no users
+        }
+        Random random = new Random();
+        String randomUserId = userIds.get(random.nextInt(userIds.size()));
+        return Collections.singletonList(randomUserId); // Return as List<String>
+    }
+
     /**
      * Submits a manual assessment attempt.
      *
@@ -82,7 +91,7 @@ public class LearnerAssessmentManualStatusManager {
             }
 
             // Process and update the attempt for manual submission
-            updateAttemptForManualSubmit(assessment, attemptOptional.get(), request,instituteId);
+            updateAttemptForManualSubmit(assessment, attemptOptional.get(), request, instituteId);
 
             return ResponseEntity.ok("Done");
         } catch (Exception e) {
@@ -144,11 +153,11 @@ public class LearnerAssessmentManualStatusManager {
     }
 
     private List<String> getEvaluatorsForAttempt(String assessmentId, String instituteId) {
-        try{
-            Optional<AssessmentInstituteMapping> assessmentInstituteMapping = assessmentInstituteMappingRepository.findByAssessmentIdAndInstituteId(assessmentId,instituteId);
-            if(assessmentInstituteMapping.isEmpty()) throw new VacademyException("Institute Mapping not Found");
+        try {
+            Optional<AssessmentInstituteMapping> assessmentInstituteMapping = assessmentInstituteMappingRepository.findByAssessmentIdAndInstituteId(assessmentId, instituteId);
+            if (assessmentInstituteMapping.isEmpty()) throw new VacademyException("Institute Mapping not Found");
 
-            if(Objects.isNull(assessmentInstituteMapping.get().getEvaluationSetting())) return new ArrayList<>();
+            if (Objects.isNull(assessmentInstituteMapping.get().getEvaluationSetting())) return new ArrayList<>();
 
             ObjectMapper objectMapper = new ObjectMapper();
             EvaluationSettingDto settingDto = objectMapper.readValue(assessmentInstituteMapping.get().getEvaluationSetting(), EvaluationSettingDto.class);
@@ -160,23 +169,14 @@ public class LearnerAssessmentManualStatusManager {
     }
 
     private List<String> getEvaluatorsFromEvaluationSetting(EvaluationSettingDto settingDto) {
-        if(Objects.isNull(settingDto) || Objects.isNull(settingDto.getUsers())) return new ArrayList<>();
+        if (Objects.isNull(settingDto) || Objects.isNull(settingDto.getUsers())) return new ArrayList<>();
         List<String> userIds = new ArrayList<>();
 
-        settingDto.getUsers().forEach(users->{
+        settingDto.getUsers().forEach(users -> {
             userIds.add(users.getUserId());
         });
 
         return getRandomUserId(userIds);
-    }
-
-    public static List<String> getRandomUserId(List<String> userIds) {
-        if (userIds == null || userIds.isEmpty()) {
-            return Collections.emptyList(); // Return empty list if no users
-        }
-        Random random = new Random();
-        String randomUserId = userIds.get(random.nextInt(userIds.size()));
-        return Collections.singletonList(randomUserId); // Return as List<String>
     }
 
     /**
@@ -201,11 +201,9 @@ public class LearnerAssessmentManualStatusManager {
     }
 
     public String convertListToCommaSeparatedString(List<String> list) {
-        if(Objects.isNull(list) || list.isEmpty()) return null;
+        if (Objects.isNull(list) || list.isEmpty()) return null;
         return String.join(",", list);
     }
-
-
 
 
 }

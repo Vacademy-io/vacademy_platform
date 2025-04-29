@@ -54,10 +54,30 @@ public class DeepSeekAsyncTaskService {
     int AUDIO_MAX_TRIES = 50;
     int AUDIO_DELAY = 20000;
 
+    public static String extractBody(String html) {
+        if (html == null || html.isEmpty()) {
+            return "";
+        }
+
+        // Regex to match the content between <body> and </body> tags
+        Pattern pattern = Pattern.compile(
+                "<body[^>]*>(.*?)</body>",
+                Pattern.CASE_INSENSITIVE | Pattern.DOTALL // Handle case and multi-line content
+        );
+
+        Matcher matcher = pattern.matcher(html);
+        if (matcher.find()) {
+            // Extract the content (group 1) between the tags
+            return matcher.group(1).trim(); // Trim to remove leading/trailing whitespace
+        } else {
+            return html;
+        }
+    }
+
     public void processDeepSeekTaskInBackground(TaskStatus taskStatus, String userPrompt, String networkHtml) {
         try {
             String restoreJson = (taskStatus.getResultJson() == null) ? "" : taskStatus.getResultJson();
-            taskStatusService.updateTaskStatus(taskStatus,TaskStatusEnum.PROGRESS.name(), null);
+            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.PROGRESS.name(), null);
 
             String rawOutput = deepSeekService.getQuestionsWithDeepSeekFromHTMLRecursive(
                     networkHtml, userPrompt, restoreJson, 0, taskStatus
@@ -69,7 +89,7 @@ public class DeepSeekAsyncTaskService {
         }
     }
 
-    private void processDeepSeekTaskInBackgroundForPdftoQuestionOfTopic(TaskStatus taskStatus,String topics, String networkHtml) {
+    private void processDeepSeekTaskInBackgroundForPdftoQuestionOfTopic(TaskStatus taskStatus, String topics, String networkHtml) {
         try {
             String restoreJson = (taskStatus.getResultJson() == null) ? "" : taskStatus.getResultJson();
 
@@ -96,11 +116,11 @@ public class DeepSeekAsyncTaskService {
     }
 
     @Async
-    public CompletableFuture<Void> processDeepSeekTaskInBackgroundWrapperForLecturePlanner(TaskStatus taskStatus,String userPrompt, String lectureDuration, String language, String methodOfTeaching, String level) {
-        return CompletableFuture.runAsync(() -> processDeepSeekTaskInBackgroundForLecturePlanner(taskStatus,userPrompt, lectureDuration, language, methodOfTeaching, level));
+    public CompletableFuture<Void> processDeepSeekTaskInBackgroundWrapperForLecturePlanner(TaskStatus taskStatus, String userPrompt, String lectureDuration, String language, String methodOfTeaching, String level) {
+        return CompletableFuture.runAsync(() -> processDeepSeekTaskInBackgroundForLecturePlanner(taskStatus, userPrompt, lectureDuration, language, methodOfTeaching, level));
     }
 
-    private void processDeepSeekTaskInBackgroundForLecturePlanner(TaskStatus taskStatus,String userPrompt, String lectureDuration, String language, String methodOfTeaching, String level) {
+    private void processDeepSeekTaskInBackgroundForLecturePlanner(TaskStatus taskStatus, String userPrompt, String lectureDuration, String language, String methodOfTeaching, String level) {
         try {
             String rawOutput = (deepSeekLectureService.generateLecturePlannerFromPrompt(userPrompt, lectureDuration, language, methodOfTeaching, taskStatus, level, 0));
 
@@ -112,7 +132,7 @@ public class DeepSeekAsyncTaskService {
 
     private void processDeepSeekTaskInBackgroundForLectureFeedback(TaskStatus taskStatus, String text, AudioConversionDeepLevelResponse convertedAudioResponse) {
         try {
-            taskStatusService.updateTaskStatus(taskStatus,TaskStatusEnum.PROGRESS.name(), null);
+            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.PROGRESS.name(), null);
 
             String convertedAudioResponseString = getStringFromObject(convertedAudioResponse);
             String audioPace = getPaceFromTextAndDuration(text, convertedAudioResponse.getAudioDuration());
@@ -135,7 +155,6 @@ public class DeepSeekAsyncTaskService {
         return String.format("%.2f", pace); // return pace with 2 decimal points
     }
 
-
     private String getStringFromObject(AudioConversionDeepLevelResponse convertedAudioResponse) throws Exception {
         ObjectMapper objectMapper = new ObjectMapper();
         return objectMapper.writeValueAsString(convertedAudioResponse);
@@ -149,9 +168,8 @@ public class DeepSeekAsyncTaskService {
         else taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), rawOutput);
     }
 
-
     private void processDeepSeekTaskInBackgroundSortPdfQuestionsWithTopics(String networkHtml, TaskStatus taskStatus) {
-        taskStatusService.updateTaskStatus(taskStatus,TaskStatusEnum.PROGRESS.name(), null);
+        taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.PROGRESS.name(), null);
 
         String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromHTMLWithTopics(networkHtml, taskStatus, 0, ""));
         if(rawOutput==null || rawOutput.isEmpty()) taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, TaskStatusEnum.FAILED.name(), rawOutput, "No Response Generated");
@@ -189,33 +207,12 @@ public class DeepSeekAsyncTaskService {
                 }
 
                 // After retries exhausted
-                taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, TaskStatusEnum.FAILED.name(), null,"Failed To Process PDF");
+                taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, TaskStatusEnum.FAILED.name(), null, "Failed To Process PDF");
 
             } catch (Exception e) {
-                taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, TaskStatusEnum.FAILED.name(), null,e.getMessage());
+                taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, TaskStatusEnum.FAILED.name(), null, e.getMessage());
             }
         });
-    }
-
-
-    public static String extractBody(String html) {
-        if (html == null || html.isEmpty()) {
-            return "";
-        }
-
-        // Regex to match the content between <body> and </body> tags
-        Pattern pattern = Pattern.compile(
-                "<body[^>]*>(.*?)</body>",
-                Pattern.CASE_INSENSITIVE | Pattern.DOTALL // Handle case and multi-line content
-        );
-
-        Matcher matcher = pattern.matcher(html);
-        if (matcher.find()) {
-            // Extract the content (group 1) between the tags
-            return matcher.group(1).trim(); // Trim to remove leading/trailing whitespace
-        } else {
-            return html;
-        }
     }
 
     @Async
@@ -231,7 +228,7 @@ public class DeepSeekAsyncTaskService {
 
                     if (fileConversionStatus.isPresent() && StringUtils.hasText(fileConversionStatus.get().getHtmlText())) {
 
-                        processDeepSeekTaskInBackgroundSortPdfQuestionsWithTopics(fileConversionStatus.get().getHtmlText(),taskStatus);
+                        processDeepSeekTaskInBackgroundSortPdfQuestionsWithTopics(fileConversionStatus.get().getHtmlText(), taskStatus);
                         return;
                     }
 
@@ -242,7 +239,7 @@ public class DeepSeekAsyncTaskService {
                         String networkHtml = htmlImageConverter.convertBase64ToUrls(htmlBody);
                         fileConversionStatusService.updateHtmlText(pdfId, networkHtml);
 
-                        processDeepSeekTaskInBackgroundSortPdfQuestionsWithTopics(networkHtml,taskStatus);
+                        processDeepSeekTaskInBackgroundSortPdfQuestionsWithTopics(networkHtml, taskStatus);
                         return;
                     }
 
@@ -250,11 +247,11 @@ public class DeepSeekAsyncTaskService {
                 }
 
                 // After retries exhausted
-                taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, TaskStatusEnum.FAILED.name(), null,"Failed To Process PDF");
+                taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, TaskStatusEnum.FAILED.name(), null, "Failed To Process PDF");
 
             } catch (Exception e) {
                 log.error("Exception during polling: {}", e.getMessage(), e);
-                taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, TaskStatusEnum.FAILED.name(), null,e.getMessage());
+                taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, TaskStatusEnum.FAILED.name(), null, e.getMessage());
             }
         });
     }
@@ -292,11 +289,11 @@ public class DeepSeekAsyncTaskService {
 
                 // After retries exhausted
                 log.error("Failed to get HTML after retries, marking task as FAILED");
-                taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, TaskStatusEnum.FAILED.name(), null,"Failed To Process PDF");
+                taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, TaskStatusEnum.FAILED.name(), null, "Failed To Process PDF");
 
             } catch (Exception e) {
                 log.error("Exception during polling: {}", e.getMessage(), e);
-                taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, TaskStatusEnum.FAILED.name(), null,e.getMessage());
+                taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, TaskStatusEnum.FAILED.name(), null, e.getMessage());
             }
         });
     }
@@ -334,11 +331,11 @@ public class DeepSeekAsyncTaskService {
 
                 // After retries exhausted
                 log.error("Failed to get HTML after retries, marking task as FAILED");
-                taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, TaskStatusEnum.FAILED.name(), null,"Failed To Process Audio");
+                taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, TaskStatusEnum.FAILED.name(), null, "Failed To Process Audio");
 
             } catch (Exception e) {
                 log.error("Exception during polling: {}", e.getMessage(), e);
-                taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, TaskStatusEnum.FAILED.name(), null,e.getMessage());
+                taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, TaskStatusEnum.FAILED.name(), null, e.getMessage());
             }
         });
     }
@@ -379,10 +376,10 @@ public class DeepSeekAsyncTaskService {
                 }
 
                 // After retries exhausted
-                taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, TaskStatusEnum.FAILED.name(), null,"Failed To Process Audio");
+                taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, TaskStatusEnum.FAILED.name(), null, "Failed To Process Audio");
 
             } catch (Exception e) {
-                taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, TaskStatusEnum.FAILED.name(), null,e.getMessage());
+                taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, TaskStatusEnum.FAILED.name(), null, e.getMessage());
             }
         });
     }

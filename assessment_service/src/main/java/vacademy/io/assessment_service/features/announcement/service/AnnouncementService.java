@@ -4,10 +4,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import vacademy.io.assessment_service.features.announcement.dto.AddAnnouncementDTO;
-import vacademy.io.assessment_service.features.assessment.entity.Assessment;
-import vacademy.io.assessment_service.features.learner_assessment.dto.response.BasicLevelAnnouncementDto;
 import vacademy.io.assessment_service.features.announcement.entity.AssessmentAnnouncement;
 import vacademy.io.assessment_service.features.announcement.repository.AssessmentAnnouncementRepository;
+import vacademy.io.assessment_service.features.assessment.entity.Assessment;
+import vacademy.io.assessment_service.features.learner_assessment.dto.response.BasicLevelAnnouncementDto;
 import vacademy.io.assessment_service.features.rich_text.entity.AssessmentRichTextData;
 import vacademy.io.assessment_service.features.rich_text.enums.TextType;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -26,15 +26,27 @@ public class AnnouncementService {
     @Autowired
     AssessmentAnnouncementRepository assessmentAnnouncementRepository;
 
-    public Optional<AssessmentAnnouncement> getAnnouncementById(String id){
+    private static <T> List<T> addUniqueObjects(List<T> l1, List<T> l2) {
+        // Use a Set to ensure uniqueness, as it automatically handles duplicates
+        Set<T> uniqueSet = new HashSet<>();
+
+        // Add all elements from l1 and l2 to the Set
+        uniqueSet.addAll(l1);
+        uniqueSet.addAll(l2);
+
+        // Return the unique objects as a List
+        return new ArrayList<>(uniqueSet);
+    }
+
+    public Optional<AssessmentAnnouncement> getAnnouncementById(String id) {
         return assessmentAnnouncementRepository.findById(id);
     }
 
-    public AssessmentAnnouncement createAnnouncement(AssessmentAnnouncement announcement){
+    public AssessmentAnnouncement createAnnouncement(AssessmentAnnouncement announcement) {
         return assessmentAnnouncementRepository.save(announcement);
     }
 
-    public AssessmentAnnouncement updateAnnouncement(AssessmentAnnouncement announcement){
+    public AssessmentAnnouncement updateAnnouncement(AssessmentAnnouncement announcement) {
         return assessmentAnnouncementRepository.save(announcement);
     }
 
@@ -62,7 +74,7 @@ public class AnnouncementService {
                 }
 
                 // Fetch new announcements after last fetched time
-                allNewAnnouncements = assessmentAnnouncementRepository.findByAssessmentIdAndSentTimeAfterAndStatusNotIn(assessmentId,  lastFetchedTime);
+                allNewAnnouncements = assessmentAnnouncementRepository.findByAssessmentIdAndSentTimeAfterAndStatusNotIn(assessmentId, lastFetchedTime);
             }
 
             // Merge new announcements with the previously fetched announcements
@@ -74,23 +86,9 @@ public class AnnouncementService {
         return allMappedAnnouncement;
     }
 
-
-
-    private static <T> List<T> addUniqueObjects(List<T> l1, List<T> l2) {
-        // Use a Set to ensure uniqueness, as it automatically handles duplicates
-        Set<T> uniqueSet = new HashSet<>();
-
-        // Add all elements from l1 and l2 to the Set
-        uniqueSet.addAll(l1);
-        uniqueSet.addAll(l2);
-
-        // Return the unique objects as a List
-        return new ArrayList<>(uniqueSet);
-    }
-
-    public List<BasicLevelAnnouncementDto> createBasicLevelAnnouncementDto(List<AssessmentAnnouncement> allAnnouncement){
+    public List<BasicLevelAnnouncementDto> createBasicLevelAnnouncementDto(List<AssessmentAnnouncement> allAnnouncement) {
         List<BasicLevelAnnouncementDto> allDtos = new ArrayList<>();
-        if(Objects.isNull(allAnnouncement)) return allDtos;
+        if (Objects.isNull(allAnnouncement)) return allDtos;
         allAnnouncement.forEach(announcement -> {
             allDtos.add(BasicLevelAnnouncementDto.builder().id(announcement.getId())
                     .richTextId(announcement.getAssessmentRichTextData().getId())

@@ -3,7 +3,6 @@ package vacademy.io.admin_core_service.features.institute_learner.service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.institute_learner.dto.LearnerBatchProjection;
-import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
@@ -15,7 +14,7 @@ public class LearnerBatchService {
     private final StudentSessionRepository studentSessionRepository;
 
     public List<LearnerBatchProjection> getBatchesWithLearnerCountByInstituteId(String instituteId, CustomUserDetails userDetails) {
-        return studentSessionRepository.getPackageSessionsWithEnrollment(instituteId,List.of("ACTIVE"));
+        return studentSessionRepository.getPackageSessionsWithEnrollment(instituteId, List.of("ACTIVE"));
     }
 
 }

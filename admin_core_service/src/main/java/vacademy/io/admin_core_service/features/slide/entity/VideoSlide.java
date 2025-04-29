@@ -48,7 +48,7 @@ public class VideoSlide {
     @Column(name = "updated_at", insertable = false, updatable = false, columnDefinition = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
     private Timestamp updatedAt;
 
-    public VideoSlide(VideoSlideDTO addVideoSlideDTO,String status) {
+    public VideoSlide(VideoSlideDTO addVideoSlideDTO, String status) {
         this.description = addVideoSlideDTO.getDescription();
         this.title = addVideoSlideDTO.getTitle();
         this.url = addVideoSlideDTO.getUrl();

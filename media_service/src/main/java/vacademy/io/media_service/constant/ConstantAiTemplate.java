@@ -1,11 +1,10 @@
 package vacademy.io.media_service.constant;
 
-import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.media_service.enums.TaskStatusTypeEnum;
 
 public class ConstantAiTemplate {
 
-    private static String getTextToQuestionTemplate(){
+    private static String getTextToQuestionTemplate() {
 
         return """
                 Text raw prompt :  {textPrompt}
@@ -307,14 +306,14 @@ public class ConstantAiTemplate {
                 """;
     }
 
-    private static String getmanualEvaluationTemplate(){
+    private static String getmanualEvaluationTemplate() {
         return """
                 Question :  {htmlQuestionData}
-                
+                                
                 Answer By Student :  {htmlAnswerData}
-                
+                                
                 Maximum Marks :{maxMarks}
-                
+                                
                 Evaluation Difficulty :{evaluationDifficulty}
                     
                         Prompt:
@@ -337,9 +336,9 @@ public class ConstantAiTemplate {
     private static String getPdfToQuestionWithTopicTemplate() {
         return """
                 HTML raw data :  {htmlData}
-                
+                                
                 Already extracted question Number = {allQuestionNumbers}
-                
+                                
                 Required Topics :  {requiredTopics}
                     
                         Prompt:
@@ -454,8 +453,8 @@ public class ConstantAiTemplate {
                 Optional Teacher Prompt :  {optionalPrompt}
                 Language of questions:  {language}
                 Already extracted question Number = {allQuestionNumbers}
-                
-                
+                                
+                                
                         Prompt:
                         From the given audio lecture compile hard and medium questions, try engaging questions, convert it into the following JSON format:
                           - If 'Already extracted question Number' is empty, start fresh from the beginning of the HTML.

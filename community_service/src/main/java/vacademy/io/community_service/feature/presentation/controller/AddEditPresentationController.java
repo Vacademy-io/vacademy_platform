@@ -1,15 +1,11 @@
 package vacademy.io.community_service.feature.presentation.controller;
 
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.databind.PropertyNamingStrategies;
-import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.community_service.feature.presentation.dto.question.AddPresentationDto;
 import vacademy.io.community_service.feature.presentation.dto.question.EditPresentationDto;
-import vacademy.io.community_service.feature.presentation.entity.Presentation;
 import vacademy.io.community_service.feature.presentation.manager.PresentationCrudManager;
 
 import java.util.List;

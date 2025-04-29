@@ -1,9 +1,6 @@
 package vacademy.io.media_service.service;
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.PropertyNamingStrategies;
-import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -16,8 +13,6 @@ import vacademy.io.media_service.dto.AudioProcessingResponse;
 import vacademy.io.media_service.dto.audio.AudioConversionDeepLevelResponse;
 
 import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
 
 @Service
 public class NewAudioConverterService {

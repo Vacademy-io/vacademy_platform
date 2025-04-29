@@ -9,8 +9,6 @@ import vacademy.io.assessment_service.features.assessment.dto.create_assessment.
 import vacademy.io.assessment_service.features.assessment.manager.AssessmentBasicDetailsManager;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
-import java.util.Map;
-
 @RestController
 @RequestMapping("/assessment-service/assessment/basic/create/v1")
 public class AssessmentBasicDetailsController {

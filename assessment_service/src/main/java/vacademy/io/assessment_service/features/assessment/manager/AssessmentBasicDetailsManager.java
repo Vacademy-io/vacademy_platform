@@ -125,7 +125,6 @@ public class AssessmentBasicDetailsManager {
     }
 
 
-
     private void addOrUpdateBoundationData(Assessment assessment, AssessmentInstituteMapping assessmentInstituteMapping, BasicAssessmentDetailsDTO.LiveDateRange boundationData) {
         if (!ObjectUtils.isEmpty(boundationData)) {
             Optional.ofNullable(boundationData.getStartDate()).ifPresent((startDate) -> assessment.setBoundStartTime(convertStringToUTCDate(startDate)));

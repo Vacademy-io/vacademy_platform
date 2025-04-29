@@ -44,11 +44,10 @@ public class FilterEntityService {
                 .collect(Collectors.toSet());
 
         Page<Object[]> entityResults;
-        if(StringUtils.hasText(search)){
-            entityResults = repository.findDistinctEntitiesbysearch(entityName, List.copyOf(tagIds), search ,  pageable);
-        }
-        else {
-            entityResults = repository.findDistinctEntities(entityName, List.copyOf(tagIds) ,  pageable);
+        if (StringUtils.hasText(search)) {
+            entityResults = repository.findDistinctEntitiesbysearch(entityName, List.copyOf(tagIds), search, pageable);
+        } else {
+            entityResults = repository.findDistinctEntities(entityName, List.copyOf(tagIds), pageable);
         }
         return createFilteredEntityResponse(entityResults);
     }

@@ -26,7 +26,6 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                                                                          @Param("statusList") List<String> statusList);
 
 
-
     @Query(value = "SELECT DISTINCT l.* FROM level l " +
             "JOIN package_session ps ON l.id = ps.level_id " +
             "JOIN package p ON ps.package_id = p.id " +

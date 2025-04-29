@@ -40,7 +40,7 @@ public class Level {
     private String thumbnailFileId;
 
     // Additional constructors, if needed
-    public Level(String id, String levelName, Integer durationInDays,String status,String thumbnailFileId, Date createdAt, Date updatedAt) {
+    public Level(String id, String levelName, Integer durationInDays, String status, String thumbnailFileId, Date createdAt, Date updatedAt) {
         this.id = id;
         this.levelName = levelName;
         this.durationInDays = durationInDays;

@@ -10,9 +10,6 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.community_service.feature.init.dto.InitResponseDto;
 import vacademy.io.community_service.feature.init.service.InitService;
 
-import java.util.Arrays;
-import java.util.List;
-import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/community-service")
 public class InitController {

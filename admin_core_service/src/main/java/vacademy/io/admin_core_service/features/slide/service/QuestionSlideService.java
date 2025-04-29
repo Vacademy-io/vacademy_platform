@@ -36,10 +36,10 @@ public class QuestionSlideService {
     private OptionRepository optionRepository;
 
     public String addOrUpdateQuestionSlide(SlideDTO slideDTO, String chapterId, CustomUserDetails userDetails) {
-        if (slideDTO.isNewSlide()){
-            return addQuestionSlide(slideDTO,chapterId);
+        if (slideDTO.isNewSlide()) {
+            return addQuestionSlide(slideDTO, chapterId);
         }
-        return updateQuestionSlide(slideDTO,chapterId);
+        return updateQuestionSlide(slideDTO, chapterId);
     }
 
     public String addQuestionSlide(SlideDTO slideDTO, String chapterId) {

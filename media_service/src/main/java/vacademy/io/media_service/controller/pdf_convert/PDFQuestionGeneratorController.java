@@ -34,22 +34,17 @@ public class PDFQuestionGeneratorController {
     @Autowired
     DeepSeekService deepSeekService;
     @Autowired
-    private ObjectMapper objectMapper;
-
-    @Autowired
-    private FileService fileService;
-
-    @Autowired
-    private FileConversionStatusService fileConversionStatusService;
-
-    @Autowired
-    private NewDocConverterService newDocConverterService;
-
-    @Autowired
     TaskStatusService taskStatusService;
-
     @Autowired
     DeepSeekAsyncTaskService deepSeekAsyncTaskService;
+    @Autowired
+    private ObjectMapper objectMapper;
+    @Autowired
+    private FileService fileService;
+    @Autowired
+    private FileConversionStatusService fileConversionStatusService;
+    @Autowired
+    private NewDocConverterService newDocConverterService;
 
     public static String removeExtraSlashes(String input) {
         // Regular expression to match <img src="..."> and replace with <img src="...">
@@ -137,10 +132,10 @@ public class PDFQuestionGeneratorController {
 
     @GetMapping("/math-parser/pdf-to-questions")
     public ResponseEntity<String> getMathParserPdfHtml(@RequestParam String pdfId,
-                                                                          @RequestParam(required = false) String userPrompt,
-                                                                          @RequestParam(name = "taskId" , required = false) String taskId,
-                                                                          @RequestParam(name = "taskName", required = false) String taskName,
-                                                                          @RequestParam(name = "instituteId", required = false) String instituteId) throws IOException {
+                                                       @RequestParam(required = false) String userPrompt,
+                                                       @RequestParam(name = "taskId", required = false) String taskId,
+                                                       @RequestParam(name = "taskName", required = false) String taskName,
+                                                       @RequestParam(name = "instituteId", required = false) String instituteId) throws IOException {
 
         TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(taskId, TaskStatusTypeEnum.PDF_TO_QUESTIONS.name(), pdfId, TaskInputTypeEnum.PDF_ID.name(), taskName, instituteId);
 
@@ -152,10 +147,10 @@ public class PDFQuestionGeneratorController {
 
     @GetMapping("/math-parser/image-to-questions")
     public ResponseEntity<String> getMathParserPdfHtmlFromImage(@RequestParam String pdfId,
-                                                       @RequestParam(required = false) String userPrompt,
-                                                       @RequestParam(name = "taskId" , required = false) String taskId,
-                                                       @RequestParam(name = "taskName", required = false) String taskName,
-                                                       @RequestParam(name = "instituteId", required = false) String instituteId) throws IOException {
+                                                                @RequestParam(required = false) String userPrompt,
+                                                                @RequestParam(name = "taskId", required = false) String taskId,
+                                                                @RequestParam(name = "taskName", required = false) String taskName,
+                                                                @RequestParam(name = "instituteId", required = false) String instituteId) throws IOException {
 
         TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(taskId, TaskStatusTypeEnum.IMAGE_TO_QUESTIONS.name(), pdfId, TaskInputTypeEnum.IMAGE_ID.name(), taskName, instituteId);
 
@@ -167,8 +162,8 @@ public class PDFQuestionGeneratorController {
 
     @GetMapping("/math-parser/topic-wise/pdf-to-questions")
     public ResponseEntity<String> getMathParserPdfWithTopicHtml(@RequestParam String pdfId, @RequestParam(required = false) String userPrompt,
-                                                                                   @RequestParam("instituteId")String instituteId,
-                                                                                   @RequestParam("taskName") String taskName) throws IOException {
+                                                                @RequestParam("instituteId") String instituteId,
+                                                                @RequestParam("taskName") String taskName) throws IOException {
 
         TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(null, TaskStatusTypeEnum.SORT_QUESTIONS_TOPIC_WISE.name(), pdfId, TaskInputTypeEnum.PDF_ID.name(), taskName, instituteId);
 
@@ -218,7 +213,7 @@ public class PDFQuestionGeneratorController {
 
         TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(taskId, TaskStatusTypeEnum.PDF_TO_QUESTIONS_WITH_TOPIC.name(), pdfId, TaskInputTypeEnum.PDF_ID.name(), taskName, instituteId);
 
-        deepSeekAsyncTaskService.pollAndProcessPdfExtractTopicQuestions(taskStatus,pdfId,requiredTopics);
+        deepSeekAsyncTaskService.pollAndProcessPdfExtractTopicQuestions(taskStatus, pdfId, requiredTopics);
 
         return ResponseEntity.ok(taskStatus.getId());
 
@@ -274,7 +269,7 @@ public class PDFQuestionGeneratorController {
             @RequestParam(value = "taskId", required = false) String taskId) {
         TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(taskId, TaskStatusTypeEnum.TEXT_TO_QUESTIONS.name(), deepSeekAsyncTaskService.generateUniqueId(textPrompt.getText()), TaskInputTypeEnum.PROMPT_ID.name(), textPrompt.getTaskName(), instituteId);
 
-        deepSeekAsyncTaskService.pollAndProcessTextToQuestions(taskStatus,textPrompt);
+        deepSeekAsyncTaskService.pollAndProcessTextToQuestions(taskStatus, textPrompt);
         return ResponseEntity.ok(taskStatus.getId());
     }
 

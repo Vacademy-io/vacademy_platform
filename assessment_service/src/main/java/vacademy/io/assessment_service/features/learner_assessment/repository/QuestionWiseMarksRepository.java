@@ -5,7 +5,6 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.Top3CorrectResponseDto;
-import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
 import vacademy.io.assessment_service.features.learner_assessment.dto.QuestionStatusDto;
 import vacademy.io.assessment_service.features.learner_assessment.entity.QuestionWiseMarks;
 
@@ -22,8 +21,8 @@ public interface QuestionWiseMarksRepository extends JpaRepository<QuestionWiseM
             AND qwm.section_id = :sectionId LIMIT 1
             """, nativeQuery = true)
     Optional<QuestionWiseMarks> findByAssessmentIdAndStudentAttemptIdAndQuestionIdAndSectionId(@Param("assessmentId") String assessmentId,
-                                                                                   @Param("attemptId") String attemptId,
-                                                                                   @Param("questionId") String questionId,
+                                                                                               @Param("attemptId") String attemptId,
+                                                                                               @Param("questionId") String questionId,
                                                                                                @Param("sectionId") String sectionId);
 
     @Query(value = """
@@ -44,7 +43,6 @@ public interface QuestionWiseMarksRepository extends JpaRepository<QuestionWiseM
                                                                   @Param("sectionId") String sectionId);
 
 
-
     @Query(value = """
             select aur.user_id as userId, aur.participant_name as name, qwm.time_taken_in_seconds as timeTakenInSeconds from question_wise_marks qwm
             join student_attempt sa on sa.id = qwm.attempt_id
@@ -56,8 +54,8 @@ public interface QuestionWiseMarksRepository extends JpaRepository<QuestionWiseM
              order by qwm.time_taken_in_seconds asc limit 3
             """, nativeQuery = true)
     List<Top3CorrectResponseDto> findTop3ParticipantsForCorrectResponse(@Param("assessmentId") String assessmentId,
-                                                                  @Param("questionId") String questionId,
-                                                                  @Param("sectionId") String sectionId);
+                                                                        @Param("questionId") String questionId,
+                                                                        @Param("sectionId") String sectionId);
 
 
     @Query(value = """

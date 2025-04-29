@@ -8,5 +8,6 @@ import java.util.Optional;
 
 public interface UserEvaluationRepository extends JpaRepository<EvaluationUser, String> {
     Optional<EvaluationUser> findBySourceTypeAndSourceIdAndUserId(String sourceType, String sourceId, String userId);
+
     List<EvaluationUser> findBySourceTypeAndSourceId(String sourceType, String sourceId);
 }

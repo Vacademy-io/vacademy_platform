@@ -19,11 +19,11 @@ public class AddFilterToEntityController {
     private EntityTagsService entityTagsService;
 
     @PostMapping("/add-tags-to-entity")
-    public ResponseEntity<?> addTags(@RequestAttribute("user") CustomUserDetails user , @RequestBody AddTagsRequestDto requestDto) {
+    public ResponseEntity<?> addTags(@RequestAttribute("user") CustomUserDetails user, @RequestBody AddTagsRequestDto requestDto) {
         try {
-            entityTagsService.addTagsToEntity(user , requestDto);
+            entityTagsService.addTagsToEntity(user, requestDto);
             return ResponseEntity.ok("Tags added successfully!");
-        }catch (IllegalArgumentException e) {
+        } catch (IllegalArgumentException e) {
             Map<String, String> errorResponse = new HashMap<>();
             errorResponse.put("error", e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);

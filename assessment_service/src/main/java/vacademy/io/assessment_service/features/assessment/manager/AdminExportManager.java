@@ -9,25 +9,25 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
-import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.StudentReportOverallDetailDto;
-import vacademy.io.assessment_service.features.assessment.entity.Assessment;
-import vacademy.io.assessment_service.features.assessment.repository.AssessmentRepository;
-import vacademy.io.assessment_service.features.assessment.service.HtmlBuilderService;
 import vacademy.io.assessment_service.features.assessment.dto.AssessmentUserFilter;
 import vacademy.io.assessment_service.features.assessment.dto.LeaderBoardDto;
 import vacademy.io.assessment_service.features.assessment.dto.ParticipantsDetailsDto;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.request.RespondentFilter;
-import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.RespondentListDto;
-import vacademy.io.assessment_service.features.assessment.dto.export.LeaderboardExportDto;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.MarksRankDto;
+import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.RespondentListDto;
+import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.StudentReportOverallDetailDto;
+import vacademy.io.assessment_service.features.assessment.dto.export.LeaderboardExportDto;
 import vacademy.io.assessment_service.features.assessment.dto.export.MarkRankExportDto;
 import vacademy.io.assessment_service.features.assessment.dto.export.ParticipantsDetailExportDto;
 import vacademy.io.assessment_service.features.assessment.dto.export.RespondentExportDto;
+import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentVisibility;
 import vacademy.io.assessment_service.features.assessment.enums.UserRegistrationFilterEnum;
 import vacademy.io.assessment_service.features.assessment.enums.UserRegistrationSources;
+import vacademy.io.assessment_service.features.assessment.repository.AssessmentRepository;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentUserRegistrationRepository;
 import vacademy.io.assessment_service.features.assessment.repository.StudentAttemptRepository;
+import vacademy.io.assessment_service.features.assessment.service.HtmlBuilderService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.core.utils.DataToCsvConverter;
 import vacademy.io.common.exceptions.VacademyException;
@@ -53,8 +53,28 @@ public class AdminExportManager {
     @Autowired
     AssessmentRepository assessmentRepository;
 
+    public static String convertToReadableTime(Long timeInSeconds) {
+        if (Objects.isNull(timeInSeconds) || timeInSeconds < 0) {
+            return "Invalid Input";
+        }
 
+        long hours = timeInSeconds / 3600;
+        long minutes = (timeInSeconds % 3600) / 60;
+        long seconds = timeInSeconds % 60;
 
+        StringBuilder result = new StringBuilder();
+        if (hours > 0) {
+            result.append(hours).append(" hr ");
+        }
+        if (minutes > 0) {
+            result.append(minutes).append(" min ");
+        }
+        if (seconds > 0 || result.isEmpty()) { // Always show at least seconds if the input is 0
+            result.append(seconds).append(" sec");
+        }
+
+        return result.toString().trim();
+    }
 
     public ResponseEntity<byte[]> getLeaderBoardCsvExport(CustomUserDetails user, String assessmentId, String instituteId) {
 
@@ -79,36 +99,13 @@ public class AdminExportManager {
         return response;
     }
 
-    public static String convertToReadableTime(Long timeInSeconds) {
-        if (Objects.isNull(timeInSeconds) || timeInSeconds < 0) {
-            return "Invalid Input";
-        }
-
-        long hours = timeInSeconds / 3600;
-        long minutes = (timeInSeconds % 3600) / 60;
-        long seconds = timeInSeconds % 60;
-
-        StringBuilder result = new StringBuilder();
-        if (hours > 0) {
-            result.append(hours).append(" hr ");
-        }
-        if (minutes > 0) {
-            result.append(minutes).append(" min ");
-        }
-        if (seconds > 0 || result.isEmpty()) { // Always show at least seconds if the input is 0
-            result.append(seconds).append(" sec");
-        }
-
-        return result.toString().trim();
-    }
-
     public ResponseEntity<InputStreamResource> getLeaderboardPdfExport(CustomUserDetails user, String assessmentId, String instituteId) {
         Optional<Assessment> assessmentOptional = assessmentRepository.findById(assessmentId);
-        if(assessmentOptional.isEmpty()) throw new VacademyException("Assessment Not Found");
+        if (assessmentOptional.isEmpty()) throw new VacademyException("Assessment Not Found");
 
         List<LeaderBoardDto> leaderBoardDtos = studentAttemptRepository.findLeaderBoardForAssessmentAndInstituteId(assessmentId, instituteId, List.of("ACTIVE"));
         List<LeaderboardExportDto> leaderboardCsvDtos = createCsvDtoFromLeaderboardDto(leaderBoardDtos);
-        return DataToCsvConverter.buildPdfResponse(assessmentOptional.get().getName().toUpperCase(),"LEADERBOARD",leaderboardCsvDtos,"leaderboard");
+        return DataToCsvConverter.buildPdfResponse(assessmentOptional.get().getName().toUpperCase(), "LEADERBOARD", leaderboardCsvDtos, "leaderboard");
     }
 
     public ResponseEntity<byte[]> getMarksRankCsvExport(CustomUserDetails user, String assessmentId, String instituteId) {
@@ -121,10 +118,10 @@ public class AdminExportManager {
         List<MarkRankExportDto> response = new ArrayList<>();
         marksRankDtos.forEach(marksRankDto -> {
             response.add(MarkRankExportDto.builder()
-                            .marks(marksRankDto.getMarks())
-                            .rank(marksRankDto.getRank())
-                            .noOfParticipants(marksRankDto.getNoOfParticipants())
-                            .percentile(marksRankDto.getPercentile()).build());
+                    .marks(marksRankDto.getMarks())
+                    .rank(marksRankDto.getRank())
+                    .noOfParticipants(marksRankDto.getNoOfParticipants())
+                    .percentile(marksRankDto.getPercentile()).build());
         });
 
         return response;
@@ -132,21 +129,20 @@ public class AdminExportManager {
 
     public ResponseEntity<InputStreamResource> getMarksRankPdfExport(CustomUserDetails user, String assessmentId, String instituteId) {
         Optional<Assessment> assessmentOptional = assessmentRepository.findById(assessmentId);
-        if(assessmentOptional.isEmpty()) throw new VacademyException("Assessment Not Found");
+        if (assessmentOptional.isEmpty()) throw new VacademyException("Assessment Not Found");
 
         List<MarksRankDto> marksRankDtos = studentAttemptRepository.findMarkRankForAssessment(assessmentId, instituteId);
         List<MarkRankExportDto> markRankExportDtos = createMarkRankExportDto(marksRankDtos);
-        return DataToCsvConverter.buildPdfResponse(assessmentOptional.get().getName().toUpperCase(),"MARK-RANK LEADERBOARD",markRankExportDtos,"mark_rank");
+        return DataToCsvConverter.buildPdfResponse(assessmentOptional.get().getName().toUpperCase(), "MARK-RANK LEADERBOARD", markRankExportDtos, "mark_rank");
     }
 
     public ResponseEntity<byte[]> getRegisteredCsvExport(CustomUserDetails user, String instituteId, String assessmentId, AssessmentUserFilter filter) {
-        if(Objects.isNull(filter)) throw new VacademyException("Invalid Request");
+        if (Objects.isNull(filter)) throw new VacademyException("Invalid Request");
 
         // Determine whether to fetch participants for an open or closed assessment
-        if(filter.getAssessmentType().equals(AssessmentVisibility.PUBLIC.name())){
+        if (filter.getAssessmentType().equals(AssessmentVisibility.PUBLIC.name())) {
             return handleCaseForPublicAssessment(instituteId, assessmentId, filter);
-        }
-        else{
+        } else {
             return handleCaseForPrivateAssessment(instituteId, assessmentId, filter);
         }
     }
@@ -257,13 +253,12 @@ public class AdminExportManager {
     }
 
     public ResponseEntity<InputStreamResource> getRegisteredPdfExport(CustomUserDetails user, String instituteId, String assessmentId, AssessmentUserFilter filter) {
-        if(Objects.isNull(filter)) throw new VacademyException("Invalid Request");
+        if (Objects.isNull(filter)) throw new VacademyException("Invalid Request");
 
         // Determine whether to fetch participants for an open or closed assessment
-        if(filter.getAssessmentType().equals(AssessmentVisibility.PUBLIC.name())){
+        if (filter.getAssessmentType().equals(AssessmentVisibility.PUBLIC.name())) {
             return handleCaseForPublicAssessmentPdfExport(instituteId, assessmentId, filter);
-        }
-        else{
+        } else {
             return handleCaseForPrivateAssessmentPdfExport(instituteId, assessmentId, filter);
         }
     }
@@ -274,7 +269,7 @@ public class AdminExportManager {
             throw new VacademyException("Invalid Filter Request");
         }
         Optional<Assessment> assessmentOptional = assessmentRepository.findById(assessmentId);
-        if(assessmentOptional.isEmpty()) throw new VacademyException("Assessment Not Found");
+        if (assessmentOptional.isEmpty()) throw new VacademyException("Assessment Not Found");
 
         List<ParticipantsDetailsDto> participantsDetailsDtos = new ArrayList<>();
 
@@ -295,14 +290,14 @@ public class AdminExportManager {
 
 
         // Convert the retrieved data into the required response format
-        return DataToCsvConverter.buildPdfResponse(assessmentOptional.get().getName().toUpperCase(),"PARTICIPANTS LIST",createExportDtoFromParticipantsDto(participantsDetailsDtos),"participants");
+        return DataToCsvConverter.buildPdfResponse(assessmentOptional.get().getName().toUpperCase(), "PARTICIPANTS LIST", createExportDtoFromParticipantsDto(participantsDetailsDtos), "participants");
     }
 
     private ResponseEntity<InputStreamResource> handleCaseForPublicAssessmentPdfExport(String instituteId, String assessmentId, AssessmentUserFilter filter) {
         if (Objects.isNull(filter)) throw new VacademyException("Invalid Filter Request");
 
         Optional<Assessment> assessmentOptional = assessmentRepository.findById(assessmentId);
-        if(assessmentOptional.isEmpty()) throw new VacademyException("Assessment Not Found");
+        if (assessmentOptional.isEmpty()) throw new VacademyException("Assessment Not Found");
 
         List<ParticipantsDetailsDto> participantsDetailsDtos = new ArrayList<>();
 
@@ -315,10 +310,10 @@ public class AdminExportManager {
             participantsDetailsDtos = handleCaseForAdminPreRegistration(assessmentId, instituteId, filter);
         } else throw new VacademyException("Invalid Source Request");
 
-        return DataToCsvConverter.buildPdfResponse(assessmentOptional.get().getName().toUpperCase(),"PARTICIPANTS LIST",createExportDtoFromParticipantsDto(participantsDetailsDtos),"participants");
+        return DataToCsvConverter.buildPdfResponse(assessmentOptional.get().getName().toUpperCase(), "PARTICIPANTS LIST", createExportDtoFromParticipantsDto(participantsDetailsDtos), "participants");
     }
 
-    public ResponseEntity<byte[]> getRespondentListCsvExport(CustomUserDetails user, String instituteId, String sectionId, String questionId,String assessmentId, RespondentFilter filter) {
+    public ResponseEntity<byte[]> getRespondentListCsvExport(CustomUserDetails user, String instituteId, String sectionId, String questionId, String assessmentId, RespondentFilter filter) {
         if (Objects.isNull(filter)) throw new VacademyException("Invalid Request");
 
         List<RespondentListDto> responses = null;
@@ -331,11 +326,11 @@ public class AdminExportManager {
 
     }
 
-    public ResponseEntity<InputStreamResource> getRespondentListPdfExport(CustomUserDetails user, String instituteId, String sectionId, String questionId,String assessmentId, RespondentFilter filter) {
+    public ResponseEntity<InputStreamResource> getRespondentListPdfExport(CustomUserDetails user, String instituteId, String sectionId, String questionId, String assessmentId, RespondentFilter filter) {
         if (Objects.isNull(filter)) throw new VacademyException("Invalid Request");
 
         Optional<Assessment> assessmentOptional = assessmentRepository.findById(assessmentId);
-        if(assessmentOptional.isEmpty()) throw new VacademyException("Assessment Not Found");
+        if (assessmentOptional.isEmpty()) throw new VacademyException("Assessment Not Found");
 
         List<RespondentListDto> responses = null;
         responses = assessmentUserRegistrationRepository
@@ -343,13 +338,13 @@ public class AdminExportManager {
 
         List<RespondentExportDto> exportDtos = createRespondentExportDto(responses);
 
-        return DataToCsvConverter.buildPdfResponse(assessmentOptional.get().getName().toUpperCase(),"RESPONDENT LIST",exportDtos,"respondent");
+        return DataToCsvConverter.buildPdfResponse(assessmentOptional.get().getName().toUpperCase(), "RESPONDENT LIST", exportDtos, "respondent");
 
     }
 
     private List<RespondentExportDto> createRespondentExportDto(List<RespondentListDto> responses) {
         List<RespondentExportDto> respondentExportDtos = new ArrayList<>();
-        responses.forEach(response->{
+        responses.forEach(response -> {
             respondentExportDtos.add(RespondentExportDto.builder()
                     .responseTime(convertToReadableTime(response.getResponseTimeInSeconds()))
                     .participantName(response.getParticipantName())
@@ -361,7 +356,7 @@ public class AdminExportManager {
 
     public ResponseEntity<byte[]> getQuestionInsightsExport(CustomUserDetails user, String assessmentId, String instituteId, String sectionIds) {
         List<String> allSectionIds = Arrays.asList(sectionIds.split(","));
-        return createPdfForQuestionInsights(user, allSectionIds,assessmentId, instituteId);
+        return createPdfForQuestionInsights(user, allSectionIds, assessmentId, instituteId);
     }
 
     private ResponseEntity<byte[]> createPdfForQuestionInsights(CustomUserDetails user, List<String> allSectionIds, String assessmentId, String instituteId) {
@@ -380,11 +375,11 @@ public class AdminExportManager {
     }
 
     public ResponseEntity<byte[]> getStudentReportPdf(CustomUserDetails user, String assessmentId, String attemptId, String instituteId) {
-        StudentReportOverallDetailDto studentReportOverallDetailDto = assessmentParticipantsManager.createStudentReportDetailResponse( assessmentId, attemptId, instituteId);
+        StudentReportOverallDetailDto studentReportOverallDetailDto = assessmentParticipantsManager.createStudentReportDetailResponse(assessmentId, attemptId, instituteId);
         Optional<Assessment> assessmentOptional = assessmentRepository.findById(assessmentId);
-        if(assessmentOptional.isEmpty()) throw new VacademyException("Assessment Not Found");
+        if (assessmentOptional.isEmpty()) throw new VacademyException("Assessment Not Found");
 
-        String studentReportHtml = htmlBuilderService.generateStudentReportHtml(assessmentOptional.get().getName(),studentReportOverallDetailDto);
+        String studentReportHtml = htmlBuilderService.generateStudentReportHtml(assessmentOptional.get().getName(), studentReportOverallDetailDto);
 
         ByteArrayOutputStream pdfOutputStream = new ByteArrayOutputStream();
         ConverterProperties converterProperties = new ConverterProperties();

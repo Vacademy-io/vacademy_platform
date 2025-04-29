@@ -22,10 +22,6 @@ import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.requ
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.*;
 import vacademy.io.assessment_service.features.assessment.dto.create_assessment.AssessmentRegistrationsDto;
 import vacademy.io.assessment_service.features.assessment.entity.*;
-import vacademy.io.assessment_service.features.assessment.entity.Assessment;
-import vacademy.io.assessment_service.features.assessment.entity.AssessmentBatchRegistration;
-import vacademy.io.assessment_service.features.assessment.entity.AssessmentCustomField;
-import vacademy.io.assessment_service.features.assessment.entity.AssessmentUserRegistration;
 import vacademy.io.assessment_service.features.assessment.enums.*;
 import vacademy.io.assessment_service.features.assessment.notification.AssessmentReportNotificationService;
 import vacademy.io.assessment_service.features.assessment.repository.*;
@@ -38,7 +34,6 @@ import vacademy.io.assessment_service.features.evaluation.service.QuestionEvalua
 import vacademy.io.assessment_service.features.learner_assessment.entity.QuestionWiseMarks;
 import vacademy.io.assessment_service.features.learner_assessment.service.QuestionWiseMarksService;
 import vacademy.io.assessment_service.features.notification.service.AssessmentNotificationService;
-import vacademy.io.assessment_service.features.notification.service.NotificationService;
 import vacademy.io.assessment_service.features.question_core.dto.MCQEvaluationDTO;
 import vacademy.io.assessment_service.features.question_core.entity.Option;
 import vacademy.io.assessment_service.features.question_core.entity.Question;
@@ -826,10 +821,10 @@ public class AssessmentParticipantsManager {
     @Async
     public CompletableFuture<Void> releaseResultWrapper(Assessment assessment, String instituteId, ReleaseRequestDto request, String type) {
         return CompletableFuture.runAsync(() -> processReleaseParticipants(assessment, instituteId, request, type))
-                .thenRun(() -> sendNotificationToAdmin(assessment,instituteId));
+                .thenRun(() -> sendNotificationToAdmin(assessment, instituteId));
     }
 
-    private void sendNotificationToAdmin(Assessment assessment,String instituteId) {
+    private void sendNotificationToAdmin(Assessment assessment, String instituteId) {
         assessmentNotificationService.sendNotificationsToAdminsAfterReleasingTheResult(assessment, instituteId);
     }
 
@@ -887,7 +882,7 @@ public class AssessmentParticipantsManager {
             // Send notification to the student
             reportMap.put(attempt, participantPdfReport);
         });
-        sendNotificationToStudent(reportMap,assessment.getId());
+        sendNotificationToStudent(reportMap, assessment.getId());
     }
 
     /**
@@ -906,8 +901,8 @@ public class AssessmentParticipantsManager {
      *
      * @param participantPdfReport The generated PDF report as a byte array.
      */
-    private void sendNotificationToStudent(Map<StudentAttempt, byte[]> participantPdfReport,String assessmentId) {
-        assessmentReportNotificationService.sendAssessmentReportsToLearners(participantPdfReport,assessmentId);
+    private void sendNotificationToStudent(Map<StudentAttempt, byte[]> participantPdfReport, String assessmentId) {
+        assessmentReportNotificationService.sendAssessmentReportsToLearners(participantPdfReport, assessmentId);
         log.info("Notification Check");
     }
 

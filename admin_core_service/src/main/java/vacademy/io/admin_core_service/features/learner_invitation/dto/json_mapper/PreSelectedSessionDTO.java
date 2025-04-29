@@ -11,6 +11,6 @@ public class PreSelectedSessionDTO {
     private Integer maxSelectableLevels;
     private String name;
     private String id;
-    private List<LevelSelectionDTO>preSelectedLevels;
-    private List<LevelSelectionDTO>learnerChoiceLevels;
+    private List<LevelSelectionDTO> preSelectedLevels;
+    private List<LevelSelectionDTO> learnerChoiceLevels;
 }

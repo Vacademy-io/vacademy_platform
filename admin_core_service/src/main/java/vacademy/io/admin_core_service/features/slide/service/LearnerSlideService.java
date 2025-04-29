@@ -15,6 +15,6 @@ public class LearnerSlideService {
     private SlideRepository slideRepository;
 
     public List<SlideDetailWithOperationProjection> getLearnerSlides(String userId, String chapterId, CustomUserDetails user) {
-        return slideRepository.findSlideDetailsWithOperationByChapterId(userId, chapterId, List.of(SlideStatus.PUBLISHED.name(),SlideStatus.UNSYNC.name()));
+        return slideRepository.findSlideDetailsWithOperationByChapterId(userId, chapterId, List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()));
     }
 }

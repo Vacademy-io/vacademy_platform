@@ -4,8 +4,12 @@ import java.util.Date;
 
 public interface ManualAttemptResponseDto {
     String getAttemptId();
+
     String getUserId();
+
     String getEvaluationStatus();
+
     Date getSubmitTime();
+
     String getParticipantName();
 }

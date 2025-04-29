@@ -6,7 +6,6 @@ import vacademy.io.auth_service.feature.user.dto.ModifyUserRolesDTO;
 import vacademy.io.auth_service.feature.user.dto.UserRoleFilterDTO;
 import vacademy.io.auth_service.feature.user.service.RoleService;
 import vacademy.io.common.auth.dto.RoleCountProjection;
-import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.UserWithRolesDTO;
 import vacademy.io.common.auth.enums.UserRoleStatus;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -61,10 +60,10 @@ public class RoleController {
 
     @PutMapping("/update-role-status")
     public ResponseEntity<String> updateUserRoleStatus(@RequestParam String instituteId,
-                                                          @RequestBody List<String>userIds,
-                                                          @RequestParam String status,
-                                                          @RequestAttribute("user") CustomUserDetails customUserDetails) {
-        String response = roleService.updateUserRoleStatusByInstituteIdAndUserId(status,instituteId, userIds, customUserDetails);
+                                                       @RequestBody List<String> userIds,
+                                                       @RequestParam String status,
+                                                       @RequestAttribute("user") CustomUserDetails customUserDetails) {
+        String response = roleService.updateUserRoleStatusByInstituteIdAndUserId(status, instituteId, userIds, customUserDetails);
         return ResponseEntity.ok(response);
     }
 }

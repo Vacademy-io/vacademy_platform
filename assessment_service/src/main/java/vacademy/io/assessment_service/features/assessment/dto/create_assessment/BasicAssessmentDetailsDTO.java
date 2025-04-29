@@ -27,6 +27,7 @@ public class BasicAssessmentDetailsDTO {
     private Integer defaultReattemptCount = 1;
     private String source;
     private String sourceId;
+
     @Data
     @Builder
     @NoArgsConstructor

@@ -4,7 +4,6 @@ import jakarta.persistence.*;
 import lombok.Data;
 import org.hibernate.annotations.UuidGenerator;
 
-import java.time.LocalDateTime;
 import java.util.Date;
 
 @Data
@@ -14,7 +13,8 @@ public class PresentationSlide {
 
     @Id
     @UuidGenerator
-    @Column(name = "id")  private String id;
+    @Column(name = "id")
+    private String id;
 
     @Column(name = "title", length = 255)
     private String title;

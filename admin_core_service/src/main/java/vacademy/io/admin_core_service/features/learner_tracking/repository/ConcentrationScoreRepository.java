@@ -11,25 +11,25 @@ import java.util.List;
 public interface ConcentrationScoreRepository extends JpaRepository<ConcentrationScore, String> {
 
     @Query(value = """ 
-    WITH total_concentration_score AS (
-        SELECT 
-            SUM(cs.concentration_score) AS total_score,
-            COUNT(cs.concentration_score) AS score_count
-        FROM concentration_score cs
-        JOIN activity_log al ON cs.activity_id = al.id
-        JOIN student_session_institute_group_mapping ssig ON al.user_id = ssig.user_id
-        WHERE 
-            ssig.package_session_id = :packageSessionId
-            AND ssig.status IN :statusList
-            AND al.created_at BETWEEN :startDate AND :endDate
-    )
-    SELECT 
-        CASE 
-            WHEN score_count > 0 THEN total_score / score_count 
-            ELSE NULL 
-        END AS avg_concentration_score
-    FROM total_concentration_score;
-    """, nativeQuery = true)
+            WITH total_concentration_score AS (
+                SELECT 
+                    SUM(cs.concentration_score) AS total_score,
+                    COUNT(cs.concentration_score) AS score_count
+                FROM concentration_score cs
+                JOIN activity_log al ON cs.activity_id = al.id
+                JOIN student_session_institute_group_mapping ssig ON al.user_id = ssig.user_id
+                WHERE 
+                    ssig.package_session_id = :packageSessionId
+                    AND ssig.status IN :statusList
+                    AND al.created_at BETWEEN :startDate AND :endDate
+            )
+            SELECT 
+                CASE 
+                    WHEN score_count > 0 THEN total_score / score_count 
+                    ELSE NULL 
+                END AS avg_concentration_score
+            FROM total_concentration_score;
+            """, nativeQuery = true)
     Double findAverageConcentrationScoreByBatch(
             @Param("startDate") Date startDate,
             @Param("endDate") Date endDate,
@@ -38,17 +38,17 @@ public interface ConcentrationScoreRepository extends JpaRepository<Concentratio
     );
 
     @Query(value = """ 
-    SELECT 
-        CASE 
-            WHEN COUNT(*) > 0 THEN SUM(cs.concentration_score) / COUNT(*) 
-            ELSE NULL 
-        END AS avg_concentration_score
-    FROM concentration_score cs
-    JOIN activity_log al ON cs.activity_id = al.id
-    WHERE 
-        al.user_id = :userId
-        AND al.created_at BETWEEN :startDate AND :endDate
-    """, nativeQuery = true)
+            SELECT 
+                CASE 
+                    WHEN COUNT(*) > 0 THEN SUM(cs.concentration_score) / COUNT(*) 
+                    ELSE NULL 
+                END AS avg_concentration_score
+            FROM concentration_score cs
+            JOIN activity_log al ON cs.activity_id = al.id
+            WHERE 
+                al.user_id = :userId
+                AND al.created_at BETWEEN :startDate AND :endDate
+            """, nativeQuery = true)
     Double findAverageConcentrationScoreOfLearner(
             @Param("startDate") Date startDate,
             @Param("endDate") Date endDate,

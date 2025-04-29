@@ -4,20 +4,14 @@ import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
-import vacademy.io.admin_core_service.features.chapter.entity.Chapter;
-import vacademy.io.admin_core_service.features.chapter.entity.ChapterPackageSessionMapping;
 import vacademy.io.admin_core_service.features.chapter.repository.ChapterPackageSessionMappingRepository;
-import vacademy.io.admin_core_service.features.module.entity.ModuleChapterMapping;
 import vacademy.io.admin_core_service.features.module.entity.SubjectModuleMapping;
 import vacademy.io.admin_core_service.features.module.enums.ModuleStatusEnum;
 import vacademy.io.admin_core_service.features.module.repository.ModuleChapterMappingRepository;
 import vacademy.io.admin_core_service.features.module.repository.ModuleRepository;
 import vacademy.io.admin_core_service.features.module.repository.SubjectModuleMappingRepository;
 import vacademy.io.admin_core_service.features.module.service.ModuleManager;
-import vacademy.io.admin_core_service.features.module.service.ModuleService;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
-import vacademy.io.admin_core_service.features.slide.service.SlideService;
 import vacademy.io.admin_core_service.features.subject.dto.UpdateSubjectOrderDTO;
 import vacademy.io.admin_core_service.features.subject.entity.SubjectPackageSession;
 import vacademy.io.admin_core_service.features.subject.enums.SubjectStatusEnum;
@@ -45,6 +39,7 @@ public class SubjectService {
     private final ModuleChapterMappingRepository moduleChapterMappingRepository;
     private final ChapterPackageSessionMappingRepository chapterPackageSessionMappingRepository;
     private final ModuleManager moduleManager;
+
     /**
      * Adds a new subject to the system.
      *
@@ -71,10 +66,10 @@ public class SubjectService {
         String[] packageSessionIds = getPackageSessionIds(commaSeparatedPackageSessionIds);
         for (String packageSessionId : packageSessionIds) {
             try {
-                 Optional<Subject>optionalSubject = getSubjectByNameAndPackageSessionId(subjectDTO.getSubjectName(), packageSessionId);
-                 if (optionalSubject.isPresent()){
-                     throw new VacademyException("Subject already exists");
-                 }
+                Optional<Subject> optionalSubject = getSubjectByNameAndPackageSessionId(subjectDTO.getSubjectName(), packageSessionId);
+                if (optionalSubject.isPresent()) {
+                    throw new VacademyException("Subject already exists");
+                }
                 PackageSession packageSession = packageSessionRepository.findById(packageSessionId)
                         .orElseThrow(() -> new VacademyException("Package Session not found"));
                 subjectPackageSessionRepository.save(new SubjectPackageSession(savedSubject, packageSession, subjectDTO.getSubjectOrder()));
@@ -254,7 +249,6 @@ public class SubjectService {
     }
 
 
-
     private List<SubjectPackageSession> getExistingMappings(List<String> packageSessionIds, Subject subject) {
         return subjectPackageSessionRepository.findBySubjectNameAndPackageSessionIds(
                 subject.getSubjectName(), packageSessionIds
@@ -277,8 +271,7 @@ public class SubjectService {
                 Module newModule = createAndSaveModule(module);
                 createSubjectModuleMapping(subjectPackageSession.getSubject(), newModule);
                 ensuredModules.add(newModule);
-            }
-            else{
+            } else {
                 ensuredModules.add(existingModule.get().getModule());
             }
         }
@@ -310,18 +303,18 @@ public class SubjectService {
 
         List<Subject> existingSubjects = subjectRepository.findDistinctSubjectsByPackageSessionId(oldPackageSession.getId());
         List<Subject> newSubjects = new ArrayList<>();
-        copySubjects(existingSubjects,newSubjects);
+        copySubjects(existingSubjects, newSubjects);
         List<SubjectPackageSession> subjectPackageSessions = createSubjectPackageSessions(newSubjects, newPackageSession);
 
         subjectRepository.saveAll(newSubjects);
         subjectPackageSessionRepository.saveAll(subjectPackageSessions);
-        for (int i = 0;i < newSubjects.size();i++) {
-            moduleManager.copyModulesOfSubject(existingSubjects.get(i),newSubjects.get(i),oldPackageSession,newPackageSession);
+        for (int i = 0; i < newSubjects.size(); i++) {
+            moduleManager.copyModulesOfSubject(existingSubjects.get(i), newSubjects.get(i), oldPackageSession, newPackageSession);
         }
         return true;
     }
 
-    private void copySubjects(List<Subject> existingSubjects,List<Subject>newSubjects) {
+    private void copySubjects(List<Subject> existingSubjects, List<Subject> newSubjects) {
         for (Subject subject : existingSubjects) {
             Subject newSubject = new Subject();
             newSubject.setSubjectName(subject.getSubjectName());

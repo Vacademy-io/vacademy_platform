@@ -33,27 +33,6 @@ public class TaskStatusManager {
     @Autowired
     DeepSeekService deepSeekService;
 
-    public ResponseEntity<List<TaskStatusDto>> getAllTasks(String instituteId, String taskType) {
-        List<TaskStatusDto> allTaskStatus = taskStatusService.getAllTaskStatusDtoForInstituteIdAndTaskType(instituteId, taskType);
-        return ResponseEntity.ok(allTaskStatus);
-    }
-
-    public ResponseEntity<AutoQuestionPaperResponse> getAllQuestions(String taskId) {
-        Optional<TaskStatus> taskStatus = taskStatusService.getTaskStatusById(taskId);
-        if(taskStatus.isEmpty()) throw new VacademyException("Task Not Found");
-
-        String resultJson = taskStatus.get().getResultJson();
-        if(Objects.isNull(resultJson) || resultJson.isEmpty()) return ResponseEntity.ok(new AutoQuestionPaperResponse());
-
-        try{
-            String validJson = JsonUtils.extractAndSanitizeJson(resultJson);
-            return ResponseEntity.ok(createAutoQuestionPaperResponse(removeExtraSlashes(validJson)));
-
-        } catch (Exception e) {
-            return ResponseEntity.ok(new AutoQuestionPaperResponse());
-        }
-    }
-
     public static String removeExtraSlashes(String input) {
         // Regular expression to match <img src="..."> and replace with <img src="...">
         String regex = "<img src=\\\\\"(.*?)\\\\\">";
@@ -65,6 +44,28 @@ public class TaskStatusManager {
 
         // Replace all occurrences of the pattern with the replacement string
         return matcher.replaceAll(replacement);
+    }
+
+    public ResponseEntity<List<TaskStatusDto>> getAllTasks(String instituteId, String taskType) {
+        List<TaskStatusDto> allTaskStatus = taskStatusService.getAllTaskStatusDtoForInstituteIdAndTaskType(instituteId, taskType);
+        return ResponseEntity.ok(allTaskStatus);
+    }
+
+    public ResponseEntity<AutoQuestionPaperResponse> getAllQuestions(String taskId) {
+        Optional<TaskStatus> taskStatus = taskStatusService.getTaskStatusById(taskId);
+        if (taskStatus.isEmpty()) throw new VacademyException("Task Not Found");
+
+        String resultJson = taskStatus.get().getResultJson();
+        if (Objects.isNull(resultJson) || resultJson.isEmpty())
+            return ResponseEntity.ok(new AutoQuestionPaperResponse());
+
+        try {
+            String validJson = JsonUtils.extractAndSanitizeJson(resultJson);
+            return ResponseEntity.ok(createAutoQuestionPaperResponse(removeExtraSlashes(validJson)));
+
+        } catch (Exception e) {
+            return ResponseEntity.ok(new AutoQuestionPaperResponse());
+        }
     }
 
     public AutoQuestionPaperResponse createAutoQuestionPaperResponse(String htmlResponse) {
@@ -91,12 +92,12 @@ public class TaskStatusManager {
 
     public ResponseEntity<LecturePlanDto> getLecturePlan(String taskId) {
         Optional<TaskStatus> taskStatus = taskStatusService.getTaskStatusById(taskId);
-        if(taskStatus.isEmpty()) throw new VacademyException("Task Not Found");
+        if (taskStatus.isEmpty()) throw new VacademyException("Task Not Found");
 
         String resultJson = taskStatus.get().getResultJson();
-        if(Objects.isNull(resultJson) || resultJson.isEmpty()) return ResponseEntity.ok(new LecturePlanDto());
+        if (Objects.isNull(resultJson) || resultJson.isEmpty()) return ResponseEntity.ok(new LecturePlanDto());
 
-        try{
+        try {
             String validJson = JsonUtils.extractAndSanitizeJson(resultJson);
             return ResponseEntity.ok(createLecturePlanDtoFromJson(removeExtraSlashes(validJson)));
 
@@ -105,16 +106,16 @@ public class TaskStatusManager {
         }
     }
 
-    private LecturePlanDto createLecturePlanDtoFromJson(String validJson) throws Exception{
+    private LecturePlanDto createLecturePlanDtoFromJson(String validJson) throws Exception {
         ObjectMapper objectMapper = new ObjectMapper();
         return objectMapper.readValue(validJson, LecturePlanDto.class);
 
     }
 
     public ResponseEntity<LectureFeedbackDto> getLectureFeedback(String taskId) {
-        try{
+        try {
             Optional<TaskStatus> taskStatus = taskStatusService.getTaskStatusById(taskId);
-            if(taskStatus.isEmpty()) throw new VacademyException(HttpStatus.NOT_FOUND,"Task Not Found");
+            if (taskStatus.isEmpty()) throw new VacademyException(HttpStatus.NOT_FOUND, "Task Not Found");
 
             return ResponseEntity.ok(taskStatus.get().getLectureFeedbackDto());
         } catch (Exception e) {

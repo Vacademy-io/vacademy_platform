@@ -1,10 +1,8 @@
 package vacademy.io.assessment_service.features.assessment.service.creation;
 
-import org.springframework.data.util.Pair;
 import org.springframework.stereotype.Component;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentInstituteMapping;
-import vacademy.io.assessment_service.features.assessment.enums.DurationDistributionEnum;
 import vacademy.io.assessment_service.features.assessment.enums.StepStatus;
 import vacademy.io.assessment_service.features.assessment.enums.creationSteps.AssessmentCreationEnum;
 import vacademy.io.assessment_service.features.assessment.service.IStep;
@@ -57,12 +55,12 @@ public class AssessmentBasicDetail extends IStep {
                 assessmentInstituteMapping -> assessmentInstituteMapping.getAssessment().equals(assessment) && assessmentInstituteMapping.getInstituteId().equals(instituteId)).findFirst();
     }
 
-    private String getAssessmentUrlByInstituteId(String instituteId,  Assessment assessment) {
+    private String getAssessmentUrlByInstituteId(String instituteId, Assessment assessment) {
         Optional<AssessmentInstituteMapping> assessmentInstituteMapping = getAssessmentUrlByInstituteIdAndAssessmentId(instituteId, assessment);
         return assessmentInstituteMapping.map(AssessmentInstituteMapping::getAssessmentUrl).orElse(null);
     }
 
-    private String getSubjectIdByInstituteId(String instituteId,  Assessment assessment) {
+    private String getSubjectIdByInstituteId(String instituteId, Assessment assessment) {
         Optional<AssessmentInstituteMapping> assessmentInstituteMapping = getAssessmentUrlByInstituteIdAndAssessmentId(instituteId, assessment);
         return assessmentInstituteMapping.map(AssessmentInstituteMapping::getSubjectId).orElse(null);
     }

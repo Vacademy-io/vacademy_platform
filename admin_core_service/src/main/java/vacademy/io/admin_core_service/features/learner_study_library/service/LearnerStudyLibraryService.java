@@ -35,7 +35,6 @@ public class LearnerStudyLibraryService {
     private final ModuleChapterMappingRepository moduleChapterMappingRepository;
 
 
-
     public List<CourseDTOWithDetails> getLearnerStudyLibraryInitDetails(String instituteId, String packageSessionId, CustomUserDetails user) {
         validateInputs(instituteId, user.getUserId());
 
@@ -61,7 +60,7 @@ public class LearnerStudyLibraryService {
         List<Module> modules = subjectModuleMappingRepository.findModulesBySubjectIdAndPackageSessionId(subjectId, packageSessionId);
         List<LearnerModuleDTOWithDetails> moduleDTOWithDetails = new ArrayList<>();
         for (Module module : modules) {
-            List<ChapterDetailsProjection> chapters = moduleChapterMappingRepository.getChapterDetails(module.getId(), packageSessionId,user.getUserId(),List.of(SlideStatus.PUBLISHED.name()));
+            List<ChapterDetailsProjection> chapters = moduleChapterMappingRepository.getChapterDetails(module.getId(), packageSessionId, user.getUserId(), List.of(SlideStatus.PUBLISHED.name()));
             LearnerModuleDTOWithDetails moduleDTOWithDetails1 = new LearnerModuleDTOWithDetails(new ModuleDTO(module), chapters);
             moduleDTOWithDetails.add(moduleDTOWithDetails1);
         }
@@ -69,7 +68,7 @@ public class LearnerStudyLibraryService {
     }
 
     public List<SlideDetailProjection> getSlidesByChapterId(String chapterId, CustomUserDetails user) {
-        return slideRepository.findLearnerSlideDetailsByChapterId(chapterId,List.of(SlideStatus.PUBLISHED.name(),SlideStatus.UNSYNC.name()));
+        return slideRepository.findLearnerSlideDetailsByChapterId(chapterId, List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()));
     }
 
     public List<SubjectDTO> getSubjectsByPackageSessionId(String packageSessionId, CustomUserDetails user) {

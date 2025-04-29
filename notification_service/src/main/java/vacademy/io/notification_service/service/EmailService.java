@@ -9,7 +9,6 @@ import jakarta.mail.internet.MimeBodyPart;
 import jakarta.mail.internet.MimeMessage;
 import jakarta.mail.internet.MimeMultipart;
 import jakarta.mail.util.ByteArrayDataSource;
-import jdk.dynalink.linker.LinkerServices;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,26 +18,23 @@ import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import javax.sql.DataSource;
-import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 
 @Service
 public class EmailService {
 
+    private static final Logger logger = LoggerFactory.getLogger(EmailService.class);
     private final JavaMailSender mailSender;
-
+    private final EmailDispatcher emailDispatcher = EmailDispatcher.getInstance();
     @Value("${app.ses.sender.email}")
     private String from;
-
-    private static final Logger logger = LoggerFactory.getLogger(EmailService.class);
 
     @Autowired
     public EmailService(JavaMailSender mailSender) {
         this.mailSender = mailSender;
     }
-    private final EmailDispatcher emailDispatcher = EmailDispatcher.getInstance();
+
     public void sendEmail(String to, String subject, String text) {
         try {
             emailDispatcher.sendEmail(() -> {
@@ -105,75 +101,75 @@ public class EmailService {
     // Method to create the email body
     private String createEmailBody(String service, String name, String otp) {
         return """
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Confirm Email</title>
-            <style>
-                body {
-                    font-family: Arial, sans-serif;
-                    margin: 0;
-                    padding: 0;
-                    background-color: #FFF7E1; /* Light yellow background */
-                }
-                .container {
-                    max-width: 600px;
-                    margin: 40px auto;
-                    padding: 20px;
-                    background-color: #FFFFFF; /* White background for email content */
-                    border: 1px solid #ED7424; /* Warm orange border */
-                    border-radius: 10px;
-                    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-                }
-                .header {
-                    background-color: #ED7424; /* Warm orange header */
-                    color: #FFF;
-                    padding: 15px;
-                    text-align: center;
-                    border-radius: 10px 10px 0 0;
-                }
-                .content {
-                    padding: 20px;
-                    font-size: 16px;
-                    color: #333;
-                }
-                .footer {
-                    background-color: #ED7424; /* Warm orange footer */
-                    color: #FFF;
-                    padding: 10px;
-                    text-align: center;
-                    border-radius: 0 0 10px 10px;
-                }
-                .otp {
-                    font-size: 22px;
-                    font-weight: bold;
-                    color: #ED7424; /* Warm orange for OTP */
-                    text-align: center;
-                    padding: 10px;
-                    background-color: #FFFAE1; /* Light yellow background for OTP */
-                    border: 2px solid #ED7424; /* Border matching the header/footer color */
-                    border-radius: 5px;
-                }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <h2>Confirm Your Email Address</h2>
-                </div>
-                <div class="content">
-                    <p>Dear %s,</p>
-                    <p>We are excited to confirm your email address. Your OTP is:</p>
-                    <div class="otp">%s</div>
-                    <p>Please enter this OTP on our app to complete the verification process.</p>
-                </div>
-                <div class="footer">
-                    <p>Best regards, <br> %s</p>
-                </div>
-            </div>
-        </body>
-        </html>
-        """.formatted(name, otp, service);
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Confirm Email</title>
+                    <style>
+                        body {
+                            font-family: Arial, sans-serif;
+                            margin: 0;
+                            padding: 0;
+                            background-color: #FFF7E1; /* Light yellow background */
+                        }
+                        .container {
+                            max-width: 600px;
+                            margin: 40px auto;
+                            padding: 20px;
+                            background-color: #FFFFFF; /* White background for email content */
+                            border: 1px solid #ED7424; /* Warm orange border */
+                            border-radius: 10px;
+                            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+                        }
+                        .header {
+                            background-color: #ED7424; /* Warm orange header */
+                            color: #FFF;
+                            padding: 15px;
+                            text-align: center;
+                            border-radius: 10px 10px 0 0;
+                        }
+                        .content {
+                            padding: 20px;
+                            font-size: 16px;
+                            color: #333;
+                        }
+                        .footer {
+                            background-color: #ED7424; /* Warm orange footer */
+                            color: #FFF;
+                            padding: 10px;
+                            text-align: center;
+                            border-radius: 0 0 10px 10px;
+                        }
+                        .otp {
+                            font-size: 22px;
+                            font-weight: bold;
+                            color: #ED7424; /* Warm orange for OTP */
+                            text-align: center;
+                            padding: 10px;
+                            background-color: #FFFAE1; /* Light yellow background for OTP */
+                            border: 2px solid #ED7424; /* Border matching the header/footer color */
+                            border-radius: 5px;
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="header">
+                            <h2>Confirm Your Email Address</h2>
+                        </div>
+                        <div class="content">
+                            <p>Dear %s,</p>
+                            <p>We are excited to confirm your email address. Your OTP is:</p>
+                            <div class="otp">%s</div>
+                            <p>Please enter this OTP on our app to complete the verification process.</p>
+                        </div>
+                        <div class="footer">
+                            <p>Best regards, <br> %s</p>
+                        </div>
+                    </div>
+                </body>
+                </html>
+                """.formatted(name, otp, service);
     }
 
 
@@ -297,7 +293,6 @@ public class EmailService {
             throw new RuntimeException("An error occurred while preparing the email", e);
         }
     }
-
 
 
 }

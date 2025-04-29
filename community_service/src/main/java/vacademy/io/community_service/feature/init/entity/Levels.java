@@ -2,6 +2,7 @@ package vacademy.io.community_service.feature.init.entity;
 
 import jakarta.persistence.*;
 import lombok.Data;
+
 import java.util.Set;
 
 @Entity

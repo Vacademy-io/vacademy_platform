@@ -22,14 +22,14 @@ public class LearnerModuleDetailsService {
     private final SubjectModuleMappingRepository subjectModuleMappingRepository;
     private final ModuleChapterMappingRepository moduleChapterMappingRepository;
 
-    public List<LearnerModuleDTOWithDetails> getModulesDetailsWithChapters(String subjectId, String packageSessionId,String userId, CustomUserDetails user) {
+    public List<LearnerModuleDTOWithDetails> getModulesDetailsWithChapters(String subjectId, String packageSessionId, String userId, CustomUserDetails user) {
         if (Objects.isNull(subjectId)) {
             throw new VacademyException("Please provide subjectId");
         }
         List<Module> modules = subjectModuleMappingRepository.findModulesBySubjectIdAndPackageSessionId(subjectId, packageSessionId);
         List<LearnerModuleDTOWithDetails> moduleDTOWithDetails = new ArrayList<>();
         for (Module module : modules) {
-            List<ChapterDetailsProjection> chapters = moduleChapterMappingRepository.getChapterDetails(module.getId(), packageSessionId,userId,List.of(SlideStatus.PUBLISHED.name()));
+            List<ChapterDetailsProjection> chapters = moduleChapterMappingRepository.getChapterDetails(module.getId(), packageSessionId, userId, List.of(SlideStatus.PUBLISHED.name()));
             LearnerModuleDTOWithDetails moduleDTOWithDetails1 = new LearnerModuleDTOWithDetails(new ModuleDTO(module), chapters);
             moduleDTOWithDetails.add(moduleDTOWithDetails1);
         }

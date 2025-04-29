@@ -23,9 +23,9 @@ public class InstituteStudentController {
 
     // Add User to Institute
     @PostMapping("/add-institute_learner")
-    public ResponseEntity<String> addStudentToInstitute(@RequestAttribute("user") CustomUserDetails user,@RequestParam(value = "notify",required = false,defaultValue = "true" )boolean notify, @RequestBody InstituteStudentDTO instituteStudentDTO) {
+    public ResponseEntity<String> addStudentToInstitute(@RequestAttribute("user") CustomUserDetails user, @RequestParam(value = "notify", required = false, defaultValue = "true") boolean notify, @RequestBody InstituteStudentDTO instituteStudentDTO) {
         InstituteStudentDTO instituteStudentDTO1 = studentRegistrationManager.addStudentToInstitute(user, instituteStudentDTO, null);
-        if (notify){
+        if (notify) {
             learnerEnrollmentNotificationService.sendLearnerEnrollmentNotification(Collections.singletonList(instituteStudentDTO), instituteStudentDTO.getInstituteStudentDetails().getInstituteId());
         }
         return ResponseEntity.ok("Student added successfully.");

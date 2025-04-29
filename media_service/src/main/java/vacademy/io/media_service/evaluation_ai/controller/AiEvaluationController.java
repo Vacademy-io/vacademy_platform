@@ -20,8 +20,8 @@ public class AiEvaluationController {
     public ResponseEntity<EvaluationRequestResponse> evaluateAssessment(
             @RequestParam String assessmentId,
             @RequestBody List<EvaluationUserDTO> userDTO
-            ) {
-        return ResponseEntity.ok(aiAnswerEvaluationService.evaluateAnswers(assessmentId,userDTO));
+    ) {
+        return ResponseEntity.ok(aiAnswerEvaluationService.evaluateAnswers(assessmentId, userDTO));
     }
 
     @GetMapping("/status/{taskId}")

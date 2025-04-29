@@ -20,9 +20,9 @@ public class ActivityLogController {
             @RequestParam String slideId,
             @RequestParam(defaultValue = PageConstants.DEFAULT_PAGE_NUMBER) int page,
             @RequestParam(defaultValue = PageConstants.DEFAULT_PAGE_SIZE) int size,
-            @RequestAttribute("user")CustomUserDetails user) {
+            @RequestAttribute("user") CustomUserDetails user) {
 
-        Page<LearnerActivityProjection> studentActivities = activityLogService.getStudentActivityBySlide(slideId, page, size,user);
+        Page<LearnerActivityProjection> studentActivities = activityLogService.getStudentActivityBySlide(slideId, page, size, user);
         return ResponseEntity.ok(studentActivities);
     }
 

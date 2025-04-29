@@ -76,7 +76,7 @@ public class QuestionDTO {
             this.explanationText = new AssessmentRichTextDataDTO(question.getExplanationTextData());
         }
 
-        if(question.getParentRichText() != null){
+        if (question.getParentRichText() != null) {
             this.parentRichText = new AssessmentRichTextDataDTO((question.getParentRichText()));
         }
 

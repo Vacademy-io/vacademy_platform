@@ -22,9 +22,9 @@ public class AddPublicQuestionPaperToPrivateController {
     EditQuestionPaperManager editQuestionPaperManager;
 
     @PostMapping("/add-public-to-private")
-    public ResponseEntity<AddedQuestionPaperResponseDto> addQuestionPaper(@RequestAttribute("user") CustomUserDetails user, @RequestParam String instituteId , @RequestParam String questionPaperId) {
+    public ResponseEntity<AddedQuestionPaperResponseDto> addQuestionPaper(@RequestAttribute("user") CustomUserDetails user, @RequestParam String instituteId, @RequestParam String questionPaperId) {
         try {
-            return ResponseEntity.ok(addPublicQuestionPaperToPrivate.addPublicQuestionPaperToPrivateInstitute(user,instituteId , questionPaperId ));
+            return ResponseEntity.ok(addPublicQuestionPaperToPrivate.addPublicQuestionPaperToPrivateInstitute(user, instituteId, questionPaperId));
         } catch (JsonProcessingException e) {
             throw new VacademyException(e.getMessage());
         }

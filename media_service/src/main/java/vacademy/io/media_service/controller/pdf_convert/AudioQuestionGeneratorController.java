@@ -11,12 +11,14 @@ import org.springframework.web.multipart.MultipartFile;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.media.dto.FileDetailsDTO;
 import vacademy.io.media_service.ai.DeepSeekService;
-import vacademy.io.media_service.dto.*;
+import vacademy.io.media_service.dto.AiGeneratedQuestionPaperJsonDto;
+import vacademy.io.media_service.dto.AutoDocumentSubmitResponse;
+import vacademy.io.media_service.dto.AutoQuestionPaperResponse;
+import vacademy.io.media_service.dto.FileIdSubmitRequest;
 import vacademy.io.media_service.entity.TaskStatus;
 import vacademy.io.media_service.enums.TaskInputTypeEnum;
 import vacademy.io.media_service.enums.TaskStatusTypeEnum;
 import vacademy.io.media_service.service.*;
-import vacademy.io.media_service.util.JsonUtils;
 
 import java.io.IOException;
 import java.util.regex.Matcher;
@@ -32,22 +34,17 @@ public class AudioQuestionGeneratorController {
     @Autowired
     DeepSeekService deepSeekService;
     @Autowired
-    private ObjectMapper objectMapper;
-
-    @Autowired
-    private FileService fileService;
-
-    @Autowired
-    private FileConversionStatusService fileConversionStatusService;
-
-    @Autowired
-    private NewAudioConverterService newAudioConverterService;
-
-    @Autowired
     DeepSeekAsyncTaskService deepSeekAsyncTaskService;
-
     @Autowired
     TaskStatusService taskStatusService;
+    @Autowired
+    private ObjectMapper objectMapper;
+    @Autowired
+    private FileService fileService;
+    @Autowired
+    private FileConversionStatusService fileConversionStatusService;
+    @Autowired
+    private NewAudioConverterService newAudioConverterService;
 
     public static String removeExtraSlashes(String input) {
         // Regular expression to match <img src="..."> and replace with <img src="...">
@@ -109,9 +106,9 @@ public class AudioQuestionGeneratorController {
 
     @GetMapping("/audio-parser/audio-to-questions")
     public ResponseEntity<String> getMathParserPdfHtml(@RequestParam String audioId, @RequestParam(required = false) String numQuestions, @RequestParam(required = false) String prompt, @RequestParam(required = false) String difficulty, @RequestParam(required = false) String language,
-                                                                          @RequestParam(name = "taskId" , required = false) String taskId,
-                                                                          @RequestParam(name = "taskName", required = false) String taskName,
-                                                                          @RequestParam(name = "instituteId", required = false) String instituteId) throws IOException {
+                                                       @RequestParam(name = "taskId", required = false) String taskId,
+                                                       @RequestParam(name = "taskName", required = false) String taskName,
+                                                       @RequestParam(name = "instituteId", required = false) String instituteId) throws IOException {
 
         if (difficulty == null) {
             difficulty = "hard and medium";
@@ -125,14 +122,14 @@ public class AudioQuestionGeneratorController {
             prompt = "";
         }
 
-        if(language == null) {
+        if (language == null) {
             language = "english";
         }
 
         TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(taskId, TaskStatusTypeEnum.AUDIO_TO_QUESTIONS.name(), audioId, TaskInputTypeEnum.AUDIO_ID.name(), taskName, instituteId);
 
         // Background async processing
-        deepSeekAsyncTaskService.pollAndProcessAudioToQuestions(taskStatus, audioId, prompt,difficulty,language,numQuestions);
+        deepSeekAsyncTaskService.pollAndProcessAudioToQuestions(taskStatus, audioId, prompt, difficulty, language, numQuestions);
         return ResponseEntity.ok(taskStatus.getId());
     }
 

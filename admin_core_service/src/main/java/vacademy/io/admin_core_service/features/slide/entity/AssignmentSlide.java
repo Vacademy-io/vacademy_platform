@@ -63,6 +63,7 @@ public class AssignmentSlide {
         this.commaSeparatedMediaIds = dto.getCommaSeparatedMediaIds();
     }
 
-    public AssignmentSlide() {}
+    public AssignmentSlide() {
+    }
 
 }

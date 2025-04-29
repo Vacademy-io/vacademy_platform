@@ -2,7 +2,6 @@ package vacademy.io.assessment_service.features.assessment.dto.manual_evaluation
 
 import lombok.Builder;
 import lombok.Data;
-import vacademy.io.assessment_service.features.assessment.dto.LeaderBoardDto;
 
 import java.util.ArrayList;
 import java.util.List;

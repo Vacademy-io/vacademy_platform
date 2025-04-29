@@ -1,18 +1,12 @@
 package vacademy.io.assessment_service.features.assessment.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.annotations.Type;
 import org.hibernate.annotations.UuidGenerator;
-import org.hibernate.type.SqlTypes;
-import org.hibernate.usertype.UserType;
 
 import java.util.Date;
-import java.util.Map;
 
 @Entity
 @Table(name = "student_attempt")

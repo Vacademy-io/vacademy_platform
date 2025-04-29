@@ -6,15 +6,22 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.community_service.feature.filter.repository.EntityTagsRepository;
-import vacademy.io.community_service.feature.init.dto.*;
-import vacademy.io.community_service.feature.init.entity.*;
+import vacademy.io.community_service.feature.init.dto.InitResponseDto;
+import vacademy.io.community_service.feature.init.dto.LevelDto;
+import vacademy.io.community_service.feature.init.dto.StreamDto;
+import vacademy.io.community_service.feature.init.dto.SubjectDto;
+import vacademy.io.community_service.feature.init.entity.Levels;
+import vacademy.io.community_service.feature.init.entity.Streams;
 import vacademy.io.community_service.feature.init.enums.Difficulty;
 import vacademy.io.community_service.feature.init.enums.Topic;
 import vacademy.io.community_service.feature.init.enums.Type;
-import vacademy.io.community_service.feature.init.repository.*;
+import vacademy.io.community_service.feature.init.repository.LevelsRepository;
+import vacademy.io.community_service.feature.init.repository.StreamsRepository;
+import vacademy.io.community_service.feature.init.repository.SubjectsRepository;
 import vacademy.io.community_service.feature.question_bank.dto.TagsByIdResponseDto;
 
-import java.util.*;
+import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -62,12 +69,11 @@ public class InitService {
                 ));
 
 
-
         List<String> difficulties = Stream.of(Difficulty.values()).map(Enum::name).collect(Collectors.toList());
         List<String> topics = Stream.of(Topic.values()).map(Enum::name).collect(Collectors.toList());
         List<String> types = Stream.of(Type.values()).map(Enum::name).collect(Collectors.toList());
         List<TagsByIdResponseDto> tags = entityTagsRepository.findPopularTags();
-        return ResponseEntity.ok(new InitResponseDto(levels, streams, subjects, difficulties, topics, types , tags));
+        return ResponseEntity.ok(new InitResponseDto(levels, streams, subjects, difficulties, topics, types, tags));
 
     }
 }

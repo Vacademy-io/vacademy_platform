@@ -16,9 +16,9 @@ public class QuestionSlideController {
     @PostMapping("/add-or-update")
     public String addQuestionSlide(@RequestBody SlideDTO slideDTO,
                                    @RequestParam String chapterId,
-                                   @RequestAttribute("user")CustomUserDetails userDetails) {
+                                   @RequestAttribute("user") CustomUserDetails userDetails) {
 
-        return questionSlideService.addOrUpdateQuestionSlide(slideDTO, chapterId,userDetails);
+        return questionSlideService.addOrUpdateQuestionSlide(slideDTO, chapterId, userDetails);
     }
 
 }

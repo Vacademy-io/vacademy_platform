@@ -11,12 +11,12 @@ import java.util.List;
 public class LearnerBatchRegisterRequestDTO {
     private List<String> userIds;
     private String instituteId;
-    private List<LearnerBatchRegisterInfo>learnerBatchRegisterInfos;
+    private List<LearnerBatchRegisterInfo> learnerBatchRegisterInfos;
     private Integer accessDays;
 
     @Data
     @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
-    public static class LearnerBatchRegisterInfo{
+    public static class LearnerBatchRegisterInfo {
         private String packageSessionId;
         private Integer accessDays;
     }

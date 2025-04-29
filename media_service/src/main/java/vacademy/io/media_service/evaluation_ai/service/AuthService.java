@@ -28,7 +28,7 @@ public class AuthService {
     public UserDTO createOrGetExistingUser(UserDTO userDTO) {
         try {
             ObjectMapper objectMapper = new ObjectMapper();
-            ResponseEntity<String> response = internalClientUtils.makeHmacRequest(clientName, HttpMethod.POST.name(),authServerBaseUrl, UserServiceRoutes.ADD_OR_GET_USER_ROUTE, userDTO);
+            ResponseEntity<String> response = internalClientUtils.makeHmacRequest(clientName, HttpMethod.POST.name(), authServerBaseUrl, UserServiceRoutes.ADD_OR_GET_USER_ROUTE, userDTO);
             return objectMapper.readValue(response.getBody(), UserDTO.class);
         } catch (Exception e) {
             throw new VacademyException(e.getMessage());
@@ -46,7 +46,8 @@ public class AuthService {
                     userIds
             );
 
-            return objectMapper.readValue(response.getBody(), new TypeReference<List<UserDTO>>() {});
+            return objectMapper.readValue(response.getBody(), new TypeReference<List<UserDTO>>() {
+            });
         } catch (Exception e) {
             throw new VacademyException(e.getMessage());
         }

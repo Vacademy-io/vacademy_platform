@@ -3,8 +3,6 @@ package vacademy.io.assessment_service.features.assessment.dto.Questio_type_base
 import lombok.Getter;
 import lombok.Setter;
 
-import java.util.List;
-
 @Getter
 @Setter
 public class NUMERICResponseDto {

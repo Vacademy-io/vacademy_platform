@@ -1,14 +1,14 @@
 package vacademy.io.community_service.feature.filter.service;
 
+import org.springframework.stereotype.Service;
 import vacademy.io.community_service.feature.filter.utils.EnumUtils;
+import vacademy.io.community_service.feature.init.enums.Difficulty;
+import vacademy.io.community_service.feature.init.enums.DropdownType;
 import vacademy.io.community_service.feature.init.enums.Topic;
 import vacademy.io.community_service.feature.init.enums.Type;
 import vacademy.io.community_service.feature.init.repository.LevelsRepository;
 import vacademy.io.community_service.feature.init.repository.StreamsRepository;
 import vacademy.io.community_service.feature.init.repository.SubjectsRepository;
-import org.springframework.stereotype.Service;
-import vacademy.io.community_service.feature.init.enums.Difficulty;
-import vacademy.io.community_service.feature.init.enums.DropdownType;
 
 @Service
 public class TagValidationService {

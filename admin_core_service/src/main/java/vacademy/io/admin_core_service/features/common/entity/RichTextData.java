@@ -4,7 +4,6 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
-import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.UuidGenerator;
 import vacademy.io.common.ai.dto.RichTextDataDTO;
@@ -20,7 +19,8 @@ public class RichTextData {
     private String type;
     private String content;
 
-    public RichTextData() {}
+    public RichTextData() {
+    }
 
     public RichTextData(RichTextDataDTO richTextDataDTO) {
         this.id = richTextDataDTO.getId();

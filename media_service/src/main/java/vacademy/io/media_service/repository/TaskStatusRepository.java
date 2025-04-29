@@ -11,10 +11,12 @@ import java.util.List;
 @Repository
 public interface TaskStatusRepository extends JpaRepository<TaskStatus, String> {
     List<TaskStatus> findByStatus(String status);
+
     List<TaskStatus> findByInstituteId(String instituteId);
+
     List<TaskStatus> findByInputType(String inputType);
 
-    List<TaskStatus> findByInstituteIdAndType(String instituteId, String type);
+    List<TaskStatus> findByInstituteIdAndTypeOrderByCreatedAtDesc(String instituteId, String type);
 
 
     @Query(value = """
@@ -25,7 +27,7 @@ public interface TaskStatusRepository extends JpaRepository<TaskStatus, String> 
                       AND input_type = :inputType
                     ORDER BY created_at DESC\s
                     LIMIT 5
-            """,nativeQuery = true)
+            """, nativeQuery = true)
     List<TaskStatus> findLastFiveByTypeAndInstituteAndInput(@Param("type") String type,
                                                             @Param("instituteId") String instituteId,
                                                             @Param("inputId") String inputId,
@@ -38,7 +40,7 @@ public interface TaskStatusRepository extends JpaRepository<TaskStatus, String> 
             AND input_id = :inputId
             AND input_type = :inputType
             ORDER BY created_at ASC
-            """,nativeQuery = true)
+            """, nativeQuery = true)
     List<TaskStatus> findByTypeAndInstituteIdAndInputIdAndInputTypeOrderByASC(@Param("type") String type,
                                                                               @Param("instituteId") String instituteId,
                                                                               @Param("inputId") String inputId,
@@ -49,13 +51,13 @@ public interface TaskStatusRepository extends JpaRepository<TaskStatus, String> 
             WHERE id =:parentId
             OR parent_id =:parentId
             ORDER BY created_at ASC
-            """,nativeQuery = true)
+            """, nativeQuery = true)
     List<TaskStatus> findByParentIdAndTaskWithParentId(@Param("parentId") String parentId);
 
     @Query(value = """
             SELECT * FROM task_status
             WHERE institute_id = :instituteId
             AND parent_id IS NULL
-            """,nativeQuery = true)
+            """, nativeQuery = true)
     List<TaskStatus> findByInstituteIdAndNullParentId(@Param("instituteId") String instituteId);
 }

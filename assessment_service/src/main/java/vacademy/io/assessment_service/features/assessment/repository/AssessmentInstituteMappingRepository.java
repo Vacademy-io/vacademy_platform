@@ -10,4 +10,4 @@ public interface AssessmentInstituteMappingRepository extends CrudRepository<Ass
     Optional<AssessmentInstituteMapping> findTopByAssessmentUrl(String assessmentUrl);
 
     Optional<AssessmentInstituteMapping> findByAssessmentIdAndInstituteId(String assessmentId, String instituteId);
- }
+}

@@ -28,10 +28,13 @@ public class AddPresentationDto {
 
     private String coverFileId;
 
+    private Integer addedSlidesCount;
+
     private List<PresentationSlideDto> addedSlides;
 
     public AddPresentationDto(Presentation presentation) {
         this.id = presentation.getId();
+        this.addedSlidesCount = (presentation.getPresentationSlides() == null)? 0 : presentation.getPresentationSlides().size();
         this.title = presentation.getTitle();
         this.description = presentation.getDescription();
         this.coverFileId = presentation.getCoverFileId();

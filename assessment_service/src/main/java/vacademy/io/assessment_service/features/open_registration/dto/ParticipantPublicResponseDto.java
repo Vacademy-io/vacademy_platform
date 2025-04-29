@@ -7,7 +7,6 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
-import vacademy.io.common.student.dto.BasicParticipantDTO;
 
 @Getter
 @Setter

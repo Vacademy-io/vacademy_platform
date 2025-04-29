@@ -1,9 +1,6 @@
 package vacademy.io.assessment_service.features.learner_assessment.dto.status_json;
 
-import com.fasterxml.jackson.databind.PropertyNamingStrategies;
-import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.*;
-import org.docx4j.org.apache.xpath.operations.Bool;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -27,7 +24,7 @@ public class QuestionAttemptData {
     @AllArgsConstructor
     @NoArgsConstructor
     @Builder
-    public static class OptionsJson{
+    public static class OptionsJson {
         private String type;
         private List<String> optionIds = new ArrayList<>();
     }

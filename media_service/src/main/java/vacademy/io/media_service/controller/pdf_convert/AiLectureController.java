@@ -18,8 +18,8 @@ public class AiLectureController {
     @GetMapping("/generate-plan")
     public ResponseEntity<String> getLecturePlanner(@RequestParam("userPrompt") String userPrompt,
                                                     @RequestParam("lectureDuration") String lectureDuration,
-                                                    @RequestParam(value = "language",required = false) String language,
-                                                    @RequestParam(value = "methodOfTeaching",required = false) String methodOfTeaching,
+                                                    @RequestParam(value = "language", required = false) String language,
+                                                    @RequestParam(value = "methodOfTeaching", required = false) String methodOfTeaching,
                                                     @RequestParam("taskName") String taskName,
                                                     @RequestParam("instituteId") String instituteId,
                                                     @RequestParam(value = "level", required = false) String level) {
@@ -31,6 +31,6 @@ public class AiLectureController {
     public ResponseEntity<String> getLectureFeedback(@RequestParam("audioId") String audioId,
                                                      @RequestParam("instituteId") String instituteId,
                                                      @RequestParam("taskName") String taskName) {
-        return aiLectureManager.generateLectureFeedback(audioId, instituteId,taskName);
+        return aiLectureManager.generateLectureFeedback(audioId, instituteId, taskName);
     }
 }

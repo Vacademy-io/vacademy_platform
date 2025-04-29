@@ -49,9 +49,9 @@ public class LearnerProfileManager {
         return ResponseEntity.ok(studentDTOS);
     }
 
-    public LearnerBatchDetail getLearnerBatchDetail(CustomUserDetails userDetails,String packageSessionId,String instituteId){
-        StudentSessionInstituteGroupMapping studentSessionInstituteGroupMapping = studentSessionRepository.findTopByPackageSessionIdAndUserIdAndStatusIn(packageSessionId,instituteId,userDetails.getUserId(),List.of(LearnerStatusEnum.ACTIVE.name()))
-                .orElseThrow(()->new VacademyException("User not found for given package session"));
+    public LearnerBatchDetail getLearnerBatchDetail(CustomUserDetails userDetails, String packageSessionId, String instituteId) {
+        StudentSessionInstituteGroupMapping studentSessionInstituteGroupMapping = studentSessionRepository.findTopByPackageSessionIdAndUserIdAndStatusIn(packageSessionId, instituteId, userDetails.getUserId(), List.of(LearnerStatusEnum.ACTIVE.name()))
+                .orElseThrow(() -> new VacademyException("User not found for given package session"));
         LearnerBatchDetail learnerBatchDetail = new LearnerBatchDetail();
         learnerBatchDetail.setEnrollMentDate(studentSessionInstituteGroupMapping.getEnrolledDate());
         learnerBatchDetail.setExpiryDate(studentSessionInstituteGroupMapping.getExpiryDate());

@@ -4,7 +4,6 @@ import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.level.dto.AddLevelWithCourseDTO;
-import vacademy.io.admin_core_service.features.level.dto.AddLevelWithSessionDTO;
 import vacademy.io.admin_core_service.features.level.enums.LevelStatusEnum;
 import vacademy.io.admin_core_service.features.level.repository.LevelRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageRepository;
@@ -32,7 +31,7 @@ public class LevelService {
     private final SessionRepository sessionRepository;
     private final PackageSessionRepository packageSessionRepository;
 
-    public Level createOrAddLevel(String id,boolean newLevel, String levelName, Integer durationInDays, String thumbnailFileId) {
+    public Level createOrAddLevel(String id, boolean newLevel, String levelName, Integer durationInDays, String thumbnailFileId) {
         Level level = null;
         if (newLevel) {
             level = getLevel(levelName, durationInDays, thumbnailFileId);

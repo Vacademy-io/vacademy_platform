@@ -2,6 +2,7 @@ package vacademy.io.admin_core_service.features.learner_reports.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
+
 import java.util.List;
 
 @Data

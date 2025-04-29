@@ -1,7 +1,6 @@
 package vacademy.io.assessment_service.features.learner_assessment.dto.status_json.manual;
 
 import lombok.*;
-import vacademy.io.assessment_service.features.learner_assessment.dto.status_json.QuestionAttemptData;
 
 import java.util.List;
 

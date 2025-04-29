@@ -62,7 +62,7 @@ public class LmsReportNotificationSchedulerService {
     }
 
     public Boolean sendReports(String frequency) {
-        try{
+        try {
             List<Object[]> result = notificationSettingRepository.fetchDynamicInstitutesWithSettings(
                     frequency,
                     List.of(
@@ -115,9 +115,9 @@ public class LmsReportNotificationSchedulerService {
             Date endDate = new Date(Date.from(endInstant).getTime());
 
             for (LmsReportNotificationDetailsDTO dto : dtoList) {
-                return sendProgressReport(dto, startDate, endDate, null,reportType);
+                return sendProgressReport(dto, startDate, endDate, null, reportType);
             }
-        }catch (Exception e) {
+        } catch (Exception e) {
             e.printStackTrace();
             throw new RuntimeException("Failed to send reports", e);
         }
@@ -163,12 +163,12 @@ public class LmsReportNotificationSchedulerService {
         return batchReportService.getBatchReport(reportFilterDTO, userDetails);
     }
 
-    public ProgressReportDTO getLearnerProgressReportInRange(ReportFilterDTO filterDTO,CustomUserDetails userDetails) {
+    public ProgressReportDTO getLearnerProgressReportInRange(ReportFilterDTO filterDTO, CustomUserDetails userDetails) {
 
         return learnerReportService.getLearnerProgressReport(filterDTO, userDetails);
     }
 
-    public ReportFilterDTO getFilterDTO(String userId, String packageSessionId, Date startDate, Date endDate,CustomUserDetails userDetails) {
+    public ReportFilterDTO getFilterDTO(String userId, String packageSessionId, Date startDate, Date endDate, CustomUserDetails userDetails) {
         ReportFilterDTO reportFilterDTO = new ReportFilterDTO();
         reportFilterDTO.setPackageSessionId(packageSessionId);
         reportFilterDTO.setStartDate(startDate);
@@ -176,7 +176,8 @@ public class LmsReportNotificationSchedulerService {
         reportFilterDTO.setUserId(userId);
         return reportFilterDTO;
     }
-    public Boolean sendProgressReport(LmsReportNotificationDetailsDTO details, Date startDate, Date endDate, CustomUserDetails userDetails,String reportType) {
+
+    public Boolean sendProgressReport(LmsReportNotificationDetailsDTO details, Date startDate, Date endDate, CustomUserDetails userDetails, String reportType) {
         if (!isValidDetails(details)) return false;
 
         String dateRange = formatDateRange(startDate, endDate);
@@ -188,7 +189,7 @@ public class LmsReportNotificationSchedulerService {
             ProgressReportDTO batchReport = getBatchProgressReportInRange(packageSessionData.getPackageSessionId(), startDate, endDate, userDetails);
             String pdfBatchBase64 = generateBatchReportPdf(details, dateRange, packageSessionData, batchReport);
 
-            Map<String, AttachmentNotificationDTO> notificationMap = buildNotificationTemplates(details.getInstituteId(),reportType);
+            Map<String, AttachmentNotificationDTO> notificationMap = buildNotificationTemplates(details.getInstituteId(), reportType);
             Map<String, List<AttachmentUsersDTO>> userGroups = initializeUserGroups();
 
             for (LmsReportNotificationDetailsDTO.InstituteData.PackageSessionData.StudentData studentData :
@@ -251,7 +252,7 @@ public class LmsReportNotificationSchedulerService {
         return Base64.getEncoder().encodeToString(generatePdf(html));
     }
 
-    private Map<String, AttachmentNotificationDTO> buildNotificationTemplates(String instituteId,String reportType) {
+    private Map<String, AttachmentNotificationDTO> buildNotificationTemplates(String instituteId, String reportType) {
         String reportDate = LocalDate.now().format(DateTimeFormatter.ofPattern("dd MMM yyyy"));
         Map<String, AttachmentNotificationDTO> map = new HashMap<>();
 
@@ -340,9 +341,10 @@ public class LmsReportNotificationSchedulerService {
         groupMap.forEach((key, users) -> notifyMap.get(key).setUsers(users));
     }
 
-    private List<SlideProgressDateWiseDTO> getSlideProgressDTOsOfLearner(ReportFilterDTO filterDTO, CustomUserDetails userDetails){
+    private List<SlideProgressDateWiseDTO> getSlideProgressDTOsOfLearner(ReportFilterDTO filterDTO, CustomUserDetails userDetails) {
         return learnerReportService.getSlideProgressForLearner(filterDTO, userDetails);
     }
+
     private AttachmentUsersDTO buildUserAttachment(String userId, String fullName, String email, Map<String, String> base64AttachmentAndName) {
         AttachmentUsersDTO dto = new AttachmentUsersDTO();
         dto.setUserId(userId);
@@ -358,7 +360,7 @@ public class LmsReportNotificationSchedulerService {
         return dto;
     }
 
-    private AttachmentNotificationDTO baseNotify(String body,String source,String sourceId,String notificationType) {
+    private AttachmentNotificationDTO baseNotify(String body, String source, String sourceId, String notificationType) {
         return AttachmentNotificationDTO.builder()
                 .source(source)
                 .sourceId(sourceId)
@@ -372,7 +374,6 @@ public class LmsReportNotificationSchedulerService {
         SimpleDateFormat dateFormat = new SimpleDateFormat("yyyyMMdd");
         return dateFormat.format(date1).equals(dateFormat.format(date2));
     }
-
 
 
 }

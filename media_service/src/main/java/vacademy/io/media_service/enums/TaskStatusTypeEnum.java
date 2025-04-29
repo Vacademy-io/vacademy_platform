@@ -1,7 +1,5 @@
 package vacademy.io.media_service.enums;
 
-import com.fasterxml.jackson.annotation.JsonSubTypes;
-
 public enum TaskStatusTypeEnum {
     CHAT_WITH_PDF,
     PDF_TO_QUESTIONS,
@@ -11,5 +9,7 @@ public enum TaskStatusTypeEnum {
     LECTURE_FEEDBACK,
     TEXT_TO_QUESTIONS,
     SORT_QUESTIONS_TOPIC_WISE,
-    IMAGE_TO_QUESTIONS;
+    IMAGE_TO_QUESTIONS,
+    EVALUATION,
+    HTML_TO_QUESTIONS;
 }

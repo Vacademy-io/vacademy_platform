@@ -67,7 +67,7 @@ public class AttemptDataParserService {
             }
 
         } catch (Exception e) {
-            throw new VacademyException("Failed To read Json: "+e.getMessage());
+            throw new VacademyException("Failed To read Json: " + e.getMessage());
         }
 
         return sectionJsonList;
@@ -90,7 +90,7 @@ public class AttemptDataParserService {
             }
 
         } catch (Exception e) {
-            throw new VacademyException("Failed To read Json: "+e.getMessage());
+            throw new VacademyException("Failed To read Json: " + e.getMessage());
         }
 
         return questionJsons;
@@ -110,7 +110,7 @@ public class AttemptDataParserService {
             }
 
         } catch (Exception e) {
-            throw new VacademyException("Failed To read Json: "+e.getMessage());
+            throw new VacademyException("Failed To read Json: " + e.getMessage());
         }
 
         return null; // return null if not found or error
@@ -130,7 +130,7 @@ public class AttemptDataParserService {
             }
 
         } catch (Exception e) {
-            throw new VacademyException("Failed To read Json: "+e.getMessage());
+            throw new VacademyException("Failed To read Json: " + e.getMessage());
         }
 
         return null; // return null if not found or error
@@ -151,7 +151,7 @@ public class AttemptDataParserService {
             }
 
         } catch (Exception e) {
-            throw new VacademyException("Failed To read Json: "+e.getMessage());
+            throw new VacademyException("Failed To read Json: " + e.getMessage());
         }
 
         return null;
@@ -171,7 +171,7 @@ public class AttemptDataParserService {
             }
 
         } catch (Exception e) {
-            throw new VacademyException("Failed To read Json: "+e.getMessage());
+            throw new VacademyException("Failed To read Json: " + e.getMessage());
         }
 
         return null; // return null if not found or error

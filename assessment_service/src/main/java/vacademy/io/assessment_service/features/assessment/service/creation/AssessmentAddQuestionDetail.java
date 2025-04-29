@@ -6,7 +6,6 @@ import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.entity.Section;
 import vacademy.io.assessment_service.features.assessment.enums.DurationDistributionEnum;
 import vacademy.io.assessment_service.features.assessment.enums.StepStatus;
-import vacademy.io.assessment_service.features.assessment.enums.creationSteps.AssessmentCreationEnum;
 import vacademy.io.assessment_service.features.assessment.enums.creationSteps.QuestionCreationEnum;
 import vacademy.io.assessment_service.features.assessment.service.IStep;
 import vacademy.io.assessment_service.features.assessment.service.StepOption;
@@ -39,7 +38,7 @@ public class AssessmentAddQuestionDetail extends IStep {
         savedData.put(QuestionCreationEnum.DURATION.name().toLowerCase(), assessment.get().getDuration());
         savedData.put(QuestionCreationEnum.DURATION_DISTRIBUTION.name().toLowerCase(), assessment.get().getDurationDistribution());
 
-        if(!sectionDTOs.isEmpty()) setStatus(StepStatus.COMPLETED.name());
+        if (!sectionDTOs.isEmpty()) setStatus(StepStatus.COMPLETED.name());
         savedData.put(QuestionCreationEnum.SECTIONS.name().toLowerCase(), sectionDTOs);
         setSavedData(savedData);
     }

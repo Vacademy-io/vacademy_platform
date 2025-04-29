@@ -11,10 +11,7 @@ import vacademy.io.admin_core_service.features.learner.manager.LearnerProfileMan
 import vacademy.io.admin_core_service.features.learner.service.LearnerService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
-import java.util.UUID;
 
 @RestController
 @RequestMapping("/admin-core-service/learner/info/v1")
@@ -55,7 +52,7 @@ public class LearnerUserInfoController {
 
     @GetMapping("/batch-details")
     public ResponseEntity<LearnerBatchDetail> getBatchDetails(@RequestParam("packageSessionId") String packageSessionId, @RequestParam("instituteId") String instituteId, @RequestAttribute("user") CustomUserDetails user) {
-        return ResponseEntity.ok(learnerProfileManager.getLearnerBatchDetail(user,packageSessionId,instituteId));
+        return ResponseEntity.ok(learnerProfileManager.getLearnerBatchDetail(user, packageSessionId, instituteId));
     }
 
 }

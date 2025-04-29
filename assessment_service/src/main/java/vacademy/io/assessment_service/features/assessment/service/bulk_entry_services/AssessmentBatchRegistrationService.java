@@ -8,10 +8,7 @@ import vacademy.io.assessment_service.features.assessment.repository.AssessmentB
 import vacademy.io.common.auth.enums.CompanyStatus;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
-import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
-import java.util.UUID;
 
 @Service
 public class AssessmentBatchRegistrationService {
@@ -36,6 +33,6 @@ public class AssessmentBatchRegistrationService {
     }
 
     public Integer countAssessmentsForBatch(String batchId, CustomUserDetails userDetails, String instituteId) {
-        return repository.countDistinctAssessmentsByBatchAndFilters(batchId,instituteId,List.of(CompanyStatus.ACTIVE.name()),List.of(AssessmentStatus.PUBLISHED.name()));
+        return repository.countDistinctAssessmentsByBatchAndFilters(batchId, instituteId, List.of(CompanyStatus.ACTIVE.name()), List.of(AssessmentStatus.PUBLISHED.name()));
     }
 }

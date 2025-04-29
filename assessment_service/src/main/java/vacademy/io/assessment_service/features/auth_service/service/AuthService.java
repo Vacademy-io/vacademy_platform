@@ -10,10 +10,8 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import vacademy.io.assessment_service.features.auth_service.constants.AuthServiceRoutesConstant;
-import vacademy.io.assessment_service.features.notification.constants.NotificationConstant;
 import vacademy.io.common.auth.dto.UserWithRolesDTO;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
-import vacademy.io.common.notification.dto.AttachmentNotificationDTO;
 
 import java.util.Collections;
 import java.util.List;
@@ -21,19 +19,15 @@ import java.util.List;
 @Service
 public class AuthService {
 
+    private static final Logger logger = LoggerFactory.getLogger(AuthService.class);
     @Autowired
     private InternalClientUtils internalClientUtils;
-
     @Value("${spring.application.name}")
     private String clientName;
-
     @Value("${auth.server.baseurl}")
     private String authServerBaseUrl;
-
     @Autowired
     private ObjectMapper objectMapper;
-
-    private static final Logger logger = LoggerFactory.getLogger(AuthService.class);
 
     public List<UserWithRolesDTO> getUsersByRoles(List<String> roles, String instituteId) {
 
@@ -50,7 +44,8 @@ public class AuthService {
         }
 
         try {
-            return objectMapper.readValue(response.getBody(), new TypeReference<List<UserWithRolesDTO>>() {});
+            return objectMapper.readValue(response.getBody(), new TypeReference<List<UserWithRolesDTO>>() {
+            });
         } catch (Exception e) {
             // Log error for debugging
             logger.error("Failed to parse JSON response for instituteId {}: {}", instituteId, e.getMessage(), e);

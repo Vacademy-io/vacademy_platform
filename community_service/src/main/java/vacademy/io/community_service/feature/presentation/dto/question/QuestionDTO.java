@@ -11,7 +11,6 @@ import vacademy.io.community_service.feature.presentation.entity.question.Option
 import vacademy.io.community_service.feature.presentation.entity.question.Question;
 import vacademy.io.community_service.feature.rich_text.dto.AssessmentRichTextDataDTO;
 
-
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -77,7 +76,7 @@ public class QuestionDTO {
             this.explanationText = new AssessmentRichTextDataDTO(question.getExplanationTextData());
         }
 
-        if(question.getParentRichText() != null){
+        if (question.getParentRichText() != null) {
             this.parentRichText = new AssessmentRichTextDataDTO((question.getParentRichText()));
         }
 

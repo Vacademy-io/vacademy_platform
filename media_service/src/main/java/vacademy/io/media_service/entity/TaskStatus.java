@@ -7,11 +7,9 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import lombok.Data;
 import org.hibernate.annotations.UuidGenerator;
-import org.springframework.http.ResponseEntity;
 import vacademy.io.media_service.dto.chat_with_pdf.ChatResultJsonDto;
 import vacademy.io.media_service.dto.chat_with_pdf.ChatWithPdfResponse;
 import vacademy.io.media_service.dto.lecture.LectureFeedbackDto;
-import vacademy.io.media_service.dto.lecture.LecturePlanDto;
 import vacademy.io.media_service.dto.task_status.TaskStatusDto;
 
 import java.util.Date;
@@ -59,8 +57,11 @@ public class TaskStatus {
     @Column(name = "status_message")
     private String statusMessage;
 
+    @Column(name = "dynamic_values_map")
+    private String dynamicValuesMap;
 
-    public TaskStatusDto getTaskDto(){
+
+    public TaskStatusDto getTaskDto() {
         return TaskStatusDto.builder()
                 .id(this.id)
                 .inputId(this.inputId)
@@ -74,7 +75,7 @@ public class TaskStatus {
                 .updatedAt(this.updatedAt).build();
     }
 
-    public ChatWithPdfResponse getPdfChatResponse() throws Exception{
+    public ChatWithPdfResponse getPdfChatResponse() throws Exception {
         ObjectMapper objectMapper = new ObjectMapper();
         ChatResultJsonDto resultJsonDto = objectMapper.readValue(this.resultJson, ChatResultJsonDto.class);
         return ChatWithPdfResponse.builder()
@@ -84,7 +85,7 @@ public class TaskStatus {
                 .createdAt(this.createdAt).build();
     }
 
-    public LectureFeedbackDto getLectureFeedbackDto() throws Exception{
+    public LectureFeedbackDto getLectureFeedbackDto() throws Exception {
         ObjectMapper objectMapper = new ObjectMapper();
         return objectMapper.readValue(this.resultJson, LectureFeedbackDto.class);
     }

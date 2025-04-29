@@ -3,19 +3,13 @@ package vacademy.io.assessment_service.features.open_registration.dto;
 
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
-import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.Setter;
-import org.hibernate.annotations.Filter;
-import org.hibernate.annotations.UuidGenerator;
-import vacademy.io.assessment_service.features.assessment.entity.*;
+import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.rich_text.dto.AssessmentRichTextDataDTO;
-import vacademy.io.assessment_service.features.rich_text.entity.AssessmentRichTextData;
 
 import java.util.Date;
-import java.util.HashSet;
-import java.util.Set;
 
 @Getter
 @Setter
@@ -41,7 +35,7 @@ public class AssessmentPublicDto {
     private Date createdAt;
     private Date updatedAt;
 
-    public AssessmentPublicDto(Assessment assessment){
+    public AssessmentPublicDto(Assessment assessment) {
 
         this.assessmentId = assessment.getId();
         this.assessmentName = assessment.getName();

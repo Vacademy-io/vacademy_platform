@@ -47,7 +47,7 @@ public class Option {
     @Column(name = "updated_on", insertable = false, updatable = false)
     private Timestamp updatedOn;
 
-    public Option(OptionDTO optionDTO,QuestionSlide questionSlide) {
+    public Option(OptionDTO optionDTO, QuestionSlide questionSlide) {
         this.id = optionDTO.getId();
 
         this.text = new RichTextData(optionDTO.getText().getId(), optionDTO.getText().getType(), optionDTO.getText().getContent());

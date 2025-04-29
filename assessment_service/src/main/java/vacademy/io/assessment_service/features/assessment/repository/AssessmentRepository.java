@@ -336,6 +336,6 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
             FROM assessment a
             JOIN assessment_institute_mapping aim ON a.id = aim.assessment_id
             WHERE aim.institute_id = :instituteId
-            """,nativeQuery = true)
+            """, nativeQuery = true)
     AssessmentCountResponse getAssessmentAllTypeCount(@Param("instituteId") String instituteId);
 }

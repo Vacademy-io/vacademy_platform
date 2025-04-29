@@ -14,4 +14,5 @@ public interface BatchProjection {
     String getStartDate();
 
     Long getCountStudents();
+    String getInviteCode();
 }

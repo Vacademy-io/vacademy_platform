@@ -17,8 +17,12 @@ public class LevelController {
     private final LevelService levelService;
 
     @PostMapping("/add-level")
-    public ResponseEntity<String> addLevel(@RequestBody AddLevelWithCourseDTO addLevelWithCourseDTO, @RequestAttribute("user") CustomUserDetails user, @RequestParam("packageId") String packageId, @RequestParam("sessionId") String sessionId) {
-        return ResponseEntity.ok(levelService.addLevel(addLevelWithCourseDTO, packageId, sessionId, user));
+    public ResponseEntity<String> addLevel(@RequestBody AddLevelWithCourseDTO addLevelWithCourseDTO,
+                                           @RequestAttribute("user") CustomUserDetails user,
+                                           @RequestParam("packageId") String packageId,
+                                           @RequestParam("sessionId") String sessionId,
+                                           @RequestParam("instituteId") String instituteId) {
+        return ResponseEntity.ok(levelService.addLevel(addLevelWithCourseDTO, packageId, sessionId,instituteId, user));
     }
 
     @PutMapping("/update-level/{levelId}")

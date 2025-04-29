@@ -55,7 +55,7 @@ public class LevelService {
     }
 
     @Transactional
-    public String addLevel(AddLevelWithCourseDTO addLevelWithCourseDTO, String packageId, String sessionId, CustomUserDetails user) {
+    public String addLevel(AddLevelWithCourseDTO addLevelWithCourseDTO, String packageId, String sessionId,String instituteId, CustomUserDetails user) {
         Optional<PackageEntity> optionalPackageEntity = packageRepository.findById(packageId);
         if (optionalPackageEntity.isEmpty()) {
             throw new VacademyException("Package not found");
@@ -65,7 +65,7 @@ public class LevelService {
             throw new VacademyException("Session not found");
         }
         Level level = createOrAddLevel(addLevelWithCourseDTO.getId(), addLevelWithCourseDTO.getNewLevel(), addLevelWithCourseDTO.getLevelName(), addLevelWithCourseDTO.getDurationInDays(), addLevelWithCourseDTO.getThumbnailFileId());
-        packageSessionService.createPackageSession(level, optionalSession.get(), optionalPackageEntity.get(), getStartDatePackageSessionDate(packageId, sessionId));
+        packageSessionService.createPackageSession(level, optionalSession.get(), optionalPackageEntity.get(), getStartDatePackageSessionDate(packageId, sessionId),instituteId,user);
         return level.getId();
     }
 

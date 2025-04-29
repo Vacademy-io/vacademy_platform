@@ -33,7 +33,7 @@ public class ConstantAiTemplate {
                                                  "correct_options": "number[]",
                                                  "ans": "string",
                                                  "exp": "string",
-                                                 "question_type": "MCQS | MCQM | ONE_WORD | LONG_ANSWER | NUMERIC",  //Strictly Include question_type
+                                                 "question_type": "MCQS | MCQM | ONE_WORD | LONG_ANSWER",  //Strictly Include question_type
                                                  "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
                                                  "level": "easy | medium | hard"
                                              }}
@@ -47,7 +47,7 @@ public class ConstantAiTemplate {
                                     
                                      }}
                             
-                        For LONG_ANSWER, NUMERIC, and ONE_WORD question types:
+                        For LONG_ANSWER, and ONE_WORD question types:
                         - Leave 'correct_options' empty but fill 'ans' and 'exp'
                         - Omit 'options' field entirely
                         
@@ -96,7 +96,7 @@ public class ConstantAiTemplate {
                                                  "correct_options": "number[]",
                                                  "ans": "string",
                                                  "exp": "string",
-                                                 "question_type": "MCQS | MCQM | ONE_WORD | LONG_ANSWER | NUMERIC",
+                                                 "question_type": "MCQS | MCQM | ONE_WORD | LONG_ANSWER",
                                                  "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
                                                  "level": "easy | medium | hard"
                                              }}
@@ -108,7 +108,7 @@ public class ConstantAiTemplate {
                                          "classes": ["class 1" , "class 2" ] // can be of multiple class - | class 3 | class 4 | class 5 | class 6 | class 7 | class 8 | class 9 | class 10 | class 11 | class 12 | engineering | medical | commerce | law
                                      }}
                             
-                        For LONG_ANSWER, NUMERIC, and ONE_WORD question types:
+                        For LONG_ANSWER, and ONE_WORD question types:
                         - Leave 'correct_options' empty but fill 'ans' and 'exp'
                         - Omit 'options' field entirely
                         
@@ -146,7 +146,7 @@ public class ConstantAiTemplate {
         return """
                         HTML raw data :  {htmlData}
                         Already extracted question numbers: {extractedQuestionNumber}
-                               \s
+                
                         Prompt:
                         Extract all questions from pdf and map all the extracted questions with respective topic and strictly follow Json Format:
                          - Strictly follow this: Do not repeat same question number in two or more topics
@@ -154,9 +154,9 @@ public class ConstantAiTemplate {
                          - If it is not empty, continue generating from where the last question left off based on the existing data and avoid duplicate Questions.
                          - Do not extract any questions if already extracted all questions and set is_process_completed true.
                          - Preserve all DS_TAGs in HTML content in comments
-                       \s
-                        JSON format :\s
-                       \s
+                       
+                        JSON format :
+                       
                                 {{
                                     "questions": [
                                         {{
@@ -174,7 +174,7 @@ public class ConstantAiTemplate {
                                             "correct_options": "number[]",
                                             "ans": "string",
                                             "exp": "string",
-                                            "question_type": "MCQS | MCQM | ONE_WORD | LONG_ANSWER | NUMERIC",
+                                            "question_type": "MCQS | MCQM | ONE_WORD | LONG_ANSWER",
                                             "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"], // must include topic name
                                             "level": "easy | medium | hard"
                                         }}
@@ -184,25 +184,27 @@ public class ConstantAiTemplate {
                                     "difficulty": "easy | medium | hard",
                                     "subjects": ["subject1", "subject2", "subject3", "subject4", "subject5"], // multiple subject names for question paper
                                     "classes": ["class 1", "class 2", "class 3", "class 4", "class 5", "class 6", "class 7", "class 8", "class 9", "class 10", "class 11", "class 12", "engineering", "medical", "commerce", "law"],
-                                    "is_process_completed" : true,false // Ensure is_process_completed is set to true only if {userPrompt} is achieved,
-                                    "topicQuestionMap":{{
-                                                           "topic" : "String"       //Included Topic which are possible in pdf
-                                                           "questionNumbers": [number]  //Include all the question numbers which is related to "topic"
-                                                       }}
+                                    "is_process_completed" : true,false, 
+                                    "topicQuestionMap":[     //Map All {extractedQuestionNumber} question numbers to respective topic it belongs to
+                                                          {{
+                                                           "topic" : "String"       //Included Topic which are possible in HTML raw data
+                                                           "questionNumbers": [number]  //Include all the question numbers(generated) which is related to "topic"
+                                                          }}
+                                                       ]
                                 }}
-                       \s
-                        For LONG_ANSWER, NUMERIC, and ONE_WORD question types:
+                       
+                        For LONG_ANSWER, and ONE_WORD question types:
                         - Leave 'correct_options' empty but fill 'ans' and 'exp'
                         - Omit 'options' field entirely
-                       \s
+                       
                         Tagging Rules:
                         - Every question must include its topic in the "tags" field.
                         - Questions belonging to the same topic must have identical "tags".
                         - If a topic is not directly extractable from the question, use headings or context from the HTML.
-                       \s
+                       
                         Also keep the DS_TAGS field intact in HTML.
                         Do not try to calculate correct answers — only include if already available in the input.
-                       \s
+                       
                 """;
     }
 
@@ -365,7 +367,7 @@ public class ConstantAiTemplate {
                                                  "correct_options": "number[]",
                                                  "ans": "string",
                                                  "exp": "string",
-                                                 "question_type": "MCQS | MCQM | ONE_WORD | LONG_ANSWER | NUMERIC",
+                                                 "question_type": "MCQS | MCQM | ONE_WORD | LONG_ANSWER ",
                                                  "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
                                                  "level": "easy | medium | hard"
                                              }}
@@ -378,7 +380,7 @@ public class ConstantAiTemplate {
                                          "classes": ["class 1" , "class 2" ] // can be of multiple class - | class 3 | class 4 | class 5 | class 6 | class 7 | class 8 | class 9 | class 10 | class 11 | class 12 | engineering | medical | commerce | law
                                      }}
                             
-                        For LONG_ANSWER, NUMERIC, and ONE_WORD question types:
+                        For LONG_ANSWER, and ONE_WORD question types:
                         - Leave 'correct_options' empty but fill 'ans' and 'exp'
                         - Omit 'options' field entirely
                         
@@ -419,7 +421,7 @@ public class ConstantAiTemplate {
                                                  "correct_options": "number[]",
                                                  "ans": "string",
                                                  "exp": "string",
-                                                 "question_type": "MCQS | MCQM | ONE_WORD | LONG_ANSWER | NUMERIC", //Strictly Include question_type
+                                                 "question_type": "MCQS | MCQM | ONE_WORD | LONG_ANSWER ", //Strictly Include question_type
                                                  "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
                                                  "level": "easy | medium | hard"
                                              }}
@@ -432,7 +434,7 @@ public class ConstantAiTemplate {
                                          "classes": ["class 1" , "class 2" ] // can be of multiple class - | class 3 | class 4 | class 5 | class 6 | class 7 | class 8 | class 9 | class 10 | class 11 | class 12 | engineering | medical | commerce | law
                                      }}
                             
-                        For LONG_ANSWER, NUMERIC, and ONE_WORD question types:
+                        For LONG_ANSWER, and ONE_WORD question types:
                         - Leave 'correct_options' empty but fill 'ans' and 'exp'
                         - Omit 'options' field entirely
                         
@@ -480,7 +482,7 @@ public class ConstantAiTemplate {
                                                  "correct_options": "number[]",
                                                  "ans": "string",
                                                  "exp": "string",
-                                                 "question_type": "MCQS | MCQM | ONE_WORD | LONG_ANSWER | NUMERIC",
+                                                 "question_type": "MCQS | MCQM | ONE_WORD | LONG_ANSWER",
                                                  "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
                                                  "level": "easy | medium | hard"
                                              }}
@@ -493,7 +495,7 @@ public class ConstantAiTemplate {
                                          "classes": ["class 1" , "class 2" ] // can be of multiple class - | class 3 | class 4 | class 5 | class 6 | class 7 | class 8 | class 9 | class 10 | class 11 | class 12 | engineering | medical | commerce | law
                                      }}
                             
-                        For LONG_ANSWER, NUMERIC, and ONE_WORD question types:
+                        For LONG_ANSWER, and ONE_WORD question types:
                         - Leave 'correct_options' empty but fill 'ans' and 'exp'
                         - Omit 'options' field entirely
                 """;

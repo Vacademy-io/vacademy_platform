@@ -15,10 +15,7 @@ import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.media_service.constant.ConstantAiTemplate;
 import vacademy.io.media_service.dto.*;
 import vacademy.io.media_service.entity.TaskStatus;
-import vacademy.io.media_service.enums.QuestionResponseType;
-import vacademy.io.media_service.enums.QuestionTypes;
-import vacademy.io.media_service.enums.TaskStatusEnum;
-import vacademy.io.media_service.enums.TaskStatusTypeEnum;
+import vacademy.io.media_service.enums.*;
 import vacademy.io.media_service.service.HtmlJsonProcessor;
 import vacademy.io.media_service.service.TaskStatusService;
 import vacademy.io.media_service.util.JsonUtils;
@@ -145,66 +142,6 @@ public class DeepSeekService {
             e.printStackTrace();
             return 0;
         }
-    }
-
-    public static String mergeQuestionsJson(String oldJson, String newJson) {
-        try {
-            ObjectMapper mapper = new ObjectMapper();
-
-            JsonNode oldNode = oldJson == null || oldJson.isBlank()
-                    ? mapper.readTree("{\"questions\":[]}")
-                    : mapper.readTree(oldJson);
-            JsonNode newNode = mapper.readTree(newJson);
-
-            ObjectNode mergedNode = (ObjectNode) oldNode;
-
-            // Merge questions
-            ArrayNode mergedQuestions = mapper.createArrayNode();
-            if (oldNode.has("questions")) {
-                mergedQuestions.addAll((ArrayNode) oldNode.get("questions"));
-            }
-            if (newNode.has("questions")) {
-                mergedQuestions.addAll((ArrayNode) newNode.get("questions"));
-            }
-            mergedNode.set("questions", mergedQuestions);
-
-            // Merge is_process_completed
-            boolean oldCompleted = oldNode.has("is_process_completed") && oldNode.get("is_process_completed").asBoolean();
-            boolean newCompleted = newNode.has("is_process_completed") && newNode.get("is_process_completed").asBoolean();
-            mergedNode.put("is_process_completed", newCompleted);
-
-            // Merge title (keep old if exists)
-            if (!oldNode.has("title") && newNode.has("title")) {
-                mergedNode.put("title", newNode.get("title").asText());
-            }
-
-            // Merge difficulty (keep old if exists)
-            if (!oldNode.has("difficulty") && newNode.has("difficulty")) {
-                mergedNode.put("difficulty", newNode.get("difficulty").asText());
-            }
-
-            // Merge tags, subjects, classes
-            mergeStringArrayField(mergedNode, oldNode, newNode, "tags", mapper);
-            mergeStringArrayField(mergedNode, oldNode, newNode, "subjects", mapper);
-            mergeStringArrayField(mergedNode, oldNode, newNode, "classes", mapper);
-
-            return mapper.writerWithDefaultPrettyPrinter().writeValueAsString(mergedNode);
-        } catch (Exception e) {
-            return oldJson != null ? oldJson : newJson;
-        }
-    }
-
-    private static void mergeStringArrayField(ObjectNode mergedNode, JsonNode oldNode, JsonNode newNode, String fieldName, ObjectMapper mapper) {
-        Set<String> uniqueValues = new LinkedHashSet<>();
-        if (oldNode.has(fieldName)) {
-            oldNode.get(fieldName).forEach(n -> uniqueValues.add(n.asText()));
-        }
-        if (newNode.has(fieldName)) {
-            newNode.get(fieldName).forEach(n -> uniqueValues.add(n.asText()));
-        }
-        ArrayNode mergedArray = mapper.createArrayNode();
-        uniqueValues.forEach(mergedArray::add);
-        mergedNode.set(fieldName, mergedArray);
     }
 
     public static String getCommaSeparatedQuestionNumbers(String json) {
@@ -400,6 +337,7 @@ public class DeepSeekService {
             throw new RuntimeException(e);
         }
     }
+
 
     public String evaluateManualAnswerSheet(String htmlAnswerData, String htmlQuestionData, Double maxMarks, String evaluationDifficulty) {
         HtmlJsonProcessor htmlJsonProcessor = new HtmlJsonProcessor();
@@ -740,10 +678,118 @@ public class DeepSeekService {
 
             taskStatusService.updateTaskStatus(taskStatus, "PROGRESS", mergedJson);
             // Recurse for remaining questions
-            return getQuestionsWithDeepSeekFromHTMLWithTopics(htmlData, taskStatus, attempt + 1, oldJson);
+            return getQuestionsWithDeepSeekFromHTMLWithTopics(htmlData, taskStatus, attempt+1, mergedJson);
         } catch (Exception e) {
             taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), oldJson);
             return oldJson;
         }
+    }
+
+    public static String mergeQuestionsJson(String oldJson, String newJson) {
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+
+            JsonNode oldNode = (oldJson == null || oldJson.isBlank())
+                    ? mapper.readTree("{\"questions\":[]}")
+                    : mapper.readTree(oldJson);
+            JsonNode newNode = mapper.readTree(newJson);
+
+            ObjectNode mergedNode = (ObjectNode) oldNode;
+
+            // Merge questions
+            ArrayNode mergedQuestions = mapper.createArrayNode();
+            if (oldNode.has("questions")) {
+                mergedQuestions.addAll((ArrayNode) oldNode.get("questions"));
+            }
+            if (newNode.has("questions")) {
+                ArrayNode newQuestions = (ArrayNode) newNode.get("questions");
+                for (JsonNode q : newQuestions) {
+                    if (q.has("question_type") && !q.get("question_type").asText().isBlank()
+                            && ValidQuestionTypeEnums.isValid(q.get("question_type").asText())) {
+                        mergedQuestions.add(q);
+                    }
+                }
+            }
+            mergedNode.set("questions", mergedQuestions);
+
+            // Merge is_process_completed
+            boolean oldCompleted = oldNode.has("is_process_completed") && oldNode.get("is_process_completed").asBoolean();
+            boolean newCompleted = newNode.has("is_process_completed") && newNode.get("is_process_completed").asBoolean();
+            mergedNode.put("is_process_completed", newCompleted);
+
+            // Merge title (keep old if exists)
+            if (!oldNode.has("title") && newNode.has("title")) {
+                mergedNode.put("title", newNode.get("title").asText());
+            }
+
+            // Merge difficulty (keep old if exists)
+            if (!oldNode.has("difficulty") && newNode.has("difficulty")) {
+                mergedNode.put("difficulty", newNode.get("difficulty").asText());
+            }
+
+            // Merge tags, subjects, classes
+            mergeStringArrayField(mergedNode, oldNode, newNode, "tags", mapper);
+            mergeStringArrayField(mergedNode, oldNode, newNode, "subjects", mapper);
+            mergeStringArrayField(mergedNode, oldNode, newNode, "classes", mapper);
+
+            // Merge topicQuestionMap if present
+            if (newNode.has("topicQuestionMap")) {
+                Map<String, Set<Integer>> topicMap = new LinkedHashMap<>();
+
+                // Load old map
+                if (oldNode.has("topicQuestionMap")) {
+                    for (JsonNode node : oldNode.get("topicQuestionMap")) {
+                        String topic = node.get("topic").asText();
+                        Set<Integer> questions = new HashSet<>();
+                        for (JsonNode q : node.get("questionNumbers")) {
+                            questions.add(q.asInt());
+                        }
+                        topicMap.put(topic, questions);
+                    }
+                }
+
+                // Load and merge new map
+                for (JsonNode node : newNode.get("topicQuestionMap")) {
+                    String topic = node.get("topic").asText();
+                    Set<Integer> questions = topicMap.getOrDefault(topic, new HashSet<>());
+                    for (JsonNode q : node.get("questionNumbers")) {
+                        questions.add(q.asInt());
+                    }
+                    topicMap.put(topic, questions);
+                }
+
+                // Convert to ArrayNode
+                ArrayNode topicMapNode = mapper.createArrayNode();
+                for (Map.Entry<String, Set<Integer>> entry : topicMap.entrySet()) {
+                    ObjectNode topicNode = mapper.createObjectNode();
+                    topicNode.put("topic", entry.getKey());
+                    ArrayNode qArray = mapper.createArrayNode();
+                    entry.getValue().stream().sorted().forEach(qArray::add);
+                    topicNode.set("questionNumbers", qArray);
+                    topicMapNode.add(topicNode);
+                }
+
+                mergedNode.set("topicQuestionMap", topicMapNode);
+            }
+
+            return mapper.writerWithDefaultPrettyPrinter().writeValueAsString(mergedNode);
+        } catch (Exception e) {
+            return oldJson != null ? oldJson : newJson;
+        }
+    }
+
+
+
+    private static void mergeStringArrayField(ObjectNode mergedNode, JsonNode oldNode, JsonNode newNode, String fieldName, ObjectMapper mapper) {
+        Set<String> uniqueValues = new LinkedHashSet<>();
+        if (oldNode.has(fieldName)) {
+            oldNode.get(fieldName).forEach(n -> uniqueValues.add(n.asText()));
+        }
+        if (newNode.has(fieldName)) {
+            newNode.get(fieldName).forEach(n -> uniqueValues.add(n.asText()));
+        }
+        ArrayNode mergedArray = mapper.createArrayNode();
+        uniqueValues.forEach(mergedArray::add);
+        mergedNode.set(fieldName, mergedArray);
     }
 }

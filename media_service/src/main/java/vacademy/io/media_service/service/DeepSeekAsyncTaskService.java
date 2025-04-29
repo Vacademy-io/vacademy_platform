@@ -48,11 +48,11 @@ public class DeepSeekAsyncTaskService {
     @Autowired
     NewAudioConverterService newAudioConverterService;
 
-    int PDF_MAX_TRIES = 15;
-    int PDF_DELAY = 10000;
+    int PDF_MAX_TRIES = 20;
+    int PDF_DELAY = 20000;
 
-    int AUDIO_MAX_TRIES = 20;
-    int AUDIO_DELAY = 10000;
+    int AUDIO_MAX_TRIES = 50;
+    int AUDIO_DELAY = 20000;
 
     public void processDeepSeekTaskInBackground(TaskStatus taskStatus, String userPrompt, String networkHtml) {
         try {
@@ -187,7 +187,7 @@ public class DeepSeekAsyncTaskService {
                 }
 
                 // After retries exhausted
-                taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, "", null,"Failed To Process PDF");
+                taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, TaskStatusEnum.FAILED.name(), null,"Failed To Process PDF");
 
             } catch (Exception e) {
                 taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, TaskStatusEnum.FAILED.name(), null,e.getMessage());

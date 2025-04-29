@@ -28,7 +28,7 @@ public class InstituteCSVBulkStudentController {
     private StudentBulkUploadManager studentBulkUpload;
 
     // Add User to Institute
-    @PostMapping("/init-institute_learner-upload")
+    @PostMapping("/content_structure-institute_learner-upload")
     public ResponseEntity<CsvInitResponse> getCSVUploadSetupDetailsForStudent(@RequestParam(name = "instituteId") String instituteId,
                                                                               @RequestBody BulkUploadInitRequest bulkUploadInitRequest) {
         return ResponseEntity.ok(studentBulkInitUploadManager.generateCsvUploadForStudents(instituteId, bulkUploadInitRequest));

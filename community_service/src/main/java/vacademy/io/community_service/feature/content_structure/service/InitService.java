@@ -1,4 +1,4 @@
-package vacademy.io.community_service.feature.init.service;
+package vacademy.io.community_service.feature.content_structure.service;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -6,18 +6,18 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.community_service.feature.filter.repository.EntityTagsRepository;
-import vacademy.io.community_service.feature.init.dto.InitResponseDto;
-import vacademy.io.community_service.feature.init.dto.LevelDto;
-import vacademy.io.community_service.feature.init.dto.StreamDto;
-import vacademy.io.community_service.feature.init.dto.SubjectDto;
-import vacademy.io.community_service.feature.init.entity.Levels;
-import vacademy.io.community_service.feature.init.entity.Streams;
-import vacademy.io.community_service.feature.init.enums.Difficulty;
-import vacademy.io.community_service.feature.init.enums.Topic;
-import vacademy.io.community_service.feature.init.enums.Type;
-import vacademy.io.community_service.feature.init.repository.LevelsRepository;
-import vacademy.io.community_service.feature.init.repository.StreamsRepository;
-import vacademy.io.community_service.feature.init.repository.SubjectsRepository;
+import vacademy.io.community_service.feature.content_structure.dto.InitResponseDto;
+import vacademy.io.community_service.feature.content_structure.dto.LevelDto;
+import vacademy.io.community_service.feature.content_structure.dto.StreamDto;
+import vacademy.io.community_service.feature.content_structure.dto.SubjectDto;
+import vacademy.io.community_service.feature.content_structure.entity.Levels;
+import vacademy.io.community_service.feature.content_structure.entity.Streams;
+import vacademy.io.community_service.feature.content_structure.enums.Difficulty;
+import vacademy.io.community_service.feature.content_structure.enums.Topic;
+import vacademy.io.community_service.feature.content_structure.enums.Type;
+import vacademy.io.community_service.feature.content_structure.repository.LevelsRepository;
+import vacademy.io.community_service.feature.content_structure.repository.StreamsRepository;
+import vacademy.io.community_service.feature.content_structure.repository.SubjectsRepository;
 import vacademy.io.community_service.feature.question_bank.dto.TagsByIdResponseDto;
 
 import java.util.List;

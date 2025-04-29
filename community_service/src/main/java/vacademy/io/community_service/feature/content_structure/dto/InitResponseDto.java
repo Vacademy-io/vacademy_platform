@@ -1,4 +1,4 @@
-package vacademy.io.community_service.feature.init.dto;
+package vacademy.io.community_service.feature.content_structure.dto;
 
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;

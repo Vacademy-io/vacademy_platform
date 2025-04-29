@@ -8,9 +8,9 @@ import vacademy.io.community_service.feature.filter.entity.EntityTags;
 import vacademy.io.community_service.feature.filter.entity.EntityTagsId;
 import vacademy.io.community_service.feature.filter.enums.EntityName;
 import vacademy.io.community_service.feature.filter.repository.EntityTagsRepository;
-import vacademy.io.community_service.feature.init.entity.Tags;
-import vacademy.io.community_service.feature.init.enums.DropdownType;
-import vacademy.io.community_service.feature.init.repository.TagsRepository;
+import vacademy.io.community_service.feature.content_structure.entity.Tags;
+import vacademy.io.community_service.feature.content_structure.enums.DropdownType;
+import vacademy.io.community_service.feature.content_structure.repository.TagsRepository;
 
 import java.util.*;
 import java.util.stream.Collectors;

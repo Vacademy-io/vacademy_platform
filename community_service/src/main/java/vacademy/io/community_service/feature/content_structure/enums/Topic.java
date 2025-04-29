@@ -1,4 +1,4 @@
-package vacademy.io.community_service.feature.init.enums;
+package vacademy.io.community_service.feature.content_structure.enums;
 
 public enum Topic {
     ALGEBRA,

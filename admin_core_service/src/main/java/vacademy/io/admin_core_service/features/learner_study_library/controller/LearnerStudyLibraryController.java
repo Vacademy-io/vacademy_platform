@@ -17,7 +17,7 @@ public class LearnerStudyLibraryController {
     @Autowired
     private LearnerStudyLibraryService learnerStudyLibraryService;
 
-    @GetMapping("/init-details")
+    @GetMapping("/content_structure-details")
     public ResponseEntity<List<SubjectDTO>> getLearnerStudyLibraryInitDetails(
             @RequestParam String packageSessionId,
             @RequestAttribute("user") CustomUserDetails user) {

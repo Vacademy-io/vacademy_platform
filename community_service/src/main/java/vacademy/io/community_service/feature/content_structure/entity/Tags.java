@@ -1,4 +1,4 @@
-package vacademy.io.community_service.feature.init.entity;
+package vacademy.io.community_service.feature.content_structure.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

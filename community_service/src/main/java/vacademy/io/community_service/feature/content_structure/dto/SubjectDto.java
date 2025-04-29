@@ -1,4 +1,4 @@
-package vacademy.io.community_service.feature.init.dto;
+package vacademy.io.community_service.feature.content_structure.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;

@@ -1,4 +1,4 @@
-package vacademy.io.community_service.feature.init.controller;
+package vacademy.io.community_service.feature.content_structure.controller;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -7,8 +7,8 @@ import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import vacademy.io.common.auth.model.CustomUserDetails;
-import vacademy.io.community_service.feature.init.dto.InitResponseDto;
-import vacademy.io.community_service.feature.init.service.InitService;
+import vacademy.io.community_service.feature.content_structure.dto.InitResponseDto;
+import vacademy.io.community_service.feature.content_structure.service.InitService;
 
 @RestController
 @RequestMapping("/community-service")
@@ -17,7 +17,7 @@ public class InitController {
     @Autowired
     private InitService initService;
 
-    @GetMapping("/init/question-filters")
+    @GetMapping("/content_structure/question-filters")
     public ResponseEntity<InitResponseDto> getDropdownOptions(@RequestAttribute("user") CustomUserDetails user) {
         return initService.getDropdownOptions(user);
     }

@@ -3,14 +3,12 @@ package vacademy.io.assessment_service.features.learner_assessment.controller;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import vacademy.io.assessment_service.features.learner_assessment.dto.*;
+import vacademy.io.assessment_service.features.learner_assessment.dto.LearnerAssessmentStartAssessmentResponse;
+import vacademy.io.assessment_service.features.learner_assessment.dto.LearnerAssessmentStartPreviewResponse;
+import vacademy.io.assessment_service.features.learner_assessment.dto.StartAssessmentRequest;
 import vacademy.io.assessment_service.features.learner_assessment.manager.LearnerAssessmentAttemptStartManager;
-import vacademy.io.assessment_service.features.learner_assessment.manager.LearnerAssessmentGetManager;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.student.dto.BasicParticipantDTO;
-
-import static vacademy.io.common.core.constants.PageConstants.DEFAULT_PAGE_NUMBER;
-import static vacademy.io.common.core.constants.PageConstants.DEFAULT_PAGE_SIZE;
 
 @RestController
 @RequestMapping("/assessment-service/assessment/learner")

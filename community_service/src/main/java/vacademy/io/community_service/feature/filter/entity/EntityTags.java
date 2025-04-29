@@ -1,7 +1,10 @@
 package vacademy.io.community_service.feature.filter.entity;
 
 import jakarta.persistence.*;
-import lombok.*;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 import vacademy.io.community_service.feature.init.entity.Levels;
 import vacademy.io.community_service.feature.init.entity.Streams;
 import vacademy.io.community_service.feature.init.entity.Subjects;

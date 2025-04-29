@@ -37,7 +37,8 @@ public class LearnerInvitationCustomField {
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Timestamp updatedAt;
 
-    public LearnerInvitationCustomField() {}
+    public LearnerInvitationCustomField() {
+    }
 
     public LearnerInvitationCustomField(LearnerInvitationCustomFieldDTO learnerInvitationCustomFieldDTO, LearnerInvitation learnerInvitation) {
         this.fieldName = learnerInvitationCustomFieldDTO.getFieldName();
@@ -49,7 +50,8 @@ public class LearnerInvitationCustomField {
         this.learnerInvitation = learnerInvitation;
         this.status = CustomFieldStatusEnum.ACTIVE.name();
     }
-    public LearnerInvitationCustomFieldDTO mapToDTO(){
+
+    public LearnerInvitationCustomFieldDTO mapToDTO() {
         return LearnerInvitationCustomFieldDTO
                 .builder()
                 .id(this.id)

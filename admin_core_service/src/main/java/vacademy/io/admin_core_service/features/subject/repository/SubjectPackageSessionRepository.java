@@ -30,11 +30,11 @@ public interface SubjectPackageSessionRepository extends JpaRepository<SubjectPa
     List<Subject> findDistinctSubjectsByPackageSessionId(@Param("packageSessionId") String packageSessionId);
 
     @Query("""
-    SELECT sps FROM SubjectPackageSession sps
-    WHERE LOWER(sps.subject.subjectName) = LOWER(:subjectName)
-    AND sps.packageSession.id IN :packageSessionIds
-    AND sps.subject.status != 'DELETED'
-""")
+                SELECT sps FROM SubjectPackageSession sps
+                WHERE LOWER(sps.subject.subjectName) = LOWER(:subjectName)
+                AND sps.packageSession.id IN :packageSessionIds
+                AND sps.subject.status != 'DELETED'
+            """)
     List<SubjectPackageSession> findBySubjectNameAndPackageSessionIds(
             @Param("subjectName") String subjectName,
             @Param("packageSessionIds") List<String> packageSessionIds

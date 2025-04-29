@@ -49,7 +49,7 @@ public class DocumentService {
         return documentRepository.findByUserIdAndStatusNotAndAccessTypeInAndFolder_StatusNot(userId, DocumentStatusEnum.DELETED.name(), List.of(DocumentAccessTypeEnum.BOTH.name(), DocumentAccessTypeEnum.ADMIN.name()), FolderStatusEnum.DELETED.name()).stream().map(document -> document.mapToDocumentDTO()).toList();
     }
 
-    public DocumentDTO addDocument(DocumentDTO documentDTO,String userId,CustomUserDetails user) {
+    public DocumentDTO addDocument(DocumentDTO documentDTO, String userId, CustomUserDetails user) {
         Document document = new Document(documentDTO);
         document.setUserId(userId);
         Document savedDocument = documentRepository.save(document);

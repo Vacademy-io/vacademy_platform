@@ -7,9 +7,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
-import org.springframework.context.annotation.Primary;
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentCustomField;
-import vacademy.io.assessment_service.features.assessment.service.creation.AssessmentBasicDetail;
 
 import java.util.Date;
 import java.util.HashSet;

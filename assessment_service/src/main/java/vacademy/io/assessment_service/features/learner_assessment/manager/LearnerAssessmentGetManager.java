@@ -60,7 +60,7 @@ public class LearnerAssessmentGetManager {
                 Arrays.stream(AssessmentModeEnum.values()).map(AssessmentModeEnum::name).toList(),
                 studentAssessmentFilter.getInstituteIds(), true,
                 studentAssessmentFilter.getUserIds(),
-                studentAssessmentFilter.getAssessmentTypes(),pageable);
+                studentAssessmentFilter.getAssessmentTypes(), pageable);
 
         List<StudentBasicAssessmentListItemDto> content = assessmentsPage.stream().map(StudentAssessmentMapper::toDto).collect(Collectors.toList());
         int queryPageNo = assessmentsPage.getNumber();

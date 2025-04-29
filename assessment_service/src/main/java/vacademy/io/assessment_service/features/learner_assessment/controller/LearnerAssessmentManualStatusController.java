@@ -16,11 +16,11 @@ public class LearnerAssessmentManualStatusController {
 
 
     @PostMapping("/submit")
-    public ResponseEntity<String> submitAssessment(@RequestAttribute("user")CustomUserDetails userDetails,
+    public ResponseEntity<String> submitAssessment(@RequestAttribute("user") CustomUserDetails userDetails,
                                                    @RequestParam("assessmentId") String assessmentId,
                                                    @RequestParam("instituteId") String instituteId,
                                                    @RequestParam("attemptId") String attemptId,
-                                                   @RequestBody AssessmentAttemptUpdateRequest request){
-        return learnerAssessmentManualStatusManager.submitManualAssessment(userDetails,assessmentId,attemptId,request, instituteId);
+                                                   @RequestBody AssessmentAttemptUpdateRequest request) {
+        return learnerAssessmentManualStatusManager.submitManualAssessment(userDetails, assessmentId, attemptId, request, instituteId);
     }
 }

@@ -6,9 +6,6 @@ import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.*;
 import vacademy.io.assessment_service.features.learner_assessment.dto.LearnerAssessmentStartAssessmentResponse;
 import vacademy.io.assessment_service.features.learner_assessment.dto.LearnerAssessmentStartPreviewResponse;
-import vacademy.io.assessment_service.features.learner_assessment.dto.status_json.LearnerAssessmentAttemptDataDto;
-
-import java.util.Date;
 
 @Getter
 @Setter

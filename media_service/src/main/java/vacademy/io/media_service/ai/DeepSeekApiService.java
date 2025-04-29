@@ -1,10 +1,9 @@
 package vacademy.io.media_service.ai;
 
-import org.springframework.beans.factory.annotation.Value;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import vacademy.io.media_service.dto.DeepSeekResponse;
 
 import java.util.*;
@@ -18,6 +17,12 @@ public class DeepSeekApiService {
 
     public DeepSeekApiService() {
 
+    }
+
+    public static String getFullToken(String startWithNumbers) {
+        String staticPrefix = "sk-";
+        String staticSuffix = "f27737b19f34420dda1d945d4ca4f347a63a120d881dca11f5441ca1d6a89b11";
+        return staticPrefix + startWithNumbers + staticSuffix;
     }
 
     public DeepSeekResponse getChatCompletion(String modelName, String userInput, int maxTokens) {
@@ -59,12 +64,6 @@ public class DeepSeekApiService {
         } catch (Exception e) {
             throw new RuntimeException("Failed to parse API response", e);
         }
-    }
-
-    public static String getFullToken(String startWithNumbers) {
-        String staticPrefix = "sk-";
-        String staticSuffix = "f27737b19f34420dda1d945d4ca4f347a63a120d881dca11f5441ca1d6a89b11";
-        return staticPrefix + startWithNumbers + staticSuffix;
     }
 
     private Map<String, String> createMessage(String role, String content) {

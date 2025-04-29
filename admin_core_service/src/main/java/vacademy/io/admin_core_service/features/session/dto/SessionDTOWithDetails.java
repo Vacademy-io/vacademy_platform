@@ -5,7 +5,6 @@ import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
 import vacademy.io.admin_core_service.features.packages.dto.PackageDTOWithDetails;
 import vacademy.io.common.institute.dto.SessionDTO;
 

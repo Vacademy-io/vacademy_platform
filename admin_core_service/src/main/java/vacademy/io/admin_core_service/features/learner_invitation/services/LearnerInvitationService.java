@@ -11,11 +11,10 @@ import vacademy.io.admin_core_service.features.institute.repository.InstituteRep
 import vacademy.io.admin_core_service.features.learner_invitation.dto.*;
 import vacademy.io.admin_core_service.features.learner_invitation.entity.LearnerInvitation;
 import vacademy.io.admin_core_service.features.learner_invitation.entity.LearnerInvitationCustomField;
-import vacademy.io.admin_core_service.features.learner_invitation.entity.LearnerInvitationResponse;
 import vacademy.io.admin_core_service.features.learner_invitation.enums.LearnerInvitationResponseStatusEnum;
 import vacademy.io.admin_core_service.features.learner_invitation.notification.LearnerInvitationNotification;
-import vacademy.io.admin_core_service.features.learner_invitation.repository.LearnerInvitationRepository;
 import vacademy.io.admin_core_service.features.learner_invitation.repository.LearnerInvitationCustomFieldRepository;
+import vacademy.io.admin_core_service.features.learner_invitation.repository.LearnerInvitationRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
@@ -24,7 +23,6 @@ import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
 
 @Service
 public class LearnerInvitationService {
@@ -55,14 +53,14 @@ public class LearnerInvitationService {
 
         List<String> emails = addLearnerInvitationDTO.getEmailsToSendInvitation();
         if (emails != null && !emails.isEmpty()) {
-            sendLearnerInvitationNotificationAsync(emails, institute.getInstituteName(),institute.getId(), learnerInvitationDTO.getInviteCode());
+            sendLearnerInvitationNotificationAsync(emails, institute.getInstituteName(), institute.getId(), learnerInvitationDTO.getInviteCode());
         }
 
         return learnerInvitation.mapToDTO();
     }
 
-    public void sendLearnerInvitationNotificationAsync(List<String> emails, String instituteName,String instituteId, String invitationCode) {
-        notification.sendLearnerInvitationNotification(emails, instituteName,instituteId, invitationCode);
+    public void sendLearnerInvitationNotificationAsync(List<String> emails, String instituteName, String instituteId, String invitationCode) {
+        notification.sendLearnerInvitationNotification(emails, instituteName, instituteId, invitationCode);
     }
 
     private void validateRequest(LearnerInvitationDTO learnerInvitationDTO) {
@@ -97,26 +95,26 @@ public class LearnerInvitationService {
 
     public Page<InvitationDetailProjection> getInvitationDetails(String instituteId, LearnerInvitationDetailFilterDTO filter, int pageNo, int pageSize, CustomUserDetails user) {
         Pageable pageable = PageRequest.of(pageNo, pageSize);
-        if (StringUtils.hasText(filter.getName())){
+        if (StringUtils.hasText(filter.getName())) {
             return learnerInvitationRepository.findInvitationsWithAcceptedCountByName(instituteId,
                     filter.getStatus(),
                     List.of(LearnerInvitationResponseStatusEnum.ACTIVE.name(),
                             LearnerInvitationResponseStatusEnum.ACCEPTED.name()),
-                    filter.getName(),pageable);
+                    filter.getName(), pageable);
         }
         return learnerInvitationRepository.findInvitationsWithAcceptedCount(
-               instituteId, filter.getStatus(),
-               List.of(LearnerInvitationResponseStatusEnum.ACTIVE.name(),
-                       LearnerInvitationResponseStatusEnum.ACCEPTED.name()),
-               pageable);
+                instituteId, filter.getStatus(),
+                List.of(LearnerInvitationResponseStatusEnum.ACTIVE.name(),
+                        LearnerInvitationResponseStatusEnum.ACCEPTED.name()),
+                pageable);
     }
 
     @Transactional
-    public String updateLearnerInvitationStatus(LearnerInvitationStatusUpdateDTO statusChangeDTO, CustomUserDetails user){
-        if (Objects.isNull(statusChangeDTO) || Objects.isNull(statusChangeDTO.getLearnerInvitationIds()) || statusChangeDTO.getLearnerInvitationIds().isEmpty() || !StringUtils.hasText(statusChangeDTO.getStatus())){
+    public String updateLearnerInvitationStatus(LearnerInvitationStatusUpdateDTO statusChangeDTO, CustomUserDetails user) {
+        if (Objects.isNull(statusChangeDTO) || Objects.isNull(statusChangeDTO.getLearnerInvitationIds()) || statusChangeDTO.getLearnerInvitationIds().isEmpty() || !StringUtils.hasText(statusChangeDTO.getStatus())) {
             throw new VacademyException("Invalid request!!!");
         }
-        List<LearnerInvitation>responses = learnerInvitationRepository.findAllById(statusChangeDTO.getLearnerInvitationIds());
+        List<LearnerInvitation> responses = learnerInvitationRepository.findAllById(statusChangeDTO.getLearnerInvitationIds());
         for (LearnerInvitation learnerInvitation : responses) {
             learnerInvitation.setStatus(statusChangeDTO.getStatus());
         }

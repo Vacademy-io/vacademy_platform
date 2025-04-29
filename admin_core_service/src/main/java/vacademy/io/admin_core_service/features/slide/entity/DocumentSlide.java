@@ -51,7 +51,7 @@ public class DocumentSlide {
     public DocumentSlide() {
     }
 
-    public DocumentSlide(DocumentSlideDTO documentSlideDTO,String status) {
+    public DocumentSlide(DocumentSlideDTO documentSlideDTO, String status) {
         this.type = documentSlideDTO.getType();
         this.title = documentSlideDTO.getTitle();
         this.coverFileId = documentSlideDTO.getCoverFileId();
@@ -59,8 +59,7 @@ public class DocumentSlide {
         if (status.equals(SlideStatus.DRAFT.name())) {
             this.totalPages = documentSlideDTO.getTotalPages();
             this.data = documentSlideDTO.getData();
-        }
-        else{
+        } else {
             this.publishedData = documentSlideDTO.getData();
             this.publishedDocumentTotalPages = documentSlideDTO.getTotalPages();
         }

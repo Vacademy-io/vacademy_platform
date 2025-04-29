@@ -23,7 +23,7 @@ public class DeepSeekConversationService {
         String template = ConstantAiTemplate.getTemplateBasedOnType(TaskStatusTypeEnum.CHAT_WITH_PDF);
 
         Prompt prompt = new PromptTemplate(template).create(Map.of("userPrompt", userPrompt,
-                "last5Conversation", last5Conversations,"htmlText",htmlText));
+                "last5Conversation", last5Conversations, "htmlText", htmlText));
 
         DeepSeekResponse response = deepSeekApiService.getChatCompletion("meta-llama/llama-4-maverick:free", prompt.getContents().trim(), 30000);
         if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {

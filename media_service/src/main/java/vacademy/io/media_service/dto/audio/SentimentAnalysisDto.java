@@ -13,7 +13,7 @@ import lombok.*;
 @NoArgsConstructor
 @ToString
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class SentimentAnalysisDto{
+public class SentimentAnalysisDto {
     String text;
     String sentiment;
     Double confidence;

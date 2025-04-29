@@ -7,7 +7,6 @@ import org.springframework.web.bind.annotation.*;
 import vacademy.io.assessment_service.features.question_bank.dto.AllQuestionPaperResponse;
 import vacademy.io.assessment_service.features.question_bank.dto.QuestionPaperFilter;
 import vacademy.io.assessment_service.features.question_bank.manager.GetPublicQuestionPaperManager;
-import vacademy.io.assessment_service.features.question_bank.manager.GetQuestionPaperManager;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 import static vacademy.io.common.core.constants.PageConstants.DEFAULT_PAGE_NUMBER;

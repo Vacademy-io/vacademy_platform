@@ -6,7 +6,6 @@ import org.hibernate.annotations.UuidGenerator;
 import vacademy.io.community_service.feature.presentation.dto.question.QuestionDTO;
 import vacademy.io.community_service.feature.rich_text.entity.AssessmentRichTextData;
 
-
 import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.List;

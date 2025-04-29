@@ -9,16 +9,20 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.media_service.ai.DeepSeekService;
-import vacademy.io.media_service.dto.*;
-import vacademy.io.media_service.service.*;
+import vacademy.io.media_service.dto.AiGeneratedQuestionPaperJsonDto;
+import vacademy.io.media_service.dto.AutoDocumentSubmitResponse;
+import vacademy.io.media_service.dto.AutoQuestionPaperResponse;
+import vacademy.io.media_service.dto.PdfHtmlResponseStatusResponse;
+import vacademy.io.media_service.service.DocConverterService;
+import vacademy.io.media_service.service.FileService;
+import vacademy.io.media_service.service.HtmlImageConverter;
+import vacademy.io.media_service.service.NewDocConverterService;
 import vacademy.io.media_service.util.JsonUtils;
 
-import java.io.*;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
-import static org.zwobble.mammoth.internal.util.Base64Encoding.streamToBase64;
 
 
 @RestController
@@ -76,7 +80,7 @@ public class QuestionGeneratorController {
 
     @PostMapping("/from-html")
     public ResponseEntity<AutoQuestionPaperResponse> fromHtml(@RequestParam(required = false) String userPrompt,
-            @RequestParam("file") MultipartFile file) {
+                                                              @RequestParam("file") MultipartFile file) {
 
         // Check if the uploaded file is HTML
         if (!isHtmlFile(file)) {
@@ -100,8 +104,8 @@ public class QuestionGeneratorController {
     }
 
     @PostMapping("/from-not-html")
-    public ResponseEntity<AutoQuestionPaperResponse> fromNotHtml( @RequestParam(required = false) String userPrompt,
-            @RequestParam("file") MultipartFile file) {
+    public ResponseEntity<AutoQuestionPaperResponse> fromNotHtml(@RequestParam(required = false) String userPrompt,
+                                                                 @RequestParam("file") MultipartFile file) {
 
         try {
             String html = docConverterService.convertDocument(file);

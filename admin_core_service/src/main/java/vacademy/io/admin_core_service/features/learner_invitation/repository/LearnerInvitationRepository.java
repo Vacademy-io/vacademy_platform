@@ -13,21 +13,21 @@ import java.util.Optional;
 
 public interface LearnerInvitationRepository extends JpaRepository<LearnerInvitation, String> {
     @Query("""
-        SELECT li.id AS id, 
-               li.name AS name, 
-               li.instituteId AS instituteId, 
-               li.dateGenerated AS dateGenerated,
-               li.inviteCode AS inviteCode,
-               COUNT(lir.id) AS acceptedBy
-        FROM LearnerInvitation li
-        LEFT JOIN LearnerInvitationResponse lir 
-               ON li.id = lir.learnerInvitation.id 
-               AND lir.status IN :learnerInvitationResponseStatus
-        WHERE li.instituteId = :instituteId 
-          AND li.status IN :learnerInvitationStatus
-        GROUP BY li.id, li.name, li.instituteId, li.dateGenerated
-        ORDER BY li.dateGenerated DESC
-    """)
+                SELECT li.id AS id, 
+                       li.name AS name, 
+                       li.instituteId AS instituteId, 
+                       li.dateGenerated AS dateGenerated,
+                       li.inviteCode AS inviteCode,
+                       COUNT(lir.id) AS acceptedBy
+                FROM LearnerInvitation li
+                LEFT JOIN LearnerInvitationResponse lir 
+                       ON li.id = lir.learnerInvitation.id 
+                       AND lir.status IN :learnerInvitationResponseStatus
+                WHERE li.instituteId = :instituteId 
+                  AND li.status IN :learnerInvitationStatus
+                GROUP BY li.id, li.name, li.instituteId, li.dateGenerated
+                ORDER BY li.dateGenerated DESC
+            """)
     Page<InvitationDetailProjection> findInvitationsWithAcceptedCount(
             @Param("instituteId") String instituteId,
             @Param("learnerInvitationStatus") List<String> learnerInvitationStatus,
@@ -35,22 +35,22 @@ public interface LearnerInvitationRepository extends JpaRepository<LearnerInvita
             Pageable pageable);
 
     @Query(""" 
-        SELECT li.id AS id, 
-               li.name AS name, 
-               li.instituteId AS instituteId, 
-               li.dateGenerated AS dateGenerated,
-               li.inviteCode AS inviteCode,
-               COUNT(lir.id) AS acceptedBy
-        FROM LearnerInvitation li
-        LEFT JOIN LearnerInvitationResponse lir 
-               ON li.id = lir.learnerInvitation.id 
-               AND lir.status IN :learnerInvitationResponseStatus
-        WHERE li.instituteId = :instituteId 
-          AND li.status IN :learnerInvitationStatus
-          AND LOWER(li.name) LIKE LOWER(CONCAT('%', :name, '%'))
-        GROUP BY li.id, li.name, li.instituteId, li.dateGenerated
-        ORDER BY li.dateGenerated DESC
-    """)
+                SELECT li.id AS id, 
+                       li.name AS name, 
+                       li.instituteId AS instituteId, 
+                       li.dateGenerated AS dateGenerated,
+                       li.inviteCode AS inviteCode,
+                       COUNT(lir.id) AS acceptedBy
+                FROM LearnerInvitation li
+                LEFT JOIN LearnerInvitationResponse lir 
+                       ON li.id = lir.learnerInvitation.id 
+                       AND lir.status IN :learnerInvitationResponseStatus
+                WHERE li.instituteId = :instituteId 
+                  AND li.status IN :learnerInvitationStatus
+                  AND LOWER(li.name) LIKE LOWER(CONCAT('%', :name, '%'))
+                GROUP BY li.id, li.name, li.instituteId, li.dateGenerated
+                ORDER BY li.dateGenerated DESC
+            """)
     Page<InvitationDetailProjection> findInvitationsWithAcceptedCountByName(
             @Param("instituteId") String instituteId,
             @Param("learnerInvitationStatus") List<String> learnerInvitationStatus,

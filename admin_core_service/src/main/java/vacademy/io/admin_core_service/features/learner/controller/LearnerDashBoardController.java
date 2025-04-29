@@ -15,7 +15,7 @@ public class LearnerDashBoardController {
     private LearnerDashBoardService learnerDashBoardService;
 
     @GetMapping("/get-dashboard-details")
-    public ResponseEntity<LeanerDashBoardDetailDTO> getLeanerDashBoardDetail(@RequestAttribute("user") CustomUserDetails user, @RequestParam String packageSessionId,@RequestParam String instituteId) {
-        return ResponseEntity.ok(learnerDashBoardService.getLearnerDashBoardDetail(instituteId,packageSessionId, user));
+    public ResponseEntity<LeanerDashBoardDetailDTO> getLeanerDashBoardDetail(@RequestAttribute("user") CustomUserDetails user, @RequestParam String packageSessionId, @RequestParam String instituteId) {
+        return ResponseEntity.ok(learnerDashBoardService.getLearnerDashBoardDetail(instituteId, packageSessionId, user));
     }
 }

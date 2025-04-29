@@ -5,7 +5,9 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import vacademy.io.assessment_service.features.question_bank.dto.*;
+import vacademy.io.assessment_service.features.question_bank.dto.AddQuestionDTO;
+import vacademy.io.assessment_service.features.question_bank.dto.AddQuestionPaperDTO;
+import vacademy.io.assessment_service.features.question_bank.dto.AddedQuestionPaperResponseDto;
 import vacademy.io.assessment_service.features.question_bank.manager.AddQuestionPaperFromImportManager;
 import vacademy.io.assessment_service.features.question_bank.manager.EditQuestionPaperManager;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -53,7 +55,7 @@ public class AddPublicQuestionPaperController {
     public ResponseEntity<Boolean> deletePublicQuestionPaper(@RequestAttribute("user") CustomUserDetails user,
                                                              @RequestParam String questionPaperId) {
         try {
-            return ResponseEntity.ok(editQuestionPaperManager.deletePublicQuestionPaperById(user , questionPaperId));
+            return ResponseEntity.ok(editQuestionPaperManager.deletePublicQuestionPaperById(user, questionPaperId));
         } catch (VacademyException e) {
             throw new VacademyException(e.getMessage());
         } catch (RuntimeException e) {

@@ -49,7 +49,7 @@ public class LmsReportSettingController {
             @RequestParam String instituteId,
             @RequestAttribute("user") CustomUserDetails user
     ) {
-        return ResponseEntity.ok(lmsReportSettingService.getLmsReportNotificationSettingForLearner(userId,instituteId, user));
+        return ResponseEntity.ok(lmsReportSettingService.getLmsReportNotificationSettingForLearner(userId, instituteId, user));
     }
 
 }

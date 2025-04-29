@@ -10,7 +10,6 @@ import vacademy.io.assessment_service.features.assessment.entity.Section;
 import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
 import vacademy.io.assessment_service.features.assessment.enums.QuestionResponseEnum;
 import vacademy.io.assessment_service.features.assessment.repository.SectionRepository;
-import vacademy.io.assessment_service.features.assessment.service.StudentAttemptService;
 import vacademy.io.assessment_service.features.learner_assessment.constants.AttemptJsonConstants;
 import vacademy.io.assessment_service.features.learner_assessment.dto.QuestionStatusDto;
 import vacademy.io.assessment_service.features.learner_assessment.dto.status_json.manual.LearnerManualAttemptDataDto;
@@ -47,16 +46,16 @@ public class QuestionWiseMarksService {
                                                                      Long timeTakenInSecs,
                                                                      String answerStatus,
                                                                      Section section,
-                                                                     double marks){
+                                                                     double marks) {
 
         Optional<QuestionWiseMarks> questionWiseMarksOpt = questionWiseMarksRepository.findByAssessmentIdAndStudentAttemptIdAndQuestionIdAndSectionId(assessment.getId(), attempt.getId(), question.getId(), section.getId());
 
-        if(questionWiseMarksOpt.isPresent()){
+        if (questionWiseMarksOpt.isPresent()) {
             QuestionWiseMarks questionWiseMarks = questionWiseMarksOpt.get();
-            if(!Objects.isNull(timeTakenInSecs)){
+            if (!Objects.isNull(timeTakenInSecs)) {
                 questionWiseMarks.setTimeTakenInSeconds(timeTakenInSecs);
             }
-            if(!Objects.isNull(responseJson)){
+            if (!Objects.isNull(responseJson)) {
                 questionWiseMarks.setResponseJson(responseJson);
             }
 
@@ -83,31 +82,31 @@ public class QuestionWiseMarksService {
 
     }
 
-    public QuestionStatusDto getQuestionStatusForAssessmentAndQuestion(String assessmentId, String questionId, String sectionId){
+    public QuestionStatusDto getQuestionStatusForAssessmentAndQuestion(String assessmentId, String questionId, String sectionId) {
         return questionWiseMarksRepository.findQuestionStatusAssessmentIdAndQuestionId(assessmentId, questionId, sectionId);
     }
 
-    public List<Top3CorrectResponseDto> getTop3ParticipantsForCorrectResponse(String assessmentId, String questionId, String sectionId){
+    public List<Top3CorrectResponseDto> getTop3ParticipantsForCorrectResponse(String assessmentId, String questionId, String sectionId) {
         return questionWiseMarksRepository.findTop3ParticipantsForCorrectResponse(assessmentId, questionId, sectionId);
     }
 
-    public List<QuestionWiseMarks> getAllQuestionWiseMarksForQuestionIdsAndAttemptId(String attemptId, List<String> questionIds, String sectionId){
+    public List<QuestionWiseMarks> getAllQuestionWiseMarksForQuestionIdsAndAttemptId(String attemptId, List<String> questionIds, String sectionId) {
         return questionWiseMarksRepository.findAllQuestionWiseMarksForQuestionIdAndAttemptId(questionIds, attemptId, sectionId);
     }
 
-    public List<QuestionWiseMarks> getAllQuestionWiseMarksForAttemptId(String attemptId, String assessmentId){
+    public List<QuestionWiseMarks> getAllQuestionWiseMarksForAttemptId(String attemptId, String assessmentId) {
         return questionWiseMarksRepository.findByStudentAttemptIdAndAssessmentId(attemptId, assessmentId);
     }
 
-    public List<QuestionWiseMarks> createQuestionWiseMarks(List<QuestionWiseMarks> questionWiseMarks){
+    public List<QuestionWiseMarks> createQuestionWiseMarks(List<QuestionWiseMarks> questionWiseMarks) {
         return questionWiseMarksRepository.saveAll(questionWiseMarks);
     }
 
-    public Optional<QuestionWiseMarks> getQuestionWiseMarkForAssessmentIdAndSectionIdAndQuestionIdAndAttemptId(String assessmentId, String attemptId, String sectionId, String questionId){
+    public Optional<QuestionWiseMarks> getQuestionWiseMarkForAssessmentIdAndSectionIdAndQuestionIdAndAttemptId(String assessmentId, String attemptId, String sectionId, String questionId) {
         return questionWiseMarksRepository.findByAssessmentIdAndStudentAttemptIdAndQuestionIdAndSectionId(assessmentId, attemptId, questionId, sectionId);
     }
 
-    public QuestionWiseMarks createQuestionWiseMark(QuestionWiseMarks questionWiseMark){
+    public QuestionWiseMarks createQuestionWiseMark(QuestionWiseMarks questionWiseMark) {
         return questionWiseMarksRepository.save(questionWiseMark);
     }
 
@@ -115,14 +114,14 @@ public class QuestionWiseMarksService {
         List<ManualSectionAttemptDto> sections = attemptData.getSections();
         List<QuestionWiseMarks> allQuestionAttempts = new ArrayList<>();
 
-        sections.forEach(section->{
+        sections.forEach(section -> {
             String sectionId = section.getSectionId();
             List<ManualQuestionAttemptDto> questions = section.getQuestions();
 
             Optional<Section> currentSection = sectionRepository.findById(sectionId); // Finding section (replace Object with actual return type)
-            if(currentSection.isEmpty()) throw new VacademyException("Section Not Found");
+            if (currentSection.isEmpty()) throw new VacademyException("Section Not Found");
 
-            for(ManualQuestionAttemptDto questionAttemptDto: questions){
+            for (ManualQuestionAttemptDto questionAttemptDto : questions) {
 
                 String questionResponse = getQuestionDetails(questionAttemptDto.getQuestionId(), jsonContent);
 
@@ -130,7 +129,7 @@ public class QuestionWiseMarksService {
                         assessment.getId(), studentAttempt.getId(), questionAttemptDto.getQuestionId(), sectionId
                 );
 
-                if(existingEntry.isEmpty()){
+                if (existingEntry.isEmpty()) {
                     Optional<Question> questionOptional = questionRepository.findById(questionAttemptDto.getQuestionId());
                     if (questionOptional.isEmpty()) throw new VacademyException("Question Not Found");
 
@@ -142,8 +141,7 @@ public class QuestionWiseMarksService {
                             .studentAttempt(studentAttempt)
                             .responseJson(questionResponse)
                             .build());
-                }
-                else{
+                } else {
                     // Update existing entry
                     QuestionWiseMarks existingMarks = existingEntry.get();
                     existingMarks.setStatus(QuestionResponseEnum.PENDING.name());

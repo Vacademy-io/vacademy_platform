@@ -209,7 +209,7 @@ public class UserService {
         return savedUser;
     }
 
-    public List<UserRole> addUserRoles(String instituteId, List<String> roles, User user,String status) {
+    public List<UserRole> addUserRoles(String instituteId, List<String> roles, User user, String status) {
 
         List<Role> rolesEntity = roleRepository.findByNameIn(roles);
 
@@ -237,12 +237,12 @@ public class UserService {
         return userRepository.findUsersWithRolesByInstituteId(instituteId).stream().map(UserWithRolesDTO::new).collect(Collectors.toList());
     }
 
-    public List<UserWithRolesDTO> getUserDetailsByInstituteId(String instituteId,List<String>roles, CustomUserDetails user) {
-        return userRepository.findUsersWithRolesByInstituteIdAndStatuses(instituteId,roles,List.of(UserRoleStatus.ACTIVE.name(),UserRoleStatus.DISABLED.name())).stream().map(UserWithRolesDTO::new).collect(Collectors.toList());
+    public List<UserWithRolesDTO> getUserDetailsByInstituteId(String instituteId, List<String> roles, CustomUserDetails user) {
+        return userRepository.findUsersWithRolesByInstituteIdAndStatuses(instituteId, roles, List.of(UserRoleStatus.ACTIVE.name(), UserRoleStatus.DISABLED.name())).stream().map(UserWithRolesDTO::new).collect(Collectors.toList());
     }
 
-    public UserCredentials getUserCredentials(String userId,CustomUserDetails user) {
-        User userEntity = userRepository.findById(userId).orElseThrow(()->new UserNotFoundException("User with Id "+userId+" not found"));
+    public UserCredentials getUserCredentials(String userId, CustomUserDetails user) {
+        User userEntity = userRepository.findById(userId).orElseThrow(() -> new UserNotFoundException("User with Id " + userId + " not found"));
         UserCredentials userCredentials = new UserCredentials();
         userCredentials.setUsername(userEntity.getUsername());
         userCredentials.setPassword(userEntity.getPassword());
@@ -256,8 +256,8 @@ public class UserService {
                 .collect(Collectors.toList());
     }
 
-    public List<UserWithRolesDTO> getUsersByInstituteIdAndStatus(String instituteId, List<String> statuses,List<String> roles,CustomUserDetails userDetails) {
-        return userRepository.findUsersByStatusAndInstitute(statuses,roles, instituteId)
+    public List<UserWithRolesDTO> getUsersByInstituteIdAndStatus(String instituteId, List<String> statuses, List<String> roles, CustomUserDetails userDetails) {
+        return userRepository.findUsersByStatusAndInstitute(statuses, roles, instituteId)
                 .stream()
                 .map(UserWithRolesDTO::new).collect(Collectors.toList());
     }
@@ -266,8 +266,8 @@ public class UserService {
         return userRepository.findById(userId).orElseThrow(() -> new UserNotFoundException("User with Id " + userId + " not found"));
     }
 
-    public List<UserWithRolesDTO> getUsersByInstituteIdAndStatus(String instituteId, List<String> statuses,List<String> roles) {
-        return userRepository.findUsersByStatusAndInstitute(statuses,roles, instituteId)
+    public List<UserWithRolesDTO> getUsersByInstituteIdAndStatus(String instituteId, List<String> statuses, List<String> roles) {
+        return userRepository.findUsersByStatusAndInstitute(statuses, roles, instituteId)
                 .stream()
                 .map(UserWithRolesDTO::new).collect(Collectors.toList());
     }
@@ -292,7 +292,7 @@ public class UserService {
         return userRepository.save(user);
     }
 
-    public Optional<User> getOptionalUserById(String userId){
+    public Optional<User> getOptionalUserById(String userId) {
         return userRepository.findById(userId);
     }
 }

@@ -3,7 +3,6 @@ package vacademy.io.admin_core_service.features.learner_reports.controller;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
-import vacademy.io.admin_core_service.features.learner_reports.dto.LearnerProgressReportDTO;
 import vacademy.io.admin_core_service.features.learner_reports.dto.ReportFilterDTO;
 import vacademy.io.admin_core_service.features.learner_reports.service.LmsReportExportService;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -48,7 +47,7 @@ public class LmsReportExportController {
 
     @PostMapping(value = "/learner-subject-wise-report", produces = MediaType.APPLICATION_PDF_VALUE)
     public ResponseEntity<byte[]> downloadSubjectWiseProgress(@RequestBody ReportFilterDTO reportFilterDTO,
-                                                        @RequestAttribute("user") CustomUserDetails userDetails) {
+                                                              @RequestAttribute("user") CustomUserDetails userDetails) {
         byte[] pdfBytes = lmsReportExportService.generateSubjectWiseLearnerProgressReport(reportFilterDTO, userDetails);
 
         HttpHeaders headers = new HttpHeaders();
@@ -66,7 +65,7 @@ public class LmsReportExportController {
                                                               @RequestParam String moduleId,
                                                               @RequestParam String packageSessionId,
                                                               @RequestAttribute("user") CustomUserDetails userDetails) {
-        byte[] pdfBytes = lmsReportExportService.generateModuleProgressReport(moduleId,userId,packageSessionId,userDetails);
+        byte[] pdfBytes = lmsReportExportService.generateModuleProgressReport(moduleId, userId, packageSessionId, userDetails);
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_PDF);

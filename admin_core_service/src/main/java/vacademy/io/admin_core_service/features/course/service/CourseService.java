@@ -5,7 +5,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.course.dto.AddCourseDTO;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
-import vacademy.io.admin_core_service.features.level.dto.AddLevelWithCourseDTO;
 import vacademy.io.admin_core_service.features.level.service.LevelService;
 import vacademy.io.admin_core_service.features.packages.enums.PackageStatusEnum;
 import vacademy.io.admin_core_service.features.packages.repository.PackageInstituteRepository;
@@ -13,7 +12,6 @@ import vacademy.io.admin_core_service.features.packages.repository.PackageReposi
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
 import vacademy.io.admin_core_service.features.packages.service.PackageSessionService;
 import vacademy.io.admin_core_service.features.session.dto.AddNewSessionDTO;
-import vacademy.io.admin_core_service.features.session.dto.AddSessionDTO;
 import vacademy.io.admin_core_service.features.session.service.SessionService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
@@ -43,10 +41,10 @@ public class CourseService {
     public String addCourse(AddCourseDTO addCourseDTO, CustomUserDetails user, String instituteId) {
         PackageEntity savedPackage = null;
 
-        if (addCourseDTO.getNewCourse()){
+        if (addCourseDTO.getNewCourse()) {
             PackageEntity packageEntity = getCourse(addCourseDTO);
             savedPackage = packageRepository.save(packageEntity);
-        }else{
+        } else {
             savedPackage = packageRepository.findById(addCourseDTO.getId()).orElseThrow(() -> new VacademyException("Course not found"));
         }
         createPackageInstitute(savedPackage, instituteId);

@@ -31,7 +31,6 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
             @Param("statuses") List<String> statuses);
 
 
-
     @Query(value = "SELECT ps.id, ps.level_id, ps.session_id, ps.start_time, ps.updated_at, ps.created_at, ps.status, ps.package_id " +
             "FROM package_session ps " +
             "JOIN package p ON ps.package_id = p.id " +
@@ -77,14 +76,14 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
     void updateStatusBySessionIds(@Param("sessionIds") List<String> sessionIds, @Param("status") String status);
 
     @Query("""
-    SELECT pi.packageEntity 
-    FROM PackageInstitute pi 
-    JOIN pi.packageEntity p
-    JOIN PackageSession ps ON ps.packageEntity.id = pi.packageEntity.id
-    WHERE ps.session.id = :sessionId 
-      AND pi.instituteEntity.id = :instituteId
-      AND ps.status IN :statuses
-    """)
+            SELECT pi.packageEntity 
+            FROM PackageInstitute pi 
+            JOIN pi.packageEntity p
+            JOIN PackageSession ps ON ps.packageEntity.id = pi.packageEntity.id
+            WHERE ps.session.id = :sessionId 
+              AND pi.instituteEntity.id = :instituteId
+              AND ps.status IN :statuses
+            """)
     List<PackageEntity> findPackagesBySessionIdAndStatuses(
             @Param("sessionId") String sessionId,
             @Param("instituteId") String instituteId,
@@ -93,23 +92,23 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
 
 
     @Query("""
-    SELECT 
-        ps.id AS packageSessionId,
-        CONCAT(p.packageName, ' ', l.levelName) AS batchName,
-        ps.status AS batchStatus,
-        ps.startTime AS startDate,
-        COUNT(ssigm.id) AS countStudents
-    FROM PackageSession ps
-    JOIN ps.level l
-    JOIN ps.packageEntity p
-    LEFT JOIN StudentSessionInstituteGroupMapping ssigm 
-        ON ssigm.packageSession.id = ps.id 
-        AND ssigm.status IN :studentSessionStatuses
-    WHERE p.id = :packageId
-      AND ps.status IN :packageSessionStatuses
-    GROUP BY ps.id, p.packageName, l.levelName, ps.status, ps.startTime
-    ORDER BY ps.startTime DESC
-""")
+                SELECT 
+                    ps.id AS packageSessionId,
+                    CONCAT(p.packageName, ' ', l.levelName) AS batchName,
+                    ps.status AS batchStatus,
+                    ps.startTime AS startDate,
+                    COUNT(ssigm.id) AS countStudents
+                FROM PackageSession ps
+                JOIN ps.level l
+                JOIN ps.packageEntity p
+                LEFT JOIN StudentSessionInstituteGroupMapping ssigm 
+                    ON ssigm.packageSession.id = ps.id 
+                    AND ssigm.status IN :studentSessionStatuses
+                WHERE p.id = :packageId
+                  AND ps.status IN :packageSessionStatuses
+                GROUP BY ps.id, p.packageName, l.levelName, ps.status, ps.startTime
+                ORDER BY ps.startTime DESC
+            """)
     List<BatchProjection> findBatchDetails(
             @Param("packageId") String packageId,
             @Param("packageSessionStatuses") List<String> packageSessionStatuses,
@@ -117,15 +116,15 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
     );
 
     @Query("""
-    SELECT 
-        CONCAT(l.levelName, ' ', p.packageName) AS batchName,
-        i.instituteName AS instituteName
-    FROM PackageSession ps
-    JOIN ps.level l
-    JOIN ps.packageEntity p
-    JOIN PackageInstitute pi ON pi.packageEntity.id = p.id
-    JOIN pi.instituteEntity i
-    WHERE ps.id = :packageSessionId
-""")
+                SELECT 
+                    CONCAT(l.levelName, ' ', p.packageName) AS batchName,
+                    i.instituteName AS instituteName
+                FROM PackageSession ps
+                JOIN ps.level l
+                JOIN ps.packageEntity p
+                JOIN PackageInstitute pi ON pi.packageEntity.id = p.id
+                JOIN pi.instituteEntity i
+                WHERE ps.id = :packageSessionId
+            """)
     Optional<BatchInstituteProjection> findBatchAndInstituteByPackageSessionId(@Param("packageSessionId") String packageSessionId);
 }

@@ -17,6 +17,6 @@ public class SectionDTO {
     private Double cutOfMarks;
     private Double marksPerQuestion;
     private Integer sectionOrder;
-    private List<SectionQuestionsDTO>questions;
+    private List<SectionQuestionsDTO> questions;
     private boolean newSection;
 }

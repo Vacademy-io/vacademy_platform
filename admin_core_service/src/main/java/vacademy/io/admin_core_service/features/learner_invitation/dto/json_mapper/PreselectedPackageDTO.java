@@ -12,5 +12,5 @@ public class PreselectedPackageDTO {
     private String name;
     private String id;
     private List<PreSelectedSessionDTO> preSelectedSessionDTOS;
-    private List<LearnerChoiceSessionDTO>learnerChoiceSessions;
+    private List<LearnerChoiceSessionDTO> learnerChoiceSessions;
 }

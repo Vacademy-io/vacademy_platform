@@ -12,7 +12,9 @@ import vacademy.io.admin_core_service.features.slide.service.SlideService;
 import vacademy.io.common.institute.entity.module.Module;
 import vacademy.io.common.institute.entity.session.PackageSession;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -23,11 +25,11 @@ public class ChapterManager {
     private final SlideService slideService;
     private final ChapterRepository chapterRepository;
 
-    public void copyChaptersOfModule(Module oldModule, Module newModule, PackageSession oldPackageSession, PackageSession newPackageSession){
-        List<Chapter> chapters = moduleChapterMappingRepository.findChaptersByModuleIdAndStatusNotDeleted(oldModule.getId(),oldPackageSession.getId());
-        List<Chapter>newChapters = new ArrayList<>();
-        List<ChapterPackageSessionMapping>newChapterPackageSessionMappings = new ArrayList<>();
-        List<ModuleChapterMapping>newModuleChapterMappings = new ArrayList<>();
+    public void copyChaptersOfModule(Module oldModule, Module newModule, PackageSession oldPackageSession, PackageSession newPackageSession) {
+        List<Chapter> chapters = moduleChapterMappingRepository.findChaptersByModuleIdAndStatusNotDeleted(oldModule.getId(), oldPackageSession.getId());
+        List<Chapter> newChapters = new ArrayList<>();
+        List<ChapterPackageSessionMapping> newChapterPackageSessionMappings = new ArrayList<>();
+        List<ModuleChapterMapping> newModuleChapterMappings = new ArrayList<>();
         List<List<Chapter>> newChapterAndOldChapterMap = new ArrayList<>();
         for (Chapter chapter : chapters) {
             Chapter newChapter = new Chapter();
@@ -35,8 +37,8 @@ public class ChapterManager {
             newChapter.setDescription(chapter.getDescription());
             newChapter.setFileId(chapter.getFileId());
             newChapter.setStatus(chapter.getStatus());
-            Optional<ChapterPackageSessionMapping> optionalChapterPackageSessionMapping = chapterPackageSessionMappingRepository.findByChapterIdAndPackageSessionIdAndStatusNotDeleted(chapter.getId(),oldPackageSession.getId());
-            if (optionalChapterPackageSessionMapping.isPresent()){
+            Optional<ChapterPackageSessionMapping> optionalChapterPackageSessionMapping = chapterPackageSessionMappingRepository.findByChapterIdAndPackageSessionIdAndStatusNotDeleted(chapter.getId(), oldPackageSession.getId());
+            if (optionalChapterPackageSessionMapping.isPresent()) {
                 ChapterPackageSessionMapping chapterPackageSessionMapping = optionalChapterPackageSessionMapping.get();
                 ChapterPackageSessionMapping newChapterPackageSessionMapping = new ChapterPackageSessionMapping();
                 newChapterPackageSessionMapping.setChapter(newChapter);
@@ -44,16 +46,16 @@ public class ChapterManager {
                 newChapterPackageSessionMapping.setChapterOrder(chapterPackageSessionMapping.getChapterOrder());
                 newChapterPackageSessionMappings.add(newChapterPackageSessionMapping);
                 newChapters.add(newChapter);
-                ModuleChapterMapping moduleChapterMapping = new ModuleChapterMapping(newChapter,newModule);
+                ModuleChapterMapping moduleChapterMapping = new ModuleChapterMapping(newChapter, newModule);
                 newModuleChapterMappings.add(moduleChapterMapping);
-                newChapterAndOldChapterMap.add(List.of(newChapter,chapter));
+                newChapterAndOldChapterMap.add(List.of(newChapter, chapter));
             }
         }
         chapterRepository.saveAll(newChapters);
         moduleChapterMappingRepository.saveAll(newModuleChapterMappings);
         chapterPackageSessionMappingRepository.saveAll(newChapterPackageSessionMappings);
-        for (List<Chapter>newAndOldChapter : newChapterAndOldChapterMap) {
-            slideService.copySlidesOfChapter(newAndOldChapter.get(1),newAndOldChapter.get(0));
+        for (List<Chapter> newAndOldChapter : newChapterAndOldChapterMap) {
+            slideService.copySlidesOfChapter(newAndOldChapter.get(1), newAndOldChapter.get(0));
         }
     }
 }

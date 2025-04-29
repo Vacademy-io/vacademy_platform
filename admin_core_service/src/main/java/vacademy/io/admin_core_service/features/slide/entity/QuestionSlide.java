@@ -5,7 +5,6 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.hibernate.annotations.UuidGenerator;
 import vacademy.io.admin_core_service.features.common.entity.RichTextData;
 import vacademy.io.admin_core_service.features.slide.dto.QuestionSlideDTO;
 
@@ -85,7 +84,7 @@ public class QuestionSlide {
 
         // Convert the OptionDTO list to Option entities
         this.options = dto.getOptions().stream()
-                .map(optionDTO -> new Option(optionDTO,this))  // Assuming a constructor in Option for OptionDTO
+                .map(optionDTO -> new Option(optionDTO, this))  // Assuming a constructor in Option for OptionDTO
                 .collect(Collectors.toList());
     }
 }

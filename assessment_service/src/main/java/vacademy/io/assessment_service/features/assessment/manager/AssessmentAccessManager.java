@@ -91,8 +91,8 @@ public class AssessmentAccessManager {
     }
 
     Pair<List<String>, List<String>> updateAccessToAssessment(List<String> currentUserIds, List<String> currentRoles, List<String> newUserIds, List<String> newRoles) {
-        if(newUserIds.isEmpty()) newUserIds = List.of();
-        if(newRoles.isEmpty()) newRoles = List.of();
+        if (newUserIds.isEmpty()) newUserIds = List.of();
+        if (newRoles.isEmpty()) newRoles = List.of();
 
         Set<String> userIds = new HashSet<>(newUserIds);
 

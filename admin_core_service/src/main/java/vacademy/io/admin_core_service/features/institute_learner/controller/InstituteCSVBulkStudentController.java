@@ -39,8 +39,8 @@ public class InstituteCSVBulkStudentController {
             @RequestParam("file") MultipartFile file,
             @RequestParam(value = "instituteId", required = false) String instituteId,
             @RequestParam("bulkUploadInitRequest") String bulkUploadInitRequestJson,
-            @RequestParam("packageSessionId")String packageSessionId,
-            @RequestParam(value = "notify",required = false,defaultValue = "true") Boolean notify,
+            @RequestParam("packageSessionId") String packageSessionId,
+            @RequestParam(value = "notify", required = false, defaultValue = "true") Boolean notify,
             @RequestAttribute(name = "user") CustomUserDetails user) {
 
         // Convert JSON string to BulkUploadInitRequest object
@@ -53,7 +53,7 @@ public class InstituteCSVBulkStudentController {
         }
 
         if (CSVHelper.hasCSVFormat(file)) {
-            return studentBulkUpload.uploadStudentCsv(file, instituteId, bulkUploadInitRequest,packageSessionId,notify, user);
+            return studentBulkUpload.uploadStudentCsv(file, instituteId, bulkUploadInitRequest, packageSessionId, notify, user);
         }
 
         throw new VacademyException("Please upload a valid CSV file");

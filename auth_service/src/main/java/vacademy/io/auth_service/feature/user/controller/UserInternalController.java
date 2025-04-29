@@ -22,15 +22,14 @@ public class UserInternalController {
 
     @PostMapping("/create-or-get-existing-by-id")
     @Transactional
-    public ResponseEntity<UserDTO> createUserOrGetExisting(@RequestBody UserDTO userDTO, @RequestParam(name = "instituteId",required = false) String instituteId) {
+    public ResponseEntity<UserDTO> createUserOrGetExisting(@RequestBody UserDTO userDTO, @RequestParam(name = "instituteId", required = false) String instituteId) {
         try {
-             User user = null;
-             if (!StringUtils.hasText(userDTO.getId())) {
-                 user = userService.createUserFromUserDto(userDTO);
-             }
-             else{
-                 user = userService.getOptionalUserById(userDTO.getId()).orElse(userService.createUserFromUserDto(userDTO));
-             }
+            User user = null;
+            if (!StringUtils.hasText(userDTO.getId())) {
+                user = userService.createUserFromUserDto(userDTO);
+            } else {
+                user = userService.getOptionalUserById(userDTO.getId()).orElse(userService.createUserFromUserDto(userDTO));
+            }
             userService.addUserRoles(instituteId, userDTO.getRoles(), user, UserRoleStatus.ACTIVE.name());
             return ResponseEntity.ok(new UserDTO(user));
         } catch (Exception e) {

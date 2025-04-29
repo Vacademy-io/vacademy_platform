@@ -6,8 +6,6 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import vacademy.io.assessment_service.features.assessment.entity.Assessment;
-import vacademy.io.assessment_service.features.assessment.entity.AssessmentCustomField;
 import vacademy.io.assessment_service.features.rich_text.dto.AssessmentRichTextDataDTO;
 
 import java.util.ArrayList;

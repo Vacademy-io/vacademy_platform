@@ -12,8 +12,6 @@ import vacademy.io.common.auth.service.ClientAuthentication;
 import vacademy.io.common.auth.service.ClientAuthenticationService;
 
 import java.io.IOException;
-import java.util.Base64;
-import java.util.StringTokenizer;
 
 @Component
 public class InternalAuthFilter extends OncePerRequestFilter {
@@ -26,18 +24,18 @@ public class InternalAuthFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
 
         if (request.getRequestURI().contains("internal")) {
-                String clientName = request.getHeader("clientName");
-                String clientToken = request.getHeader("Signature");
+            String clientName = request.getHeader("clientName");
+            String clientToken = request.getHeader("Signature");
 
 
-                boolean isValidClient = clientAuthenticationService.validateClient(clientName, clientToken);
-                if (isValidClient) {
-                    SecurityContextHolder.getContext().setAuthentication(new ClientAuthentication(clientName, clientToken));
-                    filterChain.doFilter(request, response);
-                } else {
-                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-                    response.getWriter().write("Invalid client authentication");
-                }
+            boolean isValidClient = clientAuthenticationService.validateClient(clientName, clientToken);
+            if (isValidClient) {
+                SecurityContextHolder.getContext().setAuthentication(new ClientAuthentication(clientName, clientToken));
+                filterChain.doFilter(request, response);
+            } else {
+                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                response.getWriter().write("Invalid client authentication");
+            }
         } else {
             filterChain.doFilter(request, response);
             return;

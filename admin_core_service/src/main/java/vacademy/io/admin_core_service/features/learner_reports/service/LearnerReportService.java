@@ -2,7 +2,6 @@ package vacademy.io.admin_core_service.features.learner_reports.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -19,32 +18,25 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
-import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 @Service
 public class LearnerReportService {
-
-    @Autowired
-    private ActivityLogRepository activityLogRepository;
-
-    @Autowired
-    private ConcentrationScoreRepository concentrationScoreRepository;
-
-    private final ObjectMapper objectMapper = new ObjectMapper();
-
 
     private static final List<String> ACTIVE_LEARNERS = List.of(LearnerStatusEnum.ACTIVE.name());
     private static final List<String> ACTIVE_SUBJECTS = List.of(SubjectStatusEnum.ACTIVE.name());
     private static final List<String> ACTIVE_MODULES = List.of(ModuleStatusEnum.ACTIVE.name());
     private static final List<String> ACTIVE_CHAPTERS = List.of(ChapterStatus.ACTIVE.name());
     private static final List<String> VALID_SLIDE_STATUSES = List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name());
+    private final ObjectMapper objectMapper = new ObjectMapper();
+    @Autowired
+    private ActivityLogRepository activityLogRepository;
+    @Autowired
+    private ConcentrationScoreRepository concentrationScoreRepository;
 
-
-    public ProgressReportDTO getLearnerProgressReport(ReportFilterDTO filterDTO, CustomUserDetails userDetails){
+    public ProgressReportDTO getLearnerProgressReport(ReportFilterDTO filterDTO, CustomUserDetails userDetails) {
         validateBatchReportFilter(filterDTO);
         return new ProgressReportDTO(
                 getPercentageCourseCompleted(filterDTO),
@@ -127,7 +119,8 @@ public class LearnerReportService {
             // Convert JSON string (modules) to List<ModuleProgressDTO>
             String modulesJson = (String) result[2];
             List<LearnerSubjectWiseProgressReportDTO.ModuleProgressDTO> modules = objectMapper.readValue(
-                    modulesJson, new TypeReference<>() {});
+                    modulesJson, new TypeReference<>() {
+                    });
 
             dto.setModules(modules);
             return dto;
@@ -136,7 +129,7 @@ public class LearnerReportService {
         }
     }
 
-    public List<LearnerChapterSlideProgressDTO> getChapterSlideProgress(String moduleId,String userId,String packageSessionId, CustomUserDetails userDetails) {
+    public List<LearnerChapterSlideProgressDTO> getChapterSlideProgress(String moduleId, String userId, String packageSessionId, CustomUserDetails userDetails) {
         return activityLogRepository.getChapterSlideProgressCombined(
                         moduleId,
                         packageSessionId,
@@ -158,7 +151,8 @@ public class LearnerReportService {
             dto.setChapterName(projection.getChapterName());
 
             List<LearnerChapterSlideProgressDTO.SlideProgressDTO> slides = objectMapper.readValue(
-                    projection.getSlides(), new TypeReference<>() {});
+                    projection.getSlides(), new TypeReference<>() {
+                    });
             dto.setSlides(slides);
 
             return dto;
@@ -188,7 +182,8 @@ public class LearnerReportService {
                 String jsonString = row[1].toString();  // Extract JSON string
 
                 List<SlideProgressDTO> slideDetails = objectMapper.readValue(
-                        jsonString, new TypeReference<List<SlideProgressDTO>>() {}
+                        jsonString, new TypeReference<List<SlideProgressDTO>>() {
+                        }
                 );
 
                 progressList.add(new SlideProgressDateWiseDTO(date, slideDetails));

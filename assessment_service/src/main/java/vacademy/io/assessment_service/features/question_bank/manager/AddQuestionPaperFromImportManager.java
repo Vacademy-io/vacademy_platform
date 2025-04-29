@@ -7,7 +7,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.assessment_service.features.evaluation.service.QuestionEvaluationService;
-import vacademy.io.assessment_service.features.question_bank.dto.*;
+import vacademy.io.assessment_service.features.question_bank.dto.AddQuestionDTO;
+import vacademy.io.assessment_service.features.question_bank.dto.AddQuestionPaperDTO;
+import vacademy.io.assessment_service.features.question_bank.dto.AddedQuestionPaperResponseDto;
+import vacademy.io.assessment_service.features.question_bank.dto.EditQuestionPaperDTO;
 import vacademy.io.assessment_service.features.question_bank.entity.QuestionPaper;
 import vacademy.io.assessment_service.features.question_bank.repository.QuestionPaperRepository;
 import vacademy.io.assessment_service.features.question_core.dto.*;
@@ -19,10 +22,8 @@ import vacademy.io.assessment_service.features.question_core.enums.QuestionRespo
 import vacademy.io.assessment_service.features.question_core.enums.QuestionTypes;
 import vacademy.io.assessment_service.features.question_core.repository.OptionRepository;
 import vacademy.io.assessment_service.features.question_core.repository.QuestionRepository;
-import vacademy.io.assessment_service.features.rich_text.dto.AssessmentRichTextDataDTO;
 import vacademy.io.assessment_service.features.rich_text.entity.AssessmentRichTextData;
 import vacademy.io.common.auth.model.CustomUserDetails;
-import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -145,7 +146,7 @@ public class AddQuestionPaperFromImportManager {
     }
 
 
-    public Question  makeQuestionAndOptionFromImportQuestion(QuestionDTO questionRequest, Boolean isPublic, Question existingQuestion) throws JsonProcessingException {        // Todo: check Question Validation
+    public Question makeQuestionAndOptionFromImportQuestion(QuestionDTO questionRequest, Boolean isPublic, Question existingQuestion) throws JsonProcessingException {        // Todo: check Question Validation
 
         Question question = initializeQuestion(questionRequest, existingQuestion);
         List<String> correctOptionIds = new ArrayList<>();
@@ -271,7 +272,7 @@ public class AddQuestionPaperFromImportManager {
             case "NUMERIC":
                 question.setQuestionResponseType(QuestionResponseTypes.INTEGER.name());
                 break;
-            case"TRUE_FALSE":
+            case "TRUE_FALSE":
             case "MCQS":
             case "MCQM":
                 question.setQuestionResponseType(QuestionResponseTypes.OPTION.name());
@@ -294,9 +295,9 @@ public class AddQuestionPaperFromImportManager {
             Option option = new Option();
             UUID optionId = UUID.randomUUID();
             option.setId(optionId.toString());
-            if(optionDTO.getId() != null) {
+            if (optionDTO.getId() != null) {
                 Optional<Option> existingOption = optionRepository.findById(optionDTO.getId());
-                if(existingOption.isPresent()) {
+                if (existingOption.isPresent()) {
                     option = existingOption.get();
                 }
             }
@@ -404,7 +405,7 @@ public class AddQuestionPaperFromImportManager {
 
         MCQEvaluationDTO mcqEvaluation = new MCQEvaluationDTO();
         if (question.getQuestionType() != null) mcqEvaluation.setType(question.getQuestionType());
-        if(correctOptionIds != null) {
+        if (correctOptionIds != null) {
             mcqEvaluation.setData(new MCQEvaluationDTO.MCQData(correctOptionIds));
             question.setAutoEvaluationJson(questionEvaluationService.setEvaluationJson(mcqEvaluation));
         }

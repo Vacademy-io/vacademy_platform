@@ -13,6 +13,6 @@ import java.util.List;
 @AllArgsConstructor
 @NoArgsConstructor
 public class UserRoleFilterDTO {
-    private List<String>roles;
-    private List<String>status;
+    private List<String> roles;
+    private List<String> status;
 }

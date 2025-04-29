@@ -9,7 +9,7 @@ import java.util.Optional;
 import java.util.Set;
 
 @Repository
-public interface TagsRepository extends JpaRepository<Tags , String> {
+public interface TagsRepository extends JpaRepository<Tags, String> {
     Optional<Tags> findByTagName(String tagName);
 
     List<Tags> findAllByTagNameIn(Set<String> tagNames);

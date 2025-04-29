@@ -23,7 +23,7 @@ public class EntityTagsService {
     private final TagValidationService tagValidationService;
     private final TagsRepository tagsRepository;
 
-    public EntityTagsService(TagsRepository tagsRepository , TagValidationService tagValidationService , EntityValidationService entityValidationService , EntityTagsRepository entityTagsRepository) {
+    public EntityTagsService(TagsRepository tagsRepository, TagValidationService tagValidationService, EntityValidationService entityValidationService, EntityTagsRepository entityTagsRepository) {
         this.entityTagsRepository = entityTagsRepository;
         this.entityValidationService = entityValidationService;
         this.tagValidationService = tagValidationService;
@@ -81,6 +81,7 @@ public class EntityTagsService {
             );
         });
     }
+
     private List<Tags> processCommaSeparatedTags(String commaSeparatedTags) {
         if (commaSeparatedTags == null || commaSeparatedTags.trim().isEmpty()) {
             return List.of();

@@ -29,15 +29,14 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class BatchReportService {
 
-    private final ActivityLogRepository activityLogRepository;
-    private final ConcentrationScoreRepository concentrationScoreRepository;
-    private final ObjectMapper objectMapper = new ObjectMapper();
-
     private static final List<String> ACTIVE_LEARNERS = List.of(LearnerStatusEnum.ACTIVE.name());
     private static final List<String> ACTIVE_SUBJECTS = List.of(SubjectStatusEnum.ACTIVE.name());
     private static final List<String> ACTIVE_MODULES = List.of(ModuleStatusEnum.ACTIVE.name());
     private static final List<String> ACTIVE_CHAPTERS = List.of(ChapterStatus.ACTIVE.name());
     private static final List<String> VALID_SLIDE_STATUSES = List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name());
+    private final ActivityLogRepository activityLogRepository;
+    private final ConcentrationScoreRepository concentrationScoreRepository;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public ProgressReportDTO getBatchReport(ReportFilterDTO filter, CustomUserDetails userDetails) {
         validateBatchReportFilter(filter);
@@ -125,7 +124,8 @@ public class BatchReportService {
             log.info("Processing subject: {}", projection.getSubjectName());
 
             List<SubjectProgressDTO.ModuleProgressDTO> modules = objectMapper.readValue(
-                    projection.getModules(), new TypeReference<>() {});
+                    projection.getModules(), new TypeReference<>() {
+                    });
             dto.setModules(modules);
             return dto;
         } catch (JsonProcessingException e) {
@@ -149,7 +149,8 @@ public class BatchReportService {
             dto.setChapterName(projection.getChapterName());
 
             List<ChapterSlideProgressDTO.SlideProgressDTO> slides = objectMapper.readValue(
-                    projection.getSlides(), new TypeReference<>() {});
+                    projection.getSlides(), new TypeReference<>() {
+                    });
             dto.setSlides(slides);
 
             return dto;

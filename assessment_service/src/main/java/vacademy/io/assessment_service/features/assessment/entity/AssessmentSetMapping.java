@@ -39,10 +39,10 @@ public class AssessmentSetMapping {
     private Date updatedAt;
 
 
-    public AssessmentSetDto getSetDto(){
+    public AssessmentSetDto getSetDto() {
         return AssessmentSetDto.builder()
                 .id(this.id)
-                .assessmentId(this.assessment!=null ? this.assessment.getId() : null)
+                .assessmentId(this.assessment != null ? this.assessment.getId() : null)
                 .setName(this.getSetName())
                 .json(this.getJson())
                 .status(this.getStatus()).build();

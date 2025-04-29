@@ -9,7 +9,6 @@ import org.hibernate.annotations.UuidGenerator;
 
 import java.util.Date;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 
 @Entity
@@ -66,7 +65,7 @@ public class AssessmentUserRegistration {
     private String status;
 
     @OneToMany(mappedBy = "assessmentUserRegistration", cascade = CascadeType.ALL)
-    private Set<AssessmentRegistrationCustomFieldResponse> assessmentRegistrationCustomFieldResponseList= new HashSet<>();
+    private Set<AssessmentRegistrationCustomFieldResponse> assessmentRegistrationCustomFieldResponseList = new HashSet<>();
 
     @OneToMany(mappedBy = "registration")
     private Set<StudentAttempt> studentAttempts = new HashSet<>();

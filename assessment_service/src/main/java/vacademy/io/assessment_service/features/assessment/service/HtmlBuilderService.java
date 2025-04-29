@@ -12,7 +12,6 @@ import vacademy.io.assessment_service.features.assessment.entity.Section;
 import vacademy.io.assessment_service.features.assessment.manager.AdminAssessmentGetManager;
 import vacademy.io.assessment_service.features.assessment.repository.SectionRepository;
 import vacademy.io.assessment_service.features.learner_assessment.dto.QuestionStatusDto;
-import vacademy.io.assessment_service.features.question_core.dto.OptionDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
@@ -31,6 +30,44 @@ public class HtmlBuilderService {
 
     @Autowired
     SectionRepository sectionRepository;
+
+    public static String convertToReadableTime(Long timeInSeconds) {
+        if (Objects.isNull(timeInSeconds) || timeInSeconds < 0) {
+            return "Invalid Input";
+        }
+
+        long hours = timeInSeconds / 3600;
+        long minutes = (timeInSeconds % 3600) / 60;
+        long seconds = timeInSeconds % 60;
+
+        StringBuilder result = new StringBuilder();
+        if (hours > 0) {
+            result.append(hours).append(" hr ");
+        }
+        if (minutes > 0) {
+            result.append(minutes).append(" min ");
+        }
+        if (seconds > 0 || result.isEmpty()) { // Always show at least seconds if the input is 0
+            result.append(seconds).append(" sec");
+        }
+
+        return result.toString().trim();
+    }
+
+    public static String calculateEndTime(Date startTime, Long durationInSeconds) {
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
+        // Convert Date to LocalDateTime
+        LocalDateTime localDateTime = Instant.ofEpochMilli(startTime.getTime())
+                .atZone(ZoneId.systemDefault())
+                .toLocalDateTime();
+
+        // Add duration in seconds
+        LocalDateTime endDateTime = localDateTime.plusSeconds(durationInSeconds);
+
+        // Return formatted date and time
+        return endDateTime.format(formatter);
+    }
 
     public String getQuestionInsightsHtml(CustomUserDetails user, List<String> sectionIds, String assessmentId, String instituteId) {
         StringBuilder html = new StringBuilder();
@@ -55,17 +92,17 @@ public class HtmlBuilderService {
         html.append("</style>");
         html.append("</head>");
         html.append("<body>");
-        if(!Objects.isNull(sectionIds)){
-            for(String sectionId: sectionIds){
+        if (!Objects.isNull(sectionIds)) {
+            for (String sectionId : sectionIds) {
                 Optional<Section> sectionOptional = sectionRepository.findById(sectionId);
                 sectionOptional.ifPresent(section -> html.append("<div class=\"title\">").append(section.getName()).append("</div>"));
 
-                QuestionInsightsResponse questionInsightsResponses = adminAssessmentGetManager.createInsights(user,assessmentId,sectionId);
+                QuestionInsightsResponse questionInsightsResponses = adminAssessmentGetManager.createInsights(user, assessmentId, sectionId);
                 List<QuestionInsightsResponse.QuestionInsightDto> questionInsightDtos = questionInsightsResponses.getQuestionInsightDto();
 
-                questionInsightDtos.forEach(questionInsight->{
+                questionInsightDtos.forEach(questionInsight -> {
                     AssessmentQuestionPreviewDto assessmentQuestionPreviewDto = questionInsight.getAssessmentQuestionPreviewDto();
-                    if(!Objects.isNull(assessmentQuestionPreviewDto)){
+                    if (!Objects.isNull(assessmentQuestionPreviewDto)) {
                         html.append("<div class=\"question\">");
                         html.append(assessmentQuestionPreviewDto.getQuestion().getContent());
                         html.append("</div>");
@@ -75,19 +112,19 @@ public class HtmlBuilderService {
                         try {
                             correctOptionIds = QuestionBasedStrategyFactory
                                     .getCorrectOptionIds(assessmentQuestionPreviewDto.getEvaluationJson(), assessmentQuestionPreviewDto.getQuestionType());
-                        }catch (Exception e){
+                        } catch (Exception e) {
                             throw new VacademyException("Failed To generate: " + e.getMessage());
                         }
 
                         List<String> correctOptionText = getTextFromAssessmentPreviewDto(assessmentQuestionPreviewDto, correctOptionIds);
-                        correctOptionText.forEach(correctOption->{
+                        correctOptionText.forEach(correctOption -> {
                             html.append("<div class=\"correct-answer\"><strong>Correct answer:</strong> ")
                                     .append(correctOption).append("</div>");
                         });
 
                         html.append("<div class=\"top-respondents\"><strong>Top 3 quick correct responses</strong>");
                         List<Top3CorrectResponseDto> top3CorrectResponseDtos = questionInsight.getTop3CorrectResponseDto();
-                        if(!Objects.isNull(top3CorrectResponseDtos)){
+                        if (!Objects.isNull(top3CorrectResponseDtos)) {
                             for (Top3CorrectResponseDto top3CorrectResponseDto : top3CorrectResponseDtos) {
                                 html.append("<div>");
                                 html.append(top3CorrectResponseDto.getName()).append(" ");
@@ -166,7 +203,6 @@ public class HtmlBuilderService {
                 .collect(Collectors.toList()); // Collect as List
     }
 
-
     public String generateStudentReportHtml(String title, StudentReportOverallDetailDto studentReportOverallDetailDto) {
         StringBuilder html = new StringBuilder();
 
@@ -196,15 +232,15 @@ public class HtmlBuilderService {
         html.append("<div class=\"container\">");
         html.append("<div class=\"header\">").append(title).append("</div>");
         html.append("<div class=\"section\">");
-        if(!Objects.isNull(studentReportOverallDetailDto) && !Objects.isNull(studentReportOverallDetailDto.getQuestionOverallDetailDto())){
+        if (!Objects.isNull(studentReportOverallDetailDto) && !Objects.isNull(studentReportOverallDetailDto.getQuestionOverallDetailDto())) {
             html.append("<div class=\"title\">The Human Eye and The Colourful World</div>");
             html.append("<div class=\"info\">Subject: Physics | Attempt Date: ")
-                    .append(studentReportOverallDetailDto.getQuestionOverallDetailDto().getStartTime()!=null ? studentReportOverallDetailDto.getQuestionOverallDetailDto().getStartTime().toString() : "-")
+                    .append(studentReportOverallDetailDto.getQuestionOverallDetailDto().getStartTime() != null ? studentReportOverallDetailDto.getQuestionOverallDetailDto().getStartTime().toString() : "-")
                     .append(" | Duration: ").append(convertToReadableTime(studentReportOverallDetailDto.getQuestionOverallDetailDto().getCompletionTimeInSeconds()))
                     .append("</div>");
             html.append("<div class=\"info\">Start Time: ")
-                    .append(studentReportOverallDetailDto.getQuestionOverallDetailDto().getStartTime()!=null ? studentReportOverallDetailDto.getQuestionOverallDetailDto().getStartTime().toString() : "-")
-                    .append(" | End Time: ").append(studentReportOverallDetailDto.getQuestionOverallDetailDto().getStartTime()!=null ? calculateEndTime(studentReportOverallDetailDto.getQuestionOverallDetailDto().getStartTime(), studentReportOverallDetailDto.getQuestionOverallDetailDto().getCompletionTimeInSeconds()) : "-")
+                    .append(studentReportOverallDetailDto.getQuestionOverallDetailDto().getStartTime() != null ? studentReportOverallDetailDto.getQuestionOverallDetailDto().getStartTime().toString() : "-")
+                    .append(" | End Time: ").append(studentReportOverallDetailDto.getQuestionOverallDetailDto().getStartTime() != null ? calculateEndTime(studentReportOverallDetailDto.getQuestionOverallDetailDto().getStartTime(), studentReportOverallDetailDto.getQuestionOverallDetailDto().getCompletionTimeInSeconds()) : "-")
                     .append("</div>");
 
             html.append("</div>");
@@ -241,7 +277,7 @@ public class HtmlBuilderService {
 
             html.append("<div>Skipped: ")
                     .append(studentReportOverallDetailDto.getQuestionOverallDetailDto().getSkippedCount())
-                    .append( (" (0)"))
+                    .append((" (0)"))
                     .append("</div>");
 
         }
@@ -249,7 +285,7 @@ public class HtmlBuilderService {
         html.append("</div>");
         html.append("<div class=\"section\">");
         html.append("<div class=\"title\">Answer Review</div>");
-        if(!Objects.isNull(studentReportOverallDetailDto) && !Objects.isNull(studentReportOverallDetailDto.getAllSections())){
+        if (!Objects.isNull(studentReportOverallDetailDto) && !Objects.isNull(studentReportOverallDetailDto.getAllSections())) {
 
             for (Map.Entry<String, List<StudentReportAnswerReviewDto>> entry : studentReportOverallDetailDto.getAllSections().entrySet()) {
                 String sectionId = entry.getKey(); // Section Name
@@ -261,33 +297,30 @@ public class HtmlBuilderService {
                     html.append("<div class=\"answer-box\">");
                     html.append("<div> ").append(review.getQuestionName()).append("</div>");
 
-                    if(!Objects.isNull(review.getStudentResponseOptions())){
+                    if (!Objects.isNull(review.getStudentResponseOptions())) {
                         List<StudentReportAnswerReviewDto.ReportOptionsDto> studentResponseOptions = review.getStudentResponseOptions();
-                        studentResponseOptions.forEach(option->{
+                        studentResponseOptions.forEach(option -> {
                             html.append("<div style=\"margin-top: 5px;\"><b>Student Answer:</b> ").append(option.getOptionName()).append("</div>");
                         });
                     }
 
-                    if(!Objects.isNull(review.getCorrectOptions()) && !Objects.isNull(review.getAnswerStatus()) && !review.getAnswerStatus().equals("CORRECT")){
+                    if (!Objects.isNull(review.getCorrectOptions()) && !Objects.isNull(review.getAnswerStatus()) && !review.getAnswerStatus().equals("CORRECT")) {
                         List<StudentReportAnswerReviewDto.ReportOptionsDto> correctOptions = review.getCorrectOptions();
-                        correctOptions.forEach(option->{
+                        correctOptions.forEach(option -> {
                             html.append("<div style=\"margin-top: 5px;\"><b>Correct Answer:</b> ").append(option.getOptionName()).append("</div>");
                         });
                     }
 
-                    if(!Objects.isNull(review.getAnswerStatus()) && review.getAnswerStatus().equals("CORRECT")){
+                    if (!Objects.isNull(review.getAnswerStatus()) && review.getAnswerStatus().equals("CORRECT")) {
                         html.append("<div class=\"correct-marks-box\">+").append(review.getMark()).append(" Marks</div>");
-                    }
-                    else if(!Objects.isNull(review.getAnswerStatus()) && review.getAnswerStatus().equals("INCORRECT")){
+                    } else if (!Objects.isNull(review.getAnswerStatus()) && review.getAnswerStatus().equals("INCORRECT")) {
                         html.append("<div class=\"incorrect-marks-box\">").append(review.getMark()).append(" Marks</div>");
-                    }
-                    else if(!Objects.isNull(review.getAnswerStatus()) && review.getAnswerStatus().equals("PARTIAL_CORRECT")){
+                    } else if (!Objects.isNull(review.getAnswerStatus()) && review.getAnswerStatus().equals("PARTIAL_CORRECT")) {
                         html.append("<div class=\"partial-marks-box\">+").append(review.getMark()).append(" Marks</div>");
-                    }
-                    else if(!Objects.isNull(review.getAnswerStatus()) && review.getAnswerStatus().equals("PENDING")){
+                    } else if (!Objects.isNull(review.getAnswerStatus()) && review.getAnswerStatus().equals("PENDING")) {
                         html.append("<div class=\"skip-marks-box\">").append(review.getMark()).append(" Marks</div>");
                     }
-                    html.append("<div>Explanation: ").append(review.getExplanation()!=null ? review.getExplanation() : "-").append("</div>");
+                    html.append("<div>Explanation: ").append(review.getExplanation() != null ? review.getExplanation() : "-").append("</div>");
                     html.append("<div style=\"color: gray; font-size: 12px; margin-top: 5px;\">⏳ 42 sec</div>");
                     html.append("</div>");
                 }
@@ -300,43 +333,5 @@ public class HtmlBuilderService {
         html.append("</html>");
 
         return html.toString();
-    }
-
-    public static String convertToReadableTime(Long timeInSeconds) {
-        if (Objects.isNull(timeInSeconds) || timeInSeconds < 0) {
-            return "Invalid Input";
-        }
-
-        long hours = timeInSeconds / 3600;
-        long minutes = (timeInSeconds % 3600) / 60;
-        long seconds = timeInSeconds % 60;
-
-        StringBuilder result = new StringBuilder();
-        if (hours > 0) {
-            result.append(hours).append(" hr ");
-        }
-        if (minutes > 0) {
-            result.append(minutes).append(" min ");
-        }
-        if (seconds > 0 || result.isEmpty()) { // Always show at least seconds if the input is 0
-            result.append(seconds).append(" sec");
-        }
-
-        return result.toString().trim();
-    }
-
-    public static String calculateEndTime(Date startTime, Long durationInSeconds) {
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-
-        // Convert Date to LocalDateTime
-        LocalDateTime localDateTime = Instant.ofEpochMilli(startTime.getTime())
-                .atZone(ZoneId.systemDefault())
-                .toLocalDateTime();
-
-        // Add duration in seconds
-        LocalDateTime endDateTime = localDateTime.plusSeconds(durationInSeconds);
-
-        // Return formatted date and time
-        return endDateTime.format(formatter);
     }
 }

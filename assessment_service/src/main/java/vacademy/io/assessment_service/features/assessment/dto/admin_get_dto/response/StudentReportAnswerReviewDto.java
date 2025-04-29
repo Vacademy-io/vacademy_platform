@@ -30,7 +30,7 @@ public class StudentReportAnswerReviewDto {
     @Getter
     @Setter
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public static class ReportOptionsDto{
+    public static class ReportOptionsDto {
         private String optionId;
         private String optionName;
     }

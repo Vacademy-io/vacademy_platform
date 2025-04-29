@@ -7,7 +7,6 @@ import org.springframework.web.bind.annotation.*;
 import vacademy.io.assessment_service.features.assessment.dto.AssessmentSaveResponseDto;
 import vacademy.io.assessment_service.features.assessment.dto.create_assessment.AddAccessAssessmentDetailsDTO;
 import vacademy.io.assessment_service.features.assessment.manager.AssessmentAccessManager;
-import vacademy.io.assessment_service.features.assessment.manager.AssessmentBasicDetailsManager;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 @RestController

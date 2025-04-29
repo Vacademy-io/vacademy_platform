@@ -63,7 +63,7 @@ public class StudyLibraryService {
         validateInstituteId(instituteId);
 
         List<CourseDTOWithDetails> courses = new ArrayList<>();
-        List<PackageEntity> packages = packageRepository.findDistinctPackagesByInstituteIdAndStatuses(instituteId,List.of(PackageStatusEnum.ACTIVE.name()),List.of(PackageStatusEnum.ACTIVE.name()));
+        List<PackageEntity> packages = packageRepository.findDistinctPackagesByInstituteIdAndStatuses(instituteId, List.of(PackageStatusEnum.ACTIVE.name()), List.of(PackageStatusEnum.ACTIVE.name()));
 
         for (PackageEntity course : packages) {
             CourseDTOWithDetails courseDTOWithDetails = buildCourseDTOWithDetails(course, instituteId);

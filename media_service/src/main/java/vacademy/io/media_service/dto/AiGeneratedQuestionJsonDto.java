@@ -1,5 +1,5 @@
 package vacademy.io.media_service.dto;
-import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonSetter;
 import com.fasterxml.jackson.annotation.Nulls;
@@ -100,6 +100,19 @@ public class AiGeneratedQuestionJsonDto {
         this.level = level;
     }
 
+    // Enums
+    public enum ContentType {
+        HTML, TEXT,
+    }
+
+    public enum QuestionType {
+        MCQS, MCQM, ONE_WORD, LONG_ANSWER, NUMERIC
+    }
+
+    public enum DifficultyLevel {
+        EASY, MEDIUM, HARD, easy, medium, hard
+    }
+
     // Inner classes
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class QuestionContent {
@@ -144,18 +157,5 @@ public class AiGeneratedQuestionJsonDto {
         public void setContent(String content) {
             this.content = content;
         }
-    }
-
-    // Enums
-    public enum ContentType {
-        HTML, TEXT,
-    }
-
-    public enum QuestionType {
-        MCQS, MCQM, ONE_WORD, LONG_ANSWER, NUMERIC
-    }
-
-    public enum DifficultyLevel {
-        EASY, MEDIUM, HARD , easy , medium , hard
     }
 }

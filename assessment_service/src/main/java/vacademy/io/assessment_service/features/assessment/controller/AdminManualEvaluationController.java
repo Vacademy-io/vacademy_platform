@@ -20,31 +20,31 @@ public class AdminManualEvaluationController {
     AdminManualEvaluationManager adminManualEvaluationManager;
 
     @PostMapping("/submit/marks")
-    public ResponseEntity<String> submitManualMarks(@RequestAttribute("user")CustomUserDetails userDetails,
+    public ResponseEntity<String> submitManualMarks(@RequestAttribute("user") CustomUserDetails userDetails,
                                                     @RequestParam("assessmentId") String assessmentId,
                                                     @RequestParam("instituteId") String instituteId,
                                                     @RequestParam("attemptId") String attemptId,
-                                                    @RequestBody ManualSubmitMarksRequest request){
+                                                    @RequestBody ManualSubmitMarksRequest request) {
         return adminManualEvaluationManager.submitManualEvaluatedMarks(userDetails, assessmentId, instituteId, attemptId, request);
     }
 
     @PostMapping("/update/set")
     public ResponseEntity<String> updateAttemptSet(@RequestAttribute("user") CustomUserDetails userDetails,
                                                    @RequestParam("attemptId") String attemptId,
-                                                   @RequestParam("setId") String setId){
+                                                   @RequestParam("setId") String setId) {
         return adminManualEvaluationManager.updateAttemptSet(userDetails, attemptId, setId);
     }
 
     @PostMapping("/update/attempt")
     public ResponseEntity<String> updateAttemptResponse(@RequestAttribute("user") CustomUserDetails userDetails,
-                                                   @RequestParam("attemptId") String attemptId,
-                                                   @RequestParam("fileId") String fileId){
+                                                        @RequestParam("attemptId") String attemptId,
+                                                        @RequestParam("fileId") String fileId) {
         return adminManualEvaluationManager.updateAttemptResponse(userDetails, attemptId, fileId);
     }
 
     @GetMapping("/get/attempt-data")
     public ResponseEntity<String> getAttemptData(@RequestAttribute("user") CustomUserDetails userDetails,
-                                                 @RequestParam("attemptId") String attemptId){
+                                                 @RequestParam("attemptId") String attemptId) {
         return adminManualEvaluationManager.getAttemptData(userDetails, attemptId);
     }
 
@@ -55,7 +55,7 @@ public class AdminManualEvaluationController {
                                                             @RequestParam("instituteId") String instituteId,
                                                             @RequestParam(value = "pageNo", defaultValue = DEFAULT_PAGE_NUMBER, required = false) int pageNo,
                                                             @RequestParam(value = "pageSize", defaultValue = DEFAULT_PAGE_SIZE, required = false) int pageSize
-                                                            ){
-        return adminManualEvaluationManager.getAssignedAttempt(userDetails, filter,assessmentId,instituteId,pageNo,pageSize);
+    ) {
+        return adminManualEvaluationManager.getAssignedAttempt(userDetails, filter, assessmentId, instituteId, pageNo, pageSize);
     }
 }

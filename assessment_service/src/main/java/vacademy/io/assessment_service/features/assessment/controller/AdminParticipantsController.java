@@ -1,7 +1,6 @@
 package vacademy.io.assessment_service.features.assessment.controller;
 
 
-
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -19,10 +18,10 @@ public class AdminParticipantsController {
 
 
     @GetMapping("/get-report-detail")
-    public ResponseEntity<StudentReportOverallDetailDto> studentReportDetails(@RequestAttribute("user")CustomUserDetails userDetails,
+    public ResponseEntity<StudentReportOverallDetailDto> studentReportDetails(@RequestAttribute("user") CustomUserDetails userDetails,
                                                                               @RequestParam("assessmentId") String assessmentId,
                                                                               @RequestParam("attemptId") String attemptId,
-                                                                              @RequestParam("instituteId") String instituteId){
+                                                                              @RequestParam("instituteId") String instituteId) {
         return assessmentParticipantsManager.getStudentReportDetails(userDetails, assessmentId, attemptId, instituteId);
     }
 
@@ -31,9 +30,9 @@ public class AdminParticipantsController {
                                                 @RequestParam("assessmentId") String assessmentId,
                                                 @RequestParam("instituteId") String instituteId,
                                                 @RequestBody ReleaseRequestDto request,
-                                                @RequestParam("methodType") String type){
+                                                @RequestParam("methodType") String type) {
 
-        return assessmentParticipantsManager.releaseParticipantsResult(userDetails, assessmentId,instituteId,request, type);
+        return assessmentParticipantsManager.releaseParticipantsResult(userDetails, assessmentId, instituteId, request, type);
     }
 
 

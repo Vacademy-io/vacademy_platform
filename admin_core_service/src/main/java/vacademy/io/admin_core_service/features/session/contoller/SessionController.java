@@ -40,7 +40,7 @@ public class SessionController {
     @PostMapping("/add")
     public ResponseEntity<String> addNewSession(@RequestBody AddNewSessionDTO addNewSessionDTO,
                                                 @RequestAttribute("user") CustomUserDetails user) {
-        String sessionId = sessionService.addNewSession(addNewSessionDTO,user);
+        String sessionId = sessionService.addNewSession(addNewSessionDTO, user);
         return ResponseEntity.ok("Session created successfully with ID: " + sessionId);
     }
 

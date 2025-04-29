@@ -75,7 +75,7 @@ public class HtmlImageConverter {
     private String uploadBase64File(String base64, String imageFormat) throws IOException {
         // Decode the base64 string into a byte array
         byte[] fileBytes = Base64.getDecoder().decode(base64);
-        if(imageFormat.equals("svg+xml"))
+        if (imageFormat.equals("svg+xml"))
             imageFormat = "svg";
         imageFormat = URLEncoder.encode(imageFormat);
         // Generate a unique key for the file
@@ -89,18 +89,18 @@ public class HtmlImageConverter {
 
         // Create metadata for the file
         FileMetadata metadata = new FileMetadata(
-            key, // Use the key as the file name
-            "image/" + imageFormat, // Set the content type (e.g., "image/png")
-            key,
-            "SERVICE_UPLOAD",
-            "SERVICE_UPLOAD"
+                key, // Use the key as the file name
+                "image/" + imageFormat, // Set the content type (e.g., "image/png")
+                key,
+                "SERVICE_UPLOAD",
+                "SERVICE_UPLOAD"
         );
 
         // Save the metadata
         fileMetadataRepository.save(metadata);
 
         // Return the network URL of the uploaded file
-        return "https://" +  publicBucket + ".s3.amazonaws.com/" + key;
+        return "https://" + publicBucket + ".s3.amazonaws.com/" + key;
     }
 
 

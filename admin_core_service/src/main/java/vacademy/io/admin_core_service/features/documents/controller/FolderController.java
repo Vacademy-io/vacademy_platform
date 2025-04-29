@@ -43,8 +43,8 @@ public class FolderController {
 
     @PostMapping("/add-folder")
     public ResponseEntity<FolderDTO> addFolder(@RequestParam String userId,
-                                                     @RequestBody FolderDTO folderDTO,
-                                                     @RequestAttribute("user") CustomUserDetails user) {
+                                               @RequestBody FolderDTO folderDTO,
+                                               @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok(folderService.addFolder(folderDTO, userId, user));
     }
 }

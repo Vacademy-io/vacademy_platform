@@ -1,6 +1,7 @@
 package vacademy.io.media_service.dto.lecture;
 
 import lombok.Data;
+
 import java.util.List;
 
 @Data

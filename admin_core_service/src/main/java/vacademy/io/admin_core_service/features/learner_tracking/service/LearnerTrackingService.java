@@ -29,6 +29,7 @@ public class LearnerTrackingService {
     private final LearnerOperationService learnerOperationService;
     private final LearnerTrackingAsyncService learnerTrackingAsyncService;
     private final ConcentrationScoreService concentrationScoreService;
+
     @Autowired
     public LearnerTrackingService(
             ActivityLogRepository activityLogRepository,

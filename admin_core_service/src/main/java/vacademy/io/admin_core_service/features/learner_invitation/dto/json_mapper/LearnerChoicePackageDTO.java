@@ -7,7 +7,7 @@ import java.util.List;
 
 @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
 public class LearnerChoicePackageDTO {
-    private List<LearnerChoiceSessionDTO>learnerChoiceSessions;
+    private List<LearnerChoiceSessionDTO> learnerChoiceSessions;
     private Integer maxSelectableSessions;
     private String id;
     private String name;

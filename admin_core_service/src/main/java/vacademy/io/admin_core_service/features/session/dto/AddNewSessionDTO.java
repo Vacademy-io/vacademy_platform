@@ -16,5 +16,5 @@ public class AddNewSessionDTO {
     private String status;
     private Date startDate;
     private boolean newSession;
-    private List<AddLevelWithSessionDTO>levels;
+    private List<AddLevelWithSessionDTO> levels;
 }

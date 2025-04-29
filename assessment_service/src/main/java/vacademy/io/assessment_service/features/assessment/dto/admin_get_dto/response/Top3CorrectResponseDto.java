@@ -2,6 +2,8 @@ package vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.res
 
 public interface Top3CorrectResponseDto {
     String getUserId();
+
     String getName();
+
     Long getTimeTakenInSeconds();
 }

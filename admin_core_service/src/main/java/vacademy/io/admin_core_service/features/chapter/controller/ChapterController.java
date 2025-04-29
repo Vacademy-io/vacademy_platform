@@ -26,7 +26,7 @@ public class ChapterController {
                                                 @RequestParam("chapterId") String chapterId,
                                                 @RequestParam("moduleId") String moduleId,
                                                 @RequestParam("commaSeparatedPackageSessionIds") String commaSeparatedPackageSessionIds) {
-        return ResponseEntity.ok(chapterService.updateChapter(chapterId,moduleId, chapterDTO, commaSeparatedPackageSessionIds, user));
+        return ResponseEntity.ok(chapterService.updateChapter(chapterId, moduleId, chapterDTO, commaSeparatedPackageSessionIds, user));
     }
 
     /**

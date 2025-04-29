@@ -5,7 +5,10 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import vacademy.io.admin_core_service.features.presentation_mode.admin.dto.CreatePresentationDto;
 import vacademy.io.admin_core_service.features.presentation_mode.admin.dto.StartPresentationDto;
-import vacademy.io.admin_core_service.features.presentation_mode.learner.dto.*;
+import vacademy.io.admin_core_service.features.presentation_mode.learner.dto.LiveSessionDto;
+import vacademy.io.admin_core_service.features.presentation_mode.learner.dto.ParticipantDto;
+import vacademy.io.admin_core_service.features.presentation_mode.learner.dto.PresentationSlideDto;
+import vacademy.io.admin_core_service.features.presentation_mode.learner.dto.QuizData;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.io.IOException;
@@ -19,13 +22,12 @@ import java.util.concurrent.TimeUnit;
 public class LiveSessionService {
     // Add this constant
     private static final long SESSION_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours
+    // Maximum time without heartbeat before marking participant as inactive (ms)
+    private static final long HEARTBEAT_TIMEOUT_MS = 60000; // 60 seconds
     private final Map<String, LiveSessionDto> sessions = new ConcurrentHashMap<>();
     private final Map<String, String> inviteCodeToSessionId = new ConcurrentHashMap<>();
     private final Map<String, Map<String, Long>> sessionParticipantHeartbeats = new ConcurrentHashMap<>();
     private final ScheduledExecutorService heartbeatMonitor = Executors.newSingleThreadScheduledExecutor();
-
-    // Maximum time without heartbeat before marking participant as inactive (ms)
-    private static final long HEARTBEAT_TIMEOUT_MS = 60000; // 60 seconds
 
     public LiveSessionService() {
         // Schedule periodic check for inactive participants

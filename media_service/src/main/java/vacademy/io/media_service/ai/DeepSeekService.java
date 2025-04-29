@@ -14,9 +14,9 @@ import org.springframework.stereotype.Service;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.media_service.constant.ConstantAiTemplate;
 import vacademy.io.media_service.dto.*;
+import vacademy.io.media_service.entity.TaskStatus;
 import vacademy.io.media_service.enums.QuestionResponseType;
 import vacademy.io.media_service.enums.QuestionTypes;
-import vacademy.io.media_service.entity.TaskStatus;
 import vacademy.io.media_service.enums.TaskStatusEnum;
 import vacademy.io.media_service.enums.TaskStatusTypeEnum;
 import vacademy.io.media_service.service.HtmlJsonProcessor;
@@ -207,6 +207,29 @@ public class DeepSeekService {
         mergedNode.set(fieldName, mergedArray);
     }
 
+    public static String getCommaSeparatedQuestionNumbers(String json) {
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode rootNode = mapper.readTree(json);
+            JsonNode questionsNode = rootNode.get("questions");
+
+            if (questionsNode == null || !questionsNode.isArray()) {
+                return "";
+            }
+
+            List<String> questionNumbers = new ArrayList<>();
+            for (JsonNode question : questionsNode) {
+                String number = question.get("question_number").asText();
+                questionNumbers.add(number);
+            }
+
+            return String.join(",", questionNumbers);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return "";
+        }
+    }
+
     public String getQuestionsWithDeepSeekFromTextPrompt(String textPrompt, String numberOfQuestions, String typeOfQuestion, String classLevel, String topics, String language, TaskStatus taskStatus, Integer attempt, String oldJson) {
         try {
             if (attempt >= 4) return oldJson;
@@ -330,29 +353,6 @@ public class DeepSeekService {
         } catch (Exception e) {
             taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), restoredJson);
             return restoredJson;
-        }
-    }
-
-    public static String getCommaSeparatedQuestionNumbers(String json) {
-        try {
-            ObjectMapper mapper = new ObjectMapper();
-            JsonNode rootNode = mapper.readTree(json);
-            JsonNode questionsNode = rootNode.get("questions");
-
-            if (questionsNode == null || !questionsNode.isArray()) {
-                return "";
-            }
-
-            List<String> questionNumbers = new ArrayList<>();
-            for (JsonNode question : questionsNode) {
-                String number = question.get("question_number").asText();
-                questionNumbers.add(number);
-            }
-
-            return String.join(",", questionNumbers);
-        } catch (Exception e) {
-            e.printStackTrace();
-            return "";
         }
     }
 

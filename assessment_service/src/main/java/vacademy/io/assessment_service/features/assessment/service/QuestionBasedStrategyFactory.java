@@ -26,7 +26,7 @@ public class QuestionBasedStrategyFactory {
 
     private static IQuestionTypeBasedStrategy getStrategy(String questionType) {
         IQuestionTypeBasedStrategy strategy = strategies.getOrDefault(questionType, null);
-        if(!Objects.isNull(strategy)){
+        if (!Objects.isNull(strategy)) {
             strategy.setType(questionType);
             strategy.setAnswerStatus(QuestionResponseEnum.PENDING.name());
         }
@@ -62,7 +62,7 @@ public class QuestionBasedStrategyFactory {
         if (strategy == null) {
             throw new IllegalArgumentException("Invalid Question Type: " + type);
         }
-        double marks =  strategy.calculateMarks(markingJson, correctAnswerJson, responseJson);
+        double marks = strategy.calculateMarks(markingJson, correctAnswerJson, responseJson);
         String answerStatus = strategy.getAnswerStatus();
 
         return QuestionWiseBasicDetailDto.builder().marks(marks)
@@ -71,13 +71,13 @@ public class QuestionBasedStrategyFactory {
 
     public static List<String> getResponseOptionIds(String responseJson, String type) throws JsonProcessingException {
         IQuestionTypeBasedStrategy strategy = getStrategy(type);
-        if(strategy.getType().equals(QuestionTypes.MCQS.name())){
+        if (strategy.getType().equals(QuestionTypes.MCQS.name())) {
             MCQSResponseDto responseDto = (MCQSResponseDto) verifyResponseJson(responseJson, type);
 
             return responseDto.getResponseData().getOptionIds();
         }
 
-        if(strategy.getType().equals(QuestionTypes.MCQM.name())){
+        if (strategy.getType().equals(QuestionTypes.MCQM.name())) {
             MCQMResponseDto responseDto = (MCQMResponseDto) verifyResponseJson(responseJson, type);
 
             return responseDto.getResponseData().getOptionIds();
@@ -88,13 +88,13 @@ public class QuestionBasedStrategyFactory {
 
     public static List<String> getCorrectOptionIds(String evaluationJson, String type) throws JsonProcessingException {
         IQuestionTypeBasedStrategy strategy = getStrategy(type);
-        if(strategy.getType().equals(QuestionTypes.MCQS.name())){
+        if (strategy.getType().equals(QuestionTypes.MCQS.name())) {
             MCQSCorrectAnswerDto optionDto = (MCQSCorrectAnswerDto) verifyCorrectAnswerJson(evaluationJson, type);
 
             return optionDto.getData().getCorrectOptionIds();
         }
 
-        if(strategy.getType().equals(QuestionTypes.MCQM.name())){
+        if (strategy.getType().equals(QuestionTypes.MCQM.name())) {
             MCQMCorrectAnswerDto optionDto = (MCQMCorrectAnswerDto) verifyCorrectAnswerJson(evaluationJson, type);
 
             return optionDto.getData().getCorrectOptionIds();

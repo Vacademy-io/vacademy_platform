@@ -53,7 +53,7 @@ public class EvaluationLogs {
     private Date updatedAt;
 
 
-    public EvaluationLogDto getEvaluationDto(){
+    public EvaluationLogDto getEvaluationDto() {
         return EvaluationLogDto.builder()
                 .id(this.id)
                 .sourceId(this.source)

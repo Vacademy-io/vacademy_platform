@@ -69,7 +69,7 @@ public class FileServiceImpl implements FileService {
         s3Client.putObject(publicBucket, key, multipartFile.getInputStream(), null);
         FileMetadata fileMetadata = new FileMetadata(multipartFile.getName(), Objects.isNull(multipartFile.getContentType()) ? "unknown" : multipartFile.getContentType(), key, "SERVICE_UPLOAD", "SERVICE_UPLOAD");
         fileMetadata = fileMetadataRepository.save(fileMetadata);
-        String url =  "https://" + publicBucket + ".s3.amazonaws.com/" + key;
+        String url = "https://" + publicBucket + ".s3.amazonaws.com/" + key;
 
         FileDetailsDTO.FileDetailsDTOBuilder builder = FileDetailsDTO.builder()
                 .expiry(addTime(100))

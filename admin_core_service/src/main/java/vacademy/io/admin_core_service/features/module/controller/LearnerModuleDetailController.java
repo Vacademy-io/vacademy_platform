@@ -17,7 +17,7 @@ public class LearnerModuleDetailController {
     private final LearnerModuleDetailsService learnerModuleDetailsService;
 
     @GetMapping("/get-modules-with-chapters")
-    public ResponseEntity<List<LearnerModuleDTOWithDetails>> getModulesOfUser(@RequestParam("subjectId") String subjectId, @RequestParam("packageSessionId") String packageSessionId, @RequestParam("userId")String userId, @RequestAttribute("user") CustomUserDetails user) {
-        return ResponseEntity.ok(learnerModuleDetailsService.getModulesDetailsWithChapters(subjectId, packageSessionId,userId, user));
+    public ResponseEntity<List<LearnerModuleDTOWithDetails>> getModulesOfUser(@RequestParam("subjectId") String subjectId, @RequestParam("packageSessionId") String packageSessionId, @RequestParam("userId") String userId, @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(learnerModuleDetailsService.getModulesDetailsWithChapters(subjectId, packageSessionId, userId, user));
     }
 }

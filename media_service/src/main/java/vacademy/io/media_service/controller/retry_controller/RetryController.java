@@ -23,7 +23,7 @@ public class RetryController {
     TaskRetryService taskRetryService;
 
     @PostMapping("/task")
-    public ResponseEntity<TaskStatus> retryTask(@RequestParam("taskId") String taskId, @RequestBody(required = false) Object retryRequestBody) {
+    public ResponseEntity<String> retryTask(@RequestParam("taskId") String taskId, @RequestBody(required = false) Object retryRequestBody) {
 
         Optional<TaskStatus> oldTaskStatus = taskStatusService.getTaskStatusById(taskId);
 
@@ -33,8 +33,7 @@ public class RetryController {
 
         TaskStatus newTask = taskStatusService.updateTaskStatusOrCreateNewTask(null, oldTaskStatus.get().getType(), oldTaskStatus.get().getInputId(), oldTaskStatus.get().getInputType(), oldTaskStatus.get().getTaskName() + "_retry", oldTaskStatus.get().getInstituteId());
         taskRetryService.asyncRetryTask(newTask, oldTaskStatus.get().getDynamicValuesMap());
-        return ResponseEntity.ok(newTask);
+        return ResponseEntity.ok(newTask.getId());
     }
-
 
 }

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
 @Data
@@ -40,6 +41,21 @@ public class EvaluationResultFromDeepSeek {
 
         @JsonProperty("status")
         private String status; // ANS_EXTRACTION_COMPLETED, ANS_EXTRACTION_FAILED, etc.
+
+        // Override equals to ensure uniqueness based on userId
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            EvaluationData that = (EvaluationData) o;
+            return Objects.equals(userId, that.userId); // Compare based on userId
+        }
+
+        // Override hashCode to ensure correct behavior in HashSet
+        @Override
+        public int hashCode() {
+            return Objects.hash(userId); // Generate hash code based on userId
+        }
     }
 
     // STEP 1: Answer Extraction Result

@@ -103,6 +103,12 @@ public class QuestionSlideService {
         if (dto.getOptions() != null && !dto.getOptions().isEmpty()) {
             updateOptions(dto.getOptions());
         }
+        if (dto.getPoints() != null){
+            questionSlide.setPoints(dto.getPoints());
+        }
+        if (dto.getReAttemptCount() != null){
+            questionSlide.setReAttemptCount(dto.getReAttemptCount());
+        }
     }
 
     private void updateOptions(List<OptionDTO> optionDTOS) {

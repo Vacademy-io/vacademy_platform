@@ -19,6 +19,7 @@ public class LearnerInvitationDefaultFormGenerator {
         String batchOptionsJson = generateBatchOptionsJson(packageSession);
 
         List<LearnerInvitationCustomFieldDTO> customFieldDTOS = new ArrayList<>();
+        customFieldDTOS.add(createCustomField("Full Name", "TEXT", "", "Enter your full name", true, ""));
         customFieldDTOS.add(createCustomField("Email", "TEXT", "", "Enter your email address", true, ""));
         customFieldDTOS.add(createCustomField("Mobile Number", "TEXT", "", "Enter your mobile number", true, ""));
         customFieldDTOS.add(createCustomField("Gender", "DROPDOWN", "", "Select your gender", true, "Male,Female,Other"));

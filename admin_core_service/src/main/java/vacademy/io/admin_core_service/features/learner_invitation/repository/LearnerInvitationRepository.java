@@ -71,4 +71,10 @@ public interface LearnerInvitationRepository extends JpaRepository<LearnerInvita
             @Param("status") List<String> status,
             @Param("customFieldStatus") List<String> customFieldStatus);
 
+    Optional<LearnerInvitation> findTopBySourceIdAndSourceAndStatusInOrderByCreatedAtDesc(
+            String sourceId,
+            String source,
+            List<String> status
+    );
+
 }

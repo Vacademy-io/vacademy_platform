@@ -59,6 +59,12 @@ public class QuestionSlide {
     @Column(name = "default_question_time_mins")
     private Integer defaultQuestionTimeMins;
 
+    @Column(name = "re_attempt_count")
+    private Integer reAttemptCount;
+
+    @Column(name = "points")
+    private Integer points;
+
     // Timestamps
     @Column(name = "created_at", insertable = false, updatable = false)
     private Timestamp createdAt;
@@ -81,7 +87,8 @@ public class QuestionSlide {
         this.autoEvaluationJson = dto.getAutoEvaluationJson();
         this.evaluationType = dto.getEvaluationType();
         this.defaultQuestionTimeMins = dto.getDefaultQuestionTimeMins();
-
+        this.reAttemptCount = dto.getReAttemptCount();
+        this.points = dto.getPoints();
         // Convert the OptionDTO list to Option entities
         this.options = dto.getOptions().stream()
                 .map(optionDTO -> new Option(optionDTO, this))  // Assuming a constructor in Option for OptionDTO

@@ -361,6 +361,11 @@ public class AiAnswerEvaluationService {
         - Use double quotes for all JSON keys and string values.
         - Ensure all special characters in HTML (like quotes) are escaped properly.
         - Wrap HTML content and question text in double square brackets [[ ... ]] to prevent breaking the JSON format.
+        
+        Additional Instructions for Answer Formatting:
+         - **Correct any spelling errors** in the student's answers based on the context of the question. Ensure that the corrected text makes sense within the context of the question being answered.
+         - **Format the answers properly**. If the student has written points or lists, ensure they are formatted using HTML bullet points (<ul>, <li>) or numbered lists (<ol>, <li>). Ensure paragraphs are wrapped in <p> tags where appropriate.
+         - **Maintain the original intent and meaning** of the answer while making it more readable and structured. For example, if the student has provided an unordered list of points in a plain text form, convert it into a proper HTML list.
 
         JSON Response Format:
         [

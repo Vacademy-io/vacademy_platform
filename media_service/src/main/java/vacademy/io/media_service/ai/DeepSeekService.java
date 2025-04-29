@@ -31,29 +31,185 @@ import java.util.stream.Collectors;
 @Service
 public class DeepSeekService {
 
-    @Autowired
-    private ObjectMapper objectMapper;
-
+    private static final Pattern PLACEHOLDER_PATTERN = Pattern.compile("<!--DEEPSEEK_PLACEHOLDER_(\\d+)-->");
     private final ChatModel chatModel;
-
-    @Autowired
-    private DeepSeekApiService deepSeekApiService;
-
     @Autowired
     TaskStatusService taskStatusService;
+    @Autowired
+    private ObjectMapper objectMapper;
+    @Autowired
+    private DeepSeekApiService deepSeekApiService;
 
     @Autowired
     public DeepSeekService(ChatModel chatModel) {
         this.chatModel = chatModel;
     }
 
-    private static final Pattern PLACEHOLDER_PATTERN = Pattern.compile("<!--DEEPSEEK_PLACEHOLDER_(\\d+)-->");
+    public static Boolean getIsProcessCompleted(String json) {
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode rootNode = mapper.readTree(json);
 
+            JsonNode isCompletedNode = rootNode.get("is_process_completed");
+            if (isCompletedNode != null && isCompletedNode.isBoolean()) {
+                return isCompletedNode.asBoolean();
+            }
+            return false; // or false as a fallback
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
 
+    /**
+     * Cleans a string by:
+     * 1. Removing backslashes that escape quotes
+     * 2. Converting Unicode escape sequences like \u003c to corresponding characters
+     * 3. Handling common escape sequences like \n, \t, etc.
+     *
+     * @param input The string with escape sequences
+     * @return The cleaned string with actual characters
+     */
+    public static String unescapeString(String input) {
+        if (input == null) {
+            return null;
+        }
+
+        StringBuilder result = new StringBuilder(input.length());
+        for (int i = 0; i < input.length(); i++) {
+            char c = input.charAt(i);
+
+            // Handle backslash escape sequences
+            if (c == '\\' && i + 1 < input.length()) {
+                char next = input.charAt(i + 1);
+
+                switch (next) {
+                    case '"':
+                        result.append('"');
+                        i++;
+                        break;
+                    case '\\':
+                        result.append('\\');
+                        i++;
+                        break;
+                    case 'n':
+                        result.append('\n');
+                        i++;
+                        break;
+                    case 't':
+                        result.append('\t');
+                        i++;
+                        break;
+                    case 'r':
+                        result.append('\r');
+                        i++;
+                        break;
+                    case 'u':
+
+                        if (i + 5 < input.length()) {
+                            try {
+                                String hex = input.substring(i + 2, i + 6);
+                                int codePoint = Integer.parseInt(hex, 16);
+                                result.append((char) codePoint);
+                                i += 5; // Skip the 'u' and 4 hex digits
+                            } catch (NumberFormatException e) {
+                                // If invalid hex, keep the original sequence
+                                result.append(c);
+                            }
+                        } else {
+                            // Not enough characters for a complete Unicode escape
+                            result.append(c);
+                        }
+                        break;
+                    default:
+                        // For any unrecognized escape, just keep the backslash and the character
+                        result.append(c);
+                        break;
+                }
+            } else {
+                // Regular character, just append it
+                result.append(c);
+            }
+        }
+
+        return result.toString();
+    }
+
+    public static int getQuestionCount(String jsonString) {
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode root = mapper.readTree(jsonString);
+            JsonNode questions = root.get("questions");
+            return questions != null && questions.isArray() ? questions.size() : 0;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return 0;
+        }
+    }
+
+    public static String mergeQuestionsJson(String oldJson, String newJson) {
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+
+            JsonNode oldNode = oldJson == null || oldJson.isBlank()
+                    ? mapper.readTree("{\"questions\":[]}")
+                    : mapper.readTree(oldJson);
+            JsonNode newNode = mapper.readTree(newJson);
+
+            ObjectNode mergedNode = (ObjectNode) oldNode;
+
+            // Merge questions
+            ArrayNode mergedQuestions = mapper.createArrayNode();
+            if (oldNode.has("questions")) {
+                mergedQuestions.addAll((ArrayNode) oldNode.get("questions"));
+            }
+            if (newNode.has("questions")) {
+                mergedQuestions.addAll((ArrayNode) newNode.get("questions"));
+            }
+            mergedNode.set("questions", mergedQuestions);
+
+            // Merge is_process_completed
+            boolean oldCompleted = oldNode.has("is_process_completed") && oldNode.get("is_process_completed").asBoolean();
+            boolean newCompleted = newNode.has("is_process_completed") && newNode.get("is_process_completed").asBoolean();
+            mergedNode.put("is_process_completed", newCompleted);
+
+            // Merge title (keep old if exists)
+            if (!oldNode.has("title") && newNode.has("title")) {
+                mergedNode.put("title", newNode.get("title").asText());
+            }
+
+            // Merge difficulty (keep old if exists)
+            if (!oldNode.has("difficulty") && newNode.has("difficulty")) {
+                mergedNode.put("difficulty", newNode.get("difficulty").asText());
+            }
+
+            // Merge tags, subjects, classes
+            mergeStringArrayField(mergedNode, oldNode, newNode, "tags", mapper);
+            mergeStringArrayField(mergedNode, oldNode, newNode, "subjects", mapper);
+            mergeStringArrayField(mergedNode, oldNode, newNode, "classes", mapper);
+
+            return mapper.writerWithDefaultPrettyPrinter().writeValueAsString(mergedNode);
+        } catch (Exception e) {
+            return oldJson != null ? oldJson : newJson;
+        }
+    }
+
+    private static void mergeStringArrayField(ObjectNode mergedNode, JsonNode oldNode, JsonNode newNode, String fieldName, ObjectMapper mapper) {
+        Set<String> uniqueValues = new LinkedHashSet<>();
+        if (oldNode.has(fieldName)) {
+            oldNode.get(fieldName).forEach(n -> uniqueValues.add(n.asText()));
+        }
+        if (newNode.has(fieldName)) {
+            newNode.get(fieldName).forEach(n -> uniqueValues.add(n.asText()));
+        }
+        ArrayNode mergedArray = mapper.createArrayNode();
+        uniqueValues.forEach(mergedArray::add);
+        mergedNode.set(fieldName, mergedArray);
+    }
 
     public String getQuestionsWithDeepSeekFromTextPrompt(String textPrompt, String numberOfQuestions, String typeOfQuestion, String classLevel, String topics, String language, TaskStatus taskStatus, Integer attempt, String oldJson) {
-        try{
-            if(attempt>=4) return oldJson;
+        try {
+            if (attempt >= 4) return oldJson;
             String allQuestionNumbers = getCommaSeparatedQuestionNumbers(oldJson);
             HtmlJsonProcessor htmlJsonProcessor = new HtmlJsonProcessor();
             String unTaggedHtml = htmlJsonProcessor.removeTags(textPrompt);
@@ -61,9 +217,9 @@ public class DeepSeekService {
             String template = ConstantAiTemplate.getTemplateBasedOnType(TaskStatusTypeEnum.TEXT_TO_QUESTIONS);
 
             Map<String, Object> promptMap = Map.of("textPrompt", textPrompt, "numberOfQuestions", numberOfQuestions, "typeOfQuestion", typeOfQuestion, "classLevel", classLevel, "topics", topics, "language", language,
-                    "allQuestionNumbers",allQuestionNumbers);
+                    "allQuestionNumbers", allQuestionNumbers);
             Prompt prompt = new PromptTemplate(template).create(promptMap);
-            taskStatusService.convertMapToJsonAndStore(promptMap,taskStatus);
+            taskStatusService.convertMapToJsonAndStore(promptMap, taskStatus);
 
             DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
             if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {
@@ -80,19 +236,19 @@ public class DeepSeekService {
             String mergedJson = mergeQuestionsJson(oldJson, restored);
 
             if (getIsProcessCompleted(mergedJson)) {
-                taskStatusService.updateTaskStatus(taskStatus,TaskStatusEnum.COMPLETED.name(), mergedJson);
+                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), mergedJson);
                 return mergedJson;
             }
-            if(getQuestionCount(mergedJson)>=Integer.parseInt(numberOfQuestions)){
-                taskStatusService.updateTaskStatus(taskStatus,TaskStatusEnum.COMPLETED.name(), mergedJson);
+            if (getQuestionCount(mergedJson) >= Integer.parseInt(numberOfQuestions)) {
+                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), mergedJson);
                 return mergedJson;
             }
 
-            taskStatusService.updateTaskStatus(taskStatus,TaskStatusEnum.PROGRESS.name(), mergedJson);
+            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.PROGRESS.name(), mergedJson);
 
-            return getQuestionsWithDeepSeekFromTextPrompt(textPrompt,numberOfQuestions,typeOfQuestion,classLevel,topics,language,taskStatus,attempt+1,mergedJson);
+            return getQuestionsWithDeepSeekFromTextPrompt(textPrompt, numberOfQuestions, typeOfQuestion, classLevel, topics, language, taskStatus, attempt + 1, mergedJson);
         } catch (Exception e) {
-            taskStatusService.updateTaskStatus(taskStatus,TaskStatusEnum.FAILED.name(), oldJson);
+            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), oldJson);
             return oldJson;
         }
     }
@@ -101,7 +257,7 @@ public class DeepSeekService {
         HtmlJsonProcessor htmlJsonProcessor = new HtmlJsonProcessor();
         String unTaggedHtml = htmlJsonProcessor.removeTags(htmlData);
 
-        if(userPrompt == null) {
+        if (userPrompt == null) {
             userPrompt = "Include first 20 questions in the response. Do not truncate or omit any questions.";
         }
 
@@ -110,7 +266,7 @@ public class DeepSeekService {
         Prompt prompt = new PromptTemplate(template).create(Map.of("htmlData", unTaggedHtml, "userPrompt", userPrompt));
 
         DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
-        if(response.getChoices().isEmpty()) {
+        if (response.getChoices().isEmpty()) {
             throw new VacademyException("No response from DeepSeek");
         }
         String resultJson = response.getChoices().get(0).getMessage().getContent();
@@ -123,16 +279,14 @@ public class DeepSeekService {
         }
     }
 
-
     public String getQuestionsWithDeepSeekFromHTMLRecursive(String htmlData, String userPrompt, String restoredJson, int attempt, TaskStatus taskStatus) {
-        try{
+        try {
             if (attempt >= 5) {
                 return restoredJson != null ? restoredJson : "";
             }
             String allQuestionNumbers = getCommaSeparatedQuestionNumbers(restoredJson);
             HtmlJsonProcessor htmlJsonProcessor = new HtmlJsonProcessor();
             String unTaggedHtml = htmlJsonProcessor.removeTags(htmlData);
-
 
 
             if (userPrompt == null) {
@@ -147,7 +301,7 @@ public class DeepSeekService {
                     "allQuestionNumbers", allQuestionNumbers
             );
 
-            taskStatusService.convertMapToJsonAndStore(promptMap,taskStatus);
+            taskStatusService.convertMapToJsonAndStore(promptMap, taskStatus);
 
             Prompt prompt = new PromptTemplate(template).create(promptMap);
 
@@ -166,20 +320,20 @@ public class DeepSeekService {
             String mergedJson = mergeQuestionsJson(restoredJson, restored);
 
             if (getIsProcessCompleted(mergedJson)) {
-                taskStatusService.updateTaskStatus(taskStatus,TaskStatusEnum.COMPLETED.name(), mergedJson);
+                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), mergedJson);
                 return mergedJson;
             }
 
-            taskStatusService.updateTaskStatus(taskStatus,"PROGRESS",restoredJson);
+            taskStatusService.updateTaskStatus(taskStatus, "PROGRESS", restoredJson);
             // Recurse for remaining questions
             return getQuestionsWithDeepSeekFromHTMLRecursive(htmlData, userPrompt, mergedJson, attempt + 1, taskStatus);
         } catch (Exception e) {
-            taskStatusService.updateTaskStatus(taskStatus,TaskStatusEnum.FAILED.name(), restoredJson);
+            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), restoredJson);
             return restoredJson;
         }
     }
 
-    public String getCommaSeparatedQuestionNumbers(String json) {
+    public static String getCommaSeparatedQuestionNumbers(String json) {
         try {
             ObjectMapper mapper = new ObjectMapper();
             JsonNode rootNode = mapper.readTree(json);
@@ -201,27 +355,9 @@ public class DeepSeekService {
             return "";
         }
     }
-    public Boolean getIsProcessCompleted(String json) {
+
+    public String getQuestionsWithDeepSeekFromHTMLOfTopics(String htmlData, String requiredTopics, String restoredJson, Integer attempt, TaskStatus taskStatus) {
         try {
-            ObjectMapper mapper = new ObjectMapper();
-            JsonNode rootNode = mapper.readTree(json);
-
-            JsonNode isCompletedNode = rootNode.get("is_process_completed");
-            if (isCompletedNode != null && isCompletedNode.isBoolean()) {
-                return isCompletedNode.asBoolean();
-            }
-            return false; // or false as a fallback
-        } catch (Exception e) {
-            e.printStackTrace();
-            return false;
-        }
-    }
-
-
-
-
-    public String getQuestionsWithDeepSeekFromHTMLOfTopics(String htmlData, String requiredTopics,String restoredJson, Integer attempt, TaskStatus taskStatus) {
-        try{
             if (attempt >= 5) {
                 return restoredJson != null ? restoredJson : "";
             }
@@ -231,17 +367,17 @@ public class DeepSeekService {
 
             String template = ConstantAiTemplate.getTemplateBasedOnType(TaskStatusTypeEnum.PDF_TO_QUESTIONS_WITH_TOPIC);
 
-            Map<String,Object> promptMap = Map.of("htmlData", unTaggedHtml, "requiredTopics", requiredTopics,
+            Map<String, Object> promptMap = Map.of("htmlData", unTaggedHtml, "requiredTopics", requiredTopics,
                     "allQuestionNumbers", allQuestionNumbers,
                     "restoredJson", restoredJson == null ? "" : restoredJson);
 
             Prompt prompt = new PromptTemplate(template).create();
 
-            taskStatusService.convertMapToJsonAndStore(promptMap,taskStatus);
+            taskStatusService.convertMapToJsonAndStore(promptMap, taskStatus);
 
             DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
             if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {
-                taskStatusService.updateTaskStatus(taskStatus,TaskStatusEnum.FAILED.name(), restoredJson);
+                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), restoredJson);
                 return restoredJson;
             }
 
@@ -252,33 +388,32 @@ public class DeepSeekService {
             String mergedJson = mergeQuestionsJson(restoredJson, newRestoredJson);
 
             if (getIsProcessCompleted(mergedJson)) {
-                taskStatusService.updateTaskStatus(taskStatus,null,mergedJson);
+                taskStatusService.updateTaskStatus(taskStatus, null, mergedJson);
                 return mergedJson;
             }
 
-            taskStatusService.updateTaskStatus(taskStatus,"PROGRESS",restoredJson);
+            taskStatusService.updateTaskStatus(taskStatus, "PROGRESS", restoredJson);
             // Recurse for remaining questions
             return getQuestionsWithDeepSeekFromHTMLOfTopics(htmlData, requiredTopics, mergedJson, attempt + 1, taskStatus);
         } catch (Exception e) {
-            taskStatusService.updateTaskStatus(taskStatus,TaskStatusEnum.FAILED.name(), restoredJson);
+            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), restoredJson);
             throw new RuntimeException(e);
         }
     }
-
 
     public String evaluateManualAnswerSheet(String htmlAnswerData, String htmlQuestionData, Double maxMarks, String evaluationDifficulty) {
         HtmlJsonProcessor htmlJsonProcessor = new HtmlJsonProcessor();
         String unTaggedHtml = htmlJsonProcessor.removeTags(htmlAnswerData);
 
         String template = """
-                
-           
-                        """;
+                                
+                           
+                """;
 
         Prompt prompt = new PromptTemplate(template).create(Map.of("htmlQuestionData", htmlQuestionData, "htmlAnswerData", htmlAnswerData, "maxMarks", maxMarks, "evaluationDifficulty", evaluationDifficulty));
 
         DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
-        if(response.getChoices().isEmpty()) {
+        if (response.getChoices().isEmpty()) {
             throw new VacademyException("No response from DeepSeek");
         }
         String resultJson = response.getChoices().get(0).getMessage().getContent();
@@ -291,27 +426,25 @@ public class DeepSeekService {
         }
     }
 
-
-
-    public String getQuestionsWithDeepSeekFromAudio(String audioString, String difficulty, String numQuestions, String optionalPrompt, String oldResponse,int attempt, TaskStatus taskStatus) {
-        try{
-            if(attempt>=5){
+    public String getQuestionsWithDeepSeekFromAudio(String audioString, String difficulty, String numQuestions, String optionalPrompt, String oldResponse, int attempt, TaskStatus taskStatus) {
+        try {
+            if (attempt >= 5) {
                 return oldResponse;
             }
             String allQuestionNumbers = getCommaSeparatedQuestionNumbers(oldResponse);
 
             String template = ConstantAiTemplate.getTemplateBasedOnType(TaskStatusTypeEnum.AUDIO_TO_QUESTIONS);
 
-            Map<String,Object> promptMap = Map.of("classLecture", audioString, "difficulty", difficulty, "numQuestions", numQuestions, "optionalPrompt", optionalPrompt, "language","en",
-                    "allQuestionNumbers",allQuestionNumbers);
+            Map<String, Object> promptMap = Map.of("classLecture", audioString, "difficulty", difficulty, "numQuestions", numQuestions, "optionalPrompt", optionalPrompt, "language", "en",
+                    "allQuestionNumbers", allQuestionNumbers);
             Prompt prompt = new PromptTemplate(template).create(promptMap);
 
-            taskStatusService.convertMapToJsonAndStore(promptMap,taskStatus);
+            taskStatusService.convertMapToJsonAndStore(promptMap, taskStatus);
 
             DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
 
             if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {
-                taskStatusService.updateTaskStatus(taskStatus,TaskStatusEnum.FAILED.name(), oldResponse);
+                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), oldResponse);
                 return oldResponse;
             }
             String resultJson = response.getChoices().get(0).getMessage().getContent();
@@ -320,24 +453,24 @@ public class DeepSeekService {
             String mergedJson = mergeQuestionsJson(oldResponse, validJson);
 
             int currentQuestionCount = getQuestionCount(mergedJson);
-            log.info("MergedJson: "  + mergedJson);
+            log.info("MergedJson: " + mergedJson);
             log.info("Total Questions: " + currentQuestionCount);
 
-            if(getIsProcessCompleted(mergedJson)){
-                taskStatusService.updateTaskStatus(taskStatus,"COMPLETED",mergedJson);
+            if (getIsProcessCompleted(mergedJson)) {
+                taskStatusService.updateTaskStatus(taskStatus, "COMPLETED", mergedJson);
                 return mergedJson;
             }
 
 
-            if(!Objects.isNull(numQuestions) && numQuestions.isEmpty() && currentQuestionCount>=Integer.parseInt(numQuestions)){
-                taskStatusService.updateTaskStatus(taskStatus,"COMPLETED",mergedJson);
+            if (!Objects.isNull(numQuestions) && numQuestions.isEmpty() && currentQuestionCount >= Integer.parseInt(numQuestions)) {
+                taskStatusService.updateTaskStatus(taskStatus, "COMPLETED", mergedJson);
                 return mergedJson;
             }
 
-            taskStatusService.updateTaskStatus(taskStatus,"PROGRESS",mergedJson);
-            return getQuestionsWithDeepSeekFromAudio(audioString,difficulty,numQuestions,optionalPrompt,mergedJson,attempt+1,taskStatus);
+            taskStatusService.updateTaskStatus(taskStatus, "PROGRESS", mergedJson);
+            return getQuestionsWithDeepSeekFromAudio(audioString, difficulty, numQuestions, optionalPrompt, mergedJson, attempt + 1, taskStatus);
         } catch (Exception e) {
-            taskStatusService.updateTaskStatus(taskStatus,TaskStatusEnum.FAILED.name(), oldResponse);
+            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), oldResponse);
             return oldResponse;
         }
     }
@@ -400,12 +533,11 @@ public class DeepSeekService {
         requestEvaluation.setType(QuestionTypes.MCQS.name());
         MCQEvaluationDTO.MCQData mcqData = new MCQEvaluationDTO.MCQData();
         mcqData.setCorrectOptionIds(
-                (questionRequest.getCorrectOptions() == null || questionRequest.getCorrectOptions().isEmpty())? new ArrayList<>() : questionRequest.getCorrectOptions().stream()
+                (questionRequest.getCorrectOptions() == null || questionRequest.getCorrectOptions().isEmpty()) ? new ArrayList<>() : questionRequest.getCorrectOptions().stream()
                         .map(String::valueOf)
                         .collect(Collectors.toList())
         );
         requestEvaluation.setData(mcqData);
-
 
 
         // Process Options
@@ -459,7 +591,7 @@ public class DeepSeekService {
         try {
             question.setAutoEvaluationJson(setEvaluationJson(requestEvaluation));
         } catch (Exception e) {
-            throw new VacademyException("Failed to process question settings "+ e.getMessage());
+            throw new VacademyException("Failed to process question settings " + e.getMessage());
         }
 
         return question;
@@ -570,83 +702,9 @@ public class DeepSeekService {
         return jsonString; // Return the JSON string for confirmation or further processing
     }
 
-    /**
-     * Cleans a string by:
-     * 1. Removing backslashes that escape quotes
-     * 2. Converting Unicode escape sequences like \u003c to corresponding characters
-     * 3. Handling common escape sequences like \n, \t, etc.
-     *
-     * @param input The string with escape sequences
-     * @return The cleaned string with actual characters
-     */
-    public static String unescapeString(String input) {
-        if (input == null) {
-            return null;
-        }
-
-        StringBuilder result = new StringBuilder(input.length());
-        for (int i = 0; i < input.length(); i++) {
-            char c = input.charAt(i);
-
-            // Handle backslash escape sequences
-            if (c == '\\' && i + 1 < input.length()) {
-                char next = input.charAt(i + 1);
-
-                switch (next) {
-                    case '"':
-                        result.append('"');
-                        i++;
-                        break;
-                    case '\\':
-                        result.append('\\');
-                        i++;
-                        break;
-                    case 'n':
-                        result.append('\n');
-                        i++;
-                        break;
-                    case 't':
-                        result.append('\t');
-                        i++;
-                        break;
-                    case 'r':
-                        result.append('\r');
-                        i++;
-                        break;
-                    case 'u':
-
-                        if (i + 5 < input.length()) {
-                            try {
-                                String hex = input.substring(i + 2, i + 6);
-                                int codePoint = Integer.parseInt(hex, 16);
-                                result.append((char) codePoint);
-                                i += 5; // Skip the 'u' and 4 hex digits
-                            } catch (NumberFormatException e) {
-                                // If invalid hex, keep the original sequence
-                                result.append(c);
-                            }
-                        } else {
-                            // Not enough characters for a complete Unicode escape
-                            result.append(c);
-                        }
-                        break;
-                    default:
-                        // For any unrecognized escape, just keep the backslash and the character
-                        result.append(c);
-                        break;
-                }
-            } else {
-                // Regular character, just append it
-                result.append(c);
-            }
-        }
-
-        return result.toString();
-    }
-
-    public String getQuestionsWithDeepSeekFromHTMLWithTopics(String htmlData,TaskStatus taskStatus, Integer attempt, String oldJson) {
-        try{
-            if(attempt>=3){
+    public String getQuestionsWithDeepSeekFromHTMLWithTopics(String htmlData, TaskStatus taskStatus, Integer attempt, String oldJson) {
+        try {
+            if (attempt >= 3) {
                 throw new VacademyException("No response from DeepSeek");
             }
             String extractedQuestionNumber = getCommaSeparatedQuestionNumbers(oldJson);
@@ -655,7 +713,7 @@ public class DeepSeekService {
 
             String template = ConstantAiTemplate.getTemplateBasedOnType(TaskStatusTypeEnum.SORT_QUESTIONS_TOPIC_WISE);
             Map<String, Object> promptMap = Map.of("htmlData", unTaggedHtml,
-                    "extractedQuestionNumber",extractedQuestionNumber);
+                    "extractedQuestionNumber", extractedQuestionNumber);
 
             Prompt prompt = new PromptTemplate(template).create(promptMap);
 
@@ -676,88 +734,16 @@ public class DeepSeekService {
             String mergedJson = mergeQuestionsJson(oldJson, restored);
 
             if (getIsProcessCompleted(mergedJson)) {
-                taskStatusService.updateTaskStatus(taskStatus,TaskStatusEnum.COMPLETED.name(), mergedJson);
+                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), mergedJson);
                 return mergedJson;
             }
 
-            taskStatusService.updateTaskStatus(taskStatus,"PROGRESS",mergedJson);
+            taskStatusService.updateTaskStatus(taskStatus, "PROGRESS", mergedJson);
             // Recurse for remaining questions
-            return getQuestionsWithDeepSeekFromHTMLWithTopics(htmlData, taskStatus, attempt+1, oldJson);
+            return getQuestionsWithDeepSeekFromHTMLWithTopics(htmlData, taskStatus, attempt + 1, oldJson);
         } catch (Exception e) {
-            taskStatusService.updateTaskStatus(taskStatus,TaskStatusEnum.FAILED.name(), oldJson);
+            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), oldJson);
             return oldJson;
         }
-    }
-
-    public int getQuestionCount(String jsonString) {
-        try {
-            ObjectMapper mapper = new ObjectMapper();
-            JsonNode root = mapper.readTree(jsonString);
-            JsonNode questions = root.get("questions");
-            return questions != null && questions.isArray() ? questions.size() : 0;
-        } catch (Exception e) {
-            e.printStackTrace();
-            return 0;
-        }
-    }
-
-    public static String mergeQuestionsJson(String oldJson, String newJson) {
-        try {
-            ObjectMapper mapper = new ObjectMapper();
-
-            JsonNode oldNode = oldJson == null || oldJson.isBlank()
-                    ? mapper.readTree("{\"questions\":[]}")
-                    : mapper.readTree(oldJson);
-            JsonNode newNode = mapper.readTree(newJson);
-
-            ObjectNode mergedNode = (ObjectNode) oldNode;
-
-            // Merge questions
-            ArrayNode mergedQuestions = mapper.createArrayNode();
-            if (oldNode.has("questions")) {
-                mergedQuestions.addAll((ArrayNode) oldNode.get("questions"));
-            }
-            if (newNode.has("questions")) {
-                mergedQuestions.addAll((ArrayNode) newNode.get("questions"));
-            }
-            mergedNode.set("questions", mergedQuestions);
-
-            // Merge is_process_completed
-            boolean oldCompleted = oldNode.has("is_process_completed") && oldNode.get("is_process_completed").asBoolean();
-            boolean newCompleted = newNode.has("is_process_completed") && newNode.get("is_process_completed").asBoolean();
-            mergedNode.put("is_process_completed", newCompleted);
-
-            // Merge title (keep old if exists)
-            if (!oldNode.has("title") && newNode.has("title")) {
-                mergedNode.put("title", newNode.get("title").asText());
-            }
-
-            // Merge difficulty (keep old if exists)
-            if (!oldNode.has("difficulty") && newNode.has("difficulty")) {
-                mergedNode.put("difficulty", newNode.get("difficulty").asText());
-            }
-
-            // Merge tags, subjects, classes
-            mergeStringArrayField(mergedNode, oldNode, newNode, "tags", mapper);
-            mergeStringArrayField(mergedNode, oldNode, newNode, "subjects", mapper);
-            mergeStringArrayField(mergedNode, oldNode, newNode, "classes", mapper);
-
-            return mapper.writerWithDefaultPrettyPrinter().writeValueAsString(mergedNode);
-        } catch (Exception e) {
-            return oldJson != null ? oldJson : newJson;
-        }
-    }
-
-    private static void mergeStringArrayField(ObjectNode mergedNode, JsonNode oldNode, JsonNode newNode, String fieldName, ObjectMapper mapper) {
-        Set<String> uniqueValues = new LinkedHashSet<>();
-        if (oldNode.has(fieldName)) {
-            oldNode.get(fieldName).forEach(n -> uniqueValues.add(n.asText()));
-        }
-        if (newNode.has(fieldName)) {
-            newNode.get(fieldName).forEach(n -> uniqueValues.add(n.asText()));
-        }
-        ArrayNode mergedArray = mapper.createArrayNode();
-        uniqueValues.forEach(mergedArray::add);
-        mergedNode.set(fieldName, mergedArray);
     }
 }

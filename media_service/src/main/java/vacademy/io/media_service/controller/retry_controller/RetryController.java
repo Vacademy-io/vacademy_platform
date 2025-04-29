@@ -32,7 +32,7 @@ public class RetryController {
 
 
         TaskStatus newTask = taskStatusService.updateTaskStatusOrCreateNewTask(null, oldTaskStatus.get().getType(), oldTaskStatus.get().getInputId(), oldTaskStatus.get().getInputType(), oldTaskStatus.get().getTaskName() + "_retry", oldTaskStatus.get().getInstituteId());
-        //taskRetryService.asyncRetryTask(newTask);
+        taskRetryService.asyncRetryTask(newTask, oldTaskStatus.get().getDynamicValuesMap());
         return ResponseEntity.ok(newTask);
     }
 

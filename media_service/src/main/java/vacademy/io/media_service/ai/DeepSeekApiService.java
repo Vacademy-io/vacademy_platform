@@ -41,6 +41,7 @@ public class DeepSeekApiService {
         requestBody.put("temperature", 0.7);           // Less randomness for JSON
         requestBody.put("top_p", 0.9);                 // Slightly narrower sampling
         requestBody.put("stream", false);
+        requestBody.put("transforms", List.of("middle-out"));
 
         // Create HTTP entity
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);

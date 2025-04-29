@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.packages.service;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerStatusEnum;
+import vacademy.io.admin_core_service.features.learner_invitation.enums.LearnerInvitationCodeStatusEnum;
 import vacademy.io.admin_core_service.features.packages.dto.BatchProjection;
 import vacademy.io.admin_core_service.features.packages.dto.PackageDTOWithBatchDetails;
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
@@ -25,7 +26,7 @@ public class BatchService {
         List<PackageDTOWithBatchDetails>packageDTOWithBatchDetails = new ArrayList<>();
         for (PackageEntity packageEntity : packages) {
             PackageDTO packageDTO = new PackageDTO(packageEntity);
-            List<BatchProjection> batches = packageSessionRepository.findBatchDetails(packageEntity.getId(),List.of(PackageSessionStatusEnum.ACTIVE.name()),List.of(LearnerStatusEnum.ACTIVE.name()));
+            List<BatchProjection> batches = packageSessionRepository.findBatchDetailsWithLatestInviteCode(packageEntity.getId(),List.of(PackageSessionStatusEnum.ACTIVE.name()),List.of(LearnerStatusEnum.ACTIVE.name()),List.of(LearnerInvitationCodeStatusEnum.DELETED.name(),LearnerInvitationCodeStatusEnum.CLOSED.name()));
             packageDTOWithBatchDetails.add(new PackageDTOWithBatchDetails(packageDTO,batches));
         }
         return packageDTOWithBatchDetails;

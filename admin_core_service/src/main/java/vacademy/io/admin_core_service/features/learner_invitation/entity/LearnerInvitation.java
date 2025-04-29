@@ -33,6 +33,10 @@ public class LearnerInvitation {
 
     private String batchOptionsJson;
 
+    private String source;
+
+    private String sourceId;
+
     @OneToMany(mappedBy = "learnerInvitation", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<LearnerInvitationCustomField> customFields = new ArrayList<>();
 
@@ -52,7 +56,8 @@ public class LearnerInvitation {
         this.instituteId = learnerInvitationDTO.getInstituteId();
         this.inviteCode = learnerInvitationDTO.getInviteCode();
         this.batchOptionsJson = learnerInvitationDTO.getBatchOptionsJson();
-
+        this.source = learnerInvitationDTO.getSource();
+        this.sourceId = learnerInvitationDTO.getSourceId();
         if (Objects.nonNull(learnerInvitationDTO.getCustomFields())) {
             this.customFields = learnerInvitationDTO.getCustomFields()
                     .stream()

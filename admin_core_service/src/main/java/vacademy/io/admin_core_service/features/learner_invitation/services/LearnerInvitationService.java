@@ -21,10 +21,7 @@ import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
 
 import java.security.SecureRandom;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 
 @Service
 public class LearnerInvitationService {
@@ -179,4 +176,41 @@ public class LearnerInvitationService {
                 .orElseThrow(() -> new VacademyException("Learner invitation not found"));
         return learnerInvitation.mapToDTO();
     }
+
+    @Transactional
+    public List<LearnerInvitationDTO> createLearnerInvitationCodes(List<AddLearnerInvitationDTO> addLearnerInvitationDTOs, CustomUserDetails user) {
+        List<LearnerInvitation> invitationsToSave = new ArrayList<>();
+        Map<LearnerInvitation, AddLearnerInvitationDTO> invitationToDTOMap = new HashMap<>();
+
+        for (AddLearnerInvitationDTO addDTO : addLearnerInvitationDTOs) {
+            LearnerInvitationDTO dto = addDTO.getLearnerInvitation();
+            validateRequest(dto);
+            dto.setInviteCode(generateInviteCode());
+
+            LearnerInvitation entity = new LearnerInvitation(dto);
+            invitationsToSave.add(entity);
+            invitationToDTOMap.put(entity, addDTO);
+        }
+
+        List<LearnerInvitation> savedInvitations = learnerInvitationRepository.saveAll(invitationsToSave);
+        List<LearnerInvitationDTO> result = new ArrayList<>();
+
+        for (LearnerInvitation saved : savedInvitations) {
+            AddLearnerInvitationDTO originalDTO = invitationToDTOMap.get(saved);
+            String instituteId = saved.getInstituteId();
+
+            Institute institute = instituteRepository.findById(instituteId)
+                    .orElseThrow(() -> new VacademyException("Institute not found with ID: " + instituteId));
+
+            List<String> emails = originalDTO.getEmailsToSendInvitation();
+            if (emails != null && !emails.isEmpty()) {
+                sendLearnerInvitationNotificationAsync(emails, institute.getInstituteName(), institute.getId(), saved.getInviteCode());
+            }
+
+            result.add(saved.mapToDTO());
+        }
+
+        return result;
+    }
+
 }

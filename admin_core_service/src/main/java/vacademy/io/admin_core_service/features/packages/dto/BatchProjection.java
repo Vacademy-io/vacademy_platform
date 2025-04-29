@@ -10,4 +10,5 @@ public interface BatchProjection {
     String getBatchStatus();
     String getStartDate();
     Long getCountStudents();
+    String getInviteCode();
 }

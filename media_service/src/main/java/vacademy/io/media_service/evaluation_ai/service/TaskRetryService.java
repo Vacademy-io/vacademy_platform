@@ -80,7 +80,7 @@ public class TaskRetryService {
 
         String resultJson = response.getChoices().get(0).getMessage().getContent();
         String newResultJson = JsonUtils.extractAndSanitizeJson(resultJson);
-        String newFinalJson = handleOldAndNewJson(newTask.getType(), oldDynamicMap, newResultJson);
+        String newFinalJson = handleOldAndNewJson(newTask.getType(), newTask.getResultJson(), newResultJson);
         taskStatusService.updateTaskStatus(newTask, TaskStatusEnum.PROGRESS.name(), newFinalJson);
         Boolean isCompleted = checkIfTaskIsCompleted(newTask, newFinalJson, newTask.getType());
         if (isCompleted) return;

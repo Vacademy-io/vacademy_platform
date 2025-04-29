@@ -62,8 +62,8 @@ public class DeepSeekAsyncTaskService {
             String rawOutput = deepSeekService.getQuestionsWithDeepSeekFromHTMLRecursive(
                     networkHtml, userPrompt, restoreJson, 0, taskStatus
             );
-
-            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), rawOutput);
+            if(rawOutput==null || rawOutput.isEmpty()) taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, TaskStatusEnum.FAILED.name(), rawOutput, "No Response Generate");
+            else taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), rawOutput);
         } catch (Exception e) {
             log.error("Failed To Generate: " + e.getMessage());
         }
@@ -145,7 +145,8 @@ public class DeepSeekAsyncTaskService {
         String oldJson = taskStatus.getResultJson() != null ? taskStatus.getResultJson() : "";
         taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.PROGRESS.name(), null);
         String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromTextPrompt(textPrompt.getText(), textPrompt.getNum().toString(), textPrompt.getQuestionType(), textPrompt.getClassLevel(), textPrompt.getTopics(), textPrompt.getQuestionLanguage(), taskStatus, 0, oldJson));
-        taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), rawOutput);
+        if(rawOutput==null || rawOutput.isEmpty()) taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, TaskStatusEnum.COMPLETED.name(), rawOutput,"No Response Generated");
+        else taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), rawOutput);
     }
 
 
@@ -153,7 +154,8 @@ public class DeepSeekAsyncTaskService {
         taskStatusService.updateTaskStatus(taskStatus,TaskStatusEnum.PROGRESS.name(), null);
 
         String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromHTMLWithTopics(networkHtml, taskStatus, 0, ""));
-        taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), rawOutput);
+        if(rawOutput==null || rawOutput.isEmpty()) taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, TaskStatusEnum.FAILED.name(), rawOutput, "No Response Generated");
+        else taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), rawOutput);
     }
 
     public CompletableFuture<Void> pollAndProcessPdfToQuestions(TaskStatus taskStatus, String pdfId, String userPrompt) {

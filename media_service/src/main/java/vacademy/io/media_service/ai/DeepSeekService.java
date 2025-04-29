@@ -14,11 +14,8 @@ import org.springframework.stereotype.Service;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.media_service.constant.ConstantAiTemplate;
 import vacademy.io.media_service.dto.*;
-import vacademy.io.media_service.enums.QuestionResponseType;
-import vacademy.io.media_service.enums.QuestionTypes;
+import vacademy.io.media_service.enums.*;
 import vacademy.io.media_service.entity.TaskStatus;
-import vacademy.io.media_service.enums.TaskStatusEnum;
-import vacademy.io.media_service.enums.TaskStatusTypeEnum;
 import vacademy.io.media_service.service.HtmlJsonProcessor;
 import vacademy.io.media_service.service.TaskStatusService;
 import vacademy.io.media_service.util.JsonUtils;
@@ -662,9 +659,9 @@ public class DeepSeekService {
             taskStatusService.convertMapToJsonAndStore(promptMap, taskStatus);
 
             DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
-            if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {
+            if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty() || response.getChoices().get(0).getMessage().getContent().isEmpty()) {
                 taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), oldJson);
-                return oldJson;
+                return getQuestionsWithDeepSeekFromHTMLWithTopics(htmlData, taskStatus, attempt+1, oldJson);
             }
 
             String resultJson = response.getChoices().get(0).getMessage().getContent();
@@ -682,7 +679,7 @@ public class DeepSeekService {
 
             taskStatusService.updateTaskStatus(taskStatus,"PROGRESS",mergedJson);
             // Recurse for remaining questions
-            return getQuestionsWithDeepSeekFromHTMLWithTopics(htmlData, taskStatus, attempt+1, oldJson);
+            return getQuestionsWithDeepSeekFromHTMLWithTopics(htmlData, taskStatus, attempt+1, mergedJson);
         } catch (Exception e) {
             taskStatusService.updateTaskStatus(taskStatus,TaskStatusEnum.FAILED.name(), oldJson);
             return oldJson;
@@ -705,7 +702,7 @@ public class DeepSeekService {
         try {
             ObjectMapper mapper = new ObjectMapper();
 
-            JsonNode oldNode = oldJson == null || oldJson.isBlank()
+            JsonNode oldNode = (oldJson == null || oldJson.isBlank())
                     ? mapper.readTree("{\"questions\":[]}")
                     : mapper.readTree(oldJson);
             JsonNode newNode = mapper.readTree(newJson);
@@ -718,7 +715,13 @@ public class DeepSeekService {
                 mergedQuestions.addAll((ArrayNode) oldNode.get("questions"));
             }
             if (newNode.has("questions")) {
-                mergedQuestions.addAll((ArrayNode) newNode.get("questions"));
+                ArrayNode newQuestions = (ArrayNode) newNode.get("questions");
+                for (JsonNode q : newQuestions) {
+                    if (q.has("question_type") && !q.get("question_type").asText().isBlank()
+                            && ValidQuestionTypeEnums.isValid(q.get("question_type").asText())) {
+                        mergedQuestions.add(q);
+                    }
+                }
             }
             mergedNode.set("questions", mergedQuestions);
 
@@ -742,11 +745,53 @@ public class DeepSeekService {
             mergeStringArrayField(mergedNode, oldNode, newNode, "subjects", mapper);
             mergeStringArrayField(mergedNode, oldNode, newNode, "classes", mapper);
 
+            // Merge topicQuestionMap if present
+            if (newNode.has("topicQuestionMap")) {
+                Map<String, Set<Integer>> topicMap = new LinkedHashMap<>();
+
+                // Load old map
+                if (oldNode.has("topicQuestionMap")) {
+                    for (JsonNode node : oldNode.get("topicQuestionMap")) {
+                        String topic = node.get("topic").asText();
+                        Set<Integer> questions = new HashSet<>();
+                        for (JsonNode q : node.get("questionNumbers")) {
+                            questions.add(q.asInt());
+                        }
+                        topicMap.put(topic, questions);
+                    }
+                }
+
+                // Load and merge new map
+                for (JsonNode node : newNode.get("topicQuestionMap")) {
+                    String topic = node.get("topic").asText();
+                    Set<Integer> questions = topicMap.getOrDefault(topic, new HashSet<>());
+                    for (JsonNode q : node.get("questionNumbers")) {
+                        questions.add(q.asInt());
+                    }
+                    topicMap.put(topic, questions);
+                }
+
+                // Convert to ArrayNode
+                ArrayNode topicMapNode = mapper.createArrayNode();
+                for (Map.Entry<String, Set<Integer>> entry : topicMap.entrySet()) {
+                    ObjectNode topicNode = mapper.createObjectNode();
+                    topicNode.put("topic", entry.getKey());
+                    ArrayNode qArray = mapper.createArrayNode();
+                    entry.getValue().stream().sorted().forEach(qArray::add);
+                    topicNode.set("questionNumbers", qArray);
+                    topicMapNode.add(topicNode);
+                }
+
+                mergedNode.set("topicQuestionMap", topicMapNode);
+            }
+
             return mapper.writerWithDefaultPrettyPrinter().writeValueAsString(mergedNode);
         } catch (Exception e) {
             return oldJson != null ? oldJson : newJson;
         }
     }
+
+
 
     private static void mergeStringArrayField(ObjectNode mergedNode, JsonNode oldNode, JsonNode newNode, String fieldName, ObjectMapper mapper) {
         Set<String> uniqueValues = new LinkedHashSet<>();

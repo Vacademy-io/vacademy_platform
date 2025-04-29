@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.course.dto.AddCourseDTO;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
+import vacademy.io.admin_core_service.features.learner_invitation.services.LearnerInvitationService;
 import vacademy.io.admin_core_service.features.level.service.LevelService;
 import vacademy.io.admin_core_service.features.packages.enums.PackageStatusEnum;
 import vacademy.io.admin_core_service.features.packages.repository.PackageInstituteRepository;
@@ -36,6 +37,7 @@ public class CourseService {
     private final PackageInstituteRepository packageInstituteRepository;
     private final InstituteRepository instituteRepository;
     private final PackageSessionRepository packageSessionRepository;
+    private final LearnerInvitationService learnerInvitationService;
 
     @Transactional
     public String addCourse(AddCourseDTO addCourseDTO, CustomUserDetails user, String instituteId) {

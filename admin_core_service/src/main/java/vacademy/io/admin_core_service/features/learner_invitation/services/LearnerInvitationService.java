@@ -213,4 +213,8 @@ public class LearnerInvitationService {
         return result;
     }
 
+    private void deleteLearnerInvitationBySourceAndSourceId(String source, String sourceId) {
+
+    }
+
 }

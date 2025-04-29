@@ -1,6 +1,7 @@
 package vacademy.io.admin_core_service.features.packages.service;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.learner_invitation.dto.AddLearnerInvitationDTO;
 import vacademy.io.admin_core_service.features.learner_invitation.dto.LearnerInvitationDTO;
@@ -34,6 +35,7 @@ public class PackageSessionService {
         createDefaultInvitationForm(packageSession,instituteId,userDetails);
     }
 
+    @Async
     private void createDefaultInvitationForm(PackageSession packageSession, String instituteId, CustomUserDetails userDetails){
         AddLearnerInvitationDTO learnerInvitationDTO = LearnerInvitationDefaultFormGenerator.generateSampleInvitation(packageSession,instituteId);
         learnerInvitationService.createLearnerInvitationCode(learnerInvitationDTO,userDetails);

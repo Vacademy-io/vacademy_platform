@@ -18,7 +18,7 @@ public class InitController {
     private InitService initService;
 
     @GetMapping("/content_structure/question-filters")
-    public ResponseEntity<InitResponseDto> getDropdownOptions(@RequestAttribute("user") CustomUserDetails user) {
-        return initService.getDropdownOptions(user);
+    public ResponseEntity<InitResponseDto> getDropdownOptions() {
+        return initService.getDropdownOptions();
     }
 }

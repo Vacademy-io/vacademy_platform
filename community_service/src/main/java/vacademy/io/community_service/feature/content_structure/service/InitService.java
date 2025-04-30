@@ -41,7 +41,7 @@ public class InitService {
     @Autowired
     private EntityTagsRepository entityTagsRepository;
 
-    public ResponseEntity<InitResponseDto> getDropdownOptions(CustomUserDetails user) {
+    public ResponseEntity<InitResponseDto> getDropdownOptions() {
         List<Levels> levelEntities = levelRepository.findAll();
         List<LevelDto> levels = levelEntities.stream()
                 .map(level -> new LevelDto(level.getLevelId(), level.getLevelName()))

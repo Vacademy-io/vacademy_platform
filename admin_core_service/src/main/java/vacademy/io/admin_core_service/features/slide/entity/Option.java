@@ -5,6 +5,7 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.UuidGenerator;
 import vacademy.io.admin_core_service.features.common.entity.RichTextData;
 import vacademy.io.admin_core_service.features.slide.dto.OptionDTO;
 
@@ -20,6 +21,7 @@ public class Option {
 
     @Id
     @Column(name = "id", nullable = false)
+    @UuidGenerator
     private String id;
 
     // Link to QuestionSlide (Many Options → One QuestionSlide)

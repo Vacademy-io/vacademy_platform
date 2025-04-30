@@ -6,6 +6,7 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.security.core.parameters.P;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.learner_invitation.dto.AddLearnerInvitationDTO;
+import vacademy.io.admin_core_service.features.learner_invitation.enums.LearnerInvitationSourceTypeEnum;
 import vacademy.io.admin_core_service.features.learner_invitation.services.LearnerInvitationService;
 import vacademy.io.admin_core_service.features.learner_invitation.util.LearnerInvitationDefaultFormGenerator;
 import vacademy.io.admin_core_service.features.level.dto.AddLevelWithSessionDTO;
@@ -183,7 +184,14 @@ public class SessionService {
             session.setStatus(SessionStatusEnum.DELETED.name());
         }
         sessionRepository.saveAll(sessions);
-        packageSessionRepository.updateStatusBySessionIds(sessionIds, PackageSessionStatusEnum.DELETED.name());
+       List<PackageSession>packageSessions = packageSessionRepository.findBySessionIds(sessionIds);
+       List<String>packageSessionIds = new ArrayList<>();
+       for (PackageSession packageSession : packageSessions) {
+           packageSession.setStatus(PackageSessionStatusEnum.DELETED.name());
+           packageSessionIds.add(packageSession.getId());
+       }
+       packageSessionRepository.saveAll(packageSessions);
+       learnerInvitationService.deleteLearnerInvitationBySourceAndSourceId(LearnerInvitationSourceTypeEnum.PACKAGE_SESSION.name(), packageSessionIds);
         return "Session deleted successfully.";
     }
 

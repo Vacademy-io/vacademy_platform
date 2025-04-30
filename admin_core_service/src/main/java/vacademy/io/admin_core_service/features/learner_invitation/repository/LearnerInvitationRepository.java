@@ -3,8 +3,10 @@ package vacademy.io.admin_core_service.features.learner_invitation.repository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.learner_invitation.dto.InvitationDetailProjection;
 import vacademy.io.admin_core_service.features.learner_invitation.entity.LearnerInvitation;
 
@@ -71,10 +73,10 @@ public interface LearnerInvitationRepository extends JpaRepository<LearnerInvita
             @Param("status") List<String> status,
             @Param("customFieldStatus") List<String> customFieldStatus);
 
-    Optional<LearnerInvitation> findTopBySourceIdAndSourceAndStatusInOrderByCreatedAtDesc(
-            String sourceId,
-            String source,
-            List<String> status
-    );
-
+    @Modifying
+    @Transactional
+    @Query("UPDATE LearnerInvitation li SET li.status = :status WHERE li.sourceId IN :sourceIds AND li.source = :source")
+    int updateStatusBySourceIdsAndSource(@Param("status") String status,
+                                         @Param("sourceIds") List<String> sourceIds,
+                                         @Param("source") String source);
 }

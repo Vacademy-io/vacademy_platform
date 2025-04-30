@@ -141,4 +141,13 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
     WHERE ps.id = :packageSessionId
 """)
     Optional<BatchInstituteProjection> findBatchAndInstituteByPackageSessionId(@Param("packageSessionId") String packageSessionId);
+
+    @Query("SELECT ps FROM PackageSession ps WHERE ps.packageEntity.id IN :packageIds")
+    List<PackageSession> findAllByPackageIds(@Param("packageIds") List<String> packageIds);
+
+    @Query("SELECT ps FROM PackageSession ps WHERE ps.session.id IN :sessionIds")
+    List<PackageSession> findBySessionIds(@Param("sessionIds") List<String> sessionIds);
+
+    @Query("SELECT ps FROM PackageSession ps WHERE ps.level.id IN :levelIds")
+    List<PackageSession> findByLevelIds(@Param("levelIds") List<String> levelIds);
 }

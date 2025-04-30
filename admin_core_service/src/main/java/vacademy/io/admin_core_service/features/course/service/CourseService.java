@@ -5,6 +5,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.course.dto.AddCourseDTO;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
+import vacademy.io.admin_core_service.features.learner_invitation.enums.LearnerInvitationCodeStatusEnum;
+import vacademy.io.admin_core_service.features.learner_invitation.enums.LearnerInvitationSourceTypeEnum;
 import vacademy.io.admin_core_service.features.learner_invitation.services.LearnerInvitationService;
 import vacademy.io.admin_core_service.features.level.service.LevelService;
 import vacademy.io.admin_core_service.features.packages.enums.PackageStatusEnum;
@@ -20,6 +22,7 @@ import vacademy.io.common.institute.dto.PackageDTO;
 import vacademy.io.common.institute.entity.Level;
 import vacademy.io.common.institute.entity.PackageEntity;
 import vacademy.io.common.institute.entity.PackageInstitute;
+import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.common.institute.entity.session.Session;
 
 import java.util.ArrayList;
@@ -117,7 +120,14 @@ public class CourseService {
             deletedCourses.add(course);
         }
         packageRepository.saveAll(deletedCourses);
-        packageSessionRepository.updateStatusByPackageIds(PackageStatusEnum.DELETED.name(), courseIds);
+        List<PackageSession>packageSessions = packageSessionRepository.findAllByPackageIds(courseIds);
+        List<String>packageSessionIds = new ArrayList<>();
+        for (PackageSession packageSession : packageSessions) {
+            packageSession.setStatus(PackageStatusEnum.DELETED.name());
+            packageSessionIds.add(packageSession.getId());
+        }
+        packageSessionRepository.saveAll(packageSessions);
+        learnerInvitationService.deleteLearnerInvitationBySourceAndSourceId(LearnerInvitationSourceTypeEnum.PACKAGE_SESSION.name(), packageSessionIds);
         return "Course deleted successfully";
     }
 }

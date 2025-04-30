@@ -17,11 +17,10 @@ public class StudyLibraryController {
     @Autowired
     private StudyLibraryService studyLibraryService;
 
-    @GetMapping("/init")
+    @GetMapping("/content_structure")
     public ResponseEntity<List<CourseDTOWithDetails>> initStudyLibrary(String instituteId) {
         return ResponseEntity.ok(studyLibraryService.getStudyLibraryInitDetails(instituteId));
     }
-
 
     @GetMapping("/modules-with-chapters")
     public ResponseEntity<List<ModuleDTOWithDetails>> modulesWithChapters(@RequestParam("subjectId") String subjectId, @RequestParam("packageSessionId") String packageSessionId, @RequestAttribute("user") CustomUserDetails user) {

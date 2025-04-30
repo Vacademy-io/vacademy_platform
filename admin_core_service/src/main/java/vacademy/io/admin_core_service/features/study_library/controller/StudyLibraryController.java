@@ -17,7 +17,7 @@ public class StudyLibraryController {
     @Autowired
     private StudyLibraryService studyLibraryService;
 
-    @GetMapping("/content_structure")
+    @GetMapping("/init")
     public ResponseEntity<List<CourseDTOWithDetails>> initStudyLibrary(String instituteId) {
         return ResponseEntity.ok(studyLibraryService.getStudyLibraryInitDetails(instituteId));
     }

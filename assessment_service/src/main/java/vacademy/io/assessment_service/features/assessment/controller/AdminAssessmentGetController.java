@@ -24,7 +24,7 @@ public class AdminAssessmentGetController {
     @Autowired
     AdminAssessmentGetManager adminAssessmentGetManager;
 
-    @GetMapping("/assessment-admin-list-content_structure")
+    @GetMapping("/assessment-admin-list-init")
     public ResponseEntity<AssessmentAdminListInitDto> assessmentAdminListInit(@RequestAttribute("user") CustomUserDetails user,
                                                                               @RequestParam(name = "instituteId", required = false) String instituteId) {
         return adminAssessmentGetManager.assessmentAdminListInit(user, instituteId);
@@ -84,7 +84,7 @@ public class AdminAssessmentGetController {
         return adminAssessmentGetManager.revaluateAssessment(userDetails, assessmentId, methodType, request, instituteId);
     }
 
-    @GetMapping("/content_structure/total-marks")
+    @GetMapping("/init/total-marks")
     public ResponseEntity<TotalMarksAssessmentResponse> initAssessmentMarks(@RequestAttribute("user") CustomUserDetails user,
                                                                             @RequestParam(name = "assessmentId") String assessmentId) {
         return adminAssessmentGetManager.initTotalAssessmentMarks(user, assessmentId);

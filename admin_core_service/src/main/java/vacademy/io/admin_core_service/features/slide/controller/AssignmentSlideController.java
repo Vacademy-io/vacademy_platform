@@ -16,6 +16,7 @@ public class AssignmentSlideController {
     @PostMapping("/add-or-update")
     public String addAssignmentSlide(@RequestBody SlideDTO slideDTO,
                                      @RequestParam String chapterId,
+                                     @RequestParam String instituteId,
                                      @RequestAttribute("user") CustomUserDetails userDetails) {
 
         return assignmentSlideService.addOrUpdateAssignmentSlide(slideDTO, chapterId, userDetails);

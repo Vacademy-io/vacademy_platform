@@ -1,5 +1,7 @@
 package vacademy.io.admin_core_service.features.slide.service;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -35,6 +37,7 @@ public class SlideService {
     private final DocumentSlideRepository documentSlideRepository;
     private final VideoSlideRepository videoSlideRepository;
     private final SlideNotificationService slideNotificationService;
+    private final ObjectMapper objectMapper;
 
     @Transactional
     public String addOrUpdateDocumentSlide(AddDocumentSlideDTO addDocumentSlideDTO, String chapterId, String instituteId) {
@@ -490,4 +493,26 @@ public class SlideService {
         return slide;
     }
 
+    public List<SlideDTO> getSlides(String chapterId) {
+        // Fetch JSON response from repository
+        String jsonSlides = slideRepository.getSlidesByChapterId(
+                chapterId,
+                List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name(), SlideStatus.DRAFT.name()),
+                List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name(), SlideStatus.DRAFT.name())
+        );
+
+        // Map the JSON to List<SlideDTO>
+        return mapToSlideDTOList(jsonSlides);
+    }
+
+    private List<SlideDTO> mapToSlideDTOList(String jsonSlides) {
+        if (!StringUtils.hasText(jsonSlides)) {
+            return List.of();
+        }
+        try {
+            return objectMapper.readValue(jsonSlides, new TypeReference<List<SlideDTO>>() {});
+        } catch (Exception e) {
+            throw new VacademyException("Unable to map to SlideDTO list: " + e.getMessage());
+        }
+    }
 }

@@ -17,7 +17,7 @@ public class InitController {
     @Autowired
     private InitService initService;
 
-    @GetMapping("/content_structure/question-filters")
+    @GetMapping("/init/question-filters")
     public ResponseEntity<InitResponseDto> getDropdownOptions() {
         return initService.getDropdownOptions();
     }

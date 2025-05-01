@@ -85,8 +85,8 @@ public class LearnerStudyLibraryService {
         // Fetch JSON response from repository
         String jsonSlides = slideRepository.getSlidesByChapterId(
                 chapterId,
-                List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name(), SlideStatus.DRAFT.name()),
-                List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name(), SlideStatus.DRAFT.name()),
+                List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
+                List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
                 List.of(QuestionStatusEnum.ACTIVE.name()) // Added missing closing parenthesis here
         );
 

@@ -1,8 +1,6 @@
 package vacademy.io.admin_core_service.features.slide.enums;
 
-public enum SlideTypeEnum {
-    VIDEO,
-    DOCUMENT,
+public enum QuestionSlideSourceTypeEnum {
     QUESTION,
-    ASSIGNMENT
+    SURVEY
 }

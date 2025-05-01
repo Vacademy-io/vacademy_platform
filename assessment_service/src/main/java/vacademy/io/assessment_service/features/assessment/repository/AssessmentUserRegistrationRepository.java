@@ -36,7 +36,11 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
              sa.report_release_status as reportReleaseResultStatus,
             sa.report_last_release_date as lastReportReleaseDate,
             sa.result_status as evaluationStatus from assessment_user_registration aur
-            join student_attempt sa on sa.registration_id = aur.id
+            JOIN (
+                SELECT DISTINCT ON (registration_id) *
+                FROM student_attempt
+                ORDER BY registration_id, submit_time DESC
+            ) sa ON sa.registration_id = aur.id
             where aur.assessment_id = :assessmentId
             and aur.institute_id = :instituteId
             AND (:status IS NULL OR aur.status IN (:status))
@@ -47,7 +51,11 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
             countQuery = """
                     select count(*)
                     from assessment_user_registration aur
-                    join student_attempt sa on sa.registration_id = aur.id
+                    JOIN (
+                        SELECT DISTINCT ON (registration_id) *
+                        FROM student_attempt
+                        ORDER BY registration_id, submit_time DESC
+                    ) sa ON sa.registration_id = aur.id
                     where aur.assessment_id = :assessmentId
                     and aur.institute_id = :instituteId
                     AND (:status IS NULL OR aur.status IN (:status))
@@ -99,7 +107,11 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
                 sa.report_last_release_date as lastReportReleaseDate,
                 sa.result_status as evaluationStatus
             FROM assessment_user_registration aur
-            JOIN student_attempt sa ON sa.registration_id = aur.id
+            JOIN (
+                SELECT DISTINCT ON (registration_id) *
+                FROM student_attempt
+                ORDER BY registration_id, submit_time DESC
+            ) sa ON sa.registration_id = aur.id
             WHERE aur.assessment_id = :assessmentId
             AND aur.institute_id = :instituteId
             AND (
@@ -114,7 +126,11 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
             countQuery = """
                     SELECT COUNT(*)
                     FROM assessment_user_registration aur
-                    JOIN student_attempt sa ON sa.registration_id = aur.id
+                    JOIN (
+                        SELECT DISTINCT ON (registration_id) *
+                        FROM student_attempt
+                        ORDER BY registration_id, submit_time DESC
+                    ) sa ON sa.registration_id = aur.id
                     WHERE aur.assessment_id = :assessmentId
                     AND aur.institute_id = :instituteId
                     AND (
@@ -355,28 +371,39 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
     );
 
     @Query(value = """
-            SELECT aur.id as registrationId, aur.user_id AS userId, aur.participant_name as participantName,\s
-            sa.id AS attemptId,
-            aur.source as source,
-            qwm.time_taken_in_seconds as responseTimeInSeconds,
-            aur.source_id as sourceId,
-                   COALESCE(NULLIF(qwm.status, 'PENDING'), 'PENDING') AS status
+            SELECT\s
+                aur.id AS registrationId,
+                aur.user_id AS userId,
+                aur.participant_name AS participantName,
+                latest_sa.id AS attemptId,
+                aur.source AS source,
+                qwm.time_taken_in_seconds AS responseTimeInSeconds,
+                aur.source_id AS sourceId,
+                COALESCE(NULLIF(qwm.status, 'PENDING'), 'PENDING') AS status
             FROM assessment_user_registration aur
-            JOIN student_attempt sa ON sa.registration_id = aur.id
-            JOIN question_wise_marks qwm ON qwm.attempt_id = sa.id
-            join assessment a on a.id = aur.assessment_id
+            JOIN (
+                SELECT DISTINCT ON (registration_id) *
+                FROM student_attempt
+                ORDER BY registration_id, submit_time DESC
+            ) latest_sa ON latest_sa.registration_id = aur.id
+            JOIN question_wise_marks qwm ON qwm.attempt_id = latest_sa.id
+            JOIN assessment a ON a.id = aur.assessment_id
             WHERE qwm.question_id = :questionId
-            AND qwm.assessment_id = :assessmentId
-            AND COALESCE(qwm.status, 'PENDING') IN (:attemptStatus)
-            and a.assessment_visibility in (:assessmentVisibility)
-            and aur."source" in (:source)
-            and (:sourceId IS NULL OR aur.source_id in (:sourceId))
+              AND qwm.assessment_id = :assessmentId
+              AND COALESCE(qwm.status, 'PENDING') IN (:attemptStatus)
+              AND a.assessment_visibility IN (:assessmentVisibility)
+              AND aur."source" IN (:source)
+              AND (:sourceId IS NULL OR aur.source_id IN (:sourceId))
             """, countQuery = """
             SELECT count(*)
             FROM assessment_user_registration aur
-            JOIN student_attempt sa ON sa.registration_id = aur.id
-            JOIN question_wise_marks qwm ON qwm.attempt_id = sa.id
-            join assessment a on a.id = aur.assessment_id
+            JOIN (
+                SELECT DISTINCT ON (registration_id) *
+                FROM student_attempt
+                ORDER BY registration_id, submit_time DESC
+            ) latest_sa ON latest_sa.registration_id = aur.id
+            JOIN question_wise_marks qwm ON qwm.attempt_id = latest_sa.id
+            JOIN assessment a ON a.id = aur.assessment_id
             WHERE qwm.question_id = :questionId
             AND qwm.assessment_id = :assessmentId
             AND COALESCE(qwm.status, 'PENDING') IN (:attemptStatus)
@@ -419,32 +446,44 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
 
 
     @Query(value = """
-              SELECT aur.id as registrationId, aur.user_id AS userId, aur.participant_name as participantName,\s
-              sa.id AS attemptId,
-              aur.source as source,
-              qwm.time_taken_in_seconds as responseTimeInSeconds,
-              aur.source_id as sourceId,
-                     COALESCE(NULLIF(qwm.status, 'PENDING'), 'PENDING') AS status
+              SELECT\s
+                  aur.id AS registrationId,
+                  aur.user_id AS userId,
+                  aur.participant_name AS participantName,
+                  sa.id AS attemptId,
+                  aur.source AS source,
+                  qwm.time_taken_in_seconds AS responseTimeInSeconds,
+                  aur.source_id AS sourceId,
+                  COALESCE(NULLIF(qwm.status, 'PENDING'), 'PENDING') AS status
               FROM assessment_user_registration aur
-              JOIN student_attempt sa ON sa.registration_id = aur.id
+              JOIN (
+                  SELECT DISTINCT ON (registration_id) *
+                  FROM student_attempt
+                  ORDER BY registration_id, submit_time DESC
+              ) sa ON sa.registration_id = aur.id
               JOIN question_wise_marks qwm ON qwm.attempt_id = sa.id
-              join assessment a on a.id = aur.assessment_id
+              JOIN assessment a ON a.id = aur.assessment_id
               WHERE qwm.question_id = :questionId
-              AND qwm.assessment_id = :assessmentId
-              AND (
-                    to_tsvector('simple', concat(aur.participant_name)) @@ plainto_tsquery('simple', :name)
-                    OR aur.participant_name ILIKE :name || '%'
-                )
-              AND COALESCE(qwm.status, 'PENDING') IN (:attemptStatus)
-              and a.assessment_visibility in (:assessmentVisibility)
-              and aur."source" in (:source)
-              and (:sourceId IS NULL OR aur.source_id in (:sourceId))
+                AND qwm.assessment_id = :assessmentId
+                AND (
+                      to_tsvector('simple', concat(aur.participant_name)) @@ plainto_tsquery('simple', :name)
+                      OR aur.participant_name ILIKE :name || '%'
+                    )
+                AND COALESCE(qwm.status, 'PENDING') IN (:attemptStatus)
+                AND a.assessment_visibility IN (:assessmentVisibility)
+                AND aur."source" IN (:source)
+                AND (:sourceId IS NULL OR aur.source_id IN (:sourceId))
+            
             """, countQuery = """
               SELECT count(*)
               FROM assessment_user_registration aur
-              JOIN student_attempt sa ON sa.registration_id = aur.id
+              JOIN (
+                  SELECT DISTINCT ON (registration_id) *
+                  FROM student_attempt
+                  ORDER BY registration_id, submit_time DESC
+              ) sa ON sa.registration_id = aur.id
               JOIN question_wise_marks qwm ON qwm.attempt_id = sa.id
-              join assessment a on a.id = aur.assessment_id
+              JOIN assessment a ON a.id = aur.assessment_id
               WHERE qwm.question_id = :questionId
               AND qwm.assessment_id = :assessmentId
               AND (

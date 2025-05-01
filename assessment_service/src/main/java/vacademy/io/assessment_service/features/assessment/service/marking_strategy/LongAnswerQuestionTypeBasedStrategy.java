@@ -59,7 +59,7 @@ public class LongAnswerQuestionTypeBasedStrategy extends IQuestionTypeBasedStrat
             }
 
             // Extracting correct option IDs
-            String correctAnswer = correctAnswerDto.getData().getAnswer().toLowerCase();
+            String correctAnswer = correctAnswerDto.getData().getAnswer().getContent().toLowerCase();
 
             // Extracting student response
             String attemptedAnswer = responseDto.getResponseData().getAnswer().toLowerCase();

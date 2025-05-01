@@ -14,7 +14,7 @@ public class QuestionService {
     @Autowired
     QuestionRepository questionRepository;
 
-    public List<Question> getAllQuestionsFromIds(List<String> ids){
+    public List<Question> getAllQuestionsFromIds(List<String> ids) {
         return questionRepository.findAllById(ids);
     }
 }

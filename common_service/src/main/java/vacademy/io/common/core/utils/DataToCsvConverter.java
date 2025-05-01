@@ -18,7 +18,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
-import java.util.stream.Stream;
 
 public class DataToCsvConverter {
 
@@ -66,10 +65,10 @@ public class DataToCsvConverter {
         return ResponseEntity.ok().headers(headers).body(csvData.getBytes());
     }
 
-    public static <T> ResponseEntity<InputStreamResource> buildPdfResponse(String title, String subTitle, List<T> dataFromDatabase, String lowercaseFilename){
+    public static <T> ResponseEntity<InputStreamResource> buildPdfResponse(String title, String subTitle, List<T> dataFromDatabase, String lowercaseFilename) {
         ByteArrayInputStream pdfStream = convertListToPdf(title, subTitle, dataFromDatabase);
         HttpHeaders headers = new HttpHeaders();
-        headers.add("Content-Disposition", "inline; filename="+lowercaseFilename+".pdf");
+        headers.add("Content-Disposition", "inline; filename=" + lowercaseFilename + ".pdf");
         return ResponseEntity.ok()
                 .headers(headers)
                 .contentType(MediaType.APPLICATION_PDF)
@@ -86,7 +85,7 @@ public class DataToCsvConverter {
             document.open();
 
             // Add title to the document
-            if(!Objects.isNull(title) && !title.isEmpty()){
+            if (!Objects.isNull(title) && !title.isEmpty()) {
                 Font titleFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 16);
                 Paragraph paraTitle = new Paragraph(title, titleFont);
                 paraTitle.setAlignment(Element.ALIGN_CENTER);

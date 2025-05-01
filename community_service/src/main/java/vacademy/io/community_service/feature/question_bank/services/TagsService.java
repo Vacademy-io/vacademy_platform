@@ -16,6 +16,7 @@ public class TagsService {
     public TagsService(EntityTagsRepository repository) {
         this.repository = repository;
     }
+
     public TagsWithQuestionPaperResponseDto getQuestionPaperTags(String entityId) {
         // Fetch the question paper details
         QuestionPaper questionPaper = repository.findQuestionPaperByEntityId(entityId);

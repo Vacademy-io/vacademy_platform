@@ -16,7 +16,10 @@ import vacademy.io.community_service.feature.presentation.repository.Presentatio
 import vacademy.io.community_service.feature.presentation.repository.PresentationSlideRepository;
 import vacademy.io.community_service.feature.presentation.repository.QuestionRepository;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 
 @Component
 public class PresentationCrudManager {
@@ -129,9 +132,18 @@ public class PresentationCrudManager {
         if (presentation.isEmpty())
             throw new VacademyException("Presentation not found");
 
-        presentation.get().setTitle(editPresentationDto.getTitle());
-        presentation.get().setDescription(editPresentationDto.getDescription());
-        presentation.get().setCoverFileId(editPresentationDto.getCoverFileId());
+        if (editPresentationDto.getTitle() != null) {
+            presentation.get().setTitle(editPresentationDto.getTitle());
+        }
+        if (editPresentationDto.getDescription() != null) {
+            presentation.get().setDescription(editPresentationDto.getDescription());
+        }
+        if (editPresentationDto.getCoverFileId() != null) {
+            presentation.get().setCoverFileId(editPresentationDto.getCoverFileId());
+        }
+        if (editPresentationDto.getStatus() != null) {
+            presentation.get().setStatus(editPresentationDto.getStatus());
+        }
         presentationRepository.save(presentation.get());
 
         List<PresentationSlideDto> questionSlides = new ArrayList<>();
@@ -165,7 +177,7 @@ public class PresentationCrudManager {
     }
 
     List<PresentationSlideDto> getPresentationSlides(Presentation presentation) {
-        List<PresentationSlide> presentationSlides = presentationSlideRepository.findAllByPresentationAndStatusIn(presentation, List.of("PUBLISHED"));
+        Set<PresentationSlide> presentationSlides = presentation.getPresentationSlides();
         List<PresentationSlideDto> presentationSlideDtos = new ArrayList<>();
         for (PresentationSlide presentationSlide : presentationSlides) {
             PresentationSlideDto presentationSlideDto = new PresentationSlideDto();

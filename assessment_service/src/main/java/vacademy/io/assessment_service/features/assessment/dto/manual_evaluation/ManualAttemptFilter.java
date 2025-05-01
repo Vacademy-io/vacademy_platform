@@ -17,7 +17,7 @@ import java.util.Map;
 @AllArgsConstructor
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class ManualAttemptFilter {
+    Map<String, String> sortColumns = new HashMap<>();
     private String name;
     private List<String> evaluationStatus = new ArrayList<>();
-    Map<String, String> sortColumns = new HashMap<>();
 }

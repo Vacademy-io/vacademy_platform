@@ -9,5 +9,5 @@ public class AiEvaluationMetadata {
     private String assessmentName;
     private String assessmentId;
     private RichTextDataDTO instruction;
-    private List<AiEvaluationSectionDTO>sections;
+    private List<AiEvaluationSectionDTO> sections;
 }

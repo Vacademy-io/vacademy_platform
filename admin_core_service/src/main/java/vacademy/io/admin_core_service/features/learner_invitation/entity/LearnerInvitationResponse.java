@@ -56,9 +56,10 @@ public class LearnerInvitationResponse {
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Timestamp updatedAt;
 
-    public LearnerInvitationResponse() {}
+    public LearnerInvitationResponse() {
+    }
 
-    public LearnerInvitationResponse(LearnerInvitationResponseDTO learnerInvitationResponseDTO,LearnerInvitation learnerInvitation) {
+    public LearnerInvitationResponse(LearnerInvitationResponseDTO learnerInvitationResponseDTO, LearnerInvitation learnerInvitation) {
         this.id = learnerInvitationResponseDTO.getId();
         this.instituteId = learnerInvitationResponseDTO.getInstituteId();
         this.status = LearnerInvitationResponseStatusEnum.ACTIVE.name();

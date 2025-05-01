@@ -8,9 +8,7 @@ import vacademy.io.admin_core_service.features.learner_reports.service.BatchRepo
 import vacademy.io.admin_core_service.features.learner_reports.service.LearnerReportService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
-import java.time.LocalDate;
-import java.util.*;
-import java.util.concurrent.ThreadLocalRandom;
+import java.util.List;
 
 @RestController
 @RequestMapping("/admin-core-service/learner-management/learner-report")
@@ -33,7 +31,7 @@ public class LearnerReportController {
     }
 
     @GetMapping("/subject-wise-progress")
-    public ResponseEntity<List<SubjectProgressDTO>> getSubjectWiseProgress(
+    public ResponseEntity<List<LearnerSubjectWiseProgressReportDTO>> getSubjectWiseProgress(
             @RequestParam String packageSessionId,
             @RequestParam String userId,
             @RequestAttribute("user") CustomUserDetails userDetails) {
@@ -42,12 +40,13 @@ public class LearnerReportController {
     }
 
     @GetMapping("/chapter-wise-progress")
-    public ResponseEntity<List<ChapterSlideProgressDTO>> getChapterWiseProgress(
+    public ResponseEntity<List<LearnerChapterSlideProgressDTO>> getChapterWiseProgress(
             @RequestParam String userId,
+            @RequestParam String packageSessionId,
             @RequestParam String moduleId,
             @RequestAttribute("user") CustomUserDetails userDetails) {
 
-        return ResponseEntity.ok(learnerReportService.getChapterSlideProgress(moduleId, userId, userDetails));
+        return ResponseEntity.ok(learnerReportService.getChapterSlideProgress(moduleId, userId, packageSessionId, userDetails));
     }
 
     @PostMapping("/slide-wise-progress")
@@ -55,7 +54,7 @@ public class LearnerReportController {
             @RequestBody ReportFilterDTO reportFilterDTO,
             @RequestAttribute("user") CustomUserDetails userDetails) {
         return ResponseEntity.ok(
-                learnerReportService.getSlideProgressForLearner(reportFilterDTO,userDetails)
+                learnerReportService.getSlideProgressForLearner(reportFilterDTO, userDetails)
         );
     }
 }

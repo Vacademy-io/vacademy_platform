@@ -21,7 +21,7 @@ public class LearnerInvitationNotification {
         this.notificationService = notificationService;
     }
 
-    public void sendLearnerInvitationNotification(List<String> emails, String instituteName, String invitationCode) {
+    public void sendLearnerInvitationNotification(List<String> emails, String instituteName, String instituteId, String invitationCode) {
         CompletableFuture.runAsync(() -> {
             try {
                 NotificationDTO notificationDTO = new NotificationDTO();
@@ -29,7 +29,7 @@ public class LearnerInvitationNotification {
                 notificationDTO.setSubject("Invitation to join " + instituteName);
                 notificationDTO.setSource("LEARNER_INVITATION");
                 notificationDTO.setSourceId(invitationCode);
-                notificationDTO.setBody(LearnerInvitationEmailBody.getLearnerInvitationEmailBody(instituteName, invitationCode));
+                notificationDTO.setBody(LearnerInvitationEmailBody.getLearnerInvitationEmailBody(instituteName, instituteId, invitationCode));
 
                 List<NotificationToUserDTO> users = emails.stream().map(email -> {
                     NotificationToUserDTO notificationToUserDTO = new NotificationToUserDTO();
@@ -62,7 +62,7 @@ public class LearnerInvitationNotification {
         });
     }
 
-    public void sendStatusUpdateNotification(List<String> emails, String instituteName,String instituteId) {
+    public void sendStatusUpdateNotification(List<String> emails, String instituteName, String instituteId) {
         CompletableFuture.runAsync(() -> {
             try {
                 NotificationDTO notificationDTO = new NotificationDTO();

@@ -2,7 +2,6 @@ package vacademy.io.admin_core_service.features.learner_reports.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -19,32 +18,25 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
-import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 @Service
 public class LearnerReportService {
-
-    @Autowired
-    private ActivityLogRepository activityLogRepository;
-
-    @Autowired
-    private ConcentrationScoreRepository concentrationScoreRepository;
-
-    private final ObjectMapper objectMapper = new ObjectMapper();
-
 
     private static final List<String> ACTIVE_LEARNERS = List.of(LearnerStatusEnum.ACTIVE.name());
     private static final List<String> ACTIVE_SUBJECTS = List.of(SubjectStatusEnum.ACTIVE.name());
     private static final List<String> ACTIVE_MODULES = List.of(ModuleStatusEnum.ACTIVE.name());
     private static final List<String> ACTIVE_CHAPTERS = List.of(ChapterStatus.ACTIVE.name());
     private static final List<String> VALID_SLIDE_STATUSES = List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name());
+    private final ObjectMapper objectMapper = new ObjectMapper();
+    @Autowired
+    private ActivityLogRepository activityLogRepository;
+    @Autowired
+    private ConcentrationScoreRepository concentrationScoreRepository;
 
-
-    public ProgressReportDTO getLearnerProgressReport(ReportFilterDTO filterDTO, CustomUserDetails userDetails){
+    public ProgressReportDTO getLearnerProgressReport(ReportFilterDTO filterDTO, CustomUserDetails userDetails) {
         validateBatchReportFilter(filterDTO);
         return new ProgressReportDTO(
                 getPercentageCourseCompleted(filterDTO),
@@ -103,30 +95,32 @@ public class LearnerReportService {
         );
     }
 
-    public List<SubjectProgressDTO> getSubjectProgressReport(String packageSessionId, String userId, CustomUserDetails userDetails) {
-        return activityLogRepository.getModuleCompletionByUser(
+    public List<LearnerSubjectWiseProgressReportDTO> getSubjectProgressReport(String packageSessionId, String userId, CustomUserDetails userDetails) {
+        return activityLogRepository.getModuleCompletionByUserAndBatch(
                         packageSessionId,
                         userId,
                         ACTIVE_SUBJECTS,
                         ACTIVE_MODULES,
                         ACTIVE_CHAPTERS,
                         VALID_SLIDE_STATUSES,
-                        VALID_SLIDE_STATUSES)
+                        VALID_SLIDE_STATUSES,
+                        ACTIVE_LEARNERS)
                 .stream()
                 .map(this::mapToSubjectProgressDTO)
                 .collect(Collectors.toList());
     }
 
-    private SubjectProgressDTO mapToSubjectProgressDTO(Object[] result) {
+    private LearnerSubjectWiseProgressReportDTO mapToSubjectProgressDTO(Object[] result) {
         try {
-            SubjectProgressDTO dto = new SubjectProgressDTO();
+            LearnerSubjectWiseProgressReportDTO dto = new LearnerSubjectWiseProgressReportDTO();
             dto.setSubjectId((String) result[0]); // subject_id
             dto.setSubjectName((String) result[1]); // subject_name
 
             // Convert JSON string (modules) to List<ModuleProgressDTO>
             String modulesJson = (String) result[2];
-            List<SubjectProgressDTO.ModuleProgressDTO> modules = objectMapper.readValue(
-                    modulesJson, new TypeReference<>() {});
+            List<LearnerSubjectWiseProgressReportDTO.ModuleProgressDTO> modules = objectMapper.readValue(
+                    modulesJson, new TypeReference<>() {
+                    });
 
             dto.setModules(modules);
             return dto;
@@ -135,22 +129,30 @@ public class LearnerReportService {
         }
     }
 
-    public List<ChapterSlideProgressDTO> getChapterSlideProgress(String moduleId,String userId, CustomUserDetails userDetails) {
-        return activityLogRepository.getChapterSlideProgressForLearner(
-                        moduleId, userId, ACTIVE_CHAPTERS, ACTIVE_CHAPTERS, VALID_SLIDE_STATUSES, VALID_SLIDE_STATUSES)
+    public List<LearnerChapterSlideProgressDTO> getChapterSlideProgress(String moduleId, String userId, String packageSessionId, CustomUserDetails userDetails) {
+        return activityLogRepository.getChapterSlideProgressCombined(
+                        moduleId,
+                        packageSessionId,
+                        userId,
+                        ACTIVE_CHAPTERS,
+                        ACTIVE_CHAPTERS,
+                        VALID_SLIDE_STATUSES,
+                        VALID_SLIDE_STATUSES,
+                        ACTIVE_LEARNERS)
                 .stream()
                 .map(this::mapToDTO)
                 .collect(Collectors.toList());
     }
 
-    private ChapterSlideProgressDTO mapToDTO(ChapterSlideProgressProjection projection) {
+    private LearnerChapterSlideProgressDTO mapToDTO(ChapterSlideProgressProjection projection) {
         try {
-            ChapterSlideProgressDTO dto = new ChapterSlideProgressDTO();
+            LearnerChapterSlideProgressDTO dto = new LearnerChapterSlideProgressDTO();
             dto.setChapterId(projection.getChapterId());
             dto.setChapterName(projection.getChapterName());
 
-            List<ChapterSlideProgressDTO.SlideProgressDTO> slides = objectMapper.readValue(
-                    projection.getSlides(), new TypeReference<>() {});
+            List<LearnerChapterSlideProgressDTO.SlideProgressDTO> slides = objectMapper.readValue(
+                    projection.getSlides(), new TypeReference<>() {
+                    });
             dto.setSlides(slides);
 
             return dto;
@@ -180,7 +182,8 @@ public class LearnerReportService {
                 String jsonString = row[1].toString();  // Extract JSON string
 
                 List<SlideProgressDTO> slideDetails = objectMapper.readValue(
-                        jsonString, new TypeReference<List<SlideProgressDTO>>() {}
+                        jsonString, new TypeReference<List<SlideProgressDTO>>() {
+                        }
                 );
 
                 progressList.add(new SlideProgressDateWiseDTO(date, slideDetails));

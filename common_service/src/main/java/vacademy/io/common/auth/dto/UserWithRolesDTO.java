@@ -5,12 +5,10 @@ import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.AllArgsConstructor;
 import lombok.Data;
-import lombok.NoArgsConstructor;
 import vacademy.io.common.auth.entity.User;
 
 import java.util.Date;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
 
 @Data
@@ -54,7 +52,7 @@ public class UserWithRolesDTO {
         this.profilePicFileId = user.getProfilePicFileId();
         this.roles = user.getRoles().stream()
                 .map(UserRoleDTO::new).collect(Collectors.toList());
-        if (this.roles != null && this.roles.size() != 0){
+        if (this.roles != null && this.roles.size() != 0) {
             this.status = this.roles.get(0).getStatus();
         }
     }

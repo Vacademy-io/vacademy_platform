@@ -16,6 +16,7 @@ public class RichTextGetController {
 
     @Autowired
     RichTextManager richTextManager;
+
     @GetMapping("/by-ids")
     public ResponseEntity<List<AssessmentRichTextDataDTO>> getRichTextData(@RequestAttribute("user") CustomUserDetails user, @RequestParam("richTextIds") String richTextIds) {
         return ResponseEntity.ok(richTextManager.getRichTextData(user, richTextIds));

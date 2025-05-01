@@ -2,10 +2,6 @@ package vacademy.io.assessment_service.features.learner_assessment.manager;
 
 
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -14,14 +10,14 @@ import org.springframework.util.StringUtils;
 import vacademy.io.assessment_service.features.assessment.dto.AssessmentQuestionPreviewDto;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.SectionDto;
 import vacademy.io.assessment_service.features.assessment.entity.*;
-import vacademy.io.assessment_service.features.assessment.enums.AssessmentModeEnum;
-import vacademy.io.assessment_service.features.assessment.enums.AssessmentStatus;
 import vacademy.io.assessment_service.features.assessment.enums.UserRegistrationSources;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentRepository;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentUserRegistrationRepository;
 import vacademy.io.assessment_service.features.assessment.repository.QuestionAssessmentSectionMappingRepository;
 import vacademy.io.assessment_service.features.assessment.repository.StudentAttemptRepository;
-import vacademy.io.assessment_service.features.learner_assessment.dto.*;
+import vacademy.io.assessment_service.features.learner_assessment.dto.LearnerAssessmentStartAssessmentResponse;
+import vacademy.io.assessment_service.features.learner_assessment.dto.LearnerAssessmentStartPreviewResponse;
+import vacademy.io.assessment_service.features.learner_assessment.dto.StartAssessmentRequest;
 import vacademy.io.assessment_service.features.learner_assessment.enums.AssessmentAttemptEnum;
 import vacademy.io.assessment_service.features.learner_assessment.service.UserRegistrationService;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -34,7 +30,6 @@ import java.util.stream.Collectors;
 
 import static org.hibernate.event.internal.EntityState.DELETED;
 import static vacademy.io.common.auth.enums.CompanyStatus.ACTIVE;
-import static vacademy.io.common.core.standard_classes.ListService.createSortObject;
 
 @Component
 public class LearnerAssessmentAttemptStartManager {

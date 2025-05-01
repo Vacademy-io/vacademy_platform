@@ -18,6 +18,7 @@ import vacademy.io.common.exceptions.*;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
@@ -208,7 +209,7 @@ public class UserService {
         return savedUser;
     }
 
-    public List<UserRole> addUserRoles(String instituteId, List<String> roles, User user,String status) {
+    public List<UserRole> addUserRoles(String instituteId, List<String> roles, User user, String status) {
 
         List<Role> rolesEntity = roleRepository.findByNameIn(roles);
 
@@ -236,12 +237,12 @@ public class UserService {
         return userRepository.findUsersWithRolesByInstituteId(instituteId).stream().map(UserWithRolesDTO::new).collect(Collectors.toList());
     }
 
-    public List<UserWithRolesDTO> getUserDetailsByInstituteId(String instituteId,List<String>roles, CustomUserDetails user) {
-        return userRepository.findUsersWithRolesByInstituteIdAndStatuses(instituteId,roles,List.of(UserRoleStatus.ACTIVE.name(),UserRoleStatus.DISABLED.name())).stream().map(UserWithRolesDTO::new).collect(Collectors.toList());
+    public List<UserWithRolesDTO> getUserDetailsByInstituteId(String instituteId, List<String> roles, CustomUserDetails user) {
+        return userRepository.findUsersWithRolesByInstituteIdAndStatuses(instituteId, roles, List.of(UserRoleStatus.ACTIVE.name(), UserRoleStatus.DISABLED.name())).stream().map(UserWithRolesDTO::new).collect(Collectors.toList());
     }
 
-    public UserCredentials getUserCredentials(String userId,CustomUserDetails user) {
-        User userEntity = userRepository.findById(userId).orElseThrow(()->new UserNotFoundException("User with Id "+userId+" not found"));
+    public UserCredentials getUserCredentials(String userId, CustomUserDetails user) {
+        User userEntity = userRepository.findById(userId).orElseThrow(() -> new UserNotFoundException("User with Id " + userId + " not found"));
         UserCredentials userCredentials = new UserCredentials();
         userCredentials.setUsername(userEntity.getUsername());
         userCredentials.setPassword(userEntity.getPassword());
@@ -255,8 +256,8 @@ public class UserService {
                 .collect(Collectors.toList());
     }
 
-    public List<UserWithRolesDTO> getUsersByInstituteIdAndStatus(String instituteId, List<String> statuses,List<String> roles,CustomUserDetails userDetails) {
-        return userRepository.findUsersByStatusAndInstitute(statuses,roles, instituteId)
+    public List<UserWithRolesDTO> getUsersByInstituteIdAndStatus(String instituteId, List<String> statuses, List<String> roles, CustomUserDetails userDetails) {
+        return userRepository.findUsersByStatusAndInstitute(statuses, roles, instituteId)
                 .stream()
                 .map(UserWithRolesDTO::new).collect(Collectors.toList());
     }
@@ -265,9 +266,33 @@ public class UserService {
         return userRepository.findById(userId).orElseThrow(() -> new UserNotFoundException("User with Id " + userId + " not found"));
     }
 
-    public List<UserWithRolesDTO> getUsersByInstituteIdAndStatus(String instituteId, List<String> statuses,List<String> roles) {
-        return userRepository.findUsersByStatusAndInstitute(statuses,roles, instituteId)
+    public List<UserWithRolesDTO> getUsersByInstituteIdAndStatus(String instituteId, List<String> statuses, List<String> roles) {
+        return userRepository.findUsersByStatusAndInstitute(statuses, roles, instituteId)
                 .stream()
                 .map(UserWithRolesDTO::new).collect(Collectors.toList());
+    }
+
+    public User updateUser(User user, UserDTO userDTO) {
+        if (StringUtils.hasText(userDTO.getUsername())) user.setUsername(userDTO.getUsername());
+        if (StringUtils.hasText(userDTO.getEmail())) user.setEmail(userDTO.getEmail());
+        if (StringUtils.hasText(userDTO.getFullName())) user.setFullName(userDTO.getFullName());
+        if (StringUtils.hasText(userDTO.getAddressLine())) user.setAddressLine(userDTO.getAddressLine());
+        if (StringUtils.hasText(userDTO.getCity())) user.setCity(userDTO.getCity());
+        if (StringUtils.hasText(userDTO.getPinCode())) user.setPinCode(userDTO.getPinCode());
+        if (StringUtils.hasText(userDTO.getMobileNumber())) user.setMobileNumber(userDTO.getMobileNumber());
+        if (userDTO.getDateOfBirth() != null) user.setDateOfBirth(userDTO.getDateOfBirth());
+        if (StringUtils.hasText(userDTO.getGender())) user.setGender(userDTO.getGender());
+        if (StringUtils.hasText(userDTO.getProfilePicFileId())) user.setProfilePicFileId(userDTO.getProfilePicFileId());
+
+        // Only set password if it's provided
+        if (StringUtils.hasText(userDTO.getPassword())) user.setPassword(userDTO.getPassword());
+
+        // isRootUser is primitive boolean, so check if change is desired
+        user.setRootUser(userDTO.isRootUser());
+        return userRepository.save(user);
+    }
+
+    public Optional<User> getOptionalUserById(String userId) {
+        return userRepository.findById(userId);
     }
 }

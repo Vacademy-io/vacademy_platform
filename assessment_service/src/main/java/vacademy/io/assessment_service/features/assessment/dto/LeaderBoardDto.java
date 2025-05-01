@@ -6,11 +6,18 @@ import com.fasterxml.jackson.databind.annotation.JsonNaming;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public interface LeaderBoardDto {
     String getAttemptId();
+
     String getUserId();
+
     String getStudentName();
+
     String getBatchId();
+
     Long getCompletionTimeInSeconds();
+
     Double getAchievedMarks();
+
     Integer getRank();
+
     Double getPercentile();
 }

@@ -1,0 +1,15 @@
+package vacademy.io.media_service.enums;
+
+public enum TaskStatusTypeEnum {
+    CHAT_WITH_PDF,
+    PDF_TO_QUESTIONS,
+    AUDIO_TO_QUESTIONS,
+    PDF_TO_QUESTIONS_WITH_TOPIC,
+    LECTURE_PLANNER,
+    LECTURE_FEEDBACK,
+    TEXT_TO_QUESTIONS,
+    SORT_QUESTIONS_TOPIC_WISE,
+    IMAGE_TO_QUESTIONS,
+    EVALUATION,
+    HTML_TO_QUESTIONS;
+}

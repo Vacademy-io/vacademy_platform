@@ -11,7 +11,8 @@ import java.util.List;
 @Setter
 @Data
 public class AiEvaluationSectionDTO {
-    private List<AiEvaluationQuestionDTO>questions;
+    private List<AiEvaluationQuestionDTO> questions;
     private Double cutoffMarks;
     private String name;
+    private String id;
 }

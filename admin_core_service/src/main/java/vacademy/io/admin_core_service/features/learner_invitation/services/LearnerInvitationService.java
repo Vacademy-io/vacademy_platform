@@ -5,6 +5,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
@@ -12,19 +13,18 @@ import vacademy.io.admin_core_service.features.learner_invitation.dto.*;
 import vacademy.io.admin_core_service.features.learner_invitation.entity.LearnerInvitation;
 import vacademy.io.admin_core_service.features.learner_invitation.entity.LearnerInvitationCustomField;
 import vacademy.io.admin_core_service.features.learner_invitation.entity.LearnerInvitationResponse;
+import vacademy.io.admin_core_service.features.learner_invitation.enums.LearnerInvitationCodeStatusEnum;
 import vacademy.io.admin_core_service.features.learner_invitation.enums.LearnerInvitationResponseStatusEnum;
 import vacademy.io.admin_core_service.features.learner_invitation.notification.LearnerInvitationNotification;
 import vacademy.io.admin_core_service.features.learner_invitation.repository.LearnerInvitationRepository;
 import vacademy.io.admin_core_service.features.learner_invitation.repository.LearnerInvitationCustomFieldRepository;
+import vacademy.io.admin_core_service.features.slide.entity.Option;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
 
 import java.security.SecureRandom;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 
 @Service
 public class LearnerInvitationService {
@@ -55,14 +55,14 @@ public class LearnerInvitationService {
 
         List<String> emails = addLearnerInvitationDTO.getEmailsToSendInvitation();
         if (emails != null && !emails.isEmpty()) {
-            sendLearnerInvitationNotificationAsync(emails, institute.getInstituteName(), learnerInvitationDTO.getInviteCode());
+            sendLearnerInvitationNotificationAsync(emails, institute.getInstituteName(),institute.getId(), learnerInvitationDTO.getInviteCode());
         }
 
         return learnerInvitation.mapToDTO();
     }
 
-    public void sendLearnerInvitationNotificationAsync(List<String> emails, String instituteName, String invitationCode) {
-        notification.sendLearnerInvitationNotification(emails, instituteName, invitationCode);
+    public void sendLearnerInvitationNotificationAsync(List<String> emails, String instituteName,String instituteId, String invitationCode) {
+        notification.sendLearnerInvitationNotification(emails, instituteName,instituteId, invitationCode);
     }
 
     private void validateRequest(LearnerInvitationDTO learnerInvitationDTO) {
@@ -164,7 +164,8 @@ public class LearnerInvitationService {
     private LearnerInvitationCustomField updateExistingField(LearnerInvitationCustomField field, LearnerInvitationCustomFieldDTO dto) {
         if (StringUtils.hasText(dto.getFieldName())) field.setFieldName(dto.getFieldName());
         if (StringUtils.hasText(dto.getFieldType())) field.setFieldType(dto.getFieldType());
-        if (StringUtils.hasText(dto.getCommaSeparatedOptions())) field.setCommaSeparatedOptions(dto.getCommaSeparatedOptions());
+        if (StringUtils.hasText(dto.getCommaSeparatedOptions()))
+            field.setCommaSeparatedOptions(dto.getCommaSeparatedOptions());
         if (dto.getIsMandatory() != null) field.setIsMandatory(dto.getIsMandatory());
         if (StringUtils.hasText(dto.getDescription())) field.setDescription(dto.getDescription());
         if (StringUtils.hasText(dto.getDefaultValue())) field.setDefaultValue(dto.getDefaultValue());
@@ -178,4 +179,46 @@ public class LearnerInvitationService {
                 .orElseThrow(() -> new VacademyException("Learner invitation not found"));
         return learnerInvitation.mapToDTO();
     }
+
+    @Transactional
+    public List<LearnerInvitationDTO> createLearnerInvitationCodes(List<AddLearnerInvitationDTO> addLearnerInvitationDTOs, CustomUserDetails user) {
+        List<LearnerInvitation> invitationsToSave = new ArrayList<>();
+        Map<LearnerInvitation, AddLearnerInvitationDTO> invitationToDTOMap = new HashMap<>();
+
+        for (AddLearnerInvitationDTO addDTO : addLearnerInvitationDTOs) {
+            LearnerInvitationDTO dto = addDTO.getLearnerInvitation();
+            validateRequest(dto);
+            dto.setInviteCode(generateInviteCode());
+
+            LearnerInvitation entity = new LearnerInvitation(dto);
+            invitationsToSave.add(entity);
+            invitationToDTOMap.put(entity, addDTO);
+        }
+
+        List<LearnerInvitation> savedInvitations = learnerInvitationRepository.saveAll(invitationsToSave);
+        List<LearnerInvitationDTO> result = new ArrayList<>();
+
+        for (LearnerInvitation saved : savedInvitations) {
+            AddLearnerInvitationDTO originalDTO = invitationToDTOMap.get(saved);
+            String instituteId = saved.getInstituteId();
+
+            Institute institute = instituteRepository.findById(instituteId)
+                    .orElseThrow(() -> new VacademyException("Institute not found with ID: " + instituteId));
+
+            List<String> emails = originalDTO.getEmailsToSendInvitation();
+            if (emails != null && !emails.isEmpty()) {
+                sendLearnerInvitationNotificationAsync(emails, institute.getInstituteName(), institute.getId(), saved.getInviteCode());
+            }
+
+            result.add(saved.mapToDTO());
+        }
+
+        return result;
+    }
+
+    @Async
+    public void deleteLearnerInvitationBySourceAndSourceId(String source, List<String> sourceIds) {
+        learnerInvitationRepository.updateStatusBySourceIdsAndSource(LearnerInvitationCodeStatusEnum.DELETED.name(), sourceIds, source);
+    }
+
 }

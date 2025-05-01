@@ -3,10 +3,12 @@ package vacademy.io.admin_core_service.features.level.service;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.learner_invitation.enums.LearnerInvitationSourceTypeEnum;
+import vacademy.io.admin_core_service.features.learner_invitation.services.LearnerInvitationService;
 import vacademy.io.admin_core_service.features.level.dto.AddLevelWithCourseDTO;
-import vacademy.io.admin_core_service.features.level.dto.AddLevelWithSessionDTO;
 import vacademy.io.admin_core_service.features.level.enums.LevelStatusEnum;
 import vacademy.io.admin_core_service.features.level.repository.LevelRepository;
+import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
 import vacademy.io.admin_core_service.features.packages.repository.PackageRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
 import vacademy.io.admin_core_service.features.packages.service.PackageSessionService;
@@ -19,6 +21,7 @@ import vacademy.io.common.institute.entity.PackageEntity;
 import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.common.institute.entity.session.Session;
 
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
@@ -31,8 +34,9 @@ public class LevelService {
     private final PackageSessionService packageSessionService;
     private final SessionRepository sessionRepository;
     private final PackageSessionRepository packageSessionRepository;
+    private final LearnerInvitationService learnerInvitationService;
 
-    public Level createOrAddLevel(String id,boolean newLevel, String levelName, Integer durationInDays, String thumbnailFileId) {
+    public Level createOrAddLevel(String id, boolean newLevel, String levelName, Integer durationInDays, String thumbnailFileId) {
         Level level = null;
         if (newLevel) {
             level = getLevel(levelName, durationInDays, thumbnailFileId);
@@ -56,7 +60,7 @@ public class LevelService {
     }
 
     @Transactional
-    public String addLevel(AddLevelWithCourseDTO addLevelWithCourseDTO, String packageId, String sessionId, CustomUserDetails user) {
+    public String addLevel(AddLevelWithCourseDTO addLevelWithCourseDTO, String packageId, String sessionId,String instituteId, CustomUserDetails user) {
         Optional<PackageEntity> optionalPackageEntity = packageRepository.findById(packageId);
         if (optionalPackageEntity.isEmpty()) {
             throw new VacademyException("Package not found");
@@ -66,7 +70,7 @@ public class LevelService {
             throw new VacademyException("Session not found");
         }
         Level level = createOrAddLevel(addLevelWithCourseDTO.getId(), addLevelWithCourseDTO.getNewLevel(), addLevelWithCourseDTO.getLevelName(), addLevelWithCourseDTO.getDurationInDays(), addLevelWithCourseDTO.getThumbnailFileId());
-        packageSessionService.createPackageSession(level, optionalSession.get(), optionalPackageEntity.get(), getStartDatePackageSessionDate(packageId, sessionId));
+        packageSessionService.createPackageSession(level, optionalSession.get(), optionalPackageEntity.get(), getStartDatePackageSessionDate(packageId, sessionId),instituteId,user);
         return level.getId();
     }
 
@@ -94,6 +98,14 @@ public class LevelService {
         }
 
         levelRepository.saveAll(levels); // Batch update
+        List<PackageSession>packageSessions = packageSessionRepository.findByLevelIds(levelIds);
+        List<String>packageSessionIds = new ArrayList<>();
+        for (PackageSession packageSession : packageSessions) {
+            packageSession.setStatus(PackageSessionStatusEnum.DELETED.name());
+            packageSessionIds.add(packageSession.getId());
+        }
+        packageSessionRepository.saveAll(packageSessions);
+        learnerInvitationService.deleteLearnerInvitationBySourceAndSourceId(LearnerInvitationSourceTypeEnum.PACKAGE_SESSION.name(), packageSessionIds);
         packageSessionRepository.updateStatusByLevelIds(LevelStatusEnum.DELETED.name(), levelIds);
         return "Levels deleted successfully";
     }

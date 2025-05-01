@@ -1,33 +1,39 @@
 package vacademy.io.media_service.ai;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.media_service.constant.ConstantAiTemplate;
 import vacademy.io.media_service.dto.*;
-import vacademy.io.media_service.enums.QuestionResponseType;
-import vacademy.io.media_service.enums.QuestionTypes;
+import vacademy.io.media_service.entity.TaskStatus;
+import vacademy.io.media_service.enums.*;
 import vacademy.io.media_service.service.HtmlJsonProcessor;
+import vacademy.io.media_service.service.TaskStatusService;
 import vacademy.io.media_service.util.JsonUtils;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 public class DeepSeekService {
 
+    private static final Pattern PLACEHOLDER_PATTERN = Pattern.compile("<!--DEEPSEEK_PLACEHOLDER_(\\d+)-->");
+    private final ChatModel chatModel;
+    @Autowired
+    TaskStatusService taskStatusService;
     @Autowired
     private ObjectMapper objectMapper;
-
-    private final ChatModel chatModel;
-
     @Autowired
     private DeepSeekApiService deepSeekApiService;
 
@@ -36,126 +42,191 @@ public class DeepSeekService {
         this.chatModel = chatModel;
     }
 
-    private static final Pattern PLACEHOLDER_PATTERN = Pattern.compile("<!--DEEPSEEK_PLACEHOLDER_(\\d+)-->");
+    public static Boolean getIsProcessCompleted(String json) {
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode rootNode = mapper.readTree(json);
 
-
-
-    public String getQuestionsWithDeepSeekFromTextPrompt(String textPrompt, String numberOfQuestions, String typeOfQuestion, String classLevel, String topics, String language) {
-
-        String template = """
-                Text raw prompt :  {textPrompt}
-                    
-                        Prompt:
-                        use the Text raw prompt to generate {numberOfQuestions} {typeOfQuestion} questions for the class level {classLevel} and topics {topics} in {language}, return the output in JSON format as follows:
-                                {{
-                                         "questions": [
-                                             {{
-                                                 "question_number": "number",
-                                                 "question": {{
-                                                     "type": "HTML",
-                                                     "content": "string" // Include img tags if present
-                                                 }},
-                                                 "options": [
-                                                     {{
-                                                         "type": "HTML",
-                                                         "content": "string" // Include img tags if present
-                                                     }}
-                                                 ],
-                                                 "correct_options": "number[]",
-                                                 "ans": "string",
-                                                 "exp": "string",
-                                                 "question_type": "MCQS | MCQM | ONE_WORD | LONG_ANSWER | NUMERIC",
-                                                 "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
-                                                 "level": "easy | medium | hard"
-                                             }}
-                                         ],
-                                         "title": "string" // Suitable title for the question paper ,
-                                          "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"] // multiple chapter and topic names for question paper,
-                                         "difficulty": "easy | medium | hard",
-                                         "subjects": ["subject1", "subject2", "subject3", "subject4", "subject5"] // multiple subject names for question paper like maths or thermodynamics or physics etc ,
-                                         "classes": ["class 1" , "class 2" ] // can be of multiple class - | class 3 | class 4 | class 5 | class 6 | class 7 | class 8 | class 9 | class 10 | class 11 | class 12 | engineering | medical | commerce | law
-                                    
-                                     }}
-                            
-                        For LONG_ANSWER, NUMERIC, and ONE_WORD question types:
-                        - Leave 'correct_options' empty but fill 'ans' and 'exp'
-                        - Omit 'options' field entirely
-                        
-                        """;
-
-        Prompt prompt = new PromptTemplate(template).create(Map.of("textPrompt", textPrompt, "numberOfQuestions", numberOfQuestions, "typeOfQuestion", typeOfQuestion, "classLevel", classLevel, "topics", topics, "language", language));
-
-        DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
-        if(response.getChoices().isEmpty()) {
-            throw new VacademyException("No response from DeepSeek");
+            JsonNode isCompletedNode = rootNode.get("is_process_completed");
+            if (isCompletedNode != null && isCompletedNode.isBoolean()) {
+                return isCompletedNode.asBoolean();
+            }
+            return false; // or false as a fallback
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
         }
-        String resultJson = response.getChoices().get(0).getMessage().getContent();
-        String validJson = JsonUtils.extractAndSanitizeJson(resultJson);
-
-        return validJson;
     }
 
+    /**
+     * Cleans a string by:
+     * 1. Removing backslashes that escape quotes
+     * 2. Converting Unicode escape sequences like \u003c to corresponding characters
+     * 3. Handling common escape sequences like \n, \t, etc.
+     *
+     * @param input The string with escape sequences
+     * @return The cleaned string with actual characters
+     */
+    public static String unescapeString(String input) {
+        if (input == null) {
+            return null;
+        }
+
+        StringBuilder result = new StringBuilder(input.length());
+        for (int i = 0; i < input.length(); i++) {
+            char c = input.charAt(i);
+
+            // Handle backslash escape sequences
+            if (c == '\\' && i + 1 < input.length()) {
+                char next = input.charAt(i + 1);
+
+                switch (next) {
+                    case '"':
+                        result.append('"');
+                        i++;
+                        break;
+                    case '\\':
+                        result.append('\\');
+                        i++;
+                        break;
+                    case 'n':
+                        result.append('\n');
+                        i++;
+                        break;
+                    case 't':
+                        result.append('\t');
+                        i++;
+                        break;
+                    case 'r':
+                        result.append('\r');
+                        i++;
+                        break;
+                    case 'u':
+
+                        if (i + 5 < input.length()) {
+                            try {
+                                String hex = input.substring(i + 2, i + 6);
+                                int codePoint = Integer.parseInt(hex, 16);
+                                result.append((char) codePoint);
+                                i += 5; // Skip the 'u' and 4 hex digits
+                            } catch (NumberFormatException e) {
+                                // If invalid hex, keep the original sequence
+                                result.append(c);
+                            }
+                        } else {
+                            // Not enough characters for a complete Unicode escape
+                            result.append(c);
+                        }
+                        break;
+                    default:
+                        // For any unrecognized escape, just keep the backslash and the character
+                        result.append(c);
+                        break;
+                }
+            } else {
+                // Regular character, just append it
+                result.append(c);
+            }
+        }
+
+        return result.toString();
+    }
+
+    public static int getQuestionCount(String jsonString) {
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode root = mapper.readTree(jsonString);
+            JsonNode questions = root.get("questions");
+            return questions != null && questions.isArray() ? questions.size() : 0;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return 0;
+        }
+    }
+
+    public static String getCommaSeparatedQuestionNumbers(String json) {
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode rootNode = mapper.readTree(json);
+            JsonNode questionsNode = rootNode.get("questions");
+
+            if (questionsNode == null || !questionsNode.isArray()) {
+                return "";
+            }
+
+            List<String> questionNumbers = new ArrayList<>();
+            for (JsonNode question : questionsNode) {
+                String number = question.get("question_number").asText();
+                questionNumbers.add(number);
+            }
+
+            return String.join(",", questionNumbers);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return "";
+        }
+    }
+
+    public String getQuestionsWithDeepSeekFromTextPrompt(String textPrompt, String numberOfQuestions, String typeOfQuestion, String classLevel, String topics, String language, TaskStatus taskStatus, Integer attempt, String oldJson) {
+        try {
+            if (attempt >= 4) return oldJson;
+            String allQuestionNumbers = getCommaSeparatedQuestionNumbers(oldJson);
+            HtmlJsonProcessor htmlJsonProcessor = new HtmlJsonProcessor();
+            String unTaggedHtml = htmlJsonProcessor.removeTags(textPrompt);
+
+            String template = ConstantAiTemplate.getTemplateBasedOnType(TaskStatusTypeEnum.TEXT_TO_QUESTIONS);
+
+            Map<String, Object> promptMap = Map.of("textPrompt", textPrompt, "numberOfQuestions", numberOfQuestions, "typeOfQuestion", typeOfQuestion, "classLevel", classLevel, "topics", topics, "language", language,
+                    "allQuestionNumbers", allQuestionNumbers);
+            Prompt prompt = new PromptTemplate(template).create(promptMap);
+            taskStatusService.convertMapToJsonAndStore(promptMap, taskStatus);
+
+            DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
+            if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {
+                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), oldJson);
+                return oldJson;
+            }
+
+            String resultJson = response.getChoices().get(0).getMessage().getContent();
+            String validJson = JsonUtils.extractAndSanitizeJson(resultJson);
+
+            String restored = htmlJsonProcessor.restoreTagsInJson(validJson);
+
+
+            String mergedJson = mergeQuestionsJson(oldJson, restored);
+
+            if (getIsProcessCompleted(mergedJson)) {
+                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), mergedJson);
+                return mergedJson;
+            }
+            if (getQuestionCount(mergedJson) >= Integer.parseInt(numberOfQuestions)) {
+                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), mergedJson);
+                return mergedJson;
+            }
+
+            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.PROGRESS.name(), mergedJson);
+
+            return getQuestionsWithDeepSeekFromTextPrompt(textPrompt, numberOfQuestions, typeOfQuestion, classLevel, topics, language, taskStatus, attempt + 1, mergedJson);
+        } catch (Exception e) {
+            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), oldJson);
+            return oldJson;
+        }
+    }
 
     public String getQuestionsWithDeepSeekFromHTML(String htmlData, String userPrompt) {
         HtmlJsonProcessor htmlJsonProcessor = new HtmlJsonProcessor();
         String unTaggedHtml = htmlJsonProcessor.removeTags(htmlData);
 
-        if(userPrompt == null) {
+        if (userPrompt == null) {
             userPrompt = "Include first 20 questions in the response. Do not truncate or omit any questions.";
         }
 
-        String template = """
-                HTML raw data :  {htmlData}
-                    
-                        Prompt:
-                        Convert the given HTML file containing questions into the following JSON format:
-                        - Preserve all DS_TAGs in HTML content in comments
-                        
-                        JSON format : 
-                        
-                                {{
-                                         "questions": [
-                                             {{
-                                                 "question_number": "number",
-                                                 "question": {{
-                                                     "type": "HTML",
-                                                     "content": "string" // Include img tags if present
-                                                 }},
-                                                 "options": [
-                                                     {{
-                                                         "type": "HTML",
-                                                         "content": "string" // Include img tags if present
-                                                     }}
-                                                 ],
-                                                 "correct_options": "number[]",
-                                                 "ans": "string",
-                                                 "exp": "string",
-                                                 "question_type": "MCQS | MCQM | ONE_WORD | LONG_ANSWER | NUMERIC",
-                                                 "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
-                                                 "level": "easy | medium | hard"
-                                             }}
-                                         ],
-                                         "title": "string" // Suitable title for the question paper,
-                                         "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"] // multiple chapter and topic names for question paper,
-                                         "difficulty": "easy | medium | hard",
-                                         "subjects": ["subject1", "subject2", "subject3", "subject4", "subject5"] // multiple subject names for question paper like maths or thermodynamics or physics etc ,
-                                         "classes": ["class 1" , "class 2" ] // can be of multiple class - | class 3 | class 4 | class 5 | class 6 | class 7 | class 8 | class 9 | class 10 | class 11 | class 12 | engineering | medical | commerce | law
-                                     }}
-                            
-                        For LONG_ANSWER, NUMERIC, and ONE_WORD question types:
-                        - Leave 'correct_options' empty but fill 'ans' and 'exp'
-                        - Omit 'options' field entirely
-                        
-                        Also keep the DS_TAGS field intact in html
-                        And do not try to calculate right ans, only add if available in input
-                        
-                        IMPORTANT: {userPrompt}
-                        """;
+        String template = ConstantAiTemplate.getTemplateBasedOnType(TaskStatusTypeEnum.HTML_TO_QUESTIONS);
 
         Prompt prompt = new PromptTemplate(template).create(Map.of("htmlData", unTaggedHtml, "userPrompt", userPrompt));
 
         DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
-        if(response.getChoices().isEmpty()) {
+        if (response.getChoices().isEmpty()) {
             throw new VacademyException("No response from DeepSeek");
         }
         String resultJson = response.getChoices().get(0).getMessage().getContent();
@@ -168,73 +239,102 @@ public class DeepSeekService {
         }
     }
 
-
-    public String getQuestionsWithDeepSeekFromHTMLOfTopics(String htmlData, String requiredTopics) {
-        HtmlJsonProcessor htmlJsonProcessor = new HtmlJsonProcessor();
-        String unTaggedHtml = htmlJsonProcessor.removeTags(htmlData);
-
-        String template = """
-                HTML raw data :  {htmlData}
-                
-                Required Topics :  {requiredTopics}
-                    
-                        Prompt:
-                        Convert the given HTML file containing questions, only extract questions from the given topics into the following JSON format:
-                        - Preserve all DS_TAGs in HTML content in comments
-                        
-                        JSON format : 
-                        
-                                {{
-                                         "questions": [
-                                             {{
-                                                 "question_number": "number",
-                                                 "question": {{
-                                                     "type": "HTML",
-                                                     "content": "string" // Include img tags if present
-                                                 }},
-                                                 "options": [
-                                                     {{
-                                                         "type": "HTML",
-                                                         "content": "string" // Include img tags if present
-                                                     }}
-                                                 ],
-                                                 "correct_options": "number[]",
-                                                 "ans": "string",
-                                                 "exp": "string",
-                                                 "question_type": "MCQS | MCQM | ONE_WORD | LONG_ANSWER | NUMERIC",
-                                                 "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
-                                                 "level": "easy | medium | hard"
-                                             }}
-                                         ],
-                                         "title": "string" // Suitable title for the question paper,
-                                         "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"] // multiple chapter and topic names for question paper,
-                                         "difficulty": "easy | medium | hard",
-                                         "subjects": ["subject1", "subject2", "subject3", "subject4", "subject5"] // multiple subject names for question paper like maths or thermodynamics or physics etc ,
-                                         "classes": ["class 1" , "class 2" ] // can be of multiple class - | class 3 | class 4 | class 5 | class 6 | class 7 | class 8 | class 9 | class 10 | class 11 | class 12 | engineering | medical | commerce | law
-                                     }}
-                            
-                        For LONG_ANSWER, NUMERIC, and ONE_WORD question types:
-                        - Leave 'correct_options' empty but fill 'ans' and 'exp'
-                        - Omit 'options' field entirely
-                        
-                        Also keep the DS_TAGS field intact in html
-                        And do not try to calculate right ans, only add if available in input
-                        Give the complete result to all possible questions
-                        """;
-
-        Prompt prompt = new PromptTemplate(template).create(Map.of("htmlData", unTaggedHtml, "requiredTopics", requiredTopics));
-
-        DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
-        if(response.getChoices().isEmpty()) {
-            throw new VacademyException("No response from DeepSeek");
-        }
-        String resultJson = response.getChoices().get(0).getMessage().getContent();
-        String validJson = JsonUtils.extractAndSanitizeJson(resultJson);
+    public String getQuestionsWithDeepSeekFromHTMLRecursive(String htmlData, String userPrompt, String restoredJson, int attempt, TaskStatus taskStatus) {
         try {
-            String restoredJson = htmlJsonProcessor.restoreTagsInJson(validJson);
-            return restoredJson;
+            if (attempt >= 5) {
+                return restoredJson != null ? restoredJson : "";
+            }
+            String allQuestionNumbers = getCommaSeparatedQuestionNumbers(restoredJson);
+            HtmlJsonProcessor htmlJsonProcessor = new HtmlJsonProcessor();
+            String unTaggedHtml = htmlJsonProcessor.removeTags(htmlData);
+
+
+            if (userPrompt == null) {
+                userPrompt = "Include first 20 questions in the response. Do not truncate or omit any questions.";
+            }
+
+            String template = ConstantAiTemplate.getTemplateBasedOnType(TaskStatusTypeEnum.PDF_TO_QUESTIONS);
+
+            Map<String, Object> promptMap = Map.of(
+                    "htmlData", unTaggedHtml,
+                    "userPrompt", userPrompt,
+                    "allQuestionNumbers", allQuestionNumbers
+            );
+
+            taskStatusService.convertMapToJsonAndStore(promptMap, taskStatus);
+
+            Prompt prompt = new PromptTemplate(template).create(promptMap);
+
+            DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
+            if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {
+                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), restoredJson);
+                return restoredJson;
+            }
+
+            String resultJson = response.getChoices().get(0).getMessage().getContent();
+            String validJson = JsonUtils.extractAndSanitizeJson(resultJson);
+
+            String restored = htmlJsonProcessor.restoreTagsInJson(validJson);
+
+
+            String mergedJson = mergeQuestionsJson(restoredJson, restored);
+
+            if (getIsProcessCompleted(mergedJson)) {
+                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), mergedJson);
+                return mergedJson;
+            }
+
+            taskStatusService.updateTaskStatus(taskStatus, "PROGRESS", restoredJson);
+            // Recurse for remaining questions
+            return getQuestionsWithDeepSeekFromHTMLRecursive(htmlData, userPrompt, mergedJson, attempt + 1, taskStatus);
         } catch (Exception e) {
-            throw new VacademyException(e.getMessage());
+            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), restoredJson);
+            return restoredJson;
+        }
+    }
+
+    public String getQuestionsWithDeepSeekFromHTMLOfTopics(String htmlData, String requiredTopics, String restoredJson, Integer attempt, TaskStatus taskStatus) {
+        try {
+            if (attempt >= 5) {
+                return restoredJson != null ? restoredJson : "";
+            }
+            HtmlJsonProcessor htmlJsonProcessor = new HtmlJsonProcessor();
+            String allQuestionNumbers = getCommaSeparatedQuestionNumbers(restoredJson);
+            String unTaggedHtml = htmlJsonProcessor.removeTags(htmlData);
+
+            String template = ConstantAiTemplate.getTemplateBasedOnType(TaskStatusTypeEnum.PDF_TO_QUESTIONS_WITH_TOPIC);
+
+            Map<String, Object> promptMap = Map.of("htmlData", unTaggedHtml, "requiredTopics", requiredTopics,
+                    "allQuestionNumbers", allQuestionNumbers,
+                    "restoredJson", restoredJson == null ? "" : restoredJson);
+
+            Prompt prompt = new PromptTemplate(template).create();
+
+            taskStatusService.convertMapToJsonAndStore(promptMap, taskStatus);
+
+            DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
+            if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {
+                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), restoredJson);
+                return restoredJson;
+            }
+
+            String resultJson = response.getChoices().get(0).getMessage().getContent();
+            String validJson = JsonUtils.extractAndSanitizeJson(resultJson);
+            String newRestoredJson = htmlJsonProcessor.restoreTagsInJson(validJson);
+
+            String mergedJson = mergeQuestionsJson(restoredJson, newRestoredJson);
+
+            if (getIsProcessCompleted(mergedJson)) {
+                taskStatusService.updateTaskStatus(taskStatus, null, mergedJson);
+                return mergedJson;
+            }
+
+            taskStatusService.updateTaskStatus(taskStatus, "PROGRESS", restoredJson);
+            // Recurse for remaining questions
+            return getQuestionsWithDeepSeekFromHTMLOfTopics(htmlData, requiredTopics, mergedJson, attempt + 1, taskStatus);
+        } catch (Exception e) {
+            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), restoredJson);
+            throw new RuntimeException(e);
         }
     }
 
@@ -244,35 +344,14 @@ public class DeepSeekService {
         String unTaggedHtml = htmlJsonProcessor.removeTags(htmlAnswerData);
 
         String template = """
-                Question :  {htmlQuestionData}
-                
-                Answer By Student :  {htmlAnswerData}
-                
-                Maximum Marks :{maxMarks}
-                
-                Evaluation Difficulty :{evaluationDifficulty} 
-                    
-                        Prompt:
-                        Evaluate the Answer against the Question and give marks out of maximum marks, evaluate on given evaluation difficulty
-                        - Give details of what is wrong referring to the specific part of answer
-                        
-                        JSON format : 
-                        
-                                {{
-                                         "marks_obtained": double value of marks obtained out of max marks,
-                                         "answer_tips": ["<div>part of answer -> this part can be written with better english</div>", "string2", "string3"] // html string list of tips on how to write the answer linking to the students answer use html tags to add styling,
-                                         "explanation": "<div>explanation and comparison with correct answer</div>" // html string of correct explanation to the students answer use html tags to add styling,
-                                         "topic_wise_understanding": ["<div><b>sub topic</b> -> how is the understanding of the topic for this student</div>", "string2", "string3"] // html string list of topic wise understanding and analysis use html tags to add styling,
-                                }}
-                            
-                      
-           
-                        """;
+                                
+                           
+                """;
 
         Prompt prompt = new PromptTemplate(template).create(Map.of("htmlQuestionData", htmlQuestionData, "htmlAnswerData", htmlAnswerData, "maxMarks", maxMarks, "evaluationDifficulty", evaluationDifficulty));
 
         DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
-        if(response.getChoices().isEmpty()) {
+        if (response.getChoices().isEmpty()) {
             throw new VacademyException("No response from DeepSeek");
         }
         String resultJson = response.getChoices().get(0).getMessage().getContent();
@@ -285,64 +364,53 @@ public class DeepSeekService {
         }
     }
 
+    public String getQuestionsWithDeepSeekFromAudio(String audioString, String difficulty, String numQuestions, String optionalPrompt, String oldResponse, int attempt, TaskStatus taskStatus) {
+        try {
+            if (attempt >= 5) {
+                return oldResponse;
+            }
+            String allQuestionNumbers = getCommaSeparatedQuestionNumbers(oldResponse);
+
+            String template = ConstantAiTemplate.getTemplateBasedOnType(TaskStatusTypeEnum.AUDIO_TO_QUESTIONS);
+
+            Map<String, Object> promptMap = Map.of("classLecture", audioString, "difficulty", difficulty, "numQuestions", numQuestions, "optionalPrompt", optionalPrompt, "language", "en",
+                    "allQuestionNumbers", allQuestionNumbers);
+            Prompt prompt = new PromptTemplate(template).create(promptMap);
+
+            taskStatusService.convertMapToJsonAndStore(promptMap, taskStatus);
+
+            DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
+
+            if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {
+                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), oldResponse);
+                return oldResponse;
+            }
+            String resultJson = response.getChoices().get(0).getMessage().getContent();
+            String validJson = JsonUtils.extractAndSanitizeJson(resultJson);
+
+            String mergedJson = mergeQuestionsJson(oldResponse, validJson);
+
+            int currentQuestionCount = getQuestionCount(mergedJson);
+            log.info("MergedJson: " + mergedJson);
+            log.info("Total Questions: " + currentQuestionCount);
+
+            if (getIsProcessCompleted(mergedJson)) {
+                taskStatusService.updateTaskStatus(taskStatus, "COMPLETED", mergedJson);
+                return mergedJson;
+            }
 
 
-    public String getQuestionsWithDeepSeekFromAudio(String audioString, String difficulty, String numQuestions, String optionalPrompt, String language) {
-        String template = """
-                Class Lecture raw data :  {classLecture}
-                Questions Difficulty :  {difficulty}
-                Number of Questions :  {numQuestions}
-                Optional Teacher Prompt :  {optionalPrompt}
-                Language of questions:  {language}
-                
-                        Prompt:
-                        From the given audio lecture compile hard and medium questions, try engaging questions, convert it into the following JSON format:
-                        
-                        JSON format : 
-                        
-                                {{
-                                         "questions": [
-                                             {{
-                                                 "question_number": "number",
-                                                 "question": {{
-                                                     "type": "HTML",
-                                                     "content": "string" // Include img tags if present
-                                                 }},
-                                                 "options": [
-                                                     {{
-                                                         "type": "HTML",
-                                                         "content": "string" // Include img tags if present
-                                                     }}
-                                                 ],
-                                                 "correct_options": "number[]",
-                                                 "ans": "string",
-                                                 "exp": "string",
-                                                 "question_type": "MCQS | MCQM | ONE_WORD | LONG_ANSWER | NUMERIC",
-                                                 "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
-                                                 "level": "easy | medium | hard"
-                                             }}
-                                         ],
-                                         "title": "string" // Suitable title for the question paper,
-                                         "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"] // multiple chapter and topic names for question paper,
-                                         "difficulty": "easy | medium | hard",
-                                         "subjects": ["subject1", "subject2", "subject3", "subject4", "subject5"] // multiple subject names for question paper like maths or thermodynamics or physics etc ,
-                                         "classes": ["class 1" , "class 2" ] // can be of multiple class - | class 3 | class 4 | class 5 | class 6 | class 7 | class 8 | class 9 | class 10 | class 11 | class 12 | engineering | medical | commerce | law
-                                     }}
-                            
-                        For LONG_ANSWER, NUMERIC, and ONE_WORD question types:
-                        - Leave 'correct_options' empty but fill 'ans' and 'exp'
-                        - Omit 'options' field entirely
-                        """;
+            if (!Objects.isNull(numQuestions) && numQuestions.isEmpty() && currentQuestionCount >= Integer.parseInt(numQuestions)) {
+                taskStatusService.updateTaskStatus(taskStatus, "COMPLETED", mergedJson);
+                return mergedJson;
+            }
 
-        Prompt prompt = new PromptTemplate(template).create(Map.of("classLecture", audioString, "difficulty", difficulty, "numQuestions", numQuestions, "optionalPrompt", optionalPrompt, "language","en"));
-
-        DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
-        if(response.getChoices().isEmpty()) {
-            throw new VacademyException("No response from DeepSeek");
+            taskStatusService.updateTaskStatus(taskStatus, "PROGRESS", mergedJson);
+            return getQuestionsWithDeepSeekFromAudio(audioString, difficulty, numQuestions, optionalPrompt, mergedJson, attempt + 1, taskStatus);
+        } catch (Exception e) {
+            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), oldResponse);
+            return oldResponse;
         }
-        String resultJson = response.getChoices().get(0).getMessage().getContent();
-        String validJson = JsonUtils.extractAndSanitizeJson(resultJson);
-        return validJson;
     }
 
     public List<QuestionDTO> formatQuestions(AiGeneratedQuestionJsonDto[] questions) {
@@ -403,12 +471,11 @@ public class DeepSeekService {
         requestEvaluation.setType(QuestionTypes.MCQS.name());
         MCQEvaluationDTO.MCQData mcqData = new MCQEvaluationDTO.MCQData();
         mcqData.setCorrectOptionIds(
-                (questionRequest.getCorrectOptions() == null || questionRequest.getCorrectOptions().isEmpty())? new ArrayList<>() : questionRequest.getCorrectOptions().stream()
+                (questionRequest.getCorrectOptions() == null || questionRequest.getCorrectOptions().isEmpty()) ? new ArrayList<>() : questionRequest.getCorrectOptions().stream()
                         .map(String::valueOf)
                         .collect(Collectors.toList())
         );
         requestEvaluation.setData(mcqData);
-
 
 
         // Process Options
@@ -462,7 +529,7 @@ public class DeepSeekService {
         try {
             question.setAutoEvaluationJson(setEvaluationJson(requestEvaluation));
         } catch (Exception e) {
-            throw new VacademyException("Failed to process question settings "+ e.getMessage());
+            throw new VacademyException("Failed to process question settings " + e.getMessage());
         }
 
         return question;
@@ -573,156 +640,156 @@ public class DeepSeekService {
         return jsonString; // Return the JSON string for confirmation or further processing
     }
 
-    /**
-     * Cleans a string by:
-     * 1. Removing backslashes that escape quotes
-     * 2. Converting Unicode escape sequences like \u003c to corresponding characters
-     * 3. Handling common escape sequences like \n, \t, etc.
-     *
-     * @param input The string with escape sequences
-     * @return The cleaned string with actual characters
-     */
-    public static String unescapeString(String input) {
-        if (input == null) {
-            return null;
-        }
-
-        StringBuilder result = new StringBuilder(input.length());
-        for (int i = 0; i < input.length(); i++) {
-            char c = input.charAt(i);
-
-            // Handle backslash escape sequences
-            if (c == '\\' && i + 1 < input.length()) {
-                char next = input.charAt(i + 1);
-
-                switch (next) {
-                    case '"':
-                        result.append('"');
-                        i++;
-                        break;
-                    case '\\':
-                        result.append('\\');
-                        i++;
-                        break;
-                    case 'n':
-                        result.append('\n');
-                        i++;
-                        break;
-                    case 't':
-                        result.append('\t');
-                        i++;
-                        break;
-                    case 'r':
-                        result.append('\r');
-                        i++;
-                        break;
-                    case 'u':
-
-                        if (i + 5 < input.length()) {
-                            try {
-                                String hex = input.substring(i + 2, i + 6);
-                                int codePoint = Integer.parseInt(hex, 16);
-                                result.append((char) codePoint);
-                                i += 5; // Skip the 'u' and 4 hex digits
-                            } catch (NumberFormatException e) {
-                                // If invalid hex, keep the original sequence
-                                result.append(c);
-                            }
-                        } else {
-                            // Not enough characters for a complete Unicode escape
-                            result.append(c);
-                        }
-                        break;
-                    default:
-                        // For any unrecognized escape, just keep the backslash and the character
-                        result.append(c);
-                        break;
-                }
-            } else {
-                // Regular character, just append it
-                result.append(c);
+    public String getQuestionsWithDeepSeekFromHTMLWithTopics(String htmlData, TaskStatus taskStatus, Integer attempt, String oldJson) {
+        try {
+            if (attempt >= 3) {
+                throw new VacademyException("No response from DeepSeek");
             }
-        }
+            String extractedQuestionNumber = getCommaSeparatedQuestionNumbers(oldJson);
+            HtmlJsonProcessor htmlJsonProcessor = new HtmlJsonProcessor();
+            String unTaggedHtml = htmlJsonProcessor.removeTags(htmlData);
 
-        return result.toString();
+            String template = ConstantAiTemplate.getTemplateBasedOnType(TaskStatusTypeEnum.SORT_QUESTIONS_TOPIC_WISE);
+            Map<String, Object> promptMap = Map.of("htmlData", unTaggedHtml,
+                    "extractedQuestionNumber", extractedQuestionNumber);
+
+            Prompt prompt = new PromptTemplate(template).create(promptMap);
+
+            taskStatusService.convertMapToJsonAndStore(promptMap, taskStatus);
+
+            DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
+            if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {
+                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), oldJson);
+                return oldJson;
+            }
+
+            String resultJson = response.getChoices().get(0).getMessage().getContent();
+            String validJson = JsonUtils.extractAndSanitizeJson(resultJson);
+
+            String restored = htmlJsonProcessor.restoreTagsInJson(validJson);
+
+
+            String mergedJson = mergeQuestionsJson(oldJson, restored);
+
+            if (getIsProcessCompleted(mergedJson)) {
+                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), mergedJson);
+                return mergedJson;
+            }
+
+            taskStatusService.updateTaskStatus(taskStatus, "PROGRESS", mergedJson);
+            // Recurse for remaining questions
+            return getQuestionsWithDeepSeekFromHTMLWithTopics(htmlData, taskStatus, attempt+1, mergedJson);
+        } catch (Exception e) {
+            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), oldJson);
+            return oldJson;
+        }
     }
 
-    public String getQuestionsWithDeepSeekFromHTMLWithTopics(String htmlData, String userPrompt) {
-        HtmlJsonProcessor htmlJsonProcessor = new HtmlJsonProcessor();
-        String unTaggedHtml = htmlJsonProcessor.removeTags(htmlData);
-
-        if (userPrompt == null) {
-            userPrompt = "Include first 20 questions in the response. Do not truncate or omit any questions." +
-                    "Ensure all questions include their respective topics in the tags field." +
-                    "If multiple questions belong to the same topic, their tags should be identical.";
-        }
-
-        String template = """
-        HTML raw data :  {htmlData}
-                
-        Prompt:
-        Convert the given HTML file containing questions into the following JSON format:
-        - Preserve all DS_TAGs in HTML content in comments.
-        
-        JSON format : 
-        
-                {{
-                    "questions": [
-                        {{
-                            "question_number": "number",
-                            "question": {{
-                                "type": "HTML",
-                                "content": "string" // Include img tags if present
-                            }},
-                            "options": [
-                                {{
-                                    "type": "HTML",
-                                    "content": "string" // Include img tags if present
-                                }}
-                            ],
-                            "correct_options": "number[]",
-                            "ans": "string",
-                            "exp": "string",
-                            "question_type": "MCQS | MCQM | ONE_WORD | LONG_ANSWER | NUMERIC",
-                            "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"], // must include topic name
-                            "level": "easy | medium | hard"
-                        }}
-                    ],
-                    "title": "string", // Suitable title for the question paper
-                    "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"], // multiple chapter and topic names for question paper
-                    "difficulty": "easy | medium | hard",
-                    "subjects": ["subject1", "subject2", "subject3", "subject4", "subject5"], // multiple subject names for question paper
-                    "classes": ["class 1", "class 2", "class 3", "class 4", "class 5", "class 6", "class 7", "class 8", "class 9", "class 10", "class 11", "class 12", "engineering", "medical", "commerce", "law"]
-                }}
-        
-        For LONG_ANSWER, NUMERIC, and ONE_WORD question types:
-        - Leave 'correct_options' empty but fill 'ans' and 'exp'
-        - Omit 'options' field entirely
-        
-        Tagging Rules:
-        - Every question must include its topic in the "tags" field.
-        - Questions belonging to the same topic must have identical "tags".
-        - If a topic is not directly extractable from the question, use headings or context from the HTML.
-        
-        Also keep the DS_TAGS field intact in HTML.
-        Do not try to calculate correct answers — only include if already available in the input.
-        
-        IMPORTANT: {userPrompt}
-        """;
-
-        Prompt prompt = new PromptTemplate(template).create(Map.of("htmlData", unTaggedHtml, "userPrompt", userPrompt));
-
-        DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
-        if(response.getChoices().isEmpty()) {
-            throw new VacademyException("No response from DeepSeek");
-        }
-        String resultJson = response.getChoices().get(0).getMessage().getContent();
-        String validJson = JsonUtils.extractAndSanitizeJson(resultJson);
+    public static String mergeQuestionsJson(String oldJson, String newJson) {
         try {
-            String restoredJson = htmlJsonProcessor.restoreTagsInJson(validJson);
-            return restoredJson;
+            ObjectMapper mapper = new ObjectMapper();
+
+            JsonNode oldNode = (oldJson == null || oldJson.isBlank())
+                    ? mapper.readTree("{\"questions\":[]}")
+                    : mapper.readTree(oldJson);
+            JsonNode newNode = mapper.readTree(newJson);
+
+            ObjectNode mergedNode = (ObjectNode) oldNode;
+
+            // Merge questions
+            ArrayNode mergedQuestions = mapper.createArrayNode();
+            if (oldNode.has("questions")) {
+                mergedQuestions.addAll((ArrayNode) oldNode.get("questions"));
+            }
+            if (newNode.has("questions")) {
+                ArrayNode newQuestions = (ArrayNode) newNode.get("questions");
+                for (JsonNode q : newQuestions) {
+                    if (q.has("question_type") && !q.get("question_type").asText().isBlank()
+                            && ValidQuestionTypeEnums.isValid(q.get("question_type").asText())) {
+                        mergedQuestions.add(q);
+                    }
+                }
+            }
+            mergedNode.set("questions", mergedQuestions);
+
+            // Merge is_process_completed
+            boolean oldCompleted = oldNode.has("is_process_completed") && oldNode.get("is_process_completed").asBoolean();
+            boolean newCompleted = newNode.has("is_process_completed") && newNode.get("is_process_completed").asBoolean();
+            mergedNode.put("is_process_completed", newCompleted);
+
+            // Merge title (keep old if exists)
+            if (!oldNode.has("title") && newNode.has("title")) {
+                mergedNode.put("title", newNode.get("title").asText());
+            }
+
+            // Merge difficulty (keep old if exists)
+            if (!oldNode.has("difficulty") && newNode.has("difficulty")) {
+                mergedNode.put("difficulty", newNode.get("difficulty").asText());
+            }
+
+            // Merge tags, subjects, classes
+            mergeStringArrayField(mergedNode, oldNode, newNode, "tags", mapper);
+            mergeStringArrayField(mergedNode, oldNode, newNode, "subjects", mapper);
+            mergeStringArrayField(mergedNode, oldNode, newNode, "classes", mapper);
+
+            // Merge topicQuestionMap if present
+            if (newNode.has("topicQuestionMap")) {
+                Map<String, Set<Integer>> topicMap = new LinkedHashMap<>();
+
+                // Load old map
+                if (oldNode.has("topicQuestionMap")) {
+                    for (JsonNode node : oldNode.get("topicQuestionMap")) {
+                        String topic = node.get("topic").asText();
+                        Set<Integer> questions = new HashSet<>();
+                        for (JsonNode q : node.get("questionNumbers")) {
+                            questions.add(q.asInt());
+                        }
+                        topicMap.put(topic, questions);
+                    }
+                }
+
+                // Load and merge new map
+                for (JsonNode node : newNode.get("topicQuestionMap")) {
+                    String topic = node.get("topic").asText();
+                    Set<Integer> questions = topicMap.getOrDefault(topic, new HashSet<>());
+                    for (JsonNode q : node.get("questionNumbers")) {
+                        questions.add(q.asInt());
+                    }
+                    topicMap.put(topic, questions);
+                }
+
+                // Convert to ArrayNode
+                ArrayNode topicMapNode = mapper.createArrayNode();
+                for (Map.Entry<String, Set<Integer>> entry : topicMap.entrySet()) {
+                    ObjectNode topicNode = mapper.createObjectNode();
+                    topicNode.put("topic", entry.getKey());
+                    ArrayNode qArray = mapper.createArrayNode();
+                    entry.getValue().stream().sorted().forEach(qArray::add);
+                    topicNode.set("questionNumbers", qArray);
+                    topicMapNode.add(topicNode);
+                }
+
+                mergedNode.set("topicQuestionMap", topicMapNode);
+            }
+
+            return mapper.writerWithDefaultPrettyPrinter().writeValueAsString(mergedNode);
         } catch (Exception e) {
-            throw new VacademyException(e.getMessage());
+            return oldJson != null ? oldJson : newJson;
         }
+    }
+
+
+
+    private static void mergeStringArrayField(ObjectNode mergedNode, JsonNode oldNode, JsonNode newNode, String fieldName, ObjectMapper mapper) {
+        Set<String> uniqueValues = new LinkedHashSet<>();
+        if (oldNode.has(fieldName)) {
+            oldNode.get(fieldName).forEach(n -> uniqueValues.add(n.asText()));
+        }
+        if (newNode.has(fieldName)) {
+            newNode.get(fieldName).forEach(n -> uniqueValues.add(n.asText()));
+        }
+        ArrayNode mergedArray = mapper.createArrayNode();
+        uniqueValues.forEach(mergedArray::add);
+        mergedNode.set(fieldName, mergedArray);
     }
 }

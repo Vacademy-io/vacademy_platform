@@ -91,30 +91,43 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
             @Param("statuses") List<String> statuses
     );
 
-
-    @Query("""
+    @Query(value = """
     SELECT 
         ps.id AS packageSessionId,
-        CONCAT(p.packageName, ' ', l.levelName) AS batchName,
+        CONCAT(l.level_name, ' ', p.package_name) AS batchName,
         ps.status AS batchStatus,
-        ps.startTime AS startDate,
-        COUNT(ssigm.id) AS countStudents
-    FROM PackageSession ps
-    JOIN ps.level l
-    JOIN ps.packageEntity p
-    LEFT JOIN StudentSessionInstituteGroupMapping ssigm 
-        ON ssigm.packageSession.id = ps.id 
-        AND ssigm.status IN :studentSessionStatuses
+        ps.start_time AS startDate,
+        COUNT(ssigm.id) AS countStudents,
+        li.invite_code AS inviteCode
+    FROM package_session ps
+    JOIN level l ON l.id = ps.level_id
+    JOIN package p ON p.id = ps.package_id
+    LEFT JOIN student_session_institute_group_mapping ssigm 
+        ON ssigm.package_session_id = ps.id 
+        AND ssigm.status IN (:studentSessionStatuses)
+    LEFT JOIN learner_invitation li 
+        ON li.id = (
+            SELECT li_inner.id 
+            FROM learner_invitation li_inner
+            WHERE li_inner.source_id = ps.id 
+              AND li_inner.source = 'PACKAGE_SESSION'
+              AND li_inner.status NOT IN (:excludedInvitationStatuses)
+            ORDER BY li_inner.created_at DESC
+            LIMIT 1
+        )
     WHERE p.id = :packageId
-      AND ps.status IN :packageSessionStatuses
-    GROUP BY ps.id, p.packageName, l.levelName, ps.status, ps.startTime
-    ORDER BY ps.startTime DESC
-""")
-    List<BatchProjection> findBatchDetails(
+      AND ps.status IN (:packageSessionStatuses)
+    GROUP BY ps.id, batchName, ps.status, ps.start_time, li.invite_code
+    ORDER BY ps.start_time DESC
+    """, nativeQuery = true)
+    List<BatchProjection> findBatchDetailsWithLatestInviteCode(
             @Param("packageId") String packageId,
             @Param("packageSessionStatuses") List<String> packageSessionStatuses,
-            @Param("studentSessionStatuses") List<String> studentSessionStatuses
+            @Param("studentSessionStatuses") List<String> studentSessionStatuses,
+            @Param("excludedInvitationStatuses") List<String> excludedInvitationStatuses
     );
+
+
 
     @Query("""
     SELECT 
@@ -128,4 +141,13 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
     WHERE ps.id = :packageSessionId
 """)
     Optional<BatchInstituteProjection> findBatchAndInstituteByPackageSessionId(@Param("packageSessionId") String packageSessionId);
+
+    @Query("SELECT ps FROM PackageSession ps WHERE ps.packageEntity.id IN :packageIds")
+    List<PackageSession> findAllByPackageIds(@Param("packageIds") List<String> packageIds);
+
+    @Query("SELECT ps FROM PackageSession ps WHERE ps.session.id IN :sessionIds")
+    List<PackageSession> findBySessionIds(@Param("sessionIds") List<String> sessionIds);
+
+    @Query("SELECT ps FROM PackageSession ps WHERE ps.level.id IN :levelIds")
+    List<PackageSession> findByLevelIds(@Param("levelIds") List<String> levelIds);
 }

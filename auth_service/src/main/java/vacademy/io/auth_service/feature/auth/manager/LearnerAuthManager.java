@@ -19,7 +19,6 @@ import vacademy.io.common.auth.repository.UserRepository;
 import vacademy.io.common.auth.repository.UserRoleRepository;
 import vacademy.io.common.auth.service.JwtService;
 import vacademy.io.common.auth.service.RefreshTokenService;
-import vacademy.io.common.core.utils.NumberUtil;
 import vacademy.io.common.exceptions.ExpiredTokenException;
 import vacademy.io.common.notification.dto.EmailOTPRequest;
 
@@ -70,7 +69,7 @@ public class LearnerAuthManager {
             User user = userOptional.get();
 
             List<UserRole> userRoles = userRoleRepository.findByUserAndStatusAndRoleName(user, UserRoleStatus.ACTIVE.name(), "STUDENT");
-            if (userRoles.isEmpty()){
+            if (userRoles.isEmpty()) {
                 throw new UsernameNotFoundException("invalid user request..!!");
             }
 
@@ -95,7 +94,7 @@ public class LearnerAuthManager {
 
     }
 
-    private EmailOTPRequest makeOtp(String email){
+    private EmailOTPRequest makeOtp(String email) {
         return EmailOTPRequest.builder().to(email).service("auth-service").subject("Vacademy | Otp verification. ").name("Vacademy User").build();
     }
 

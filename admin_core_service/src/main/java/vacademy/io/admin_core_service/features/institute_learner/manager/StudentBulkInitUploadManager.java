@@ -83,7 +83,6 @@ public class StudentBulkInitUploadManager {
         headers.add(dateHeader);
 
 
-
         // Adding package session header
         if (!expiryAndStatusConfig.isIncludeExpiryDays()) {
             headers.add(createHeader("integer", false, "ACCESS_DAYS", order++, List.of("30", "180", "365")));
@@ -117,9 +116,9 @@ public class StudentBulkInitUploadManager {
             headers.add(createHeader("string", true, "CITY", order++, List.of("Indore", "Bhopal", "Jaipur")));
         }
         if (optionalFieldsConfig.isIncludePinCode()) {
-            headers.add(createRegexHeader("regex", false, "PIN_CODE", "\\d{6}","Invalid pin code",order++, List.of("452001", "462001", "452002")));
+            headers.add(createRegexHeader("regex", false, "PIN_CODE", "\\d{6}", "Invalid pin code", order++, List.of("452001", "462001", "452002")));
         } else {
-            headers.add(createRegexHeader("regex", true, "PIN_CODE", "\\d{6}","Invalid pin code",order++, List.of("452001", "462001", "452002")));
+            headers.add(createRegexHeader("regex", true, "PIN_CODE", "\\d{6}", "Invalid pin code", order++, List.of("452001", "462001", "452002")));
         }
         if (optionalFieldsConfig.isIncludeFatherName()) {
             headers.add(createHeader("string", false, "FATHER_NAME", order++, List.of("John Henry", "Doe Walker", "Smith Jones")));
@@ -138,8 +137,13 @@ public class StudentBulkInitUploadManager {
             headers.add(createRegexHeader("regex", true, "PARENTS_MOBILE_NUMBER", "^\\+\\d{1,3}-\\d{6,14}$",
                     "Mobile number must be in format +<country_code>-<number>", order++, List.of("+91-9123456789", "+1-9876543210", "+44-712345678901")));
         }
-        headers.add(createRegexHeader("regex", true, "PARENTS_TO_MOTHER_MOBILE_NUMBER", "^\\+\\d{1,3}-\\d{6,14}$",
-                "Mobile number must be in format +<country_code>-<number>", order++, List.of("+91-9123456789", "+1-9876543210", "+44-712345678901")));
+        if (optionalFieldsConfig.isIncludeParentsToMotherMobile()) {
+            headers.add(createRegexHeader("regex", false, "PARENTS_TO_MOTHER_MOBILE_NUMBER", "^\\+\\d{1,3}-\\d{6,14}$",
+                    "Mobile number must be in format +<country_code>-<number>", order++, List.of("+91-9123456789", "+1-9876543210", "+44-712345678901")));
+        } else {
+            headers.add(createRegexHeader("regex", true, "PARENTS_TO_MOTHER_MOBILE_NUMBER", "^\\+\\d{1,3}-\\d{6,14}$",
+                    "Mobile number must be in format +<country_code>-<number>", order++, List.of("+91-9123456789", "+1-9876543210", "+44-712345678901")));
+        }
         if (optionalFieldsConfig.isIncludeParentsEmail()) {
             emailHeader = createRegexHeader("regex", false, "PARENTS_EMAIL",
                     "^(?![\\s\\S])|^((?!\\.)[\\w\\-_.]*[^.])(@\\w+)(\\.\\w+(\\.\\w+)?[^.\\W])$",
@@ -151,9 +155,15 @@ public class StudentBulkInitUploadManager {
                     "Invalid email format", order++, List.of("john@example.com", "doe@example.com", "smith@example.com"));
             headers.add(emailHeader);
         }
-        emailHeader = createRegexHeader("regex", true, "PARENTS_TO_MOTHER_EMAIL",
-                "^(?![\\s\\S])|^((?!\\.)[\\w\\-_.]*[^.])(@\\w+)(\\.\\w+(\\.\\w+)?[^.\\W])$",
-                "Invalid email format", order++, List.of("john@example.com", "doe@example.com", "smith@example.com"));
+        if (optionalFieldsConfig.isIncludeParentsToMotherEmail()) {
+            emailHeader = createRegexHeader("regex", false, "PARENTS_TO_MOTHER_EMAIL",
+                    "^(?![\\s\\S])|^((?!\\.)[\\w\\-_.]*[^.])(@\\w+)(\\.\\w+(\\.\\w+)?[^.\\W])$",
+                    "Invalid email format", order++, List.of("john@example.com", "doe@example.com", "smith@example.com"));
+        } else {
+            emailHeader = createRegexHeader("regex", true, "PARENTS_TO_MOTHER_EMAIL",
+                    "^(?![\\s\\S])|^((?!\\.)[\\w\\-_.]*[^.])(@\\w+)(\\.\\w+(\\.\\w+)?[^.\\W])$",
+                    "Invalid email format", order++, List.of("john@example.com", "doe@example.com", "smith@example.com"));
+        }
         headers.add(emailHeader);
         if (optionalFieldsConfig.isIncludeLinkedInstituteName()) {
             headers.add(createHeader("string", false, "LINKED_INSTITUTE_NAME", order++, List.of("St. Joseph coed School", "St. Paul coed School", "St. Xavier coed School")));

@@ -41,7 +41,6 @@ import vacademy.io.common.institute.dto.InstituteInfoDTO;
 import vacademy.io.common.notification.dto.GenericEmailRequest;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 import static vacademy.io.auth_service.feature.auth.constants.AuthConstants.ADMIN_ROLE;
 
@@ -82,12 +81,12 @@ public class AuthManager {
     private NotificationService notificationService;
 
     public JwtResponseDto registerRootUser(RegisterRequest registerRequest) {
-        if(Objects.isNull(registerRequest)) throw new VacademyException("Invalid Request");
+        if (Objects.isNull(registerRequest)) throw new VacademyException("Invalid Request");
 
         String userName = registerRequest.getUserName().trim().toLowerCase();
         Optional<User> userOptional = userRepository.findByUsername(userName);
 
-        if(userOptional.isPresent()) throw new VacademyException("User Already Exist");
+        if (userOptional.isPresent()) throw new VacademyException("User Already Exist");
 
         InstituteInfoDTO instituteInfoDTO = registerRequest.getInstitute();
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(applicationName, HttpMethod.POST.name(), adminCoreServiceBaseUrl, AuthConstants.CREATE_INSTITUTES_PATH, instituteInfoDTO);
@@ -107,7 +106,7 @@ public class AuthManager {
         List<Role> allRoles = getAllUserRoles(registerRequest.getUserRoles());
         Set<UserRole> userRoleSet = new HashSet<>();
 
-        allRoles.forEach(role->{
+        allRoles.forEach(role -> {
             UserRole userRole = new UserRole();
             userRole.setRole(role);
             userRole.setInstituteId(customUserDetails.getInstituteId());
@@ -154,7 +153,7 @@ public class AuthManager {
             List<UserRole> userRoles = userRoleRepository.findByUser(user);
 
             if (!userRoles.isEmpty()) {
-                userRoleRepository.updateUserRoleStatusByInstituteIdAndUserId(UserRoleStatus.ACTIVE.name(),userRoles.get(0).getInstituteId(),List.of(user.getId()));
+                userRoleRepository.updateUserRoleStatusByInstituteIdAndUserId(UserRoleStatus.ACTIVE.name(), userRoles.get(0).getInstituteId(), List.of(user.getId()));
             }
 
             RefreshToken refreshToken = refreshTokenService.createRefreshToken(authRequestDTO.getUserName(), authRequestDTO.getClientName());
@@ -178,10 +177,10 @@ public class AuthManager {
 
     }
 
-    public void sendWelcomeMailToUser(User user){
+    public void sendWelcomeMailToUser(User user) {
         GenericEmailRequest genericEmailRequest = new GenericEmailRequest();
         genericEmailRequest.setTo(user.getEmail());
-        genericEmailRequest.setBody(NotificationEmailBody.createWelcomeEmailBody("Vacademy",user.getFullName(), user.getUsername(), user.getPassword()));
+        genericEmailRequest.setBody(NotificationEmailBody.createWelcomeEmailBody("Vacademy", user.getFullName(), user.getUsername(), user.getPassword()));
         genericEmailRequest.setSubject("Welcome to Vacademy");
         notificationService.sendGenericHtmlMail(genericEmailRequest);
     }

@@ -25,6 +25,10 @@ public abstract class IStep {
     @Getter
     private String type;
 
+    @Setter
+    @Getter
+    private String assessmentType;
+
     @Getter
     @Setter
     private Map<String, Object> savedData = new HashMap<>();
@@ -46,6 +50,6 @@ public abstract class IStep {
     public abstract void fillStepKeysBasedOnAssessmentType(String assessmentType, String instituteId);
 
     public StepResponseDto toResponseDto() {
-        return new StepResponseDto(this.stepName, this.status, this.instituteId, this.type, this.savedData, this.stepKeys, this.defaultValues, this.fieldOptions);
+        return new StepResponseDto(this.stepName, this.status, this.instituteId, this.type, this.assessmentType, this.savedData, this.stepKeys, this.defaultValues, this.fieldOptions);
     }
 }

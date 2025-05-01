@@ -6,7 +6,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import vacademy.io.assessment_service.features.assessment.entity.*;
-import vacademy.io.assessment_service.features.assessment.enums.AssessmentVisibility;
 import vacademy.io.assessment_service.features.assessment.enums.UserRegistrationSources;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentInstituteMappingRepository;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentRepository;
@@ -15,7 +14,6 @@ import vacademy.io.assessment_service.features.open_registration.dto.AssessmentP
 import vacademy.io.assessment_service.features.open_registration.dto.GetAssessmentPublicResponseDto;
 import vacademy.io.assessment_service.features.open_registration.dto.ParticipantPublicResponseDto;
 import vacademy.io.assessment_service.features.open_registration.dto.RegisterOpenAssessmentRequestDto;
-import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.core.utils.DateUtil;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.student.dto.BasicParticipantDTO;
@@ -45,7 +43,7 @@ public class AssessmentPublicPageManager {
 
         Assessment assessment = assessmentInstituteMapping.get().getAssessment();
 
-        if(assessment.getBoundEndTime() != null && assessment.getBoundEndTime().before(new Date())) {
+        if (assessment.getBoundEndTime() != null && assessment.getBoundEndTime().before(new Date())) {
             throw new VacademyException("Assessment is ended");
         }
 

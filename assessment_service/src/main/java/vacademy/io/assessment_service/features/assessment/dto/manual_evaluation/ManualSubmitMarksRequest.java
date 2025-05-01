@@ -27,7 +27,7 @@ public class ManualSubmitMarksRequest {
     @NoArgsConstructor
     @AllArgsConstructor
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public static class SubmitMarksDto{
+    public static class SubmitMarksDto {
         private String sectionId;
         private String questionId;
         private String status;

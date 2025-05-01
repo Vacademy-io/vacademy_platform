@@ -25,7 +25,7 @@ public class QuestionInsightsResponse {
     @NoArgsConstructor
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     @Builder
-    public static class QuestionInsightDto{
+    public static class QuestionInsightDto {
         private AssessmentQuestionPreviewDto assessmentQuestionPreviewDto;
         private QuestionStatusDto questionStatus;
         private Long skipped;

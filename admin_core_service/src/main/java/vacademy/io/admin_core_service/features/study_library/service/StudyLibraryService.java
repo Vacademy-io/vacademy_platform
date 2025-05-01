@@ -12,6 +12,7 @@ import vacademy.io.admin_core_service.features.level.repository.LevelRepository;
 import vacademy.io.admin_core_service.features.module.dto.ModuleDTO;
 import vacademy.io.admin_core_service.features.module.repository.ModuleChapterMappingRepository;
 import vacademy.io.admin_core_service.features.module.repository.SubjectModuleMappingRepository;
+import vacademy.io.admin_core_service.features.packages.enums.PackageStatusEnum;
 import vacademy.io.admin_core_service.features.packages.repository.PackageRepository;
 import vacademy.io.admin_core_service.features.slide.repository.SlideRepository;
 import vacademy.io.admin_core_service.features.study_library.dto.LevelDTOWithDetails;
@@ -62,7 +63,7 @@ public class StudyLibraryService {
         validateInstituteId(instituteId);
 
         List<CourseDTOWithDetails> courses = new ArrayList<>();
-        List<PackageEntity> packages = packageRepository.findDistinctPackagesByInstituteId(instituteId);
+        List<PackageEntity> packages = packageRepository.findDistinctPackagesByInstituteIdAndStatuses(instituteId, List.of(PackageStatusEnum.ACTIVE.name()), List.of(PackageStatusEnum.ACTIVE.name()));
 
         for (PackageEntity course : packages) {
             CourseDTOWithDetails courseDTOWithDetails = buildCourseDTOWithDetails(course, instituteId);

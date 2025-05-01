@@ -8,7 +8,6 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.common.auth.entity.User;
 
-import javax.swing.text.html.Option;
 import java.util.List;
 import java.util.Optional;
 

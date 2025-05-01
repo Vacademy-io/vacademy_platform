@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.Data;
 
+import java.util.List;
+
 @Data
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class VideoSlideDTO {
@@ -14,4 +16,6 @@ public class VideoSlideDTO {
     private Long videoLengthInMillis;
     private String publishedUrl;
     private Long publishedVideoLengthInMillis;
+    private String sourceType;
+    private List<VideoSlideQuestionDTO>questions;
 }

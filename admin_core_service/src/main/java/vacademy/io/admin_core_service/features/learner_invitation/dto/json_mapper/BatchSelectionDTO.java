@@ -9,6 +9,6 @@ import java.util.List;
 public class BatchSelectionDTO {
     private Boolean instituteAssigned;
     private Integer maxSelectablePackages;
-    private List<PreselectedPackageDTO>preSelectedPackages;
-    private List<LearnerChoicePackageDTO>learnerChoicePackages;
+    private List<PreselectedPackageDTO> preSelectedPackages;
+    private List<LearnerChoicePackageDTO> learnerChoicePackages;
 }

@@ -3,10 +3,7 @@ package vacademy.io.admin_core_service.features.slide.controller;
 import lombok.AllArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import vacademy.io.admin_core_service.features.slide.dto.AddDocumentSlideDTO;
-import vacademy.io.admin_core_service.features.slide.dto.AddVideoSlideDTO;
-import vacademy.io.admin_core_service.features.slide.dto.SlideDetailProjection;
-import vacademy.io.admin_core_service.features.slide.dto.UpdateSlideOrderDTO;
+import vacademy.io.admin_core_service.features.slide.dto.*;
 import vacademy.io.admin_core_service.features.slide.service.SlideService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
@@ -66,4 +63,8 @@ public class SlideController {
         return ResponseEntity.ok(message);
     }
 
+    @GetMapping("/slides")
+    public ResponseEntity<List<SlideDTO>> getSlides(String chapterId) {
+        return ResponseEntity.ok(slideService.getSlides(chapterId));
+    }
 }

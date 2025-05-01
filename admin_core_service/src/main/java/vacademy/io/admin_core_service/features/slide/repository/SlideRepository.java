@@ -28,90 +28,91 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
     SlideCountProjection countSlidesByChapterId(@Param("chapterId") String chapterId);
 
     @Query(value = """
-    SELECT s.id AS slideId, 
-           s.title AS slideTitle, 
-           s.description AS slideDescription, 
-           s.source_type AS sourceType, 
-           s.status AS status, 
-           s.image_file_id AS imageFileId, 
-           s.last_sync_date AS lastSyncDate,
-           ds.id AS documentId, 
-           ds.title AS documentTitle, 
-           ds.cover_file_id AS documentCoverFileId, 
-           ds.type AS documentType, 
-           ds.data AS documentData, 
-           vs.id AS videoId, 
-           vs.title AS videoTitle, 
-           vs.url AS videoUrl, 
-           vs.description AS videoDescription, 
-           COALESCE(cts.slide_order, 9999) AS slideOrder,
-           vs.published_url AS publishedUrl,
-           ds.published_data AS publishedData
-    FROM chapter_to_slides cts
-    JOIN slide s ON cts.slide_id = s.id
-    JOIN chapter ch ON cts.chapter_id = ch.id
-    LEFT JOIN document_slide ds ON ds.id = s.source_id AND s.source_type = 'DOCUMENT'
-    LEFT JOIN video vs ON vs.id = s.source_id AND s.source_type = 'VIDEO'
-    WHERE ch.id = :chapterId
-      AND s.status IN :status
-      AND cts.status != 'DELETED'
-    ORDER BY 
-        cts.slide_order IS NOT NULL, 
-        cts.slide_order ASC, 
-        s.created_at DESC
-    """, nativeQuery = true)
+            SELECT s.id AS slideId, 
+                   s.title AS slideTitle, 
+                   s.description AS slideDescription, 
+                   s.source_type AS sourceType, 
+                   s.status AS status, 
+                   s.image_file_id AS imageFileId, 
+                   s.last_sync_date AS lastSyncDate,
+                   ds.id AS documentId, 
+                   ds.title AS documentTitle, 
+                   ds.cover_file_id AS documentCoverFileId, 
+                   ds.type AS documentType, 
+                   ds.data AS documentData, 
+                   vs.id AS videoId, 
+                   vs.title AS videoTitle, 
+                   vs.url AS videoUrl, 
+                   vs.source_type AS videoSourceType,
+                   vs.description AS videoDescription, 
+                   COALESCE(cts.slide_order, 9999) AS slideOrder,
+                   vs.published_url AS publishedUrl,
+                   ds.published_data AS publishedData
+            FROM chapter_to_slides cts
+            JOIN slide s ON cts.slide_id = s.id
+            JOIN chapter ch ON cts.chapter_id = ch.id
+            LEFT JOIN document_slide ds ON ds.id = s.source_id AND s.source_type = 'DOCUMENT'
+            LEFT JOIN video vs ON vs.id = s.source_id AND s.source_type = 'VIDEO'
+            WHERE ch.id = :chapterId
+              AND s.status IN :status
+              AND cts.status != 'DELETED'
+            ORDER BY 
+                cts.slide_order IS NOT NULL, 
+                cts.slide_order ASC, 
+                s.created_at DESC
+            """, nativeQuery = true)
     List<SlideDetailProjection> findSlideDetailsByChapterId(
             @Param("chapterId") String chapterId,
             @Param("status") List<String> status
     );
 
     @Query(value = """
-            SELECT 
-                s.id AS slideId, 
-                s.title AS slideTitle, 
-                s.description AS slideDescription, 
-                s.source_type AS sourceType, 
-                s.status AS status, 
-                s.image_file_id AS imageFileId, 
+                SELECT 
+                    s.id AS slideId, 
+                    s.title AS slideTitle, 
+                    s.description AS slideDescription, 
+                    s.source_type AS sourceType, 
+                    s.status AS status, 
+                    s.image_file_id AS imageFileId, 
+                    
+                    ds.id AS documentId, 
+                    ds.title AS documentTitle, 
+                    ds.cover_file_id AS documentCoverFileId, 
+                    ds.type AS documentType, 
+                  
+                    
+                    vs.id AS videoId, 
+                    vs.title AS videoTitle, 
+                    vs.description AS videoDescription, 
+                    vs.published_url AS publishedUrl,
+                    vs.source_type AS videoSourceType,
+                    ds.published_data AS publishedData,
+                    cts.slide_order AS slideOrder 
+                    
+                FROM slide s 
+                JOIN activity_log al ON al.slide_id = s.id 
+                JOIN chapter_to_slides cts ON s.id = cts.slide_id 
+                JOIN chapter ch ON cts.chapter_id = ch.id 
                 
-                ds.id AS documentId, 
-                ds.title AS documentTitle, 
-                ds.cover_file_id AS documentCoverFileId, 
-                ds.type AS documentType, 
-              
+                LEFT JOIN document_slide ds ON ds.id = s.source_id AND s.source_type = 'DOCUMENT' 
+                LEFT JOIN video vs ON vs.id = s.source_id AND s.source_type = 'VIDEO' 
                 
-                vs.id AS videoId, 
-                vs.title AS videoTitle, 
-                vs.description AS videoDescription, 
-                vs.published_url AS publishedUrl,
-                ds.published_data AS publishedData,
-                cts.slide_order AS slideOrder 
+                WHERE al.user_id = :userId 
+                AND s.status IN :status 
+                AND (al.percentage_watched IS NULL OR al.percentage_watched != 100) 
+                AND cts.status != 'DELETED' 
                 
-            FROM slide s 
-            JOIN activity_log al ON al.slide_id = s.id 
-            JOIN chapter_to_slides cts ON s.id = cts.slide_id 
-            JOIN chapter ch ON cts.chapter_id = ch.id 
-            
-            LEFT JOIN document_slide ds ON ds.id = s.source_id AND s.source_type = 'DOCUMENT' 
-            LEFT JOIN video vs ON vs.id = s.source_id AND s.source_type = 'VIDEO' 
-            
-            WHERE al.user_id = :userId 
-            AND s.status IN :status 
-            AND (al.percentage_watched IS NULL OR al.percentage_watched != 100) 
-            AND cts.status != 'DELETED' 
-            
-            ORDER BY 
-                CASE WHEN cts.slide_order IS NULL THEN 0 ELSE 1 END, 
-                cts.slide_order ASC, 
-                al.updated_at DESC, 
-                s.id 
-                
-            LIMIT 5
-        """, nativeQuery = true)
+                ORDER BY 
+                    CASE WHEN cts.slide_order IS NULL THEN 0 ELSE 1 END, 
+                    cts.slide_order ASC, 
+                    al.updated_at DESC, 
+                    s.id 
+                    
+                LIMIT 5
+            """, nativeQuery = true)
     List<SlideDetailProjection> findRecentIncompleteSlidesByUserId(
             @Param("userId") String userId,
             @Param("status") List<String> status);
-
 
 
     @Query(value = """
@@ -133,7 +134,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                     vs.title AS videoTitle,
                     vs.description AS videoDescription,
                     vs.published_url AS publishedUrl,
-                    
+                    vs.source_type AS videoSourceType,
                     cts.slide_order AS slideOrder,
 
                     COALESCE(NULLIF(doc_percent.value, ''), '0') AS percentageDocumentWatched,
@@ -192,95 +193,97 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
     );
 
     @Query(value = """
-    SELECT s.id AS slideId, 
-           s.title AS slideTitle, 
-           s.description AS slideDescription, 
-           s.source_type AS sourceType, 
-           s.status AS status, 
-           s.image_file_id AS imageFileId, 
-           ds.id AS documentId, 
-           ds.title AS documentTitle, 
-           ds.cover_file_id AS documentCoverFileId, 
-           ds.type AS documentType, 
-           vs.id AS videoId, 
-           vs.title AS videoTitle, 
-           vs.description AS videoDescription, 
-           COALESCE(cts.slide_order, 9999) AS slideOrder,
-           vs.published_url AS publishedUrl,
-           ds.published_data AS publishedData
-    FROM chapter_to_slides cts
-    JOIN slide s ON cts.slide_id = s.id
-    JOIN chapter ch ON cts.chapter_id = ch.id
-    LEFT JOIN document_slide ds ON ds.id = s.source_id AND s.source_type = 'DOCUMENT'
-    LEFT JOIN video vs ON vs.id = s.source_id AND s.source_type = 'VIDEO'
-    WHERE ch.id = :chapterId
-      AND s.status IN :status
-      AND cts.status != 'DELETED'
-    ORDER BY 
-        cts.slide_order IS NOT NULL, 
-        cts.slide_order ASC, 
-        s.created_at DESC
-    """, nativeQuery = true)
+            SELECT s.id AS slideId, 
+                   s.title AS slideTitle, 
+                   s.description AS slideDescription, 
+                   s.source_type AS sourceType, 
+                   s.status AS status, 
+                   s.image_file_id AS imageFileId, 
+                   ds.id AS documentId, 
+                   ds.title AS documentTitle, 
+                   ds.cover_file_id AS documentCoverFileId, 
+                   ds.type AS documentType, 
+                   vs.id AS videoId, 
+                   vs.source_type AS videoSourceType,
+                   vs.title AS videoTitle, 
+                   vs.description AS videoDescription, 
+                   COALESCE(cts.slide_order, 9999) AS slideOrder,
+                   vs.published_url AS publishedUrl,
+                   ds.published_data AS publishedData
+            FROM chapter_to_slides cts
+            JOIN slide s ON cts.slide_id = s.id
+            JOIN chapter ch ON cts.chapter_id = ch.id
+            LEFT JOIN document_slide ds ON ds.id = s.source_id AND s.source_type = 'DOCUMENT'
+            LEFT JOIN video vs ON vs.id = s.source_id AND s.source_type = 'VIDEO'
+            WHERE ch.id = :chapterId
+              AND s.status IN :status
+              AND cts.status != 'DELETED'
+            ORDER BY 
+                cts.slide_order IS NOT NULL, 
+                cts.slide_order ASC, 
+                s.created_at DESC
+            """, nativeQuery = true)
     List<SlideDetailProjection> findLearnerSlideDetailsByChapterId(
             @Param("chapterId") String chapterId,
             @Param("status") List<String> status
     );
 
     @Query(value = """
-    SELECT 
-        DISTINCT s.id AS slideId, 
-        s.title AS slideTitle, 
-        s.description AS slideDescription, 
-        s.source_type AS sourceType, 
-        s.status AS status, 
-        s.image_file_id AS imageFileId, 
-        
-        ds.id AS documentId, 
-        ds.title AS documentTitle, 
-        ds.cover_file_id AS documentCoverFileId, 
-        ds.type AS documentType,
-        
-        vs.id AS videoId, 
-        vs.title AS videoTitle, 
-        vs.description AS videoDescription, 
-        vs.published_url AS publishedUrl,
-        ds.published_data AS publishedData,
-        cts.slide_order AS slideOrder, 
-        -- Parse the value from learner_operation to Long based on the operation field
-        CASE 
-            WHEN lo.operation = 'VIDEO_LAST_TIMESTAMP' THEN CAST(lo.value AS BIGINT)  
-            ELSE NULL
-        END AS videoLastTimestamp,
-        CASE 
-            WHEN lo.operation = 'DOCUMENT_LAST_PAGE' THEN CAST(lo.value AS BIGINT)  
-            ELSE NULL
-        END AS documentLastPage,
-        -- New fields: Package, Level, Subject, Chapter, Module
-        ps.package_id AS packageId, 
-        ps.level_id AS levelId,
-        ch.id AS chapterId,
-        m.id AS moduleId,
-        sub.id AS subjectId
-    FROM slide s 
-    JOIN activity_log al ON al.slide_id = s.id 
-    JOIN chapter_to_slides cts ON s.id = cts.slide_id AND cts.status IN :chapterSlideStatus  
-    JOIN chapter ch ON cts.chapter_id = ch.id AND ch.status IN :chapterStatus  
-    JOIN package_session ps ON ps.id = :packageSessionId AND ps.status IN :packageSessionStatus  
-    JOIN module_chapter_mapping mtc ON mtc.chapter_id = ch.id  
-    JOIN modules m ON mtc.module_id = m.id AND m.status IN :moduleStatus 
-    JOIN subject_module_mapping smm ON smm.module_id = m.id  
-    JOIN subject sub ON smm.subject_id = sub.id AND sub.status IN :subjectStatus  
-    LEFT JOIN document_slide ds ON ds.id = s.source_id AND s.source_type = 'DOCUMENT' 
-    LEFT JOIN video vs ON vs.id = s.source_id AND s.source_type = 'VIDEO' 
-    LEFT JOIN learner_operation lo ON lo.user_id = :userId 
-                                    AND lo.source = 'SLIDE' 
-                                    AND lo.source_id = s.id  
-                                    
-    WHERE al.user_id = :userId 
-    AND s.status IN :slideStatus  
-    AND (al.percentage_watched IS NULL OR al.percentage_watched != 100) 
-    LIMIT 5
-""", nativeQuery = true)
+                SELECT 
+                    DISTINCT s.id AS slideId, 
+                    s.title AS slideTitle, 
+                    s.description AS slideDescription, 
+                    s.source_type AS sourceType, 
+                    s.status AS status, 
+                    s.image_file_id AS imageFileId, 
+                    
+                    ds.id AS documentId, 
+                    ds.title AS documentTitle, 
+                    ds.cover_file_id AS documentCoverFileId, 
+                    ds.type AS documentType,
+                    
+                    vs.id AS videoId, 
+                    vs.title AS videoTitle, 
+                    vs.description AS videoDescription, 
+                    vs.published_url AS publishedUrl,
+                    vs.source_type AS videoSourceType,
+                    ds.published_data AS publishedData,
+                    cts.slide_order AS slideOrder, 
+                    -- Parse the value from learner_operation to Long based on the operation field
+                    CASE 
+                        WHEN lo.operation = 'VIDEO_LAST_TIMESTAMP' THEN CAST(lo.value AS BIGINT)  
+                        ELSE NULL
+                    END AS videoLastTimestamp,
+                    CASE 
+                        WHEN lo.operation = 'DOCUMENT_LAST_PAGE' THEN CAST(lo.value AS BIGINT)  
+                        ELSE NULL
+                    END AS documentLastPage,
+                    -- New fields: Package, Level, Subject, Chapter, Module
+                    ps.package_id AS packageId, 
+                    ps.level_id AS levelId,
+                    ch.id AS chapterId,
+                    m.id AS moduleId,
+                    sub.id AS subjectId
+                FROM slide s 
+                JOIN activity_log al ON al.slide_id = s.id 
+                JOIN chapter_to_slides cts ON s.id = cts.slide_id AND cts.status IN :chapterSlideStatus  
+                JOIN chapter ch ON cts.chapter_id = ch.id AND ch.status IN :chapterStatus  
+                JOIN package_session ps ON ps.id = :packageSessionId AND ps.status IN :packageSessionStatus  
+                JOIN module_chapter_mapping mtc ON mtc.chapter_id = ch.id  
+                JOIN modules m ON mtc.module_id = m.id AND m.status IN :moduleStatus 
+                JOIN subject_module_mapping smm ON smm.module_id = m.id  
+                JOIN subject sub ON smm.subject_id = sub.id AND sub.status IN :subjectStatus  
+                LEFT JOIN document_slide ds ON ds.id = s.source_id AND s.source_type = 'DOCUMENT' 
+                LEFT JOIN video vs ON vs.id = s.source_id AND s.source_type = 'VIDEO' 
+                LEFT JOIN learner_operation lo ON lo.user_id = :userId 
+                                                AND lo.source = 'SLIDE' 
+                                                AND lo.source_id = s.id  
+                                                
+                WHERE al.user_id = :userId 
+                AND s.status IN :slideStatus  
+                AND (al.percentage_watched IS NULL OR al.percentage_watched != 100) 
+                LIMIT 5
+            """, nativeQuery = true)
     List<LearnerRecentSlides> findRecentIncompleteSlides(
             @Param("userId") String userId,
             @Param("packageSessionId") String packageSessionId,
@@ -290,4 +293,209 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
             @Param("moduleStatus") List<String> moduleStatus,
             @Param("subjectStatus") List<String> subjectStatus,
             @Param("packageSessionStatus") List<String> packageSessionStatus);
+
+
+    @Query(
+            value = """
+    SELECT json_agg(slide_data) AS slides
+    FROM (
+        -- VIDEO SLIDES
+        SELECT 
+            json_build_object(
+                'id', s.id,
+                'title', s.title,
+                'status', s.status,
+                'is_loaded', true,
+                'new_slide', true,
+                'source_id', s.source_id,
+                'description', s.description,
+                'slide_order', cs.slide_order,
+                'source_type', s.source_type,
+                'video_slide', json_build_object(
+                    'id', v.id,
+                    'url', v.url,
+                    'title', v.title,
+                    'description', v.description,
+                    'source_type', v.source_type,
+                    'published_url', v.published_url,
+                    'video_length', v.video_length,
+                    'published_video_length', v.published_video_length,
+                    'questions', COALESCE((
+                        SELECT json_agg(
+                            json_build_object(
+                                'id', q.id,
+                                'question_response_type', q.question_response_type,
+                                'question_type', q.question_type,
+                                'access_level', q.access_level,
+                                'question_order', q.question_order,
+                                'question_time_in_millis', q.question_time_in_millis,
+                                'media_id', q.media_id,
+                                'auto_evaluation_json',q.auto_evaluation_json,
+                                'evaluation_type', q.evaluation_type,
+                                'text_data', json_build_object('id', rt_text.id, 'type', 'RICH_TEXT', 'content', rt_text.content),
+                                'parent_rich_text', CASE WHEN q.parent_rich_text_id IS NOT NULL THEN json_build_object('id', rt_parent.id, 'type', 'RICH_TEXT', 'content', rt_parent.content) ELSE NULL END,
+                                'explanation_text_data', CASE WHEN q.explanation_text_id IS NOT NULL THEN json_build_object('id', rt_exp.id, 'type', 'RICH_TEXT', 'content', rt_exp.content) ELSE NULL END,
+                                'options', COALESCE((
+                                    SELECT json_agg(
+                                        json_build_object(
+                                            'id', o.id,
+                                            'media_id', o.media_id,
+                                            'text', CASE WHEN o.text_id IS NOT NULL THEN json_build_object('id', rt_opt.id, 'type', 'RICH_TEXT', 'content', rt_opt.content) ELSE NULL END,
+                                            'explanation_text_data', CASE WHEN o.explanation_text_id IS NOT NULL THEN json_build_object('id', rt_opt_exp.id, 'type', 'RICH_TEXT', 'content', rt_opt_exp.content) ELSE NULL END
+                                        )
+                                    )
+                                    FROM video_slide_question_options o
+                                    LEFT JOIN rich_text_data rt_opt ON rt_opt.id = o.text_id
+                                    LEFT JOIN rich_text_data rt_opt_exp ON rt_opt_exp.id = o.explanation_text_id
+                                    WHERE o.video_slide_question_id = q.id
+                                ), CAST('[]' AS json))
+                            )
+                        )
+                        FROM video_slide_question q
+                        LEFT JOIN rich_text_data rt_text ON rt_text.id = q.text_id
+                        LEFT JOIN rich_text_data rt_parent ON rt_parent.id = q.parent_rich_text_id
+                        LEFT JOIN rich_text_data rt_exp ON rt_exp.id = q.explanation_text_id
+                        WHERE q.video_slide_id = v.id
+                    ), CAST('[]' AS json))
+                )
+            ) AS slide_data
+        FROM slide s
+        JOIN chapter_to_slides cs ON cs.slide_id = s.id
+        JOIN chapter c ON c.id = cs.chapter_id
+        JOIN video v ON v.id = s.source_id
+        WHERE s.source_type = 'VIDEO' AND c.id = :chapterId
+        AND s.status IN (:slideStatus)
+        AND cs.status IN (:chapterToSlidesStatus)
+
+        UNION ALL
+
+        -- DOCUMENT SLIDES
+        SELECT 
+            json_build_object(
+                'id', s.id,
+                'title', s.title,
+                'status', s.status,
+                'is_loaded', true,
+                'new_slide', true,
+                'source_id', s.source_id,
+                'description', s.description,
+                'slide_order', cs.slide_order,
+                'source_type', s.source_type,
+                'document_slide', json_build_object(
+                    'id', d.id,
+                    'title', d.title,
+                    'type', d.type,
+                    'cover_file_id', d.cover_file_id,
+                    'total_pages', d.total_pages,
+                    'published_document_total_pages', d.published_document_total_pages,
+                    'data', d.data,
+                    'published_data', d.published_data
+                )
+            ) AS slide_data
+        FROM slide s
+        JOIN chapter_to_slides cs ON cs.slide_id = s.id
+        JOIN chapter c ON c.id = cs.chapter_id
+        JOIN document_slide d ON d.id = s.source_id
+        WHERE s.source_type = 'DOCUMENT' AND c.id = :chapterId
+        AND s.status IN (:slideStatus)
+        AND cs.status IN (:chapterToSlidesStatus)
+
+        UNION ALL
+
+        -- QUESTION SLIDES
+        SELECT 
+            json_build_object(
+                'id', s.id,
+                'title', s.title,
+                'status', s.status,
+                'is_loaded', true,
+                'new_slide', true,
+                'source_id', s.source_id,
+                'description', s.description,
+                'slide_order', cs.slide_order,
+                'source_type', s.source_type,
+                'question_slide', json_build_object(
+                    'id', q.id,
+                    'question_type', q.question_type,
+                    'question_response_type', q.question_response_type,
+                    'access_level', q.access_level,
+                    'default_question_time_mins', q.default_question_time_mins,
+                    'points', q.points,
+                    're_attempt_count', q.re_attempt_count,
+                    'auto_evaluation_json', q.auto_evaluation_json,
+                    'evaluation_type', q.evaluation_type,
+                    'media_id', q.media_id,
+                    'text_data', json_build_object('id', rt_text.id, 'type', 'RICH_TEXT', 'content', rt_text.content),
+                    'parent_rich_text', CASE WHEN q.parent_rich_text_id IS NOT NULL THEN json_build_object('id', rt_parent.id, 'type', 'RICH_TEXT', 'content', rt_parent.content) ELSE NULL END,
+                    'explanation_text_data', CASE WHEN q.explanation_text_id IS NOT NULL THEN json_build_object('id', rt_exp.id, 'type', 'RICH_TEXT', 'content', rt_exp.content) ELSE NULL END,
+                    'options', COALESCE((
+                        SELECT json_agg(
+                            json_build_object(
+                                'id', o.id,
+                                'media_id', o.media_id,
+                                'text', CASE WHEN o.text_id IS NOT NULL THEN json_build_object('id', rt_opt.id, 'type', 'RICH_TEXT', 'content', rt_opt.content) ELSE NULL END,
+                                'explanation_text_data', CASE WHEN o.explanation_text_id IS NOT NULL THEN json_build_object('id', rt_opt_exp.id, 'type', 'RICH_TEXT', 'content', rt_opt_exp.content) ELSE NULL END
+                            )
+                        )
+                        FROM option o
+                        LEFT JOIN rich_text_data rt_opt ON rt_opt.id = o.text_id
+                        LEFT JOIN rich_text_data rt_opt_exp ON rt_opt_exp.id = o.explanation_text_id
+                        WHERE o.question_id = q.id
+                    ), CAST('[]' AS json))
+                )
+            ) AS slide_data
+        FROM slide s
+        JOIN chapter_to_slides cs ON cs.slide_id = s.id
+        JOIN chapter c ON c.id = cs.chapter_id
+        JOIN question_slide q ON q.id = s.source_id
+        LEFT JOIN rich_text_data rt_text ON rt_text.id = q.text_id
+        LEFT JOIN rich_text_data rt_parent ON rt_parent.id = q.parent_rich_text_id
+        LEFT JOIN rich_text_data rt_exp ON rt_exp.id = q.explanation_text_id
+        WHERE s.source_type = 'QUESTION' AND c.id = :chapterId
+        AND s.status IN (:slideStatus)
+        AND cs.status IN (:chapterToSlidesStatus)
+
+        UNION ALL
+
+        -- ASSIGNMENT SLIDES
+        SELECT 
+            json_build_object(
+                'id', s.id,
+                'title', s.title,
+                'status', s.status,
+                'is_loaded', true,
+                'new_slide', true,
+                'source_id', s.source_id,
+                'description', s.description,
+                'slide_order', cs.slide_order,
+                'source_type', s.source_type,
+                'assignment_slide', json_build_object(
+                    'id', a.id,
+                    'live_date', a.live_date,
+                    'end_date', a.end_date,
+                    'comma_separated_media_ids', a.comma_separated_media_ids,
+                    're_attempt_count', a.re_attempt_count,
+                    'text_data', CASE WHEN a.text_id IS NOT NULL THEN json_build_object('id', rt_text.id, 'type', 'RICH_TEXT', 'content', rt_text.content) ELSE NULL END,
+                    'parent_rich_text', CASE WHEN a.parent_rich_text_id IS NOT NULL THEN json_build_object('id', rt_parent.id, 'type', 'RICH_TEXT', 'content', rt_parent.content) ELSE NULL END
+                )
+            ) AS slide_data
+        FROM slide s
+        JOIN chapter_to_slides cs ON cs.slide_id = s.id
+        JOIN chapter c ON c.id = cs.chapter_id
+        JOIN assignment_slide a ON a.id = s.source_id
+        LEFT JOIN rich_text_data rt_text ON rt_text.id = a.text_id
+        LEFT JOIN rich_text_data rt_parent ON rt_parent.id = a.parent_rich_text_id
+        WHERE s.source_type = 'ASSIGNMENT' AND c.id = :chapterId
+        AND s.status IN (:slideStatus)
+        AND cs.status IN (:chapterToSlidesStatus)
+    ) AS all_slides
+    """,
+            nativeQuery = true
+    )
+    String getSlidesByChapterId(
+            @Param("chapterId") String chapterId,
+            @Param("slideStatus") List<String> slideStatus,
+            @Param("chapterToSlidesStatus") List<String> chapterToSlidesStatus
+    );
+
 }

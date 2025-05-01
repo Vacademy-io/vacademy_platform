@@ -10,5 +10,5 @@ public class LearnerChoiceSessionDTO {
     private Integer maxSelectableLevels;
     private String id;
     private String name;
-    private List<LevelSelectionDTO>learnerChoiceLevels;
+    private List<LevelSelectionDTO> learnerChoiceLevels;
 }

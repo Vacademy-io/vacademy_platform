@@ -24,7 +24,6 @@ import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -131,7 +130,7 @@ public class AssessmentFreeToolGetService {
             AiEvaluationSectionDTO secDto = new AiEvaluationSectionDTO();
             secDto.setName(section.getName());
             secDto.setCutoffMarks(section.getCutOffMarks());
-
+            secDto.setId(section.getId());
             // 3a. Fetch mappings for this section
             List<QuestionAssessmentSectionMapping> mappings =
                     mappingRepo.findBySectionId(section.getId());

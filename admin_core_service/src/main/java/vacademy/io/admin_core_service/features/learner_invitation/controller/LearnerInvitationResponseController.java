@@ -3,7 +3,6 @@ package vacademy.io.admin_core_service.features.learner_invitation.controller;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import vacademy.io.admin_core_service.features.learner_invitation.dto.LearnerInvitationDTO;
 import vacademy.io.admin_core_service.features.learner_invitation.dto.LearnerInvitationFormDTO;
 import vacademy.io.admin_core_service.features.learner_invitation.dto.LearnerInvitationResponseDTO;
 import vacademy.io.admin_core_service.features.learner_invitation.services.LearnerInvitationResponseService;

@@ -8,8 +8,6 @@ import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.AllA
 import vacademy.io.assessment_service.features.assessment.manager.AdminAssessmentAccessManager;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
-import java.util.List;
-
 import static vacademy.io.common.core.constants.PageConstants.DEFAULT_PAGE_NUMBER;
 import static vacademy.io.common.core.constants.PageConstants.DEFAULT_PAGE_SIZE;
 
@@ -26,9 +24,9 @@ public class AdminAssessmentAccessController {
                                                                        @RequestParam(name = "userRole") String userRole,
                                                                        @RequestParam(value = "pageNo", defaultValue = DEFAULT_PAGE_NUMBER, required = false) int pageNo,
                                                                        @RequestParam(value = "pageSize", defaultValue = DEFAULT_PAGE_SIZE, required = false) int pageSize,
-                                                                       @RequestParam(name = "instituteId", required = false) String instituteId){
+                                                                       @RequestParam(name = "instituteId", required = false) String instituteId) {
 
-        return adminAssessmentAccessManager.getAllManualAssessment(user,filter,pageNo,pageSize,instituteId, userRole);
+        return adminAssessmentAccessManager.getAllManualAssessment(user, filter, pageNo, pageSize, instituteId, userRole);
 
     }
 }

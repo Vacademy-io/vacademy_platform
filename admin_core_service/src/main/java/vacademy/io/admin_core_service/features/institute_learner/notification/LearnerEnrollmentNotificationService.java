@@ -7,8 +7,8 @@ import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteSt
 import vacademy.io.admin_core_service.features.notification.config.NotificationConfig;
 import vacademy.io.admin_core_service.features.notification.dto.NotificationDTO;
 import vacademy.io.admin_core_service.features.notification.dto.NotificationToUserDTO;
-import vacademy.io.admin_core_service.features.notification.enums.NotificationSourceEnum;
 import vacademy.io.admin_core_service.features.notification.enums.CommunicationType;
+import vacademy.io.admin_core_service.features.notification.enums.NotificationSourceEnum;
 import vacademy.io.admin_core_service.features.notification.service.NotificationService;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
@@ -40,6 +40,7 @@ public class LearnerEnrollmentNotificationService {
             }
         });
     }
+
     private Institute fetchInstitute(String instituteId) {
         return instituteRepository.findById(instituteId)
                 .orElseThrow(() -> new VacademyException("Institute not found"));

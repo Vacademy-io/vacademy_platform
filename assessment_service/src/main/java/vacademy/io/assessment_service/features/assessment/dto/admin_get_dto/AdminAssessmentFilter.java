@@ -23,6 +23,7 @@ public class AdminAssessmentFilter {
     private Boolean getLiveAssessments;
     private Boolean getPassedAssessments;
     private Boolean getUpcomingAssessments;
+    private List<String> assessmentTypes = new ArrayList<>();
     private List<String> evaluationTypes = new ArrayList<>();
     private List<String> instituteIds = new ArrayList<>();
     private List<String> assessmentStatuses = new ArrayList<>();

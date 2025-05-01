@@ -27,7 +27,7 @@ public class QuestionBasedStrategyFactory {
 
     private static IQuestionTypeBasedStrategy getStrategy(String questionType) {
         IQuestionTypeBasedStrategy strategy = strategies.getOrDefault(questionType, null);
-        if(!Objects.isNull(strategy)){
+        if (!Objects.isNull(strategy)) {
             strategy.setType(questionType);
             strategy.setAnswerStatus(QuestionResponseEnum.PENDING.name());
         }
@@ -72,13 +72,13 @@ public class QuestionBasedStrategyFactory {
 
     public static List<String> getResponseOptionIds(String responseJson, String type) throws JsonProcessingException {
         IQuestionTypeBasedStrategy strategy = getStrategy(type);
-        if(strategy.getType().equals(QuestionTypes.MCQS.name()) || strategy.getType().equals(QuestionTypes.TRUE_FALSE.name())){
+        if(strategy.getType().equals(QuestionTypes.MCQS.name())){
             MCQSResponseDto responseDto = (MCQSResponseDto) verifyResponseJson(responseJson, type);
 
             return responseDto.getResponseData().getOptionIds();
         }
 
-        if(strategy.getType().equals(QuestionTypes.MCQM.name())){
+        if (strategy.getType().equals(QuestionTypes.MCQM.name())) {
             MCQMResponseDto responseDto = (MCQMResponseDto) verifyResponseJson(responseJson, type);
 
             return responseDto.getResponseData().getOptionIds();
@@ -95,7 +95,7 @@ public class QuestionBasedStrategyFactory {
             return optionDto.getData().getCorrectOptionIds();
         }
 
-        if(strategy.getType().equals(QuestionTypes.MCQM.name())){
+        if (strategy.getType().equals(QuestionTypes.MCQM.name())) {
             MCQMCorrectAnswerDto optionDto = (MCQMCorrectAnswerDto) verifyCorrectAnswerJson(evaluationJson, type);
 
             return optionDto.getData().getCorrectOptionIds();

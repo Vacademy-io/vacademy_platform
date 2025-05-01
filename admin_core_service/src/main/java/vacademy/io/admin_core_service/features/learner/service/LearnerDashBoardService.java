@@ -17,44 +17,35 @@ import vacademy.io.admin_core_service.features.module.enums.ModuleStatusEnum;
 import vacademy.io.admin_core_service.features.notification.service.NotificationService;
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
 import vacademy.io.admin_core_service.features.packages.repository.PackageRepository;
-import vacademy.io.admin_core_service.features.session.enums.SessionStatusEnum;
 import vacademy.io.admin_core_service.features.slide.enums.SlideStatus;
 import vacademy.io.admin_core_service.features.slide.repository.SlideRepository;
 import vacademy.io.admin_core_service.features.subject.enums.SubjectStatusEnum;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
 import vacademy.io.common.exceptions.VacademyException;
-import vacademy.io.common.institute.entity.session.Session;
 
 import java.util.List;
 
 @Service
 public class LearnerDashBoardService {
 
-    @Autowired
-    private SlideRepository slideRepository;
-
-    @Autowired
-    private PackageRepository packageRepository;
-
-    @Autowired
-    private InternalClientUtils internalClientUtils;
-
-    @Autowired
-    private NotificationService notificationService;
-
-    @Value("${spring.application.name}")
-    private String clientName;
-
-    @Value("${assessment.server.baseurl}")
-    private String assessmentServerBaseUrl;
-
     private static final List<String> ACTIVE_LEARNERS = List.of(LearnerStatusEnum.ACTIVE.name());
     private static final List<String> ACTIVE_SUBJECTS = List.of(SubjectStatusEnum.ACTIVE.name());
     private static final List<String> ACTIVE_MODULES = List.of(ModuleStatusEnum.ACTIVE.name());
     private static final List<String> ACTIVE_CHAPTERS = List.of(ChapterStatus.ACTIVE.name());
     private static final List<String> VALID_SLIDE_STATUSES = List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name());
-
+    @Autowired
+    private SlideRepository slideRepository;
+    @Autowired
+    private PackageRepository packageRepository;
+    @Autowired
+    private InternalClientUtils internalClientUtils;
+    @Autowired
+    private NotificationService notificationService;
+    @Value("${spring.application.name}")
+    private String clientName;
+    @Value("${assessment.server.baseurl}")
+    private String assessmentServerBaseUrl;
 
     public LeanerDashBoardDetailDTO getLearnerDashBoardDetail(String instituteId, String packageSessionId, CustomUserDetails user) {
         return new LeanerDashBoardDetailDTO(

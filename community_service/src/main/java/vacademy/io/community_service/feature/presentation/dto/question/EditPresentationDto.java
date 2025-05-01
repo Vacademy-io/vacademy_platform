@@ -27,6 +27,8 @@ public class EditPresentationDto {
 
     private String coverFileId;
 
+    private String status;
+
     private List<PresentationSlideDto> updatedSlides;
 
     private List<PresentationSlideDto> deletedSlides;

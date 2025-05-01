@@ -22,4 +22,5 @@ public class AutoQuestionPaperResponse {
     private String description;
     private List<String> subjects;
     private List<String> classes;
+    private TopicNumberMapDto topicQuestionMap;
 }

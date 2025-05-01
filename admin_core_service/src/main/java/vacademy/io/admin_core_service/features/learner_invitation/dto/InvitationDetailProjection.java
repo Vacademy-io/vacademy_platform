@@ -8,9 +8,14 @@ import java.sql.Date;
 @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
 public interface InvitationDetailProjection {
     String getId();
+
     String getName();
+
     String getInstituteId();
+
     Date getDateGenerated();
+
     Long getAcceptedBy();
+
     String getInviteCode();
 }

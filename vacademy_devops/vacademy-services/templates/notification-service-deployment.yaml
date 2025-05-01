@@ -6,7 +6,7 @@ metadata:
   labels:
     app: notification-service
 spec:
-  replicas: {{ .Values.replicaCount }}
+  replicas: { { .Values.replicaCount } }
   selector:
     matchLabels:
       app: notification-service
@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: notification-service
-          image: {{ .Values.services.notification_service.image.repository }}:{{ .Values.services.notification_service.image.tag }}
+          image: { { .Values.services.notification_service.image.repository } }:{{ .Values.services.notification_service.image.tag }}
           imagePullPolicy: Always
           resources:
             requests:
@@ -29,7 +29,7 @@ spec:
           livenessProbe:
             httpGet:
               path: /notification-service/actuator/health
-              port: {{ .Values.services.notification_service.port }}
+              port: { { .Values.services.notification_service.port } }
               scheme: HTTP
             initialDelaySeconds: 180
             periodSeconds: 30
@@ -39,7 +39,7 @@ spec:
           startupProbe:
             httpGet:
               path: /notification-service/actuator/health
-              port: {{ .Values.services.notification_service.port }}
+              port: { { .Values.services.notification_service.port } }
               scheme: HTTP
             initialDelaySeconds: 180
             periodSeconds: 30
@@ -49,7 +49,7 @@ spec:
           readinessProbe:
             httpGet:
               path: /notification-service/actuator/health
-              port: {{ .Values.services.notification_service.port }}
+              port: { { .Values.services.notification_service.port } }
               scheme: HTTP
             initialDelaySeconds: 180
             periodSeconds: 30
@@ -57,4 +57,4 @@ spec:
             failureThreshold: 5
             successThreshold: 1
           ports:
-            - containerPort: {{ .Values.services.notification_service.port }}
+            - containerPort: { { .Values.services.notification_service.port } }

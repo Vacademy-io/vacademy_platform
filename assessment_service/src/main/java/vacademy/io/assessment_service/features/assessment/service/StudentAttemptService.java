@@ -29,7 +29,10 @@ import vacademy.io.assessment_service.features.notification.service.AssessmentNo
 import vacademy.io.assessment_service.features.question_core.entity.Question;
 import vacademy.io.common.exceptions.VacademyException;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.StreamSupport;
 
@@ -55,27 +58,27 @@ public class StudentAttemptService {
     @Autowired
     AttemptDataParserService attemptDataParserService;
 
-    public StudentAttempt updateStudentAttempt(StudentAttempt studentAttempt){
+    public StudentAttempt updateStudentAttempt(StudentAttempt studentAttempt) {
         return studentAttemptRepository.save(studentAttempt);
     }
 
-    public StudentAttempt updateLeaderBoard(StudentAttempt studentAttempt){
+    public StudentAttempt updateLeaderBoard(StudentAttempt studentAttempt) {
         return updateStudentAttempt(studentAttempt);
     }
 
 
     @Async
-    public CompletableFuture<StudentAttempt> updateStudentAttemptWithTotalAfterMarksCalculationAsync(Optional<StudentAttempt> studentAttemptOptional){
+    public CompletableFuture<StudentAttempt> updateStudentAttemptWithTotalAfterMarksCalculationAsync(Optional<StudentAttempt> studentAttemptOptional) {
         return CompletableFuture.completedFuture(updateStudentAttemptWithTotalAfterMarksCalculation(studentAttemptOptional));
     }
 
     @Async
-    public CompletableFuture<StudentAttempt> updateStudentAttemptResultAfterMarksCalculationAsync(Optional<StudentAttempt> studentAttemptOptional){
+    public CompletableFuture<StudentAttempt> updateStudentAttemptResultAfterMarksCalculationAsync(Optional<StudentAttempt> studentAttemptOptional) {
         return CompletableFuture.completedFuture(updateStudentAttemptWithResultAfterMarksCalculation(studentAttemptOptional));
     }
 
-    public StudentAttempt updateStudentAttemptWithResultAfterMarksCalculation(Optional<StudentAttempt> studentAttemptOptional){
-        if(studentAttemptOptional.isEmpty()) throw new VacademyException("Student Attempt Not Found");
+    public StudentAttempt updateStudentAttemptWithResultAfterMarksCalculation(Optional<StudentAttempt> studentAttemptOptional) {
+        if (studentAttemptOptional.isEmpty()) throw new VacademyException("Student Attempt Not Found");
 
         String attemptData = studentAttemptOptional.get().getAttemptData();
 
@@ -94,8 +97,8 @@ public class StudentAttemptService {
     }
 
 
-    public StudentAttempt updateStudentAttemptWithTotalAfterMarksCalculation(Optional<StudentAttempt> studentAttemptOptional){
-        if(studentAttemptOptional.isEmpty()) throw new VacademyException("Student Attempt Not Found");
+    public StudentAttempt updateStudentAttemptWithTotalAfterMarksCalculation(Optional<StudentAttempt> studentAttemptOptional) {
+        if (studentAttemptOptional.isEmpty()) throw new VacademyException("Student Attempt Not Found");
 
         String attemptData = studentAttemptOptional.get().getAttemptData();
 
@@ -113,15 +116,15 @@ public class StudentAttemptService {
 
 
     @Transactional
-    public Double calculateTotalMarksForAttemptAndUpdateQuestionWiseMarks(Optional<StudentAttempt> studentAttemptOptional)  {
-        try{
-            if(studentAttemptOptional.isEmpty()) throw new VacademyException("Student Attempt Not Found");
-            if(Objects.isNull(studentAttemptOptional.get().getAttemptData())) throw new VacademyException("Attempt Data Not Found");
+    public Double calculateTotalMarksForAttemptAndUpdateQuestionWiseMarks(Optional<StudentAttempt> studentAttemptOptional) {
+        try {
+            if (studentAttemptOptional.isEmpty()) throw new VacademyException("Student Attempt Not Found");
+            if (Objects.isNull(studentAttemptOptional.get().getAttemptData()))
+                throw new VacademyException("Attempt Data Not Found");
 
             return calculateTotalMarks(studentAttemptOptional);
-        }
-        catch (Exception e){
-            throw new VacademyException("Failed to calculate marks: " +e.getMessage());
+        } catch (Exception e) {
+            throw new VacademyException("Failed to calculate marks: " + e.getMessage());
         }
     }
 
@@ -192,10 +195,10 @@ public class StudentAttemptService {
         String answerStatus = questionWiseBasicDetailDto.getAnswerStatus();
 
         Optional<Section> sectionOptional = sectionRepository.findById(sectionId);
-        if(sectionOptional.isEmpty()) throw new VacademyException("Section Not Found");
+        if (sectionOptional.isEmpty()) throw new VacademyException("Section Not Found");
 
         questionWiseMarksService.updateQuestionWiseMarksForEveryQuestion(
-                assessment, studentAttempt, questionAsked, questionWiseResponseData, attemptDataParserService.extractTimeTakenInSecondsFromQuestionJson(questionJson),answerStatus, sectionOptional.get(), marksObtained
+                assessment, studentAttempt, questionAsked, questionWiseResponseData, attemptDataParserService.extractTimeTakenInSecondsFromQuestionJson(questionJson), answerStatus, sectionOptional.get(), marksObtained
         );
 
         return marksObtained;
@@ -243,7 +246,7 @@ public class StudentAttemptService {
         }
     }
 
-    public List<StudentAttempt> getAllParticipantsAttemptForAssessment(String assessmentId){
+    public List<StudentAttempt> getAllParticipantsAttemptForAssessment(String assessmentId) {
         return studentAttemptRepository.findAllParticipantsFromAssessmentAndStatusNotIn(assessmentId, List.of("DELETED"));
     }
 
@@ -252,30 +255,29 @@ public class StudentAttemptService {
         revaluateAssessmentForAttempts(allAttempts);
     }
 
-    public void revaluateAssessmentForAttempts(List<StudentAttempt> allAttempts){
+    public void revaluateAssessmentForAttempts(List<StudentAttempt> allAttempts) {
         allAttempts.forEach(attempt -> {
-            if(attempt.getStatus().equals("ENDED")){
+            if (attempt.getStatus().equals("ENDED")) {
                 updateStudentAttemptWithResultAfterMarksCalculation(Optional.of(attempt));
-            }
-            else if(attempt.getStatus().equals("LIVE")){
+            } else if (attempt.getStatus().equals("LIVE")) {
                 updateStudentAttemptWithTotalAfterMarksCalculation(Optional.of(attempt));
             }
 
         });
     }
 
-    public void revaluateForCustomParticipantsAndQuestions(Assessment assessment, RevaluateRequest request){
+    public void revaluateForCustomParticipantsAndQuestions(Assessment assessment, RevaluateRequest request) {
         List<StudentAttempt> allAttempts = StreamSupport
                 .stream(studentAttemptRepository.findAllById(request.getAttemptIds()).spliterator(), false)
                 .toList();
 
         List<RevaluateRequest.RevaluateQuestionDto> questionDtos = request.getQuestions();
-        questionDtos.forEach(question->{
+        questionDtos.forEach(question -> {
             String sectionId = question.getSectionId();
             List<String> questionIds = question.getQuestionIds();
 
             for (StudentAttempt attempt : allAttempts) {
-                calculateMarksForSectionIdAndQuestionIds(Optional.of(attempt), sectionId, questionIds,assessment);
+                calculateMarksForSectionIdAndQuestionIds(Optional.of(attempt), sectionId, questionIds, assessment);
                 updateMarksAfterRevaluation(attempt, assessment.getId());
             }
         });
@@ -284,7 +286,7 @@ public class StudentAttemptService {
     @Async
     public CompletableFuture<Void> revaluateForAllParticipantsWrapper(Assessment assessment, String instituteId) {
         return CompletableFuture.runAsync(() -> revaluateForAllParticipants(assessment.getId()))
-                .thenRun(() -> sendEmail(instituteId,assessment));
+                .thenRun(() -> sendEmail(instituteId, assessment));
     }
 
     @Async
@@ -294,46 +296,46 @@ public class StudentAttemptService {
                 .toList();
 
         return CompletableFuture.runAsync(() -> revaluateAssessmentForAttempts(allAttempts))
-                .thenRun(() -> sendEmail(instituteId,assessment));
+                .thenRun(() -> sendEmail(instituteId, assessment));
     }
 
     @Async
     public CompletableFuture<Void> revaluateCustomParticipantAndQuestionsWrapper(Assessment assessment, RevaluateRequest request, String instituteId) {
 
         return CompletableFuture.runAsync(() -> revaluateForCustomParticipantsAndQuestions(assessment, request))
-                .thenRun(() -> sendEmail(instituteId,assessment));
+                .thenRun(() -> sendEmail(instituteId, assessment));
     }
 
 
-    public void updateMarksAfterRevaluation(StudentAttempt studentAttempt, String assessmentId){
+    public void updateMarksAfterRevaluation(StudentAttempt studentAttempt, String assessmentId) {
         List<QuestionWiseMarks> allQuestionWiseMarks = questionWiseMarksService.getAllQuestionWiseMarksForAttemptId(studentAttempt.getId(), assessmentId);
         double totalMarks = 0.0;
 
-        for(QuestionWiseMarks questionWiseMarks: allQuestionWiseMarks){
-            totalMarks+=questionWiseMarks.getMarks();
+        for (QuestionWiseMarks questionWiseMarks : allQuestionWiseMarks) {
+            totalMarks += questionWiseMarks.getMarks();
         }
 
         studentAttempt.setTotalMarks(totalMarks);
-        if(studentAttempt.getStatus().equals("ENDED")){
+        if (studentAttempt.getStatus().equals("ENDED")) {
             studentAttempt.setResultMarks(totalMarks);
         }
 
         studentAttemptRepository.save(studentAttempt);
     }
 
-    public void calculateMarksForSectionIdAndQuestionIds(Optional<StudentAttempt> studentAttemptOptional, String sectionId, List<String> questionIds, Assessment assessment){
-        questionIds.forEach(questionId->{
-            calculateMarksForSectionIdAndQuestionId(studentAttemptOptional,sectionId,questionId,assessment);
+    public void calculateMarksForSectionIdAndQuestionIds(Optional<StudentAttempt> studentAttemptOptional, String sectionId, List<String> questionIds, Assessment assessment) {
+        questionIds.forEach(questionId -> {
+            calculateMarksForSectionIdAndQuestionId(studentAttemptOptional, sectionId, questionId, assessment);
         });
     }
 
 
-    public double calculateMarksForSectionIdAndQuestionId(Optional<StudentAttempt> studentAttemptOptional, String sectionId, String questionId, Assessment assessment){
-        if(studentAttemptOptional.isEmpty()) throw new VacademyException("Student Attempt Not Found");
+    public double calculateMarksForSectionIdAndQuestionId(Optional<StudentAttempt> studentAttemptOptional, String sectionId, String questionId, Assessment assessment) {
+        if (studentAttemptOptional.isEmpty()) throw new VacademyException("Student Attempt Not Found");
 
         StudentAttempt studentAttempt = studentAttemptOptional.get();
         String jsonAttemptData = studentAttempt.getAttemptData();
-        if(Objects.isNull(jsonAttemptData)) return 0.0;
+        if (Objects.isNull(jsonAttemptData)) return 0.0;
 
         Optional<QuestionAssessmentSectionMapping> questionAssessmentSectionMapping =
                 questionAssessmentSectionMappingRepository.findByQuestionIdAndSectionId(questionId, sectionId);
@@ -359,23 +361,23 @@ public class StudentAttemptService {
         Section section = questionAssessmentSectionMapping.get().getSection();
 
         questionWiseMarksService.updateQuestionWiseMarksForEveryQuestion(
-                assessment, studentAttempt, questionAsked, questionWiseResponseData, null,answerStatus, section, marksObtained
+                assessment, studentAttempt, questionAsked, questionWiseResponseData, null, answerStatus, section, marksObtained
         );
 
         return marksObtained;
     }
 
 
-    private void sendEmail(String instituteId,Assessment assessment) {
-       assessmentNotificationService.sendNotificationsToAdminsAfterReevaluating(assessment, instituteId);
+    private void sendEmail(String instituteId, Assessment assessment) {
+        assessmentNotificationService.sendNotificationsToAdminsAfterReevaluating(assessment, instituteId);
     }
 
-    public Optional<StudentAttempt> getStudentAttemptById(String id){
+    public Optional<StudentAttempt> getStudentAttemptById(String id) {
         return studentAttemptRepository.findById(id);
     }
 
-    public Page<ManualAttemptResponseDto> getAllManualAssignedAttempt(String userId, String assessmentId, String instituteId,String name, List<String> evaluationStatus, Pageable pageable) {
-        if(Objects.isNull(evaluationStatus)) evaluationStatus = new ArrayList<>();
-        return studentAttemptRepository.findAllAssignedAttemptForUserIdWithFilter(userId,instituteId,assessmentId,name,evaluationStatus, pageable);
+    public Page<ManualAttemptResponseDto> getAllManualAssignedAttempt(String userId, String assessmentId, String instituteId, String name, List<String> evaluationStatus, Pageable pageable) {
+        if (Objects.isNull(evaluationStatus)) evaluationStatus = new ArrayList<>();
+        return studentAttemptRepository.findAllAssignedAttemptForUserIdWithFilter(userId, instituteId, assessmentId, name, evaluationStatus, pageable);
     }
 }

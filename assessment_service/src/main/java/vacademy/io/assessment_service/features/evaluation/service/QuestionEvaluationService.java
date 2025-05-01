@@ -25,6 +25,7 @@ public class QuestionEvaluationService {
 
         return jsonString; // Return the JSON string for confirmation or further processing
     }
+
     public String setEvaluationJson(NumericalEvaluationDto numericalEvaluation) throws JsonProcessingException {
         // Convert DTO to JSON string
         String jsonString = objectMapper.writeValueAsString(numericalEvaluation);
@@ -34,6 +35,7 @@ public class QuestionEvaluationService {
 
         return jsonString; // Return the JSON string for confirmation or further processing
     }
+
     public String setEvaluationJson(OneWordEvaluationDTO oneWordEvaluationDTO) throws JsonProcessingException {
         // Convert DTO to JSON string
         String jsonString = objectMapper.writeValueAsString(oneWordEvaluationDTO);

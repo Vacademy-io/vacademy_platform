@@ -13,7 +13,6 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.io.ByteArrayOutputStream;
-import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.Date;
 import java.util.List;
@@ -50,7 +49,7 @@ public class LmsReportExportService {
         ProgressReportDTO learnerReport = learnerReportService.getLearnerProgressReport(reportFilterDTO, userDetails);
         ProgressReportDTO batchReport = batchReportService.getBatchReport(reportFilterDTO, userDetails);
         List<SlideProgressDateWiseDTO> progress = learnerReportService.getSlideProgressForLearner(reportFilterDTO, userDetails);
-        Student student = fetchStudent(userDetails);
+        Student student = fetchStudent(reportFilterDTO.getUserId());
         BatchInstituteProjection projection = fetchBatchAndInstitute(reportFilterDTO);
         String academicYear = getFormattedDateRange(reportFilterDTO);
 
@@ -67,8 +66,8 @@ public class LmsReportExportService {
         return convertHtmlToPdf(html);
     }
 
-    private Student fetchStudent(CustomUserDetails userDetails) {
-        return instituteStudentRepository.findTopByUserId(userDetails.getUserId())
+    private Student fetchStudent(String userId) {
+        return instituteStudentRepository.findTopByUserId(userId)
                 .orElseThrow(() -> new VacademyException("Student not found"));
     }
 
@@ -100,27 +99,25 @@ public class LmsReportExportService {
 
     public byte[] generateSubjectWiseLearnerProgressReport(ReportFilterDTO reportFilterDTO, CustomUserDetails userDetails) {
         try {
-            List<SubjectProgressDTO>subjectProgressDTOS = learnerReportService.getSubjectProgressReport(reportFilterDTO.getPackageSessionId(), reportFilterDTO.getUserId(), userDetails);
-            Student student = fetchStudent(userDetails);
+            List<LearnerSubjectWiseProgressReportDTO> subjectProgressDTOS = learnerReportService.getSubjectProgressReport(reportFilterDTO.getPackageSessionId(), reportFilterDTO.getUserId(), userDetails);
+            Student student = fetchStudent(reportFilterDTO.getUserId());
             BatchInstituteProjection projection = fetchBatchAndInstitute(reportFilterDTO);
-            String html = HtmlBuilderService.getSubjectWiseProgressReportHtml(subjectProgressDTOS,student.getFullName(),projection.getBatchName(), projection.getInstituteName());
+            String html = HtmlBuilderService.getSubjectWiseProgressReportHtml(subjectProgressDTOS, student.getFullName(), projection.getBatchName(), projection.getInstituteName());
             return convertHtmlToPdf(html);
-        }
-        catch (Exception e) {
+        } catch (Exception e) {
             e.printStackTrace();
             throw new VacademyException("PDF generation failed: " + e.getMessage());
         }
     }
 
-    public byte[] generateModuleProgressReport(String moduleId,String userId,String packageSessionId, CustomUserDetails userDetails) {
+    public byte[] generateModuleProgressReport(String moduleId, String userId, String packageSessionId, CustomUserDetails userDetails) {
         try {
-            List<ChapterSlideProgressDTO>chapterSlideProgress = learnerReportService.getChapterSlideProgress(moduleId,userId,userDetails);
-            Student student = fetchStudent(userDetails);
+            List<LearnerChapterSlideProgressDTO> chapterSlideProgress = learnerReportService.getChapterSlideProgress(moduleId, userId, packageSessionId, userDetails);
+            Student student = fetchStudent(userId);
 //            BatchInstituteProjection projection = fetchBatchAndInstitute(reportFilterDTO);
-            String html = HtmlBuilderService.getModuleWiseReportHtml(chapterSlideProgress,student.getFullName(),new Date().toString(),"Premium Pro Group","M1" ,"Bhopal","202025","202025");
+            String html = HtmlBuilderService.getModuleWiseReportHtml(chapterSlideProgress, student.getFullName(), new Date().toString(), "Premium Pro Group", "M1", "Bhopal", "202025", "202025");
             return convertHtmlToPdf(html);
-        }
-        catch (Exception e) {
+        } catch (Exception e) {
             e.printStackTrace();
             throw new VacademyException("PDF generation failed: " + e.getMessage());
         }

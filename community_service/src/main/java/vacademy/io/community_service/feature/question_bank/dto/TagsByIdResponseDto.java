@@ -10,6 +10,7 @@ public class TagsByIdResponseDto {
     private String tagId;
     private String tagSource;
     private String tagName;
+
     public TagsByIdResponseDto(String tagId, String tagSource, String tagName) {
         this.tagId = tagId;
         this.tagSource = tagSource;

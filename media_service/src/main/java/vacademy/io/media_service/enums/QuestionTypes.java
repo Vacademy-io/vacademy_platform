@@ -2,7 +2,7 @@ package vacademy.io.media_service.enums;
 
 public enum QuestionTypes {
     MCQS,
-    ONE_WORD ,
+    ONE_WORD,
     LONG_ANSWER,
     TF,
     MATCH,

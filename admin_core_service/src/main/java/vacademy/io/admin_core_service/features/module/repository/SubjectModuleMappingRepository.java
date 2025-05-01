@@ -30,11 +30,11 @@ public interface SubjectModuleMappingRepository extends JpaRepository<SubjectMod
     Optional<SubjectModuleMapping> findByModuleId(@Param("moduleId") String moduleId);
 
     @Query("""
-    SELECT smm FROM SubjectModuleMapping smm 
-    WHERE smm.subject.id = :subjectId 
-    AND LOWER(smm.module.moduleName) = LOWER(:moduleName) 
-    AND smm.module.status <> 'DELETED'
-""")
+                SELECT smm FROM SubjectModuleMapping smm 
+                WHERE smm.subject.id = :subjectId 
+                AND LOWER(smm.module.moduleName) = LOWER(:moduleName) 
+                AND smm.module.status <> 'DELETED'
+            """)
     Optional<SubjectModuleMapping> findBySubjectIdAndModuleName(
             @Param("subjectId") String subjectId,
             @Param("moduleName") String moduleName);

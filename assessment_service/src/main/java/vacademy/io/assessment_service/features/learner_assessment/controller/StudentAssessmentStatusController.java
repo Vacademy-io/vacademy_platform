@@ -21,16 +21,16 @@ public class StudentAssessmentStatusController {
     public ResponseEntity<LearnerUpdateStatusResponse> updateStatus(@RequestAttribute("user") CustomUserDetails user,
                                                                     @RequestParam(name = "assessmentId") String assessmentId,
                                                                     @RequestParam(name = "attemptId") String attemptId,
-                                                                    @RequestBody AssessmentAttemptUpdateRequest request){
+                                                                    @RequestBody AssessmentAttemptUpdateRequest request) {
         return learnerAssessmentAttemptStatusManager.updateLearnerStatus(user, assessmentId, attemptId, request);
 
     }
 
     @PostMapping("/submit")
     public ResponseEntity<String> submitStatus(@RequestAttribute("user") CustomUserDetails user,
-                                                                    @RequestParam(name = "assessmentId") String assessmentId,
-                                                                    @RequestParam(name = "attemptId") String attemptId,
-                                                                    @RequestBody AssessmentAttemptUpdateRequest request){
+                                               @RequestParam(name = "assessmentId") String assessmentId,
+                                               @RequestParam(name = "attemptId") String attemptId,
+                                               @RequestBody AssessmentAttemptUpdateRequest request) {
         return learnerAssessmentAttemptStatusManager.submitAssessment(user, assessmentId, attemptId, request);
 
     }
@@ -39,7 +39,7 @@ public class StudentAssessmentStatusController {
     public ResponseEntity<AssessmentRestartResponse> restartStatus(@RequestAttribute("user") CustomUserDetails user,
                                                                    @RequestParam(name = "assessmentId") String assessmentId,
                                                                    @RequestParam(name = "attemptId") String attemptId,
-                                                                   @RequestBody AssessmentAttemptUpdateRequest request){
+                                                                   @RequestBody AssessmentAttemptUpdateRequest request) {
         return learnerAssessmentAttemptStatusManager.restartAssessment(user, assessmentId, attemptId, request);
     }
 }

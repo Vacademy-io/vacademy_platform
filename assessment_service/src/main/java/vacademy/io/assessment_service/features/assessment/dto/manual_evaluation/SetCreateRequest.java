@@ -24,7 +24,7 @@ public class SetCreateRequest {
     @NoArgsConstructor
     @AllArgsConstructor
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public static class SetDto{
+    public static class SetDto {
         private String setName;
         private String json;
     }

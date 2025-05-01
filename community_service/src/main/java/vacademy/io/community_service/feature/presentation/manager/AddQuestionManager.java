@@ -2,12 +2,8 @@ package vacademy.io.community_service.feature.presentation.manager;
 
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import jakarta.persistence.EntityNotFoundException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
-
-import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.community_service.feature.presentation.dto.question.*;
 import vacademy.io.community_service.feature.presentation.entity.question.Option;
@@ -22,10 +18,7 @@ import vacademy.io.community_service.feature.rich_text.entity.AssessmentRichText
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
-
-import static vacademy.io.common.auth.enums.UserRoleStatus.DELETED;
 
 @Component
 public class AddQuestionManager {

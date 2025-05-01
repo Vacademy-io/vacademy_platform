@@ -1,11 +1,14 @@
 package vacademy.io.community_service.feature.filter.entity;
 
 import jakarta.persistence.*;
-import lombok.*;
-import vacademy.io.community_service.feature.init.entity.Levels;
-import vacademy.io.community_service.feature.init.entity.Streams;
-import vacademy.io.community_service.feature.init.entity.Subjects;
-import vacademy.io.community_service.feature.init.entity.Tags;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+import vacademy.io.community_service.feature.content_structure.entity.Levels;
+import vacademy.io.community_service.feature.content_structure.entity.Streams;
+import vacademy.io.community_service.feature.content_structure.entity.Subjects;
+import vacademy.io.community_service.feature.content_structure.entity.Tags;
 
 @Entity
 @Table(name = "entity_tags")

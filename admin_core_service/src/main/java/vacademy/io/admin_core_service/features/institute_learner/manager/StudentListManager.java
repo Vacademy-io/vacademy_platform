@@ -142,7 +142,8 @@ public class StudentListManager {
             );
 
             return objectMapper.readValue(response.getBody(),
-                    new TypeReference<List<UserCredentials>>() {});
+                    new TypeReference<List<UserCredentials>>() {
+                    });
 
         } catch (Exception e) {
             throw new VacademyException(e.getMessage());

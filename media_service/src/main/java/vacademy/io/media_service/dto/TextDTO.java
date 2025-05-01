@@ -7,11 +7,6 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.Setter;
 
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
-import java.util.Map;
-
 @Getter
 @Setter
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
@@ -25,4 +20,5 @@ public class TextDTO {
     private String topics;
     private String questionType;
     private String questionLanguage;
+    private String taskName;
 }

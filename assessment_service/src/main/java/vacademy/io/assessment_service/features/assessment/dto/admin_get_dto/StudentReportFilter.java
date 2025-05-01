@@ -15,8 +15,8 @@ import java.util.Map;
 @AllArgsConstructor
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class StudentReportFilter {
+    Map<String, String> sortColumns;
     private String name;
     private List<String> status;
     private List<String> releaseResultStatus;
-    Map<String, String> sortColumns;
 }

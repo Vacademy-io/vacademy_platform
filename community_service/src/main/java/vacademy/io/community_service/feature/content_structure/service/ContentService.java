@@ -102,14 +102,14 @@ public class ContentService {
 
     Chapter addChapterToSubject(ChapterInsertDto.ChapterDto chapterDto) {
         Chapter chapter = new Chapter();
-        chapter.setChapterName(chapterDto.getChapterName());
+        chapter.setChapterName(chapterDto.getChapterName().toLowerCase());
         chapter.setChapterOrder(chapterDto.getChapterOrder());
         return chapter;
     }
 
     Topic addTopicToChapter(TopicInsertDto.TopicDto topicDto) {
         Topic topic = new Topic();
-        topic.setTopicName(topicDto.getTopicName());
+        topic.setTopicName(topicDto.getTopicName().toLowerCase());
         topic.setTopicOrder(topicDto.getTopicOrder());
         return topic;
     }

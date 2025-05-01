@@ -109,6 +109,9 @@ public class QuestionSlideService {
         if (dto.getReAttemptCount() != null){
             questionSlide.setReAttemptCount(dto.getReAttemptCount());
         }
+        if (StringUtils.hasText(dto.getSourceType())){
+            questionSlide.setSourceType(dto.getSourceType());
+        }
     }
 
     private void updateOptions(List<OptionDTO> optionDTOS) {

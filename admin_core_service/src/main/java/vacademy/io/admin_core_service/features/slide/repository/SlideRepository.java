@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.slide.repository;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.security.core.parameters.P;
 import vacademy.io.admin_core_service.features.slide.dto.LearnerRecentSlides;
 import vacademy.io.admin_core_service.features.slide.dto.SlideCountProjection;
 import vacademy.io.admin_core_service.features.slide.dto.SlideDetailProjection;
@@ -297,10 +298,12 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
 
     @Query(
             value = """
-    SELECT json_agg(slide_data) AS slides
+    SELECT json_agg(slide_data ORDER BY slide_order IS NOT NULL, slide_order, created_at DESC) AS slides
     FROM (
         -- VIDEO SLIDES
         SELECT 
+            s.created_at,
+            cs.slide_order,
             json_build_object(
                 'id', s.id,
                 'title', s.title,
@@ -330,7 +333,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                 'question_order', q.question_order,
                                 'question_time_in_millis', q.question_time_in_millis,
                                 'media_id', q.media_id,
-                                'auto_evaluation_json',q.auto_evaluation_json,
+                                'auto_evaluation_json', q.auto_evaluation_json,
                                 'evaluation_type', q.evaluation_type,
                                 'text_data', json_build_object('id', rt_text.id, 'type', 'RICH_TEXT', 'content', rt_text.content),
                                 'parent_rich_text', CASE WHEN q.parent_rich_text_id IS NOT NULL THEN json_build_object('id', rt_parent.id, 'type', 'RICH_TEXT', 'content', rt_parent.content) ELSE NULL END,
@@ -350,12 +353,14 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                     WHERE o.video_slide_question_id = q.id
                                 ), CAST('[]' AS json))
                             )
+                            ORDER BY q.question_order
                         )
                         FROM video_slide_question q
                         LEFT JOIN rich_text_data rt_text ON rt_text.id = q.text_id
                         LEFT JOIN rich_text_data rt_parent ON rt_parent.id = q.parent_rich_text_id
                         LEFT JOIN rich_text_data rt_exp ON rt_exp.id = q.explanation_text_id
                         WHERE q.video_slide_id = v.id
+                        AND q.status IN (:videoSlideQuestionStatus)  -- Ensure you use the status if needed
                     ), CAST('[]' AS json))
                 )
             ) AS slide_data
@@ -371,6 +376,8 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
 
         -- DOCUMENT SLIDES
         SELECT 
+            s.created_at,
+            cs.slide_order,
             json_build_object(
                 'id', s.id,
                 'title', s.title,
@@ -404,12 +411,12 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
 
         -- QUESTION SLIDES
         SELECT 
+            s.created_at,
+            cs.slide_order,
             json_build_object(
                 'id', s.id,
                 'title', s.title,
                 'status', s.status,
-                'is_loaded', true,
-                'new_slide', true,
                 'source_id', s.source_id,
                 'description', s.description,
                 'slide_order', cs.slide_order,
@@ -425,6 +432,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                     'auto_evaluation_json', q.auto_evaluation_json,
                     'evaluation_type', q.evaluation_type,
                     'media_id', q.media_id,
+                    'source_type', q.source_type,
                     'text_data', json_build_object('id', rt_text.id, 'type', 'RICH_TEXT', 'content', rt_text.content),
                     'parent_rich_text', CASE WHEN q.parent_rich_text_id IS NOT NULL THEN json_build_object('id', rt_parent.id, 'type', 'RICH_TEXT', 'content', rt_parent.content) ELSE NULL END,
                     'explanation_text_data', CASE WHEN q.explanation_text_id IS NOT NULL THEN json_build_object('id', rt_exp.id, 'type', 'RICH_TEXT', 'content', rt_exp.content) ELSE NULL END,
@@ -436,6 +444,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                 'text', CASE WHEN o.text_id IS NOT NULL THEN json_build_object('id', rt_opt.id, 'type', 'RICH_TEXT', 'content', rt_opt.content) ELSE NULL END,
                                 'explanation_text_data', CASE WHEN o.explanation_text_id IS NOT NULL THEN json_build_object('id', rt_opt_exp.id, 'type', 'RICH_TEXT', 'content', rt_opt_exp.content) ELSE NULL END
                             )
+                            ORDER BY o.created_on
                         )
                         FROM option o
                         LEFT JOIN rich_text_data rt_opt ON rt_opt.id = o.text_id
@@ -459,6 +468,8 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
 
         -- ASSIGNMENT SLIDES
         SELECT 
+            s.created_at,
+            cs.slide_order,
             json_build_object(
                 'id', s.id,
                 'title', s.title,
@@ -495,7 +506,8 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
     String getSlidesByChapterId(
             @Param("chapterId") String chapterId,
             @Param("slideStatus") List<String> slideStatus,
-            @Param("chapterToSlidesStatus") List<String> chapterToSlidesStatus
+            @Param("chapterToSlidesStatus") List<String> chapterToSlidesStatus,
+            @Param("videoSlideQuestionStatus") List<String> videoSlideQuestionStatus
     );
 
 }

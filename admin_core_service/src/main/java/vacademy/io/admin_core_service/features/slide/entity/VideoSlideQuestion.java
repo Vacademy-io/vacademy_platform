@@ -60,6 +60,9 @@ public class VideoSlideQuestion {
     @JoinColumn(name = "video_slide_id")
     private VideoSlide videoSlide;
 
+    @Column(name = "status")
+    private String status;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Timestamp createdAt;
 
@@ -82,7 +85,7 @@ public class VideoSlideQuestion {
         this.questionOrder = dto.getQuestionOrder();
         this.questionTimeInMillis = dto.getQuestionTimeInMillis();
         this.videoSlide = videoSlide;
-
+        this.status = dto.getStatus();
         if (dto.getOptions() != null) {
             this.options = dto.getOptions().stream()
                     .map(optDto -> new VideoSlideQuestionOption(optDto, this))

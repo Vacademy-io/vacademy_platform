@@ -183,6 +183,10 @@ public class VideoSlideService {
             videoSlideQuestion.setExplanationTextData(new RichTextData(explanationTextDTO));
         }
 
+        if (StringUtils.hasText(videoSlideQuestionDTO.getStatus())){
+            videoSlideQuestion.setStatus(videoSlideQuestionDTO.getStatus());
+        }
+
         // Update the other fields
         videoSlideQuestion.setQuestionType(videoSlideQuestionDTO.getQuestionType());
 

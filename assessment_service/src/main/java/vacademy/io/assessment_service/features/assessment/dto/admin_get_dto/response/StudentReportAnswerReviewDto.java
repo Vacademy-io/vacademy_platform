@@ -32,14 +32,4 @@ public class StudentReportAnswerReviewDto {
     private Long timeTakenInSeconds;
     private String answerStatus;
 
-
-    @Builder
-    @Getter
-    @Setter
-    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public static class ReportOptionsDto {
-        private String optionId;
-        private String optionName;
-        private AssessmentRichTextDataDTO text;
-    }
 }

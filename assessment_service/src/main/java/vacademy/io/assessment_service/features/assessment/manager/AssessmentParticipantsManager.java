@@ -727,19 +727,6 @@ public class AssessmentParticipantsManager {
         }
     }
 
-    private List<StudentReportAnswerReviewDto.ReportOptionsDto> createOptionResponse(List<String> optionIds) {
-        List<Option> allOptions = optionRepository.findAllById(optionIds);
-        List<StudentReportAnswerReviewDto.ReportOptionsDto> optionResponse = new ArrayList<>();
-
-        allOptions.forEach(option -> {
-            String optionHtml = option.getText() != null ? option.getText().getContent() : null;
-            optionResponse.add(StudentReportAnswerReviewDto.ReportOptionsDto.builder()
-                    .optionId(option.getId())
-                    .optionName(optionHtml).build());
-        });
-
-        return optionResponse;
-    }
 
     public ResponseEntity<RespondentListResponse> getRespondentList(CustomUserDetails user, String assessmentId, String sectionId, String questionId, RespondentFilter filter, Integer pageNo, Integer pageSize) {
 

@@ -43,7 +43,7 @@ public class MCQMQuestionTypeBasedStrategy extends IQuestionTypeBasedStrategy {
             // Extract marking scheme details safely
             MCQMMarkingDto.DataFields markingData = markingDto.getData();
             if (markingData == null) {
-                setAnswerStatus(QuestionResponseEnum.INCORRECT.name());
+                setAnswerStatus(QuestionResponseEnum.PENDING.name());
                 return 0.0;
             }
 
@@ -79,7 +79,7 @@ public class MCQMQuestionTypeBasedStrategy extends IQuestionTypeBasedStrategy {
 
             // If incorrect response, apply negative marking
             setAnswerStatus(QuestionResponseEnum.INCORRECT.name());
-            return -((incorrectSelected * negativeMarks * negativePercentage) / 100.0);
+            return -1*(negativeMarks);
 
         } catch (Exception e) {
             log.error("Error Occurred: " + e.getMessage());

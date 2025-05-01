@@ -242,6 +242,8 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                 a.id AS assessmentId,
                 a.name AS assessmentName,
                 sa.id AS attemptId,
+                a.play_mode AS playMode,
+                a.evaluation_type AS evaluationType,
                 a.bound_start_time AS startTime,
                 a.bound_end_time AS endTime,
                 COALESCE(sa.status, 'PENDING') AS attemptStatus,
@@ -271,6 +273,7 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
             WHERE aim.institute_id = :instituteId
             AND COALESCE(sa.status, 'PENDING') IN (:statusList)
             AND (:releaseResultStatus IS NULL OR sa.report_release_status IN (:releaseResultStatus))
+            AND (:assessmentType IS NULL OR a.assessment_type IN(:assessmentType))
             and a.status = 'PUBLISHED'
             """, countQuery = """
             SELECT COUNT(*)
@@ -292,12 +295,14 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
             WHERE aim.institute_id = :instituteId
             AND COALESCE(sa.status, 'PENDING') IN (:statusList)
             AND (:releaseResultStatus IS NULL OR sa.report_release_status IN (:releaseResultStatus))
+            AND (:assessmentType IS NULL OR a.assessment_type IN(:assessmentType))
             and a.status = 'PUBLISHED'
             """, nativeQuery = true)
     Page<StudentReportDto> findAssessmentForUserWithFilter(@Param("userId") String userId,
                                                            @Param("instituteId") String instituteId,
                                                            @Param("statusList") List<String> statusList,
                                                            @Param("releaseResultStatus") List<String> releaseStatus,
+                                                           @Param("assessmentType") List<String> assessmentTypes,
                                                            Pageable pageable);
 
 
@@ -305,6 +310,8 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
             SELECT
                 a.id AS assessmentId,
                 a.name AS assessmentName,
+                a.play_mode AS playMode,
+                a.evaluation_type AS evaluationType,
                 sa.id AS attempt_id,
                 a.bound_start_time AS startTime,
                 a.bound_end_time AS endTime,
@@ -341,6 +348,7 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                    )
             AND COALESCE(sa.status, 'PENDING') IN (:statusList)
             AND (:releaseResultStatus IS NULL OR sa.report_release_status IN (:releaseResultStatus))
+            AND (:assessmentType IS NULL OR a.assessment_type IN(:assessmentType))
             and a.status = 'PUBLISHED'
             """, countQuery = """
             SELECT COUNT(*)
@@ -368,6 +376,7 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                    )
             AND COALESCE(sa.status, 'PENDING') IN (:statusList)
             AND (:releaseResultStatus IS NULL OR sa.report_release_status IN (:releaseResultStatus))
+            AND (:assessmentType IS NULL OR a.assessment_type IN(:assessmentType))
             and a.status = 'PUBLISHED'
             """, nativeQuery = true)
     Page<StudentReportDto> findAssessmentForUserWithFilterAndSearch(@Param("name") String name,
@@ -375,6 +384,7 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                                                                     @Param("instituteId") String instituteId,
                                                                     @Param("statusList") List<String> statusList,
                                                                     @Param("releaseResultStatus") List<String> releaseStatus,
+                                                                    @Param("assessmentType") List<String> assessmentTypes,
                                                                     Pageable pageable);
 
     @Query(value = """

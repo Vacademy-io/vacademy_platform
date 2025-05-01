@@ -25,7 +25,7 @@ public class MCQSQuestionTypeBasedStrategy extends IQuestionTypeBasedStrategy {
 
             // Validate input objects and prevent NullPointerException
             if (correctAnswerDto == null || markingDto == null || responseDto == null) {
-                setAnswerStatus(QuestionResponseEnum.INCORRECT.name());
+                setAnswerStatus(QuestionResponseEnum.PENDING.name());
                 return 0.0;
             }
 
@@ -44,7 +44,7 @@ public class MCQSQuestionTypeBasedStrategy extends IQuestionTypeBasedStrategy {
             // Extract marking scheme details safely
             MCQSMarkingDto.DataFields markingData = markingDto.getData();
             if (markingData == null) {
-                setAnswerStatus(QuestionResponseEnum.INCORRECT.name());
+                setAnswerStatus(QuestionResponseEnum.PENDING.name());
                 return 0.0;
             }
 
@@ -66,7 +66,7 @@ public class MCQSQuestionTypeBasedStrategy extends IQuestionTypeBasedStrategy {
 
             // If an incorrect answer was selected, apply negative marking
             setAnswerStatus(QuestionResponseEnum.INCORRECT.name());
-            return -(negativeMarks * negativePercentage / 100.0);
+            return -1*(negativeMarks);
 
         } catch (Exception e) {
             return 0.0;

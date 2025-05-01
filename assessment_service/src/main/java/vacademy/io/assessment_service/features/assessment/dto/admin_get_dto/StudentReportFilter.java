@@ -19,4 +19,5 @@ public class StudentReportFilter {
     private String name;
     private List<String> status;
     private List<String> releaseResultStatus;
+    private List<String> assessmentType;
 }

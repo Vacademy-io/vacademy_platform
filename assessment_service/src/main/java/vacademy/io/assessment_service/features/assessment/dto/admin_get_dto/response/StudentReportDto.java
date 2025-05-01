@@ -29,4 +29,9 @@ public interface StudentReportDto {
     String getSubjectId();
 
     String getAssessmentStatus();
+
+    String getEvaluationType();
+
+    String getPlayMode();
+
 }

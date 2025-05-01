@@ -16,6 +16,7 @@ public class VideoSlideController {
     @PostMapping("/add-or-update")
     public String addOrUpdateVideoSlide(@RequestBody SlideDTO slideDTO,
                                         @RequestParam String chapterId,
+                                        @RequestParam String instituteId,
                                         @RequestAttribute("user") CustomUserDetails userDetails) {
         return videoSlideService.addOrUpdateVideoSlide(slideDTO, chapterId, userDetails);
     }

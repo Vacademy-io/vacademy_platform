@@ -14,6 +14,7 @@ import vacademy.io.admin_core_service.features.slide.dto.*;
 import vacademy.io.admin_core_service.features.slide.entity.DocumentSlide;
 import vacademy.io.admin_core_service.features.slide.entity.Slide;
 import vacademy.io.admin_core_service.features.slide.entity.VideoSlide;
+import vacademy.io.admin_core_service.features.slide.enums.QuestionStatusEnum;
 import vacademy.io.admin_core_service.features.slide.enums.SlideStatus;
 import vacademy.io.admin_core_service.features.slide.enums.SlideTypeEnum;
 import vacademy.io.admin_core_service.features.slide.repository.DocumentSlideRepository;
@@ -498,7 +499,8 @@ public class SlideService {
         String jsonSlides = slideRepository.getSlidesByChapterId(
                 chapterId,
                 List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name(), SlideStatus.DRAFT.name()),
-                List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name(), SlideStatus.DRAFT.name())
+                List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name(), SlideStatus.DRAFT.name()),
+                List.of(QuestionStatusEnum.ACTIVE.name()) // Added missing closing parenthesis here
         );
 
         // Map the JSON to List<SlideDTO>

@@ -37,5 +37,7 @@ public class VideoSlideQuestionDTO {
 
     private Integer questionOrder;
 
+    private String status;
+
     private List<VideoSlideQuestionOptionDTO> options; // list of options for the slide
 }

@@ -75,6 +75,9 @@ public class QuestionSlide {
     @OneToMany(mappedBy = "questionSlide", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Option> options;
 
+    @Column(name = "source_type")
+    private String sourceType;
+
     public QuestionSlide(QuestionSlideDTO dto) {
         this.id = dto.getId();
         this.parentRichText = new RichTextData(dto.getParentRichText());  // Assuming a constructor exists in RichTextData to handle the DTO
@@ -89,6 +92,7 @@ public class QuestionSlide {
         this.defaultQuestionTimeMins = dto.getDefaultQuestionTimeMins();
         this.reAttemptCount = dto.getReAttemptCount();
         this.points = dto.getPoints();
+        this.sourceType = dto.getSourceType();
         // Convert the OptionDTO list to Option entities
         this.options = dto.getOptions().stream()
                 .map(optionDTO -> new Option(optionDTO, this))  // Assuming a constructor in Option for OptionDTO

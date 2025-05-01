@@ -44,4 +44,6 @@ public class QuestionSlideDTO {
     private Integer points;
 
     private List<OptionDTO> options; // list of options for the slide
+
+    private String sourceType;
 }

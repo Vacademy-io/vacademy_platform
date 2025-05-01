@@ -23,8 +23,8 @@ public class ChapterController {
     private ContentService contentService;
 
     @GetMapping("/all-topics")
-    public ResponseEntity<List<Topic>> getAllTopicsOfChapter(@RequestParam String chapterId) {
-        return contentService.getAllTopicsOfChapter(chapterId);
+    public ResponseEntity<List<Topic>> getAllTopicsOfChapter(@RequestParam String chapterIds) {
+        return contentService.getAllTopicsOfChapter(chapterIds);
     }
 
     @PostMapping("/add-topics")

@@ -15,7 +15,7 @@ public interface TopicRepository extends JpaRepository<Topic, String> {
     @Query(value = """
         SELECT t.* FROM topic t
         JOIN chapter_topic_mapping ctm ON t.topic_id = ctm.topic_id
-        WHERE ctm.chapter_id = :chapterId
+        WHERE ctm.chapter_id IN :chapterIds
         """, nativeQuery = true)
-    List<Topic> findTopicsByChapterId(@Param("chapterId") String chapterId);
+    List<Topic> findTopicsByChapterId(@Param("chapterId") List<String> chapterIds);
 }

@@ -42,11 +42,9 @@ public class ContentService {
     private EntityTagsRepository entityTagsRepository;
 
     @Transactional
-    public ResponseEntity<List<Topic>> getAllTopicsOfChapter(String chapterId) {
-
-        topicRepository.findTopicsByChapterId(chapterId);
-
-        return ResponseEntity.ok(topicRepository.findTopicsByChapterId(chapterId));
+    public ResponseEntity<List<Topic>> getAllTopicsOfChapter(String chapterIds) {
+        List<String> chapterList = Stream.of(chapterIds.split(",")).toList();
+        return ResponseEntity.ok(topicRepository.findTopicsByChapterId(chapterList));
     }
 
     public ResponseEntity<List<Chapter>> getAllChaptersOfSubject(String subjectId) {

@@ -16,7 +16,7 @@ import vacademy.io.admin_core_service.features.slide.enums.SlideStatus;
 import vacademy.io.admin_core_service.features.slide.enums.SlideTypeEnum;
 import vacademy.io.admin_core_service.features.slide.repository.DocumentSlideRepository;
 import vacademy.io.admin_core_service.features.slide.repository.SlideRepository;
-import vacademy.io.admin_core_service.features.slide.repository.VideoRepository;
+import vacademy.io.admin_core_service.features.slide.repository.VideoSlideRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
@@ -33,7 +33,7 @@ public class SlideService {
     private final ChapterRepository chapterRepository;
     private final ChapterToSlidesRepository chapterToSlidesRepository;
     private final DocumentSlideRepository documentSlideRepository;
-    private final VideoRepository videoSlideRepository;
+    private final VideoSlideRepository videoSlideRepository;
     private final SlideNotificationService slideNotificationService;
 
     @Transactional

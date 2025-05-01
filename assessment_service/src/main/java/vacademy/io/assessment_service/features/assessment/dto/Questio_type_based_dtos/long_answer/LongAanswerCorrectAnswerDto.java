@@ -12,6 +12,14 @@ public class LongAanswerCorrectAnswerDto {
     @Getter
     @Setter
     public static class DataFields {
-        private String answer;
+        private AnswerFields answer;
+    }
+
+    @Getter
+    @Setter
+    public static class AnswerFields {
+        private String id;
+        private String type;
+        private String content;
     }
 }

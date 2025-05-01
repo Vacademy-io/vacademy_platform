@@ -32,7 +32,6 @@ public class StudentFilterService {
         List<String> safeInstituteIds = (instituteIds != null) ? instituteIds : new ArrayList<>();
         List<String> safeGroupIds = (groupIds != null) ? groupIds : new ArrayList<>();
         List<String> safePackageSessionIds = (packageSessionIds != null) ? packageSessionIds : new ArrayList<>();
-
         return instituteStudentRepository.getAllStudentWithFilterRaw(safeStatuses, safeGender, safeInstituteIds, safeGroupIds, safePackageSessionIds, pageable).map(StudentDTO::new);
     }
 }

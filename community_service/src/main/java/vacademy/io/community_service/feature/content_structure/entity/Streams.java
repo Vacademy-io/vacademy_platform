@@ -1,5 +1,6 @@
 package vacademy.io.community_service.feature.content_structure.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Data;
 
@@ -20,6 +21,7 @@ public class Streams {
 //    private Set<Levels> levels;
 
     @ManyToMany
+    @JsonIgnore
     @JoinTable(
             name = "stream_subject_mapping",
             joinColumns = @JoinColumn(name = "stream_id"),

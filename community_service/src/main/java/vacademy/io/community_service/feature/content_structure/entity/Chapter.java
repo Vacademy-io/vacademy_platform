@@ -31,6 +31,7 @@ public class Chapter {
     private Set<Subjects> subjects = new HashSet<>();
 
     @ManyToMany(fetch = FetchType.EAGER)
+    @JsonIgnore
     @JoinTable(
             name = "chapter_topic_mapping",
             joinColumns = @JoinColumn(name = "chapter_id"),

@@ -147,4 +147,15 @@ public interface EntityTagsRepository extends JpaRepository<EntityTags, String>,
                 ORDER BY COUNT(e.id.tagId) DESC
             """)
     List<TagsByIdResponseDto> findPopularTags();
+
+    @Query(value = """
+            SELECT * FROM entity_tags
+            WHERE entity_name = :entityName
+            AND entity_id IN (:entityIds)
+            """, nativeQuery = true)
+    List<EntityTags> findAllByEntityNameAndEntityIds(
+            @Param("entityName") String entityName,
+            @Param("entityIds") List<String> entityIds
+    );
+
 }

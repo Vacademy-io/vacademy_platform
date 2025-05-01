@@ -1,5 +1,6 @@
 package vacademy.io.community_service.feature.content_structure.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -21,6 +22,7 @@ public class Subjects {
     private String subjectName;
 
     @ManyToMany(fetch = FetchType.EAGER)
+    @JsonIgnore
     @JoinTable(
             name = "subject_chapter_mapping",
             joinColumns = @JoinColumn(name = "subject_id"),

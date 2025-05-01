@@ -5,10 +5,7 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import vacademy.io.community_service.feature.content_structure.entity.Levels;
-import vacademy.io.community_service.feature.content_structure.entity.Streams;
-import vacademy.io.community_service.feature.content_structure.entity.Subjects;
-import vacademy.io.community_service.feature.content_structure.entity.Tags;
+import vacademy.io.community_service.feature.content_structure.entity.*;
 
 @Entity
 @Table(name = "entity_tags")
@@ -34,6 +31,14 @@ public class EntityTags {
     @ManyToOne
     @JoinColumn(name = "tag_id", insertable = false, updatable = false)
     private Streams stream;
+
+    @ManyToOne
+    @JoinColumn(name = "tag_id", insertable = false, updatable = false)
+    private Chapter chapter;
+
+    @ManyToOne
+    @JoinColumn(name = "tag_id", insertable = false, updatable = false)
+    private Topic topic;
 
     @ManyToOne
     @JoinColumn(name = "tag_id", insertable = false, updatable = false)

@@ -1,5 +1,7 @@
 package vacademy.io.community_service.feature.filter.service;
 
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -118,5 +120,56 @@ public class EntityTagsService {
 
         existingTags.addAll(newTags);
         return existingTags;
+    }
+
+
+    public ResponseEntity<Map<String, Map<String, List<Object>>>> getTags(CustomUserDetails user, String entityName, List<String> entityIds) {
+        List<EntityTags> entityTags = entityTagsRepository.findAllByEntityNameAndEntityIds(entityName, entityIds);
+
+        Map<String, Map<String, List<Object>>> response = new HashMap<>();
+
+        for (String entityId : entityIds) {
+            Map<String, List<Object>> entityMap = new HashMap<>();
+            List<EntityTags> filteredTags = entityTags.stream().filter(entityTag -> entityTag.getEntityId().equals(entityId)).toList();
+
+            if (!filteredTags.isEmpty()) {
+                // Finding all DIFFICULTY
+                List<EntityTags> difficultyTags = filteredTags.stream().filter(entityTag -> entityTag.getTagSource().equals("DIFFICULTY")).toList();
+                List<Object> difficultyList = new ArrayList<>();
+                for (EntityTags difficultyTag : difficultyTags) {
+                    difficultyList.add(difficultyTag.getTagId());
+                }
+                entityMap.put("DIFFICULTY", difficultyList);
+
+                // Finding all TAGS
+                List<EntityTags> tagTags = filteredTags.stream().filter(entityTag -> entityTag.getTagSource().equals("TAGS")).toList();
+                List<Object> tagList = new ArrayList<>();
+                for (EntityTags tagTag : tagTags) {
+                    tagList.add(tagTag.getTag());
+                }
+                entityMap.put("TAGS", tagList);
+
+                // Finding all Chapters
+                List<EntityTags> chapterTags = filteredTags.stream().filter(entityTag -> entityTag.getTagSource().equals("CHAPTER")).toList();
+                List<Object> chapterList = new ArrayList<>();
+                for (EntityTags chapterTag : chapterTags) {
+                    chapterList.add(chapterTag.getChapter());
+                }
+                entityMap.put("CHAPTER", chapterList);
+
+                // Finding all TOPICS
+                List<EntityTags> topicTags = filteredTags.stream().filter(entityTag -> entityTag.getTagSource().equals("TOPIC")).toList();
+                List<Object> topicList = new ArrayList<>();
+                for (EntityTags topicTag : topicTags) {
+                    topicList.add(topicTag.getTopic());
+                }
+                entityMap.put("TOPIC", topicList);
+
+            }
+
+            response.put(entityId, entityMap);
+        }
+
+        return new ResponseEntity<>(response, HttpStatus.OK);
     }
 }

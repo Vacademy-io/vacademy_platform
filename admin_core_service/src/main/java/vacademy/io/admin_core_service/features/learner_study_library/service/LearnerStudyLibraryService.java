@@ -9,9 +9,12 @@ import vacademy.io.admin_core_service.features.module.dto.ModuleDTO;
 import vacademy.io.admin_core_service.features.module.repository.ModuleChapterMappingRepository;
 import vacademy.io.admin_core_service.features.module.repository.SubjectModuleMappingRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageRepository;
+import vacademy.io.admin_core_service.features.slide.dto.SlideDTO;
 import vacademy.io.admin_core_service.features.slide.dto.SlideDetailProjection;
+import vacademy.io.admin_core_service.features.slide.enums.QuestionStatusEnum;
 import vacademy.io.admin_core_service.features.slide.enums.SlideStatus;
 import vacademy.io.admin_core_service.features.slide.repository.SlideRepository;
+import vacademy.io.admin_core_service.features.slide.service.SlideService;
 import vacademy.io.admin_core_service.features.study_library.service.StudyLibraryService;
 import vacademy.io.admin_core_service.features.subject.repository.SubjectPackageSessionRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -33,7 +36,7 @@ public class LearnerStudyLibraryService {
     private final SubjectPackageSessionRepository subjectPackageSessionRepository;
     private final SubjectModuleMappingRepository subjectModuleMappingRepository;
     private final ModuleChapterMappingRepository moduleChapterMappingRepository;
-
+    private final SlideService slideService;
 
     public List<CourseDTOWithDetails> getLearnerStudyLibraryInitDetails(String instituteId, String packageSessionId, CustomUserDetails user) {
         validateInputs(instituteId, user.getUserId());
@@ -76,5 +79,18 @@ public class LearnerStudyLibraryService {
             throw new VacademyException("Please provide packageSessionId");
         }
         return subjectPackageSessionRepository.findDistinctSubjectsByPackageSessionId(packageSessionId).stream().map(subject -> new SubjectDTO(subject)).toList();
+    }
+
+    public List<SlideDTO> getLearnerSlides(String chapterId, CustomUserDetails user) {
+        // Fetch JSON response from repository
+        String jsonSlides = slideRepository.getSlidesByChapterId(
+                chapterId,
+                List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
+                List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
+                List.of(QuestionStatusEnum.ACTIVE.name()) // Added missing closing parenthesis here
+        );
+
+        // Map the JSON to List<SlideDTO>
+        return slideService.mapToSlideDTOList(jsonSlides);
     }
 }

@@ -507,7 +507,7 @@ public class SlideService {
         return mapToSlideDTOList(jsonSlides);
     }
 
-    private List<SlideDTO> mapToSlideDTOList(String jsonSlides) {
+    public List<SlideDTO> mapToSlideDTOList(String jsonSlides) {
         if (!StringUtils.hasText(jsonSlides)) {
             return List.of();
         }

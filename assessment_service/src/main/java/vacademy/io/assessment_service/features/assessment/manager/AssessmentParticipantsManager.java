@@ -38,6 +38,7 @@ import vacademy.io.assessment_service.features.question_core.dto.MCQEvaluationDT
 import vacademy.io.assessment_service.features.question_core.entity.Option;
 import vacademy.io.assessment_service.features.question_core.entity.Question;
 import vacademy.io.assessment_service.features.question_core.repository.OptionRepository;
+import vacademy.io.assessment_service.features.rich_text.dto.AssessmentRichTextDataDTO;
 import vacademy.io.assessment_service.features.rich_text.entity.AssessmentRichTextData;
 import vacademy.io.assessment_service.features.rich_text.enums.TextType;
 import vacademy.io.assessment_service.features.rich_text.repository.AssessmentRichTextRepository;
@@ -692,24 +693,29 @@ public class AssessmentParticipantsManager {
                 return null; // Avoid throwing an exception, instead return null to filter later
             }
 
+            QuestionAssessmentSectionMapping questionAssessmentSectionMapping = questionAssessmentSectionMappingService.getMappingById(questionWiseMarks.getQuestion().getId(), questionWiseMarks.getSection().getId());
+            if(Objects.isNull(questionAssessmentSectionMapping)) throw new VacademyException("Section and Question Mapping Not Found");
+
             Question currentQuestion = questionWiseMarks.getQuestion();
             String questionHtml = currentQuestion.getTextData().getContent();
             String questionType = currentQuestion.getQuestionType();
 
-            List<StudentReportAnswerReviewDto.ReportOptionsDto> correctOptions = createCorrectOptionsDto(currentQuestion.getAutoEvaluationJson());
 
             if (StringUtils.isEmpty(questionType)) {
                 throw new VacademyException("Invalid Question Type for Question ID: " + currentQuestion.getId());
             }
 
-            List<String> responseOptionIds = QuestionBasedStrategyFactory
-                    .getResponseOptionIds(questionWiseMarks.getResponseJson(), questionType);
 
             return StudentReportAnswerReviewDto.builder()
                     .questionId(currentQuestion.getId())
+                    .questionText(currentQuestion.getTextData().toDTO())
+                    .parentId(currentQuestion.getParentRichText()!=null ? currentQuestion.getParentRichText().getId() : null)
+                    .parentRichText(currentQuestion.getTextData()!=null ? currentQuestion.getTextData().toDTO() : null)
                     .questionName(questionHtml)
-                    .correctOptions(correctOptions)
-                    .studentResponseOptions(createOptionResponse(responseOptionIds))
+                    .questionType(questionType)
+                    .questionOrder(questionAssessmentSectionMapping.getQuestionOrder())
+                    .correctOptions(currentQuestion.getAutoEvaluationJson())
+                    .studentResponseOptions(questionWiseMarks.getResponseJson())
                     .answerStatus(questionWiseMarks.getStatus())
                     .mark(questionWiseMarks.getMarks())
                     .explanationId(currentQuestion.getExplanationTextData() != null ? currentQuestion.getExplanationTextData().getId() : null)
@@ -719,15 +725,6 @@ public class AssessmentParticipantsManager {
         } catch (Exception e) {
             return StudentReportAnswerReviewDto.builder().build();
         }
-    }
-
-    private List<StudentReportAnswerReviewDto.ReportOptionsDto> createCorrectOptionsDto(String autoEvaluationJson) throws JsonProcessingException {
-        if (Objects.isNull(autoEvaluationJson)) return new ArrayList<>();
-        MCQEvaluationDTO evaluationDTO = (MCQEvaluationDTO) questionEvaluationService.getEvaluationJson(autoEvaluationJson, MCQEvaluationDTO.class);
-
-        List<String> optionIds = evaluationDTO.getData().getCorrectOptionIds();
-
-        return createOptionResponse(optionIds);
     }
 
     private List<StudentReportAnswerReviewDto.ReportOptionsDto> createOptionResponse(List<String> optionIds) {

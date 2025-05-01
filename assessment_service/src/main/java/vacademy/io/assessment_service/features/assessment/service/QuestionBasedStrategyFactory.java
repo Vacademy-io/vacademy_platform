@@ -1,6 +1,8 @@
 package vacademy.io.assessment_service.features.assessment.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.mcqm.MCQMCorrectAnswerDto;
 import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.mcqm.MCQMResponseDto;
 import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.mcqs.MCQSCorrectAnswerDto;
@@ -102,5 +104,17 @@ public class QuestionBasedStrategyFactory {
         }
 
         return new ArrayList<>();
+    }
+
+    public static Object getCorrectAnswerFromAutoEvaluationBasedOnQuestionType(String autoEvaluationJson) throws Exception{
+        String type = getQuestionTypeFromEvaluationJson(autoEvaluationJson);
+        IQuestionTypeBasedStrategy strategy = getStrategy(type);
+        return strategy.validateAndGetCorrectAnswerData(autoEvaluationJson);
+    }
+
+    public static String getQuestionTypeFromEvaluationJson(String jsonString) throws Exception{
+        ObjectMapper mapper = new ObjectMapper();
+        JsonNode root = mapper.readTree(jsonString);
+        return root.get("type").asText();
     }
 }

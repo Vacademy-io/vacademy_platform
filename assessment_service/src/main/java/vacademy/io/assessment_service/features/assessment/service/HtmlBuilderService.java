@@ -1,6 +1,8 @@
 package vacademy.io.assessment_service.features.assessment.service;
 
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import vacademy.io.assessment_service.features.assessment.dto.AssessmentQuestionPreviewDto;
@@ -12,6 +14,8 @@ import vacademy.io.assessment_service.features.assessment.entity.Section;
 import vacademy.io.assessment_service.features.assessment.manager.AdminAssessmentGetManager;
 import vacademy.io.assessment_service.features.assessment.repository.SectionRepository;
 import vacademy.io.assessment_service.features.learner_assessment.dto.QuestionStatusDto;
+import vacademy.io.assessment_service.features.question_core.entity.Option;
+import vacademy.io.assessment_service.features.question_core.repository.OptionRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
@@ -30,6 +34,9 @@ public class HtmlBuilderService {
 
     @Autowired
     SectionRepository sectionRepository;
+
+    @Autowired
+    OptionRepository optionRepository;
 
     public static String convertToReadableTime(Long timeInSeconds) {
         if (Objects.isNull(timeInSeconds) || timeInSeconds < 0) {
@@ -293,21 +300,26 @@ public class HtmlBuilderService {
                 sectionOptional.ifPresent(section -> html.append("<div class=\"title\">").append(section.getName()).append("</div>"));
 
                 List<StudentReportAnswerReviewDto> reviews = entry.getValue();
+//                reviews.sort(Comparator.comparingInt(StudentReportAnswerReviewDto::getQuestionOrder));
                 for (StudentReportAnswerReviewDto review : reviews) {
                     html.append("<div class=\"answer-box\">");
-                    html.append("<div> ").append(review.getQuestionName()).append("</div>");
+                    html.append("<div><b>")
+                            .append(review.getQuestionOrder() == null ? "Q" : review.getQuestionOrder())
+                            .append(".</b>&nbsp;<b>")
+                            .append(review.getQuestionName())
+                            .append("</b></div>");
 
                     if (!Objects.isNull(review.getStudentResponseOptions())) {
-                        List<StudentReportAnswerReviewDto.ReportOptionsDto> studentResponseOptions = review.getStudentResponseOptions();
-                        studentResponseOptions.forEach(option -> {
-                            html.append("<div style=\"margin-top: 5px;\"><b>Student Answer:</b> ").append(option.getOptionName()).append("</div>");
+                        List<String> content = extractResponseContent(review.getStudentResponseOptions());
+                        content.forEach(option -> {
+                            html.append("<div style=\"margin-top: 5px;\"><b>Student Answer:</b> ").append(option).append("</div>");
                         });
                     }
 
                     if (!Objects.isNull(review.getCorrectOptions()) && !Objects.isNull(review.getAnswerStatus()) && !review.getAnswerStatus().equals("CORRECT")) {
-                        List<StudentReportAnswerReviewDto.ReportOptionsDto> correctOptions = review.getCorrectOptions();
-                        correctOptions.forEach(option -> {
-                            html.append("<div style=\"margin-top: 5px;\"><b>Correct Answer:</b> ").append(option.getOptionName()).append("</div>");
+
+                        extractContent(review.getCorrectOptions()).forEach(option -> {
+                            html.append("<div style=\"margin-top: 5px;\"><b>Correct Answer:</b> ").append(option).append("</div>");
                         });
                     }
 
@@ -333,5 +345,86 @@ public class HtmlBuilderService {
         html.append("</html>");
 
         return html.toString();
+    }
+
+    public List<String> extractContent(String jsonString) {
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode root = mapper.readTree(jsonString);
+            String type = root.get("type").asText();
+
+            switch (type) {
+                case "ONE_WORD":
+                    return List.of(root.path("data").path("answer").asText());
+
+                case "NUMERIC":
+                    JsonNode nums = root.path("data").path("validAnswers");
+                    if (nums.isArray() && !nums.isEmpty())
+                        return List.of(nums.get(0).asText());
+                    else return new ArrayList<>();
+
+                case "LONG_ANSWER":
+                    return List.of(root.path("data").path("answer").path("content").asText());
+
+                case "MCQS":
+                case "TRUE_FALSE":
+                case "MCQM":
+                    JsonNode correctOptionIds = root.path("data").path("correctOptionIds");
+                    if (correctOptionIds.isArray()) {
+                        List<String> contents = new ArrayList<>();
+                        for (JsonNode idNode : correctOptionIds) {
+                            String id = idNode.asText();
+                            Optional<Option> optionalOption = optionRepository.findById(id);
+                            optionalOption.ifPresent(option -> contents.add(option.getText().getContent()));
+                        }
+                        return contents;
+                    }
+                    else return new ArrayList<>();
+
+                default:
+                    throw new VacademyException("Unsupported Type");
+            }
+
+        } catch (Exception e) {
+            return new ArrayList<>();
+        }
+    }
+
+
+    public List<String> extractResponseContent(String jsonString) {
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode root = mapper.readTree(jsonString);
+            JsonNode responseData = root.path("responseData");
+            String type = responseData.path("type").asText();
+
+            switch (type) {
+                case "MCQS":
+                case "MCQM":
+                case "TRUE_FALSE":
+                    JsonNode optionIds = responseData.path("optionIds");
+                    if (optionIds.isArray()) {
+                        List<String> optionContents = new ArrayList<>();
+                        for (JsonNode idNode : optionIds) {
+                            String id = idNode.asText();
+                            Optional<Option> optionalOption = optionRepository.findById(id);
+                            optionalOption.ifPresent(option -> optionContents.add(option.getText().getContent()));
+                        }
+                        return optionContents;
+                    }
+                    else return new ArrayList<>();
+
+                case "LONG_ANSWER", "ONE_WORD":
+                    return List.of(responseData.path("answer").asText());
+
+                case "NUMERIC":
+                    return List.of(responseData.path("validAnswer").asText());
+
+                default: throw new VacademyException("Invalid Question Type");
+            }
+
+        } catch (Exception e) {
+            return new ArrayList<>();
+        }
     }
 }

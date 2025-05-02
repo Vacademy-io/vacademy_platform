@@ -1,31 +1,23 @@
 package vacademy.io.admin_core_service.features.learner_tracking.entity;
 
 import jakarta.persistence.*;
-import lombok.Getter;
+import lombok.AllArgsConstructor;
 import lombok.NoArgsConstructor;
-import lombok.Setter;
 import org.hibernate.annotations.UuidGenerator;
+import vacademy.io.admin_core_service.features.learner_tracking.dto.AssignmentSlideActivityLogDTO;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.QuestionSlideActivityLogDTO;
 
 import java.sql.Timestamp;
 
 @Entity
-@Table(name = "question_slide_tracked")
-@Getter
-@Setter
+@AllArgsConstructor
 @NoArgsConstructor
-public class QuestionSlideTracked {
+public class AssignmentSlideTracked {
 
     @Id
     private String id;
 
-    private Integer attemptNumber;
-
-    private String responseJson;
-
-    private String responseStatus;
-
-    private Double marks;
+    private String commaSeparatedFileIds;
 
     @ManyToOne
     @JoinColumn(name = "activity_id", nullable = false)
@@ -37,13 +29,9 @@ public class QuestionSlideTracked {
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Timestamp updatedAt;
 
-    public QuestionSlideTracked(QuestionSlideActivityLogDTO questionSlideTrackedDTO, ActivityLog activityLog) {
-        this.id = questionSlideTrackedDTO.getId();
-        this.attemptNumber = questionSlideTrackedDTO.getAttemptNumber();
-        this.responseJson = questionSlideTrackedDTO.getResponseJson();
-        this.responseStatus = questionSlideTrackedDTO.getResponseStatus();
-        this.marks = questionSlideTrackedDTO.getMarks();
+    public AssignmentSlideTracked(AssignmentSlideActivityLogDTO assignmentSlideActivityLogDTO, ActivityLog activityLog) {
+        this.id = assignmentSlideActivityLogDTO.getId();
+        this.commaSeparatedFileIds = assignmentSlideActivityLogDTO.getCommaSeparatedFileIds();
         this.activityLog = activityLog;
     }
-
 }

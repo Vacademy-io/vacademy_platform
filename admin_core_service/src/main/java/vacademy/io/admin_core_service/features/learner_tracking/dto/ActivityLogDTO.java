@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.PropertyNamingStrategy;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.Getter;
 import lombok.Setter;
+import vacademy.io.admin_core_service.features.slide.dto.QuestionSlideDTO;
 
 import java.util.List;
 
@@ -21,6 +22,8 @@ public class ActivityLogDTO {
     private Double percentageWatched;
     private List<VideoActivityLogDTO> videos;
     private List<DocumentActivityLogDTO> documents;
+    private List<QuestionSlideActivityLogDTO>questionSlides;
+    private List<AssignmentSlideActivityLogDTO>assignmentSlides;
     private boolean newActivity;
     private ConcentrationScoreDTO concentrationScore;
 }

@@ -48,7 +48,6 @@ public class ContentService {
     }
 
     public ResponseEntity<List<Chapter>> getAllChaptersOfSubject(String subjectId) {
-
         return ResponseEntity.ok(chapterRepository.findChaptersOdSubject(subjectId));
     }
 

@@ -23,6 +23,9 @@ import vacademy.io.assessment_service.features.question_core.enums.QuestionTypes
 import vacademy.io.assessment_service.features.question_core.repository.OptionRepository;
 import vacademy.io.assessment_service.features.question_core.repository.QuestionRepository;
 import vacademy.io.assessment_service.features.rich_text.entity.AssessmentRichTextData;
+import vacademy.io.assessment_service.features.tags.entities.EntityTag;
+import vacademy.io.assessment_service.features.tags.entities.repository.EntityTagCommunityRepository;
+import vacademy.io.assessment_service.features.tags.entities.repository.TagCommunityRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 import java.util.ArrayList;
@@ -46,20 +49,18 @@ public class AddQuestionPaperFromImportManager {
     @Autowired
     QuestionEvaluationService questionEvaluationService;
 
+    @Autowired
+    EntityTagCommunityRepository entityTagCommunityRepository;
+
+    @Autowired
+    TagCommunityRepository tagCommunityRepository;
+
     @Transactional
     public AddedQuestionPaperResponseDto addQuestionPaper(CustomUserDetails user, AddQuestionPaperDTO questionRequestBody, Boolean isPublicPaper) throws JsonProcessingException {
 
-        QuestionPaper questionPaper = new QuestionPaper();
-        questionPaper.setTitle(questionRequestBody.getTitle());
-        questionPaper.setCreatedByUserId(user.getUserId());
+        var questionPaper = createQuestionPaper(user, questionRequestBody, isPublicPaper);
 
-        if (isPublicPaper)
-            questionPaper.setAccess(QuestionAccessLevel.PUBLIC.name());
-        else
-            questionPaper.setAccess(QuestionAccessLevel.PRIVATE.name());
-
-        questionPaper = questionPaperRepository.save(questionPaper);
-
+        addEntityTagOfQuestionPaper(questionPaper, questionRequestBody);
         List<Question> questions = new ArrayList<>();
         List<Option> options = new ArrayList<>();
         for (int i = 0; i < questionRequestBody.getQuestions().size(); i++) {
@@ -76,6 +77,8 @@ public class AddQuestionPaperFromImportManager {
         questions = questionRepository.saveAll(questions);
         options = optionRepository.saveAll(options);
 
+        addQuestionEntityTags(questions, questionRequestBody.getQuestions());
+
         List<String> savedQuestionIds = questions.stream().map(Question::getId).toList();
 
         questionPaperRepository.bulkInsertQuestionsToQuestionPaper(questionPaper.getId(), savedQuestionIds);
@@ -85,6 +88,30 @@ public class AddQuestionPaperFromImportManager {
 
         return new AddedQuestionPaperResponseDto(questionPaper.getId());
 
+    }
+
+    private void addEntityTagOfQuestionPaper(QuestionPaper questionPaper, AddQuestionPaperDTO questionRequestBody) {
+        for (String tag : questionRequestBody.getTags()) {
+            String tagId = UUID.randomUUID().toString();
+            String existingOrNewTagId = tagCommunityRepository.insertTagIfNotExists(tagId, tag.toLowerCase());
+            addEntityTags("QUESTION_PAPER", questionPaper.getId(), existingOrNewTagId, "TAGS");
+        }
+    }
+
+    private QuestionPaper createQuestionPaper(CustomUserDetails user, AddQuestionPaperDTO questionRequestBody, Boolean isPublicPaper) {
+        QuestionPaper questionPaper = new QuestionPaper();
+        questionPaper.setTitle(questionRequestBody.getTitle());
+        questionPaper.setCreatedByUserId(user.getUserId());
+        questionPaper.setDifficulty(questionRequestBody.getAiDifficulty());
+        questionPaper.setCommunityChapterIds(questionRequestBody.getCommunityChapterIds().isEmpty() ? null : String.join(",", questionRequestBody.getCommunityChapterIds()));
+
+        if (isPublicPaper)
+            questionPaper.setAccess(QuestionAccessLevel.PUBLIC.name());
+        else
+            questionPaper.setAccess(QuestionAccessLevel.PRIVATE.name());
+
+        questionPaper = questionPaperRepository.save(questionPaper);
+        return questionPaper;
     }
 
     @Transactional
@@ -267,6 +294,18 @@ public class AddQuestionPaperFromImportManager {
         if (questionRequest.getExplanationText() != null) {
             question.setExplanationTextData(AssessmentRichTextData.fromDTO(questionRequest.getExplanationText()));
         }
+        if (questionRequest.getAutoEvaluationJson() != null) {
+            question.setAutoEvaluationJson((questionRequest.getAutoEvaluationJson()));
+        }
+        if (questionRequest.getMediaId() != null) {
+            question.setMediaId((questionRequest.getMediaId()));
+        }
+        if (questionRequest.getOptionsJson() != null) {
+            question.setOptionsJson((questionRequest.getOptionsJson()));
+        }
+        if (questionRequest.getAiDifficultyLevel() != null) {
+            question.setDifficulty((questionRequest.getAiDifficultyLevel()));
+        }
         question.setQuestionType(questionRequest.getQuestionType());
         switch (questionRequest.getQuestionType()) {
             case "NUMERIC":
@@ -423,6 +462,42 @@ public class AddQuestionPaperFromImportManager {
 
         question.setQuestionType(questionRequest.getQuestionType());
         question.setExplanationTextData(AssessmentRichTextData.fromDTO(questionRequest.getExplanationText()));
+    }
+
+    private void addQuestionEntityTags(List<Question> questions, List<QuestionDTO> questionRequests) {
+
+        try {
+            for (int i = 0; i < questions.size(); i++) {
+                Question question = questions.get(i);
+                QuestionDTO questionRequest = questionRequests.get(i);
+                for (int j = 0; j < questionRequest.getAiTags().size(); j++) {
+                    String tagId = UUID.randomUUID().toString();
+                    String existingOrNewTagId = tagCommunityRepository.insertTagIfNotExists(tagId, questionRequest.getAiTags().get(j).toLowerCase());
+                    addEntityTags("QUESTION", question.getId(), existingOrNewTagId, "TAGS");
+                }
+
+                for (int j = 0; j < questionRequest.getAiTopicsIds().size(); j++) {
+                    addEntityTags("QUESTION", question.getId(), questionRequest.getAiTopicsIds().get(j), "TOPIC");
+                }
+            }
+        }
+        catch (Exception e) {
+
+        }
+    }
+
+    private void addEntityTags(String entityName, String entityId, String tagId, String tagSource) {
+        EntityTag entityTag = new EntityTag();
+        entityTag.setEntityName(entityName);
+        entityTag.setEntityId(entityId);
+        entityTag.setTagId(tagId);
+        entityTag.setTagSource(tagSource);
+        try {
+            entityTagCommunityRepository.save(entityTag);
+        }
+        catch (Exception e) {
+
+        }
     }
 
 

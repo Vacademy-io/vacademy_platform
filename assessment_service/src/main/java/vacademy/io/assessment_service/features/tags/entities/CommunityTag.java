@@ -13,7 +13,7 @@ import java.util.Date;
 @Table(name = "tags")
 @Data
 @EqualsAndHashCode(of = "tagId")
-public class Tag {
+public class CommunityTag {
 
     @Id
     @Column(name = "tag_id")

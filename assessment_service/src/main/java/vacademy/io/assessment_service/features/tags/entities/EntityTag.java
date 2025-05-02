@@ -2,14 +2,12 @@ package vacademy.io.assessment_service.features.tags.entities;
 
 import jakarta.persistence.*;
 import lombok.Data;
-import lombok.EqualsAndHashCode;
 
 import java.util.Date;
 
 @Entity
 @Table(name = "entity_tags")
 @Data
-@EqualsAndHashCode(of = {"entityName", "entityId", "tag"})
 public class EntityTag {
 
     @Id
@@ -21,9 +19,12 @@ public class EntityTag {
     private String entityId;
 
     @Id
-    @ManyToOne
-    @JoinColumn(name = "tag_id")
-    private Tag tag;
+    @Column(name = "tag_id")
+    private String tagId;
+
+    @Id
+    @Column(name = "tag_source")
+    private String tagSource;
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;

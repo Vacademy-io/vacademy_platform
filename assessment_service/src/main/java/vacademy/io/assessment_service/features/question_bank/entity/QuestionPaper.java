@@ -24,6 +24,10 @@ public class QuestionPaper {
     private String title;
     @Column(name = "access")
     private String access;
+    @Column(name = "difficulty")
+    private String difficulty;
+    @Column(name = "chapter_ids")
+    private String communityChapterIds;
     @OneToOne(cascade = CascadeType.ALL)
     @JoinColumn(name = "description_id", referencedColumnName = "id", insertable = true, updatable = true)
     private AssessmentRichTextData description;

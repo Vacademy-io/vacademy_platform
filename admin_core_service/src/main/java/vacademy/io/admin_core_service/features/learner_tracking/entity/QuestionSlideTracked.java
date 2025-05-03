@@ -46,4 +46,14 @@ public class QuestionSlideTracked {
         this.activityLog = activityLog;
     }
 
+    public QuestionSlideActivityLogDTO toQuestionSlideActivityLogDTO() {
+        QuestionSlideActivityLogDTO questionSlideActivityLogDTO = new QuestionSlideActivityLogDTO();
+        questionSlideActivityLogDTO.setId(id);
+        questionSlideActivityLogDTO.setAttemptNumber(attemptNumber);
+        questionSlideActivityLogDTO.setResponseJson(responseJson);
+        questionSlideActivityLogDTO.setResponseStatus(responseStatus);
+        questionSlideActivityLogDTO.setMarks(marks);
+        return questionSlideActivityLogDTO;
+    }
+
 }

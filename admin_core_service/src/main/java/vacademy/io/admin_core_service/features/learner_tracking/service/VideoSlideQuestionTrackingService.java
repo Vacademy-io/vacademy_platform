@@ -1,6 +1,8 @@
 package vacademy.io.admin_core_service.features.learner_tracking.service;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.ActivityLogDTO;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.VideoSlideQuestionActivityLogDTO;
@@ -44,5 +46,11 @@ public class VideoSlideQuestionTrackingService {
         saveVideoSlideQuestionLogs(activityLog, activityLogDTO.getVideoSlidesQuestions());
 
         return activityLog.getId();
+    }
+
+    public Page<ActivityLogDTO> getVideoSlideQuestionActivityLogs(String userId, String slideId, Pageable pageable, CustomUserDetails userDetails) {
+        Page<ActivityLog> activityLogs = activityLogRepository.findActivityLogsWithVideoSlideQuestions(userId, slideId, pageable);
+        return activityLogs
+                .map(ActivityLog::toActivityLogDTO);
     }
 }

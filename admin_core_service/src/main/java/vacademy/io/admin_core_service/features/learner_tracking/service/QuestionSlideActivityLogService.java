@@ -1,6 +1,8 @@
 package vacademy.io.admin_core_service.features.learner_tracking.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.QuestionSlideActivityLogDTO;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.ActivityLogDTO;
@@ -46,5 +48,10 @@ public class QuestionSlideActivityLogService {
         }
        addQuestionSlideActivityLog(activityLog,activityLogDTO.getQuestionSlides());
        return activityLog.getId();
+   }
+
+   public Page<ActivityLogDTO> getQuestionSlideActivityLogs(String userId, String slideId, Pageable pageable, CustomUserDetails userDetails) {
+       Page<ActivityLog> activityLogs = activityLogRepository.findActivityLogsWithQuestionSlides(userId, slideId, pageable);
+       return activityLogs.map(activityLog -> activityLog.toActivityLogDTO());
    }
 }

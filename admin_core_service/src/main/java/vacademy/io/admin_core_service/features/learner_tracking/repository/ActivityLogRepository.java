@@ -89,6 +89,34 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
 
     @Query("""
             SELECT DISTINCT al FROM ActivityLog al
+            LEFT JOIN FETCH al.questionSlideTracked vt
+            WHERE al.userId = :userId AND al.slideId = :slideId
+            """)
+    Page<ActivityLog> findActivityLogsWithQuestionSlides(@Param("userId") String userId,
+                                                 @Param("slideId") String slideId,
+                                                 Pageable pageable);
+
+    @Query("""
+            SELECT DISTINCT al FROM ActivityLog al
+            LEFT JOIN FETCH al.assignmentSlideTracked vt
+            WHERE al.userId = :userId AND al.slideId = :slideId
+            """)
+    Page<ActivityLog> findActivityLogsWithAssignmentSlide(@Param("userId") String userId,
+                                                         @Param("slideId") String slideId,
+                                                         Pageable pageable);
+
+    @Query("""
+            SELECT DISTINCT al FROM ActivityLog al
+            LEFT JOIN FETCH al.videoSlideQuestionTracked vt
+            WHERE al.userId = :userId AND al.slideId = :slideId
+            """)
+    Page<ActivityLog> findActivityLogsWithVideoSlideQuestions(@Param("userId") String userId,
+                                                          @Param("slideId") String slideId,
+                                                          Pageable pageable);
+
+
+    @Query("""
+            SELECT DISTINCT al FROM ActivityLog al
             LEFT JOIN FETCH al.documentTracked dt
             WHERE al.userId = :userId AND al.slideId = :slideId
             """)

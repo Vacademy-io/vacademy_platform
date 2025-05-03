@@ -5,6 +5,7 @@ import lombok.AllArgsConstructor;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.UuidGenerator;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.AssignmentSlideActivityLogDTO;
+import vacademy.io.admin_core_service.features.learner_tracking.dto.DocumentActivityLogDTO;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.QuestionSlideActivityLogDTO;
 
 import java.sql.Timestamp;
@@ -34,4 +35,13 @@ public class AssignmentSlideTracked {
         this.commaSeparatedFileIds = assignmentSlideActivityLogDTO.getCommaSeparatedFileIds();
         this.activityLog = activityLog;
     }
+
+    public AssignmentSlideActivityLogDTO toAssignmentSlideActivityLog() {
+        AssignmentSlideActivityLogDTO activityLogDTO = new AssignmentSlideActivityLogDTO();
+        activityLogDTO.setId(id);
+        activityLogDTO.setCommaSeparatedFileIds(commaSeparatedFileIds);
+        activityLogDTO.setDateSubmitted(activityLog.getCreatedAt());
+        return activityLogDTO;
+    }
+
 }

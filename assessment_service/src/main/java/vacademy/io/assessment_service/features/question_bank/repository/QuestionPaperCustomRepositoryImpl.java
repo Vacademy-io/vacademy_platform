@@ -3,6 +3,7 @@ package vacademy.io.assessment_service.features.question_bank.repository;
 
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
+import jakarta.transaction.Transactional;
 
 import java.util.List;
 import java.util.UUID;
@@ -13,6 +14,7 @@ public class QuestionPaperCustomRepositoryImpl implements QuestionPaperCustomRep
     private EntityManager entityManager;
 
     @Override
+    @Transactional
     public void bulkInsertQuestionsToQuestionPaper(String questionPaperId, List<String> questionIds) {
         StringBuilder sql = new StringBuilder("INSERT INTO public.question_question_paper_mapping (id, question_id, question_paper_id, question_order) VALUES ");
 

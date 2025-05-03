@@ -156,8 +156,28 @@ public class PresentationCrudManager {
             }
         }
 
+
+        for (PresentationSlideDto presentationSlideDto : editPresentationDto.getUpdatedSlides()) {
+            if (presentationSlideDto.getSource().equalsIgnoreCase("excalidraw")) {
+                excalidrawSlides.add(presentationSlideDto);
+            } else if (presentationSlideDto.getSource().equalsIgnoreCase("question")) {
+                questionSlides.add(presentationSlideDto);
+            }
+        }
+
+
         addEditQuestionSlides(presentation.get(), questionSlides);
         addEditExcalidrawSlides(presentation.get(), excalidrawSlides);
+
+        List<PresentationSlide> deletedSlides = new ArrayList<>();
+        for (PresentationSlideDto presentationSlideDto : editPresentationDto.getDeletedSlides()) {
+            Optional<PresentationSlide> presentationSlide = presentationSlideRepository.findById(presentationSlideDto.getId());
+            if(presentationSlide.isEmpty()) continue;
+            presentationSlide.get().setStatus("DELETED");
+            deletedSlides.add(presentationSlide.get());
+        }
+
+        presentationSlideRepository.saveAll(deletedSlides);
         return ResponseEntity.ok("Presentation updated successfully");
 
     }

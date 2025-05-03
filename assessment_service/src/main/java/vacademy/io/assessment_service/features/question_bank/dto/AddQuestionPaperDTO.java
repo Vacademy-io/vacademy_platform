@@ -16,7 +16,6 @@ public class AddQuestionPaperDTO {
 
     private String id;
     private String title;
-    private String commaSeparatedSubjectIds;
     private String instituteId;
     private String levelId;
     private String aiDifficulty;

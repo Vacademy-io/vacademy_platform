@@ -27,10 +27,11 @@ public class ConstantAiTemplate {
                                                  "options": [
                                                      {{
                                                          "type": "HTML",
+                                                         "preview_id": "string", // generate sequential id for each option like "1", "2", "3", "4"
                                                          "content": "string" // Include img tags if present
                                                      }}
                                                  ],
-                                                 "correct_options": "number[]",
+                                                 "correct_options": ["1"], // preview_id of correct option or list of correct options
                                                  "ans": "string",
                                                  "exp": "string",
                                                  "question_type": "MCQS | MCQM | ONE_WORD | LONG_ANSWER",  //Strictly Include question_type
@@ -91,10 +92,11 @@ public class ConstantAiTemplate {
                                                  "options": [
                                                      {{
                                                          "type": "HTML",
+                                                         "preview_id": "string", // generate sequential id for each option like "1", "2", "3", "4"
                                                          "content": "string" // Include img tags if present
                                                      }}
                                                  ],
-                                                 "correct_options": "number[]",
+                                                 "correct_options": ["1"], // preview_id of correct option or list of correct options
                                                  "ans": "string",
                                                  "exp": "string",
                                                  "question_type": "MCQS | MCQM | ONE_WORD | LONG_ANSWER",
@@ -169,10 +171,11 @@ public class ConstantAiTemplate {
                                             "options": [
                                                 {{
                                                     "type": "HTML",
+                                                    "preview_id": "string", // generate sequential id for each option like "1", "2", "3", "4"
                                                     "content": "string" // Include img tags if present
                                                 }}
                                             ],
-                                            "correct_options": "number[]",
+                                            "correct_options": ["1"], // preview_id of correct option or list of correct options
                                             "ans": "string",
                                             "exp": "string",
                                             "question_type": "MCQS | MCQM | ONE_WORD | LONG_ANSWER",
@@ -362,10 +365,11 @@ public class ConstantAiTemplate {
                                                  "options": [
                                                      {{
                                                          "type": "HTML",
+                                                         "preview_id": "string", // generate sequential id for each option like "1", "2", "3", "4"
                                                          "content": "string" // Include img tags if present
                                                      }}
                                                  ],
-                                                 "correct_options": "number[]",
+                                                 "correct_options": ["1"], // preview_id of correct option or list of correct options
                                                  "ans": "string",
                                                  "exp": "string",
                                                  "question_type": "MCQS | MCQM | ONE_WORD | LONG_ANSWER ",
@@ -416,10 +420,11 @@ public class ConstantAiTemplate {
                                                  "options": [
                                                      {{
                                                          "type": "HTML",
+                                                         "preview_id": "string", // generate sequential id for each option like "1", "2", "3", "4"
                                                          "content": "string" // Include img tags if present
                                                      }}
                                                  ],
-                                                 "correct_options": "number[]",
+                                                 "correct_options": ["1"], // preview_id of correct option or list of correct options
                                                  "ans": "string",
                                                  "exp": "string",
                                                  "question_type": "MCQS | MCQM | ONE_WORD | LONG_ANSWER ", //Strictly Include question_type
@@ -472,6 +477,7 @@ public class ConstantAiTemplate {
                                                  "question_number": "number",
                                                  "question": {{
                                                      "type": "HTML",
+                                                     "preview_id": "string", // generate sequential id for each option like "1", "2", "3", "4"
                                                      "content": "string" // Include img tags if present
                                                  }},
                                                  "options": [
@@ -480,7 +486,7 @@ public class ConstantAiTemplate {
                                                          "content": "string" // Include img tags if present
                                                      }}
                                                  ],
-                                                 "correct_options": "number[]",
+                                                 "correct_options": ["1"], // preview_id of correct option or list of correct options
                                                  "ans": "string",
                                                  "exp": "string",
                                                  "question_type": "MCQS | MCQM | ONE_WORD | LONG_ANSWER",

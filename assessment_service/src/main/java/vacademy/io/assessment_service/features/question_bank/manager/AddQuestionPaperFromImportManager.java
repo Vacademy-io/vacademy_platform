@@ -235,6 +235,17 @@ public class AddQuestionPaperFromImportManager {
             newOptions.addAll(questionOptions);
         }
 
+
+        var savedQuestions = questionRepository.saveAll(newQuestions);
+        optionRepository.saveAll(newOptions);
+
+        List<String> savedQuestionIds = savedQuestions.stream().map(Question::getId).toList();
+        questionPaperRepository.bulkInsertQuestionsToQuestionPaper(questionPaper.get().getId(), savedQuestionIds);
+        addQuestionEntityTags(savedQuestions, questionRequestBody.getAddedQuestions());
+
+        newQuestions = new ArrayList<>();
+        newOptions = new ArrayList<>();
+
         for (var importQuestion : questionRequestBody.getUpdatedQuestions()) {
             Optional<Question> existingQuestion = questionRepository.findById(importQuestion.getId());
 
@@ -249,6 +260,12 @@ public class AddQuestionPaperFromImportManager {
             newOptions.addAll(questionOptions);
         }
 
+        var savedUpdatedQuestions = questionRepository.saveAll(newQuestions);
+        optionRepository.saveAll(newOptions);
+        addQuestionEntityTags(savedUpdatedQuestions, questionRequestBody.getUpdatedQuestions());
+
+        newQuestions = new ArrayList<>();
+        newOptions = new ArrayList<>();
         for (var importQuestion : questionRequestBody.getDeletedQuestions()) {
             Optional<Question> existingQuestion = questionRepository.findById(importQuestion.getId());
 
@@ -257,7 +274,6 @@ public class AddQuestionPaperFromImportManager {
             existingQuestion.get().setStatus(DELETED.name());
             newQuestions.add(existingQuestion.get());
         }
-
         questionRepository.saveAll(newQuestions);
         optionRepository.saveAll(newOptions);
 

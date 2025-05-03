@@ -632,7 +632,7 @@ public class DeepSeekService {
 
         // Process Options
         for (AiGeneratedQuestionJsonDto.Option optionDTO : questionRequest.getOptions()) {
-            question.getOptions().add(new OptionDTO(String.valueOf(question.getOptions().size()), new AssessmentRichTextDataDTO(null, "HTML", unescapeString(optionDTO.getContent()))));
+            question.getOptions().add(new OptionDTO(optionDTO.getPreview_id(), new AssessmentRichTextDataDTO(null, "HTML", unescapeString(optionDTO.getContent()))));
         }
 
         try {
@@ -667,7 +667,7 @@ public class DeepSeekService {
         requestEvaluation.setType(QuestionTypes.MCQM.name());
         MCQEvaluationDTO.MCQData mcqData = new MCQEvaluationDTO.MCQData();
         mcqData.setCorrectOptionIds(
-                questionRequest.getCorrectOptions().stream()
+                (questionRequest.getCorrectOptions() == null || questionRequest.getCorrectOptions().isEmpty()) ? new ArrayList<>() : questionRequest.getCorrectOptions().stream()
                         .map(String::valueOf)
                         .collect(Collectors.toList())
         );
@@ -675,7 +675,7 @@ public class DeepSeekService {
 
         // Process Options
         for (AiGeneratedQuestionJsonDto.Option optionDTO : questionRequest.getOptions()) {
-            question.getOptions().add(new OptionDTO(String.valueOf(question.getOptions().size()), new AssessmentRichTextDataDTO(null, "HTML", unescapeString(optionDTO.getContent()))));
+            question.getOptions().add(new OptionDTO(optionDTO.getPreview_id(), new AssessmentRichTextDataDTO(null, "HTML", unescapeString(optionDTO.getContent()))));
         }
 
         try {

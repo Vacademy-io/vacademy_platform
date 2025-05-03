@@ -35,4 +35,12 @@ public class VideoSlideQuestionTracked {
         this.responseStatus = videoSlideQuestionActivityLogDTO.getResponseStatus();
         this.activityLog = activityLog;
     }
+
+    public VideoSlideQuestionActivityLogDTO toVideoSlideQuestionActivityLogDTO() {
+        VideoSlideQuestionActivityLogDTO videoSlideQuestionActivityLogDTO = new VideoSlideQuestionActivityLogDTO();
+        videoSlideQuestionActivityLogDTO.setId(id);
+        videoSlideQuestionActivityLogDTO.setResponseJson(responseJson);
+        videoSlideQuestionActivityLogDTO.setResponseStatus(responseStatus);
+        return videoSlideQuestionActivityLogDTO;
+    }
 }

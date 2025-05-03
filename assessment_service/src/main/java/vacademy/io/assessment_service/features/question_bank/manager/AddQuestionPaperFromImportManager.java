@@ -24,6 +24,7 @@ import vacademy.io.assessment_service.features.question_core.repository.OptionRe
 import vacademy.io.assessment_service.features.question_core.repository.QuestionRepository;
 import vacademy.io.assessment_service.features.rich_text.entity.AssessmentRichTextData;
 import vacademy.io.assessment_service.features.tags.entities.EntityTag;
+import vacademy.io.assessment_service.features.tags.entities.EntityTagsId;
 import vacademy.io.assessment_service.features.tags.entities.repository.EntityTagCommunityRepository;
 import vacademy.io.assessment_service.features.tags.entities.repository.TagCommunityRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -491,9 +492,7 @@ public class AddQuestionPaperFromImportManager {
 
     private void addEntityTags(String entityName, String entityId, String tagId, String tagSource) {
         EntityTag entityTag = new EntityTag();
-        entityTag.setEntityName(entityName);
-        entityTag.setEntityId(entityId);
-        entityTag.setTagId(tagId);
+        entityTag.setId(new EntityTagsId(entityId, entityName, tagId));
         entityTag.setTagSource(tagSource);
         try {
             entityTagCommunityRepository.save(entityTag);

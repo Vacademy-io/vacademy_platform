@@ -10,19 +10,9 @@ import java.util.Date;
 @Data
 public class EntityTag {
 
-    @Id
-    @Column(name = "entity_name")
-    private String entityName;
+    @EmbeddedId
+    private EntityTagsId id;
 
-    @Id
-    @Column(name = "entity_id")
-    private String entityId;
-
-    @Id
-    @Column(name = "tag_id")
-    private String tagId;
-
-    @Id
     @Column(name = "tag_source")
     private String tagSource;
 

@@ -306,6 +306,9 @@ public class AddQuestionPaperFromImportManager {
         if (questionRequest.getAiDifficultyLevel() != null) {
             question.setDifficulty((questionRequest.getAiDifficultyLevel()));
         }
+        if (questionRequest.getProblemType() != null) {
+            question.setProblemType((questionRequest.getProblemType()));
+        }
         question.setQuestionType(questionRequest.getQuestionType());
         switch (questionRequest.getQuestionType()) {
             case "NUMERIC":

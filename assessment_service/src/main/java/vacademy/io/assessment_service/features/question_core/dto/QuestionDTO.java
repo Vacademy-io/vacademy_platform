@@ -39,6 +39,7 @@ public class QuestionDTO {
     private List<String> aiTags = new ArrayList<>();
     private List<String> aiTopicsIds = new ArrayList<>();
     private String aiDifficultyLevel = "MEDIUM";
+    private String problemType;
     private Map<String, Object> parsedEvaluationObject;
     private String evaluationType;
     private AssessmentRichTextDataDTO explanationText;

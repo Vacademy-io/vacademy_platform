@@ -15,10 +15,10 @@ public class InviteUserController {
     private final InviteUserService inviteUserService;
 
     @PostMapping("/invite")
-    public ResponseEntity<String> inviteUser(@RequestBody UserDTO userDTO,
+    public ResponseEntity<UserDTO> inviteUser(@RequestBody UserDTO userDTO,
                                              @RequestParam String instituteId,
                                              @RequestAttribute("user") CustomUserDetails customUserDetails) {
-        String response = inviteUserService.inviteUser(userDTO, instituteId, customUserDetails);
+        UserDTO response = inviteUserService.inviteUser(userDTO, instituteId);
         return ResponseEntity.ok(response);
     }
 

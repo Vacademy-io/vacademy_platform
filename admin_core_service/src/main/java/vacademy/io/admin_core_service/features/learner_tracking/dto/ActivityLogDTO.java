@@ -24,6 +24,7 @@ public class ActivityLogDTO {
     private List<DocumentActivityLogDTO> documents;
     private List<QuestionSlideActivityLogDTO>questionSlides;
     private List<AssignmentSlideActivityLogDTO>assignmentSlides;
+    private List<VideoSlideQuestionActivityLogDTO>videoSlidesQuestions;
     private boolean newActivity;
     private ConcentrationScoreDTO concentrationScore;
 }

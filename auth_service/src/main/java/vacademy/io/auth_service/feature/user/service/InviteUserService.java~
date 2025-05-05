@@ -23,7 +23,7 @@ public class InviteUserService {
     private final RoleService roleService;
     private final NotificationService notificationService;
 
-    public UserDTO inviteUser(UserDTO userDTO, String instituteId) {
+    public UserDTO inviteUser(UserDTO userDTO, String instituteId, CustomUserDetails customUserDetails) {
         setRandomCredentials(userDTO);
         userDTO.setRootUser(true);
         User user = userService.createUserFromUserDto(userDTO);

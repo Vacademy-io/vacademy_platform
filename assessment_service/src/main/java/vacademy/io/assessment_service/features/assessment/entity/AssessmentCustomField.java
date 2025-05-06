@@ -30,6 +30,9 @@ public class AssessmentCustomField {
     @Column(name = "field_key", nullable = false)
     private String fieldKey;
 
+    @Column(name = "field_order", nullable = false)
+    private Integer fieldOrder;
+
     @Column(name = "comma_separated_options", nullable = true)
     private String commaSeparatedOptions;
 
@@ -40,6 +43,7 @@ public class AssessmentCustomField {
     @JoinColumn(name = "assessment_id")
     @JsonIgnore
     private Assessment assessment;
+
 
     @Column(name = "is_mandatory", nullable = false)
     private Boolean isMandatory;

@@ -276,6 +276,7 @@ public class AssessmentParticipantsManager {
         assessmentCustomField.setAssessment(assessment);
         assessmentCustomField.setFieldKey(registrationFieldDto.getName().toLowerCase().trim().replace(" ", "_"));
         assessmentCustomField.setFieldName(registrationFieldDto.getName().trim());
+        assessmentCustomField.setFieldOrder(registrationFieldDto.getOrderField());
         assessmentCustomField.setFieldType(registrationFieldDto.getType().trim());
         assessmentCustomField.setIsMandatory(registrationFieldDto.getIsMandatory());
         assessmentCustomField.setStatus(ACTIVE.name());

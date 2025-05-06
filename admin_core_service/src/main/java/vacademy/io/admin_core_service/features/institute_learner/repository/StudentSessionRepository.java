@@ -73,12 +73,17 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
 
     @Query(value = "SELECT COUNT(ss.id) " +
             "FROM student_session_institute_group_mapping ss " +
+            "JOIN package_session ps ON ss.package_session_id = ps.id " +
             "WHERE ss.institute_id = :instituteId " +
-            "AND ss.status NOT IN (:statusList)",
+            "AND ss.status NOT IN (:statusList) " +
+            "AND ss.package_session_id IS NOT NULL " +
+            "AND ps.status IN (:packageSessionStatusList)",
             nativeQuery = true)
-    Long countStudentsByInstituteIdAndStatusNotIn(
+    Long countStudentsByInstituteIdAndStatusNotInAndPackageSessionStatusIn(
             @Param("instituteId") String instituteId,
-            @Param("statusList") List<String> statusList);
+            @Param("statusList") List<String> statusList,
+            @Param("packageSessionStatusList") List<String> packageSessionStatusList);
+
 
     @Query(value = """
                 SELECT ps.id AS packageSessionId, 

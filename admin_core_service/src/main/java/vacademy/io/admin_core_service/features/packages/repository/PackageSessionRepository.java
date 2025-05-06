@@ -52,9 +52,11 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
             "JOIN package p ON ps.package_id = p.id " +
             "JOIN package_institute pi ON p.id = pi.package_id " +
             "WHERE pi.institute_id = :instituteId " +
-            "AND ps.status != 'DELETED'",
+            "AND ps.status IN (:statusList)",
             nativeQuery = true)
-    Long findCountPackageSessionsByInstituteId(@Param("instituteId") String instituteId);
+    Long findCountPackageSessionsByInstituteIdAndStatusIn(
+            @Param("instituteId") String instituteId,
+            @Param("statusList") List<String> statusList);
 
     @Modifying
     @Transactional

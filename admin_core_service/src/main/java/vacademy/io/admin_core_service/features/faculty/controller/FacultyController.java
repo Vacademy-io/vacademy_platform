@@ -8,7 +8,7 @@ import vacademy.io.admin_core_service.features.faculty.service.FacultyService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 @RestController
-@RequestMapping("/api/faculty")
+@RequestMapping("/admin-core-service/institute/v1/faculty")
 @RequiredArgsConstructor
 public class FacultyController {
 

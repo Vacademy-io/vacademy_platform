@@ -9,6 +9,7 @@ import vacademy.io.admin_core_service.features.institute.dto.InstituteDashboardR
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteSubModuleRepository;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
+import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
 import vacademy.io.admin_core_service.features.packages.repository.PackageRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
 import vacademy.io.admin_core_service.features.subject.repository.SubjectPackageSessionRepository;
@@ -124,8 +125,8 @@ public class UserInstituteService {
 
         Integer emptyOrNullFieldsCount = instituteRepository.findCountForNullOrEmptyFields(instituteId);
         Integer percentage = (((11 - emptyOrNullFieldsCount) * 100) / 11);
-        Long batchCount = packageSessionRepository.findCountPackageSessionsByInstituteId(instituteId);
-        Long studentCount = studentSessionRepository.countStudentsByInstituteIdAndStatusNotIn(instituteId, List.of("DELETED", "INACTIVE", "TERMINATED"));
+        Long batchCount = packageSessionRepository.findCountPackageSessionsByInstituteIdAndStatusIn(instituteId,List.of(PackageSessionStatusEnum.ACTIVE.name(),PackageSessionStatusEnum.HIDDEN.name()));
+        Long studentCount = studentSessionRepository.countStudentsByInstituteIdAndStatusNotInAndPackageSessionStatusIn(instituteId, List.of("DELETED", "INACTIVE", "TERMINATED"),List.of(PackageSessionStatusEnum.ACTIVE.name(),PackageSessionStatusEnum.HIDDEN.name()));
         Long courseCount = packageRepository.countDistinctPackagesByInstituteId(instituteId);
         Long levelCount = packageRepository.countDistinctLevelsByInstituteId(instituteId);
         Long subjectCount = subjectPackageSessionRepository.countDistinctSubjectsByInstituteId(instituteId);

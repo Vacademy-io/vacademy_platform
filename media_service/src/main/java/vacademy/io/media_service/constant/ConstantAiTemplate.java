@@ -13,8 +13,8 @@ public class ConstantAiTemplate {
                                 
                 **Instructions**:
                 1. Continuation Handling:
-                   - Existing Questions: {allQuestionNumbers} or none
-                   - Continue for question other than {allQuestionNumbers} if needed else Start from beginning
+                   - Existing Questions: {allQuestionNumbers or "None"}
+                   - {f"Continue for question other than {allQuestionNumbers} if needed" else "Start from beginning"}
                    - Strictly avoid duplicate content from existing questions
                                 
                 2. Content Requirements:
@@ -99,40 +99,21 @@ public class ConstantAiTemplate {
 
     private static String getHtmlToQuestionTemplate() {
         return """
-                **Conversion Objective**: Transform HTML question bank content into structured JSON format while preserving original markup and metadata.
-                                
-                        **Input Data**:
-                        {htmlData}
-                                
-                        **Processing Instructions**:
-                        1. Content Preservation:
-                           - Maintain ALL DS_TAG comments in original positions
-                           - Keep HTML structure intact (including <img> tags)
-                           - Preserve existing numbering/naming conventions
-                                
-                        2. Question Handling:
-                           - Detect question type from HTML structure:
-                             * MCQS: Single correct multiple choice
-                             * MCQM: Multiple correct choices
-                             * ONE_WORD: Short answer (no options)
-                             * LONG_ANSWER: Essay-type (no options)
-                           - Only extract existing answer data - NEVER calculate answers
-                           - Maintain original difficulty levels if specified
-                                
-                        3. Metadata Extraction:
-                           - Extract tags from DS_TAG comments
-                           - Derive subjects from question content
-                           - Identify relevant class levels
+                HTML raw data :  {htmlData}
+                    
+                        Prompt:
+                        Convert the given HTML file containing questions into the following JSON format:
+                        - Preserve all DS_TAGs in HTML content in comments
                         
-                          **Output JSON Format** :
+                        JSON format : 
                         
                                 {{
                                          "questions": [
                                              {{
-                                                 "question_number": "extracted_number",
+                                                 "question_number": "number",
                                                  "question": {{
                                                      "type": "HTML",
-                                                     "content": "string <!--DS_TAG-->" // Include img tags if present
+                                                     "content": "string" // Include img tags if present
                                                  }},
                                                  "options": [
                                                      {{
@@ -159,22 +140,11 @@ public class ConstantAiTemplate {
                         For LONG_ANSWER, and ONE_WORD question types:
                         - Leave 'correct_options' empty but fill 'ans' and 'exp'
                         - Omit 'options' field entirely
+                        
+                        Also keep the DS_TAGS field intact in html
                         And do not try to calculate right ans, only add if available in input
                         
-                        **Critical Notes**:
-                                - {userPrompt}
-                                - If answer data missing: leave fields empty
-                                - Maintain original HTML encoding
-                                - Validate JSON structure before returning
-                        
-                                **Validation Rules**:
-                                1. Required Fields: question_number, question, question_type
-                                2. Options required for MCQS/MCQM only
-                                3. correct_options must match existing preview_ids
-                                4. All DS_TAGs must be preserved exactly
-                                5. HTML special characters must be properly escaped
-                        
-                 
+                        IMPORTANT: {userPrompt}
                 """;
     }
 
@@ -270,25 +240,24 @@ public class ConstantAiTemplate {
 
     private static String getLectureFeedbackTemplate() {
         return """
-                 **Feedback Generation Objective**:
-                        Analyze spoken lecture content and audio metrics to create structured feedback with actionable insights.
-                                
-                        **Input Data**:
-                        - Transcript: {text}
-                        - Audio Quality Analysis: {convertedAudioResponseString}
-                        - Speaking Pace: {audioPace} WPM (Optimal range: 120-150 WPM)
-                                
-                        **Scoring Framework**:
-                        | Criteria                   | Max | Evaluation Focus                          |
-                        |----------------------------|-----|------------------------------------------|
-                        | Delivery & Presentation    | 20  | Vocal clarity, pacing, tone              |
-                        | Content Quality            | 20  | Structure, accuracy, depth               |
-                        | Student Engagement         | 15  | Interactive elements, questioning        |
-                        | Assessment & Feedback      | 10  | Checks understanding, provides feedback  |
-                        | Inclusivity & Language     | 10  | Accessible language, cultural sensitivity|
-                        | Classroom Management       | 10  | Time management, discipline              |
-                        | Teaching Aids              | 10  | Visuals, technology integration          |
-                        | Professionalism            | 5   | Preparation, demeanor   \s
+                Spoken Text : {text}
+                            Spoken Text quality : {convertedAudioResponseString}
+                            Pace: {audioPace} WordsPerMinute
+                        
+                            Prompt:
+                              - Generate a Lecture FeedBack From the Spoken Text And Spoken Text quality with Pace speed in following json format:
+                              - The Overall score generated should be strictly less than or equal to 100;
+                              - Generate report based on following criteria Only:
+                                      -Delivery & Presentation(20 Points)
+                                      -Content Quality(20 Points)
+                                      -Student Engagement(15 Points)
+                                      -Assessment & Feedback(10 Points)
+                                      -Inclusivity & Language(10 Points)
+                                      -Classroom Management(10 Points)
+                                      -Teaching Aids(10 Points)
+                                      -Professionalism(5 Points)
+                              -Strictly Follow Max marks for each criteria and do not create more criteria than mentioned
+
                               
                               Strict Json Format: 
                               
@@ -318,20 +287,6 @@ public class ConstantAiTemplate {
                                  ],
                                  "summary":["String"]   //Include Summary of overall report
                                }}
-                               
-                                  **Validation Rules**:
-                                       1. Total score = Σ criteria scores ≤100
-                                       2. Scores per criteria ≤ column max
-                                       3. Mandatory fields: title, totalScore, criteria[]
-                                       4. Date format: ISO 8601 (DD-MM-YYYY)
-                                       5. WPM analysis must influence Delivery score
-                                       6. Audio quality metrics must map to Teaching Aids score
-                               
-                                       **Scoring Guidelines**:
-                                       - Deduct 2 points/50 WPM deviation from optimal pace
-                                       - Reduce Content Quality score for transcript gaps
-                                       - Boost Engagement score for questions/discussions
-                                       - Penalize Professionalism for excessive filler words
                 """;
     }
 
@@ -468,90 +423,58 @@ public class ConstantAiTemplate {
 
     private static String getPdfToQuestionTemplate() {
         return """
-                 **PDF Conversion Protocol**
-                 
-                **Input Context**:
-                - Source HTML: {htmlData}
-                - Existing Questions: {allQuestionNumbers}
-                - Special Requirement: {userPrompt}
-                              
-                **Processing Rules**:
-                1. Continuation Logic:
-                   - If no existing questions: Start from first HTML element
-                   - With existing questions: Resume after last extracted question
-                   - Strict duplicate prevention: Compare question stems and options
-                              
-                2. Content Handling:
-                   - Preserve ALL DS_TAG comments verbatim
-                   - Maintain original HTML structure including:
-                     * Image tags (<img>)
-                     * Math formulas (LaTeX/MathML)
-                     * Text formatting (<b>/<i>)
-                   - Never modify source ordering
-                              
-                3. Question Extraction:
-                   - Auto-detect question types by structure:
-                     ⎔ MCQS: 4 options + single correct
-                     ⎔ MCQM: Multiple correct options
-                     ⎔ ONE_WORD: Short answer field
-                     ⎔ LONG_ANSWER: Essay-style response
-                   - Only extract existing answers (NO calculations)
-                         
-                         JSON format : 
-                         
-                                 {{
-                                          "questions": [
-                                              {{
-                                                  "question_number": "number",
-                                                  "question": {{
-                                                      "type": "HTML",
-                                                      "content": "string" // Include img tags if present
-                                                  }},
-                                                  "options": [
-                                                      {{
-                                                          "type": "HTML",
-                                                          "preview_id": "string", // generate sequential id for each option like "1", "2", "3", "4"
-                                                          "content": "string" // Include img tags if present
-                                                      }}
-                                                  ],
-                                                  "correct_options": ["1"], // preview_id of correct option or list of correct options
-                                                  "ans": "string",
-                                                  "exp": "string",
-                                                  "question_type": "MCQS | MCQM | ONE_WORD | LONG_ANSWER ", //Strictly Include question_type
-                                                  "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
-                                                  "level": "easy | medium | hard"
-                                              }}
-                                          ],
-                                          "title": "string" // Suitable title for the question paper,
-                                          "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"] // multiple chapter and topic names for question paper,
-                                          "is_process_completed" : true,false // Ensure is_process_completed is set to true only if {userPrompt} is achieved,
-                                          "difficulty": "easy | medium | hard",
-                                          "subjects": ["subject1", "subject2", "subject3", "subject4", "subject5"] // multiple subject names for question paper like maths or thermodynamics or physics etc ,
-                                          "classes": ["class 1" , "class 2" ] // can be of multiple class - | class 3 | class 4 | class 5 | class 6 | class 7 | class 8 | class 9 | class 10 | class 11 | class 12 | engineering | medical | commerce | law
-                                      }}
-                             
-                         For LONG_ANSWER, and ONE_WORD question types:
-                         - Leave 'correct_options' empty but fill 'ans' and 'exp'
-                         - Omit 'options' field entirely
-                         
-                         Also keep the DS_TAGS field intact in html
-                         And do not try to calculate right ans, only add if available in input
-                         
-                         IMPORTANT: {userPrompt}
-                         
-                         **Validation Matrix**:
-                                  | Field                | Required | Condition               |
-                                  |----------------------|----------|-------------------------|
-                                  | question_number      | Yes      | Strict sequence         |
-                                  | question.content     | Yes      | Contains DS_TAG         |
-                                  | options              | MCQS and MCQM Only | 2-4 items               |
-                                  | correct_options      | Try best to get | Must match preview_ids  |
-                                  | question_type        | Yes      | Auto-detected           |
-                                  | is_process_completed | Yes      | True when:              |
-                                  |                      |          | - All questions parsed  |
-                                  |                      |          | - {userPrompt} achieved |
-                                 
-                 """;
+                HTML raw data :  {htmlData}
+                Already extracted question Number = {allQuestionNumbers}
+                    
+                        Prompt:
+                        Convert the given HTML file containing questions into the following JSON format:
+                         - If 'Already extracted question Number' is empty, start fresh from the beginning of the HTML.
+                         - If it is not empty, continue generating from where the last question left off based on the existing data and avoid duplicate Questions.
+                         - Do not generate any questions if already generated required questions and set is_process_completed true.
+                         - Preserve all DS_TAGs in HTML content in comments
+                        
+                        JSON format : 
+                        
+                                {{
+                                         "questions": [
+                                             {{
+                                                 "question_number": "number",
+                                                 "question": {{
+                                                     "type": "HTML",
+                                                     "content": "string" // Include img tags if present
+                                                 }},
+                                                 "options": [
+                                                     {{
+                                                         "type": "HTML",
+                                                         "preview_id": "string", // generate sequential id for each option like "1", "2", "3", "4"
+                                                         "content": "string" // Include img tags if present
+                                                     }}
+                                                 ],
+                                                 "correct_options": ["1"], // preview_id of correct option or list of correct options
+                                                 "ans": "string",
+                                                 "exp": "string",
+                                                 "question_type": "MCQS | MCQM | ONE_WORD | LONG_ANSWER ", //Strictly Include question_type
+                                                 "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
+                                                 "level": "easy | medium | hard"
+                                             }}
+                                         ],
+                                         "title": "string" // Suitable title for the question paper,
+                                         "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"] // multiple chapter and topic names for question paper,
+                                         "is_process_completed" : true,false // Ensure is_process_completed is set to true only if {userPrompt} is achieved,
+                                         "difficulty": "easy | medium | hard",
+                                         "subjects": ["subject1", "subject2", "subject3", "subject4", "subject5"] // multiple subject names for question paper like maths or thermodynamics or physics etc ,
+                                         "classes": ["class 1" , "class 2" ] // can be of multiple class - | class 3 | class 4 | class 5 | class 6 | class 7 | class 8 | class 9 | class 10 | class 11 | class 12 | engineering | medical | commerce | law
+                                     }}
+                            
+                        For LONG_ANSWER, and ONE_WORD question types:
+                        - Leave 'correct_options' empty but fill 'ans' and 'exp'
+                        - Omit 'options' field entirely
+                        
+                        Also keep the DS_TAGS field intact in html
+                        And do not try to calculate right ans, only add if available in input
+                        
+                        IMPORTANT: {userPrompt}
+                """;
     }
 
     private static String getAudioToQuestionTemplate() {
@@ -613,39 +536,16 @@ public class ConstantAiTemplate {
 
     private static String getMetadataOfQuestions() {
         return """
-                **Metadata Generation Protocol**
-                       
-                        **Input Data**:
-                        1. Question Map format: question_id: full question text
-                           {idAndQuestions}
-                        2. Topic Map format: topic_id: topic_name
-                           {idAndTopics}
-                                
-                        **Processing Rules**:
-                        1. Topic Matching:
-                           - Match using exact string matching between question text and topic names
-                           - Include parent topics when subtopic is mentioned
-                           - Maximum 5 topics per question
-                           - Use ONLY provided topic IDs from input map
-                                
-                        2. Tag Generation:
-                           - Extract 3-5 concept tags from:
-                             * Key question terms
-                             * Required solution strategies
-                             * Curriculum frameworks
-                           - Prefer camelCase for multi-word tags
-                           - Avoid duplicate tags across questions
-                                
-                        3. Difficulty Assessment:
-                           | Level    | Criteria                                  |
-                           |----------|------------------------------------------|
-                           | Easy     | Direct recall, <2 steps, basic formulas  |
-                           | Medium   | 2-3 step reasoning, combined concepts   |
-                           | Hard     | Complex analysis, >3 steps, proofs       |
-                                
-                        4. Problem Type Classification:
-                           - knowledge_based: Fact recall, definitions, theory
-                           - application_based: Problem solving, real-world use
+                Question Id and Question Text Data :  {idAndQuestions}
+                Topic Id and Topic Name :  {idAndTopics}
+                               
+                        Prompt:
+                         You are given a map of question id and question text and a map of topics with their ids and names.
+                         Now each question needs to be analyzed and based on question text, topic id needs to get linked with questions.
+                         Each Question should also be linked to the concepts that are tested from student's perspective, known ads tags
+                         Data is finally to be returned in the following JSON format:
+                         No need to give extra details other than json like explanation or any other data.
+                         
                      
                         JSON format : 
                         
@@ -655,19 +555,11 @@ public class ConstantAiTemplate {
                                                  "question_id": "question_id1",
                                                  "topic_ids": ["topic_id1", "topic_id2", "topic_id3", "topic_id4", "topic_id5"], // exact topic ids that this question belongs to from the given map
                                                  "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"], // these may be sub topics or the concepts of a topics, add as many as you possible
-                                                 "difficulty": "easy|medium|hard", // Case-sensitive
-                                                 "problem_type": "knowledge_based|application_based"
-                                              }}
+                                                 "difficulty": "string" // based on complexity and computational thinking of the question
+                                                 "problem_type": "string" // if knowledge is being tested put - knowledge_based else if application is being tested put - application_based, give any one of these 2
+                                             }}
                                          ]
                                    }}
-                                   
-                                    **Validation Rules**:
-                                           1. Required Fields: question_id, topic_ids, difficulty
-                                           2. Topic IDs must exist in input map
-                                           3. Difficulty must match complexity matrix
-                                           4. Tags must be derived from question text
-                                           5. No new topics/invented IDs allowed
-                                   
                 """;
     }
 }

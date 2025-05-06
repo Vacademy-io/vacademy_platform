@@ -12,6 +12,7 @@ import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.media_service.constant.ConstantAiTemplate;
 import vacademy.io.media_service.controller.question_metadata_extractor.dto.QuestionMetadataExtractorRequest;
@@ -154,7 +155,7 @@ public class DeepSeekService {
             JsonNode questionsNode = rootNode.get("questions");
 
             if (questionsNode == null || !questionsNode.isArray()) {
-                return "";
+                return "None";
             }
 
             List<String> questionNumbers = new ArrayList<>();
@@ -166,7 +167,7 @@ public class DeepSeekService {
             return String.join(",", questionNumbers);
         } catch (Exception e) {
             e.printStackTrace();
-            return "";
+            return "None";
         }
     }
 
@@ -449,6 +450,9 @@ public class DeepSeekService {
     public String getQuestionsWithDeepSeekFromHTMLOfTopics(String htmlData, String requiredTopics, String restoredJson, Integer attempt, TaskStatus taskStatus) {
         try {
             if (attempt >= 5) {
+                if(restoredJson == null || restoredJson.isEmpty()) {
+                    taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), restoredJson);
+                }
                 return restoredJson != null ? restoredJson : "";
             }
             HtmlJsonProcessor htmlJsonProcessor = new HtmlJsonProcessor();
@@ -461,7 +465,7 @@ public class DeepSeekService {
                     "allQuestionNumbers", allQuestionNumbers,
                     "restoredJson", restoredJson == null ? "" : restoredJson);
 
-            Prompt prompt = new PromptTemplate(template).create();
+            Prompt prompt = new PromptTemplate(template).create(promptMap);
 
             taskStatusService.convertMapToJsonAndStore(promptMap, taskStatus);
 
@@ -469,6 +473,10 @@ public class DeepSeekService {
             if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {
                 taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), restoredJson);
                 return restoredJson;
+            }
+
+            if(!StringUtils.hasText(response.getChoices().get(0).getMessage().getContent())){
+                return getQuestionsWithDeepSeekFromHTMLOfTopics(htmlData, requiredTopics, restoredJson, attempt + 1, taskStatus);
             }
 
             String resultJson = response.getChoices().get(0).getMessage().getContent();

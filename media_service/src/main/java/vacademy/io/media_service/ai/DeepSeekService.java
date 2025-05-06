@@ -461,7 +461,8 @@ public class DeepSeekService {
 
             String template = ConstantAiTemplate.getTemplateBasedOnType(TaskStatusTypeEnum.PDF_TO_QUESTIONS_WITH_TOPIC);
 
-            Map<String, Object> promptMap = Map.of("htmlData", unTaggedHtml, "requiredTopics", requiredTopics,
+            Map<String, Object> promptMap = Map.of("htmlData", unTaggedHtml,
+                    "requiredTopics", requiredTopics,
                     "allQuestionNumbers", allQuestionNumbers,
                     "restoredJson", restoredJson == null ? "" : restoredJson);
 

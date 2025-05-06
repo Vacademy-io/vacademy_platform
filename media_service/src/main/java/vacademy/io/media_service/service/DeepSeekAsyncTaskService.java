@@ -91,6 +91,8 @@ public class DeepSeekAsyncTaskService {
 
     private void processDeepSeekTaskInBackgroundForPdftoQuestionOfTopic(TaskStatus taskStatus, String topics, String networkHtml) {
         try {
+            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.PROGRESS.name(), null);
+
             String restoreJson = (taskStatus.getResultJson() == null) ? "" : taskStatus.getResultJson();
 
             String rawOutput = deepSeekService.getQuestionsWithDeepSeekFromHTMLOfTopics(

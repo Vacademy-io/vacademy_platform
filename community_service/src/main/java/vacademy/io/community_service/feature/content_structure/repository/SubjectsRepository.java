@@ -6,4 +6,5 @@ import vacademy.io.community_service.feature.content_structure.entity.Subjects;
 
 @Repository
 public interface SubjectsRepository extends JpaRepository<Subjects, String> {
+
 }

@@ -14,6 +14,7 @@ import java.util.List;
 public class ChapterInsertDto {
     List<ChapterDto> chapters;
     String subjectId;
+    String streamId;
 
     @Data
     @NoArgsConstructor

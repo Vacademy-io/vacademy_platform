@@ -5,17 +5,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
-import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.community_service.feature.content_structure.dto.*;
 import vacademy.io.community_service.feature.content_structure.entity.*;
-import vacademy.io.community_service.feature.content_structure.enums.Difficulty;
-import vacademy.io.community_service.feature.content_structure.enums.Type;
 import vacademy.io.community_service.feature.content_structure.repository.*;
 import vacademy.io.community_service.feature.filter.repository.EntityTagsRepository;
-import vacademy.io.community_service.feature.question_bank.dto.TagsByIdResponseDto;
 
 import java.util.*;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 @Slf4j
@@ -47,15 +42,16 @@ public class ContentService {
         return ResponseEntity.ok(topicRepository.findTopicsByChapterId(chapterList));
     }
 
-    public ResponseEntity<List<Chapter>> getAllChaptersOfSubject(String subjectId) {
-        return ResponseEntity.ok(chapterRepository.findChaptersOdSubject(subjectId));
+    public ResponseEntity<List<Chapter>> getAllChaptersOfSubject(String subjectId, String streamId) {
+        return ResponseEntity.ok(chapterRepository.findChaptersOfSubject(subjectId, streamId));
     }
 
     public ResponseEntity<Map<String, String>> addChaptersToSubject(ChapterInsertDto chapterInsertDto) {
         Map<String, String> resultMap = new HashMap<>();
         Optional<Subjects> subject = subjectRepository.findById(chapterInsertDto.getSubjectId());
+        Optional<Streams> stream = streamRepository.findById(chapterInsertDto.getStreamId());
 
-        if (subject.isEmpty()) {
+        if (subject.isEmpty() || stream.isEmpty()) {
             return ResponseEntity.notFound().build();
         }
 
@@ -64,7 +60,7 @@ public class ContentService {
                 Chapter chapter = addChapterToSubject(chapterDto);
                 chapter = chapterRepository.save(chapter);
                 resultMap.put(chapterDto.getChapterName(), chapter.getChapterId());
-                subject.get().getChapters().add(chapter);
+                chapterRepository.addChapterToSubject(chapterInsertDto.getSubjectId(), chapterInsertDto.getStreamId(), chapter.getChapterId());
             }
             catch (Exception e) {
                 resultMap.put(chapterDto.getChapterName(), e.getMessage());
@@ -116,8 +112,9 @@ public class ContentService {
     public ResponseEntity<Map<String, String>> addChaptersTopicToSubject(ChapterInsertDto chapterInsertDto) {
         Map<String, String> resultMap = new HashMap<>();
         Optional<Subjects> subject = subjectRepository.findById(chapterInsertDto.getSubjectId());
+        Optional<Streams> stream = streamRepository.findById(chapterInsertDto.getStreamId());
 
-        if (subject.isEmpty()) {
+        if (subject.isEmpty() || stream.isEmpty()) {
             return ResponseEntity.notFound().build();
         }
 
@@ -126,7 +123,7 @@ public class ContentService {
                 Chapter chapter = addChapterToSubject(chapterDto);
                 chapter = chapterRepository.save(chapter);
                 resultMap.put(chapterDto.getChapterName(), chapter.getChapterId());
-                subject.get().getChapters().add(chapter);
+                chapterRepository.addChapterToSubject(chapterInsertDto.getSubjectId(), chapterInsertDto.getStreamId(), chapter.getChapterId());
                 for (TopicInsertDto.TopicDto topicDto : chapterDto.getTopics()) {
                     Topic topic = addTopicToChapter(topicDto);
                     topic = topicRepository.save(topic);

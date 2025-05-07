@@ -21,12 +21,4 @@ public class Subjects {
     @Column(name = "subject_name", unique = true, nullable = false)
     private String subjectName;
 
-    @ManyToMany(fetch = FetchType.EAGER)
-    @JsonIgnore
-    @JoinTable(
-            name = "subject_chapter_mapping",
-            joinColumns = @JoinColumn(name = "subject_id"),
-            inverseJoinColumns = @JoinColumn(name = "chapter_id")
-    )
-    private Set<Chapter> chapters = new HashSet<>();
 }

@@ -20,8 +20,8 @@ public class InternalSubjectController {
     private ContentService contentService;
 
     @GetMapping("/all-chapters")
-    public ResponseEntity<List<Chapter>> getAllChaptersOfSubject(@RequestParam String subjectId) {
-        return contentService.getAllChaptersOfSubject(subjectId);
+    public ResponseEntity<List<Chapter>> getAllChaptersOfSubject(@RequestParam String subjectId, @RequestParam String streamId) {
+        return contentService.getAllChaptersOfSubject(subjectId, streamId);
     }
 
     @PostMapping("/add-chapters")

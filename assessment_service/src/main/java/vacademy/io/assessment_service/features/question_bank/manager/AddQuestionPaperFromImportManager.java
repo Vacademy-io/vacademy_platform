@@ -92,10 +92,12 @@ public class AddQuestionPaperFromImportManager {
     }
 
     private void addEntityTagOfQuestionPaper(QuestionPaper questionPaper, AddQuestionPaperDTO questionRequestBody) {
-        for (String tag : questionRequestBody.getTags()) {
-            String tagId = UUID.randomUUID().toString();
-            String existingOrNewTagId = tagCommunityRepository.insertTagIfNotExists(tagId, tag.toLowerCase());
-            addEntityTags("QUESTION_PAPER", questionPaper.getId(), existingOrNewTagId, "TAGS");
+        if(questionRequestBody.getTags() != null){
+            for (String tag : questionRequestBody.getTags()) {
+                String tagId = UUID.randomUUID().toString();
+                String existingOrNewTagId = tagCommunityRepository.insertTagIfNotExists(tagId, tag.toLowerCase());
+                addEntityTags("QUESTION_PAPER", questionPaper.getId(), existingOrNewTagId, "TAGS");
+            }
         }
     }
 
@@ -104,7 +106,12 @@ public class AddQuestionPaperFromImportManager {
         questionPaper.setTitle(questionRequestBody.getTitle());
         questionPaper.setCreatedByUserId(user.getUserId());
         questionPaper.setDifficulty(questionRequestBody.getAiDifficulty());
-        questionPaper.setCommunityChapterIds(questionRequestBody.getCommunityChapterIds().isEmpty() ? null : String.join(",", questionRequestBody.getCommunityChapterIds()));
+        if(questionRequestBody.getCommunityChapterIds() == null || questionRequestBody.getCommunityChapterIds().isEmpty()){
+            questionPaper.setCommunityChapterIds(null);
+        }
+        else{
+            questionPaper.setCommunityChapterIds(String.join(",", questionRequestBody.getCommunityChapterIds()));
+        }
 
         if (isPublicPaper)
             questionPaper.setAccess(QuestionAccessLevel.PUBLIC.name());

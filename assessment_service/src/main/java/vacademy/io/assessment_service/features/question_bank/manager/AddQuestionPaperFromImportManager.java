@@ -104,7 +104,7 @@ public class AddQuestionPaperFromImportManager {
         questionPaper.setTitle(questionRequestBody.getTitle());
         questionPaper.setCreatedByUserId(user.getUserId());
         questionPaper.setDifficulty(questionRequestBody.getAiDifficulty());
-        questionPaper.setCommunityChapterIds(questionRequestBody.getCommunityChapterIds().isEmpty() ? null : String.join(",", questionRequestBody.getCommunityChapterIds()));
+        questionPaper.setCommunityChapterIds(questionRequestBody.getCommunityChapterIds() == null || questionRequestBody.getCommunityChapterIds().isEmpty() ? null : String.join(",", questionRequestBody.getCommunityChapterIds()));
 
         if (isPublicPaper)
             questionPaper.setAccess(QuestionAccessLevel.PUBLIC.name());
@@ -500,8 +500,7 @@ public class AddQuestionPaperFromImportManager {
                     addEntityTags("QUESTION", question.getId(), questionRequest.getAiTopicsIds().get(j), "TOPIC");
                 }
             }
-        }
-        catch (Exception e) {
+        } catch (Exception e) {
 
         }
     }
@@ -512,8 +511,7 @@ public class AddQuestionPaperFromImportManager {
         entityTag.setTagSource(tagSource);
         try {
             entityTagCommunityRepository.save(entityTag);
-        }
-        catch (Exception e) {
+        } catch (Exception e) {
 
         }
     }

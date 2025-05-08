@@ -30,7 +30,7 @@ public class InternalSubjectController {
     }
 
     @PostMapping("/add-chapters-with-topics")
-    public ResponseEntity<Map<String, String>> addChaptersTopicsToSubject(CustomUserDetails user, @RequestBody ChapterInsertDto chapterInsertDto) {
+    public ResponseEntity<Map<String, String>> addChaptersTopicsToSubject(@RequestBody ChapterInsertDto chapterInsertDto) {
         return contentService.addChaptersTopicToSubject(chapterInsertDto);
     }
 }

@@ -26,9 +26,6 @@ public class Chapter {
     @Column(name = "chapter_order", nullable = false)
     private Integer chapterOrder;
 
-    @ManyToMany(mappedBy = "chapters")
-    @JsonIgnore
-    private Set<Subjects> subjects = new HashSet<>();
 
     @ManyToMany(fetch = FetchType.EAGER)
     @JsonIgnore

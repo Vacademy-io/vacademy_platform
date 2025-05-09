@@ -1,6 +1,8 @@
 package vacademy.io.community_service.feature.content_structure.repository;
 
+import jakarta.transaction.Transactional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -19,6 +21,8 @@ public interface ChapterRepository extends JpaRepository<Chapter, String> {
     List<Chapter> findChaptersOfSubject(@Param("subjectId") String subjectId, @Param("streamId") String streamId);
 
     // insert chapter to subject and stream native query
+    @Modifying
+    @Transactional
     @Query(value = """
         INSERT INTO subject_chapter_mapping (subject_id, stream_id, chapter_id)
         VALUES (:subjectId, :streamId, :chapterId)

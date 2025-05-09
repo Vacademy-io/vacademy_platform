@@ -276,7 +276,7 @@ public class AssessmentParticipantsManager {
         assessmentCustomField.setAssessment(assessment);
         assessmentCustomField.setFieldKey(registrationFieldDto.getName().toLowerCase().trim().replace(" ", "_"));
         assessmentCustomField.setFieldName(registrationFieldDto.getName().trim());
-        assessmentCustomField.setFieldOrder(registrationFieldDto.getOrderField());
+        assessmentCustomField.setFieldOrder((registrationFieldDto.getOrderField() == null) ? 0 : registrationFieldDto.getOrderField());
         assessmentCustomField.setFieldType(registrationFieldDto.getType().trim());
         assessmentCustomField.setIsMandatory(registrationFieldDto.getIsMandatory());
         assessmentCustomField.setStatus(ACTIVE.name());
@@ -695,7 +695,8 @@ public class AssessmentParticipantsManager {
             }
 
             QuestionAssessmentSectionMapping questionAssessmentSectionMapping = questionAssessmentSectionMappingService.getMappingById(questionWiseMarks.getQuestion().getId(), questionWiseMarks.getSection().getId());
-            if(Objects.isNull(questionAssessmentSectionMapping)) throw new VacademyException("Section and Question Mapping Not Found");
+            if (Objects.isNull(questionAssessmentSectionMapping))
+                throw new VacademyException("Section and Question Mapping Not Found");
 
             Question currentQuestion = questionWiseMarks.getQuestion();
             String questionHtml = currentQuestion.getTextData().getContent();
@@ -710,8 +711,8 @@ public class AssessmentParticipantsManager {
             return StudentReportAnswerReviewDto.builder()
                     .questionId(currentQuestion.getId())
                     .questionText(currentQuestion.getTextData().toDTO())
-                    .parentId(currentQuestion.getParentRichText()!=null ? currentQuestion.getParentRichText().getId() : null)
-                    .parentRichText(currentQuestion.getTextData()!=null ? currentQuestion.getTextData().toDTO() : null)
+                    .parentId(currentQuestion.getParentRichText() != null ? currentQuestion.getParentRichText().getId() : null)
+                    .parentRichText(currentQuestion.getTextData() != null ? currentQuestion.getTextData().toDTO() : null)
                     .questionName(questionHtml)
                     .questionType(questionType)
                     .questionOrder(questionAssessmentSectionMapping.getQuestionOrder())

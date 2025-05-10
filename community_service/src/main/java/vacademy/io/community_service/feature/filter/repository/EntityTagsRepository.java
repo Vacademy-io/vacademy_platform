@@ -53,7 +53,33 @@ public interface EntityTagsRepository extends JpaRepository<EntityTags, String>,
                 ) AS tag_data
                 WHERE (:entityName IS NULL OR tag_data.entity_name = :entityName)
                 AND (:tagIds IS NULL OR tag_data.tag_id IN (:tagIds))
-            """, nativeQuery = true)
+            """,
+            countQuery = """
+                    SELECT count(DISTINCT tag_data.entity_id)
+                FROM (
+                    SELECT
+                        et.entity_id,
+                        et.entity_name,
+                        et.tag_id,
+                        et.tag_source,
+                        CASE
+                            WHEN et.tag_source = 'LEVEL' THEN l.level_name
+                            WHEN et.tag_source = 'SUBJECT' THEN s.subject_name
+                            WHEN et.tag_source = 'STREAM' THEN st.stream_name
+                            WHEN et.tag_source = 'TAGS' THEN t.tag_name
+                            WHEN et.tag_source = 'DIFFICULTY' THEN et.tag_id
+                            ELSE NULL
+                        END AS tag_display_name
+                    FROM
+                        entity_tags et
+                    LEFT JOIN levels l ON et.tag_id = l.level_id AND et.tag_source = 'LEVEL'
+                    LEFT JOIN subjects s ON et.tag_id = s.subject_id AND et.tag_source = 'SUBJECT'
+                    LEFT JOIN streams st ON et.tag_id = st.stream_id AND et.tag_source = 'STREAM'
+                    LEFT JOIN tags t ON et.tag_id = t.tag_id AND et.tag_source = 'TAGS'
+                ) AS tag_data
+                WHERE (:entityName IS NULL OR tag_data.entity_name = :entityName)
+                AND (:tagIds IS NULL OR tag_data.tag_id IN (:tagIds))
+                """, nativeQuery = true)
     Page<Object[]> findDistinctEntities(
             @Param("entityName") String entityName,
             @Param("tagIds") List<String> tagIds,

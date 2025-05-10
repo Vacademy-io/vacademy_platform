@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.UuidGenerator;
+import vacademy.io.common.institute.dto.GroupDTO;
 
 import java.util.Date;
 
@@ -47,5 +48,13 @@ public class Group {
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
         this.groupValue = groupValue;
+    }
+
+    public Group(GroupDTO groupDTO){
+        this.id = groupDTO.getId();
+        this.groupName = groupDTO.getGroupName();
+        this.parentGroup = groupDTO.getParentGroup();
+        this.isRoot = groupDTO.getIsRoot();
+        this.groupValue = groupDTO.getGroupValue();
     }
 }

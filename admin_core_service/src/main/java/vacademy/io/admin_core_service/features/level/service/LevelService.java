@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.level.service;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.group.service.GroupService;
 import vacademy.io.admin_core_service.features.learner_invitation.enums.LearnerInvitationSourceTypeEnum;
 import vacademy.io.admin_core_service.features.learner_invitation.services.LearnerInvitationService;
 import vacademy.io.admin_core_service.features.level.dto.AddLevelWithCourseDTO;
@@ -16,6 +17,7 @@ import vacademy.io.admin_core_service.features.session.repository.SessionReposit
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.dto.LevelDTO;
+import vacademy.io.common.institute.entity.Group;
 import vacademy.io.common.institute.entity.Level;
 import vacademy.io.common.institute.entity.PackageEntity;
 import vacademy.io.common.institute.entity.session.PackageSession;
@@ -35,6 +37,7 @@ public class LevelService {
     private final SessionRepository sessionRepository;
     private final PackageSessionRepository packageSessionRepository;
     private final LearnerInvitationService learnerInvitationService;
+    private final GroupService groupService;
 
     public Level createOrAddLevel(String id, boolean newLevel, String levelName, Integer durationInDays, String thumbnailFileId) {
         Level level = null;
@@ -70,7 +73,11 @@ public class LevelService {
             throw new VacademyException("Session not found");
         }
         Level level = createOrAddLevel(addLevelWithCourseDTO.getId(), addLevelWithCourseDTO.getNewLevel(), addLevelWithCourseDTO.getLevelName(), addLevelWithCourseDTO.getDurationInDays(), addLevelWithCourseDTO.getThumbnailFileId());
-        packageSessionService.createPackageSession(level, optionalSession.get(), optionalPackageEntity.get(), getStartDatePackageSessionDate(packageId, sessionId),instituteId,user);
+        Group group = null;
+        if (addLevelWithCourseDTO.getGroup() != null) {
+            group = groupService.addGroup(addLevelWithCourseDTO.getGroup());
+        }
+        packageSessionService.createPackageSession(level, optionalSession.get(), optionalPackageEntity.get(),group, getStartDatePackageSessionDate(packageId, sessionId),instituteId,user);
         return level.getId();
     }
 

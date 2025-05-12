@@ -58,7 +58,6 @@ public class VideoSlideService {
 
         // Save question and options
         if (videoSlideDTO.getQuestions() != null) {
-            System.out.println(videoSlideDTO.getQuestions());
             saveVideoSlideQuestionAndOptions(videoSlideDTO.getQuestions(), videoSlide);
         }
 

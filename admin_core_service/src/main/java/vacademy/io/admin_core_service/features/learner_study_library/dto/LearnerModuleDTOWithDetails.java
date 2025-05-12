@@ -12,9 +12,10 @@ import java.util.List;
 @Data
 public class LearnerModuleDTOWithDetails {
     private ModuleDTO module;
+    private Double percentageCompleted;
     private List<ChapterDetailsProjection> chapters;
 
-    public LearnerModuleDTOWithDetails(ModuleDTO module, List<ChapterDetailsProjection> chapters) {
+    public LearnerModuleDTOWithDetails(ModuleDTO module,Double percentageCompleted, List<ChapterDetailsProjection> chapters) {
         this.module = module;
         this.chapters = chapters;
     }

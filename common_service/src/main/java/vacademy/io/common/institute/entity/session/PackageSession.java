@@ -6,6 +6,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.UuidGenerator;
+import vacademy.io.common.institute.entity.Group;
 import vacademy.io.common.institute.entity.Level;
 import vacademy.io.common.institute.entity.PackageEntity;
 
@@ -48,5 +49,9 @@ public class PackageSession {
     @JoinColumn(name = "package_id")
     @ManyToOne
     private PackageEntity packageEntity;
+
+    @JoinColumn(name = "group_id")
+    @ManyToOne
+    private Group group;
 
 }

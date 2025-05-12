@@ -25,5 +25,11 @@ public interface ChapterDetailsProjection {
 
     Integer getDocCount();
 
+    Integer getQuestionSlideCount();
+
+    Integer getAssignmentSlideCount();
+
+    Integer surveySlideCount();
+
     Integer getUnknownCount();
 }

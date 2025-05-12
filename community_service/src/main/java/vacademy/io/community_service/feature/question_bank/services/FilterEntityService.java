@@ -47,7 +47,7 @@ public class FilterEntityService {
         if (StringUtils.hasText(search)) {
             entityResults = repository.findDistinctEntitiesbysearch(entityName, List.copyOf(tagIds), search, pageable);
         } else {
-            entityResults = repository.findDistinctEntities(entityName, List.copyOf(tagIds), pageable);
+            entityResults = repository.findDistinctEntities(entityName, List.copyOf(tagIds.isEmpty() ? new ArrayList<>() : tagIds), pageable);
         }
         return createFilteredEntityResponse(entityResults);
     }

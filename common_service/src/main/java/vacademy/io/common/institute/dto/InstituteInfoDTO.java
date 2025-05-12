@@ -8,6 +8,7 @@ import lombok.NoArgsConstructor;
 
 import java.sql.Timestamp;
 import java.util.List;
+import vacademy.io.common.institute.entity.*;
 
 @Data
 @AllArgsConstructor

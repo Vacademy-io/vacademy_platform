@@ -7,6 +7,7 @@ import vacademy.io.admin_core_service.features.chapter.dto.ChapterDetailsProject
 import vacademy.io.admin_core_service.features.chapter.enums.ChapterStatus;
 import vacademy.io.admin_core_service.features.course.dto.CourseDTOWithDetails;
 import vacademy.io.admin_core_service.features.learner_study_library.dto.LearnerModuleDTOWithDetails;
+import vacademy.io.admin_core_service.features.learner_study_library.dto.LearnerSubjectProjection;
 import vacademy.io.admin_core_service.features.module.dto.ModuleDTO;
 import vacademy.io.admin_core_service.features.module.enums.ModuleStatusEnum;
 import vacademy.io.admin_core_service.features.module.repository.ModuleChapterMappingRepository;
@@ -19,6 +20,7 @@ import vacademy.io.admin_core_service.features.slide.enums.SlideStatus;
 import vacademy.io.admin_core_service.features.slide.repository.SlideRepository;
 import vacademy.io.admin_core_service.features.slide.service.SlideService;
 import vacademy.io.admin_core_service.features.study_library.service.StudyLibraryService;
+import vacademy.io.admin_core_service.features.subject.enums.SubjectStatusEnum;
 import vacademy.io.admin_core_service.features.subject.repository.SubjectPackageSessionRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
@@ -87,11 +89,17 @@ public class LearnerStudyLibraryService {
         return slideRepository.findLearnerSlideDetailsByChapterId(chapterId, List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()));
     }
 
-    public List<SubjectDTO> getSubjectsByPackageSessionId(String packageSessionId, CustomUserDetails user) {
+    public List<LearnerSubjectProjection> getSubjectsByPackageSessionId(String packageSessionId, CustomUserDetails user) {
         if (Objects.isNull(packageSessionId)) {
             throw new VacademyException("Please provide packageSessionId");
         }
-        return subjectPackageSessionRepository.findDistinctSubjectsByPackageSessionId(packageSessionId).stream().map(subject -> new SubjectDTO(subject)).toList();
+        return subjectPackageSessionRepository.findLearnerSubjectsWithFilters(
+                packageSessionId,
+                user.getUserId(),
+                List.of(SubjectStatusEnum.ACTIVE.name()),
+                List.of(ModuleStatusEnum.ACTIVE.name()),
+                        List.of(ChapterStatus.ACTIVE.name()),
+                List.of(ChapterStatus.ACTIVE.name()));
     }
 
     public List<SlideDTO> getLearnerSlides(String chapterId, CustomUserDetails user) {

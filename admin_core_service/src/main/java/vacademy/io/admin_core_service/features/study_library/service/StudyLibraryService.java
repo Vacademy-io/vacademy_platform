@@ -224,11 +224,13 @@ public class StudyLibraryService {
                 List.of(SlideStatus.PUBLISHED.name(),SlideStatus.UNSYNC.name(),SlideStatus.DRAFT.name()),
                 List.of(SlideStatus.PUBLISHED.name(),SlideStatus.UNSYNC.name(),SlideStatus.DRAFT.name()),
                 List.of(QuestionStatusEnum.ACTIVE.name()));
-        System.out.println(jsonDetails);
         return getChaptersFromJson(jsonDetails);
     }
 
     public List<ChapterDTOWithDetails>getChaptersFromJson(String json){
+        if (json == null) {
+            return new ArrayList<>();
+        }
         try {
             return new ObjectMapper().readValue(json, new TypeReference<List<ChapterDTOWithDetails>>(){});
         }

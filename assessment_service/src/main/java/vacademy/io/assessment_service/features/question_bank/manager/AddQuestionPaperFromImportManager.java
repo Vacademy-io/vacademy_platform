@@ -374,7 +374,7 @@ public class AddQuestionPaperFromImportManager {
             option.setMediaId(optionDTO.getMediaId());
 
             if (requestEvaluation.getData().getCorrectOptionIds().contains(String.valueOf(optionDTO.getPreviewId()))) {
-                correctOptionIds.add(optionId.toString());
+                correctOptionIds.add(option.getId());
             }
             options.add(option);
         }

@@ -115,6 +115,7 @@ public class UserInstituteService {
         institute.setLogoFileId(instituteInfo.getInstituteLogoFileId());
         institute.setLetterHeadFileId(instituteInfo.getLetterHeadFileId());
         institute.setInstituteType(instituteInfo.getType());
+        institute.setInstituteThemeCode(instituteInfo.getInstituteThemeCode());
         return institute;
     }
 

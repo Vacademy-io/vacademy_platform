@@ -41,13 +41,13 @@ public class QuestionSlide {
     @Column(name = "media_id")
     private String mediaId;
 
-    @Column(name = "question_response_type", nullable = false)
+    @Column(name = "question_response_type")
     private String questionResponseType;
 
-    @Column(name = "question_type", nullable = false)
+    @Column(name = "question_type")
     private String questionType;
 
-    @Column(name = "access_level", nullable = false)
+    @Column(name = "access_level")
     private String accessLevel;
 
     @Column(name = "auto_evaluation_json")

@@ -130,21 +130,60 @@ public class VideoSlideService {
         VideoSlideQuestion videoSlideQuestion = new VideoSlideQuestion();
         videoSlideQuestion.setId(UUID.randomUUID().toString());
         videoSlideQuestion.setVideoSlide(videoSlide);
-        videoSlideQuestion.setParentRichText(new RichTextData(videoSlideQuestionDTO.getParentRichText()));
-        videoSlideQuestion.setTextData(new RichTextData(videoSlideQuestionDTO.getTextData()));
-        videoSlideQuestion.setExplanationTextData(new RichTextData(videoSlideQuestionDTO.getExplanationTextData()));
-        videoSlideQuestion.setMediaId(videoSlideQuestionDTO.getMediaId());
-        videoSlideQuestion.setQuestionResponseType(videoSlideQuestionDTO.getQuestionResponseType());
-        videoSlideQuestion.setQuestionType(videoSlideQuestionDTO.getQuestionType());
-        videoSlideQuestion.setAccessLevel(videoSlideQuestionDTO.getAccessLevel());
-        videoSlideQuestion.setAutoEvaluationJson(videoSlideQuestionDTO.getAutoEvaluationJson());
-        videoSlideQuestion.setEvaluationType(videoSlideQuestionDTO.getEvaluationType());
-        videoSlideQuestion.setQuestionOrder(videoSlideQuestionDTO.getQuestionOrder());
-        videoSlideQuestion.setQuestionTimeInMillis(videoSlideQuestionDTO.getQuestionTimeInMillis());
-        videoSlideQuestion.setStatus(videoSlideQuestionDTO.getStatus());
 
-        MCQEvaluationDTO mcqEvaluationDTO = readJson(videoSlideQuestionDTO.getAutoEvaluationJson());
-        createVideoSlideQuestionOptions(mcqEvaluationDTO,videoSlideQuestionDTO.getOptions(),videoSlideQuestion);
+        if (videoSlideQuestionDTO.getParentRichText() != null) {
+            videoSlideQuestion.setParentRichText(new RichTextData(videoSlideQuestionDTO.getParentRichText()));
+        }
+
+        if (videoSlideQuestionDTO.getTextData() != null) {
+            videoSlideQuestion.setTextData(new RichTextData(videoSlideQuestionDTO.getTextData()));
+        }
+
+        if (videoSlideQuestionDTO.getExplanationTextData() != null) {
+            videoSlideQuestion.setExplanationTextData(new RichTextData(videoSlideQuestionDTO.getExplanationTextData()));
+        }
+
+        if (StringUtils.hasText(videoSlideQuestionDTO.getMediaId())) {
+            videoSlideQuestion.setMediaId(videoSlideQuestionDTO.getMediaId());
+        }
+
+        if (StringUtils.hasText(videoSlideQuestionDTO.getQuestionResponseType())) {
+            videoSlideQuestion.setQuestionResponseType(videoSlideQuestionDTO.getQuestionResponseType());
+        }
+
+        if (StringUtils.hasText(videoSlideQuestionDTO.getQuestionType())) {
+            videoSlideQuestion.setQuestionType(videoSlideQuestionDTO.getQuestionType());
+        }
+
+        if (StringUtils.hasText(videoSlideQuestionDTO.getAccessLevel())) {
+            videoSlideQuestion.setAccessLevel(videoSlideQuestionDTO.getAccessLevel());
+        }
+
+        if (StringUtils.hasText(videoSlideQuestionDTO.getAutoEvaluationJson())) {
+            videoSlideQuestion.setAutoEvaluationJson(videoSlideQuestionDTO.getAutoEvaluationJson());
+        }
+
+        if (StringUtils.hasText(videoSlideQuestionDTO.getEvaluationType())) {
+            videoSlideQuestion.setEvaluationType(videoSlideQuestionDTO.getEvaluationType());
+        }
+
+        if (videoSlideQuestionDTO.getQuestionOrder() != null) {
+            videoSlideQuestion.setQuestionOrder(videoSlideQuestionDTO.getQuestionOrder());
+        }
+
+        if (videoSlideQuestionDTO.getQuestionTimeInMillis() != null) {
+            videoSlideQuestion.setQuestionTimeInMillis(videoSlideQuestionDTO.getQuestionTimeInMillis());
+        }
+
+        if (StringUtils.hasText(videoSlideQuestionDTO.getStatus())) {
+            videoSlideQuestion.setStatus(videoSlideQuestionDTO.getStatus());
+        }
+
+        if (StringUtils.hasText(videoSlideQuestionDTO.getAutoEvaluationJson())) {
+            MCQEvaluationDTO mcqEvaluationDTO = readJson(videoSlideQuestionDTO.getAutoEvaluationJson());
+            createVideoSlideQuestionOptions(mcqEvaluationDTO, videoSlideQuestionDTO.getOptions(), videoSlideQuestion);
+        }
+
         return videoSlideQuestion;
     }
 
@@ -191,13 +230,13 @@ public class VideoSlideService {
 
     private void updateVideoSlideQuestionAndOptions(List<VideoSlideQuestionDTO> questionDTOs, VideoSlide videoSlide) {
         Map<String, VideoSlideQuestionDTO> questionMap = new HashMap<>();
-        List<VideoSlideQuestion> toAdd = new ArrayList<>();
+        List<VideoSlideQuestionDTO> toAdd = new ArrayList<>();
 
         // Step 1: Separate new and existing questions
         separateNewAndExistingQuestions(questionDTOs, toAdd, questionMap, videoSlide);
 
         // Step 2: Save all new questions in bulk
-        saveNewQuestionsInBulk(toAdd);
+        saveVideoSlideQuestionAndOptions(toAdd, videoSlide);
 
         // Step 3: Fetch existing questions
         List<VideoSlideQuestion> videoSlideQuestions = fetchExistingQuestions(questionMap);
@@ -205,10 +244,10 @@ public class VideoSlideService {
         updateExistingQuestionsAndOptions(videoSlideQuestions, questionMap);
     }
 
-    private void separateNewAndExistingQuestions(List<VideoSlideQuestionDTO> questionDTOs, List<VideoSlideQuestion> toAdd, Map<String, VideoSlideQuestionDTO> questionMap, VideoSlide videoSlide) {
+    private void separateNewAndExistingQuestions(List<VideoSlideQuestionDTO> questionDTOs, List<VideoSlideQuestionDTO> toAdd, Map<String, VideoSlideQuestionDTO> questionMap, VideoSlide videoSlide) {
         for (VideoSlideQuestionDTO questionDTO : questionDTOs) {
             if (questionDTO.isNewQuestion()) {
-                toAdd.add(new VideoSlideQuestion(questionDTO, videoSlide));
+                toAdd.add(questionDTO);
             } else {
                 questionMap.put(questionDTO.getId(), questionDTO);
             }
@@ -236,13 +275,11 @@ public class VideoSlideService {
     }
 
     private void updateQuestionFields(VideoSlideQuestion videoSlideQuestion, VideoSlideQuestionDTO videoSlideQuestionDTO) {
-        // Add parent rich text data if available
         if (videoSlideQuestionDTO.getTextData() != null) {
             RichTextDataDTO parentRichTextDTO = videoSlideQuestionDTO.getTextData();
             videoSlideQuestion.setParentRichText(new RichTextData(parentRichTextDTO));
         }
 
-        // Add explanation text data if available
         if (videoSlideQuestionDTO.getExplanationTextData() != null) {
             RichTextDataDTO explanationTextDTO = videoSlideQuestionDTO.getExplanationTextData();
             videoSlideQuestion.setExplanationTextData(new RichTextData(explanationTextDTO));
@@ -252,10 +289,30 @@ public class VideoSlideService {
             videoSlideQuestion.setStatus(videoSlideQuestionDTO.getStatus());
         }
 
-        // Update the other fields
-        videoSlideQuestion.setQuestionType(videoSlideQuestionDTO.getQuestionType());
+        if (StringUtils.hasText(videoSlideQuestionDTO.getAccessLevel())){
+            videoSlideQuestion.setAccessLevel(videoSlideQuestionDTO.getAccessLevel());
+        }
 
-        // Save the updated VideoSlideQuestion entity
+        if (StringUtils.hasText(videoSlideQuestionDTO.getQuestionType())){
+            videoSlideQuestion.setQuestionType(videoSlideQuestionDTO.getQuestionType());
+        }
+
+        if (StringUtils.hasText(videoSlideQuestionDTO.getMediaId())){
+            videoSlideQuestion.setMediaId(videoSlideQuestionDTO.getMediaId());
+        }
+
+        if (videoSlideQuestionDTO.getQuestionTimeInMillis() != null){
+            videoSlideQuestion.setQuestionTimeInMillis(videoSlideQuestionDTO.getQuestionTimeInMillis());
+        }
+
+        if (StringUtils.hasText(videoSlideQuestionDTO.getEvaluationType())){
+            videoSlideQuestion.setEvaluationType(videoSlideQuestionDTO.getEvaluationType());
+        }
+
+        if (videoSlideQuestionDTO.getQuestionOrder() != null){
+            videoSlideQuestion.setQuestionOrder(videoSlideQuestionDTO.getQuestionOrder());
+        }
+
         videoSlideQuestionRepository.save(videoSlideQuestion);
     }
 

@@ -468,7 +468,7 @@ public class SlideService {
 
 
     public Slide updateSlide(String slideId, String status, String title, String description, String imageFileId, Integer slideOrder, String chapterId) {
-        Slide slide = new Slide();
+        Slide slide = slideRepository.findById(slideId).orElseThrow(() -> new VacademyException("Slide not found!!!"));
 
         if (StringUtils.hasText(slideId)) {
             slide.setId(slideId);

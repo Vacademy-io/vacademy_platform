@@ -6,10 +6,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
+import vacademy.io.common.media.dto.FileDetailsDTO;
 import vacademy.io.media_service.dto.chat_with_pdf.ChatWithPdfResponse;
 import vacademy.io.media_service.dto.task_status.TaskStatusDto;
+import vacademy.io.media_service.entity.FileConversionStatus;
 import vacademy.io.media_service.entity.TaskStatus;
 import vacademy.io.media_service.enums.TaskStatusEnum;
+import vacademy.io.media_service.exceptions.FileDownloadException;
 import vacademy.io.media_service.repository.TaskStatusRepository;
 import vacademy.io.media_service.service.pdf_covert.ConversationDto;
 
@@ -20,12 +24,18 @@ import java.util.*;
 public class TaskStatusService {
 
     private final TaskStatusRepository taskStatusRepository;
+
+    private final FileConversionStatusService fileConversionStatusService;
+
+    private final FileService fileService;
     @Autowired
     private ObjectMapper objectMapper;
 
     @Autowired
-    public TaskStatusService(TaskStatusRepository taskStatusRepository) {
+    public TaskStatusService(TaskStatusRepository taskStatusRepository, FileConversionStatusService fileConversionStatusService, FileService fileService) {
         this.taskStatusRepository = taskStatusRepository;
+        this.fileConversionStatusService = fileConversionStatusService;
+        this.fileService = fileService;
     }
 
     public TaskStatus saveTaskStatus(TaskStatus taskStatus) {
@@ -54,6 +64,10 @@ public class TaskStatusService {
 
     public List<TaskStatus> getTaskStatusesByInstituteIdAndTaskType(String instituteId, String taskType) {
         return taskStatusRepository.findByInstituteIdAndTypeOrderByCreatedAtDesc(instituteId, taskType);
+    }
+
+    public List<TaskStatus> findTop50ByInstituteIdOrderByCreatedAtDesc(String instituteId) {
+        return taskStatusRepository.findTop50ByInstituteIdOrderByCreatedAtDesc(instituteId);
     }
 
     public List<TaskStatus> getTaskStatusesByInputType(String inputType) {
@@ -112,12 +126,27 @@ public class TaskStatusService {
 
     public List<TaskStatusDto> getAllTaskStatusDtoForInstituteIdAndTaskType(String instituteId, String taskType) {
         List<TaskStatusDto> responses = new ArrayList<>();
-        getTaskStatusesByInstituteIdAndTaskType(instituteId, taskType).forEach(task -> {
-            responses.add(task.getTaskDto());
+        List<TaskStatus> taskStatuses = StringUtils.hasText(taskType) ? (List<TaskStatus>) getTaskStatusesByInstituteIdAndTaskType(instituteId, taskType) : (List<TaskStatus>) findTop50ByInstituteIdOrderByCreatedAtDesc(instituteId);
+
+        taskStatuses.forEach(task -> {
+            if (task.getInputType() == null || task.getInputId() == null) responses.add(task.getTaskDto(null));
+            else {
+                Optional<FileConversionStatus> fileStatus = fileConversionStatusService.findByVendorFileId(task.getInputId());
+                if (fileStatus.isEmpty()) responses.add(task.getTaskDto(null));
+                else {
+                    try {
+                        FileDetailsDTO fileDetailsDTO = fileService.getFileDetailsWithExpiryAndId(fileStatus.get().getFileId(), 1);
+                        responses.add(task.getTaskDto(fileDetailsDTO));
+                    } catch (Exception e) {
+                        responses.add(task.getTaskDto(null));
+                    }
+                }
+            }
         });
 
         return responses;
     }
+
 
     public String getLast5ConversationFromInputIdAndInputType(String instituteId, String type, String inputId, String inputType) {
         List<TaskStatus> taskStatuses = taskStatusRepository

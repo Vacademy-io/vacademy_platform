@@ -63,7 +63,7 @@ public class ChatAiManager {
         List<TaskStatusDto> responses = new ArrayList<>();
         List<TaskStatus> allTasks = taskStatusService.getTaskStatusesByInstituteIdAndNoParentId(instituteId);
         allTasks.forEach(task -> {
-            responses.add(task.getTaskDto());
+            responses.add(task.getTaskDto(null));
         });
         return ResponseEntity.ok(responses);
     }

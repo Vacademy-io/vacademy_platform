@@ -7,6 +7,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import lombok.Data;
 import org.hibernate.annotations.UuidGenerator;
+import vacademy.io.common.media.dto.FileDetailsDTO;
 import vacademy.io.media_service.dto.chat_with_pdf.ChatResultJsonDto;
 import vacademy.io.media_service.dto.chat_with_pdf.ChatWithPdfResponse;
 import vacademy.io.media_service.dto.lecture.LectureFeedbackDto;
@@ -61,7 +62,7 @@ public class TaskStatus {
     private String dynamicValuesMap;
 
 
-    public TaskStatusDto getTaskDto() {
+    public TaskStatusDto getTaskDto(FileDetailsDTO fileDetailsDTO) {
         return TaskStatusDto.builder()
                 .id(this.id)
                 .inputId(this.inputId)
@@ -72,6 +73,7 @@ public class TaskStatus {
                 .instituteId(this.instituteId)
                 .createdAt(this.createdAt)
                 .parentId(this.parentId)
+                .fileDetail(fileDetailsDTO)
                 .updatedAt(this.updatedAt).build();
     }
 

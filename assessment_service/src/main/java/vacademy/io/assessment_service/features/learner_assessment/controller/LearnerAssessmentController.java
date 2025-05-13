@@ -4,6 +4,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.assessment_service.features.assessment.manager.AssessmentParticipantsManager;
+import vacademy.io.assessment_service.features.learner_assessment.dto.AssessmentCountDto;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 @RestController
@@ -14,7 +15,7 @@ public class LearnerAssessmentController {
     private AssessmentParticipantsManager assessmentParticipantsManager;
 
     @GetMapping("/assessment-count-for-user-id")
-    public ResponseEntity<Integer> getAssessmentCountForUserId(@RequestAttribute("user") CustomUserDetails user, @RequestParam String instituteId, @RequestParam String batchId) {
+    public ResponseEntity<AssessmentCountDto> getAssessmentCountForUserId(@RequestAttribute("user") CustomUserDetails user, @RequestParam String instituteId, @RequestParam String batchId) {
         return ResponseEntity.ok(assessmentParticipantsManager.getAssessmentCountForUserId(user, instituteId, batchId));
     }
 }

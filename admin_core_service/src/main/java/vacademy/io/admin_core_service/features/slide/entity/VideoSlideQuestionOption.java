@@ -17,7 +17,6 @@ public class VideoSlideQuestionOption {
 
     @Id
     @Column(name = "id", nullable = false)
-    @UuidGenerator
     private String id;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -55,5 +54,7 @@ public class VideoSlideQuestionOption {
 
         this.mediaId = dto.getMediaId();
     }
+
+    public VideoSlideQuestionOption() {}
 
 }

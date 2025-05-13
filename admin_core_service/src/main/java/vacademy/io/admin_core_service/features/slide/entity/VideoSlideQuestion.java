@@ -16,7 +16,6 @@ import java.util.List;
 public class VideoSlideQuestion {
 
     @Id
-    @UuidGenerator
     @Column(name = "id", nullable = false)
     private String id;
 
@@ -92,6 +91,8 @@ public class VideoSlideQuestion {
                     .toList();
         }
     }
+
+    public VideoSlideQuestion() {}
 
 }
 

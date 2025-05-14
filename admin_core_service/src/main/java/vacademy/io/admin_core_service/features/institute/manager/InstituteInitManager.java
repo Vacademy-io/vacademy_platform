@@ -4,6 +4,7 @@ package vacademy.io.admin_core_service.features.institute.manager;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import vacademy.io.admin_core_service.features.group.repository.PackageGroupMappingRepository;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.institute.service.InstituteModuleService;
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
@@ -35,6 +36,9 @@ public class InstituteInitManager {
 
     @Autowired
     PackageSessionRepository packageSessionRepository;
+
+    @Autowired
+    private PackageGroupMappingRepository packageGroupMappingRepository;
 
     public InstituteInfoDTO getInstituteDetails(String instituteId) {
 
@@ -74,6 +78,7 @@ public class InstituteInitManager {
         instituteInfoDTO.setSubjects(subjectRepository.findDistinctSubjectsByInstituteId(institute.get().getId()).stream().map((SubjectDTO::new)).toList());
         instituteInfoDTO.setSessionExpiryDays(List.of(30, 180, 360));
         instituteInfoDTO.setLetterHeadFileId(institute.get().getLetterHeadFileId());
+        instituteInfoDTO.setPackageGroups(packageGroupMappingRepository.findAllByInstituteId(institute.get().getId()).stream().map((obj)->obj.mapToDTO()).toList());
         return instituteInfoDTO;
     }
 }

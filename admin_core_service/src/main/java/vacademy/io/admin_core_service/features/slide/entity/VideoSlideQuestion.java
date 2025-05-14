@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.slide.entity;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import lombok.ToString;
 import org.hibernate.annotations.UuidGenerator;
 import vacademy.io.admin_core_service.features.common.entity.RichTextData;
 import vacademy.io.admin_core_service.features.slide.dto.VideoSlideQuestionDTO;

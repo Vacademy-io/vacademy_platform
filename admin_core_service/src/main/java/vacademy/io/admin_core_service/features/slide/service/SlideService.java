@@ -464,7 +464,6 @@ public class SlideService {
             chapterToSlides.setStatus(status);
         }
         chapterToSlidesRepository.save(chapterToSlides);
-
     }
 
 
@@ -489,7 +488,6 @@ public class SlideService {
         if (StringUtils.hasText(imageFileId)) {
             slide.setImageFileId(imageFileId);
         }
-
         slide = slideRepository.save(slide);
         updateChapterToSlideMapping(chapterId, slide.getId(), slideOrder, status);
         return slide;

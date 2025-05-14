@@ -52,12 +52,16 @@ public class Option {
     public Option(OptionDTO optionDTO, QuestionSlide questionSlide) {
         this.id = optionDTO.getId();
 
-        this.text = new RichTextData(optionDTO.getText().getId(), optionDTO.getText().getType(), optionDTO.getText().getContent());
+        if (optionDTO.getText() != null) {
+            this.text = new RichTextData(optionDTO.getText());
+        }
+
+        if (optionDTO.getExplanationTextData() != null) {
+            this.explanationTextData = new RichTextData(optionDTO.getExplanationTextData());
+        }
 
         this.questionSlide = questionSlide;
-
-        this.explanationTextData = new RichTextData(optionDTO.getExplanationTextData().getId(), optionDTO.getExplanationTextData().getType(), optionDTO.getExplanationTextData().getContent());
-
         this.mediaId = optionDTO.getMediaId();
     }
+
 }

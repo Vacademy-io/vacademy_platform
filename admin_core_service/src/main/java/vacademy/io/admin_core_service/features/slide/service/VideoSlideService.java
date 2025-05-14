@@ -116,11 +116,11 @@ public class VideoSlideService {
 
     private void saveVideoSlideQuestionAndOptions(List<VideoSlideQuestionDTO> questionDTOs, VideoSlide videoSlide) {
         List<VideoSlideQuestion> questionsToSave = new ArrayList<>();
-
         for (VideoSlideQuestionDTO questionDTO : questionDTOs) {
             VideoSlideQuestion videoSlideQuestion = createVideoSlideQuestion(videoSlide, questionDTO);
             questionsToSave.add(videoSlideQuestion);
         }
+
 
         // Save all questions in bulk
         videoSlideQuestionRepository.saveAll(questionsToSave);
@@ -183,7 +183,6 @@ public class VideoSlideService {
             MCQEvaluationDTO mcqEvaluationDTO = readJson(videoSlideQuestionDTO.getAutoEvaluationJson());
             createVideoSlideQuestionOptions(mcqEvaluationDTO, videoSlideQuestionDTO.getOptions(), videoSlideQuestion);
         }
-
         return videoSlideQuestion;
     }
 
@@ -192,18 +191,14 @@ public class VideoSlideService {
         List<String>correctOptionIds = new ArrayList<>();
         List<VideoSlideQuestionOption>options = new ArrayList<>();
         for (VideoSlideQuestionOptionDTO optionDTO : optionsDTO) {
-
-            VideoSlideQuestionOption videoSlideQuestionOption = new VideoSlideQuestionOption();
-            videoSlideQuestionOption.setVideoSlideQuestion(videoSlideQuestion);
-            videoSlideQuestionOption.setId(UUID.randomUUID().toString());
-            videoSlideQuestionOption.setExplanationTextData(new RichTextData(optionDTO.getExplanationTextData()));
-            videoSlideQuestionOption.setText(new RichTextData(optionDTO.getText()));
-            videoSlideQuestionOption.setMediaId(optionDTO.getMediaId());
-
+            optionDTO.setId(UUID.randomUUID().toString());
+            VideoSlideQuestionOption videoSlideQuestionOption = new VideoSlideQuestionOption(optionDTO,videoSlideQuestion);
             if (correctOptionPreviewIds.contains(optionDTO.getPreviewId())){
                 correctOptionIds.add(videoSlideQuestionOption.getId());
             }
+            options.add(videoSlideQuestionOption);
         }
+        videoSlideQuestion.setOptions(options);
         evaluationDTO.getData().setCorrectOptionIds(correctOptionIds);
 
         String json = writeJson(evaluationDTO);
@@ -271,6 +266,7 @@ public class VideoSlideService {
             // Update question fields
             updateQuestionFields(videoSlideQuestion, videoSlideQuestionDTO);
             // Handle and update options
+            System.out.println("Updating options for question: " + videoSlideQuestion.getId());
         }
     }
 

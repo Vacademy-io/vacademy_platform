@@ -64,7 +64,7 @@ public class CourseService {
     private void createPackageSessionForDefaultLevelAndSession(PackageEntity savedPackage,String instituteId, CustomUserDetails user) {
         Level level = levelService.getLevelById("DEFAULT");
         Session session = sessionService.getSessionById("DEFAULT");
-        packageSessionService.createPackageSession(level, session, savedPackage, new Date(),instituteId,user);
+        packageSessionService.createPackageSession(level, session, savedPackage,null, new Date(),instituteId,user);
     }
 
     private void createPackageSession(PackageEntity savedPackage, List<AddNewSessionDTO> addNewSessionDTOS, CustomUserDetails user,String instituteId) {

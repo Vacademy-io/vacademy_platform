@@ -355,13 +355,15 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
             "AND aur.status IN :statusList " +
             "AND aur.source IN :sourceList " +
             "AND a.status IN :assessmentStatus " +
+            "AND a.assessmentType IN :assessmentType " +
             "AND (a.boundEndTime >= CURRENT_TIMESTAMP)")
     Integer countDistinctAssessmentsByUserAndFilters(
             @Param("userId") String userId,
             @Param("instituteId") String instituteId,
             @Param("statusList") List<String> statusList,
             @Param("sourceList") List<String> sourceList,
-            @Param("assessmentStatus") List<String> assessmentStatus
+            @Param("assessmentStatus") List<String> assessmentStatus,
+            @Param("assessmentType") List<String> assessmentType
     );
 
     @Query("SELECT aur FROM AssessmentUserRegistration aur WHERE aur.assessment.id = :assessmentId AND aur.status IN :statuses")

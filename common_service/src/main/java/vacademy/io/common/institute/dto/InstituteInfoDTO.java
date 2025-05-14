@@ -41,5 +41,6 @@ public class InstituteInfoDTO {
     private List<String> studentStatuses;
     private List<SubjectDTO> subjects;
     private List<Integer> sessionExpiryDays;
+    private List<PackageGroupDTO>packageGroups;
     private String letterHeadFileId;
 }

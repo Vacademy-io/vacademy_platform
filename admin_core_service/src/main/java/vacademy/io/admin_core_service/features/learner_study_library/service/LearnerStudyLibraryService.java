@@ -1,12 +1,15 @@
 package vacademy.io.admin_core_service.features.learner_study_library.service;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.chapter.dto.ChapterDetailsProjection;
 import vacademy.io.admin_core_service.features.chapter.enums.ChapterStatus;
 import vacademy.io.admin_core_service.features.course.dto.CourseDTOWithDetails;
 import vacademy.io.admin_core_service.features.learner_study_library.dto.LearnerModuleDTOWithDetails;
+import vacademy.io.admin_core_service.features.learner_study_library.dto.LearnerSlidesDetailDTO;
 import vacademy.io.admin_core_service.features.learner_study_library.dto.LearnerSubjectProjection;
 import vacademy.io.admin_core_service.features.module.dto.ModuleDTO;
 import vacademy.io.admin_core_service.features.module.enums.ModuleStatusEnum;
@@ -76,6 +79,9 @@ public class LearnerStudyLibraryService {
     }
 
     private List<LearnerModuleDTOWithDetails> mapToLearnerModuleDTOWithDetails(String rawJson) {
+        if (!StringUtils.hasText(rawJson)) {
+            return new ArrayList<>();
+        }
         try {
             return objectMapper.readValue(
                     rawJson,
@@ -102,16 +108,28 @@ public class LearnerStudyLibraryService {
                 List.of(ChapterStatus.ACTIVE.name()));
     }
 
-    public List<SlideDTO> getLearnerSlides(String chapterId, CustomUserDetails user) {
+    public List<LearnerSlidesDetailDTO> getLearnerSlides(String chapterId, CustomUserDetails user) {
         // Fetch JSON response from repository
         String jsonSlides = slideRepository.getSlidesByChapterId(
                 chapterId,
+                user.getUserId(),
                 List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
                 List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
                 List.of(QuestionStatusEnum.ACTIVE.name()) // Added missing closing parenthesis here
         );
 
         // Map the JSON to List<SlideDTO>
-        return slideService.mapToSlideDTOList(jsonSlides);
+        return mapToSlideDTOList(jsonSlides);
+    }
+
+    public List<LearnerSlidesDetailDTO> mapToSlideDTOList(String jsonSlides) {
+        if (!StringUtils.hasText(jsonSlides)) {
+            return List.of();
+        }
+        try {
+            return objectMapper.readValue(jsonSlides, new TypeReference<List<LearnerSlidesDetailDTO>>() {});
+        } catch (Exception e) {
+            throw new VacademyException("Unable to map to SlideDTO list: " + e.getMessage());
+        }
     }
 }

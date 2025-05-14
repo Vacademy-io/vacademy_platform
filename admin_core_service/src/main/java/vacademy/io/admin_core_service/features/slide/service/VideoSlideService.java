@@ -266,7 +266,6 @@ public class VideoSlideService {
             // Update question fields
             updateQuestionFields(videoSlideQuestion, videoSlideQuestionDTO);
             // Handle and update options
-            System.out.println("Updating options for question: " + videoSlideQuestion.getId());
         }
     }
 

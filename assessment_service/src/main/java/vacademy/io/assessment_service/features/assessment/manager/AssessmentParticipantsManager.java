@@ -23,7 +23,6 @@ import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.resp
 import vacademy.io.assessment_service.features.assessment.dto.create_assessment.AssessmentRegistrationsDto;
 import vacademy.io.assessment_service.features.assessment.entity.*;
 import vacademy.io.assessment_service.features.assessment.enums.*;
-import vacademy.io.assessment_service.features.assessment.enums.asessment_enums.AssessmentTypeEnums;
 import vacademy.io.assessment_service.features.assessment.notification.AssessmentReportNotificationService;
 import vacademy.io.assessment_service.features.assessment.repository.*;
 import vacademy.io.assessment_service.features.assessment.service.HtmlBuilderService;
@@ -32,7 +31,6 @@ import vacademy.io.assessment_service.features.assessment.service.assessment_get
 import vacademy.io.assessment_service.features.assessment.service.bulk_entry_services.AssessmentBatchRegistrationService;
 import vacademy.io.assessment_service.features.assessment.service.bulk_entry_services.QuestionAssessmentSectionMappingService;
 import vacademy.io.assessment_service.features.evaluation.service.QuestionEvaluationService;
-import vacademy.io.assessment_service.features.learner_assessment.dto.AssessmentCountDto;
 import vacademy.io.assessment_service.features.learner_assessment.entity.QuestionWiseMarks;
 import vacademy.io.assessment_service.features.learner_assessment.service.QuestionWiseMarksService;
 import vacademy.io.assessment_service.features.notification.service.AssessmentNotificationService;
@@ -612,32 +610,18 @@ public class AssessmentParticipantsManager {
                 filter.getAttemptType().get(0).equals(UserRegistrationFilterEnum.PENDING.name());
     }
 
-    public AssessmentCountDto getAssessmentCountForUserId(CustomUserDetails user, String instituteId, String batchId) {
+    public Integer getAssessmentCountForUserId(CustomUserDetails user, String instituteId, String batchId) {
         Integer userAssessmentCount = assessmentUserRegistrationRepository.countDistinctAssessmentsByUserAndFilters(
                 user.getId(),
                 instituteId,
                 List.of(ACTIVE.name()),
                 List.of(UserRegistrationSources.ADMIN_PRE_REGISTRATION.name(), UserRegistrationSources.OPEN_REGISTRATION.name()),
-                List.of(AssessmentStatus.PUBLISHED.name()), // Corrected List format
-                List.of(AssessmentTypeEnums.ASSESSMENT.name())
+                List.of(AssessmentStatus.PUBLISHED.name()) // Corrected List format
         );
 
-        Integer userHomeworkAssessmentCount = assessmentUserRegistrationRepository.countDistinctAssessmentsByUserAndFilters(
-                user.getId(),
-                instituteId,
-                List.of(ACTIVE.name()),
-                List.of(UserRegistrationSources.ADMIN_PRE_REGISTRATION.name(), UserRegistrationSources.OPEN_REGISTRATION.name()),
-                List.of(AssessmentStatus.PUBLISHED.name()), // Corrected List format
-                List.of(AssessmentTypeEnums.HOMEWORK.name())
-        );
+        Integer batchAssessmentCount = assessmentBatchRegistrationService.countAssessmentsForBatch(batchId, user, instituteId);
 
-        Integer batchAssessmentCount = assessmentBatchRegistrationService.countAssessmentsForBatch(batchId, user, instituteId, List.of(AssessmentTypeEnums.ASSESSMENT.name()));
-        Integer batchHomeworkAssessmentCount = assessmentBatchRegistrationService.countAssessmentsForBatch(batchId, user, instituteId, List.of(AssessmentTypeEnums.HOMEWORK.name()));
-
-        return AssessmentCountDto.builder()
-                .testAssigned(userAssessmentCount + batchAssessmentCount)
-                .homeworkAssigned(userHomeworkAssessmentCount+batchHomeworkAssessmentCount)
-                .build(); // Correct sum operation
+        return userAssessmentCount + batchAssessmentCount; // Correct sum operation
     }
 
 

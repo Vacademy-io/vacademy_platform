@@ -24,4 +24,6 @@ public class OptionDTO {
     private RichTextDataDTO explanationTextData;
 
     private String mediaId;
+
+    private String previewId;
 }

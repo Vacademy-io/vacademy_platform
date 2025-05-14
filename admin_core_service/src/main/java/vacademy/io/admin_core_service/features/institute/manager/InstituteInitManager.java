@@ -78,6 +78,7 @@ public class InstituteInitManager {
         instituteInfoDTO.setSubjects(subjectRepository.findDistinctSubjectsByInstituteId(institute.get().getId()).stream().map((SubjectDTO::new)).toList());
         instituteInfoDTO.setSessionExpiryDays(List.of(30, 180, 360));
         instituteInfoDTO.setLetterHeadFileId(institute.get().getLetterHeadFileId());
+        instituteInfoDTO.setPackageGroups(packageGroupMappingRepository.findAllByInstituteId(institute.get().getId()).stream().map((obj)->obj.mapToDTO()).toList());
         return instituteInfoDTO;
     }
 }

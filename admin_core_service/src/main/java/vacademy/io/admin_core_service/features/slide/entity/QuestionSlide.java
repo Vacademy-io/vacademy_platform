@@ -80,9 +80,19 @@ public class QuestionSlide {
 
     public QuestionSlide(QuestionSlideDTO dto) {
         this.id = dto.getId();
-        this.parentRichText = new RichTextData(dto.getParentRichText());  // Assuming a constructor exists in RichTextData to handle the DTO
-        this.textData = new RichTextData(dto.getTextData());
-        this.explanationTextData = new RichTextData(dto.getExplanationTextData());
+
+        if (dto.getParentRichText() != null) {
+            this.parentRichText = new RichTextData(dto.getParentRichText());
+        }
+
+        if (dto.getTextData() != null) {
+            this.textData = new RichTextData(dto.getTextData());
+        }
+
+        if (dto.getExplanationTextData() != null) {
+            this.explanationTextData = new RichTextData(dto.getExplanationTextData());
+        }
+
         this.mediaId = dto.getMediaId();
         this.questionResponseType = dto.getQuestionResponseType();
         this.questionType = dto.getQuestionType();
@@ -93,9 +103,12 @@ public class QuestionSlide {
         this.reAttemptCount = dto.getReAttemptCount();
         this.points = dto.getPoints();
         this.sourceType = dto.getSourceType();
-        // Convert the OptionDTO list to Option entities
-        this.options = dto.getOptions().stream()
-                .map(optionDTO -> new Option(optionDTO, this))  // Assuming a constructor in Option for OptionDTO
-                .collect(Collectors.toList());
+
+        if (dto.getOptions() != null) {
+            this.options = dto.getOptions().stream()
+                    .map(optionDTO -> new Option(optionDTO, this))
+                    .collect(Collectors.toList());
+        }
     }
+
 }

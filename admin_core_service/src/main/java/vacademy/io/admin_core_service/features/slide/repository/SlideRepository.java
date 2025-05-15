@@ -238,27 +238,16 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                     s.status AS status, 
                     s.image_file_id AS imageFileId, 
                     
-                    ds.id AS documentId, 
-                    ds.title AS documentTitle, 
-                    ds.cover_file_id AS documentCoverFileId, 
-                    ds.type AS documentType,
-                    
-                    vs.id AS videoId, 
-                    vs.title AS videoTitle, 
-                    vs.description AS videoDescription, 
-                    vs.published_url AS publishedUrl,
-                    vs.source_type AS videoSourceType,
-                    ds.published_data AS publishedData,
-                    cts.slide_order AS slideOrder, 
+             
                     -- Parse the value from learner_operation to Long based on the operation field
                     CASE 
                         WHEN lo.operation = 'VIDEO_LAST_TIMESTAMP' THEN CAST(lo.value AS BIGINT)  
                         ELSE NULL
-                    END AS videoLastTimestamp,
+                    END AS progressMarker,
                     CASE 
                         WHEN lo.operation = 'DOCUMENT_LAST_PAGE' THEN CAST(lo.value AS BIGINT)  
                         ELSE NULL
-                    END AS documentLastPage,
+                    END AS progressMarker,
                     -- New fields: Package, Level, Subject, Chapter, Module
                     ps.package_id AS packageId, 
                     ps.level_id AS levelId,
@@ -294,7 +283,6 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
             @Param("moduleStatus") List<String> moduleStatus,
             @Param("subjectStatus") List<String> subjectStatus,
             @Param("packageSessionStatus") List<String> packageSessionStatus);
-
 
     @Query(
             value = """

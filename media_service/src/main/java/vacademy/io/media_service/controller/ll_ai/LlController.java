@@ -45,6 +45,8 @@ public class LlController {
                 
                 Incident Category, Code Mapping : {incidentTypes}
                 We need to extract a title, description, and categorize a incident code, category and subcategory
+                
+                also if the raw incident data if not in english then translate it to english
                 return the data in a json structure
                 {{
                     "event_code": "INCIDENT_CODE", // from Incident Category, Code Mapping like ET1002

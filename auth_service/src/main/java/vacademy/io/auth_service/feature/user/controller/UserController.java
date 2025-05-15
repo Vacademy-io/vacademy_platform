@@ -4,6 +4,7 @@ package vacademy.io.auth_service.feature.user.controller;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.common.auth.dto.UserCredentials;
 import vacademy.io.common.auth.dto.UserDTO;
@@ -46,10 +47,17 @@ public class UserController {
         try {
             User user = userService.getUserDetailsByUsername(userDTO.getUsername());
 
-            if (user == null)
+            if (user == null) {
+                if (StringUtils.hasText(userDTO.getEmail())) {
+                    user = userService.getUserDetailsByEmail(userDTO.getEmail());
+                }
+            }
+
+            if (user == null) {
                 user = userService.createUserFromUserDto(userDTO);
-            else
+            } else
                 user = userService.updateUser(user, userDTO);
+
             userService.addUserRoles(instituteId, userDTO.getRoles(), user, UserRoleStatus.ACTIVE.name());
             return ResponseEntity.ok(new UserDTO(user));
         } catch (Exception e) {

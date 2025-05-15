@@ -132,6 +132,19 @@ public class UserService {
         return user;
     }
 
+
+    public User getUserDetailsByEmail(String email) {
+
+        List<User> results = userRepository.findUserDetailsByEmail(email);
+
+        if (results.isEmpty()) {
+            return null;
+        }
+
+        User user = results.get(0);
+        return user;
+    }
+
     public void removeRoleFromUser(UserRoleRequestDTO userRoleRequestDTO) {
 
         String userId = userRoleRequestDTO.getUserId();

@@ -528,7 +528,9 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                 'slide_order', cs.slide_order,
                 'source_type', s.source_type,
                 'progress_marker', COALESCE(CAST(lo_video_marker.value AS bigint), NULL),
-                'percentage_completed', COALESCE(CAST(lo_video_percent.value AS double precision), NULL),
+                'percentage_completed', CASE WHEN lo_video_percent.value IS NULL OR lo_video_percent.value = 'null' THEN NULL 
+                                             ELSE CAST(lo_video_percent.value AS double precision) 
+                                        END,
                 'video_slide', json_build_object(
                     'id', v.id,
                     'url', v.url,
@@ -605,7 +607,9 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                 'slide_order', cs.slide_order,
                 'source_type', s.source_type,
                 'progress_marker', COALESCE(CAST(lo_doc_marker.value AS bigint), NULL),
-                'percentage_completed', COALESCE(CAST(lo_doc_percent.value AS double precision), NULL),
+                'percentage_completed', CASE WHEN lo_doc_percent.value IS NULL OR lo_doc_percent.value = 'null' THEN NULL 
+                                             ELSE CAST(lo_doc_percent.value AS double precision) 
+                                        END,
                 'document_slide', json_build_object(
                     'id', d.id,
                     'title', d.title,
@@ -642,7 +646,9 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                 'slide_order', cs.slide_order,
                 'source_type', s.source_type,
                 'progress_marker', NULL,
-                'percentage_completed', COALESCE(CAST(lo_ques_percent.value AS double precision), NULL),
+                'percentage_completed', CASE WHEN lo_ques_percent.value IS NULL OR lo_ques_percent.value = 'null' THEN NULL 
+                                            ELSE CAST(lo_ques_percent.value AS double precision) 
+                                       END,
                 'question_slide', json_build_object(
                     'id', q.id,
                     'question_type', q.question_type,
@@ -704,7 +710,9 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                 'slide_order', cs.slide_order,
                 'source_type', s.source_type,
                 'progress_marker', NULL,
-                'percentage_completed', COALESCE(CAST(lo_assign_percent.value AS double precision), NULL),
+                'percentage_completed', CASE WHEN lo_assign_percent.value IS NULL OR lo_assign_percent.value = 'null' THEN NULL 
+                                            ELSE CAST(lo_assign_percent.value AS double precision) 
+                                       END,
                 'assignment_slide', json_build_object(
                     'id', a.id,
                     'live_date', a.live_date,

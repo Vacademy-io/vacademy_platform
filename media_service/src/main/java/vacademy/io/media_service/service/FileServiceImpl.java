@@ -151,7 +151,7 @@ public class FileServiceImpl implements FileService {
         Optional<FileMetadata> fileMetadata = fileMetadataRepository.findById(id);
         if (fileMetadata.isEmpty()) throw new FileDownloadException("File Not Found");
 
-//        // Create a request to generate the pre-signed URL
+       // Create a request to generate the pre-signed URL
         GeneratePresignedUrlRequest generatePresignedUrlRequest =
                 new GeneratePresignedUrlRequest(bucketName, fileMetadata.get().getKey())
                         .withMethod(HttpMethod.GET)

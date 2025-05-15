@@ -5,6 +5,7 @@ import lombok.AllArgsConstructor;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.security.core.parameters.P;
 import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.group.service.GroupService;
 import vacademy.io.admin_core_service.features.learner_invitation.dto.AddLearnerInvitationDTO;
 import vacademy.io.admin_core_service.features.learner_invitation.enums.LearnerInvitationSourceTypeEnum;
 import vacademy.io.admin_core_service.features.learner_invitation.services.LearnerInvitationService;
@@ -25,6 +26,7 @@ import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.dto.LevelDTO;
 import vacademy.io.common.institute.dto.PackageDTO;
 import vacademy.io.common.institute.dto.SessionDTO;
+import vacademy.io.common.institute.entity.Group;
 import vacademy.io.common.institute.entity.Level;
 import vacademy.io.common.institute.entity.PackageEntity;
 import vacademy.io.common.institute.entity.session.PackageSession;
@@ -43,7 +45,7 @@ public class SessionService {
     private final PackageRepository packageRepository;
     private final SubjectService subjectService;
     private final LearnerInvitationService learnerInvitationService;
-
+    private final GroupService groupService;
     public Session createOrGetSession(AddSessionDTO sessionDTO) {
         Session session = null;
         if (sessionDTO.getNewSession() == false) {
@@ -166,14 +168,14 @@ public class SessionService {
 
         PackageEntity packageEntity = packageRepository.findById(levelDTO.getPackageId())
                 .orElseThrow(() -> new VacademyException("Package not found"));
-
+        Group group = groupService.addGroup(levelDTO.getGroup());
         PackageSession packageSession = new PackageSession();
         packageSession.setSession(session);
         packageSession.setPackageEntity(packageEntity);
         packageSession.setLevel(level);
         packageSession.setStatus(PackageSessionStatusEnum.ACTIVE.name());
         packageSession.setStartTime(startDate);
-
+        packageSession.setGroup(group);
         return packageSession;
     }
 

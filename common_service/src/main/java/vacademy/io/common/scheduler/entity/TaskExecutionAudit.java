@@ -8,6 +8,7 @@ import org.hibernate.annotations.UuidGenerator;
 import java.util.Date;
 
 @Data
+@Builder
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity

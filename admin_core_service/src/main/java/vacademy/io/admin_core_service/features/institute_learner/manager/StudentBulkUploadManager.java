@@ -31,7 +31,7 @@ public class StudentBulkUploadManager {
     @Autowired
     private LearnerEnrollmentNotificationService learnerEnrollmentNotificationService;
 
-    public ResponseEntity<byte[]> uploadStudentCsv(MultipartFile file, String instituteId, BulkUploadInitRequest bulkUploadInitRequest,String packageSessionId,boolean notify, CustomUserDetails user) {
+    public ResponseEntity<byte[]> uploadStudentCsv(MultipartFile file, String instituteId, BulkUploadInitRequest bulkUploadInitRequest, String packageSessionId, boolean notify, CustomUserDetails user) {
 
 
         try (Reader reader = new InputStreamReader(file.getInputStream())) {
@@ -44,8 +44,8 @@ public class StudentBulkUploadManager {
 
             // Parse the CSV file and retrieve records
             Iterable<CSVRecord> records = csvFormat.parse(reader);
-            List<InstituteStudentDTO> students = CsvToStudentDataMapper.mapCsvRecordsToInstituteStudentDTOs(records, instituteId,packageSessionId); // List to store parsed tenant entries// Trim whitespace from field
-            List<InstituteStudentDTO>notifyStudents = new ArrayList<>();
+            List<InstituteStudentDTO> students = CsvToStudentDataMapper.mapCsvRecordsToInstituteStudentDTOs(records, instituteId, packageSessionId); // List to store parsed tenant entries// Trim whitespace from field
+            List<InstituteStudentDTO> notifyStudents = new ArrayList<>();
             for (InstituteStudentDTO student : students) {
                 try {
                     InstituteStudentDTO instituteStudentDTO = studentRegistrationManager.addStudentToInstitute(user, student, bulkUploadInitRequest);
@@ -58,8 +58,8 @@ public class StudentBulkUploadManager {
                 }
             }
 
-            if (notify){
-                learnerEnrollmentNotificationService.sendLearnerEnrollmentNotification(notifyStudents,instituteId);
+            if (notify) {
+                learnerEnrollmentNotificationService.sendLearnerEnrollmentNotification(notifyStudents, instituteId);
             }
 
             ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();

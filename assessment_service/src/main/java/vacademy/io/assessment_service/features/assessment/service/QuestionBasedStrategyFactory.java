@@ -1,6 +1,8 @@
 package vacademy.io.assessment_service.features.assessment.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.mcqm.MCQMCorrectAnswerDto;
 import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.mcqm.MCQMResponseDto;
 import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.mcqs.MCQSCorrectAnswerDto;
@@ -21,12 +23,13 @@ public class QuestionBasedStrategyFactory {
         strategies.put(QuestionTypes.ONE_WORD.name(), new OneWordQuestionTypeBasedStrategy());
         strategies.put(QuestionTypes.LONG_ANSWER.name(), new LongAnswerQuestionTypeBasedStrategy());
         strategies.put(QuestionTypes.NUMERIC.name(), new NUMERICQuestionTypeBasedStrategy());
+        strategies.put(QuestionTypes.TRUE_FALSE.name(), new MCQSQuestionTypeBasedStrategy());
         // Add more strategies here
     }
 
     private static IQuestionTypeBasedStrategy getStrategy(String questionType) {
         IQuestionTypeBasedStrategy strategy = strategies.getOrDefault(questionType, null);
-        if(!Objects.isNull(strategy)){
+        if (!Objects.isNull(strategy)) {
             strategy.setType(questionType);
             strategy.setAnswerStatus(QuestionResponseEnum.PENDING.name());
         }
@@ -77,7 +80,7 @@ public class QuestionBasedStrategyFactory {
             return responseDto.getResponseData().getOptionIds();
         }
 
-        if(strategy.getType().equals(QuestionTypes.MCQM.name())){
+        if (strategy.getType().equals(QuestionTypes.MCQM.name())) {
             MCQMResponseDto responseDto = (MCQMResponseDto) verifyResponseJson(responseJson, type);
 
             return responseDto.getResponseData().getOptionIds();
@@ -88,18 +91,30 @@ public class QuestionBasedStrategyFactory {
 
     public static List<String> getCorrectOptionIds(String evaluationJson, String type) throws JsonProcessingException {
         IQuestionTypeBasedStrategy strategy = getStrategy(type);
-        if(strategy.getType().equals(QuestionTypes.MCQS.name())){
+        if(strategy.getType().equals(QuestionTypes.MCQS.name()) || strategy.getType().equals(QuestionTypes.TRUE_FALSE.name())){
             MCQSCorrectAnswerDto optionDto = (MCQSCorrectAnswerDto) verifyCorrectAnswerJson(evaluationJson, type);
 
             return optionDto.getData().getCorrectOptionIds();
         }
 
-        if(strategy.getType().equals(QuestionTypes.MCQM.name())){
+        if (strategy.getType().equals(QuestionTypes.MCQM.name())) {
             MCQMCorrectAnswerDto optionDto = (MCQMCorrectAnswerDto) verifyCorrectAnswerJson(evaluationJson, type);
 
             return optionDto.getData().getCorrectOptionIds();
         }
 
         return new ArrayList<>();
+    }
+
+    public static Object getCorrectAnswerFromAutoEvaluationBasedOnQuestionType(String autoEvaluationJson) throws Exception{
+        String type = getQuestionTypeFromEvaluationJson(autoEvaluationJson);
+        IQuestionTypeBasedStrategy strategy = getStrategy(type);
+        return strategy.validateAndGetCorrectAnswerData(autoEvaluationJson);
+    }
+
+    public static String getQuestionTypeFromEvaluationJson(String jsonString) throws Exception{
+        ObjectMapper mapper = new ObjectMapper();
+        JsonNode root = mapper.readTree(jsonString);
+        return root.get("type").asText();
     }
 }

@@ -7,7 +7,10 @@ import com.fasterxml.jackson.databind.annotation.JsonNaming;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public interface MarksRankDto {
     Double getMarks();
+
     Integer getRank();
+
     Integer getNoOfParticipants();
+
     Double getPercentile();
 }

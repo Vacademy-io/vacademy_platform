@@ -1,5 +1,5 @@
 package vacademy.io.media_service.dto;
-import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonSetter;
 import com.fasterxml.jackson.annotation.Nulls;
@@ -20,7 +20,7 @@ public class AiGeneratedQuestionJsonDto {
     @JsonSetter(nulls = Nulls.SKIP, contentNulls = Nulls.SKIP)
     private QuestionContent question;
     private List<Option> options;
-    private List<Integer> correctOptions;
+    private List<String> correctOptions;
     private String ans;
     private String exp;
     private QuestionType questionType;
@@ -52,11 +52,11 @@ public class AiGeneratedQuestionJsonDto {
         this.options = options;
     }
 
-    public List<Integer> getCorrectOptions() {
+    public List<String> getCorrectOptions() {
         return correctOptions;
     }
 
-    public void setCorrectOptions(List<Integer> correctOptions) {
+    public void setCorrectOptions(List<String> correctOptions) {
         this.correctOptions = correctOptions;
     }
 
@@ -100,6 +100,19 @@ public class AiGeneratedQuestionJsonDto {
         this.level = level;
     }
 
+    // Enums
+    public enum ContentType {
+        HTML, TEXT,
+    }
+
+    public enum QuestionType {
+        MCQS, MCQM, ONE_WORD, LONG_ANSWER, NUMERIC
+    }
+
+    public enum DifficultyLevel {
+        EASY, MEDIUM, HARD, easy, medium, hard
+    }
+
     // Inner classes
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class QuestionContent {
@@ -124,38 +137,12 @@ public class AiGeneratedQuestionJsonDto {
         }
     }
 
+    @Getter
+    @Setter
     public static class Option {
         private ContentType type;
         private String content;
+        private String preview_id;
 
-        // Getters and Setters
-        public ContentType getType() {
-            return type;
-        }
-
-        public void setType(ContentType type) {
-            this.type = type;
-        }
-
-        public String getContent() {
-            return content;
-        }
-
-        public void setContent(String content) {
-            this.content = content;
-        }
-    }
-
-    // Enums
-    public enum ContentType {
-        HTML, TEXT,
-    }
-
-    public enum QuestionType {
-        MCQS, MCQM, ONE_WORD, LONG_ANSWER, NUMERIC
-    }
-
-    public enum DifficultyLevel {
-        EASY, MEDIUM, HARD , easy , medium , hard
     }
 }

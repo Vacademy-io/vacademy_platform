@@ -18,6 +18,7 @@ public class RegistrationFieldDto {
     private String type;
     private String defaultValue;
     private String description;
+    private Integer orderField;
     private Boolean isMandatory = true;
     private String key;
     private String commaSeparatedOptions;

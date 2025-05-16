@@ -59,6 +59,12 @@ public class Question {
     @Column(name = "status")
     private String status;
 
+    @Column(name = "difficulty")
+    private String difficulty;
+
+    @Column(name = "problem_type")
+    private String problemType;
+
     @Column(name = "default_question_time_mins")
     private Integer defaultQuestionTimeMins;
 

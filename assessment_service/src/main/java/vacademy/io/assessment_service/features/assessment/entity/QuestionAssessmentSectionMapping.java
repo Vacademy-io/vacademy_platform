@@ -2,7 +2,6 @@ package vacademy.io.assessment_service.features.assessment.entity;
 
 import jakarta.persistence.*;
 import lombok.Data;
-import lombok.EqualsAndHashCode;
 import org.hibernate.annotations.UuidGenerator;
 import vacademy.io.assessment_service.features.question_core.entity.Question;
 

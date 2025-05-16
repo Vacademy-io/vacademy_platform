@@ -15,7 +15,7 @@ import java.util.List;
 
 public class CsvToStudentDataMapper {
 
-    public static List<InstituteStudentDTO> mapCsvRecordsToInstituteStudentDTOs(Iterable<CSVRecord> records, String instituteId,String packageSessionId) {
+    public static List<InstituteStudentDTO> mapCsvRecordsToInstituteStudentDTOs(Iterable<CSVRecord> records, String instituteId, String packageSessionId) {
         List<InstituteStudentDTO> students = new ArrayList<>();
 
         for (CSVRecord record : records) {
@@ -42,6 +42,8 @@ public class CsvToStudentDataMapper {
                     getFieldValue(record, "MOTHER_NAME"),
                     getFieldValue(record, "PARENTS_MOBILE_NUMBER"),
                     getFieldValue(record, "PARENTS_EMAIL"),
+                    getFieldValue(record, "PARENTS_TO_MOTHER_MOBILE_NUMBER"),
+                    getFieldValue(record, "PARENTS_TO_MOTHER_EMAIL"),
                     getFieldValue(record, "LINKED_INSTITUTE_NAME")
             );
 
@@ -67,12 +69,23 @@ public class CsvToStudentDataMapper {
         if (dateStr == null || dateStr.isEmpty()) {
             return null;
         }
-        SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd");
-        try {
-            return formatter.parse(dateStr);
-        } catch (ParseException e) {
-            return null;
+
+        String[] formats = {
+                "dd/MM/yyyy",
+                "dd-MM-yyyy",
+                "dd.MM.yyyy"
+        };
+
+        for (String format : formats) {
+            try {
+                SimpleDateFormat formatter = new SimpleDateFormat(format);
+                formatter.setLenient(false);
+                return formatter.parse(dateStr);
+            } catch (ParseException ignored) {
+            }
         }
+
+        return null;
     }
 
     private static String getFieldValue(CSVRecord record, String fieldName) {

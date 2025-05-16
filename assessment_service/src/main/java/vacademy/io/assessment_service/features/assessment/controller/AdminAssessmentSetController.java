@@ -16,15 +16,15 @@ public class AdminAssessmentSetController {
     AdminSetManager adminSetManager;
 
     @PostMapping("/submit")
-    public ResponseEntity<String> submitAssessmentSet(@RequestAttribute("user")CustomUserDetails userDetails,
+    public ResponseEntity<String> submitAssessmentSet(@RequestAttribute("user") CustomUserDetails userDetails,
                                                       @RequestParam(name = "assessmentId") String assessmentId,
-                                                      @RequestBody SetCreateRequest request){
+                                                      @RequestBody SetCreateRequest request) {
         return adminSetManager.createAssessmentSet(userDetails, assessmentId, request);
     }
 
     @PostMapping("/get-all")
-    public ResponseEntity<AssessmentAllSetResponse> getAssessmentSets(@RequestAttribute("user")CustomUserDetails userDetails,
-                                                                      @RequestParam(name = "assessmentId") String assessmentId){
+    public ResponseEntity<AssessmentAllSetResponse> getAssessmentSets(@RequestAttribute("user") CustomUserDetails userDetails,
+                                                                      @RequestParam(name = "assessmentId") String assessmentId) {
         return adminSetManager.getAllSetsForAssessment(userDetails, assessmentId);
     }
 }

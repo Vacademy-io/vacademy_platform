@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.learner_reports.dto.report_notification.LmsReportNotificationSettingDTO;
 import vacademy.io.admin_core_service.features.notification.entity.NotificationSetting;
+import vacademy.io.admin_core_service.features.notification.enums.CommunicationType;
 import vacademy.io.admin_core_service.features.notification.enums.NotificationSettingStatusEnum;
 import vacademy.io.admin_core_service.features.notification.enums.NotificationSourceEnum;
 import vacademy.io.admin_core_service.features.notification.enums.NotificationType;
@@ -44,6 +45,7 @@ public class LMSReportSettingService {
         setting.setSource(NotificationSourceEnum.INSTITUTE.name());
         setting.setSourceId(sourceId);
         setting.setStatus(NotificationSettingStatusEnum.ACTIVE.name());
+        setting.setCommaSeparatedCommunicationTypes(CommunicationType.EMAIL.name() + "," + CommunicationType.WHATSAPP.name());
         return setting;
     }
 
@@ -54,13 +56,13 @@ public class LMSReportSettingService {
         addOrUpdateInstituteLmsReportSetting(instituteId, NotificationSourceEnum.INSTITUTE.name(), NotificationType.BATCH_PROGRESS_REPORT.name(), studentSetting.getCommaSeparatedCommunicationTypes(), studentSetting.getBatchProgressReport(), studentSetting.getCommaSeparatedEmailIds(), studentSetting.getCommaSeparatedMobileNumber());
 
         LmsReportNotificationSettingDTO.ReportNotificationSetting parentSetting = lmsReportNotificationSettingDTO.getParentSetting(); // 🔁 Corrected here
-        addOrUpdateInstituteLmsReportSetting(instituteId, NotificationSourceEnum.INSTITUTE.name(), NotificationType.LEARNER_PROGRESS_REPORT_FOR_PARENT.name(), parentSetting.getCommaSeparatedCommunicationTypes(), parentSetting.getLearnerProgressReport(), studentSetting.getCommaSeparatedEmailIds(), parentSetting.getCommaSeparatedMobileNumber());
-        addOrUpdateInstituteLmsReportSetting(instituteId, NotificationSourceEnum.INSTITUTE.name(), NotificationType.BATCH_PROGRESS_REPORT_FOR_PARENT.name(), parentSetting.getCommaSeparatedCommunicationTypes(), parentSetting.getBatchProgressReport(), studentSetting.getCommaSeparatedEmailIds(), parentSetting.getCommaSeparatedMobileNumber());
+        addOrUpdateInstituteLmsReportSetting(instituteId, NotificationSourceEnum.INSTITUTE.name(), NotificationType.LEARNER_PROGRESS_REPORT_FOR_PARENT.name(), parentSetting.getCommaSeparatedCommunicationTypes(), parentSetting.getLearnerProgressReport(), parentSetting.getCommaSeparatedEmailIds(), parentSetting.getCommaSeparatedMobileNumber());
+        addOrUpdateInstituteLmsReportSetting(instituteId, NotificationSourceEnum.INSTITUTE.name(), NotificationType.BATCH_PROGRESS_REPORT_FOR_PARENT.name(), parentSetting.getCommaSeparatedCommunicationTypes(), parentSetting.getBatchProgressReport(), parentSetting.getCommaSeparatedEmailIds(), parentSetting.getCommaSeparatedMobileNumber());
 
         return "success";
     }
 
-    public void addOrUpdateInstituteLmsReportSetting(String sourceId, String source, String type, String communicationTypes, LmsReportNotificationSettingDTO.NotificationFrequency frequency,String commaSeparatedEmailId,String commaSeparatedMobileNumber) {
+    public void addOrUpdateInstituteLmsReportSetting(String sourceId, String source, String type, String communicationTypes, LmsReportNotificationSettingDTO.NotificationFrequency frequency, String commaSeparatedEmailId, String commaSeparatedMobileNumber) {
         NotificationSetting notificationSetting = notificationSettingRepository
                 .findBySourceAndSourceIdAndTypeAndStatusIn(source, sourceId, type, List.of(NotificationSettingStatusEnum.ACTIVE.name()))
                 .orElseGet(() -> {
@@ -80,14 +82,14 @@ public class LMSReportSettingService {
         notificationSettingRepository.save(notificationSetting);
     }
 
-    public String addOrUpdateLmsReportSetting(LmsReportNotificationSettingDTO lmsReportNotificationSettingDTO, String userId,CustomUserDetails user){
+    public String addOrUpdateLmsReportSetting(LmsReportNotificationSettingDTO lmsReportNotificationSettingDTO, String userId, CustomUserDetails user) {
         LmsReportNotificationSettingDTO.ReportNotificationSetting studentSetting = lmsReportNotificationSettingDTO.getLearnerSetting();
-        addOrUpdateInstituteLmsReportSetting(userId, NotificationSourceEnum.LEARNER.name(), NotificationType.LEARNER_PROGRESS_REPORT.name(), studentSetting.getCommaSeparatedCommunicationTypes(), studentSetting.getLearnerProgressReport(),studentSetting.getCommaSeparatedEmailIds(),studentSetting.getCommaSeparatedMobileNumber());
-        addOrUpdateInstituteLmsReportSetting(userId, NotificationSourceEnum.LEARNER.name(), NotificationType.BATCH_PROGRESS_REPORT.name(), studentSetting.getCommaSeparatedCommunicationTypes(), studentSetting.getBatchProgressReport(),studentSetting.getCommaSeparatedEmailIds(),studentSetting.getCommaSeparatedMobileNumber());
+        addOrUpdateInstituteLmsReportSetting(userId, NotificationSourceEnum.LEARNER.name(), NotificationType.LEARNER_PROGRESS_REPORT.name(), studentSetting.getCommaSeparatedCommunicationTypes(), studentSetting.getLearnerProgressReport(), studentSetting.getCommaSeparatedEmailIds(), studentSetting.getCommaSeparatedMobileNumber());
+        addOrUpdateInstituteLmsReportSetting(userId, NotificationSourceEnum.LEARNER.name(), NotificationType.BATCH_PROGRESS_REPORT.name(), studentSetting.getCommaSeparatedCommunicationTypes(), studentSetting.getBatchProgressReport(), studentSetting.getCommaSeparatedEmailIds(), studentSetting.getCommaSeparatedMobileNumber());
 
         LmsReportNotificationSettingDTO.ReportNotificationSetting parentSetting = lmsReportNotificationSettingDTO.getParentSetting();
-        addOrUpdateInstituteLmsReportSetting(userId, NotificationSourceEnum.LEARNER.name(), NotificationType.LEARNER_PROGRESS_REPORT_FOR_PARENT.name(), parentSetting.getCommaSeparatedCommunicationTypes(), parentSetting.getLearnerProgressReport(),studentSetting.getCommaSeparatedEmailIds(),parentSetting.getCommaSeparatedMobileNumber());
-        addOrUpdateInstituteLmsReportSetting(userId, NotificationSourceEnum.LEARNER.name(), NotificationType.BATCH_PROGRESS_REPORT_FOR_PARENT.name(), parentSetting.getCommaSeparatedCommunicationTypes(), parentSetting.getBatchProgressReport(),studentSetting.getCommaSeparatedEmailIds(),parentSetting.getCommaSeparatedMobileNumber());
+        addOrUpdateInstituteLmsReportSetting(userId, NotificationSourceEnum.LEARNER.name(), NotificationType.LEARNER_PROGRESS_REPORT_FOR_PARENT.name(), parentSetting.getCommaSeparatedCommunicationTypes(), parentSetting.getLearnerProgressReport(), parentSetting.getCommaSeparatedEmailIds(), parentSetting.getCommaSeparatedMobileNumber());
+        addOrUpdateInstituteLmsReportSetting(userId, NotificationSourceEnum.LEARNER.name(), NotificationType.BATCH_PROGRESS_REPORT_FOR_PARENT.name(), parentSetting.getCommaSeparatedCommunicationTypes(), parentSetting.getBatchProgressReport(), parentSetting.getCommaSeparatedEmailIds(), parentSetting.getCommaSeparatedMobileNumber());
 
         return "success";
     }
@@ -99,10 +101,10 @@ public class LMSReportSettingService {
         return dto;
     }
 
-    public LmsReportNotificationSettingDTO getLmsReportNotificationSettingForLearner(String userId,String instituteId, CustomUserDetails userDetails) {
+    public LmsReportNotificationSettingDTO getLmsReportNotificationSettingForLearner(String userId, String instituteId, CustomUserDetails userDetails) {
         LmsReportNotificationSettingDTO dto = new LmsReportNotificationSettingDTO();
 
-        Optional<NotificationSetting>optionalNotificationSetting = notificationSettingRepository.findBySourceAndSourceIdAndTypeAndStatusIn(
+        Optional<NotificationSetting> optionalNotificationSetting = notificationSettingRepository.findBySourceAndSourceIdAndTypeAndStatusIn(
                 NotificationSourceEnum.LEARNER.name(),
                 userId,
                 NotificationType.LEARNER_PROGRESS_REPORT.name(),
@@ -111,8 +113,7 @@ public class LMSReportSettingService {
         if (optionalNotificationSetting.isPresent()) {
             dto.setLearnerSetting(buildReportSetting(NotificationSourceEnum.LEARNER.name(), userId, false));
             dto.setParentSetting(buildReportSetting(NotificationSourceEnum.LEARNER.name(), userId, true));
-        }
-        else{
+        } else {
             dto.setLearnerSetting(buildReportSetting(NotificationSourceEnum.INSTITUTE.name(), instituteId, false));
             dto.setParentSetting(buildReportSetting(NotificationSourceEnum.INSTITUTE.name(), instituteId, true));
         }

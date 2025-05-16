@@ -4,6 +4,7 @@ package vacademy.io.auth_service.feature.user.controller;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.common.auth.dto.UserCredentials;
 import vacademy.io.common.auth.dto.UserDTO;
@@ -42,14 +43,22 @@ public class UserController {
 
     @PostMapping("/internal/create-user-or-get-existing")
     @Transactional
-    public ResponseEntity<UserDTO> createUserOrGetExisting(@RequestBody UserDTO userDTO, @RequestParam("instituteId") String instituteId) {
+    public ResponseEntity<UserDTO> createUserOrGetExisting(@RequestBody UserDTO userDTO, @RequestParam(name = "instituteId", required = false) String instituteId) {
         try {
             User user = userService.getUserDetailsByUsername(userDTO.getUsername());
 
-            if (user == null)
-                user = userService.createUserFromUserDto(userDTO);
+            if (user == null) {
+                if (StringUtils.hasText(userDTO.getEmail())) {
+                    user = userService.getUserDetailsByEmail(userDTO.getEmail());
+                }
+            }
 
-            userService.addUserRoles(instituteId, userDTO.getRoles(), user,UserRoleStatus.ACTIVE.name());
+            if (user == null) {
+                user = userService.createUserFromUserDto(userDTO);
+            } else
+                user = userService.updateUser(user, userDTO);
+
+            userService.addUserRoles(instituteId, userDTO.getRoles(), user, UserRoleStatus.ACTIVE.name());
             return ResponseEntity.ok(new UserDTO(user));
         } catch (Exception e) {
             throw new VacademyException(e.getMessage());
@@ -85,22 +94,22 @@ public class UserController {
 
     @PostMapping("/users-by-institute-id-and-roles")
     public ResponseEntity<List<UserWithRolesDTO>> getUsersByInstituteId(@RequestParam("instituteId") String instituteId, @RequestBody List<String> roles, @RequestAttribute("user") CustomUserDetails user) {
-        List<UserWithRolesDTO> users = userService.getUserDetailsByInstituteId(instituteId,roles,user);
+        List<UserWithRolesDTO> users = userService.getUserDetailsByInstituteId(instituteId, roles, user);
         return ResponseEntity.ok(users);
     }
 
     @GetMapping("/user-credentials/{userId}")
     public ResponseEntity<UserCredentials> getUserCredentials(@PathVariable String userId, @RequestAttribute("user") CustomUserDetails customUserDetails) {
-        return ResponseEntity.ok(userService.getUserCredentials(userId,customUserDetails));
+        return ResponseEntity.ok(userService.getUserCredentials(userId, customUserDetails));
     }
 
     @PostMapping("/internal/users-credential")
-    public ResponseEntity<List<UserCredentials>> getUsersCredentials(@RequestBody List<String>userIds) {
+    public ResponseEntity<List<UserCredentials>> getUsersCredentials(@RequestBody List<String> userIds) {
         return ResponseEntity.ok(userService.getUsersCredentials(userIds));
     }
 
     @PostMapping("/users-credential")
-    public ResponseEntity<List<UserCredentials>> getUsersCredentials(@RequestBody List<String>userIds, @RequestAttribute("user") CustomUserDetails customUserDetails) {
+    public ResponseEntity<List<UserCredentials>> getUsersCredentials(@RequestBody List<String> userIds, @RequestAttribute("user") CustomUserDetails customUserDetails) {
         return ResponseEntity.ok(userService.getUsersCredentials(userIds));
     }
 

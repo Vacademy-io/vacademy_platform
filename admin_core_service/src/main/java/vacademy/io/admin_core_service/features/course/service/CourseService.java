@@ -5,7 +5,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.course.dto.AddCourseDTO;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
-import vacademy.io.admin_core_service.features.level.dto.AddLevelWithCourseDTO;
+import vacademy.io.admin_core_service.features.learner_invitation.enums.LearnerInvitationCodeStatusEnum;
+import vacademy.io.admin_core_service.features.learner_invitation.enums.LearnerInvitationSourceTypeEnum;
+import vacademy.io.admin_core_service.features.learner_invitation.services.LearnerInvitationService;
 import vacademy.io.admin_core_service.features.level.service.LevelService;
 import vacademy.io.admin_core_service.features.packages.enums.PackageStatusEnum;
 import vacademy.io.admin_core_service.features.packages.repository.PackageInstituteRepository;
@@ -13,7 +15,6 @@ import vacademy.io.admin_core_service.features.packages.repository.PackageReposi
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
 import vacademy.io.admin_core_service.features.packages.service.PackageSessionService;
 import vacademy.io.admin_core_service.features.session.dto.AddNewSessionDTO;
-import vacademy.io.admin_core_service.features.session.dto.AddSessionDTO;
 import vacademy.io.admin_core_service.features.session.service.SessionService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
@@ -21,6 +22,7 @@ import vacademy.io.common.institute.dto.PackageDTO;
 import vacademy.io.common.institute.entity.Level;
 import vacademy.io.common.institute.entity.PackageEntity;
 import vacademy.io.common.institute.entity.PackageInstitute;
+import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.common.institute.entity.session.Session;
 
 import java.util.ArrayList;
@@ -38,34 +40,40 @@ public class CourseService {
     private final PackageInstituteRepository packageInstituteRepository;
     private final InstituteRepository instituteRepository;
     private final PackageSessionRepository packageSessionRepository;
+    private final LearnerInvitationService learnerInvitationService;
 
     @Transactional
     public String addCourse(AddCourseDTO addCourseDTO, CustomUserDetails user, String instituteId) {
-        validateRequest(addCourseDTO);
-        PackageEntity packageEntity = getCourse(addCourseDTO);
-        PackageEntity savedPackage = packageRepository.save(packageEntity);
+        PackageEntity savedPackage = null;
+
+        if (addCourseDTO.getNewCourse()) {
+            PackageEntity packageEntity = getCourse(addCourseDTO);
+            savedPackage = packageRepository.save(packageEntity);
+        } else {
+            savedPackage = packageRepository.findById(addCourseDTO.getId()).orElseThrow(() -> new VacademyException("Course not found"));
+        }
         createPackageInstitute(savedPackage, instituteId);
         if (addCourseDTO.getContainLevels()) {
-            createPackageSession(savedPackage, addCourseDTO.getSessions(), user);
+            createPackageSession(savedPackage, addCourseDTO.getSessions(), user,instituteId);
         } else {
-            createPackageSessionForDefaultLevelAndSession(savedPackage, user);
+            createPackageSessionForDefaultLevelAndSession(savedPackage,instituteId, user);
         }
         return savedPackage.getId();
     }
 
-    private void createPackageSessionForDefaultLevelAndSession(PackageEntity savedPackage, CustomUserDetails user) {
+    private void createPackageSessionForDefaultLevelAndSession(PackageEntity savedPackage,String instituteId, CustomUserDetails user) {
         Level level = levelService.getLevelById("DEFAULT");
         Session session = sessionService.getSessionById("DEFAULT");
-        packageSessionService.createPackageSession(level, session, savedPackage, new Date());
+        packageSessionService.createPackageSession(level, session, savedPackage,null, new Date(),instituteId,user);
     }
 
-    private void createPackageSession(PackageEntity savedPackage, List<AddNewSessionDTO> addNewSessionDTOS, CustomUserDetails user) {
+    private void createPackageSession(PackageEntity savedPackage, List<AddNewSessionDTO> addNewSessionDTOS, CustomUserDetails user,String instituteId) {
         if (Objects.isNull(addNewSessionDTOS) || addNewSessionDTOS.isEmpty()) {
             throw new VacademyException("Levels and Sessions cannot be null or empty. You must provide at least one level.");
         }
         for (AddNewSessionDTO addNewSessionDTO : addNewSessionDTOS) {
             addNewSessionDTO.getLevels().forEach(level -> level.setPackageId(savedPackage.getId()));
-            sessionService.addNewSession(addNewSessionDTO, user);
+            sessionService.addNewSession(addNewSessionDTO,instituteId, user);
         }
     }
 
@@ -80,6 +88,7 @@ public class CourseService {
     }
 
     public PackageEntity getCourse(AddCourseDTO addCourseDTO) {
+        validateRequest(addCourseDTO);
         PackageEntity packageEntity = new PackageEntity();
         packageEntity.setPackageName(addCourseDTO.getCourseName());
         packageEntity.setThumbnailFileId(addCourseDTO.getThumbnailFileId());
@@ -111,7 +120,14 @@ public class CourseService {
             deletedCourses.add(course);
         }
         packageRepository.saveAll(deletedCourses);
-        packageSessionRepository.updateStatusByPackageIds(PackageStatusEnum.DELETED.name(), courseIds);
+        List<PackageSession>packageSessions = packageSessionRepository.findAllByPackageIds(courseIds);
+        List<String>packageSessionIds = new ArrayList<>();
+        for (PackageSession packageSession : packageSessions) {
+            packageSession.setStatus(PackageStatusEnum.DELETED.name());
+            packageSessionIds.add(packageSession.getId());
+        }
+        packageSessionRepository.saveAll(packageSessions);
+        learnerInvitationService.deleteLearnerInvitationBySourceAndSourceId(LearnerInvitationSourceTypeEnum.PACKAGE_SESSION.name(), packageSessionIds);
         return "Course deleted successfully";
     }
 }

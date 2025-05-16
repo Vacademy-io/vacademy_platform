@@ -11,6 +11,6 @@ public interface QuestionRepository extends JpaRepository<Question, String> {
 
     @Query(value = "SELECT q.* FROM question q " +
             "JOIN question_question_paper_mapping qp ON q.id = qp.question_id " +
-            "WHERE qp.question_paper_id = :questionPaperId", nativeQuery = true)
+            "WHERE qp.question_paper_id = :questionPaperId and q.status != 'DELETED'", nativeQuery = true)
     List<Question> findQuestionsByQuestionPaperId(@Param("questionPaperId") String questionPaperId);
 }

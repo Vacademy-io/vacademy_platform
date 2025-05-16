@@ -8,8 +8,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import vacademy.io.common.notification.dto.EmailOTPRequest;
 import vacademy.io.common.notification.dto.GenericEmailRequest;
-import vacademy.io.notification_service.dto.NotificationDTO;
 import vacademy.io.notification_service.dto.EmailRequest;
+import vacademy.io.notification_service.dto.NotificationDTO;
 import vacademy.io.notification_service.features.email_otp.service.OTPService;
 import vacademy.io.notification_service.service.EmailService;
 import vacademy.io.notification_service.service.NotificationService;
@@ -25,7 +25,7 @@ public class EmailController {
     private final NotificationService notificationService;
 
     @Autowired
-    public EmailController(EmailService emailService, OTPService otpService,NotificationService notificationService) {
+    public EmailController(EmailService emailService, OTPService otpService, NotificationService notificationService) {
         this.emailService = emailService;
         this.otpService = otpService;
         this.notificationService = notificationService;

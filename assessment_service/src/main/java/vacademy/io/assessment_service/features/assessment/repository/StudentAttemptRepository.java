@@ -14,7 +14,6 @@ import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.resp
 import vacademy.io.assessment_service.features.assessment.dto.manual_evaluation.ManualAttemptResponseDto;
 import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
 
-import java.util.Date;
 import java.util.List;
 
 @Repository
@@ -22,69 +21,68 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
 
 
     @Query(value = """
-            WITH RankedAttempts AS (
-                            SELECT
-                                sa.id AS attemptId,
-                                aur.user_id AS userId,
-                                aur.participant_name AS studentName,
-                                aur.source_id AS batchId,
-                                sa.total_time_in_seconds AS completionTimeInSeconds,
-                                sa.total_marks AS achievedMarks,
-                                aur.status,
-                                sa.submit_time,
-                                ROW_NUMBER() OVER (PARTITION BY aur.user_id ORDER BY sa.created_at DESC) AS rn,
-                                DENSE_RANK() OVER (ORDER BY sa.total_marks DESC, sa.total_time_in_seconds ASC) AS rank
-                            FROM student_attempt sa
-                            JOIN assessment_user_registration aur ON aur.id = sa.registration_id
-                            WHERE aur.assessment_id = :assessmentId
-                            AND aur.institute_id = :instituteId
-                            AND sa.status IN ('LIVE', 'ENDED')
-                            AND (:statusList IS NULL OR aur.status IN (:statusList))
-                        )
-                        ,TotalParticipants AS (
-                            SELECT COUNT(*) AS totalParticipants FROM RankedAttempts WHERE rn = 1
-                        )
-                        SELECT
-                            attemptId,
-                            userId,
-                            studentName,
-                            batchId,
-                            completionTimeInSeconds,
-                            achievedMarks,
-                            status,
-                            rank,
-                            ROUND(CAST(100.0 * (1.0 - (CAST(ra.rank - 1 AS FLOAT) / NULLIF(t.totalParticipants * 1.0, 0))) AS NUMERIC), 2) AS percentile
-                        FROM RankedAttempts as ra, TotalParticipants as t
-                        WHERE rn = 1
-                        ORDER BY achievedMarks DESC, completionTimeInSeconds ASC
-        """,
-            countQuery = """
-                    WITH RankedAttempts AS (
-                                    SELECT
-                                        sa.id AS attemptId,
-                                        ROW_NUMBER() OVER (PARTITION BY aur.user_id ORDER BY sa.created_at DESC) AS rn
-                                    FROM student_attempt sa
-                                    JOIN assessment_user_registration aur ON aur.id = sa.registration_id
-                                    WHERE aur.assessment_id = :assessmentId
-                                    AND aur.institute_id = :instituteId
-                                    AND sa.status IN ('LIVE', 'ENDED')
-                                    AND (:statusList IS NULL OR aur.status IN (:statusList))
-                                )
-                                ,TotalParticipants AS (
-                                    SELECT COUNT(*) AS totalParticipants FROM RankedAttempts WHERE rn = 1
-                                )
+                WITH RankedAttempts AS (
                                 SELECT
-                                    count(*)
-                                FROM RankedAttempts as ra, TotalParticipants as t
-                                WHERE rn = 1
-        """,
+                                    sa.id AS attemptId,
+                                    aur.user_id AS userId,
+                                    aur.participant_name AS studentName,
+                                    aur.source_id AS batchId,
+                                    sa.total_time_in_seconds AS completionTimeInSeconds,
+                                    sa.total_marks AS achievedMarks,
+                                    aur.status,
+                                    sa.submit_time,
+                                    ROW_NUMBER() OVER (PARTITION BY aur.user_id ORDER BY sa.created_at DESC) AS rn,
+                                    DENSE_RANK() OVER (ORDER BY sa.total_marks DESC, sa.total_time_in_seconds ASC) AS rank
+                                FROM student_attempt sa
+                                JOIN assessment_user_registration aur ON aur.id = sa.registration_id
+                                WHERE aur.assessment_id = :assessmentId
+                                AND aur.institute_id = :instituteId
+                                AND sa.status IN ('LIVE', 'ENDED')
+                                AND (:statusList IS NULL OR aur.status IN (:statusList))
+                            )
+                            ,TotalParticipants AS (
+                                SELECT COUNT(*) AS totalParticipants FROM RankedAttempts WHERE rn = 1
+                            )
+                            SELECT
+                                attemptId,
+                                userId,
+                                studentName,
+                                batchId,
+                                completionTimeInSeconds,
+                                achievedMarks,
+                                status,
+                                rank,
+                                ROUND(CAST(100.0 * (1.0 - (CAST(ra.rank - 1 AS FLOAT) / NULLIF(t.totalParticipants * 1.0, 0))) AS NUMERIC), 2) AS percentile
+                            FROM RankedAttempts as ra, TotalParticipants as t
+                            WHERE rn = 1
+                            ORDER BY achievedMarks DESC, completionTimeInSeconds ASC
+            """,
+            countQuery = """
+                                WITH RankedAttempts AS (
+                                                SELECT
+                                                    sa.id AS attemptId,
+                                                    ROW_NUMBER() OVER (PARTITION BY aur.user_id ORDER BY sa.created_at DESC) AS rn
+                                                FROM student_attempt sa
+                                                JOIN assessment_user_registration aur ON aur.id = sa.registration_id
+                                                WHERE aur.assessment_id = :assessmentId
+                                                AND aur.institute_id = :instituteId
+                                                AND sa.status IN ('LIVE', 'ENDED')
+                                                AND (:statusList IS NULL OR aur.status IN (:statusList))
+                                            )
+                                            ,TotalParticipants AS (
+                                                SELECT COUNT(*) AS totalParticipants FROM RankedAttempts WHERE rn = 1
+                                            )
+                                            SELECT
+                                                count(*)
+                                            FROM RankedAttempts as ra, TotalParticipants as t
+                                            WHERE rn = 1
+                    """,
             nativeQuery = true)
     Page<LeaderBoardDto> findLeaderBoardForAssessmentAndInstituteIdWithoutSearch(
             @Param("assessmentId") String assessmentId,
             @Param("instituteId") String instituteId,
             @Param("statusList") List<String> statusList,
             Pageable pageable);
-
 
 
     @Query(value = """
@@ -129,7 +127,7 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                                 OR ra.studentName LIKE :name || '%'
                                )
                         ORDER BY achievedMarks DESC, completionTimeInSeconds ASC
-            """,countQuery = """
+            """, countQuery = """
             WITH RankedAttempts AS (
                             SELECT
                                 sa.id AS attemptId,
@@ -155,9 +153,9 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
             """, nativeQuery = true)
     public Page<LeaderBoardDto> findLeaderBoardForAssessmentAndInstituteIdWithSearch(@Param("name") String name,
                                                                                      @Param("assessmentId") String assessmentId,
-                                                                                        @Param("instituteId") String instituteId,
-                                                                                        @Param("statusList") List<String> statusList,
-                                                                                        Pageable pageable);
+                                                                                     @Param("instituteId") String instituteId,
+                                                                                     @Param("statusList") List<String> statusList,
+                                                                                     Pageable pageable);
 
 
     @Query(value = """
@@ -189,8 +187,7 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
             ORDER BY r.rank ASC
             """, nativeQuery = true)
     List<MarksRankDto> findMarkRankForAssessment(@Param("assessmentId") String assessmentId,
-                                                        @Param("instituteId") String instituteId);
-
+                                                 @Param("instituteId") String instituteId);
 
 
     @Query(value = """
@@ -245,6 +242,8 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                 a.id AS assessmentId,
                 a.name AS assessmentName,
                 sa.id AS attemptId,
+                a.play_mode AS playMode,
+                a.evaluation_type AS evaluationType,
                 a.bound_start_time AS startTime,
                 a.bound_end_time AS endTime,
                 COALESCE(sa.status, 'PENDING') AS attemptStatus,
@@ -274,8 +273,9 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
             WHERE aim.institute_id = :instituteId
             AND COALESCE(sa.status, 'PENDING') IN (:statusList)
             AND (:releaseResultStatus IS NULL OR sa.report_release_status IN (:releaseResultStatus))
+            AND (:assessmentType IS NULL OR a.assessment_type IN(:assessmentType))
             and a.status = 'PUBLISHED'
-            """,countQuery = """
+            """, countQuery = """
             SELECT COUNT(*)
             FROM public.assessment a
             LEFT JOIN public.assessment_institute_mapping aim
@@ -295,19 +295,23 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
             WHERE aim.institute_id = :instituteId
             AND COALESCE(sa.status, 'PENDING') IN (:statusList)
             AND (:releaseResultStatus IS NULL OR sa.report_release_status IN (:releaseResultStatus))
+            AND (:assessmentType IS NULL OR a.assessment_type IN(:assessmentType))
             and a.status = 'PUBLISHED'
             """, nativeQuery = true)
     Page<StudentReportDto> findAssessmentForUserWithFilter(@Param("userId") String userId,
-                                                     @Param("instituteId") String instituteId,
-                                                     @Param("statusList") List<String> statusList,
-                                                     @Param("releaseResultStatus") List<String> releaseStatus,
-                                                     Pageable pageable);
+                                                           @Param("instituteId") String instituteId,
+                                                           @Param("statusList") List<String> statusList,
+                                                           @Param("releaseResultStatus") List<String> releaseStatus,
+                                                           @Param("assessmentType") List<String> assessmentTypes,
+                                                           Pageable pageable);
 
 
     @Query(value = """
             SELECT
                 a.id AS assessmentId,
                 a.name AS assessmentName,
+                a.play_mode AS playMode,
+                a.evaluation_type AS evaluationType,
                 sa.id AS attempt_id,
                 a.bound_start_time AS startTime,
                 a.bound_end_time AS endTime,
@@ -344,8 +348,9 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                    )
             AND COALESCE(sa.status, 'PENDING') IN (:statusList)
             AND (:releaseResultStatus IS NULL OR sa.report_release_status IN (:releaseResultStatus))
+            AND (:assessmentType IS NULL OR a.assessment_type IN(:assessmentType))
             and a.status = 'PUBLISHED'
-            """,countQuery = """
+            """, countQuery = """
             SELECT COUNT(*)
             FROM public.assessment a
             LEFT JOIN public.assessment_institute_mapping aim
@@ -371,6 +376,7 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                    )
             AND COALESCE(sa.status, 'PENDING') IN (:statusList)
             AND (:releaseResultStatus IS NULL OR sa.report_release_status IN (:releaseResultStatus))
+            AND (:assessmentType IS NULL OR a.assessment_type IN(:assessmentType))
             and a.status = 'PUBLISHED'
             """, nativeQuery = true)
     Page<StudentReportDto> findAssessmentForUserWithFilterAndSearch(@Param("name") String name,
@@ -378,6 +384,7 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                                                                     @Param("instituteId") String instituteId,
                                                                     @Param("statusList") List<String> statusList,
                                                                     @Param("releaseResultStatus") List<String> releaseStatus,
+                                                                    @Param("assessmentType") List<String> assessmentTypes,
                                                                     Pageable pageable);
 
     @Query(value = """
@@ -456,8 +463,8 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
             LEFT JOIN AttemptInformation ai ON tb.attemptId = ai.attempt_id
             WHERE tb.attemptId = :attemptId
             ORDER BY tb.achievedMarks DESC, tb.completionTimeInSeconds ASC;
-            
-            """,nativeQuery = true)
+                        
+            """, nativeQuery = true)
     ParticipantsQuestionOverallDetailDto findParticipantsQuestionOverallDetails(@Param("assessmentId") String assessmentId,
                                                                                 @Param("instituteId") String instituteId,
                                                                                 @Param("attemptId") String attemptId);
@@ -481,7 +488,7 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
             and (sa.report_release_status IS NULL OR sa.report_release_status = 'PENDING')
             """, nativeQuery = true)
     List<StudentAttempt> findAllParticipantsFromAssessmentAndStatusNotInAndReportNotReleased(@Param("assessmentId") String assessmentId,
-                                                                         @Param("statusList") List<String> statusList);
+                                                                                             @Param("statusList") List<String> statusList);
 
 
     @Query(value = """
@@ -520,7 +527,7 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                         FROM RankedAttempts as ra,TotalParticipants as t
                         WHERE rn = 1
                         ORDER BY achievedMarks DESC, completionTimeInSeconds ASC
-            """,nativeQuery = true)
+            """, nativeQuery = true)
     public List<LeaderBoardDto> findLeaderBoardForAssessmentAndInstituteId(@Param("assessmentId") String assessmentId,
                                                                            @Param("instituteId") String instituteId,
                                                                            @Param("statusList") List<String> statusList);
@@ -540,7 +547,7 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
             AND (:evaluationStatus IS NULL OR sa.result_status IN (:evaluationStatus))
             AND (:name IS NULL OR :name = '' OR LOWER(aur.participant_name) LIKE LOWER(CONCAT('%', :name, '%')))
             AND (sa.status = 'ENDED')
-            """,countQuery = """
+            """, countQuery = """
             SELECT count(*)
             FROM student_attempt as sa
             JOIN assessment_user_registration aur ON aur.id = sa.registration_id

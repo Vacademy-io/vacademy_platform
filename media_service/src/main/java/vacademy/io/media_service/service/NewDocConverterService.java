@@ -6,26 +6,24 @@ import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.Getter;
 import lombok.Setter;
-import org.springframework.core.io.ByteArrayResource;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
-import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
-import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
+@Slf4j
 @Service
 public class NewDocConverterService {
 
     private static final String API_URL = "https://api.mathpix.com/v3/converter/";
     private static final String API_PDF_URL = "https://api.mathpix.com/v3/pdf/";
-    private static final String APP_ID = "vacademy_8e6a90_aaf3ee";
-    private static final String APP_KEY = "87aa763511856bb12b2d06c71f060e2a4fa5bfe24f31501a206f9fc9f9334631";
+    private static final String APP_ID = "vacademy_8e6a90_950081";
+    private static final String APP_KEY = "b27375705e35a88b52f041c5f8eba2dda6a23f36350300d39854c8301b1a9de4";
 
     private final RestTemplate restTemplate = new RestTemplate();
 
@@ -49,20 +47,6 @@ public class NewDocConverterService {
                 && "completed".equalsIgnoreCase(response.getBody().getStatus());
     }
 
-    // Inner class to map the response
-    private static class ConversionStatusResponse {
-        private String status;
-
-        public String getStatus() {
-            return status;
-        }
-
-        public void setStatus(String status) {
-            this.status = status;
-        }
-
-    }
-
     public String getConvertedHtml(String pdfId) {
         try {
             HttpHeaders headers = new HttpHeaders();
@@ -83,11 +67,9 @@ public class NewDocConverterService {
             }
             return null;
         } catch (RestClientException e) {
-            // Handle exception or log error
             return null;
         }
     }
-
 
     public String startProcessing(String url) {
         // Create request body with fixed conversion formats
@@ -123,6 +105,20 @@ public class NewDocConverterService {
         return null;
     }
 
+    // Inner class to map the response
+    private static class ConversionStatusResponse {
+        private String status;
+
+        public String getStatus() {
+            return status;
+        }
+
+        public void setStatus(String status) {
+            this.status = status;
+        }
+
+    }
+
     // Request body class
     private static class PdfProcessingRequest {
         private String url;
@@ -135,9 +131,18 @@ public class NewDocConverterService {
         }
 
         // Getters and setters
-        public String getUrl() { return url; }
-        public void setUrl(String url) { this.url = url; }
-        public Map<String, Boolean> getConversion_formats() { return conversion_formats; }
+        public String getUrl() {
+            return url;
+        }
+
+        public void setUrl(String url) {
+            this.url = url;
+        }
+
+        public Map<String, Boolean> getConversion_formats() {
+            return conversion_formats;
+        }
+
         public void setConversion_formats(Map<String, Boolean> conversion_formats) {
             this.conversion_formats = conversion_formats;
         }
@@ -152,8 +157,13 @@ public class NewDocConverterService {
         private String pdfId;
 
         // Assuming the response contains the PDF ID field
-        public String getPdfId() { return pdfId; }
-        public void setPdfId(String pdfId) { this.pdfId = pdfId; }
+        public String getPdfId() {
+            return pdfId;
+        }
+
+        public void setPdfId(String pdfId) {
+            this.pdfId = pdfId;
+        }
     }
 
 }

@@ -41,12 +41,12 @@ public class ChapterService {
     public ChapterDTO addChapter(ChapterDTO chapterDTO, String moduleId, String commaSeparatedPackageSessionIds, CustomUserDetails user) {
         validateRequest(chapterDTO, moduleId, commaSeparatedPackageSessionIds);
         Chapter chapter = saveChapter(chapterDTO);
-        Optional<SubjectModuleMapping>subjectModuleMapping = subjectModuleMappingRepository.findByModuleId(moduleId);
+        Optional<SubjectModuleMapping> subjectModuleMapping = subjectModuleMappingRepository.findByModuleId(moduleId);
         chapterDTO.setId(chapter.getId());
         chapterDTO.setStatus(ChapterStatus.ACTIVE.name());
-        List<Module>modules = subjectService.processSubjectsAndModules(Arrays.stream(getPackageSessionIds(commaSeparatedPackageSessionIds)).toList(), subjectModuleMapping.get().getSubject(), subjectModuleMapping.get().getModule());
+        List<Module> modules = subjectService.processSubjectsAndModules(Arrays.stream(getPackageSessionIds(commaSeparatedPackageSessionIds)).toList(), subjectModuleMapping.get().getSubject(), subjectModuleMapping.get().getModule());
         processPackageSessionMappings(chapter, commaSeparatedPackageSessionIds, chapterDTO.getChapterOrder());
-        processChapterModuleMapping(chapter,modules);
+        processChapterModuleMapping(chapter, modules);
         return chapterDTO;
     }
 
@@ -108,7 +108,7 @@ public class ChapterService {
     }
 
     @Transactional
-    public String updateChapter(String chapterId,String moduleId, ChapterDTO chapterDTO, String commaSeparatedPackageSessionIds, CustomUserDetails user) {
+    public String updateChapter(String chapterId, String moduleId, ChapterDTO chapterDTO, String commaSeparatedPackageSessionIds, CustomUserDetails user) {
         // Validate chapter ID
         if (chapterId == null) {
             throw new VacademyException("Chapter ID cannot be null");
@@ -127,10 +127,10 @@ public class ChapterService {
         // Save the updated chapter
         chapterRepository.save(chapter);
 
-        Optional<SubjectModuleMapping>subjectModuleMapping = subjectModuleMappingRepository.findByModuleId(moduleId);
+        Optional<SubjectModuleMapping> subjectModuleMapping = subjectModuleMappingRepository.findByModuleId(moduleId);
 
-        List<Module>modules = subjectService.processSubjectsAndModules(Arrays.stream(getPackageSessionIds(commaSeparatedPackageSessionIds)).toList(), subjectModuleMapping.get().getSubject(), subjectModuleMapping.get().getModule());
-        processChapterModuleMapping(chapter,modules);
+        List<Module> modules = subjectService.processSubjectsAndModules(Arrays.stream(getPackageSessionIds(commaSeparatedPackageSessionIds)).toList(), subjectModuleMapping.get().getSubject(), subjectModuleMapping.get().getModule());
+        processChapterModuleMapping(chapter, modules);
 
         // Update the chapter-package session mappings
         updateChapterPackageSessionMapping(chapter, commaSeparatedPackageSessionIds, chapterDTO.getChapterOrder());

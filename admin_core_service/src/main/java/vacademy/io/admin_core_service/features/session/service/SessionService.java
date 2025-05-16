@@ -2,7 +2,14 @@ package vacademy.io.admin_core_service.features.session.service;
 
 import jakarta.transaction.Transactional;
 import lombok.AllArgsConstructor;
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.security.core.parameters.P;
 import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.group.service.GroupService;
+import vacademy.io.admin_core_service.features.learner_invitation.dto.AddLearnerInvitationDTO;
+import vacademy.io.admin_core_service.features.learner_invitation.enums.LearnerInvitationSourceTypeEnum;
+import vacademy.io.admin_core_service.features.learner_invitation.services.LearnerInvitationService;
+import vacademy.io.admin_core_service.features.learner_invitation.util.LearnerInvitationDefaultFormGenerator;
 import vacademy.io.admin_core_service.features.level.dto.AddLevelWithSessionDTO;
 import vacademy.io.admin_core_service.features.level.dto.LevelDTOWithPackageSession;
 import vacademy.io.admin_core_service.features.level.service.LevelService;
@@ -19,6 +26,7 @@ import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.dto.LevelDTO;
 import vacademy.io.common.institute.dto.PackageDTO;
 import vacademy.io.common.institute.dto.SessionDTO;
+import vacademy.io.common.institute.entity.Group;
 import vacademy.io.common.institute.entity.Level;
 import vacademy.io.common.institute.entity.PackageEntity;
 import vacademy.io.common.institute.entity.session.PackageSession;
@@ -36,6 +44,8 @@ public class SessionService {
     private final LevelService levelService;
     private final PackageRepository packageRepository;
     private final SubjectService subjectService;
+    private final LearnerInvitationService learnerInvitationService;
+    private final GroupService groupService;
     public Session createOrGetSession(AddSessionDTO sessionDTO) {
         Session session = null;
         if (sessionDTO.getNewSession() == false) {
@@ -120,7 +130,7 @@ public class SessionService {
     }
 
     @Transactional
-    public String addNewSession(AddNewSessionDTO addNewSessionDTO, CustomUserDetails user) {
+    public String addNewSession(AddNewSessionDTO addNewSessionDTO,String instituteId, CustomUserDetails user) {
 
         if (addNewSessionDTO.getLevels() == null || addNewSessionDTO.getLevels().isEmpty()) {
             throw new VacademyException("To add a new session, you must provide at least one level.");
@@ -136,14 +146,13 @@ public class SessionService {
         }
 
         List<PackageSession> packageSessions = new ArrayList<>();
-
         for (AddLevelWithSessionDTO levelDTO : addNewSessionDTO.getLevels()) {
             PackageSession packageSession = createPackageSession(levelDTO, session, addNewSessionDTO.getStartDate());
             packageSessions.add(packageSession);
         }
 
         packageSessionRepository.saveAll(packageSessions);
-
+        this.createLearnerInvitationForm(packageSessions, instituteId, user);
         return String.valueOf(session.getId()); // Ensure return type is String
     }
 
@@ -159,14 +168,14 @@ public class SessionService {
 
         PackageEntity packageEntity = packageRepository.findById(levelDTO.getPackageId())
                 .orElseThrow(() -> new VacademyException("Package not found"));
-
+        Group group = groupService.addGroup(levelDTO.getGroup());
         PackageSession packageSession = new PackageSession();
         packageSession.setSession(session);
         packageSession.setPackageEntity(packageEntity);
         packageSession.setLevel(level);
         packageSession.setStatus(PackageSessionStatusEnum.ACTIVE.name());
         packageSession.setStartTime(startDate);
-
+        packageSession.setGroup(group);
         return packageSession;
     }
 
@@ -177,7 +186,14 @@ public class SessionService {
             session.setStatus(SessionStatusEnum.DELETED.name());
         }
         sessionRepository.saveAll(sessions);
-        packageSessionRepository.updateStatusBySessionIds(sessionIds, PackageSessionStatusEnum.DELETED.name());
+       List<PackageSession>packageSessions = packageSessionRepository.findBySessionIds(sessionIds);
+       List<String>packageSessionIds = new ArrayList<>();
+       for (PackageSession packageSession : packageSessions) {
+           packageSession.setStatus(PackageSessionStatusEnum.DELETED.name());
+           packageSessionIds.add(packageSession.getId());
+       }
+       packageSessionRepository.saveAll(packageSessions);
+       learnerInvitationService.deleteLearnerInvitationBySourceAndSourceId(LearnerInvitationSourceTypeEnum.PACKAGE_SESSION.name(), packageSessionIds);
         return "Session deleted successfully.";
     }
 
@@ -191,5 +207,15 @@ public class SessionService {
         PackageSession oldPackageSession = packageSessionRepository.findById(fromPackageSessionId).orElseThrow(()->new VacademyException("Package Session not found"));
         PackageSession newPackageSession = packageSessionRepository.findById(toPackageSessionId).orElseThrow(()->new VacademyException("Package Session not found"));
         return subjectService.copySubjectsFromExistingPackageSessionMapping(oldPackageSession, newPackageSession);
+    }
+
+    @Async
+    public void createLearnerInvitationForm(List<PackageSession>packageSessions,String instituteId,CustomUserDetails userDetails){
+        List<AddLearnerInvitationDTO>addLearnerInvitationDTOS = new ArrayList<>();
+        for(PackageSession packageSession:packageSessions){
+            AddLearnerInvitationDTO addLearnerInvitationDTO = LearnerInvitationDefaultFormGenerator.generateSampleInvitation(packageSession, instituteId);
+            addLearnerInvitationDTOS.add(addLearnerInvitationDTO);
+        }
+        learnerInvitationService.createLearnerInvitationCodes(addLearnerInvitationDTOS,userDetails);
     }
 }

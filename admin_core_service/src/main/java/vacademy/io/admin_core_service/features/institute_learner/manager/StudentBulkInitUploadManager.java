@@ -50,20 +50,36 @@ public class StudentBulkInitUploadManager {
 
         Map<String, List<String>> enumValues = new HashMap<>();
         enumValues.put("GENDER", Arrays.asList("MALE", "FEMALE", "OTHER"));
-        headers.add(createEnumHeader("enum", false, "GENDER", Arrays.asList("MALE", "FEMALE", "OTHER"), order++, List.of("MALE", "FEMALE", "OTHER")));
+        headers.add(createHeader("gender", false, "GENDER", order++, Arrays.asList("MALE", "FEMALE", "OTHERS")));
         // Adding date header
-        Header enrollmentDateHeader = createDateHeader("date", false, "ENROLLMENT_DATE", "dd-MM-yyyy", order++, List.of("01-11-2000", "21-01-2001", "11-12-2002"));
+        Header enrollmentDateHeader = createRegexHeader(
+                "regex",
+                false,
+                "ENROLLMENT_DATE",
+                "^([0]?[1-9]|[12][0-9]|3[01])([./-])([0]?[1-9]|1[0-2])\\2\\d{4}$",
+                "Date must be in format d/m/yyyy, dd/mm/yyyy, d-mm-yyyy, etc.",
+                order++,
+                List.of("1-1-2025", "01-11-2000", "21/01/2001", "11.12.2002")
+        );
         headers.add(enrollmentDateHeader);
 
         if (!autoGenerateConfig.isAutoGenerateEnrollmentId()) {
             headers.add(createHeader("string", false, "ENROLLMENT_NUMBER", order++, List.of("1234", "5678", "9012")));
         }
-        headers.add(createRegexHeader("regex", false, "MOBILE_NUMBER", "^\\d+$",
-                "Mobile number must contain only digits", order++, List.of("911234567890", "919876543210", "911234567891")));
+        headers.add(createRegexHeader("regex", false, "MOBILE_NUMBER", "^\\+\\d{1,3}-\\d{6,14}$",
+                "Mobile number must be in format +<country_code>-<number>", order++, List.of("+91-9123456789", "+1-9876543210", "+44-712345678901")));
 
 
         // Adding date header
-        Header dateHeader = createDateHeader("date", true, "DATE_OF_BIRTH", "dd-MM-yyyy", order++, List.of("01-11-2000", "21-01-2001", "11-12-2002"));
+        Header dateHeader = createRegexHeader(
+                "regex",
+                true,
+                "DATE_OF_BIRTH",
+                "^([0]?[1-9]|[12][0-9]|3[01])([./-])([0]?[1-9]|1[0-2])\\2\\d{4}$",
+                "Date must be in format d/m/yyyy, dd/mm/yyyy, d-mm-yyyy, etc.",
+                order++,
+                List.of("1/2/2025", "01/2/2025", "1/02/2025", "01/11/2000", "21-01-2001", "11.12.2002")
+        );
         headers.add(dateHeader);
 
 
@@ -100,9 +116,9 @@ public class StudentBulkInitUploadManager {
             headers.add(createHeader("string", true, "CITY", order++, List.of("Indore", "Bhopal", "Jaipur")));
         }
         if (optionalFieldsConfig.isIncludePinCode()) {
-            headers.add(createRegexHeader("regex", false, "PIN_CODE", "\\d{6}","Invalid pin code",order++, List.of("452001", "462001", "452002")));
+            headers.add(createRegexHeader("regex", false, "PIN_CODE", "\\d{6}", "Invalid pin code", order++, List.of("452001", "462001", "452002")));
         } else {
-            headers.add(createRegexHeader("regex", true, "PIN_CODE", "\\d{6}","Invalid pin code",order++, List.of("452001", "462001", "452002")));
+            headers.add(createRegexHeader("regex", true, "PIN_CODE", "\\d{6}", "Invalid pin code", order++, List.of("452001", "462001", "452002")));
         }
         if (optionalFieldsConfig.isIncludeFatherName()) {
             headers.add(createHeader("string", false, "FATHER_NAME", order++, List.of("John Henry", "Doe Walker", "Smith Jones")));
@@ -115,11 +131,18 @@ public class StudentBulkInitUploadManager {
             headers.add(createHeader("string", true, "MOTHER_NAME", order++, List.of("John Henry", "Doe Walker", "Smith Jones")));
         }
         if (optionalFieldsConfig.isIncludeParentsMobileNumber()) {
-            headers.add(createRegexHeader("regex", false, "PARENTS_MOBILE_NUMBER", "^\\d+$",
-                    "Mobile number must contain only digits", order++, List.of("911234567890", "919876543210", "911234567891")));
+            headers.add(createRegexHeader("regex", false, "PARENTS_MOBILE_NUMBER", "^\\+\\d{1,3}-\\d{6,14}$",
+                    "Mobile number must be in format +<country_code>-<number>", order++, List.of("+91-9123456789", "+1-9876543210", "+44-712345678901")));
         } else {
-            headers.add(createRegexHeader("regex", true, "PARENTS_MOBILE_NUMBER", "^\\d+$",
-                    "Mobile number must contain only digits", order++, List.of("911234567890", "919876543210", "911234567891")));
+            headers.add(createRegexHeader("regex", true, "PARENTS_MOBILE_NUMBER", "^\\+\\d{1,3}-\\d{6,14}$",
+                    "Mobile number must be in format +<country_code>-<number>", order++, List.of("+91-9123456789", "+1-9876543210", "+44-712345678901")));
+        }
+        if (optionalFieldsConfig.isIncludeParentsToMotherMobile()) {
+            headers.add(createRegexHeader("regex", false, "PARENTS_TO_MOTHER_MOBILE_NUMBER", "^\\+\\d{1,3}-\\d{6,14}$",
+                    "Mobile number must be in format +<country_code>-<number>", order++, List.of("+91-9123456789", "+1-9876543210", "+44-712345678901")));
+        } else {
+            headers.add(createRegexHeader("regex", true, "PARENTS_TO_MOTHER_MOBILE_NUMBER", "^\\+\\d{1,3}-\\d{6,14}$",
+                    "Mobile number must be in format +<country_code>-<number>", order++, List.of("+91-9123456789", "+1-9876543210", "+44-712345678901")));
         }
         if (optionalFieldsConfig.isIncludeParentsEmail()) {
             emailHeader = createRegexHeader("regex", false, "PARENTS_EMAIL",
@@ -132,6 +155,16 @@ public class StudentBulkInitUploadManager {
                     "Invalid email format", order++, List.of("john@example.com", "doe@example.com", "smith@example.com"));
             headers.add(emailHeader);
         }
+        if (optionalFieldsConfig.isIncludeParentsToMotherEmail()) {
+            emailHeader = createRegexHeader("regex", false, "PARENTS_TO_MOTHER_EMAIL",
+                    "^(?![\\s\\S])|^((?!\\.)[\\w\\-_.]*[^.])(@\\w+)(\\.\\w+(\\.\\w+)?[^.\\W])$",
+                    "Invalid email format", order++, List.of("john@example.com", "doe@example.com", "smith@example.com"));
+        } else {
+            emailHeader = createRegexHeader("regex", true, "PARENTS_TO_MOTHER_EMAIL",
+                    "^(?![\\s\\S])|^((?!\\.)[\\w\\-_.]*[^.])(@\\w+)(\\.\\w+(\\.\\w+)?[^.\\W])$",
+                    "Invalid email format", order++, List.of("john@example.com", "doe@example.com", "smith@example.com"));
+        }
+        headers.add(emailHeader);
         if (optionalFieldsConfig.isIncludeLinkedInstituteName()) {
             headers.add(createHeader("string", false, "LINKED_INSTITUTE_NAME", order++, List.of("St. Joseph coed School", "St. Paul coed School", "St. Xavier coed School")));
         } else {

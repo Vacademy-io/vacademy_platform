@@ -25,7 +25,7 @@ public class OneWordQuestionTypeBasedStrategy extends IQuestionTypeBasedStrategy
                 setAnswerStatus(QuestionResponseEnum.PENDING.name());
                 return 0.0;
             }
-            if(responseDto.getResponseData().getAnswer() == null){
+            if (responseDto.getResponseData().getAnswer() == null) {
                 setAnswerStatus(QuestionResponseEnum.PENDING.name());
                 return 0.0;
             }
@@ -47,7 +47,7 @@ public class OneWordQuestionTypeBasedStrategy extends IQuestionTypeBasedStrategy
             double negativeMarks = markingData.getNegativeMark();
 
             // If the student did not attempt the question, return 0 marks
-            if ( attemptedAnswer.isEmpty()) {
+            if (attemptedAnswer.isEmpty()) {
                 setAnswerStatus(QuestionResponseEnum.PENDING.name());
                 return 0.0;
             }

@@ -50,7 +50,7 @@ public class DocumentController {
     }
 
     @PostMapping("/add-document")
-    public ResponseEntity<DocumentDTO> getDocumentsByUserId(@RequestParam String userId,@RequestBody DocumentDTO documentDTO, @RequestAttribute("user") CustomUserDetails userDetails) {
+    public ResponseEntity<DocumentDTO> getDocumentsByUserId(@RequestParam String userId, @RequestBody DocumentDTO documentDTO, @RequestAttribute("user") CustomUserDetails userDetails) {
         return ResponseEntity.ok(documentService.addDocument(documentDTO, userId, userDetails));
     }
 }

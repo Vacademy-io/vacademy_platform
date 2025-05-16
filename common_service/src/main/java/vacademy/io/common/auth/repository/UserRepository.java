@@ -8,7 +8,6 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.common.auth.entity.User;
 
-import javax.swing.text.html.Option;
 import java.util.List;
 import java.util.Optional;
 
@@ -45,6 +44,11 @@ public interface UserRepository extends CrudRepository<User, String> {
             "FROM users u WHERE u.username = :username",
             nativeQuery = true)
     List<User> findUserDetailsByUsername(@Param("username") String username);
+
+    @Query(value = "SELECT u.* " +
+            "FROM users u WHERE u.email = :email order by u.created_at desc",
+            nativeQuery = true)
+    List<User> findUserDetailsByEmail(@Param("email") String email);
 
 
     @Modifying

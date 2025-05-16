@@ -2,7 +2,6 @@ package vacademy.io.assessment_service.features.assessment.dto.export;
 
 import lombok.Builder;
 
-import java.security.PrivateKey;
 import java.util.Date;
 
 @Builder

@@ -4,6 +4,7 @@ package vacademy.io.admin_core_service.features.institute.manager;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import vacademy.io.admin_core_service.features.group.repository.PackageGroupMappingRepository;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.institute.service.InstituteModuleService;
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
@@ -36,6 +37,9 @@ public class InstituteInitManager {
     @Autowired
     PackageSessionRepository packageSessionRepository;
 
+    @Autowired
+    private PackageGroupMappingRepository packageGroupMappingRepository;
+
     public InstituteInfoDTO getInstituteDetails(String instituteId) {
 
         Optional<Institute> institute = instituteRepository.findById(instituteId);
@@ -64,16 +68,17 @@ public class InstituteInitManager {
         instituteInfoDTO.setLanguage(institute.get().getLanguage());
         instituteInfoDTO.setInstituteThemeCode(institute.get().getInstituteThemeCode());
         instituteInfoDTO.setSubModules(instituteModuleService.getSubmoduleIdsForInstitute(institute.get().getId()));
-        instituteInfoDTO.setSessions(packageRepository.findDistinctSessionsByInstituteId(institute.get().getId()).stream().map((SessionDTO::new)).toList());
-        instituteInfoDTO.setBatchesForSessions(packageSessionRepository.findPackageSessionsByInstituteId(institute.get().getId(),List.of(PackageSessionStatusEnum.ACTIVE.name())).stream().map((obj) -> {
+        instituteInfoDTO.setSessions(packageRepository.findDistinctSessionsByInstituteIdAndStatusIn(institute.get().getId(), List.of(PackageSessionStatusEnum.ACTIVE.name())).stream().map((SessionDTO::new)).toList());
+        instituteInfoDTO.setBatchesForSessions(packageSessionRepository.findPackageSessionsByInstituteId(institute.get().getId(), List.of(PackageSessionStatusEnum.ACTIVE.name())).stream().map((obj) -> {
             return new PackageSessionDTO(obj);
         }).toList());
-        instituteInfoDTO.setLevels(packageRepository.findDistinctLevelsByInstituteId(institute.get().getId()).stream().map((LevelDTO::new)).toList());
+        instituteInfoDTO.setLevels(packageRepository.findDistinctLevelsByInstituteIdAndStatusIn(institute.get().getId(), List.of(PackageSessionStatusEnum.ACTIVE.name())).stream().map((LevelDTO::new)).toList());
         instituteInfoDTO.setGenders((Stream.of(Gender.values()).map(Enum::name)).toList());
         instituteInfoDTO.setStudentStatuses(List.of("ACTIVE", "INACTIVE"));
         instituteInfoDTO.setSubjects(subjectRepository.findDistinctSubjectsByInstituteId(institute.get().getId()).stream().map((SubjectDTO::new)).toList());
         instituteInfoDTO.setSessionExpiryDays(List.of(30, 180, 360));
         instituteInfoDTO.setLetterHeadFileId(institute.get().getLetterHeadFileId());
+        instituteInfoDTO.setPackageGroups(packageGroupMappingRepository.findAllByInstituteId(institute.get().getId()).stream().map((obj)->obj.mapToDTO()).toList());
         return instituteInfoDTO;
     }
 }

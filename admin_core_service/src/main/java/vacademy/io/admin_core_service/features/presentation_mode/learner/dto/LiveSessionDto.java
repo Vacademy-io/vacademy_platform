@@ -10,6 +10,7 @@ import vacademy.io.admin_core_service.features.presentation_mode.admin.dto.Creat
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+
 @Data
 @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
 public class LiveSessionDto {

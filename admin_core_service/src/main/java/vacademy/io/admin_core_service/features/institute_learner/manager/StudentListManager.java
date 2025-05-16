@@ -77,7 +77,14 @@ public class StudentListManager {
         List<StudentDTO> content = new ArrayList<>();
         if (!Objects.isNull(studentPage)) {
             content = studentPage.getContent();
-            return AllStudentResponse.builder().content(content).pageNo(studentPage.getNumber()).last(studentPage.isLast()).pageSize(studentPage.getSize()).totalPages(studentPage.getTotalPages()).totalElements(studentPage.getTotalElements()).build();
+            return AllStudentResponse.builder().
+                    content(content).
+                    pageNo(studentPage.getNumber()).
+                    last(studentPage.isLast()).
+                    pageSize(studentPage.getSize()).
+                    totalPages(studentPage.getTotalPages()).
+                    totalElements(studentPage.getTotalElements()).
+                    build();
         }
         return AllStudentResponse.builder().totalPages(0).content(content).pageNo(0).totalPages(0).build();
     }
@@ -142,7 +149,8 @@ public class StudentListManager {
             );
 
             return objectMapper.readValue(response.getBody(),
-                    new TypeReference<List<UserCredentials>>() {});
+                    new TypeReference<List<UserCredentials>>() {
+                    });
 
         } catch (Exception e) {
             throw new VacademyException(e.getMessage());

@@ -56,6 +56,7 @@ public class AssessmentBasicDetailsManager {
         Optional.ofNullable(basicAssessmentDetailsDTO.getSwitchSections()).ifPresent(assessment::setCanSwitchSection);
         Optional.ofNullable(basicAssessmentDetailsDTO.getHasOmrMode()).ifPresent(assessment::setOmrMode);
         Optional.ofNullable(basicAssessmentDetailsDTO.getDefaultReattemptCount()).ifPresent(assessment::setReattemptCount);
+        Optional.ofNullable(basicAssessmentDetailsDTO.getAssessmentType()).ifPresent(assessment::setAssessmentType);
         if (!ObjectUtils.isEmpty(basicAssessmentDetailsDTO.getSubmissionType())) {
             assessment.setSubmissionType(basicAssessmentDetailsDTO.getSubmissionType());
         } else {
@@ -83,6 +84,7 @@ public class AssessmentBasicDetailsManager {
         assessmentInstituteMapping.setInstituteId(instituteId);
         assessmentInstituteMapping.setAssessmentUrl(RandomGenerator.generateNumber(6));
         assessment.setStatus(AssessmentStatus.DRAFT.name());
+        assessment.setAssessmentType(basicAssessmentDetailsDTO.getAssessmentType());
         Optional.ofNullable(basicAssessmentDetailsDTO.getDefaultReattemptCount()).ifPresent(assessment::setReattemptCount);
         Optional.ofNullable(basicAssessmentDetailsDTO.getHasOmrMode()).ifPresent(assessment::setOmrMode);
         assessment.setPlayMode(type);
@@ -121,7 +123,6 @@ public class AssessmentBasicDetailsManager {
             Optional.ofNullable(testCreation.getAssessmentInstructionsHtml()).ifPresent((value) -> assessment.setInstructions(new AssessmentRichTextData(null, TextType.HTML.name(), value)));
         }
     }
-
 
 
     private void addOrUpdateBoundationData(Assessment assessment, AssessmentInstituteMapping assessmentInstituteMapping, BasicAssessmentDetailsDTO.LiveDateRange boundationData) {

@@ -19,9 +19,9 @@ public class LearnerSubjectDetailsController {
 
     @GetMapping("/subjects")
     public List<SubjectDTOWithDetails> getSubjectsWithDetails(
-             String packageSessionId,
-             String userId,
-             @RequestAttribute("user") CustomUserDetails user) {
+            String packageSessionId,
+            String userId,
+            @RequestAttribute("user") CustomUserDetails user) {
 
         return learnerSubjectService.subjectDTOWithDetails(packageSessionId, userId, user);
     }

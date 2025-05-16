@@ -8,6 +8,6 @@ spec:
     app: notification-service
   ports:
     - name: http
-      port: {{ .Values.services.notification_service.port }}
-      targetPort: {{ .Values.services.notification_service.port }}
+      port: { { .Values.services.notification_service.port } }
+      targetPort: { { .Values.services.notification_service.port } }
   type: NodePort

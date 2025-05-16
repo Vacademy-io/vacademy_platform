@@ -14,7 +14,7 @@ public class LearnerAssessmentController {
     private AssessmentParticipantsManager assessmentParticipantsManager;
 
     @GetMapping("/assessment-count-for-user-id")
-    public ResponseEntity<Integer> getAssessmentCountForUserId(@RequestAttribute("user") CustomUserDetails user, @RequestParam String instituteId,@RequestParam String batchId) {
-        return ResponseEntity.ok(assessmentParticipantsManager.getAssessmentCountForUserId(user, instituteId,batchId));
+    public ResponseEntity<Integer> getAssessmentCountForUserId(@RequestAttribute("user") CustomUserDetails user, @RequestParam String instituteId, @RequestParam String batchId) {
+        return ResponseEntity.ok(assessmentParticipantsManager.getAssessmentCountForUserId(user, instituteId, batchId));
     }
 }

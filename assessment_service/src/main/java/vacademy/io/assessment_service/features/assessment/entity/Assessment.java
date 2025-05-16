@@ -8,7 +8,6 @@ import vacademy.io.assessment_service.features.rich_text.entity.AssessmentRichTe
 
 import java.util.Date;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 
 @Entity
@@ -118,6 +117,9 @@ public class Assessment {
 
     @OneToOne(mappedBy = "assessment")
     private AssessmentNotificationMetadata assessmentNotificationMetadata;
+
+    @Column(name = "assessment_type")
+    private String assessmentType;
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;

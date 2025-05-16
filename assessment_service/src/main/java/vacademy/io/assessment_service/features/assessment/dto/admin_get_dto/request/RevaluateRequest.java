@@ -25,7 +25,7 @@ public class RevaluateRequest {
     @AllArgsConstructor
     @NoArgsConstructor
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public static class RevaluateQuestionDto{
+    public static class RevaluateQuestionDto {
         private String sectionId;
         private List<String> questionIds;
     }

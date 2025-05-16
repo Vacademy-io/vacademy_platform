@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.Getter;
 import lombok.Setter;
-import vacademy.io.community_service.feature.filter.entity.AssessmentRichTextData;
+import vacademy.io.community_service.feature.rich_text.entity.AssessmentRichTextData;
 
 @Getter
 @Setter

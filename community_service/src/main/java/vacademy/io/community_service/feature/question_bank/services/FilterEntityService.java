@@ -7,7 +7,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.community_service.feature.filter.repository.EntityTagsRepository;
 import vacademy.io.community_service.feature.filter.repository.QuestionPaperRepository;
-import vacademy.io.community_service.feature.filter.repository.QuestionRepository;
+import vacademy.io.community_service.feature.presentation.repository.QuestionRepository;
 import vacademy.io.community_service.feature.question_bank.dto.FilteredEntityResponseDto;
 import vacademy.io.community_service.feature.question_bank.dto.RequestDto;
 import vacademy.io.community_service.feature.question_bank.dto.TagFilterRequestDto;
@@ -44,11 +44,10 @@ public class FilterEntityService {
                 .collect(Collectors.toSet());
 
         Page<Object[]> entityResults;
-        if(StringUtils.hasText(search)){
-            entityResults = repository.findDistinctEntitiesbysearch(entityName, List.copyOf(tagIds), search ,  pageable);
-        }
-        else {
-            entityResults = repository.findDistinctEntities(entityName, List.copyOf(tagIds) ,  pageable);
+        if (StringUtils.hasText(search)) {
+            entityResults = repository.findDistinctEntitiesbysearch(entityName, List.copyOf(tagIds), search, pageable);
+        } else {
+            entityResults = repository.findDistinctEntities(entityName, List.copyOf(tagIds.isEmpty() ? new ArrayList<>() : tagIds), pageable);
         }
         return createFilteredEntityResponse(entityResults);
     }

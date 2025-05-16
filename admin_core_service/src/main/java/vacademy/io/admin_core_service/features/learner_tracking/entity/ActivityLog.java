@@ -5,6 +5,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.ActivityLogDTO;
+import vacademy.io.admin_core_service.features.learner_tracking.dto.ConcentrationScoreDTO;
 
 import java.sql.Timestamp;
 import java.util.List;
@@ -53,6 +54,19 @@ public class ActivityLog {
     @OneToMany(mappedBy = "activityLog", fetch = FetchType.LAZY)
     private List<VideoTracked> videoTracked;
 
+    @OneToMany(mappedBy = "activityLog", fetch = FetchType.LAZY)
+    private List<QuestionSlideTracked> questionSlideTracked;
+
+    @OneToMany(mappedBy = "activityLog", fetch = FetchType.LAZY)
+    private List<AssignmentSlideTracked> assignmentSlideTracked;
+
+    @OneToMany(mappedBy = "activityLog", fetch = FetchType.LAZY)
+    private List<VideoSlideQuestionTracked> videoSlideQuestionTracked;
+
+
+    @OneToOne(mappedBy = "activityLog", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
+    private ConcentrationScore concentrationScore;
+
     public ActivityLog(ActivityLogDTO activityLogDTO, String userId, String slideId) {
         this.id = activityLogDTO.getId();
         this.sourceId = activityLogDTO.getSourceId();
@@ -70,6 +84,7 @@ public class ActivityLog {
 
     public ActivityLogDTO toActivityLogDTO() {
         ActivityLogDTO activityLogDTO = new ActivityLogDTO();
+
         activityLogDTO.setId(id);
         activityLogDTO.setSourceId(sourceId);
         activityLogDTO.setSourceType(sourceType);
@@ -78,12 +93,41 @@ public class ActivityLog {
         activityLogDTO.setStartTimeInMillis(startTime != null ? startTime.getTime() : null);
         activityLogDTO.setEndTimeInMillis(endTime != null ? endTime.getTime() : null);
         activityLogDTO.setPercentageWatched(percentageWatched != null ? percentageWatched : 0.0);
+
         activityLogDTO.setDocuments(documentTracked != null
-                ? documentTracked.stream().map(DocumentTracked::documentActivityLogDTO).toList()
+                ? documentTracked.stream()
+                .map(DocumentTracked::documentActivityLogDTO)
+                .toList()
                 : List.of());
+
         activityLogDTO.setVideos(videoTracked != null
-                ? videoTracked.stream().map(VideoTracked::videoActivityLogDTO).toList()
+                ? videoTracked.stream()
+                .map(VideoTracked::videoActivityLogDTO)
+                .toList()
                 : List.of());
+
+        activityLogDTO.setAssignmentSlides(assignmentSlideTracked != null
+                ? assignmentSlideTracked.stream()
+                .map(AssignmentSlideTracked::toAssignmentSlideActivityLog)
+                .toList()
+                : List.of());
+
+        activityLogDTO.setQuestionSlides(questionSlideTracked != null
+                ? questionSlideTracked.stream()
+                .map(QuestionSlideTracked::toQuestionSlideActivityLogDTO)
+                .toList()
+                : List.of());
+
+        activityLogDTO.setVideoSlidesQuestions(videoSlideQuestionTracked != null
+                ? videoSlideQuestionTracked.stream()
+                .map(VideoSlideQuestionTracked::toVideoSlideQuestionActivityLogDTO)
+                .toList()
+                : List.of());
+
+        activityLogDTO.setConcentrationScore(concentrationScore != null
+                ? concentrationScore.toConcentrationScoreDTO()
+                : null);
+
         return activityLogDTO;
     }
 

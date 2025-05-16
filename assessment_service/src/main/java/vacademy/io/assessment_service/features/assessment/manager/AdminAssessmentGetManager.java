@@ -21,7 +21,10 @@ import vacademy.io.assessment_service.features.assessment.enums.AssessmentModeEn
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentStatus;
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentVisibility;
 import vacademy.io.assessment_service.features.assessment.enums.RevaluateRequestEnum;
-import vacademy.io.assessment_service.features.assessment.repository.*;
+import vacademy.io.assessment_service.features.assessment.repository.AssessmentRepository;
+import vacademy.io.assessment_service.features.assessment.repository.AssessmentUserRegistrationRepository;
+import vacademy.io.assessment_service.features.assessment.repository.SectionRepository;
+import vacademy.io.assessment_service.features.assessment.repository.StudentAttemptRepository;
 import vacademy.io.assessment_service.features.assessment.service.StudentAttemptService;
 import vacademy.io.assessment_service.features.assessment.service.assessment_get.AssessmentMapper;
 import vacademy.io.assessment_service.features.learner_assessment.dto.QuestionStatusDto;
@@ -82,7 +85,7 @@ public class AdminAssessmentGetManager {
 
         makeFilterFieldEmptyArrayIfNull(adminAssessmentFilter);
 
-        assessmentsPage = assessmentRepository.filterAssessments(adminAssessmentFilter.getName(), adminAssessmentFilter.getBatchIds().isEmpty() ? null : true, adminAssessmentFilter.getBatchIds(), adminAssessmentFilter.getSubjectsIds().isEmpty() ? null : true, adminAssessmentFilter.getSubjectsIds(), adminAssessmentFilter.getAssessmentStatuses(), adminAssessmentFilter.getGetLiveAssessments(), adminAssessmentFilter.getGetPassedAssessments(), adminAssessmentFilter.getGetUpcomingAssessments(), adminAssessmentFilter.getAssessmentModes(), adminAssessmentFilter.getAccessStatuses(), adminAssessmentFilter.getInstituteIds(), adminAssessmentFilter.getEvaluationTypes(),pageable);
+        assessmentsPage = assessmentRepository.filterAssessments(adminAssessmentFilter.getName(), adminAssessmentFilter.getBatchIds().isEmpty() ? null : true, adminAssessmentFilter.getBatchIds(), adminAssessmentFilter.getSubjectsIds().isEmpty() ? null : true, adminAssessmentFilter.getSubjectsIds(), adminAssessmentFilter.getAssessmentStatuses(), adminAssessmentFilter.getGetLiveAssessments(), adminAssessmentFilter.getGetPassedAssessments(), adminAssessmentFilter.getGetUpcomingAssessments(), adminAssessmentFilter.getAssessmentModes(), adminAssessmentFilter.getAccessStatuses(), adminAssessmentFilter.getInstituteIds(), adminAssessmentFilter.getEvaluationTypes(), adminAssessmentFilter.getAssessmentTypes(), pageable);
         List<AdminBasicAssessmentListItemDto> content = assessmentsPage.stream().map(AssessmentMapper::toDto).collect(Collectors.toList());
         int queryPageNo = assessmentsPage.getNumber();
         int queryPageSize = assessmentsPage.getSize();
@@ -111,16 +114,15 @@ public class AdminAssessmentGetManager {
     }
 
     public ResponseEntity<LeaderBoardResponse> getLeaderBoard(CustomUserDetails user, String assessmentId, LeaderboardFilter filter, String instituteId, int pageNo, int pageSize) {
-        if(Objects.isNull(filter)) throw new VacademyException("Invalid Request");
+        if (Objects.isNull(filter)) throw new VacademyException("Invalid Request");
         Sort sortColumn = createSortObject(filter.getSortColumns());
 
         Pageable pageable = PageRequest.of(pageNo, pageSize, sortColumn);
         Page<LeaderBoardDto> paginatedLeaderboard = null;
 
-        if(StringUtils.hasText(filter.getName())){
+        if (StringUtils.hasText(filter.getName())) {
             paginatedLeaderboard = studentAttemptRepository.findLeaderBoardForAssessmentAndInstituteIdWithSearch(filter.getName(), assessmentId, instituteId, filter.getStatus(), pageable);
-        }
-        else{
+        } else {
             paginatedLeaderboard = studentAttemptRepository.findLeaderBoardForAssessmentAndInstituteIdWithoutSearch(assessmentId, instituteId, filter.getStatus(), pageable);
         }
 
@@ -128,7 +130,7 @@ public class AdminAssessmentGetManager {
     }
 
     private LeaderBoardResponse createLeaderBoardResponse(Page<LeaderBoardDto> paginatedLeaderboard) {
-        if(Objects.isNull(paginatedLeaderboard)){
+        if (Objects.isNull(paginatedLeaderboard)) {
             return LeaderBoardResponse.builder()
                     .pageNo(0)
                     .pageSize(0)
@@ -202,7 +204,7 @@ public class AdminAssessmentGetManager {
     private QuestionInsightsResponse.QuestionInsightDto createInsightsDto(AssessmentQuestionPreviewDto questionPreviewDto, QuestionStatusDto questionWiseMarks, String assessmentId) {
         Long allAttempts = safeGetLong(assessmentUserRegistrationRepository.countUserRegisteredForAssessment(assessmentId, List.of("DELETED")));
 
-        if(Objects.isNull(questionWiseMarks)){
+        if (Objects.isNull(questionWiseMarks)) {
             return QuestionInsightsResponse.QuestionInsightDto.builder()
                     .assessmentQuestionPreviewDto(questionPreviewDto)
                     .totalAttempts(allAttempts)
@@ -241,25 +243,25 @@ public class AdminAssessmentGetManager {
     }
 
     public ResponseEntity<StudentReportResponse> getStudentReport(CustomUserDetails userDetails, String studentId, String instituteId, StudentReportFilter filter, int pageNo, int pageSize) {
-        if(Objects.isNull(filter)) throw new VacademyException("Invalid Request filter");
+        if (Objects.isNull(filter)) throw new VacademyException("Invalid Request filter");
 
         Sort sortingObject = ListService.createSortObject(filter.getSortColumns());
-        Pageable pageable = PageRequest.of(pageNo,pageSize,sortingObject);
+        Pageable pageable = PageRequest.of(pageNo, pageSize, sortingObject);
 
         Page<StudentReportDto> studentReportDtoPage = null;
-        if(StringUtils.hasText(filter.getName())){
-            studentReportDtoPage = studentAttemptRepository.findAssessmentForUserWithFilterAndSearch(filter.getName(), studentId, instituteId, filter.getStatus(), filter.getReleaseResultStatus()!=null ? filter.getReleaseResultStatus() : new ArrayList<>(),pageable);
+        if (StringUtils.hasText(filter.getName())) {
+            studentReportDtoPage = studentAttemptRepository.findAssessmentForUserWithFilterAndSearch(filter.getName(), studentId, instituteId, filter.getStatus(), filter.getReleaseResultStatus() != null ? filter.getReleaseResultStatus() : new ArrayList<>(),filter.getAssessmentType()!=null ? filter.getAssessmentType() : new ArrayList<>(), pageable);
 
         }
-        if(Objects.isNull(studentReportDtoPage)){
-            studentReportDtoPage = studentAttemptRepository.findAssessmentForUserWithFilter(studentId, instituteId, filter.getStatus(), filter.getReleaseResultStatus()!=null ? filter.getReleaseResultStatus() : new ArrayList<>(),pageable);
+        if (Objects.isNull(studentReportDtoPage)) {
+            studentReportDtoPage = studentAttemptRepository.findAssessmentForUserWithFilter(studentId, instituteId, filter.getStatus(), filter.getReleaseResultStatus() != null ? filter.getReleaseResultStatus() : new ArrayList<>(),filter.getAssessmentType()!=null ? filter.getAssessmentType() : new ArrayList<>(), pageable);
         }
 
         return ResponseEntity.ok(createReportResponse(studentReportDtoPage));
     }
 
     private StudentReportResponse createReportResponse(Page<StudentReportDto> studentReportDtoPage) {
-        if(Objects.isNull(studentReportDtoPage)){
+        if (Objects.isNull(studentReportDtoPage)) {
             return StudentReportResponse.builder()
                     .pageNo(0)
                     .pageSize(0)
@@ -288,15 +290,17 @@ public class AdminAssessmentGetManager {
 
         return switch (RevaluateRequestEnum.valueOf(methodType)) {
             case ENTIRE_ASSESSMENT -> revaluateForAllParticipants(assessment, instituteId);
-            case ENTIRE_ASSESSMENT_PARTICIPANTS -> revaluateAssessmentForParticipantsAndAllAssessment(assessment, request, instituteId);
-            case PARTICIPANTS_AND_QUESTIONS -> revaluateAssessmentForParticipantsAndQuestions(assessment, request, instituteId);
+            case ENTIRE_ASSESSMENT_PARTICIPANTS ->
+                    revaluateAssessmentForParticipantsAndAllAssessment(assessment, request, instituteId);
+            case PARTICIPANTS_AND_QUESTIONS ->
+                    revaluateAssessmentForParticipantsAndQuestions(assessment, request, instituteId);
             default -> ResponseEntity.ok("Invalid Request");
         };
     }
 
 
     private ResponseEntity<String> revaluateAssessmentForParticipantsAndQuestions(Assessment assessment, RevaluateRequest request, String instituteId) {
-        if(Objects.isNull(request) || Objects.isNull(request.getAttemptIds()) || Objects.isNull(request.getQuestions()))
+        if (Objects.isNull(request) || Objects.isNull(request.getAttemptIds()) || Objects.isNull(request.getQuestions()))
             throw new VacademyException("Invalid Request");
 
         try {
@@ -308,11 +312,11 @@ public class AdminAssessmentGetManager {
     }
 
     private ResponseEntity<String> revaluateAssessmentForParticipantsAndAllAssessment(Assessment assessment, RevaluateRequest request, String instituteId) {
-        if(Objects.isNull(request) || Objects.isNull(request.getAttemptIds())) throw new VacademyException("Invalid Request");
-        try{
+        if (Objects.isNull(request) || Objects.isNull(request.getAttemptIds()))
+            throw new VacademyException("Invalid Request");
+        try {
             studentAttemptService.revaluateForParticipantIdsWrapper(assessment, request.getAttemptIds(), instituteId);
-        }
-        catch (Exception e){
+        } catch (Exception e) {
             log.error("[REVALUATE ERROR]: " + e.getMessage());
         }
 
@@ -320,10 +324,9 @@ public class AdminAssessmentGetManager {
     }
 
     private ResponseEntity<String> revaluateForAllParticipants(Assessment assessment, String instituteId) {
-        try{
+        try {
             studentAttemptService.revaluateForAllParticipantsWrapper(assessment, instituteId);
-        }
-        catch (Exception e){
+        } catch (Exception e) {
             log.error("[REVALUATE ERROR]: " + e.getMessage());
         }
 
@@ -339,8 +342,8 @@ public class AdminAssessmentGetManager {
         Map<String, Double> sectionMarksMapping = new HashMap<>();
         Double totalMarks = 0.0;
 
-        for (Section mapping: sections){
-            totalMarks+=mapping.getTotalMarks();
+        for (Section mapping : sections) {
+            totalMarks += mapping.getTotalMarks();
             sectionMarksMapping.put(mapping.getId(), mapping.getTotalMarks());
         }
 

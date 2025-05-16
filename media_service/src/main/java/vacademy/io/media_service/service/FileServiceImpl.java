@@ -69,7 +69,7 @@ public class FileServiceImpl implements FileService {
         s3Client.putObject(publicBucket, key, multipartFile.getInputStream(), null);
         FileMetadata fileMetadata = new FileMetadata(multipartFile.getName(), Objects.isNull(multipartFile.getContentType()) ? "unknown" : multipartFile.getContentType(), key, "SERVICE_UPLOAD", "SERVICE_UPLOAD");
         fileMetadata = fileMetadataRepository.save(fileMetadata);
-        String url =  "https://" + publicBucket + ".s3.amazonaws.com/" + key;
+        String url = "https://" + publicBucket + ".s3.amazonaws.com/" + key;
 
         FileDetailsDTO.FileDetailsDTOBuilder builder = FileDetailsDTO.builder()
                 .expiry(addTime(100))
@@ -151,7 +151,7 @@ public class FileServiceImpl implements FileService {
         Optional<FileMetadata> fileMetadata = fileMetadataRepository.findById(id);
         if (fileMetadata.isEmpty()) throw new FileDownloadException("File Not Found");
 
-//        // Create a request to generate the pre-signed URL
+       // Create a request to generate the pre-signed URL
         GeneratePresignedUrlRequest generatePresignedUrlRequest =
                 new GeneratePresignedUrlRequest(bucketName, fileMetadata.get().getKey())
                         .withMethod(HttpMethod.GET)

@@ -4,9 +4,7 @@ import com.fasterxml.jackson.databind.PropertyNamingStrategy;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.Getter;
 import lombok.Setter;
-import vacademy.io.admin_core_service.features.session.dto.AddSessionDTO;
-
-import java.util.List;
+import vacademy.io.admin_core_service.features.group.dto.AddGroupDTO;
 
 @Getter
 @Setter
@@ -17,4 +15,5 @@ public class AddLevelWithCourseDTO {
     private String levelName;
     private Integer durationInDays;
     private String thumbnailFileId;
+    private AddGroupDTO group;
 }

@@ -11,7 +11,6 @@ import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.common.institute.entity.student.Subject;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 @Service
@@ -22,11 +21,11 @@ public class ModuleManager {
     private final SubjectModuleMappingRepository subjectModuleMappingRepository;
     private final ChapterManager chapterManager;
 
-    public void copyModulesOfSubject(Subject oldSubject, Subject newSubject, PackageSession oldPackageSession, PackageSession newPackageSession){
+    public void copyModulesOfSubject(Subject oldSubject, Subject newSubject, PackageSession oldPackageSession, PackageSession newPackageSession) {
         List<Module> modulesOfSubject = subjectModuleMappingRepository.findModulesBySubjectIdAndPackageSessionId(oldSubject.getId(), oldPackageSession.getId());
-        List<Module>newModules = new ArrayList<>();
-        List<SubjectModuleMapping>subjectModuleMappings = new ArrayList<>();
-        for(Module module : modulesOfSubject){
+        List<Module> newModules = new ArrayList<>();
+        List<SubjectModuleMapping> subjectModuleMappings = new ArrayList<>();
+        for (Module module : modulesOfSubject) {
             Module newModule = new Module();
             newModule.setModuleName(module.getModuleName());
             newModule.setStatus(module.getStatus());

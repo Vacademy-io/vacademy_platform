@@ -20,6 +20,7 @@ public class StudentAssessmentFilter {
     private List<String> batchIds;
     private List<String> userIds = new ArrayList<>();
     private List<String> tagIds;
+    private List<String> assessmentTypes = new ArrayList<>();
     private Boolean getLiveAssessments;
     private Boolean getPassedAssessments;
     private Boolean getUpcomingAssessments;

@@ -23,13 +23,14 @@ public class InviteUserService {
     private final RoleService roleService;
     private final NotificationService notificationService;
 
-    public String inviteUser(UserDTO userDTO, String instituteId, CustomUserDetails customUserDetails) {
+    public UserDTO inviteUser(UserDTO userDTO, String instituteId) {
         setRandomCredentials(userDTO);
         userDTO.setRootUser(true);
         User user = userService.createUserFromUserDto(userDTO);
+        userDTO.setId(user.getId());
         userService.addUserRoles(instituteId, userDTO.getRoles(), user, UserRoleStatus.INVITED.name());
         sendInvitationEmail(userDTO);
-        return "User invited!!!";
+        return userDTO;
     }
 
     public String resendInvitation(String userId, CustomUserDetails userDetails) {

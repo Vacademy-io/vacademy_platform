@@ -6,7 +6,7 @@ import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.Setter;
-import vacademy.io.community_service.feature.filter.entity.Option;
+import vacademy.io.community_service.feature.presentation.entity.question.Option;
 
 @Getter
 @Setter

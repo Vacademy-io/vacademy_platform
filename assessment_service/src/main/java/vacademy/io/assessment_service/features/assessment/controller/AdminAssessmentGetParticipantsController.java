@@ -7,7 +7,6 @@ import org.springframework.web.bind.annotation.*;
 import vacademy.io.assessment_service.features.assessment.dto.AssessmentUserFilter;
 import vacademy.io.assessment_service.features.assessment.dto.ClosedAssessmentParticipantsResponse;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.request.RespondentFilter;
-import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.RespondentListDto;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.RespondentListResponse;
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentUserRegistration;
 import vacademy.io.assessment_service.features.assessment.manager.AssessmentParticipantsManager;
@@ -37,7 +36,7 @@ public class AdminAssessmentGetParticipantsController {
                                                                                              @RequestParam(name = "assessmentId") String assessmentId,
                                                                                              @RequestBody AssessmentUserFilter filter,
                                                                                              @RequestParam(name = "pageNo", required = false, defaultValue = DEFAULT_PAGE_NUMBER) Integer pageNo,
-                                                                                             @RequestParam(name = "pageSize", required = false, defaultValue = DEFAULT_PAGE_SIZE) Integer pageSize){
+                                                                                             @RequestParam(name = "pageSize", required = false, defaultValue = DEFAULT_PAGE_SIZE) Integer pageSize) {
         return assessmentParticipantsManager.getAllParticipantsForAssessment(user, instituteId, assessmentId, filter, pageNo, pageSize);
     }
 
@@ -48,7 +47,7 @@ public class AdminAssessmentGetParticipantsController {
                                                                  @RequestParam(name = "questionId") String questionId,
                                                                  @RequestBody RespondentFilter filter,
                                                                  @RequestParam(name = "pageNo", required = false, defaultValue = DEFAULT_PAGE_NUMBER) Integer pageNo,
-                                                                 @RequestParam(name = "pageSize", required = false, defaultValue = DEFAULT_PAGE_SIZE) Integer pageSize){
+                                                                 @RequestParam(name = "pageSize", required = false, defaultValue = DEFAULT_PAGE_SIZE) Integer pageSize) {
         return assessmentParticipantsManager.getRespondentList(user, assessmentId, sectionId, questionId, filter, pageNo, pageSize);
     }
 

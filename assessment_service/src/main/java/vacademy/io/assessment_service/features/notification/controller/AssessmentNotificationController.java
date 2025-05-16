@@ -2,8 +2,9 @@ package vacademy.io.assessment_service.features.notification.controller;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-import vacademy.io.assessment_service.features.assessment.entity.Assessment;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 import vacademy.io.assessment_service.features.notification.service.AssessmentNotificationService;
 
 @RestController

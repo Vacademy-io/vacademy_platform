@@ -7,8 +7,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.assessment_service.features.evaluation.service.QuestionEvaluationService;
-import vacademy.io.assessment_service.features.question_bank.dto.*;
+import vacademy.io.assessment_service.features.question_bank.dto.AddQuestionDTO;
+import vacademy.io.assessment_service.features.question_bank.dto.AddQuestionPaperDTO;
+import vacademy.io.assessment_service.features.question_bank.dto.AddedQuestionPaperResponseDto;
+import vacademy.io.assessment_service.features.question_bank.dto.EditQuestionPaperDTO;
 import vacademy.io.assessment_service.features.question_bank.entity.QuestionPaper;
+import vacademy.io.assessment_service.features.question_bank.enums.QuestionStatusEnum;
 import vacademy.io.assessment_service.features.question_bank.repository.QuestionPaperRepository;
 import vacademy.io.assessment_service.features.question_core.dto.*;
 import vacademy.io.assessment_service.features.question_core.entity.Option;
@@ -19,10 +23,12 @@ import vacademy.io.assessment_service.features.question_core.enums.QuestionRespo
 import vacademy.io.assessment_service.features.question_core.enums.QuestionTypes;
 import vacademy.io.assessment_service.features.question_core.repository.OptionRepository;
 import vacademy.io.assessment_service.features.question_core.repository.QuestionRepository;
-import vacademy.io.assessment_service.features.rich_text.dto.AssessmentRichTextDataDTO;
 import vacademy.io.assessment_service.features.rich_text.entity.AssessmentRichTextData;
+import vacademy.io.assessment_service.features.tags.entities.EntityTag;
+import vacademy.io.assessment_service.features.tags.entities.EntityTagsId;
+import vacademy.io.assessment_service.features.tags.entities.repository.EntityTagCommunityRepository;
+import vacademy.io.assessment_service.features.tags.entities.repository.TagCommunityRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
-import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -45,20 +51,18 @@ public class AddQuestionPaperFromImportManager {
     @Autowired
     QuestionEvaluationService questionEvaluationService;
 
+    @Autowired
+    EntityTagCommunityRepository entityTagCommunityRepository;
+
+    @Autowired
+    TagCommunityRepository tagCommunityRepository;
+
     @Transactional
     public AddedQuestionPaperResponseDto addQuestionPaper(CustomUserDetails user, AddQuestionPaperDTO questionRequestBody, Boolean isPublicPaper) throws JsonProcessingException {
 
-        QuestionPaper questionPaper = new QuestionPaper();
-        questionPaper.setTitle(questionRequestBody.getTitle());
-        questionPaper.setCreatedByUserId(user.getUserId());
+        var questionPaper = createQuestionPaper(user, questionRequestBody, isPublicPaper);
 
-        if (isPublicPaper)
-            questionPaper.setAccess(QuestionAccessLevel.PUBLIC.name());
-        else
-            questionPaper.setAccess(QuestionAccessLevel.PRIVATE.name());
-
-        questionPaper = questionPaperRepository.save(questionPaper);
-
+        addEntityTagOfQuestionPaper(questionPaper, questionRequestBody);
         List<Question> questions = new ArrayList<>();
         List<Option> options = new ArrayList<>();
         for (int i = 0; i < questionRequestBody.getQuestions().size(); i++) {
@@ -75,6 +79,8 @@ public class AddQuestionPaperFromImportManager {
         questions = questionRepository.saveAll(questions);
         options = optionRepository.saveAll(options);
 
+        addQuestionEntityTags(questions, questionRequestBody.getQuestions());
+
         List<String> savedQuestionIds = questions.stream().map(Question::getId).toList();
 
         questionPaperRepository.bulkInsertQuestionsToQuestionPaper(questionPaper.getId(), savedQuestionIds);
@@ -84,6 +90,39 @@ public class AddQuestionPaperFromImportManager {
 
         return new AddedQuestionPaperResponseDto(questionPaper.getId());
 
+    }
+
+    private void addEntityTagOfQuestionPaper(QuestionPaper questionPaper, AddQuestionPaperDTO questionRequestBody) {
+        if(questionRequestBody.getTags() != null){
+            for (String tag : questionRequestBody.getTags()) {
+                String tagId = UUID.randomUUID().toString();
+                String existingOrNewTagId = tagCommunityRepository.insertTagIfNotExists(tagId, tag.toLowerCase());
+                addEntityTags("QUESTION_PAPER", questionPaper.getId(), existingOrNewTagId, "TAGS");
+            }
+        }
+    }
+
+    private QuestionPaper createQuestionPaper(CustomUserDetails user, AddQuestionPaperDTO questionRequestBody, Boolean isPublicPaper) {
+        QuestionPaper questionPaper = new QuestionPaper();
+        questionPaper.setTitle(questionRequestBody.getTitle());
+        questionPaper.setCreatedByUserId(user.getUserId());
+        questionPaper.setDifficulty(questionRequestBody.getAiDifficulty());
+
+        if(questionRequestBody.getCommunityChapterIds() == null || questionRequestBody.getCommunityChapterIds().isEmpty()){
+            questionPaper.setCommunityChapterIds(null);
+        }
+        else{
+            questionPaper.setCommunityChapterIds(String.join(",", questionRequestBody.getCommunityChapterIds()));
+        }
+
+
+        if (isPublicPaper)
+            questionPaper.setAccess(QuestionAccessLevel.PUBLIC.name());
+        else
+            questionPaper.setAccess(QuestionAccessLevel.PRIVATE.name());
+
+        questionPaper = questionPaperRepository.save(questionPaper);
+        return questionPaper;
     }
 
     @Transactional
@@ -154,6 +193,7 @@ public class AddQuestionPaperFromImportManager {
             case NUMERIC:
                 handleNumericQuestion(question, questionRequest);
                 break;
+            case TRUE_FALSE:
             case MCQS:
             case MCQM:
                 correctOptionIds = createOptions(question, questionRequest);
@@ -205,6 +245,17 @@ public class AddQuestionPaperFromImportManager {
             newOptions.addAll(questionOptions);
         }
 
+
+        var savedQuestions = questionRepository.saveAll(newQuestions);
+        optionRepository.saveAll(newOptions);
+
+        List<String> savedQuestionIds = savedQuestions.stream().map(Question::getId).toList();
+        questionPaperRepository.bulkInsertQuestionsToQuestionPaper(questionPaper.get().getId(), savedQuestionIds);
+        addQuestionEntityTags(savedQuestions, questionRequestBody.getAddedQuestions());
+
+        newQuestions = new ArrayList<>();
+        newOptions = new ArrayList<>();
+
         for (var importQuestion : questionRequestBody.getUpdatedQuestions()) {
             Optional<Question> existingQuestion = questionRepository.findById(importQuestion.getId());
 
@@ -214,11 +265,17 @@ public class AddQuestionPaperFromImportManager {
             if (importQuestion.getParentRichText() != null) {
                 question.setParentRichText(AssessmentRichTextData.fromDTO(importQuestion.getParentRichText()));
             }
-            newQuestions.add(question);
             List<Option> questionOptions = question.getOptions();
+            newQuestions.add(question);
             newOptions.addAll(questionOptions);
         }
 
+        var savedUpdatedQuestions = questionRepository.saveAll(newQuestions);
+        optionRepository.saveAll(newOptions);
+        addQuestionEntityTags(savedUpdatedQuestions, questionRequestBody.getUpdatedQuestions());
+
+        newQuestions = new ArrayList<>();
+        newOptions = new ArrayList<>();
         for (var importQuestion : questionRequestBody.getDeletedQuestions()) {
             Optional<Question> existingQuestion = questionRepository.findById(importQuestion.getId());
 
@@ -227,7 +284,6 @@ public class AddQuestionPaperFromImportManager {
             existingQuestion.get().setStatus(DELETED.name());
             newQuestions.add(existingQuestion.get());
         }
-
         questionRepository.saveAll(newQuestions);
         optionRepository.saveAll(newOptions);
 
@@ -256,6 +312,7 @@ public class AddQuestionPaperFromImportManager {
         if (existingQuestion != null) {
             question = existingQuestion;
         }
+        question.setStatus(QuestionStatusEnum.ACTIVE.name());
         if (questionRequest.getParentRichText() != null) {
             question.setParentRichText(AssessmentRichTextData.fromDTO(questionRequest.getParentRichText()));
         }
@@ -265,11 +322,27 @@ public class AddQuestionPaperFromImportManager {
         if (questionRequest.getExplanationText() != null) {
             question.setExplanationTextData(AssessmentRichTextData.fromDTO(questionRequest.getExplanationText()));
         }
+        if (questionRequest.getAutoEvaluationJson() != null) {
+            question.setAutoEvaluationJson((questionRequest.getAutoEvaluationJson()));
+        }
+        if (questionRequest.getMediaId() != null) {
+            question.setMediaId((questionRequest.getMediaId()));
+        }
+        if (questionRequest.getOptionsJson() != null) {
+            question.setOptionsJson((questionRequest.getOptionsJson()));
+        }
+        if (questionRequest.getAiDifficultyLevel() != null) {
+            question.setDifficulty((questionRequest.getAiDifficultyLevel()));
+        }
+        if (questionRequest.getProblemType() != null) {
+            question.setProblemType((questionRequest.getProblemType()));
+        }
         question.setQuestionType(questionRequest.getQuestionType());
         switch (questionRequest.getQuestionType()) {
             case "NUMERIC":
                 question.setQuestionResponseType(QuestionResponseTypes.INTEGER.name());
                 break;
+            case "TRUE_FALSE":
             case "MCQS":
             case "MCQM":
                 question.setQuestionResponseType(QuestionResponseTypes.OPTION.name());
@@ -292,12 +365,18 @@ public class AddQuestionPaperFromImportManager {
             Option option = new Option();
             UUID optionId = UUID.randomUUID();
             option.setId(optionId.toString());
+            if (optionDTO.getId() != null) {
+                Optional<Option> existingOption = optionRepository.findById(optionDTO.getId());
+                if (existingOption.isPresent()) {
+                    option = existingOption.get();
+                }
+            }
             option.setText(AssessmentRichTextData.fromDTO(optionDTO.getText()));
             option.setQuestion(question);
             option.setMediaId(optionDTO.getMediaId());
 
             if (requestEvaluation.getData().getCorrectOptionIds().contains(String.valueOf(optionDTO.getPreviewId()))) {
-                correctOptionIds.add(optionId.toString());
+                correctOptionIds.add(option.getId());
             }
             options.add(option);
         }
@@ -396,7 +475,7 @@ public class AddQuestionPaperFromImportManager {
 
         MCQEvaluationDTO mcqEvaluation = new MCQEvaluationDTO();
         if (question.getQuestionType() != null) mcqEvaluation.setType(question.getQuestionType());
-        if(correctOptionIds != null) {
+        if (correctOptionIds != null) {
             mcqEvaluation.setData(new MCQEvaluationDTO.MCQData(correctOptionIds));
             question.setAutoEvaluationJson(questionEvaluationService.setEvaluationJson(mcqEvaluation));
         }
@@ -414,6 +493,38 @@ public class AddQuestionPaperFromImportManager {
 
         question.setQuestionType(questionRequest.getQuestionType());
         question.setExplanationTextData(AssessmentRichTextData.fromDTO(questionRequest.getExplanationText()));
+    }
+
+    private void addQuestionEntityTags(List<Question> questions, List<QuestionDTO> questionRequests) {
+
+        try {
+            for (int i = 0; i < questions.size(); i++) {
+                Question question = questions.get(i);
+                QuestionDTO questionRequest = questionRequests.get(i);
+                for (int j = 0; j < questionRequest.getAiTags().size(); j++) {
+                    String tagId = UUID.randomUUID().toString();
+                    String existingOrNewTagId = tagCommunityRepository.insertTagIfNotExists(tagId, questionRequest.getAiTags().get(j).toLowerCase());
+                    addEntityTags("QUESTION", question.getId(), existingOrNewTagId, "TAGS");
+                }
+
+                for (int j = 0; j < questionRequest.getAiTopicsIds().size(); j++) {
+                    addEntityTags("QUESTION", question.getId(), questionRequest.getAiTopicsIds().get(j), "TOPIC");
+                }
+            }
+        } catch (Exception e) {
+
+        }
+    }
+
+    private void addEntityTags(String entityName, String entityId, String tagId, String tagSource) {
+        EntityTag entityTag = new EntityTag();
+        entityTag.setId(new EntityTagsId(entityId, entityName, tagId));
+        entityTag.setTagSource(tagSource);
+        try {
+            entityTagCommunityRepository.save(entityTag);
+        } catch (Exception e) {
+
+        }
     }
 
 

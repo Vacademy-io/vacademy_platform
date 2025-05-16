@@ -14,7 +14,11 @@ public class SlideDTO {
     private String imageFileId;
     private String description;
     private String status;
+    private Integer slideOrder;
+    private boolean isNewSlide;
     private VideoSlideDTO videoSlide;
     private DocumentSlideDTO documentSlide;
+    private QuestionSlideDTO questionSlide;
+    private AssignmentSlideDTO assignmentSlide;
     private Boolean isLoaded = false;
 }

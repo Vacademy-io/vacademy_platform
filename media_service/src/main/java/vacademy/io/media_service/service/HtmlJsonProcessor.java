@@ -2,7 +2,9 @@ package vacademy.io.media_service.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.*;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.node.TextNode;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Comment;
 import org.jsoup.nodes.Document;
@@ -19,6 +21,79 @@ public class HtmlJsonProcessor {
     private final Map<String, String> tagStorage = new HashMap<>();
     private final ObjectMapper objectMapper = new ObjectMapper();
 
+    /**
+     * Cleans a string by:
+     * 1. Removing backslashes that escape quotes
+     * 2. Converting Unicode escape sequences like \u003c to corresponding characters
+     * 3. Handling common escape sequences like \n, \t, etc.
+     *
+     * @param input The string with escape sequences
+     * @return The cleaned string with actual characters
+     */
+    public static String unescapeString(String input) {
+        if (input == null) {
+            return null;
+        }
+
+        StringBuilder result = new StringBuilder(input.length());
+        for (int i = 0; i < input.length(); i++) {
+            char c = input.charAt(i);
+
+            // Handle backslash escape sequences
+            if (c == '\\' && i + 1 < input.length()) {
+                char next = input.charAt(i + 1);
+
+                switch (next) {
+                    case '"':
+                        result.append('"');
+                        i++;
+                        break;
+                    case '\\':
+                        result.append('\\');
+                        i++;
+                        break;
+                    case 'n':
+                        result.append('\n');
+                        i++;
+                        break;
+                    case 't':
+                        result.append('\t');
+                        i++;
+                        break;
+                    case 'r':
+                        result.append('\r');
+                        i++;
+                        break;
+                    case 'u':
+
+                        if (i + 5 < input.length()) {
+                            try {
+                                String hex = input.substring(i + 2, i + 6);
+                                int codePoint = Integer.parseInt(hex, 16);
+                                result.append((char) codePoint);
+                                i += 5; // Skip the 'u' and 4 hex digits
+                            } catch (NumberFormatException e) {
+                                // If invalid hex, keep the original sequence
+                                result.append(c);
+                            }
+                        } else {
+                            // Not enough characters for a complete Unicode escape
+                            result.append(c);
+                        }
+                        break;
+                    default:
+                        // For any unrecognized escape, just keep the backslash and the character
+                        result.append(c);
+                        break;
+                }
+            } else {
+                // Regular character, just append it
+                result.append(c);
+            }
+        }
+
+        return result.toString();
+    }
 
     // Modified restoration for JSON structure
     public String restoreTagsInJson(String jsonResponse) throws Exception {
@@ -93,7 +168,8 @@ public class HtmlJsonProcessor {
             }
 
             @Override
-            public void tail(Node node, int depth) {}
+            public void tail(Node node, int depth) {
+            }
         });
 
         for (Comment commentNode : comments) {
@@ -130,80 +206,6 @@ public class HtmlJsonProcessor {
         // Preserve original HTML syntax in output
         doc.outputSettings().syntax(Document.OutputSettings.Syntax.xml);
         return doc.body().html();
-    }
-
-    /**
-     * Cleans a string by:
-     * 1. Removing backslashes that escape quotes
-     * 2. Converting Unicode escape sequences like \u003c to corresponding characters
-     * 3. Handling common escape sequences like \n, \t, etc.
-     *
-     * @param input The string with escape sequences
-     * @return The cleaned string with actual characters
-     */
-    public static String unescapeString(String input) {
-        if (input == null) {
-            return null;
-        }
-
-        StringBuilder result = new StringBuilder(input.length());
-        for (int i = 0; i < input.length(); i++) {
-            char c = input.charAt(i);
-
-            // Handle backslash escape sequences
-            if (c == '\\' && i + 1 < input.length()) {
-                char next = input.charAt(i + 1);
-
-                switch (next) {
-                    case '"':
-                        result.append('"');
-                        i++;
-                        break;
-                    case '\\':
-                        result.append('\\');
-                        i++;
-                        break;
-                    case 'n':
-                        result.append('\n');
-                        i++;
-                        break;
-                    case 't':
-                        result.append('\t');
-                        i++;
-                        break;
-                    case 'r':
-                        result.append('\r');
-                        i++;
-                        break;
-                    case 'u':
-
-                        if (i + 5 < input.length()) {
-                            try {
-                                String hex = input.substring(i + 2, i + 6);
-                                int codePoint = Integer.parseInt(hex, 16);
-                                result.append((char) codePoint);
-                                i += 5; // Skip the 'u' and 4 hex digits
-                            } catch (NumberFormatException e) {
-                                // If invalid hex, keep the original sequence
-                                result.append(c);
-                            }
-                        } else {
-                            // Not enough characters for a complete Unicode escape
-                            result.append(c);
-                        }
-                        break;
-                    default:
-                        // For any unrecognized escape, just keep the backslash and the character
-                        result.append(c);
-                        break;
-                }
-            } else {
-                // Regular character, just append it
-                result.append(c);
-            }
-        }
-
-        return result.toString();
     }
 
 }

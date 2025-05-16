@@ -11,9 +11,14 @@ import org.springframework.web.multipart.MultipartFile;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.media.dto.FileDetailsDTO;
 import vacademy.io.media_service.ai.DeepSeekService;
-import vacademy.io.media_service.dto.*;
+import vacademy.io.media_service.dto.AiGeneratedQuestionPaperJsonDto;
+import vacademy.io.media_service.dto.AutoDocumentSubmitResponse;
+import vacademy.io.media_service.dto.AutoQuestionPaperResponse;
+import vacademy.io.media_service.dto.FileIdSubmitRequest;
+import vacademy.io.media_service.entity.TaskStatus;
+import vacademy.io.media_service.enums.TaskInputTypeEnum;
+import vacademy.io.media_service.enums.TaskStatusTypeEnum;
 import vacademy.io.media_service.service.*;
-import vacademy.io.media_service.util.JsonUtils;
 
 import java.io.IOException;
 import java.util.regex.Matcher;
@@ -29,14 +34,15 @@ public class AudioQuestionGeneratorController {
     @Autowired
     DeepSeekService deepSeekService;
     @Autowired
+    DeepSeekAsyncTaskService deepSeekAsyncTaskService;
+    @Autowired
+    TaskStatusService taskStatusService;
+    @Autowired
     private ObjectMapper objectMapper;
-
     @Autowired
     private FileService fileService;
-
     @Autowired
     private FileConversionStatusService fileConversionStatusService;
-
     @Autowired
     private NewAudioConverterService newAudioConverterService;
 
@@ -99,7 +105,10 @@ public class AudioQuestionGeneratorController {
 
 
     @GetMapping("/audio-parser/audio-to-questions")
-    public ResponseEntity<AutoQuestionPaperResponse> getMathParserPdfHtml(@RequestParam String audioId, @RequestParam(required = false) String numQuestions, @RequestParam(required = false) String prompt, @RequestParam(required = false) String difficulty, @RequestParam(required = false) String language) throws IOException {
+    public ResponseEntity<String> getMathParserPdfHtml(@RequestParam String audioId, @RequestParam(required = false) String numQuestions, @RequestParam(required = false) String prompt, @RequestParam(required = false) String difficulty, @RequestParam(required = false) String language,
+                                                       @RequestParam(name = "taskId", required = false) String taskId,
+                                                       @RequestParam(name = "taskName", required = false) String taskName,
+                                                       @RequestParam(name = "instituteId", required = false) String instituteId) throws IOException {
 
         if (difficulty == null) {
             difficulty = "hard and medium";
@@ -113,33 +122,15 @@ public class AudioQuestionGeneratorController {
             prompt = "";
         }
 
-        if(language == null) {
+        if (language == null) {
             language = "english";
         }
 
-        var fileConversionStatus = fileConversionStatusService.findByVendorFileId(audioId);
+        TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(taskId, TaskStatusTypeEnum.AUDIO_TO_QUESTIONS.name(), audioId, TaskInputTypeEnum.AUDIO_ID.name(), taskName, instituteId);
 
-        if (fileConversionStatus.isEmpty() || !StringUtils.hasText(fileConversionStatus.get().getHtmlText())) {
-            String convertedText = newAudioConverterService.getConvertedAudio(audioId);
-            if (convertedText == null) {
-                throw new VacademyException("File Still Processing");
-            }
-
-
-            fileConversionStatusService.updateHtmlText(audioId, convertedText);
-            String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromAudio(convertedText, numQuestions, prompt, difficulty, language));
-
-            // Process the raw output to get valid JSON
-            String validJson = JsonUtils.extractAndSanitizeJson(rawOutput);
-
-            return ResponseEntity.ok(createAutoQuestionPaperResponse(removeExtraSlashes(validJson)));
-        }
-
-        String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromAudio(fileConversionStatus.get().getHtmlText(), numQuestions, prompt, difficulty, language));
-
-        // Process the raw output to get valid JSON
-        String validJson = JsonUtils.extractAndSanitizeJson(rawOutput);
-        return ResponseEntity.ok(createAutoQuestionPaperResponse(removeExtraSlashes(validJson)));
+        // Background async processing
+        deepSeekAsyncTaskService.pollAndProcessAudioToQuestions(taskStatus, audioId, prompt, difficulty, language, numQuestions);
+        return ResponseEntity.ok(taskStatus.getId());
     }
 
 

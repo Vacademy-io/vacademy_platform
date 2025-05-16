@@ -15,4 +15,5 @@ public class MCQSCorrectAnswerDto {
     @Setter
     public static class DataFields {
         private List<String> correctOptionIds;
-    }}
+    }
+}

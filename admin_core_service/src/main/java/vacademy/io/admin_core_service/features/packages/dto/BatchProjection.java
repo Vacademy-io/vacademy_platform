@@ -6,8 +6,13 @@ import com.fasterxml.jackson.databind.annotation.JsonNaming;
 @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
 public interface BatchProjection {
     String getPackageSessionId();
+
     String getBatchName();
+
     String getBatchStatus();
+
     String getStartDate();
+
     Long getCountStudents();
+    String getInviteCode();
 }

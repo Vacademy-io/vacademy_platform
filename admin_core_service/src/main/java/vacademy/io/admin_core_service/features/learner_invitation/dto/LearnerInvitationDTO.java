@@ -20,5 +20,7 @@ public class LearnerInvitationDTO {
     private String instituteId;
     private String inviteCode;
     private String batchOptionsJson;
+    private String source;
+    private String sourceId;
     private List<LearnerInvitationCustomFieldDTO> customFields;
 }

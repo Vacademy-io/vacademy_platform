@@ -6,9 +6,10 @@ import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.Setter;
-import vacademy.io.community_service.feature.filter.entity.Option;
-import vacademy.io.community_service.feature.filter.entity.Question;
 import vacademy.io.community_service.feature.filter.service.EvaluationJsonToMapConverter;
+import vacademy.io.community_service.feature.presentation.entity.question.Option;
+import vacademy.io.community_service.feature.presentation.entity.question.Question;
+
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -74,7 +75,7 @@ public class QuestionDTO {
             this.explanationText = new AssessmentRichTextDataDTO(question.getExplanationTextData());
         }
 
-        if(question.getParentRichText() != null){
+        if (question.getParentRichText() != null) {
             this.parentRichText = new AssessmentRichTextDataDTO((question.getParentRichText()));
         }
 

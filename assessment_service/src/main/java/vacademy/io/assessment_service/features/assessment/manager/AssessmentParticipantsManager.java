@@ -22,10 +22,6 @@ import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.requ
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.*;
 import vacademy.io.assessment_service.features.assessment.dto.create_assessment.AssessmentRegistrationsDto;
 import vacademy.io.assessment_service.features.assessment.entity.*;
-import vacademy.io.assessment_service.features.assessment.entity.Assessment;
-import vacademy.io.assessment_service.features.assessment.entity.AssessmentBatchRegistration;
-import vacademy.io.assessment_service.features.assessment.entity.AssessmentCustomField;
-import vacademy.io.assessment_service.features.assessment.entity.AssessmentUserRegistration;
 import vacademy.io.assessment_service.features.assessment.enums.*;
 import vacademy.io.assessment_service.features.assessment.notification.AssessmentReportNotificationService;
 import vacademy.io.assessment_service.features.assessment.repository.*;
@@ -38,11 +34,11 @@ import vacademy.io.assessment_service.features.evaluation.service.QuestionEvalua
 import vacademy.io.assessment_service.features.learner_assessment.entity.QuestionWiseMarks;
 import vacademy.io.assessment_service.features.learner_assessment.service.QuestionWiseMarksService;
 import vacademy.io.assessment_service.features.notification.service.AssessmentNotificationService;
-import vacademy.io.assessment_service.features.notification.service.NotificationService;
 import vacademy.io.assessment_service.features.question_core.dto.MCQEvaluationDTO;
 import vacademy.io.assessment_service.features.question_core.entity.Option;
 import vacademy.io.assessment_service.features.question_core.entity.Question;
 import vacademy.io.assessment_service.features.question_core.repository.OptionRepository;
+import vacademy.io.assessment_service.features.rich_text.dto.AssessmentRichTextDataDTO;
 import vacademy.io.assessment_service.features.rich_text.entity.AssessmentRichTextData;
 import vacademy.io.assessment_service.features.rich_text.enums.TextType;
 import vacademy.io.assessment_service.features.rich_text.repository.AssessmentRichTextRepository;
@@ -280,6 +276,7 @@ public class AssessmentParticipantsManager {
         assessmentCustomField.setAssessment(assessment);
         assessmentCustomField.setFieldKey(registrationFieldDto.getName().toLowerCase().trim().replace(" ", "_"));
         assessmentCustomField.setFieldName(registrationFieldDto.getName().trim());
+        assessmentCustomField.setFieldOrder((registrationFieldDto.getOrderField() == null) ? 0 : registrationFieldDto.getOrderField());
         assessmentCustomField.setFieldType(registrationFieldDto.getType().trim());
         assessmentCustomField.setIsMandatory(registrationFieldDto.getIsMandatory());
         assessmentCustomField.setStatus(ACTIVE.name());
@@ -697,24 +694,30 @@ public class AssessmentParticipantsManager {
                 return null; // Avoid throwing an exception, instead return null to filter later
             }
 
+            QuestionAssessmentSectionMapping questionAssessmentSectionMapping = questionAssessmentSectionMappingService.getMappingById(questionWiseMarks.getQuestion().getId(), questionWiseMarks.getSection().getId());
+            if (Objects.isNull(questionAssessmentSectionMapping))
+                throw new VacademyException("Section and Question Mapping Not Found");
+
             Question currentQuestion = questionWiseMarks.getQuestion();
             String questionHtml = currentQuestion.getTextData().getContent();
             String questionType = currentQuestion.getQuestionType();
 
-            List<StudentReportAnswerReviewDto.ReportOptionsDto> correctOptions = createCorrectOptionsDto(currentQuestion.getAutoEvaluationJson());
 
             if (StringUtils.isEmpty(questionType)) {
                 throw new VacademyException("Invalid Question Type for Question ID: " + currentQuestion.getId());
             }
 
-            List<String> responseOptionIds = QuestionBasedStrategyFactory
-                    .getResponseOptionIds(questionWiseMarks.getResponseJson(), questionType);
 
             return StudentReportAnswerReviewDto.builder()
                     .questionId(currentQuestion.getId())
+                    .questionText(currentQuestion.getTextData().toDTO())
+                    .parentId(currentQuestion.getParentRichText() != null ? currentQuestion.getParentRichText().getId() : null)
+                    .parentRichText(currentQuestion.getTextData() != null ? currentQuestion.getTextData().toDTO() : null)
                     .questionName(questionHtml)
-                    .correctOptions(correctOptions)
-                    .studentResponseOptions(createOptionResponse(responseOptionIds))
+                    .questionType(questionType)
+                    .questionOrder(questionAssessmentSectionMapping.getQuestionOrder())
+                    .correctOptions(currentQuestion.getAutoEvaluationJson())
+                    .studentResponseOptions(questionWiseMarks.getResponseJson())
                     .answerStatus(questionWiseMarks.getStatus())
                     .mark(questionWiseMarks.getMarks())
                     .explanationId(currentQuestion.getExplanationTextData() != null ? currentQuestion.getExplanationTextData().getId() : null)
@@ -726,28 +729,6 @@ public class AssessmentParticipantsManager {
         }
     }
 
-    private List<StudentReportAnswerReviewDto.ReportOptionsDto> createCorrectOptionsDto(String autoEvaluationJson) throws JsonProcessingException {
-        if (Objects.isNull(autoEvaluationJson)) return new ArrayList<>();
-        MCQEvaluationDTO evaluationDTO = (MCQEvaluationDTO) questionEvaluationService.getEvaluationJson(autoEvaluationJson, MCQEvaluationDTO.class);
-
-        List<String> optionIds = evaluationDTO.getData().getCorrectOptionIds();
-
-        return createOptionResponse(optionIds);
-    }
-
-    private List<StudentReportAnswerReviewDto.ReportOptionsDto> createOptionResponse(List<String> optionIds) {
-        List<Option> allOptions = optionRepository.findAllById(optionIds);
-        List<StudentReportAnswerReviewDto.ReportOptionsDto> optionResponse = new ArrayList<>();
-
-        allOptions.forEach(option -> {
-            String optionHtml = option.getText() != null ? option.getText().getContent() : null;
-            optionResponse.add(StudentReportAnswerReviewDto.ReportOptionsDto.builder()
-                    .optionId(option.getId())
-                    .optionName(optionHtml).build());
-        });
-
-        return optionResponse;
-    }
 
     public ResponseEntity<RespondentListResponse> getRespondentList(CustomUserDetails user, String assessmentId, String sectionId, String questionId, RespondentFilter filter, Integer pageNo, Integer pageSize) {
 
@@ -826,10 +807,10 @@ public class AssessmentParticipantsManager {
     @Async
     public CompletableFuture<Void> releaseResultWrapper(Assessment assessment, String instituteId, ReleaseRequestDto request, String type) {
         return CompletableFuture.runAsync(() -> processReleaseParticipants(assessment, instituteId, request, type))
-                .thenRun(() -> sendNotificationToAdmin(assessment,instituteId));
+                .thenRun(() -> sendNotificationToAdmin(assessment, instituteId));
     }
 
-    private void sendNotificationToAdmin(Assessment assessment,String instituteId) {
+    private void sendNotificationToAdmin(Assessment assessment, String instituteId) {
         assessmentNotificationService.sendNotificationsToAdminsAfterReleasingTheResult(assessment, instituteId);
     }
 
@@ -887,7 +868,7 @@ public class AssessmentParticipantsManager {
             // Send notification to the student
             reportMap.put(attempt, participantPdfReport);
         });
-        sendNotificationToStudent(reportMap,assessment.getId());
+        sendNotificationToStudent(reportMap, assessment.getId());
     }
 
     /**
@@ -906,8 +887,8 @@ public class AssessmentParticipantsManager {
      *
      * @param participantPdfReport The generated PDF report as a byte array.
      */
-    private void sendNotificationToStudent(Map<StudentAttempt, byte[]> participantPdfReport,String assessmentId) {
-        assessmentReportNotificationService.sendAssessmentReportsToLearners(participantPdfReport,assessmentId);
+    private void sendNotificationToStudent(Map<StudentAttempt, byte[]> participantPdfReport, String assessmentId) {
+        assessmentReportNotificationService.sendAssessmentReportsToLearners(participantPdfReport, assessmentId);
         log.info("Notification Check");
     }
 

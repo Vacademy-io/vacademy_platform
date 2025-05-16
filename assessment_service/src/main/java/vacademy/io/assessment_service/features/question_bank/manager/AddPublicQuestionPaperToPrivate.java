@@ -9,8 +9,6 @@ import vacademy.io.assessment_service.features.question_bank.entity.QuestionPape
 import vacademy.io.assessment_service.features.question_bank.repository.QuestionPaperRepository;
 import vacademy.io.assessment_service.features.question_bank.service.QuestionPaperService;
 import vacademy.io.assessment_service.features.question_core.dto.QuestionDTO;
-import vacademy.io.assessment_service.features.question_core.entity.Option;
-import vacademy.io.assessment_service.features.question_core.entity.Question;
 import vacademy.io.assessment_service.features.question_core.enums.QuestionAccessLevel;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
@@ -63,7 +61,7 @@ public class AddPublicQuestionPaperToPrivate {
 
         // map new question to the institute
         // level id and subject id is null as the public question does not have that
-        questionPaperRepository.linkInstituteToQuestionPaper(UUID.randomUUID().toString(), questionPaper.getId(), instituteId, "ACTIVE",null, null);
+        questionPaperRepository.linkInstituteToQuestionPaper(UUID.randomUUID().toString(), questionPaper.getId(), instituteId, "ACTIVE", null, null);
 
 
         return new AddedQuestionPaperResponseDto(questionPaper.getId());

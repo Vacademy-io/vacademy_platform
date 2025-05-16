@@ -20,7 +20,7 @@ public class EditQuestionPaperManager {
         return true;
     }
 
-    public Boolean deletePublicQuestionPaperById( CustomUserDetails user ,  String questionPaperId){
+    public Boolean deletePublicQuestionPaperById(CustomUserDetails user, String questionPaperId) {
         questionPaperRepository.deletePublicQuestionPaperById(questionPaperId);
         return true;
     }

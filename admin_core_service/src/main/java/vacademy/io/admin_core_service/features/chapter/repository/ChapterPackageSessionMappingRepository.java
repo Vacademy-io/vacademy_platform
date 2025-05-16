@@ -1,6 +1,7 @@
 package vacademy.io.admin_core_service.features.chapter.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import vacademy.io.admin_core_service.features.chapter.entity.Chapter;
@@ -43,5 +44,44 @@ public interface ChapterPackageSessionMappingRepository extends JpaRepository<Ch
     Optional<ChapterPackageSessionMapping> findByChapterIdAndPackageSessionIdAndStatusNotDeleted(
             @Param("chapterId") String chapterId,
             @Param("packageSessionId") String packageSessionId);
+
+    @Modifying
+    @Query(value = """
+                UPDATE chapter_package_session_mapping cpsm
+                SET status = 'DELETED'
+                WHERE cpsm.package_session_id IN (
+                    SELECT spsm.session_id
+                    FROM subject_session spsm
+                    WHERE spsm.subject_id IN (:subjectIds)
+                )
+                AND cpsm.package_session_id NOT IN (
+                    SELECT DISTINCT spsm.session_id
+                    FROM subject_session spsm
+                    JOIN subject s ON s.id = spsm.subject_id
+                    WHERE s.status = 'ACTIVE'
+                )
+            """, nativeQuery = true)
+    void softDeleteChapterMappingsWithoutActiveSubjects(@Param("subjectIds") List<String> subjectIds);
+
+    @Modifying
+    @Query(value = """
+                UPDATE chapter_package_session_mapping cpsm
+                SET status = 'DELETED'
+                WHERE cpsm.package_session_id IN (
+                    SELECT spsm.session_id
+                    FROM subject_session spsm
+                    JOIN subject_module_mapping smm ON smm.subject_id = spsm.subject_id
+                    WHERE smm.module_id IN (:moduleIds)
+                )
+                AND cpsm.package_session_id NOT IN (
+                    SELECT DISTINCT spsm.session_id
+                    FROM subject_session spsm
+                    JOIN subject_module_mapping smm ON smm.subject_id = spsm.subject_id
+                    JOIN modules m ON m.id = smm.module_id
+                    WHERE m.status = 'ACTIVE'
+                )
+            """, nativeQuery = true)
+    void softDeleteChapterMappingsWithoutActiveModules(@Param("moduleIds") List<String> moduleIds);
+
 
 }

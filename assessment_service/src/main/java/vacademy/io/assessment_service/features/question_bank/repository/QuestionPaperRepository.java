@@ -65,7 +65,7 @@ public interface QuestionPaperRepository extends JpaRepository<QuestionPaper, St
                     "WHERE (:title IS NULL OR qp.title ILIKE CONCAT('%', :title, '%')) " +
                     "AND qp.access ILIKE 'PUBLIC' ",
             countQuery = "SELECT COUNT(qp) FROM question_paper qp " +
-                    "WHERE (:title IS NULL OR qp.title ILIKE CONCAT('%', :title, '%')) "+
+                    "WHERE (:title IS NULL OR qp.title ILIKE CONCAT('%', :title, '%')) " +
                     "AND qp.access ILIKE 'PUBLIC' ",
             nativeQuery = true
     )

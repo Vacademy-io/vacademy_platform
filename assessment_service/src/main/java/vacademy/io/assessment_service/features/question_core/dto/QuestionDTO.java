@@ -36,6 +36,10 @@ public class QuestionDTO {
     private String accessLevel;
     private String autoEvaluationJson;
     private String optionsJson;
+    private List<String> aiTags = new ArrayList<>();
+    private List<String> aiTopicsIds = new ArrayList<>();
+    private String aiDifficultyLevel = "MEDIUM";
+    private String problemType;
     private Map<String, Object> parsedEvaluationObject;
     private String evaluationType;
     private AssessmentRichTextDataDTO explanationText;
@@ -76,7 +80,7 @@ public class QuestionDTO {
             this.explanationText = new AssessmentRichTextDataDTO(question.getExplanationTextData());
         }
 
-        if(question.getParentRichText() != null){
+        if (question.getParentRichText() != null) {
             this.parentRichText = new AssessmentRichTextDataDTO((question.getParentRichText()));
         }
 

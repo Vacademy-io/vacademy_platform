@@ -39,10 +39,68 @@ import static vacademy.io.media_service.controller.ai.QuestionGeneratorControlle
 public class DocxToHtmlController {
 
     @Autowired
+    HtmlImageConverter htmlImageConverter;
+    @Autowired
     private ObjectMapper objectMapper;
 
-    @Autowired
-    HtmlImageConverter htmlImageConverter;
+    public static String convertBase64WmfImagesToSvg(String htmlContent)
+            throws TranscoderException, IOException {
+
+        // Pattern to match WMF images in base64 format
+        Pattern wmfPattern = Pattern.compile("data:image/x-wmf;base64,([^\"]+)");
+
+        // Create a matcher to find all occurrences of WMF images
+        Matcher matcher = wmfPattern.matcher(htmlContent);
+
+        // Create a string buffer to store the modified HTML content
+        StringBuffer result = new StringBuffer();
+
+        // Iterate over all matches and replace WMF images with SVG images
+        while (matcher.find()) {
+            // Extract the base64-encoded WMF image
+            String base64Wmf = matcher.group(1);
+
+            // Convert the WMF image to an SVG image
+            String base64Svg = convertBase64WmfToBase64Svg(base64Wmf);
+
+            // Replace the WMF image with the SVG image
+            matcher.appendReplacement(result, "data:image/svg+xml;base64," + base64Svg);
+        }
+
+        // Append the remaining HTML content
+        matcher.appendTail(result);
+
+        // Return the modified HTML content
+        return result.toString();
+    }
+
+    public static String convertBase64WmfToBase64Svg(String base64Wmf) throws TranscoderException, IOException {
+        byte[] wmfData = Base64.getDecoder().decode(base64Wmf);
+        WMFTranscoder wmfTranscoder = new WMFTranscoder();
+        ByteArrayInputStream wmfStream = new ByteArrayInputStream(wmfData);
+        ByteArrayOutputStream svgStream = new ByteArrayOutputStream();
+        TranscoderInput wmfInput = new TranscoderInput(wmfStream);
+        TranscoderOutput svgOutput = new TranscoderOutput(svgStream);
+        wmfTranscoder.transcode(wmfInput, svgOutput); // Encode the SVG byte array to Base64
+        return Base64.getEncoder().encodeToString(svgStream.toByteArray());
+    }
+
+    public static int[] extractQuestionNumbers(String text) {
+        // Updated regex: Matches both (1C1.) and (1 C1.)
+        String regex = "\\((\\d+)\\s*C(\\d+)\\.\\)";
+        Pattern pattern = Pattern.compile(regex);
+        Matcher matcher = pattern.matcher(text);
+
+        if (matcher.find()) {
+            // Extract the numbers before and after 'C'
+            int beforeC = Integer.parseInt(matcher.group(1)); // Number before 'C'
+            int afterC = Integer.parseInt(matcher.group(2));  // Number after 'C'
+            return new int[]{beforeC, afterC};
+        }
+
+        // Return -1 if no match is found or throw an error
+        throw new IllegalArgumentException("Invalid question format: " + text);
+    }
 
     @GetMapping("/test")
     public String index() {
@@ -66,7 +124,6 @@ public class DocxToHtmlController {
             throw new VacademyException(e.getMessage());
         }
     }
-
 
     @PostMapping("/doc-to-html")
     public List<QuestionDTO> docToHtml(
@@ -111,12 +168,11 @@ public class DocxToHtmlController {
             tempFile.delete(); // Clean up temporary file
         } catch (Exception e) {
             e.printStackTrace();
-            throw new VacademyException("Failed to process question settings "+ e.getMessage());
+            throw new VacademyException("Failed to process question settings " + e.getMessage());
         }
 
         return html;
     }
-
 
     private DocumentConverter createDocumentConverter() {
         return new DocumentConverter()
@@ -151,51 +207,8 @@ public class DocxToHtmlController {
         return Base64.getEncoder().encodeToString(svgStream.toByteArray());
     }
 
-
-    public static String convertBase64WmfImagesToSvg(String htmlContent)
-            throws TranscoderException, IOException {
-
-        // Pattern to match WMF images in base64 format
-        Pattern wmfPattern = Pattern.compile("data:image/x-wmf;base64,([^\"]+)");
-
-        // Create a matcher to find all occurrences of WMF images
-        Matcher matcher = wmfPattern.matcher(htmlContent);
-
-        // Create a string buffer to store the modified HTML content
-        StringBuffer result = new StringBuffer();
-
-        // Iterate over all matches and replace WMF images with SVG images
-        while (matcher.find()) {
-            // Extract the base64-encoded WMF image
-            String base64Wmf = matcher.group(1);
-
-            // Convert the WMF image to an SVG image
-            String base64Svg = convertBase64WmfToBase64Svg(base64Wmf);
-
-            // Replace the WMF image with the SVG image
-            matcher.appendReplacement(result, "data:image/svg+xml;base64," + base64Svg);
-        }
-
-        // Append the remaining HTML content
-        matcher.appendTail(result);
-
-        // Return the modified HTML content
-        return result.toString();
-    }
-
     private boolean isHtmlFile(MultipartFile file) {
         return "text/html".equals(file.getContentType());
-    }
-
-    public static String convertBase64WmfToBase64Svg(String base64Wmf) throws TranscoderException, IOException {
-        byte[] wmfData = Base64.getDecoder().decode(base64Wmf);
-        WMFTranscoder wmfTranscoder = new WMFTranscoder();
-        ByteArrayInputStream wmfStream = new ByteArrayInputStream(wmfData);
-        ByteArrayOutputStream svgStream = new ByteArrayOutputStream();
-        TranscoderInput wmfInput = new TranscoderInput(wmfStream);
-        TranscoderOutput svgOutput = new TranscoderOutput(svgStream);
-        wmfTranscoder.transcode(wmfInput, svgOutput); // Encode the SVG byte array to Base64
-        return Base64.getEncoder().encodeToString(svgStream.toByteArray());
     }
 
     private List<QuestionDTO> extractQuestionsFromHtml(MultipartFile file, String questionIdentifier, String optionIdentifier, String answerIdentifier, String explanationIdentifier) {
@@ -446,8 +459,8 @@ public class DocxToHtmlController {
 
                         }
                         String ans = answerBuilder.substring(ansRegex.length()).trim();
-                        getAnswerType(ans , question);
-                        setEvaluation(ans , question);
+                        getAnswerType(ans, question);
+                        setEvaluation(ans, question);
 
                     } else {
 
@@ -463,7 +476,7 @@ public class DocxToHtmlController {
                                     .map(String::trim) // Remove spaces
                                     .map(option -> getAnswerId(option).toString()) // Convert to ID
                                     .toList();
-                            if(correctOptionIds.size() > 1){
+                            if (correctOptionIds.size() > 1) {
                                 mcqEvaluation.setType(QuestionTypes.MCQM.name());
                                 question.setQuestionType(QuestionTypes.MCQM.name());
                             }
@@ -501,7 +514,7 @@ public class DocxToHtmlController {
         return questions;
     }
 
-    private void setEvaluation(String ans , QuestionDTO question) {
+    private void setEvaluation(String ans, QuestionDTO question) {
         switch (question.getQuestionType()) {
             case "NUMERIC":
                 // Handle numeric question type
@@ -564,8 +577,7 @@ public class DocxToHtmlController {
         }
     }
 
-
-    private void getAnswerType(String answer , QuestionDTO question) {
+    private void getAnswerType(String answer, QuestionDTO question) {
         Pattern INTEGER_PATTERN = Pattern.compile("^\\d+$");          // Matches whole numbers
         Pattern DECIMAL_PATTERN = Pattern.compile("^\\d+\\.\\d+$");   // Matches decimal numbers
         Pattern ONE_WORD_PATTERN = Pattern.compile("^[a-zA-Z0-9]+$"); // Matches a single word (letters/numbers)
@@ -580,7 +592,6 @@ public class DocxToHtmlController {
             question.setQuestionType(QuestionTypes.LONG_ANSWER.name());
         }
     }
-
 
     private int extractQuestionNumber(String text) {
         // Define a regex pattern to match the question number formats
@@ -607,23 +618,6 @@ public class DocxToHtmlController {
 
 
         // Return -1 or throw an exception if no valid number is found
-        throw new IllegalArgumentException("Invalid question format: " + text);
-    }
-
-    public static int[] extractQuestionNumbers(String text) {
-        // Updated regex: Matches both (1C1.) and (1 C1.)
-        String regex = "\\((\\d+)\\s*C(\\d+)\\.\\)";
-        Pattern pattern = Pattern.compile(regex);
-        Matcher matcher = pattern.matcher(text);
-
-        if (matcher.find()) {
-            // Extract the numbers before and after 'C'
-            int beforeC = Integer.parseInt(matcher.group(1)); // Number before 'C'
-            int afterC = Integer.parseInt(matcher.group(2));  // Number after 'C'
-            return new int[]{beforeC, afterC};
-        }
-
-        // Return -1 if no match is found or throw an error
         throw new IllegalArgumentException("Invalid question format: " + text);
     }
 

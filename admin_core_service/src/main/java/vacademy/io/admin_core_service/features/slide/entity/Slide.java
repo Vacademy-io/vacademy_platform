@@ -7,7 +7,6 @@ import vacademy.io.admin_core_service.features.slide.dto.AddDocumentSlideDTO;
 import vacademy.io.admin_core_service.features.slide.dto.AddVideoSlideDTO;
 import vacademy.io.admin_core_service.features.slide.enums.SlideStatus;
 
-import java.sql.Date;
 import java.sql.Timestamp;
 
 @Entity
@@ -80,5 +79,4 @@ public class Slide {
 
     public Slide() {
     }
-
 }

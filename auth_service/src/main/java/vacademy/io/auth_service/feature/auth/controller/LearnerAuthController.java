@@ -2,15 +2,12 @@ package vacademy.io.auth_service.feature.auth.controller;
 
 
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import vacademy.io.auth_service.feature.auth.dto.AuthRequestDto;
 import vacademy.io.auth_service.feature.auth.dto.JwtResponseDto;
-import vacademy.io.auth_service.feature.auth.dto.RegisterRequest;
-import vacademy.io.auth_service.feature.auth.manager.AuthManager;
 import vacademy.io.auth_service.feature.auth.manager.LearnerAuthManager;
 import vacademy.io.common.auth.dto.RefreshTokenRequestDTO;
 import vacademy.io.common.auth.repository.UserRepository;

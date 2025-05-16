@@ -33,6 +33,10 @@ public class LearnerInvitation {
 
     private String batchOptionsJson;
 
+    private String source;
+
+    private String sourceId;
+
     @OneToMany(mappedBy = "learnerInvitation", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<LearnerInvitationCustomField> customFields = new ArrayList<>();
 
@@ -42,7 +46,8 @@ public class LearnerInvitation {
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Timestamp updatedAt;
 
-    public LearnerInvitation() {}
+    public LearnerInvitation() {
+    }
 
     public LearnerInvitation(LearnerInvitationDTO learnerInvitationDTO) {
         this.name = learnerInvitationDTO.getName();
@@ -52,7 +57,8 @@ public class LearnerInvitation {
         this.instituteId = learnerInvitationDTO.getInstituteId();
         this.inviteCode = learnerInvitationDTO.getInviteCode();
         this.batchOptionsJson = learnerInvitationDTO.getBatchOptionsJson();
-
+        this.source = learnerInvitationDTO.getSource();
+        this.sourceId = learnerInvitationDTO.getSourceId();
         if (Objects.nonNull(learnerInvitationDTO.getCustomFields())) {
             this.customFields = learnerInvitationDTO.getCustomFields()
                     .stream()
@@ -62,7 +68,7 @@ public class LearnerInvitation {
         }
     }
 
-    public LearnerInvitationDTO mapToDTO(){
+    public LearnerInvitationDTO mapToDTO() {
         return
                 LearnerInvitationDTO
                         .builder()
@@ -79,7 +85,7 @@ public class LearnerInvitation {
 
     }
 
-    public LearnerInvitationDTO mapToDTOWithCustomFields(){
+    public LearnerInvitationDTO mapToDTOWithCustomFields() {
         return
                 LearnerInvitationDTO
                         .builder()

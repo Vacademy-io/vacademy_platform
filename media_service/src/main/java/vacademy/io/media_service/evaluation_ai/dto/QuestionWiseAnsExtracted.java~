@@ -1,0 +1,7 @@
+package vacademy.io.media_service.evaluation_ai.dto;
+
+public class QuestionWiseAnsExtracted {
+    private String questionId;
+    private String answerHtml;
+    private String status; // ATTEM or NOT ATTEMPTED
+}

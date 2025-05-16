@@ -73,27 +73,32 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
 
     @Query(value = "SELECT COUNT(ss.id) " +
             "FROM student_session_institute_group_mapping ss " +
+            "JOIN package_session ps ON ss.package_session_id = ps.id " +
             "WHERE ss.institute_id = :instituteId " +
-            "AND ss.status NOT IN (:statusList)",
+            "AND ss.status NOT IN (:statusList) " +
+            "AND ss.package_session_id IS NOT NULL " +
+            "AND ps.status IN (:packageSessionStatusList)",
             nativeQuery = true)
-    Long countStudentsByInstituteIdAndStatusNotIn(
+    Long countStudentsByInstituteIdAndStatusNotInAndPackageSessionStatusIn(
             @Param("instituteId") String instituteId,
-            @Param("statusList") List<String> statusList);
+            @Param("statusList") List<String> statusList,
+            @Param("packageSessionStatusList") List<String> packageSessionStatusList);
+
 
     @Query(value = """
-        SELECT ps.id AS packageSessionId, 
-               CONCAT(l.level_name, ' ', p.package_name) AS batchName, 
-               COUNT(DISTINCT ssigm.user_id) AS enrolledStudents
-        FROM package_session ps
-        JOIN package p ON ps.package_id = p.id
-        JOIN level l ON ps.level_id = l.id
-        LEFT JOIN student_session_institute_group_mapping ssigm 
-            ON ps.id = ssigm.package_session_id
-            AND ssigm.institute_id = :instituteId 
-            AND ssigm.status IN (:status)
-        WHERE ps.status != 'DELETED'
-        GROUP BY ps.id, l.level_name, p.package_name
-    """, nativeQuery = true)
+                SELECT ps.id AS packageSessionId, 
+                       CONCAT(l.level_name, ' ', p.package_name) AS batchName, 
+                       COUNT(DISTINCT ssigm.user_id) AS enrolledStudents
+                FROM package_session ps
+                JOIN package p ON ps.package_id = p.id
+                JOIN level l ON ps.level_id = l.id
+                LEFT JOIN student_session_institute_group_mapping ssigm 
+                    ON ps.id = ssigm.package_session_id
+                    AND ssigm.institute_id = :instituteId 
+                    AND ssigm.status IN (:status)
+                WHERE ps.status != 'DELETED'
+                GROUP BY ps.id, l.level_name, p.package_name
+            """, nativeQuery = true)
     List<LearnerBatchProjection> getPackageSessionsWithEnrollment(
             @Param("instituteId") String instituteId,
             @Param("status") List<String> status

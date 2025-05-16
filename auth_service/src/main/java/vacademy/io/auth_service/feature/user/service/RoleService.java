@@ -5,7 +5,6 @@ import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.auth_service.feature.user.dto.ModifyUserRolesDTO;
 import vacademy.io.auth_service.feature.user.dto.UserRoleFilterDTO;
 import vacademy.io.common.auth.dto.RoleCountProjection;
-import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.UserWithRolesDTO;
 import vacademy.io.common.auth.entity.Role;
 import vacademy.io.common.auth.entity.User;
@@ -18,7 +17,6 @@ import vacademy.io.common.auth.service.UserService;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
@@ -30,7 +28,7 @@ public class RoleService {
     private final UserRoleRepository userRoleRepository;
     private final UserService userService;
 
-    public RoleService(RoleRepository roleRepository, UserRepository userRepository, UserRoleRepository userRoleRepository,UserService userService) {
+    public RoleService(RoleRepository roleRepository, UserRepository userRepository, UserRoleRepository userRoleRepository, UserService userService) {
         this.roleRepository = roleRepository;
         this.userRepository = userRepository;
         this.userRoleRepository = userRoleRepository;
@@ -38,13 +36,13 @@ public class RoleService {
     }
 
     @Transactional
-    public String addRolesToUser(ModifyUserRolesDTO addRolesToUserDTO, Optional<String>roleStatus, CustomUserDetails customUserDetails) {
+    public String addRolesToUser(ModifyUserRolesDTO addRolesToUserDTO, Optional<String> roleStatus, CustomUserDetails customUserDetails) {
         User user = getUserById(addRolesToUserDTO.getUserId());
         List<Role> roles = roleRepository.findByNameIn(addRolesToUserDTO.getRoles());
 
         List<UserRole> userRoles = new ArrayList<>();
         for (Role role : roles) {
-            userRoles.add(createUserRole(user, role,roleStatus, addRolesToUserDTO.getInstituteId()));
+            userRoles.add(createUserRole(user, role, roleStatus, addRolesToUserDTO.getInstituteId()));
         }
 
         userRoleRepository.saveAll(userRoles);
@@ -73,14 +71,15 @@ public class RoleService {
         return roleIds;
     }
 
-    private UserRole createUserRole(User user, Role role,Optional<String>userRoleStatus, String instituteId) {
+    private UserRole createUserRole(User user, Role role, Optional<String> userRoleStatus, String instituteId) {
         UserRole userRole = new UserRole();
         userRole.setUser(user);
         userRole.setRole(role);
         userRole.setInstituteId(instituteId);
         if (userRoleStatus.isPresent()) {
             userRole.setStatus(userRoleStatus.get());
-        };
+        }
+        ;
         return userRole;
     }
 
@@ -89,15 +88,15 @@ public class RoleService {
         return "Roles removed successfully";
     }
 
-    public List<RoleCountProjection>geRolesCountByInstituteId(String instituteId,CustomUserDetails userDetails) {
+    public List<RoleCountProjection> geRolesCountByInstituteId(String instituteId, CustomUserDetails userDetails) {
         return userRoleRepository.getUserRoleCountsByInstituteId(instituteId);
     }
 
     public List<UserWithRolesDTO> getUsersByInstituteIdAndStatus(String instituteId, UserRoleFilterDTO filterDTO, CustomUserDetails customUserDetails) {
-        return userService.getUsersByInstituteIdAndStatus(instituteId, filterDTO.getStatus(),filterDTO.getRoles(), customUserDetails);
+        return userService.getUsersByInstituteIdAndStatus(instituteId, filterDTO.getStatus(), filterDTO.getRoles(), customUserDetails);
     }
 
-    public String updateUserRoleStatusByInstituteIdAndUserId(String newStatus, String instituteId, List<String>userIds,CustomUserDetails user) {
+    public String updateUserRoleStatusByInstituteIdAndUserId(String newStatus, String instituteId, List<String> userIds, CustomUserDetails user) {
         int rowsUpdated = userRoleRepository.updateUserRoleStatusByInstituteIdAndUserId(newStatus, instituteId, userIds);
         if (rowsUpdated == 0) {
             throw new VacademyException("No role found to update the status!!!");
@@ -106,6 +105,6 @@ public class RoleService {
     }
 
     public List<UserWithRolesDTO> getUsersByInstituteIdAndStatus(String instituteId, UserRoleFilterDTO filterDTO) {
-        return userService.getUsersByInstituteIdAndStatus(instituteId, filterDTO.getStatus(),filterDTO.getRoles());
+        return userService.getUsersByInstituteIdAndStatus(instituteId, filterDTO.getStatus(), filterDTO.getRoles());
     }
 }

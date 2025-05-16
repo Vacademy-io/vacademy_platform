@@ -1,9 +1,6 @@
 package vacademy.io.media_service.service;
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.PropertyNamingStrategies;
-import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -13,10 +10,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import vacademy.io.media_service.dto.AudioConversionResponse;
 import vacademy.io.media_service.dto.AudioProcessingResponse;
+import vacademy.io.media_service.dto.audio.AudioConversionDeepLevelResponse;
 
 import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
 
 @Service
 public class NewAudioConverterService {
@@ -86,6 +82,33 @@ public class NewAudioConverterService {
         }
 
         return null;
+    }
+
+    public AudioConversionDeepLevelResponse getConvertedAudioResponse(String audioId) {
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("Authorization", APP_KEY);
+
+            HttpEntity<String> requestEntity = new HttpEntity<>(headers);
+
+            ResponseEntity<String> response = restTemplate.exchange(
+                    API_URL + "/" + audioId,
+                    HttpMethod.GET,
+                    requestEntity,
+                    String.class
+            );
+
+            if (response.getStatusCode() == HttpStatus.OK) {
+                String responseJson = response.getBody();
+                ObjectMapper objectMapper = new ObjectMapper();
+                AudioConversionDeepLevelResponse audioConversionResponse = objectMapper.readValue(responseJson, AudioConversionDeepLevelResponse.class);
+                return audioConversionResponse;
+            }
+            return null;
+        } catch (Exception e) {
+            // Handle exception or log error
+            return null;
+        }
     }
 
     // Request body class

@@ -1,7 +1,7 @@
 package vacademy.io.media_service.util;
 
-import com.google.json.JsonSanitizer;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.json.JsonSanitizer;
 
 public class JsonUtils {
     private static final ObjectMapper objectMapper = new ObjectMapper();

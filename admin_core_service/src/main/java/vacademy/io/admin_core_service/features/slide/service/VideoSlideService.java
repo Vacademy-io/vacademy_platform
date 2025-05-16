@@ -332,8 +332,12 @@ public class VideoSlideService {
                     option = new VideoSlideQuestionOption(optionDTO, videoSlideQuestion);
                 } else {
                     // Update existing option
-                    option.setText(new RichTextData(optionDTO.getText()));
-                    option.setExplanationTextData(new RichTextData(optionDTO.getExplanationTextData()));
+                   if (optionDTO.getText() != null){
+                       option.setText(new RichTextData(optionDTO.getText()));
+                   }
+                   if (optionDTO.getExplanationTextData() != null){
+                       option.setExplanationTextData(new RichTextData(optionDTO.getExplanationTextData()));
+                   }
                 }
                 optionsToSave.add(option);
 

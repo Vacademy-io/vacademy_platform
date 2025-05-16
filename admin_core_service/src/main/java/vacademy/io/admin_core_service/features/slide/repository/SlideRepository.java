@@ -318,6 +318,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                 'question_order', q.question_order,
                                 'question_time_in_millis', q.question_time_in_millis,
                                 'media_id', q.media_id,
+                                'can_skip', q.can_skip,
                                 'auto_evaluation_json', q.auto_evaluation_json,
                                 'evaluation_type', q.evaluation_type,
                                 'text_data', json_build_object('id', rt_text.id, 'type', 'RICH_TEXT', 'content', rt_text.content),
@@ -529,6 +530,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                         SELECT json_agg(
                             json_build_object(
                                 'id', q.id,
+                                'can_skip', q.can_skip,
                                 'question_response_type', q.question_response_type,
                                 'question_type', q.question_type,
                                 'access_level', q.access_level,

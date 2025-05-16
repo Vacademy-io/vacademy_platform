@@ -94,10 +94,7 @@ public class AssessmentAttemptEndTaskExecutor implements TaskExecutor {
             Date attemptEndTime = new Date(attempt.getStartTime().getTime() + attempt.getMaxTime() * 60 * 1000);
 
             // Check condition
-            if (attemptEndTime.before(currentTime)) {
-                return true;
-            }
-            return false;
+            return attemptEndTime.before(currentTime);
         } catch (Exception e) {
             return false;
         }

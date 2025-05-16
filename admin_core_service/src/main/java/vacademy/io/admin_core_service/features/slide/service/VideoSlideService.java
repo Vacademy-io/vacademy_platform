@@ -135,6 +135,8 @@ public class VideoSlideService {
             videoSlideQuestion.setParentRichText(new RichTextData(videoSlideQuestionDTO.getParentRichText()));
         }
 
+        videoSlideQuestion.setCanSkip(videoSlideQuestionDTO.isCanSkip());
+
         if (videoSlideQuestionDTO.getTextData() != null) {
             videoSlideQuestion.setTextData(new RichTextData(videoSlideQuestionDTO.getTextData()));
         }
@@ -274,7 +276,7 @@ public class VideoSlideService {
             RichTextDataDTO parentRichTextDTO = videoSlideQuestionDTO.getTextData();
             videoSlideQuestion.setParentRichText(new RichTextData(parentRichTextDTO));
         }
-
+        videoSlideQuestion.setCanSkip(videoSlideQuestionDTO.isCanSkip());
         if (videoSlideQuestionDTO.getExplanationTextData() != null) {
             RichTextDataDTO explanationTextDTO = videoSlideQuestionDTO.getExplanationTextData();
             videoSlideQuestion.setExplanationTextData(new RichTextData(explanationTextDTO));

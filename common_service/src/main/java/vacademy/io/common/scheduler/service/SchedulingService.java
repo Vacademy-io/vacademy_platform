@@ -1,12 +1,13 @@
 package vacademy.io.common.scheduler.service;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import vacademy.io.common.scheduler.entity.SchedulerActivityLog;
 import vacademy.io.common.scheduler.entity.TaskExecutionAudit;
 import vacademy.io.common.scheduler.enums.CronProfileTypeEnum;
 import vacademy.io.common.scheduler.enums.SchedulerStatusEnum;
-import vacademy.io.common.scheduler.enums.TaskNameEnum;
+import vacademy.io.common.scheduler.enums.TaskTypeEnum;
 import vacademy.io.common.scheduler.repository.SchedulerActivityRepository;
 import vacademy.io.common.scheduler.repository.TaskExecutionAuditRepository;
 
@@ -17,6 +18,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 
+@Slf4j
 @Service
 public class SchedulingService {
 
@@ -55,21 +57,20 @@ public class SchedulingService {
     }
 
 
-    public void executeTask(TaskNameEnum taskType, String cronProfileId, String source) {
-        SchedulerActivityLog taskLog = schedulerActivityRepository
-                .findByTaskNameAndCronProfileIdAndCronProfileType(taskType.name(), cronProfileId, "HOURLY")
+    public void executeTask(TaskTypeEnum taskType, String cronProfileId, String source, CronProfileTypeEnum CronProfileType) {
+        SchedulerActivityLog taskLog = schedulerActivityRepository.findByTaskNameAndCronProfileIdAndCronProfileType(taskType.name(), cronProfileId, CronProfileType.name())
                 .orElseGet(() -> {
                     SchedulerActivityLog log = new SchedulerActivityLog();
                     log.setTaskName(taskType.name());
                     log.setCronProfileId(cronProfileId);
                     log.setCronProfileType(CronProfileTypeEnum.HOURLY.name());
                     log.setExecutionTime(new Date());
-                    log.setStatus(SchedulerStatusEnum.PENDING.name());
+                    log.setStatus(SchedulerStatusEnum.INIT.name());
                     return schedulerActivityRepository.save(log);
                 });
 
         if (SchedulerStatusEnum.FINISHED.name().equals(taskLog.getStatus())) {
-            System.out.println("Task already succeeded. Skipping execution.");
+            SchedulingService.log.info("Task already succeeded. Skipping execution.");
             return;
         }
 
@@ -82,7 +83,7 @@ public class SchedulingService {
                 .toList();
 
         // If task is being run for the first time
-        if (failedSourceIds.isEmpty() && taskLog.getStatus().equals(SchedulerStatusEnum.PENDING.name())) {
+        if (failedSourceIds.isEmpty() && taskLog.getStatus().equals(SchedulerStatusEnum.INIT.name())) {
             taskExecutorFactory.getExecutor(taskType).execute(taskLog, source);
         } else {
             taskExecutorFactory.getExecutor(taskType).retryTask(taskLog,Optional.of(failedSourceIds),source);

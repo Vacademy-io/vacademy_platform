@@ -12,4 +12,6 @@ public interface TaskExecutionAuditRepository extends JpaRepository<TaskExecutio
     List<TaskExecutionAudit> findBySchedulerActivityLogAndStatus(SchedulerActivityLog taskLog, String name);
 
     boolean existsBySchedulerActivityLogAndStatus(SchedulerActivityLog taskLog, String name);
+
+    List<TaskExecutionAudit> findBySchedulerActivityLogAndSourceAndSourceIdIn(SchedulerActivityLog activityLog, String source, List<String> sourceIds);
 }

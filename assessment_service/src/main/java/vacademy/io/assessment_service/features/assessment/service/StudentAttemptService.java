@@ -396,6 +396,11 @@ public class StudentAttemptService {
     }
 
     public List<StudentAttempt> getAllLiveAttempt() {
-        return studentAttemptRepository.findByStatusNotIn(List.of(AssessmentAttemptEnum.LIVE.name()));
+        return studentAttemptRepository.findByStatusNotIn(List.of(AssessmentAttemptEnum.ENDED.name()));
+    }
+
+    public List<StudentAttempt> getAllAttemptsFromIds(List<String> attemptIds) {
+        return StreamSupport.stream(studentAttemptRepository.findAllById(attemptIds).spliterator(), false)
+                .toList();
     }
 }

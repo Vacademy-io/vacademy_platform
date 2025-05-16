@@ -1,28 +1,23 @@
 package vacademy.io.assessment_service.features.scheduler.service;
 
-import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
 import vacademy.io.assessment_service.features.assessment.service.StudentAttemptService;
 import vacademy.io.assessment_service.features.learner_assessment.enums.AssessmentAttemptEnum;
-import vacademy.io.common.core.utils.DateUtil;
-import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.scheduler.entity.SchedulerActivityLog;
 import vacademy.io.common.scheduler.entity.TaskExecutionAudit;
-import vacademy.io.common.scheduler.enums.CronProfileTypeEnum;
 import vacademy.io.common.scheduler.enums.SchedulerStatusEnum;
-import vacademy.io.common.scheduler.enums.TaskNameEnum;
+import vacademy.io.common.scheduler.enums.TaskTypeEnum;
 import vacademy.io.common.scheduler.repository.TaskExecutionAuditRepository;
 import vacademy.io.common.scheduler.service.SchedulingService;
 import vacademy.io.common.scheduler.service.TaskExecutor;
 
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Component
@@ -37,51 +32,9 @@ public class AssessmentAttemptEndTaskExecutor implements TaskExecutor {
     @Autowired
     private TaskExecutionAuditRepository taskExecutionAuditRepository;
 
-
-//    @Scheduled(fixedRate = 10000) // runs every 10 seconds
-    public void updateAttemptStatusForEndedDuration(){
-        String cronId = schedulingService.generateCronProfileId(CronProfileTypeEnum.HOURLY);
-        String taskName = "UPDATE_ATTEMPT_STATUS";
-
-        Optional<SchedulerActivityLog> activityLog = schedulingService.getSchedulerActivityFromCronIdAndTaskNameAndCronType(taskName,cronId,CronProfileTypeEnum.HOURLY.name());
-        SchedulerActivityLog schedulerActivityLog;
-        if(activityLog.isEmpty()) {
-            handleCaseForNewUpdateAttemptActivityLog(cronId,taskName);
-        }
-        else{
-            handleCaseForExistingUpdateAttemptActivityLog(activityLog.get());
-        }
-    }
-
-    private void handleCaseForExistingUpdateAttemptActivityLog(SchedulerActivityLog schedulerActivityLog) {
-    }
-
-    private void handleCaseForNewUpdateAttemptActivityLog(String cronId, String taskName) {
-        SchedulerActivityLog schedulerActivityLog = SchedulerActivityLog.builder()
-                .taskName(taskName)
-                .status(SchedulerStatusEnum.INIT.name())
-                .cronProfileId(cronId)
-                .cronProfileType(CronProfileTypeEnum.HOURLY.name())
-                .executionTime(DateUtil.getCurrentUtcTime()).build();
-
-        SchedulerActivityLog savedActivityLog = schedulingService.createOrUpdateSchedulerActivityLog(schedulerActivityLog);
-        List<StudentAttempt> allAttempts = studentAttemptService.getAllLiveAttempt();
-
-
-        allAttempts.forEach(studentAttempt -> {
-            if(isAttemptOver(studentAttempt)){
-
-            }
-        });
-    }
-
-    private boolean isAttemptOver(StudentAttempt studentAttempt) {
-        return true;
-    }
-
     @Override
-    public TaskNameEnum getTaskName() {
-        return TaskNameEnum.UPDATE_ATTEMPT_STATUS;
+    public TaskTypeEnum getTaskName() {
+        return TaskTypeEnum.UPDATE_ATTEMPT_STATUS;
     }
 
     @Override
@@ -106,11 +59,13 @@ public class AssessmentAttemptEndTaskExecutor implements TaskExecutor {
         attempts.forEach(attempt->{
             attempt.setStatus(AssessmentAttemptEnum.ENDED.name());
             try{
+                log.info("Updated: " + attempt.getId());
                 studentAttemptService.updateStudentAttempt(attempt);
                 allTasks.add(TaskExecutionAudit.builder()
                         .source(source)
                         .sourceId(attempt.getId())
                         .schedulerActivityLog(activityLog)
+                        .statusMessage("Completed Successfully")
                         .status(SchedulerStatusEnum.FINISHED.name()).build());
 
             } catch (Exception e) {
@@ -121,21 +76,15 @@ public class AssessmentAttemptEndTaskExecutor implements TaskExecutor {
                         .source(source)
                         .sourceId(attempt.getId())
                         .schedulerActivityLog(activityLog)
+                        .statusMessage(e.getMessage())
                         .status(SchedulerStatusEnum.FAILED.name()).build());
 
             }
         });
-        try{
-            taskExecutionAuditRepository.saveAll(allTasks);
-            activityLog.setStatus(activityLogStatus.get());
-            schedulingService.createOrUpdateSchedulerActivityLog(activityLog);
-        }
-        catch (Exception e){
-            log.error("Failed To Save Task Audit: " +e.getMessage());
-            activityLog.setStatus(SchedulerStatusEnum.INIT.name());
-            schedulingService.createOrUpdateSchedulerActivityLog(activityLog);
-        }
 
+        taskExecutionAuditRepository.saveAll(allTasks);
+        activityLog.setStatus(activityLogStatus.get());
+        schedulingService.createOrUpdateSchedulerActivityLog(activityLog);
     }
 
     private boolean isAttemptTimeOver(StudentAttempt attempt) {
@@ -144,22 +93,66 @@ public class AssessmentAttemptEndTaskExecutor implements TaskExecutor {
 
             Date attemptEndTime = new Date(attempt.getStartTime().getTime() + attempt.getMaxTime() * 60 * 1000);
 
-            // Calculate the difference in seconds
-            long differenceInMillis = attemptEndTime.getTime() - currentTime.getTime();
-
             // Check condition
             if (attemptEndTime.before(currentTime)) {
                 return true;
             }
             return false;
         } catch (Exception e) {
-            log.info("Failed To Find is Time Over: " +e.getMessage());
             return false;
         }
     }
 
+    //Retry If task Failed
     @Override
     public void retryTask(SchedulerActivityLog activityLog, Optional<List<String>> retriesSourceIds, String source) {
+        //If There are no Retries Ids then Mark Task as FINISHED
+        if (retriesSourceIds.isEmpty() || retriesSourceIds.get().isEmpty()) {
+            activityLog.setStatus(SchedulerStatusEnum.FINISHED.name());
+            schedulingService.createOrUpdateSchedulerActivityLog(activityLog);
+            return;
+        }
 
+        List<String> sourceIds = retriesSourceIds.get();
+        AtomicReference<String> activityLogStatus = new AtomicReference<>(SchedulerStatusEnum.FINISHED.name());
+
+        List<TaskExecutionAudit> failedTasks = taskExecutionAuditRepository
+                .findBySchedulerActivityLogAndSourceAndSourceIdIn(activityLog, source, sourceIds);
+
+        Map<String, TaskExecutionAudit> auditMapBySourceId = failedTasks.stream()
+                .collect(Collectors.toMap(TaskExecutionAudit::getSourceId, Function.identity()));
+
+        List<StudentAttempt> failedAttempts = studentAttemptService.getAllAttemptsFromIds(sourceIds);
+
+        List<TaskExecutionAudit> updatedTasks = new ArrayList<>();
+
+        //Try to retry updating the task
+        for (StudentAttempt attempt : failedAttempts) {
+            TaskExecutionAudit taskAudit = auditMapBySourceId.get(attempt.getId());
+
+            if (taskAudit == null) {
+                continue;
+            }
+
+            attempt.setStatus(AssessmentAttemptEnum.ENDED.name());
+
+            try {
+                studentAttemptService.updateStudentAttempt(attempt);
+                taskAudit.setStatus(SchedulerStatusEnum.FINISHED.name());
+                taskAudit.setStatusMessage("Updated Successfully");
+            } catch (Exception e) {
+                log.error("Failed to update attempt ID {}: {}", attempt.getId(), e.getMessage());
+
+                activityLogStatus.set(SchedulerStatusEnum.FAILED.name());
+                taskAudit.setStatus(SchedulerStatusEnum.FAILED.name());
+                taskAudit.setStatusMessage(e.getMessage());
+            }
+
+            updatedTasks.add(taskAudit);
+        }
+
+        taskExecutionAuditRepository.saveAll(updatedTasks);
+        activityLog.setStatus(activityLogStatus.get());
+        schedulingService.createOrUpdateSchedulerActivityLog(activityLog);
     }
 }

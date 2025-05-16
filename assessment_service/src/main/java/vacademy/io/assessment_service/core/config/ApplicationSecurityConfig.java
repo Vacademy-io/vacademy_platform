@@ -27,7 +27,7 @@ public class ApplicationSecurityConfig {
 
     private static final String[] INTERNAL_PATHS = {"/assessment-service/internal/**"};
 
-    private static final String[] ALLOWED_PATHS = {"/assessment-service/open-registrations/register/v1/**", "/assessment-service/question-paper/upload/docx/v1/**", "/assessment-service/actuator/**", "/assessment-service/swagger-ui.html", "/assessment-service/v1/report/alert/**", "/assessment-service/v3/api-docs/**", "/assessment-service/swagger-ui/**", "/assessment-service/webjars/swagger-ui/**", "/assessment-service/api-docs/**", "/assessment-service/open-registrations/v1/assessment-page"};
+    private static final String[] ALLOWED_PATHS = {"/assessment-service/open-registrations/register/v1/**", "/assessment-service/question-paper/upload/docx/v1/**", "/assessment-service/actuator/**", "/assessment-service/swagger-ui.html", "/assessment-service/v1/report/alert/**", "/assessment-service/v3/api-docs/**", "/assessment-service/swagger-ui/**", "/assessment-service/webjars/swagger-ui/**", "/assessment-service/api-docs/**", "/assessment-service/open-registrations/v1/assessment-page","/assessment-service/scheduler/test/**"};
 
     @Autowired
     AssessmentJwtAuthFilter jwtAuthFilter;

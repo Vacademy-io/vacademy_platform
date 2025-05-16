@@ -58,16 +58,22 @@ public class SchedulingService {
 
 
     public void executeTask(TaskTypeEnum taskType, String cronProfileId, String source, CronProfileTypeEnum CronProfileType) {
-        SchedulerActivityLog taskLog = schedulerActivityRepository.findByTaskNameAndCronProfileIdAndCronProfileType(taskType.name(), cronProfileId, CronProfileType.name())
-                .orElseGet(() -> {
-                    SchedulerActivityLog log = new SchedulerActivityLog();
-                    log.setTaskName(taskType.name());
-                    log.setCronProfileId(cronProfileId);
-                    log.setCronProfileType(CronProfileTypeEnum.HOURLY.name());
-                    log.setExecutionTime(new Date());
-                    log.setStatus(SchedulerStatusEnum.INIT.name());
-                    return schedulerActivityRepository.save(log);
-                });
+        Optional<SchedulerActivityLog> taskLogOpt = schedulerActivityRepository.findByTaskNameAndCronProfileIdAndCronProfileType(taskType.name(), cronProfileId, CronProfileType.name());
+        SchedulerActivityLog taskLog;
+
+        if(taskLogOpt.isEmpty()){
+            SchedulerActivityLog log = new SchedulerActivityLog();
+            log.setTaskName(taskType.name());
+            log.setCronProfileId(cronProfileId);
+            log.setCronProfileType(CronProfileTypeEnum.HOURLY.name());
+            log.setExecutionTime(new Date());
+            log.setStatus(SchedulerStatusEnum.INIT.name());
+            taskLog = schedulerActivityRepository.save(log);
+        }
+        else{
+            if(taskLogOpt.get().getStatus().equals(SchedulerStatusEnum.INIT.name())) return;
+            taskLog = taskLogOpt.get();
+        }
 
         if (SchedulerStatusEnum.FINISHED.name().equals(taskLog.getStatus())) {
             SchedulingService.log.info("Task already succeeded. Skipping execution.");

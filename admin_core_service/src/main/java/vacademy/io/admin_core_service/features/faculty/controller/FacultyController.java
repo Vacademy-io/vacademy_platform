@@ -4,8 +4,13 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.faculty.dto.AddFacultyToSubjectAndBatchDTO;
+import vacademy.io.admin_core_service.features.faculty.dto.FacultyAllResponse;
+import vacademy.io.admin_core_service.features.faculty.dto.FacultyRequestFilter;
 import vacademy.io.admin_core_service.features.faculty.service.FacultyService;
 import vacademy.io.common.auth.model.CustomUserDetails;
+
+import static vacademy.io.common.auth.config.PageConstants.DEFAULT_PAGE_NUMBER;
+import static vacademy.io.common.auth.config.PageConstants.DEFAULT_PAGE_SIZE;
 
 @RestController
 @RequestMapping("/admin-core-service/institute/v1/faculty")
@@ -22,6 +27,15 @@ public class FacultyController {
 
         String result = facultyService.addFacultyToSubjectsAndBatches(request, instituteId, userDetails);
         return ResponseEntity.ok(result);
+    }
+
+    @PostMapping("/faculty/get-all")
+    public ResponseEntity<FacultyAllResponse> getAllTeachers(@RequestAttribute("user") CustomUserDetails userDetails,
+                                                             @RequestParam String instituteId,
+                                                             @RequestBody FacultyRequestFilter filter,
+                                                             @RequestParam(value = "pageNo", defaultValue = DEFAULT_PAGE_NUMBER, required = false) int pageNo,
+                                                             @RequestParam(value = "pageSize", defaultValue = DEFAULT_PAGE_SIZE, required = false) int pageSize){
+        return facultyService.getAllFaculty(userDetails,instituteId, filter,pageNo,pageSize);
     }
 }
 

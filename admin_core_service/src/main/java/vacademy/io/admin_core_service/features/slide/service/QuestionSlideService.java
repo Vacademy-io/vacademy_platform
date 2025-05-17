@@ -23,6 +23,7 @@ import java.util.stream.Collectors;
 
 @Service
 public class QuestionSlideService {
+
     @Autowired
     private SlideService slideService;
 
@@ -71,12 +72,30 @@ public class QuestionSlideService {
         }
 
         List<RichTextDataDTO> richTextDTOs = new ArrayList<>();
-        if (dto.getParentRichText() != null) richTextDTOs.add(dto.getParentRichText());
-        if (dto.getTextData() != null) richTextDTOs.add(dto.getTextData());
-        if (dto.getExplanationTextData() != null) richTextDTOs.add(dto.getExplanationTextData());
+
+        if (dto.getParentRichText() != null) {
+            if (questionSlide.getParentRichText() != null) {
+                dto.getParentRichText().setId(questionSlide.getParentRichText().getId());
+            }
+            richTextDTOs.add(dto.getParentRichText());
+        }
+
+        if (dto.getTextData() != null) {
+            if (questionSlide.getTextData() != null) {
+                dto.getTextData().setId(questionSlide.getTextData().getId());
+            }
+            richTextDTOs.add(dto.getTextData());
+        }
+
+        if (dto.getExplanationTextData() != null) {
+            if (questionSlide.getExplanationTextData() != null) {
+                dto.getExplanationTextData().setId(questionSlide.getExplanationTextData().getId());
+            }
+            richTextDTOs.add(dto.getExplanationTextData());
+        }
 
         if (!richTextDTOs.isEmpty()) {
-            richTextDataService.updateRichTextDataInBulk(richTextDTOs); // 🔥
+            richTextDataService.updateRichTextDataInBulk(richTextDTOs);
         }
 
         if (StringUtils.hasText(dto.getMediaId())) {
@@ -138,25 +157,32 @@ public class QuestionSlideService {
             if (option == null) continue;
 
             if (optionDTO.getText() != null) {
+                if (option.getText() != null) {
+                    optionDTO.getText().setId(option.getText().getId());
+                }
                 richTextDTOs.add(optionDTO.getText());
             }
+
             if (StringUtils.hasText(optionDTO.getMediaId())) {
                 option.setMediaId(optionDTO.getMediaId());
             }
+
             if (optionDTO.getExplanationTextData() != null) {
+                if (option.getExplanationTextData() != null) {
+                    optionDTO.getExplanationTextData().setId(option.getExplanationTextData().getId());
+                }
                 richTextDTOs.add(optionDTO.getExplanationTextData());
             }
 
             optionsToSave.add(option);
         }
 
-        // BULK update rich text
         if (!richTextDTOs.isEmpty()) {
-            richTextDataService.updateRichTextDataInBulk(richTextDTOs);  // 🔥
+            richTextDataService.updateRichTextDataInBulk(richTextDTOs);
         }
 
         if (!optionsToSave.isEmpty()) {
-            optionRepository.saveAll(optionsToSave);  // BULK save options
+            optionRepository.saveAll(optionsToSave);
         }
     }
 }

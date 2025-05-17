@@ -35,6 +35,9 @@ public class VideoSlideQuestion {
     @Column(name = "media_id")
     private String mediaId;
 
+    @Column(name = "can_skip")
+    private boolean canSkip = true;
+
     @Column(name = "question_response_type", nullable = false)
     private String questionResponseType;
 

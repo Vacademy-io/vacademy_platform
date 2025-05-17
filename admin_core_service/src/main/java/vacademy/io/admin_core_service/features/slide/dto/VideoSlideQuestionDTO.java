@@ -39,5 +39,7 @@ public class VideoSlideQuestionDTO {
 
     private String status;
 
+    private boolean canSkip;
+
     private List<VideoSlideQuestionOptionDTO> options; // list of options for the slide
 }

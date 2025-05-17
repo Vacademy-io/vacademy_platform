@@ -135,6 +135,8 @@ public class VideoSlideService {
             videoSlideQuestion.setParentRichText(new RichTextData(videoSlideQuestionDTO.getParentRichText()));
         }
 
+        videoSlideQuestion.setCanSkip(videoSlideQuestionDTO.isCanSkip());
+
         if (videoSlideQuestionDTO.getTextData() != null) {
             videoSlideQuestion.setTextData(new RichTextData(videoSlideQuestionDTO.getTextData()));
         }
@@ -274,7 +276,7 @@ public class VideoSlideService {
             RichTextDataDTO parentRichTextDTO = videoSlideQuestionDTO.getTextData();
             videoSlideQuestion.setParentRichText(new RichTextData(parentRichTextDTO));
         }
-
+        videoSlideQuestion.setCanSkip(videoSlideQuestionDTO.isCanSkip());
         if (videoSlideQuestionDTO.getExplanationTextData() != null) {
             RichTextDataDTO explanationTextDTO = videoSlideQuestionDTO.getExplanationTextData();
             videoSlideQuestion.setExplanationTextData(new RichTextData(explanationTextDTO));
@@ -321,21 +323,27 @@ public class VideoSlideService {
         List<String>correctOptionPreviewIds = mcqEvaluationDTO.getData().getCorrectOptionIds();
         List<String>correctOptionIds = new ArrayList<>();
         // Update or add options
-        for (VideoSlideQuestionOptionDTO optionDTO : videoSlideQuestionDTO.getOptions()) {
-            VideoSlideQuestionOption option = optionDTO.getId() != null ? existingOptionMap.get(optionDTO.getId()) : null;
-            if (option == null) {
-                // Create new option if it doesn't exist
-                optionDTO.setId(UUID.randomUUID().toString());
-                option = new VideoSlideQuestionOption(optionDTO, videoSlideQuestion);
-            } else {
-                // Update existing option
-                option.setText(new RichTextData(optionDTO.getText()));
-                option.setExplanationTextData(new RichTextData(optionDTO.getExplanationTextData()));
-            }
-            optionsToSave.add(option);
+        if (videoSlideQuestionDTO.getOptions() != null) {
+            for (VideoSlideQuestionOptionDTO optionDTO : videoSlideQuestionDTO.getOptions()) {
+                VideoSlideQuestionOption option = optionDTO.getId() != null ? existingOptionMap.get(optionDTO.getId()) : null;
+                if (option == null) {
+                    // Create new option if it doesn't exist
+                    optionDTO.setId(UUID.randomUUID().toString());
+                    option = new VideoSlideQuestionOption(optionDTO, videoSlideQuestion);
+                } else {
+                    // Update existing option
+                   if (optionDTO.getText() != null){
+                       option.setText(new RichTextData(optionDTO.getText()));
+                   }
+                   if (optionDTO.getExplanationTextData() != null){
+                       option.setExplanationTextData(new RichTextData(optionDTO.getExplanationTextData()));
+                   }
+                }
+                optionsToSave.add(option);
 
-            if (correctOptionPreviewIds.contains(optionDTO.getPreviewId())){
-                correctOptionIds.add(option.getId());
+                if (correctOptionPreviewIds.contains(optionDTO.getPreviewId())){
+                    correctOptionIds.add(option.getId());
+                }
             }
         }
         mcqEvaluationDTO.getData().setCorrectOptionIds(correctOptionIds);

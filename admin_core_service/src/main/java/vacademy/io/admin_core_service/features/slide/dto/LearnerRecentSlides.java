@@ -17,35 +17,7 @@ public interface LearnerRecentSlides {
 
     String getImageFileId();
 
-    String getDocumentId();
-
-    String getDocumentTitle();
-
-    String getDocumentCoverFileId();
-
-    String getDocumentType();
-
-    String getDocumentData();
-
-    String getVideoId();
-
-    String getVideoTitle();
-
-    String getVideoUrl();
-
-    String getVideoSourceType();
-
-    String getVideoDescription();
-
-    Integer getSlideOrder(); // Added slide order field
-
-    String getPublishedUrl();
-
-    String getPublishedData();
-
-    Long getVideoLastTimeStamp();
-
-    Long getDocumentLastPage();
+    Long getProgressMarker();
 
     String getPackageId();
 

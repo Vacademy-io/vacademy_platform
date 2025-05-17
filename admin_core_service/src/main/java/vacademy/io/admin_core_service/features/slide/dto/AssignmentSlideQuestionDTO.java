@@ -2,33 +2,21 @@ package vacademy.io.admin_core_service.features.slide.dto;
 
 import com.fasterxml.jackson.databind.PropertyNamingStrategy;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
-import lombok.AllArgsConstructor;
 import lombok.Data;
-import lombok.NoArgsConstructor;
 import vacademy.io.common.ai.dto.RichTextDataDTO;
 
-import java.sql.Date;
 import java.util.List;
 
 @Data
-@AllArgsConstructor
-@NoArgsConstructor
 @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
-public class AssignmentSlideDTO {
-
+public class AssignmentSlideQuestionDTO {
     private String id;
-
-    private RichTextDataDTO parentRichText;
 
     private RichTextDataDTO textData;
 
-    private Date liveDate;
+    private boolean isNewQuestion;
 
-    private Date endDate;
+    private Integer questionOrder;
 
-    private Integer reAttemptCount;
-
-    private String commaSeparatedMediaIds;
-
-    private List<AssignmentSlideQuestionDTO>questions;
+    private String status;
 }

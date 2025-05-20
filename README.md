@@ -1,5 +1,7 @@
 # AI enabled Open-Source LMS
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Vacademy-io/vacademy_platform)
+
 # Frontend Code Deployment Instructions
 
 This document provides detailed instructions for deploying the frontend applications of the Vacademy platform. These instructions should be included in the project's `README.md` file.

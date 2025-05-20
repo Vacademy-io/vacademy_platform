@@ -1,0 +1,105 @@
+.popup {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+}
+
+.popup-content {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.popup-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.popup-btn {
+    padding: 8px 16px;
+    background-color: #f0f0f0;
+    color: blue;
+    border: 1px solid #007bff;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.popup-btn:hover {
+    background-color: #e0e0e0;
+    border-color: #0056b3;
+}
+
+.math-btn {
+    background-color: transparent;
+    border: none;
+    color: darkblue;
+    font-weight: bold !important;
+    padding: 0 !important;
+    border-radius: 0px !important;
+    cursor: pointer;
+}
+
+.math-btn:hover {
+    background-color: transparent;
+}
+
+.greek-btn {
+    background-color: transparent;
+    border: none;
+    color: darkblue;
+    font-weight: bold !important;
+    padding: 0 !important;
+    border-radius: 0px !important;
+    cursor: pointer;
+}
+
+.greek-btn:hover {
+    background-color: transparent;
+}
+
+.custom-button-container {
+    display: flex;
+    gap: 1rem;
+    margin: 10px 0;
+}
+
+.mathquill4quill-operator-container {
+    display: flex;
+    gap: 10px;
+    padding: 0 !important;
+    margin-bottom: 5px;
+    margin-top: 10px;
+}
+
+.mathquill4quill-operator-button {
+    margin-left: 0 !important;
+}
+
+.ql-tooltip {
+    z-index: 1000;
+    border: none !important;
+    border-radius: 8px;
+    padding: 1rem !important;
+    left: 0 !important;
+}
+
+.ql-action {
+    background-color: #ed7424;
+    color: white;
+    padding: 0.5rem 3rem 0.5rem 2rem;
+    margin-left: 1rem;
+    border-radius: 8px;
+}
+
+.mathquill4quill-mathquill-input {
+    width: 400px !important;
+    border-radius: 4px;
+    padding: 0.4rem;
+}

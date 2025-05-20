@@ -1,5 +1,325 @@
 # AI enabled Open-Source LMS
 
+# Frontend Code Deployment Instructions
+
+This document provides detailed instructions for deploying the frontend applications of the Vacademy platform. These instructions should be included in the project's `README.md` file.
+
+## Frontend Applications Overview
+
+The Vacademy platform includes two frontend applications:
+
+1. **Learner Dashboard** (`frontend-learner-dashboard`): A mobile-focused application built with Ionic/Capacitor.
+2. **Admin Dashboard** (`frontend-admin-dashboard`): A web-based administrative dashboard built with React and Vite.
+
+## Deploying the Admin Dashboard
+
+### Prerequisites
+
+- **Node.js**: Version 21.0.0 or compatible
+- **pnpm**: Package manager
+
+### Building for Production
+
+1. **Navigate to the admin dashboard directory**:
+   ```bash
+   cd frontend-admin-dashboard
+   ```
+
+2. **Install dependencies**:
+   ```bash
+   pnpm install
+   ```
+
+3. **Build the application**:
+   ```bash
+   pnpm run build
+   ```
+   This command runs the TypeScript compiler and builds the application for production.
+
+4. **Preview the production build locally** (optional):
+   ```bash
+   pnpm run serve
+   ```
+   This uses Vite's preview functionality to serve the production build locally.
+
+### Deployment Options
+
+#### Static Hosting Deployment
+
+The built application can be deployed to any static hosting service:
+
+1. The production build will be available in the `dist/` directory after running the build command.
+2. Deploy to services such as:
+   - AWS S3 + CloudFront
+   - Netlify
+   - Vercel
+   - GitHub Pages
+   - Firebase Hosting
+
+#### Docker Deployment
+
+For containerized deployment:
+
+1. **Create a Dockerfile** in the `frontend-admin-dashboard` directory:
+   ```dockerfile
+   FROM node:21-alpine AS build
+   WORKDIR /app
+   RUN npm install -g pnpm
+   COPY package.json pnpm-lock.yaml ./
+   RUN pnpm install
+   COPY . .
+   RUN pnpm run build
+
+   FROM nginx:alpine
+   COPY --from=build /app/dist /usr/share/nginx/html
+   COPY nginx.conf /etc/nginx/conf.d/default.conf
+   EXPOSE 80
+   CMD ["nginx", "-g", "daemon off;"]
+   ```
+
+2. **Create a basic `nginx.conf`**:
+   ```nginx
+   server {
+     listen 80;
+     server_name _;
+     root /usr/share/nginx/html;
+     index index.html;
+     
+     location / {
+       try_files $uri $uri/ /index.html;
+     }
+   }
+   ```
+
+3. **Build and run the Docker container**:
+   ```bash
+   docker build -t vacademy/admin-dashboard .
+   docker run -p 8080:80 vacademy/admin-dashboard
+   ```
+
+### Environment Variables
+
+For environment-specific configuration:
+
+1. Create environment files for different environments:
+   - `.env.development` - Development environment variables
+   - `.env.production` - Production environment variables
+   - `.env.staging` - Staging environment variables
+
+2. Configure variables such as API endpoints, authentication URLs, etc.
+3. Access variables in code using `import.meta.env.VITE_VARIABLE_NAME`.
+
+## Deploying the Learner Dashboard
+
+### Prerequisites
+
+- **Node.js**: Version 21.0.0
+- **pnpm**: Package manager
+- **Java**: Version 21 (for Android builds)
+- **Android Studio**: For Android builds
+- **Xcode**: For iOS builds (macOS only)
+
+### Web Deployment
+
+1. **Navigate to the learner dashboard directory**:
+   ```bash
+   cd frontend-learner-dashboard
+   ```
+
+2. **Install dependencies**:
+   ```bash
+   pnpm install
+   ```
+
+3. **Build for web**:
+   ```bash
+   pnpm run build
+   ```
+
+4. The production build will be available in the `dist/` directory.
+
+### Mobile App Deployment
+
+#### Android
+
+1. **Build the web assets**:
+   ```bash
+   pnpm run build
+   ```
+
+2. **Copy web assets to the Android project**:
+   ```bash
+   npx cap copy android
+   ```
+
+3. **Open in Android Studio**:
+   ```bash
+   npx cap open android
+   ```
+
+4. **Generate a signed APK/AAB** from Android Studio:
+   - Go to **Build → Generate Signed Bundle/APK**
+   - Follow the prompts to create or use an existing keystore
+   - Choose between APK (for direct installation) or AAB (for Play Store)
+
+5. **For Google Play Store deployment**:
+   - Create a developer account if you don't have one
+   - Create a new application in the Play Console
+   - Upload the AAB file in the Production, Beta, or Alpha track
+   - Complete the store listing, content rating, and pricing details
+   - Submit for review
+
+#### iOS (macOS only)
+
+1. **Build the web assets**:
+   ```bash
+   pnpm run build
+   ```
+
+2. **Copy web assets to the iOS project**:
+   ```bash
+   npx cap copy ios
+   ```
+
+3. **Open in Xcode**:
+   ```bash
+   npx cap open ios
+   ```
+
+4. **Configure signing in Xcode**:
+   - Select the project in the Project Navigator
+   - Go to the **Signing & Capabilities** tab
+   - Sign in with your Apple Developer account
+   - Select a team and provisioning profile
+
+5. **Archive for App Store**:
+   - Set the device target to **Any iOS Device**
+   - Select **Product → Archive**
+   - In the Archives window, click **Distribute App**
+   - Follow the prompts for App Store distribution
+
+## CI/CD Integration
+
+For automated deployments, create GitHub Actions workflow files in the `.github/workflows/` directory.
+
+### For Admin Dashboard
+
+```yaml
+name: Deploy Admin Dashboard
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'frontend-admin-dashboard/**'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '21'
+      
+      - name: Install pnpm
+        run: npm install -g pnpm
+      
+      - name: Install dependencies
+        run: |
+          cd frontend-admin-dashboard
+          pnpm install
+      
+      - name: Build
+        run: |
+          cd frontend-admin-dashboard
+          pnpm run build
+        
+      # Add deployment steps based on your hosting solution
+      # Example for AWS S3:
+      # - name: Deploy to S3
+      #   uses: jakejarvis/s3-sync-action@master
+      #   with:
+      #     args: --acl public-read --follow-symlinks --delete
+      #   env:
+      #     AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET }}
+      #     AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      #     AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      #     SOURCE_DIR: 'frontend-admin-dashboard/dist'
+```
+
+### For Learner Dashboard Web Version
+
+```yaml
+name: Deploy Learner Dashboard Web
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'frontend-learner-dashboard/**'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '21'
+      
+      - name: Install pnpm
+        run: npm install -g pnpm
+      
+      - name: Install dependencies
+        run: |
+          cd frontend-learner-dashboard
+          pnpm install
+      
+      - name: Build
+        run: |
+          cd frontend-learner-dashboard
+          pnpm run build
+        
+      # Add deployment steps based on your hosting solution
+```
+
+## Best Practices
+
+1. **Environment Configuration**:
+   - Use `.env` files for environment-specific variables
+   - Never commit sensitive information to the repository
+   - Use CI/CD secrets for sensitive data
+
+2. **Performance Optimization**:
+   - Enable gzip/Brotli compression on your web server
+   - Implement proper cache headers
+   - Use a CDN for static assets
+
+3. **Security**:
+   - Implement CSP (Content Security Policy)
+   - Configure proper CORS headers
+   - Use HTTPS for all environments, including development
+
+4. **Monitoring and Analytics**:
+   - Implement error tracking (e.g., Sentry)
+   - Set up usage analytics
+   - Configure uptime monitoring
+
+## Notes
+
+- These deployment instructions assume you have appropriate access to deployment infrastructure.
+- Mobile app deployments require developer accounts for the respective app stores.
+- The CI/CD examples need to be adapted to your specific hosting solution.
+- For containerized deployments, ensure your container orchestration system is properly configured to handle frontend services.
+- For development setup, refer to the individual README files in each frontend directory.
+
 # Vacademy.io Microservices
 
 This repository contains the backend microservices architecture for [Vacademy.io](https://vacademy.io), built with **Spring Boot** and deployed on **Kubernetes**.

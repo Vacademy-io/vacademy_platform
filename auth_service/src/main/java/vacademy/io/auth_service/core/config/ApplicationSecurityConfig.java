@@ -57,7 +57,7 @@ public class ApplicationSecurityConfig {
                 .csrf().disable()
                 .cors().and()
                 .sessionManagement()
-                .sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
+                .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 .and()
                 .authorizeHttpRequests(authz -> authz
                         .requestMatchers(ALLOWED_PATHS).permitAll()
@@ -66,11 +66,13 @@ public class ApplicationSecurityConfig {
                 )
                 .oauth2Login(oauth2 -> oauth2
                         .authorizationEndpoint(auth -> auth
+                                // 🔧 Set custom base URI to match your microservice route
+                                .baseUri("/auth-service/oauth2/authorization")
                                 .authorizationRequestResolver(
-                                        new CustomAuthorizationRequestResolver(clientRegistrationRepository, "/oauth2/authorization")
+                                        new CustomAuthorizationRequestResolver(clientRegistrationRepository, "/auth-service/oauth2/authorization")
                                 )
                         )
-                        .successHandler(customOAuth2SuccessHandler) // Autowired or new instance
+                        .successHandler(customOAuth2SuccessHandler)
                 )
                 .authenticationProvider(authenticationProvider())
                 .addFilterBefore(internalAuthFilter, UsernamePasswordAuthenticationFilter.class)

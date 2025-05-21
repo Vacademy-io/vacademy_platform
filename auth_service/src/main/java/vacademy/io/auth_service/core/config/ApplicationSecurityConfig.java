@@ -13,7 +13,12 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.password.NoOpPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.client.endpoint.DefaultAuthorizationCodeTokenResponseClient;
+import org.springframework.security.oauth2.client.endpoint.OAuth2AccessTokenResponseClient;
+import org.springframework.security.oauth2.client.endpoint.OAuth2AuthorizationCodeGrantRequest;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -27,7 +32,7 @@ public class ApplicationSecurityConfig {
 
     private static final String[] INTERNAL_PATHS = {"/auth-service/internal/**"};
 
-    private static final String[] ALLOWED_PATHS = {"/auth-service/v1/internal/**", "/auth-service/v1/user/internal/create-user", "/auth-service/v1/user/internal/create-user-or-get-existing", "/auth-service/v1/user/internal/user-details-list", "/auth-service/v1/signup-root", "/auth-service/v1/refresh-token", "/auth-service/v1/login-root", "/auth-service/learner/v1/**", "/auth-service/actuator/**", "/auth-service/swagger-ui.html", "/auth-service/v1/report/alert/**", "/auth-service/v3/api-docs/**", "/auth-service/swagger-ui/**", "/auth-service/webjars/swagger-ui/**", "/auth-service/api-docs/**", "/auth-service/v1/send-password", "/auth-service/v1/send-password", "/auth-service/v1/user/internal/users-credential   ", "/auth-service/internal/v1/user-roles/users-of-status"};
+    private static final String[] ALLOWED_PATHS = {"/auth-service/v1/internal/**", "/auth-service/v1/user/internal/create-user", "/auth-service/v1/user/internal/create-user-or-get-existing", "/auth-service/v1/user/internal/user-details-list", "/auth-service/v1/signup-root", "/auth-service/v1/refresh-token", "/auth-service/v1/login-root", "/auth-service/learner/v1/**", "/auth-service/actuator/**", "/auth-service/swagger-ui.html", "/auth-service/v1/report/alert/**", "/auth-service/v3/api-docs/**", "/auth-service/swagger-ui/**", "/auth-service/webjars/swagger-ui/**", "/auth-service/api-docs/**", "/auth-service/v1/send-password", "/auth-service/v1/send-password", "/auth-service/v1/user/internal/users-credential   ", "/auth-service/internal/v1/user-roles/users-of-status","/auth-service/oauth2/**"};
 
     @Autowired
     JwtAuthFilter jwtAuthFilter;
@@ -40,25 +45,44 @@ public class ApplicationSecurityConfig {
     @Autowired
     private CorsConfigurationSource corsConfigurationSource;
 
+    @Autowired
+    private ClientRegistrationRepository clientRegistrationRepository;
+
+    @Autowired
+    private AuthenticationSuccessHandler customOAuth2SuccessHandler;
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .csrf().disable()
-                .cors()
-                .and()
-                .authorizeHttpRequests()
-                .requestMatchers(ALLOWED_PATHS).permitAll()
-                .requestMatchers(INTERNAL_PATHS).authenticated()
-                .anyRequest().authenticated()
-                .and()
+                .cors().and()
                 .sessionManagement()
                 .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 .and()
+                .authorizeHttpRequests(authz -> authz
+                        .requestMatchers(ALLOWED_PATHS).permitAll()
+                        .requestMatchers(INTERNAL_PATHS).authenticated()
+                        .anyRequest().authenticated()
+                )
+                .oauth2Login(oauth2 -> oauth2
+                        .authorizationEndpoint(auth -> auth
+                                // 🔧 Set custom base URI to match your microservice route
+                                .baseUri("/auth-service/oauth2/authorization")
+                                .authorizationRequestResolver(
+                                        new CustomAuthorizationRequestResolver(clientRegistrationRepository, "/auth-service/oauth2/authorization")
+                                )
+                        )
+                        .successHandler(customOAuth2SuccessHandler)
+                )
                 .authenticationProvider(authenticationProvider())
                 .addFilterBefore(internalAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+
         return http.build();
     }
+
+
+
 
     @Bean
     public RestTemplate restTemplate() {
@@ -83,4 +107,10 @@ public class ApplicationSecurityConfig {
     public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
         return config.getAuthenticationManager();
     }
+
+    @Bean
+    public OAuth2AccessTokenResponseClient<OAuth2AuthorizationCodeGrantRequest> accessTokenResponseClient() {
+        return new DefaultAuthorizationCodeTokenResponseClient();
+    }
+
 }

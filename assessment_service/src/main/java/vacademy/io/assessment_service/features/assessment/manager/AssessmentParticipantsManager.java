@@ -630,8 +630,8 @@ public class AssessmentParticipantsManager {
     }
 
     public StudentReportOverallDetailDto createStudentReportDetailResponse(String assessmentId, String attemptId, String instituteId) {
-        Assessment assessment = assessmentRepository.findByAssessmentIdAndInstituteId(assessmentId, instituteId)
-                .orElseThrow(() -> new VacademyException("Assessment Not Found"));
+        Optional<StudentAttempt> studentAttempt = studentAttemptRepository.findById(attemptId);
+        if(studentAttempt.isEmpty()) throw new VacademyException("Attempt Not Found");
 
         List<Section> sections = sectionRepository.findByAssessmentIdAndStatusNotIn(assessmentId, List.of("DELETED"));
         List<String> sectionIds = sections.stream().map(Section::getId).toList();
@@ -648,6 +648,7 @@ public class AssessmentParticipantsManager {
         return StudentReportOverallDetailDto.builder()
                 .allSections(generateStudentReport(mappings, attemptId))
                 .questionOverallDetailDto(questionOverallDetailDto)
+                .evaluatedFileId(studentAttempt.get().getEvaluatedFileId())
                 .build();
     }
 

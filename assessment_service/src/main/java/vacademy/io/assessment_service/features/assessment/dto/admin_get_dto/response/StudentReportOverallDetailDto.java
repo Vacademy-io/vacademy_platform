@@ -15,6 +15,7 @@ import java.util.Map;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 @Builder
 public class StudentReportOverallDetailDto {
+    private String evaluatedFileId;
     private ParticipantsQuestionOverallDetailDto questionOverallDetailDto;
     private Map<String, List<StudentReportAnswerReviewDto>> allSections;
 }

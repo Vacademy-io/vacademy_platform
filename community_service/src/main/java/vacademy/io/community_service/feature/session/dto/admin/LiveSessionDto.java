@@ -1,11 +1,12 @@
-package vacademy.io.admin_core_service.features.presentation_mode.learner.dto;
+package vacademy.io.community_service.feature.session.dto.admin;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.PropertyNamingStrategy;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.Data;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-import vacademy.io.admin_core_service.features.presentation_mode.admin.dto.CreatePresentationDto;
+import vacademy.io.community_service.feature.presentation.dto.question.AddPresentationDto;
+import vacademy.io.community_service.feature.presentation.dto.question.PresentationSlideDto;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -17,10 +18,15 @@ public class LiveSessionDto {
     private String sessionId;
     private String inviteCode;
     private String sessionStatus;
+    private Boolean canJoinInBetween = true;
+    private Boolean showResultsAtLastSlide = true;
+    private Boolean allowLearnerHandRaise = true;
+    private Integer defaultSecondsForQuestion = 60;
+    private Integer studentAttempts = 1;
     private boolean allowAfterStart = true;
-    private List<PresentationSlideDto> slides = new ArrayList<>();
+    private AddPresentationDto slides;
     @JsonIgnore
-    private CreatePresentationDto createPresentationDto;
+    private CreateSessionDto createSessionDto;
     private int currentSlideIndex = 0;
     @JsonIgnore
     private List<SseEmitter> studentEmitters = Collections.synchronizedList(new ArrayList<>());
@@ -30,7 +36,7 @@ public class LiveSessionDto {
     private SseEmitter teacherEmitter;
     @JsonIgnore
     private Map<String, String> slideStatsJson = new ConcurrentHashMap<>();
+
     private Date creationTime;
     private Date startTime;
 }
-

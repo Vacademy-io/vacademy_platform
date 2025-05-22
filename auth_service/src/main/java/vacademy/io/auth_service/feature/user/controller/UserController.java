@@ -6,10 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
-import vacademy.io.common.auth.dto.UserCredentials;
-import vacademy.io.common.auth.dto.UserDTO;
-import vacademy.io.common.auth.dto.UserRoleRequestDTO;
-import vacademy.io.common.auth.dto.UserWithRolesDTO;
+import vacademy.io.common.auth.dto.*;
 import vacademy.io.common.auth.entity.User;
 import vacademy.io.common.auth.enums.UserRoleStatus;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -111,6 +108,19 @@ public class UserController {
     @PostMapping("/users-credential")
     public ResponseEntity<List<UserCredentials>> getUsersCredentials(@RequestBody List<String> userIds, @RequestAttribute("user") CustomUserDetails customUserDetails) {
         return ResponseEntity.ok(userService.getUsersCredentials(userIds));
+    }
+
+    @PostMapping("/internal/update/details")
+    public ResponseEntity<String> updateUserDetails(@RequestBody UserTopLevelDto request,
+                                                    @RequestParam("userId") String userId,
+                                                    @RequestParam("instituteId") String instituteId) {
+        return ResponseEntity.ok(userService.updateUserDetails(null,request,userId, instituteId));
+    }
+
+    @GetMapping("/internal/get/details")
+    public ResponseEntity<UserTopLevelDto> getUserDetails(@RequestParam("userId") String userId,
+                                                          @RequestParam("instituteId") String instituteId) {
+        return ResponseEntity.ok(userService.getUserTopLevelDetails(null,userId,instituteId));
     }
 
 }

@@ -7,6 +7,7 @@ import org.hibernate.annotations.UuidGenerator;
 import vacademy.io.common.auth.dto.UserTopLevelDto;
 
 import java.sql.Timestamp;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.Set;
 
@@ -79,7 +80,7 @@ public class User {
                 .email(this.email)
                 .pinCode(this.pinCode)
                 .profilePicFileId(this.profilePicFileId)
-                .roles(roles.stream().map(UserRole::getRoleDto).toList())
+                .roles(this.roles!=null ? roles.stream().map(UserRole::getRoleDto).toList() : new ArrayList<>())
                 .build();
     }
 

@@ -36,7 +36,6 @@ public class NotificationService {
                 NotificationConstant.SEND_EMAIL_OTP,
                 emailOTPRequest
         );
-
         return response.getBody();
     }
 

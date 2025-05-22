@@ -6,6 +6,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.UuidGenerator;
+import vacademy.io.common.auth.dto.UserRoleDTO;
 
 import java.time.LocalDateTime;
 
@@ -41,5 +42,9 @@ public class UserRole {
 
     @Column(name = "status", nullable = false, columnDefinition = "VARCHAR(255) DEFAULT 'ACTIVE'")
     private String status = "ACTIVE";
+
+    public UserRoleDTO getRoleDto(){
+        return new UserRoleDTO(this);
+    }
 
 }

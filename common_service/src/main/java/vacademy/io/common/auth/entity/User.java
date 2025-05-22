@@ -4,6 +4,7 @@ package vacademy.io.common.auth.entity;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.UuidGenerator;
+import vacademy.io.common.auth.dto.UserTopLevelDto;
 
 import java.sql.Timestamp;
 import java.util.Date;
@@ -66,5 +67,20 @@ public class User {
 
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Timestamp updatedAt;
+
+    public UserTopLevelDto getUserTopLevelDto(){
+        return UserTopLevelDto.builder()
+                .id(this.id)
+                .addressLine(this.addressLine)
+                .gender(this.gender)
+                .dateOfBirth(this.dateOfBirth)
+                .isRootUser(this.isRootUser)
+                .city(this.city)
+                .email(this.email)
+                .pinCode(this.pinCode)
+                .profilePicFileId(this.profilePicFileId)
+                .roles(roles.stream().map(UserRole::getRoleDto).toList())
+                .build();
+    }
 
 }

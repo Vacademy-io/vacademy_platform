@@ -12,7 +12,7 @@ import { useEffect } from "react";
 import useStore from "../sidebar/useSidebar";
 import { Preferences } from "@capacitor/preferences";
 import { getPublicUrl } from "@/services/upload_file";
-import {LogoutSidebar} from "../sidebar/logoutSidebar"
+import { LogoutSidebar } from "../sidebar/logoutSidebar";
 
 export function Navbar() {
   // const [notifications, setNotifications] = useState<boolean>(true);
@@ -50,14 +50,11 @@ export function Navbar() {
   // };
 
   return (
-    <div className="flex h-[72px] items-center justify-between bg-neutral-50 max-sm:px-2 px-8 py-4">
-      <LogoutSidebar/>
+    <div className="sticky top-0 z-10 border-b  flex h-[72px] items-center justify-between bg-neutral-50 max-sm:px-2 px-8 py-4 ">
+      <LogoutSidebar />
       <div className="flex items-center gap-3">
         <SidebarTrigger>
-          <div
-            onClick={() => {
-            }}
-          >
+          <div onClick={() => {}}>
             <FiSidebar className="text-neutral-600" />
           </div>
         </SidebarTrigger>

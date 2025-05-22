@@ -66,7 +66,6 @@ public class ApplicationSecurityConfig {
                 )
                 .oauth2Login(oauth2 -> oauth2
                         .authorizationEndpoint(auth -> auth
-                                // 🔧 Set custom base URI to match your microservice route
                                 .baseUri("/auth-service/oauth2/authorization")
                                 .authorizationRequestResolver(
                                         new CustomAuthorizationRequestResolver(clientRegistrationRepository, "/auth-service/oauth2/authorization")

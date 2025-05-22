@@ -223,7 +223,7 @@ public class AiAnswerEvaluationService {
     }
 
     private String getEvaluationFromAI(String prompt) {
-        DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt, 30000);
+        DeepSeekResponse response = deepSeekApiService.getChatCompletion("google/gemini-2.0-flash-exp:free", prompt, 30000);
         return response.getChoices().get(0).getMessage().getContent();
     }
 

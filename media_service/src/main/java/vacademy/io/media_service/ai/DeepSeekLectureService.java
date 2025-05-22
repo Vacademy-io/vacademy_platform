@@ -43,7 +43,7 @@ public class DeepSeekLectureService {
 
             taskStatusService.convertMapToJsonAndStore(promptMap, taskStatus);
 
-            DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
+            DeepSeekResponse response = deepSeekApiService.getChatCompletion("google/gemini-2.0-flash-exp:free", prompt.getContents().trim(), 30000);
             if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {
                 return generateLecturePlannerFromPrompt(userPrompt, lectureDuration, language, methodOfTeaching, taskStatus, level, attempt + 1);
             }
@@ -76,7 +76,7 @@ public class DeepSeekLectureService {
 
             taskStatusService.convertMapToJsonAndStore(promptMap, taskStatus);
 
-            DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
+            DeepSeekResponse response = deepSeekApiService.getChatCompletion("google/gemini-2.0-flash-exp:free", prompt.getContents().trim(), 30000);
 
             if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty() || response.getChoices().get(0).getMessage().getContent().isEmpty()) {
                 return generateLectureFeedback(text, convertedAudioResponseString, taskStatus, attempt + 1, audioPace);

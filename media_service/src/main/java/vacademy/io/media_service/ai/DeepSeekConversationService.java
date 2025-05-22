@@ -25,7 +25,7 @@ public class DeepSeekConversationService {
         Prompt prompt = new PromptTemplate(template).create(Map.of("userPrompt", userPrompt,
                 "last5Conversation", last5Conversations, "htmlText", htmlText));
 
-        DeepSeekResponse response = deepSeekApiService.getChatCompletion("meta-llama/llama-4-maverick:free", prompt.getContents().trim(), 30000);
+        DeepSeekResponse response = deepSeekApiService.getChatCompletion("google/gemini-2.0-flash-exp:free", prompt.getContents().trim(), 30000);
         if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {
             throw new VacademyException("Failed To generate Response");
         }

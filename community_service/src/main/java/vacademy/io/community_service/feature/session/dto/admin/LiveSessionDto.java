@@ -23,6 +23,7 @@ public class LiveSessionDto {
     private Boolean allowLearnerHandRaise = true;
     private Integer defaultSecondsForQuestion = 60;
     private Integer studentAttempts = 1;
+    private String excalidrawData;
     private boolean allowAfterStart = true;
     private AddPresentationDto slides;
     @JsonIgnore

@@ -57,9 +57,7 @@ jobs:
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
         run: |
           docker build -t $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG . \
-            --build-arg GITHUB_TOKEN=${GITHUB_TOKEN} \
-            --build-arg GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID} \
-            --build-arg GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+            --build-arg GITHUB_TOKEN=${GITHUB_TOKEN}
           docker push $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG
           echo "Docker Image Link = $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG"
 

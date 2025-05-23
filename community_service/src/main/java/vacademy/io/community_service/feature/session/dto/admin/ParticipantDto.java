@@ -20,4 +20,10 @@ public class ParticipantDto {
         this.username = username;
         this.status = status;
     }
+
+    public ParticipantDto(String username, String status, Date joinedAt) {
+        this.username = username;
+        this.status = status;
+        this.joinedAt = joinedAt;
+    }
 }

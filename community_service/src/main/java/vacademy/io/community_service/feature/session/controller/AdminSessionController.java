@@ -10,7 +10,9 @@ import vacademy.io.community_service.feature.session.dto.admin.StartPresentation
 import vacademy.io.community_service.feature.session.manager.LiveSessionService;
 
 import java.io.IOException;
+import java.util.UUID;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 @RestController
@@ -28,17 +30,49 @@ public class AdminSessionController {
 
     @GetMapping("/{sessionId}")
     public SseEmitter presenterStream(@PathVariable String sessionId) {
+        // Timeout for the emitter itself (e.g., 1 hour)
         SseEmitter emitter = new SseEmitter(3600000L);
-        liveSessionService.setPresenterEmitter(sessionId, emitter);
 
-        // Send periodic data or heartbeats to keep the connection alive
-        Executors.newSingleThreadScheduledExecutor().scheduleAtFixedRate(() -> {
+        // The service method will now handle sending initial state upon successful connection
+        liveSessionService.setPresenterEmitter(sessionId, emitter, true);
+
+        // Heartbeat mechanism to keep the connection alive and allow client to detect silent drops
+        final ScheduledExecutorService heartBeatExecutor = Executors.newSingleThreadScheduledExecutor();
+        Runnable heartbeatTask = () -> {
             try {
-                emitter.send(SseEmitter.event().data("heartbeat"));
+                // Send a distinct heartbeat event for the presenter
+                emitter.send(SseEmitter.event().name("presenter_heartbeat").id(UUID.randomUUID().toString()).data("ping"));
             } catch (IOException e) {
-                emitter.completeWithError(e);
+                // This error means the connection is likely broken.
+                // The emitter's onError or onCompletion will be triggered by the send failure.
+                // We should ensure the heartbeat executor is shut down.
+                if (!heartBeatExecutor.isShutdown()) {
+                    heartBeatExecutor.shutdown();
+                }
+                // No need to call emitter.completeWithError(e) here, as the send failure itself will propagate.
             }
-        }, 0, 30, TimeUnit.SECONDS);
+        };
+
+        // Schedule the heartbeat
+        heartBeatExecutor.scheduleAtFixedRate(heartbeatTask, 0, 30, TimeUnit.SECONDS);
+
+        // Ensure executor shutdown when the SseEmitter is completed, times out, or errors.
+        // These callbacks are set up by setPresenterEmitter in the service as well for application logic,
+        // but this controller-level setup ensures the heartbeat executor specific to this emitter instance is cleaned up.
+        emitter.onCompletion(() -> {
+            if (!heartBeatExecutor.isShutdown()) heartBeatExecutor.shutdown();
+            // Service level onCompletion will handle clearing the emitter from the session
+        });
+        emitter.onTimeout(() -> {
+            if (!heartBeatExecutor.isShutdown()) heartBeatExecutor.shutdown();
+            // Service level onTimeout will handle clearing
+            // Spring Boot SseEmitter infrastructure calls complete() internally on timeout.
+        });
+        emitter.onError(e -> {
+            if (!heartBeatExecutor.isShutdown()) heartBeatExecutor.shutdown();
+            // Service level onError will handle clearing
+        });
+
         return emitter;
     }
 
@@ -59,4 +93,5 @@ public class AdminSessionController {
         LiveSessionDto liveSessionDto = liveSessionService.finishSession(startPresentationDto);
         return ResponseEntity.ok(liveSessionDto);
     }
+
 }

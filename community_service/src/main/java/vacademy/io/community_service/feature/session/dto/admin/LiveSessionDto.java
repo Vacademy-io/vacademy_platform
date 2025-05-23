@@ -28,7 +28,7 @@ public class LiveSessionDto {
     private AddPresentationDto slides;
     @JsonIgnore
     private CreateSessionDto createSessionDto;
-    private int currentSlideIndex = 0;
+    private Integer currentSlideIndex = 0;
     @JsonIgnore
     private List<SseEmitter> studentEmitters = Collections.synchronizedList(new ArrayList<>());
     @JsonIgnore
@@ -40,4 +40,5 @@ public class LiveSessionDto {
 
     private Date creationTime;
     private Date startTime;
+    private Date endTime;
 }

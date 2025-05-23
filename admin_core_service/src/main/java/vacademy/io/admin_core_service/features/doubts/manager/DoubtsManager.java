@@ -2,16 +2,22 @@ package vacademy.io.admin_core_service.features.doubts.manager;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
+import vacademy.io.admin_core_service.features.doubts.dtos.AllDoubtsResponse;
 import vacademy.io.admin_core_service.features.doubts.dtos.DoubtsDto;
+import vacademy.io.admin_core_service.features.doubts.dtos.DoubtsRequestFilter;
 import vacademy.io.admin_core_service.features.doubts.entity.DoubtAssignee;
 import vacademy.io.admin_core_service.features.doubts.entity.Doubts;
 import vacademy.io.admin_core_service.features.doubts.enums.DoubtStatusEnum;
 import vacademy.io.admin_core_service.features.doubts.service.DoubtService;
-import vacademy.io.admin_core_service.features.slide.entity.Slide;
 import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.core.standard_classes.ListService;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.ArrayList;
@@ -41,7 +47,7 @@ public class DoubtsManager {
                 .source(request.getSource())
                 .sourceId(request.getSourceId())
                 .htmlText(request.getHtmlText())
-                .parentLevel(request.getParentLevel())
+                .parentLevel(request.getParentLevel() == null ? 0 : request.getParentLevel())
                 .raisedTime(new Date())
                 .parentId(request.getParentId())
                 .contentPosition(request.getContentPosition())
@@ -67,7 +73,7 @@ public class DoubtsManager {
             updateIfNotNull(request.getHtmlText(), doubtsOpt.get()::setHtmlText);
             updateIfNotNull(request.getStatus(), doubtsOpt.get()::setStatus);
 
-            if(request.getStatus()!=null && request.getStatus().equals("RESOLVED")){
+            if(request.getStatus()!=null && request.getStatus().equals(DoubtStatusEnum.RESOLVED.name())){
                 updateIfNotNull(new Date(), doubtsOpt.get()::setResolvedTime);
             }
 
@@ -100,4 +106,40 @@ public class DoubtsManager {
             setterMethod.accept(value);
         }
     }
+
+    public ResponseEntity<AllDoubtsResponse> getAllDoubts(CustomUserDetails userDetails, DoubtsRequestFilter filter, int pageNo, int pageSize) {
+        Sort sortColumns = ListService.createSortObject(filter.getSortColumns());
+        Pageable pageable = PageRequest.of(pageNo,pageSize,sortColumns);
+
+        Page<Doubts> paginatedDoubts = doubtService.getAllDoubtsWithFilter(filter.getContentTypes(), filter.getContentPositions(),filter.getSources(),
+                filter.getSourceIds(),filter.getStartDate(),filter.getEndDate(), filter.getUserIds(), filter.getStatus(), pageable);
+
+
+        return ResponseEntity.ok(createDoubtAllResponse(paginatedDoubts));
+    }
+
+    private AllDoubtsResponse createDoubtAllResponse(Page<Doubts> paginatedDoubts) {
+        if(paginatedDoubts == null){
+            return AllDoubtsResponse.builder()
+                    .content(new ArrayList<>())
+                    .last(true)
+                    .pageNo(0)
+                    .pageSize(0)
+                    .totalElements(0)
+                    .totalPages(0)
+                    .build();
+        }
+
+        List<Doubts> allDoubts = paginatedDoubts.getContent();
+        return AllDoubtsResponse.builder()
+                .content(doubtService.createDtoFromDoubts(allDoubts))
+                .totalPages(paginatedDoubts.getTotalPages())
+                .last(paginatedDoubts.isLast())
+                .pageNo(paginatedDoubts.getNumber())
+                .pageSize(paginatedDoubts.getSize())
+                .totalElements(paginatedDoubts.getTotalElements()).build();
+    }
+
+
+
 }

@@ -21,8 +21,9 @@ public class DoubtsRequestFilter {
     private String name;
     private Date startDate;
     private Date endDate;
-    private List<String> contentPosition;
-    private List<String> content;
+    private List<String> userIds;
+    private List<String> contentPositions;
+    private List<String> contentTypes;
     private List<String> sources;
     private List<String> sourceIds;
     private List<String> status;

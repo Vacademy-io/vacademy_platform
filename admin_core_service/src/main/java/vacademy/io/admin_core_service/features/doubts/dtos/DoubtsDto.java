@@ -7,6 +7,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 
@@ -18,8 +19,6 @@ import java.util.List;
 public class DoubtsDto {
     private String id;
     private String userId;
-    private String name;
-    private String faceFileId;
     private String source;
     private String sourceId;
     private Date raisedTime;
@@ -30,5 +29,6 @@ public class DoubtsDto {
     private String status;
     private String parentId;
     private Integer parentLevel;
-    private List<String> doubtAssigneeRequestUserIds;
+    private List<String> doubtAssigneeRequestUserIds = new ArrayList<>();
+    private List<DoubtsDto> replies = new ArrayList<>();
 }

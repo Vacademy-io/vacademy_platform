@@ -15,5 +15,10 @@ import java.util.List;
 @NoArgsConstructor
 @Builder
 public class AllDoubtsResponse {
-    private List<DoubtsDto>
+    private List<DoubtsDto> content;
+    private int pageNo;
+    private int pageSize;
+    private long totalElements;
+    private int totalPages;
+    private boolean last;
 }

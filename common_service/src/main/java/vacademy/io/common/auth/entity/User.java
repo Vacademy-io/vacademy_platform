@@ -71,6 +71,8 @@ public class User {
 
     public UserTopLevelDto getUserTopLevelDto(){
         return UserTopLevelDto.builder()
+                .fullName(this.fullName)
+                .mobileNumber(this.mobileNumber)
                 .id(this.id)
                 .addressLine(this.addressLine)
                 .gender(this.gender)

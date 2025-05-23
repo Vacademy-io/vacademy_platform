@@ -69,7 +69,7 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
                     log.info("Logged in user: {} ({})", name, email);
                     log.info("Profile Picture: {}", picture);
 
-                    JwtResponseDto jwtResponseDto = getTokenByClientUrlAndUserEmail(redirectUrl, email);
+                    JwtResponseDto jwtResponseDto = getTokenByClientUrlAndUserEmail(redirectUrl,name, email);
                     if (jwtResponseDto != null) {
                         String tokenizedRedirectUrl = String.format(
                                 "%s?accessToken=%s&refreshToken=%s",
@@ -85,23 +85,30 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
                 } catch (Exception e) {
                     log.error("Failed during OAuth2 user processing", e);
                     e.printStackTrace();
+                    response.sendRedirect(redirectUrl+"?error=true");
+                    return;
                 }
             }
 
         } catch (Exception e) {
             log.error("Unexpected error during authentication success handling", e);
             e.printStackTrace();
+            response.sendRedirect(redirectUrl+"?error=true");
+            return;
         }
 
         // default fallback
-        response.sendRedirect("https://dash.vacademy.io?error=true");
+        response.sendRedirect(redirectUrl+"?error=true");
     }
 
-    private JwtResponseDto getTokenByClientUrlAndUserEmail(String clientUrl, String email) {
+    private JwtResponseDto getTokenByClientUrlAndUserEmail(String clientUrl,String fullName, String email) {
         try {
             if (clientUrl.contains("learner")) {
                 return learnerOAuth2Manager.loginUserByEmail(email);
             } else {
+                if (clientUrl.contains("signup")) {
+                    return adminOAuth2Manager.registerRootUser(fullName, email);
+                }
                 return adminOAuth2Manager.loginUserByEmail(email);
             }
         } catch (Exception e) {

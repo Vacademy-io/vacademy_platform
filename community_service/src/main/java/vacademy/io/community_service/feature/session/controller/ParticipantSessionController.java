@@ -1,4 +1,4 @@
-// vacademy.io.community_service.feature.session.controller.ParticipantSessionController
+package vacademy.io.community_service.feature.session.controller;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;

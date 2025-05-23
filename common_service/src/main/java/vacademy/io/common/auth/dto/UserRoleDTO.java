@@ -10,6 +10,8 @@ import vacademy.io.common.auth.entity.UserRole;
 @Data
 @NoArgsConstructor
 public class UserRoleDTO {
+    private String id;
+    private String instituteId;
     private String roleName;
     private String status;
     private String roleId;
@@ -18,5 +20,7 @@ public class UserRoleDTO {
         this.roleName = userRole.getRole().getName();
         this.status = userRole.getStatus();
         this.roleId = userRole.getRole().getId();
+        this.id = userRole.getId();
+        this.instituteId = userRole.getInstituteId();
     }
 }

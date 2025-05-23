@@ -11,6 +11,7 @@ import vacademy.io.common.auth.entity.User;
 import vacademy.io.common.auth.entity.UserRole;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface UserRoleRepository extends CrudRepository<UserRole, String> {
@@ -41,4 +42,5 @@ public interface UserRoleRepository extends CrudRepository<UserRole, String> {
                                                   @Param("roleName") String roleName);
 
 
+    Optional<UserRole> findByUserIdAndRoleIdAndInstituteId(String id, String roleId, String instituteId);
 }

@@ -69,7 +69,7 @@
         <repository>
             <id>github</id>
             <name>GitHub OWNER Apache Maven Packages</name>
-            <url>https://maven.pkg.github.com/Vacademy-io/services</url>
+            <url>https://maven.pkg.github.com/Vacademy-io/vacademy_platform</url>
         </repository>
     </distributionManagement>
 

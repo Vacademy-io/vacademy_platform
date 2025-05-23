@@ -13,6 +13,7 @@ import vacademy.io.common.auth.enums.UserRoleStatus;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.auth.repository.RoleRepository;
 import vacademy.io.common.auth.repository.UserRepository;
+import vacademy.io.common.auth.repository.UserRoleRepository;
 import vacademy.io.common.exceptions.*;
 
 import java.util.ArrayList;
@@ -31,6 +32,9 @@ public class UserService {
 
     @Autowired
     RoleRepository roleRepository;
+
+    @Autowired
+    UserRoleRepository userRoleRepository;
 
     public List<User> getUsersFromUserIds(List<String> userIds) {
         List<User> users = new ArrayList<>();
@@ -307,5 +311,109 @@ public class UserService {
 
     public Optional<User> getOptionalUserById(String userId) {
         return userRepository.findById(userId);
+    }
+
+    @Transactional
+    public String updateUserDetails(CustomUserDetails customUserDetails, UserTopLevelDto request, String userId, String instituteId) {
+        try{
+            Optional<User> userOptional = userRepository.findById(userId);
+            if(userOptional.isEmpty()) throw new VacademyException("User Not Found");
+
+            updateIfNotNull(request.getEmail(), userOptional.get()::setEmail);
+            updateIfNotNull(request.getMobileNumber(), userOptional.get()::setMobileNumber);
+            updateIfNotNull(request.getProfilePicFileId(), userOptional.get()::setProfilePicFileId);
+            updateIfNotNull(request.getPinCode(), userOptional.get()::setPinCode);
+            updateIfNotNull(request.getCity(), userOptional.get()::setCity);
+            updateIfNotNull(request.getGender(), userOptional.get()::setGender);
+            updateIfNotNull(request.getFullName(), userOptional.get()::setFullName);
+            updateIfNotNull(request.getDateOfBirth(), userOptional.get()::setDateOfBirth);
+            updateIfNotNull(request.getAddressLine(), userOptional.get()::setAddressLine);
+
+            User savedUser = userRepository.save(userOptional.get());
+
+            updateRolesOfUser(savedUser, request, instituteId);
+
+            return "Done";
+        } catch (Exception e) {
+            throw new VacademyException("Failed To Update: " + e.getMessage());
+        }
+    }
+
+    private void updateRolesOfUser(User savedUser, UserTopLevelDto request, String instituteId) {
+        List<UserRole> allDeleteRequestUserRoles = StreamSupport
+                .stream(userRoleRepository.findAllById(request.getDeleteUserRoleRequest()).spliterator(), false)
+                .toList();
+
+        allDeleteRequestUserRoles.forEach(userRole -> {
+            userRole.setStatus(UserRoleStatus.DELETED.name());
+        });
+        userRoleRepository.saveAll(allDeleteRequestUserRoles);
+
+        createOrUpdateUserRole(savedUser, request.getAddUserRoleRequest(),instituteId);
+    }
+
+    public void createOrUpdateUserRole(User savedUser, List<String> addUserRoleRequest, String instituteId) {
+        List<String> newRoleIds = new ArrayList<>();
+        List<UserRole> updateStatusRoles = new ArrayList<>();
+
+        addUserRoleRequest.forEach(roleId->{
+            Optional<UserRole> userRole = userRoleRepository.findByUserIdAndRoleIdAndInstituteId(savedUser.getId(),roleId,instituteId);
+            if(userRole.isPresent()){
+                userRole.get().setStatus(UserRoleStatus.ACTIVE.name());
+                updateStatusRoles.add(userRole.get());
+            }
+            else newRoleIds.add(roleId);
+        });
+
+        userRoleRepository.saveAll(updateStatusRoles);
+        createNewRolesForIds(savedUser, newRoleIds, instituteId);
+    }
+
+    private void createNewRolesForIds(User savedUser, List<String> newRoleIds, String instituteId) {
+        List<UserRole> roles = new ArrayList<>();
+
+        newRoleIds.forEach(roleId->{
+            Optional<Role> role = roleRepository.findById(roleId);
+            if(role.isPresent()){
+                UserRole newRole = new UserRole();
+                newRole.setRole(role.get());
+                newRole.setStatus(UserRoleStatus.ACTIVE.name());
+                newRole.setInstituteId(instituteId);
+                newRole.setUser(savedUser);
+
+                roles.add(newRole);
+            }
+        });
+
+        userRoleRepository.saveAll(roles);
+    }
+
+    private <T> void updateIfNotNull(T value, java.util.function.Consumer<T> setterMethod) {
+        if (value != null) {
+            setterMethod.accept(value);
+        }
+    }
+
+    public UserTopLevelDto getUserTopLevelDetails(CustomUserDetails customUserDetails, String userId, String instituteId) {
+        Optional<User> userOptional = userRepository.findById(userId);
+
+        if (userOptional.isEmpty()) {
+            throw new VacademyException("User Not Found");
+        }
+
+        // Get the full DTO
+        UserTopLevelDto userTopLevelDto = userOptional.get().getUserTopLevelDto();
+
+        // Filter roles based on matching instituteId
+        List<UserRoleDTO> filteredRoles = userTopLevelDto.getRoles()
+                .stream()
+                .filter(role -> instituteId.equals(role.getInstituteId()))
+                .filter(role-> !role.getStatus().equals(UserRoleStatus.DELETED.name()))
+                .toList(); // or .collect(Collectors.toList()) in Java 8
+
+        // Set the filtered roles back
+        userTopLevelDto.setRoles(filteredRoles);
+
+        return userTopLevelDto;
     }
 }

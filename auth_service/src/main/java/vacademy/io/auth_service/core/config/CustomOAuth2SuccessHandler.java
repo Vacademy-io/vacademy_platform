@@ -15,6 +15,7 @@ import org.springframework.stereotype.Component;
 import vacademy.io.auth_service.feature.auth.dto.JwtResponseDto;
 import vacademy.io.auth_service.feature.auth.manager.AdminOAuth2Manager;
 import vacademy.io.auth_service.feature.auth.manager.LearnerOAuth2Manager;
+import vacademy.io.common.exceptions.VacademyException;
 
 import java.io.IOException;
 import java.net.URLEncoder;
@@ -38,70 +39,122 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
                                         Authentication authentication) throws IOException {
 
         String encodedState = request.getParameter("state");
-        String redirectUrl = "https://dash.vacademy.io?error=true"; // fallback
+        String redirectUrl = "https://dash.vacademy.io"; // base redirect URL fallback
 
-        try {
-            if (encodedState != null) {
-                try {
-                    String decodedJson = new String(Base64.getUrlDecoder().decode(encodedState), StandardCharsets.UTF_8);
-                    JsonNode node = new ObjectMapper().readTree(decodedJson);
-                    if (node.has("from")) {
-                        redirectUrl = node.get("from").asText();
-                    }
-                } catch (Exception e) {
-                    log.error("Failed to decode state", e);
-                    e.printStackTrace();
-                    response.sendRedirect(redirectUrl); // send error redirect
-                    return;
-                }
-            }
+        redirectUrl = decodeState(encodedState, redirectUrl, response);
+        if (redirectUrl == null) return;  // decodeState already handled error redirect
 
-            // 👉 Extract Google user info
-            if (authentication instanceof OAuth2AuthenticationToken oauthToken) {
-                try {
-                    OAuth2User oauthUser = oauthToken.getPrincipal();
-                    Map<String, Object> attributes = oauthUser.getAttributes();
-
-                    String email = (String) attributes.get("email");
-                    String name = (String) attributes.get("name");
-                    String picture = (String) attributes.get("picture");
-
-                    log.info("Logged in user: {} ({})", name, email);
-                    log.info("Profile Picture: {}", picture);
-
-                    JwtResponseDto jwtResponseDto = getTokenByClientUrlAndUserEmail(redirectUrl,name, email);
-                    if (jwtResponseDto != null) {
-                        String tokenizedRedirectUrl = String.format(
-                                "%s?accessToken=%s&refreshToken=%s",
-                                redirectUrl,
-                                URLEncoder.encode(jwtResponseDto.getAccessToken(), StandardCharsets.UTF_8),
-                                URLEncoder.encode(jwtResponseDto.getRefreshToken(), StandardCharsets.UTF_8)
-                        );
-                        response.sendRedirect(tokenizedRedirectUrl);
-                        return;
-                    } else {
-                        log.error("JWT generation failed for email: {}", email);
-                    }
-                } catch (Exception e) {
-                    log.error("Failed during OAuth2 user processing", e);
-                    e.printStackTrace();
-                    response.sendRedirect(redirectUrl+"?error=true");
-                    return;
-                }
-            }
-
-        } catch (Exception e) {
-            log.error("Unexpected error during authentication success handling", e);
-            e.printStackTrace();
-            response.sendRedirect(redirectUrl+"?error=true");
+        if (!(authentication instanceof OAuth2AuthenticationToken oauthToken)) {
+            log.error("Authentication is not OAuth2AuthenticationToken");
+            sendErrorRedirect(response, redirectUrl, "invalid_authentication");
             return;
         }
 
-        // default fallback
-        response.sendRedirect(redirectUrl+"?error=true");
+        processOAuth2User(oauthToken, redirectUrl, response);
     }
 
-    private JwtResponseDto getTokenByClientUrlAndUserEmail(String clientUrl,String fullName, String email) {
+    private String decodeState(String encodedState, String fallbackUrl, HttpServletResponse response) throws IOException {
+        if (encodedState == null) {
+            return fallbackUrl;
+        }
+        try {
+            String decodedJson = new String(Base64.getUrlDecoder().decode(encodedState), StandardCharsets.UTF_8);
+            JsonNode node = new ObjectMapper().readTree(decodedJson);
+            if (node.has("from")) {
+                return node.get("from").asText();
+            }
+            return fallbackUrl;
+        } catch (Exception e) {
+            log.error("Failed to decode state", e);
+            sendErrorRedirect(response, fallbackUrl, "failed_to_decode_state");
+            return null;
+        }
+    }
+
+    private void processOAuth2User(OAuth2AuthenticationToken oauthToken, String redirectUrl, HttpServletResponse response) throws IOException {
+        try {
+            OAuth2User oauthUser = oauthToken.getPrincipal();
+            Map<String, Object> attributes = oauthUser.getAttributes();
+            String provider = oauthToken.getAuthorizedClientRegistrationId();
+
+            UserInfo userInfo = extractUserInfo(attributes, provider, response, redirectUrl);
+            if (userInfo == null) return; // error redirect already sent
+
+            JwtResponseDto jwtResponseDto = getTokenByClientUrlAndUserEmail(redirectUrl, userInfo.name, userInfo.email);
+            if (jwtResponseDto != null) {
+                redirectWithTokens(response, redirectUrl, jwtResponseDto);
+            } else {
+                log.error("JWT generation failed for email: {}", userInfo.email);
+                throw new VacademyException("Error occurred during JWT generation");
+            }
+        } catch (Exception e) {
+            log.error("Failed during OAuth2 user processing", e);
+            sendErrorRedirect(response, redirectUrl, e.getMessage());
+        }
+    }
+
+    private record UserInfo(String email, String name, String picture) {}
+
+    private UserInfo extractUserInfo(Map<String, Object> attributes, String provider, HttpServletResponse response, String redirectUrl) throws IOException {
+        String email = null;
+        String name = null;
+        String picture = null;
+
+        if ("google".equals(provider)) {
+            email = (String) attributes.get("email");
+            name = (String) attributes.get("name");
+            picture = (String) attributes.get("picture");
+            log.info("Google user logged in: {} ({})", name, email);
+            log.info("Google Profile Picture: {}", picture);
+        } else if ("github".equals(provider)) {
+            email = (String) attributes.get("email");
+            if (email == null) {
+                throw new VacademyException("Your GitHub account does not have any public email address.");
+            }
+            name = (String) attributes.get("name");
+            if (name == null) {
+                name = (String) attributes.get("login");
+            }
+            picture = (String) attributes.get("avatar_url");
+            log.info("GitHub user logged in: {} ({})", name, email);
+            log.info("GitHub Profile Picture: {}", picture);
+        } else {
+            log.warn("Unsupported OAuth2 provider: {}", provider);
+            sendErrorRedirect(response, redirectUrl, "unsupported_provider");
+            return null;
+        }
+
+        if (email == null) {
+            log.error("Could not retrieve email for user from provider: {}", provider);
+            sendErrorRedirect(response, redirectUrl, "email_not_found");
+            return null;
+        }
+
+        return new UserInfo(email, name, picture);
+    }
+
+    private void redirectWithTokens(HttpServletResponse response, String redirectUrl, JwtResponseDto jwtResponseDto) throws IOException {
+        String tokenizedRedirectUrl = String.format(
+                "%s?accessToken=%s&refreshToken=%s",
+                redirectUrl,
+                URLEncoder.encode(jwtResponseDto.getAccessToken(), StandardCharsets.UTF_8),
+                URLEncoder.encode(jwtResponseDto.getRefreshToken(), StandardCharsets.UTF_8)
+        );
+        response.sendRedirect(tokenizedRedirectUrl);
+    }
+
+    private void sendErrorRedirect(HttpServletResponse response, String baseUrl, String errorMessage) throws IOException {
+        String redirectUrl = baseUrl;
+
+        if (!redirectUrl.contains("error=true")) {
+            redirectUrl += redirectUrl.contains("?") ? "&error=true" : "?error=true";
+        }
+
+        redirectUrl += "&message=" + URLEncoder.encode(errorMessage, StandardCharsets.UTF_8);
+        response.sendRedirect(redirectUrl);
+    }
+
+    private JwtResponseDto getTokenByClientUrlAndUserEmail(String clientUrl, String fullName, String email) {
         try {
             if (clientUrl.contains("learner")) {
                 return learnerOAuth2Manager.loginUserByEmail(email);
@@ -113,10 +166,7 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
             }
         } catch (Exception e) {
             log.error("Failed to generate token for user: {}", email, e);
-            e.printStackTrace();
         }
         return null;
     }
-
-
 }

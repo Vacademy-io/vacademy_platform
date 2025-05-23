@@ -1,3 +1,4 @@
+
 name: Deploy Auth to LKE
 
 on:
@@ -58,7 +59,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.JAVA_TOKEN }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
-
+          OAUTH_GITHUB_CLIENT_ID: ${{ secrets.OAUTH_GITHUB_CLIENT_ID }}
+          OAUTH_GITHUB_CLIENT_SECRET: ${{ secrets.OAUTH_GITHUB_CLIENT_SECRET}}
         run: |
           docker build -t $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG . --build-arg GITHUB_TOKEN=${GITHUB_TOKEN} --build-arg JAVA_TOKEN=${JAVA_TOKEN}
           docker push $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG
@@ -75,6 +77,8 @@ jobs:
           kubectl set env deployment/auth-service \
             GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }} \
             GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}
+            OAUTH_GITHUB_CLIENT_ID: ${{ secrets.OAUTH_GITHUB_CLIENT_ID }}
+            OAUTH_GITHUB_CLIENT_SECRET: ${{ secrets.OAUTH_GITHUB_CLIENT_SECRET}}
 
       - name: Restart deployment
         id: restart-deployment

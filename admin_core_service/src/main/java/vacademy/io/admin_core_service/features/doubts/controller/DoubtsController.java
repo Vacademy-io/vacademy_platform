@@ -20,14 +20,14 @@ public class DoubtsController {
     DoubtsManager doubtsManager;
 
     @PostMapping("/create")
-    private ResponseEntity<String> addDoubts(@RequestAttribute("user") CustomUserDetails userDetails,
+    ResponseEntity<String> addDoubts(@RequestAttribute("user") CustomUserDetails userDetails,
                                              @RequestParam(name = "doubtId", required = false) String doubtId,
                                              @RequestBody DoubtsDto request){
         return doubtsManager.updateOrCreateDoubt(userDetails,doubtId,request);
     }
 
     @PostMapping("/get-all")
-    private ResponseEntity<AllDoubtsResponse> addDoubts(@RequestAttribute("user") CustomUserDetails userDetails,
+    ResponseEntity<AllDoubtsResponse> addDoubts(@RequestAttribute("user") CustomUserDetails userDetails,
                                                         @RequestBody DoubtsRequestFilter filter,
                                                         @RequestParam(value = "pageNo", defaultValue = DEFAULT_PAGE_NUMBER, required = false) int pageNo,
                                                         @RequestParam(value = "pageSize", defaultValue = DEFAULT_PAGE_SIZE, required = false) int pageSize){

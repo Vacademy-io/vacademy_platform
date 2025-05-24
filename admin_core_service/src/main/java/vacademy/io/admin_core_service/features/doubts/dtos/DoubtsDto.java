@@ -30,5 +30,7 @@ public class DoubtsDto {
     private String parentId;
     private Integer parentLevel;
     private List<String> doubtAssigneeRequestUserIds = new ArrayList<>();
+    private List<DoubtAssigneeDto> allDoubtAssignee = new ArrayList<>();
+    private List<String> deleteAssigneeRequest = new ArrayList<>();
     private List<DoubtsDto> replies = new ArrayList<>();
 }

@@ -14,15 +14,27 @@ import java.util.List;
 @AllArgsConstructor
 @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
 public class LiveSessionStep1RequestDTO {
+    private String sessionId;
     private String title;
     private String subject;
     private String descriptionHtml;
     private String defaultMeetLink;
     private Timestamp startTime;
     private Timestamp lastEntryTime;
-    private String SessionEndDate; // last session date or the session will not be scheduled after this date
-    private String linkType;
-    private String link;
-    private String recurrenceType; // e.g., "weekly"
-    private List<WeeklyDetailsDTO> recurringWeeklySchedule;
+    private String sessionEndDate; // Note: fixed casing to `sessionEndDate`
+    private String recurrenceType; // e.g., "WEEKLY"
+
+    private List<ScheduleDTO> addedSchedules;
+    private List<ScheduleDTO> updatedSchedules;
+    private List<String> deletedScheduleIds;
+
+    @Data
+    @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
+    public static class ScheduleDTO {
+        private String id; // required for update only
+        private String day;
+        private String startTime;
+        private String duration;
+        private String link;
+    }
 }

@@ -1,21 +1,16 @@
 package vacademy.io.admin_core_service.features.live_session.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.live_session.dto.LiveSessionStep2RequestDTO;
-import vacademy.io.admin_core_service.features.live_session.entity.LiveSession;
-import vacademy.io.admin_core_service.features.live_session.entity.LiveSessionParticipants;
-import vacademy.io.admin_core_service.features.live_session.entity.ScheduleNotification;
+import vacademy.io.admin_core_service.features.live_session.entity.*;
 import vacademy.io.admin_core_service.features.live_session.enums.*;
-import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionParticipantRepository;
-import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionRepository;
-import vacademy.io.admin_core_service.features.live_session.repository.ScheduleNotificationRepository;
-import vacademy.io.admin_core_service.features.live_session.repository.SessionScheduleRepository;
+import vacademy.io.admin_core_service.features.live_session.repository.*;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
-import java.sql.Timestamp;
-import java.time.Instant;
-import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -27,113 +22,207 @@ public class Step2Service {
     @Autowired
     private SessionScheduleRepository scheduleRepository;
 
-
     @Autowired
     private ScheduleNotificationRepository scheduleNotificationRepository;
 
     @Autowired
     private LiveSessionParticipantRepository liveSessionParticipantRepository;
 
-    public Boolean Step2AddService(LiveSessionStep2RequestDTO request, CustomUserDetails user) {
-        LiveSession session = sessionRepository.findById(UUID.fromString(request.getSessionId()))
-                .orElseThrow(() -> new RuntimeException("Session not found"));
+    @Autowired
+    private CustomFieldRepository customFieldRepository;
 
+    @Autowired
+    private InstituteCustomFieldRepository instituteCustomFieldRepository;
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    public Boolean Step2AddService(LiveSessionStep2RequestDTO request, CustomUserDetails user) {
+        LiveSession session = getSessionOrThrow(request.getSessionId());
+
+        updateSessionAccessLevel(session, request);
+        clearExistingData(request.getSessionId());
+        processNotificationActions(request, session.getId());
+        linkParticipants(request);
+        processCustomFields(request, user);
+
+        session.setStatus(LiveSessionStatus.LIVE.name());
+        sessionRepository.save(session);
+
+        return true;
+    }
+
+    private LiveSession getSessionOrThrow(String sessionId) {
+        return sessionRepository.findById(sessionId)
+                .orElseThrow(() -> new RuntimeException("Session not found"));
+    }
+
+    private void updateSessionAccessLevel(LiveSession session, LiveSessionStep2RequestDTO request) {
         session.setAccessLevel(request.getAccessType());
-        if ("public".equalsIgnoreCase(request.getAccessType())) {
+        if (LiveSessionAccessEnum.PUBLIC.name().equalsIgnoreCase(request.getAccessType())) {
             session.setRegistrationFormLinkForPublicSessions(request.getJoinLink());
         }
+    }
 
-        session.setUpdatedAt(Timestamp.from(Instant.now()));
+    private void clearExistingData(String sessionId) {
+        // Do NOT clear all notifications here anymore
+        //liveSessionParticipantRepository.deleteAllBySessionId(sessionId);
+    }
 
-
-        Timestamp now = Timestamp.from(Instant.now());
-        UUID sessionId = UUID.fromString(request.getSessionId());
-        // TODO : inable whatsapp notification
-        //String channel = getChannel(request.getNotifySettings().getNotifyBy());
-        String channel = NotificationMediaTypeEnum.MAIL.name();
-        // 2. Create Notifications (for each schedule under this session)
-
-
-        if (request.getNotifySettings().isBeforeLive() && request.getNotifySettings().getBeforeLiveTime() != null) {
-            for (LiveSessionStep2RequestDTO.NotifySettings.BeforeLiveTime entry : request.getNotifySettings().getBeforeLiveTime()) {
-                int offset = extractMinutes(entry.getTime());
-
-                ScheduleNotification notification = ScheduleNotification.builder()
-                        .sessionId(sessionId)
-                        .type(NotificationTypeEnum.PRE.name())
-                        .status(NotificationStatusEnum.PENDING.name())
-                        .channel(channel)
-                        .offsetMinutes(offset)
-                        .triggerTime(null) // Can be calculated if needed
-                        .createdAt(LocalDateTime.now())
-                        .updatedAt(LocalDateTime.now())
-                        .build();
-
+    private void processNotificationActions(LiveSessionStep2RequestDTO request, String sessionId) {
+        // Add
+        if (request.getAddedNotificationActions() != null) {
+            for (LiveSessionStep2RequestDTO.NotificationActionDTO dto : request.getAddedNotificationActions()) {
+                ScheduleNotification notification = mapToNotificationEntity(dto, sessionId);
                 scheduleNotificationRepository.save(notification);
             }
         }
 
-        // On-Live Notification
-        if (request.getNotifySettings().isOnLive()) {
-            ScheduleNotification onLiveNotification = ScheduleNotification.builder()
-                    .sessionId(sessionId)
-                    .type(NotificationTypeEnum.ON_LIVE.name())
-                    .status(NotificationStatusEnum.PENDING.name())
-                    .channel(channel)
-                    .offsetMinutes(0)
-                    .triggerTime(null)
-                    .createdAt(LocalDateTime.now())
-                    .updatedAt(LocalDateTime.now())
-                    .build();
-
-            scheduleNotificationRepository.save(onLiveNotification);
+        // Update
+        if (request.getUpdatedNotificationActions() != null) {
+            for (LiveSessionStep2RequestDTO.NotificationActionDTO dto : request.getUpdatedNotificationActions()) {
+                ScheduleNotification existing = scheduleNotificationRepository.findById(dto.getId())
+                        .orElseThrow(() -> new RuntimeException("Notification not found: " + dto.getId()));
+                updateNotificationEntity(existing, dto);
+                scheduleNotificationRepository.save(existing);
+            }
         }
 
-        // On-Create Notification
-        // TODO : changes needed when notification scheduler will be created
-        if (request.getNotifySettings().isOnCreate()) {
-            ScheduleNotification createNotification = ScheduleNotification.builder()
-                    .sessionId(sessionId)
-                    .type(NotificationTypeEnum.ON_CREATION.name())
-                    .status(NotificationStatusEnum.PENDING.name())
-                    .channel(channel)
-                    .offsetMinutes(0)
-                    .createdAt(LocalDateTime.now())
-                    .updatedAt(LocalDateTime.now())
-                    //.triggerTime(Instant.now())
-                    .build();
-
-            scheduleNotificationRepository.save(createNotification);
+        // Delete
+        if (request.getDeletedNotificationActionIds() != null) {
+            for (String id : request.getDeletedNotificationActionIds()) {
+                scheduleNotificationRepository.deleteById(id);
+            }
         }
+    }
 
-        ScheduleNotification createNotification = ScheduleNotification.builder()
+    private ScheduleNotification mapToNotificationEntity(LiveSessionStep2RequestDTO.NotificationActionDTO dto, String sessionId) {
+        int offset = dto.getType() == NotificationTypeEnum.BEFORE_LIVE
+                ? extractMinutes(dto.getTime()) : 0;
+
+        return ScheduleNotification.builder()
+                .id(UUID.randomUUID().toString())
                 .sessionId(sessionId)
-                .type(NotificationTypeEnum.ATTENDANCE.name())
-                .status(NotificationStatusEnum.PENDING.name())
-                .channel(channel)
-                .offsetMinutes(15)
-                .createdAt(LocalDateTime.now())
-                .updatedAt(LocalDateTime.now())
-                //.triggerTime(Instant.now())
+                .type(dto.getType().name())
+                .status(dto.getNotify() ? NotificationStatusEnum.PENDING.name() : NotificationStatusEnum.DISABLED.name() )
+                .channel(NotificationMediaTypeEnum.MAIL.name())
+                .offsetMinutes(offset)
+                .triggerTime(null)
+                .build();
+    }
+
+    private void updateNotificationEntity(ScheduleNotification notification, LiveSessionStep2RequestDTO.NotificationActionDTO dto) {
+        notification.setType(dto.getType().name());
+        // TODO : change this what whatsapp service is available
+        notification.setChannel(NotificationMediaTypeEnum.MAIL.name());
+        notification.setStatus(dto.getNotify() ? NotificationStatusEnum.PENDING.name() : NotificationStatusEnum.DISABLED.name());
+        notification.setOffsetMinutes(dto.getType() == NotificationTypeEnum.BEFORE_LIVE
+                ? extractMinutes(dto.getTime()) : 0);
+    }
+    // TODO : for later
+    private String resolveChannel(LiveSessionStep2RequestDTO.NotifyBy notifyBy) {
+        if (notifyBy.isMail()) return NotificationMediaTypeEnum.MAIL.name();
+        if (notifyBy.isWhatsapp()) return NotificationMediaTypeEnum.WHATSAPP.name();
+        return NotificationMediaTypeEnum.MAIL.name();
+    }
+
+    private void linkParticipants(LiveSessionStep2RequestDTO request) {
+        if (request.getPackageSessionIds() != null) {
+            for (String packageSessionId : request.getPackageSessionIds()) {
+                LiveSessionParticipants participant = LiveSessionParticipants.builder()
+                        .sessionId(request.getSessionId())
+                        .sourceType(LiveSessionParticipantsEnum.BATCH.name())
+                        .sourceId(packageSessionId)
+                        .build();
+                liveSessionParticipantRepository.save(participant);
+            }
+        }
+
+        if (request.getDeletedPackageSessionIds() != null) {
+            for (String deletedId : request.getDeletedPackageSessionIds()) {
+                liveSessionParticipantRepository.deleteBySessionIdAndSourceId(
+                        request.getSessionId(), deletedId);
+            }
+        }
+    }
+
+    private void processCustomFields(LiveSessionStep2RequestDTO request, CustomUserDetails user) {
+        int index = 0;
+
+        // Add
+        if (request.getAddedFields() != null) {
+            for (LiveSessionStep2RequestDTO.CustomFieldDTO dto : request.getAddedFields()) {
+                saveNewCustomField(dto, request.getSessionId(), index++);
+            }
+        }
+
+        // Update
+        if (request.getUpdatedFields() != null) {
+            for (LiveSessionStep2RequestDTO.CustomFieldDTO dto : request.getUpdatedFields()) {
+                CustomFields existing = customFieldRepository.findById(dto.getId())
+                        .orElseThrow(() -> new RuntimeException("Custom field not found: " + dto.getId()));
+
+                existing.setFieldName(dto.getLabel());
+                existing.setFieldKey(dto.getLabel().toLowerCase().replaceAll("\\s+", "_"));
+                existing.setFieldType(dto.getType());
+                existing.setIsMandatory(dto.isRequired());
+
+                try {
+                    if (dto.getOptions() != null && !dto.getOptions().isEmpty()) {
+                        existing.setConfig(objectMapper.writeValueAsString(dto.getOptions()));
+                    }
+                } catch (JsonProcessingException e) {
+                    throw new RuntimeException("Failed to convert field options to JSON", e);
+                }
+
+                customFieldRepository.save(existing);
+            }
+        }
+
+        // Delete
+        if (request.getDeletedFieldIds() != null) {
+            for (String id : request.getDeletedFieldIds()) {
+                customFieldRepository.deleteById(id);
+                instituteCustomFieldRepository.deleteByCustomFieldId(id);
+            }
+        }
+    }
+
+    private void saveNewCustomField(LiveSessionStep2RequestDTO.CustomFieldDTO dto, String sessionId, int index) {
+        String fieldKey = dto.getLabel().toLowerCase().replaceAll("\\s+", "_");
+        String configJson = "{}";
+        try {
+            if (dto.getOptions() != null && !dto.getOptions().isEmpty()) {
+                configJson = objectMapper.writeValueAsString(dto.getOptions());
+            }
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException("Failed to convert field options to JSON", e);
+        }
+
+        CustomFields field = CustomFields.builder()
+                .id(UUID.randomUUID().toString())
+                .fieldKey(fieldKey)
+                .fieldName(dto.getLabel())
+                .fieldType(dto.getType())
+                .defaultValue(null)
+                .config(configJson)
+                .formOrder(index)
+                .isMandatory(dto.isRequired())
+                .isFilter(false)
+                .isSortable(false)
                 .build();
 
-        scheduleNotificationRepository.save(createNotification);
+        CustomFields savedField = customFieldRepository.save(field);
 
+        InstituteCustomField mapping = InstituteCustomField.builder()
+                .id(UUID.randomUUID().toString())
+                .instituteId("") // set actual institute ID if needed
+                .customFieldId(savedField.getId())
+                .type("SESSION")
+                .typeId(sessionId)
+                .build();
 
-        //linkin batches with the session ids by inserting into live session participants table
-        for (String packageSessionId : request.getPackageSessionIds()) {
-            LiveSessionParticipants participant = LiveSessionParticipants.builder()
-                    .sessionId(UUID.fromString(request.getSessionId()))
-                    .sourceType(LiveSessionParticipantsEnum.BATCH.name())
-                    .sourceId(UUID.fromString(packageSessionId))
-                    .build();
-            liveSessionParticipantRepository.save(participant);
-        }
-
-        // make the session live
-        session.setStatus(LiveSessionStatus.LIVE.name());
-        sessionRepository.save(session);
-        return true;
+        instituteCustomFieldRepository.save(mapping);
     }
 
     private int extractMinutes(String time) {
@@ -143,15 +232,4 @@ public class Step2Service {
             return 0;
         }
     }
-
-    // TODO : when whatsapp functionality is available
-    private String getChannel(LiveSessionStep2RequestDTO.NotifyBy notifyBy) {
-        if (notifyBy.isMail() && notifyBy.isWhatsapp()) return "email,whatsapp";
-        if (notifyBy.isMail()) return "email";
-        if (notifyBy.isWhatsapp()) return "whatsapp";
-        return "none";
-    }
 }
-
-
-

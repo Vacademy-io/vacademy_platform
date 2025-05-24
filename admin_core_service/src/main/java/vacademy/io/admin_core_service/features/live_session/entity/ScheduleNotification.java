@@ -2,6 +2,8 @@ package vacademy.io.admin_core_service.features.live_session.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.UuidGenerator;
+
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -14,11 +16,12 @@ import java.util.UUID;
 public class ScheduleNotification {
 
     @Id
-    @GeneratedValue
-    private UUID id;
+    @UuidGenerator
+    @Column(name = "id", nullable = false, unique = true)
+    private String id;
 
     @Column(name = "session_id", nullable = false)
-    private UUID sessionId;
+    private String sessionId;
 
     @Column(nullable = false)
     private String type; // pre, post, attendance

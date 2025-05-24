@@ -3,6 +3,8 @@ package vacademy.io.admin_core_service.features.live_session.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.UuidGenerator;
+
 import java.sql.Timestamp;
 import java.util.UUID;
 
@@ -15,7 +17,9 @@ import java.util.UUID;
 public class LiveSession {
 
     @Id
-    private UUID id = UUID.randomUUID();
+    @UuidGenerator
+    @Column(name = "id", nullable = false, unique = true)
+    private String Id;
 
     private Timestamp startTime;
     private Timestamp lastEntryTime;

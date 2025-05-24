@@ -25,13 +25,13 @@ public class LiveSessionController {
     Boolean testApi(@RequestAttribute("user") CustomUserDetails user){
         return true;
     }
-    @PostMapping("/step1")
+    @PostMapping("create/step1")
     ResponseEntity< LiveSession> addLiveSessionStep1(@RequestBody LiveSessionStep1RequestDTO SessionRequest,
                                     @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok(step1Service.Step1AddService(SessionRequest , user));
 
     }
-    @PostMapping("/step2")
+    @PostMapping("create/step2")
     ResponseEntity<Boolean> addLiveSessionStep2(@RequestBody LiveSessionStep2RequestDTO SessionRequest,
                                     @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok(step2Service.Step2AddService(SessionRequest , user));

@@ -3,23 +3,17 @@ package vacademy.io.admin_core_service.features.live_session.service;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.live_session.dto.LiveSessionStep1RequestDTO;
-import vacademy.io.admin_core_service.features.live_session.dto.WeeklyDetailsDTO;
 import vacademy.io.admin_core_service.features.live_session.entity.LiveSession;
 import vacademy.io.admin_core_service.features.live_session.entity.SessionSchedule;
+import vacademy.io.admin_core_service.features.live_session.enums.LinkType;
 import vacademy.io.admin_core_service.features.live_session.enums.LiveSessionStatus;
-import vacademy.io.admin_core_service.features.live_session.enums.RecurringTypeEnum;
 import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionRepository;
 import vacademy.io.admin_core_service.features.live_session.repository.SessionScheduleRepository;
-import vacademy.io.common.auth.entity.User;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 import java.sql.Time;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
 
 @Service
 public class Step1Service {
@@ -31,86 +25,96 @@ public class Step1Service {
     private SessionScheduleRepository scheduleRepository;
 
     public LiveSession Step1AddService(LiveSessionStep1RequestDTO request, CustomUserDetails user) {
-        LiveSession session = new LiveSession();
+        LiveSession session;
 
-        if (request.getTitle() != null) {
-            session.setTitle(request.getTitle());
+        // === Fetch or Create Live Session ===
+        if (request.getSessionId() != null && !request.getSessionId().isEmpty()) {
+            session = sessionRepository.findById(request.getSessionId())
+                    .orElseThrow(() -> new RuntimeException("Session not found with id: " + request.getSessionId()));
+        } else {
+            session = new LiveSession();
+            session.setCreatedByUserId(user.getUserId());
+            session.setStatus(LiveSessionStatus.DRAFT.name());
         }
-        if (request.getSubject() != null) {
-            session.setSubject(request.getSubject());
-        }
-        if (request.getDescriptionHtml() != null) {
-            session.setDescriptionHtml(request.getDescriptionHtml());
-        }
-        if (request.getDefaultMeetLink() != null) {
-            session.setDefaultMeetLink(request.getDefaultMeetLink());
-        }
-        if (request.getStartTime() != null) {
-            session.setStartTime(request.getStartTime());
-        }
-        if (request.getLastEntryTime() != null) {
-            session.setLastEntryTime(request.getLastEntryTime());
-        }
-        if(request.getLinkType() != null){
-            session.setLinkType(request.getLinkType());
-        }
+
+        // === Set Basic Fields ===
+        if (request.getTitle() != null) session.setTitle(request.getTitle());
+        if (request.getSubject() != null) session.setSubject(request.getSubject());
+        if (request.getDescriptionHtml() != null) session.setDescriptionHtml(request.getDescriptionHtml());
+        if (request.getDefaultMeetLink() != null) session.setDefaultMeetLink(request.getDefaultMeetLink());
+        if (request.getDefaultMeetLink() != null) session.setLinkType(getLinkTypeFromUrl(request.getDefaultMeetLink()));
+        if (request.getStartTime() != null) session.setStartTime(request.getStartTime());
+        if (request.getLastEntryTime() != null) session.setLastEntryTime(request.getLastEntryTime());
+
 
         session.setCreatedByUserId(user.getUserId());
-        session.setStatus(LiveSessionStatus.DRAFT.name());
-
         LiveSession savedSession = sessionRepository.save(session);
 
-        // Only create schedule if schedule-specific fields are present
-        List<WeeklyDetailsDTO> weeklySchedule = request.getRecurringWeeklySchedule();
-        String recurrenceType = request.getRecurrenceType();
-
-        if ("WEEKLY".equalsIgnoreCase(recurrenceType) && weeklySchedule != null && request.getSessionEndDate() != null) {
-            LocalDate endDate = LocalDate.parse(request.getSessionEndDate(), DateTimeFormatter.ISO_DATE);
-            LocalDate currentDate = request.getStartTime().toLocalDateTime().toLocalDate();
-
-            Map<String, WeeklyDetailsDTO> dayToDetails = new HashMap<>();
-            for (WeeklyDetailsDTO details : weeklySchedule) {
-                dayToDetails.put(details.getDay().toLowerCase(), details);
+        // === Handle Deleted Schedules ===
+        if (request.getDeletedScheduleIds() != null) {
+            for (String id : request.getDeletedScheduleIds()) {
+                scheduleRepository.deleteById(id);
             }
+        }
 
-            while (!currentDate.isAfter(endDate)) {
-                String currentDay = currentDate.getDayOfWeek().name().toLowerCase(); // e.g. "monday"
+        // === Handle Added Schedules ===
+        if (request.getAddedSchedules() != null) {
+            for (LiveSessionStep1RequestDTO.ScheduleDTO dto : request.getAddedSchedules()) {
+                SessionSchedule schedule = new SessionSchedule();
+                schedule.setSessionId(savedSession.getId());
+                schedule.setRecurrenceType(request.getRecurrenceType());
+                schedule.setRecurrenceKey(dto.getDay().toLowerCase());
+                schedule.setMeetingDate(parseMeetingDate(request.getSessionEndDate())); // Optional
+                schedule.setStartTime(Time.valueOf(dto.getStartTime()));
+                schedule.setLastEntryTime(request.getLastEntryTime() != null ? new Time(request.getLastEntryTime().getTime()) : null);
+                schedule.setCustomMeetingLink(dto.getLink() != null ? dto.getLink() : request.getDefaultMeetLink());
+                schedule.setLinkType(dto.getLink() != null ? getLinkTypeFromUrl(dto.getLink()) : getLinkTypeFromUrl(request.getDefaultMeetLink()));
+                schedule.setCustomWaitingRoomMediaId(null);
 
-                if (dayToDetails.containsKey(currentDay)) {
-                    WeeklyDetailsDTO details = dayToDetails.get(currentDay);
-                    SessionSchedule schedule = new SessionSchedule();
+                scheduleRepository.save(schedule);
+            }
+        }
 
-                    schedule.setSessionId((savedSession.getId()));
-                    schedule.setRecurrenceType(RecurringTypeEnum.WEEKLY.name());
-                    schedule.setRecurrenceKey(currentDay);
-                    schedule.setMeetingDate(java.sql.Date.valueOf(currentDate));
+        // === Handle Updated Schedules ===
+        if (request.getUpdatedSchedules() != null) {
+            for (LiveSessionStep1RequestDTO.ScheduleDTO dto : request.getUpdatedSchedules()) {
+                SessionSchedule schedule = scheduleRepository.findById(dto.getId())
+                        .orElseThrow(() -> new RuntimeException("Schedule not found with id: " + dto.getId()));
 
-                    // Use specific start time or default
-                    Time startTime = details.getStartTime() != null
-                            ? Time.valueOf(details.getStartTime())
-                            : new Time(request.getStartTime().getTime());
+                schedule.setRecurrenceKey(dto.getDay().toLowerCase());
+                schedule.setStartTime(Time.valueOf(dto.getStartTime()));
+                schedule.setCustomMeetingLink(dto.getLink() != null ? dto.getLink() : request.getDefaultMeetLink());
 
-                    schedule.setStartTime(startTime);
-
-                    // Approximate last entry time using duration if available
-                    Time lastEntryTime = request.getLastEntryTime() != null
-                            ? new Time(request.getLastEntryTime().getTime())
-                            : null;
-
-                    schedule.setLastEntryTime(lastEntryTime);
-
-                    // Use custom link or default
-                    schedule.setCustomMeetingLink(details.getLink() != null ? details.getLink() : request.getDefaultMeetLink());
-                    schedule.setLinkType(details.getLinkType() != null ? details.getLinkType() : request.getLinkType());
-                    schedule.setCustomWaitingRoomMediaId(null); // set if needed
-
-                    scheduleRepository.save(schedule);
-                }
-
-                currentDate = currentDate.plusDays(1);
+                scheduleRepository.save(schedule);
             }
         }
 
         return savedSession;
     }
+
+    private java.sql.Date parseMeetingDate(String dateStr) {
+        if (dateStr == null || dateStr.isEmpty()) return null;
+        LocalDate date = LocalDate.parse(dateStr, DateTimeFormatter.ISO_DATE);
+        return java.sql.Date.valueOf(date);
+    }
+
+
+        public static String getLinkTypeFromUrl(String link) {
+            if (link == null || link.isEmpty()) {
+                return "UNKNOWN";
+            }
+
+            String lowerLink = link.toLowerCase();
+
+            if (lowerLink.contains("youtube.com") || lowerLink.contains("youtu.be")) {
+                return LinkType.YOUTUBE.name();
+            } else if (lowerLink.contains("zoom.us") || lowerLink.contains("zoom.com")) {
+                return LinkType.ZOOM.name();
+            } else if (lowerLink.contains("meet.google.com")) {
+                return LinkType.GMEET.name();
+            } else {
+                return LinkType.RECORDED.name();
+            }
+        }
+
 }

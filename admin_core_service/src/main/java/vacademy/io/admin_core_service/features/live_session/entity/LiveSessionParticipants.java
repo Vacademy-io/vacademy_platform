@@ -5,6 +5,7 @@ import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.GenericGenerator;
 import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.annotations.UuidGenerator;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -19,22 +20,18 @@ import java.util.UUID;
 public class LiveSessionParticipants {
 
     @Id
-    @GeneratedValue(generator = "UUID")
-    @GenericGenerator(
-            name = "UUID",
-            strategy = "org.hibernate.id.UUIDGenerator"
-    )
-    @Column(name = "id", updatable = false, nullable = false)
-    private UUID id;
+    @UuidGenerator
+    @Column(name = "id", nullable = false, unique = true)
+    private String id;
 
     @Column(name = "session_id", nullable = false)
-    private UUID sessionId;
+    private String sessionId;
 
     @Column(name = "source_type", nullable = false)
     private String sourceType; // e.g. 'batch' or 'user'
 
     @Column(name = "source_id", nullable = false)
-    private UUID sourceId;
+    private String sourceId;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)

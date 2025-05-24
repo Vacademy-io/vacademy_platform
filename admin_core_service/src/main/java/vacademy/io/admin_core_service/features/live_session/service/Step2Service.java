@@ -3,7 +3,6 @@ package vacademy.io.admin_core_service.features.live_session.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.live_session.dto.LiveSessionStep2RequestDTO;
@@ -13,7 +12,6 @@ import vacademy.io.admin_core_service.features.live_session.repository.*;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
-import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -40,7 +38,7 @@ public class Step2Service {
     @Autowired
     private ObjectMapper objectMapper;
 
-    public Boolean Step2AddService(LiveSessionStep2RequestDTO request, CustomUserDetails user) {
+    public Boolean step2AddService(LiveSessionStep2RequestDTO request, CustomUserDetails user) {
         LiveSession session = getSessionOrThrow(request.getSessionId());
 
         updateSessionAccessLevel(session, request);
@@ -193,7 +191,7 @@ public class Step2Service {
                 configJson = objectMapper.writeValueAsString(dto.getOptions());
             }
         } catch (JsonProcessingException e) {
-            throw new RuntimeException("Failed to convert field options to JSON", e);
+            throw new VacademyException(HttpStatus.BAD_REQUEST,"Failed to convert field options to JSON");
         }
 
         CustomFields field = CustomFields.builder()

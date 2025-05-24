@@ -24,7 +24,7 @@ public class Step1Service {
     @Autowired
     private SessionScheduleRepository scheduleRepository;
 
-    public LiveSession Step1AddService(LiveSessionStep1RequestDTO request, CustomUserDetails user) {
+    public LiveSession step1AddService(LiveSessionStep1RequestDTO request, CustomUserDetails user) {
         LiveSession session = getOrCreateSession(request, user);
         updateSessionFields(session, request, user);
         LiveSession savedSession = sessionRepository.save(session);

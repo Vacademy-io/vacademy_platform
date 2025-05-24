@@ -13,7 +13,7 @@ public class GetLiveSessionService {
     @Autowired
     private LiveSessionRepository sessionRepository;
 
-    public List<LiveSession> GetLiveSession(CustomUserDetails user) {
+    public List<LiveSession> getLiveSession(CustomUserDetails user) {
         return sessionRepository.findCurrentlyLiveSessions();
     }
 

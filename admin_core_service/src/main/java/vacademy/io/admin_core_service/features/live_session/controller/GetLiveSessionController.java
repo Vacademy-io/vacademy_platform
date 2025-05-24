@@ -23,7 +23,7 @@ public class GetLiveSessionController {
 
     @GetMapping("/live")
     ResponseEntity<List<LiveSession>> addLiveSessionStep1(@RequestAttribute("user") CustomUserDetails user) {
-        return ResponseEntity.ok( getLiveSessionService.GetLiveSession(user));
+        return ResponseEntity.ok( getLiveSessionService.getLiveSession(user));
 
     }
 }

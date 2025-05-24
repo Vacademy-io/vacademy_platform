@@ -28,13 +28,13 @@ public class LiveSessionController {
     @PostMapping("create/step1")
     ResponseEntity< LiveSession> addLiveSessionStep1(@RequestBody LiveSessionStep1RequestDTO SessionRequest,
                                     @RequestAttribute("user") CustomUserDetails user) {
-        return ResponseEntity.ok(step1Service.Step1AddService(SessionRequest , user));
+        return ResponseEntity.ok(step1Service.step1AddService(SessionRequest , user));
 
     }
     @PostMapping("create/step2")
     ResponseEntity<Boolean> addLiveSessionStep2(@RequestBody LiveSessionStep2RequestDTO SessionRequest,
                                     @RequestAttribute("user") CustomUserDetails user) {
-        return ResponseEntity.ok(step2Service.Step2AddService(SessionRequest , user));
+        return ResponseEntity.ok(step2Service.step2AddService(SessionRequest , user));
     }
     @PostMapping("/add")
     public Boolean getSessionsByInstituteId(

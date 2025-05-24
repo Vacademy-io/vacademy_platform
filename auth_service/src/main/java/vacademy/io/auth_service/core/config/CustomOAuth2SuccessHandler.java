@@ -39,10 +39,9 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
                                         Authentication authentication) throws IOException {
 
         String encodedState = request.getParameter("state");
-        String redirectUrl = "https://dash.vacademy.io"; // base redirect URL fallback
-
+        String redirectUrl = "https://dash.vacademy.io"; // base fallback
         redirectUrl = decodeState(encodedState, redirectUrl, response);
-        if (redirectUrl == null) return;  // decodeState already handled error redirect
+        if (redirectUrl == null) return;
 
         if (!(authentication instanceof OAuth2AuthenticationToken oauthToken)) {
             log.error("Authentication is not OAuth2AuthenticationToken");
@@ -50,7 +49,7 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
             return;
         }
 
-        processOAuth2User(oauthToken, redirectUrl, response);
+        processOAuth2User(oauthToken, redirectUrl, response, encodedState);
     }
 
     private String decodeState(String encodedState, String fallbackUrl, HttpServletResponse response) throws IOException {
@@ -71,15 +70,37 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
         }
     }
 
-    private void processOAuth2User(OAuth2AuthenticationToken oauthToken, String redirectUrl, HttpServletResponse response) throws IOException {
+    private void processOAuth2User(OAuth2AuthenticationToken oauthToken, String redirectUrl, HttpServletResponse response, String encodedState) throws IOException {
         try {
             OAuth2User oauthUser = oauthToken.getPrincipal();
             Map<String, Object> attributes = oauthUser.getAttributes();
             String provider = oauthToken.getAuthorizedClientRegistrationId();
 
             UserInfo userInfo = extractUserInfo(attributes, provider, response, redirectUrl);
-            if (userInfo == null) return; // error redirect already sent
+            if (userInfo == null) return;
 
+            // Handle sign-up logic differently
+            if (redirectUrl.contains("signup")) {
+                log.info("Signup flow detected. Skipping user creation. Sending profile data to frontend.");
+
+                String userJson = String.format(
+                        "{\"name\":\"%s\", \"email\":\"%s\", \"profile\":\"%s\"}",
+                        userInfo.name, userInfo.email, userInfo.picture
+                );
+                String encodedUserInfo = Base64.getUrlEncoder().encodeToString(userJson.getBytes(StandardCharsets.UTF_8));
+
+                String redirectWithParams = String.format(
+                        "%s?signupData=%s&state=%s",
+                        redirectUrl,
+                        URLEncoder.encode(encodedUserInfo, StandardCharsets.UTF_8),
+                        URLEncoder.encode(encodedState != null ? encodedState : "", StandardCharsets.UTF_8)
+                );
+
+                response.sendRedirect(redirectWithParams);
+                return;
+            }
+
+            // Else login as usual
             JwtResponseDto jwtResponseDto = getTokenByClientUrlAndUserEmail(redirectUrl, userInfo.name, userInfo.email);
             if (jwtResponseDto != null) {
                 redirectWithTokens(response, redirectUrl, jwtResponseDto);
@@ -105,7 +126,6 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
             name = (String) attributes.get("name");
             picture = (String) attributes.get("picture");
             log.info("Google user logged in: {} ({})", name, email);
-            log.info("Google Profile Picture: {}", picture);
         } else if ("github".equals(provider)) {
             email = (String) attributes.get("email");
             if (email == null) {
@@ -117,7 +137,6 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
             }
             picture = (String) attributes.get("avatar_url");
             log.info("GitHub user logged in: {} ({})", name, email);
-            log.info("GitHub Profile Picture: {}", picture);
         } else {
             log.warn("Unsupported OAuth2 provider: {}", provider);
             sendErrorRedirect(response, redirectUrl, "unsupported_provider");
@@ -145,11 +164,9 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
 
     private void sendErrorRedirect(HttpServletResponse response, String baseUrl, String errorMessage) throws IOException {
         String redirectUrl = baseUrl;
-
         if (!redirectUrl.contains("error=true")) {
             redirectUrl += redirectUrl.contains("?") ? "&error=true" : "?error=true";
         }
-
         redirectUrl += "&message=" + URLEncoder.encode(errorMessage, StandardCharsets.UTF_8);
         response.sendRedirect(redirectUrl);
     }
@@ -160,7 +177,8 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
                 return learnerOAuth2Manager.loginUserByEmail(email);
             } else {
                 if (clientUrl.contains("signup")) {
-                    return adminOAuth2Manager.registerRootUser(fullName, email);
+                    // No user creation during signup flow
+                    return null;
                 }
                 return adminOAuth2Manager.loginUserByEmail(email);
             }

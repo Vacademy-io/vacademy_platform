@@ -25,57 +25,75 @@ public class Step1Service {
     private SessionScheduleRepository scheduleRepository;
 
     public LiveSession Step1AddService(LiveSessionStep1RequestDTO request, CustomUserDetails user) {
-        LiveSession session;
+        LiveSession session = getOrCreateSession(request, user);
+        updateSessionFields(session, request, user);
+        LiveSession savedSession = sessionRepository.save(session);
 
-        // === Fetch or Create Live Session ===
+        handleDeletedSchedules(request);
+        handleAddedSchedules(request, savedSession);
+        handleUpdatedSchedules(request);
+
+        return savedSession;
+    }
+
+    private LiveSession getOrCreateSession(LiveSessionStep1RequestDTO request, CustomUserDetails user) {
         if (request.getSessionId() != null && !request.getSessionId().isEmpty()) {
-            session = sessionRepository.findById(request.getSessionId())
+            return sessionRepository.findById(request.getSessionId())
                     .orElseThrow(() -> new RuntimeException("Session not found with id: " + request.getSessionId()));
         } else {
-            session = new LiveSession();
+            LiveSession session = new LiveSession();
             session.setCreatedByUserId(user.getUserId());
             session.setStatus(LiveSessionStatus.DRAFT.name());
+            return session;
         }
+    }
 
-        // === Set Basic Fields ===
+    private void updateSessionFields(LiveSession session, LiveSessionStep1RequestDTO request, CustomUserDetails user) {
         if (request.getTitle() != null) session.setTitle(request.getTitle());
         if (request.getSubject() != null) session.setSubject(request.getSubject());
         if (request.getDescriptionHtml() != null) session.setDescriptionHtml(request.getDescriptionHtml());
-        if (request.getDefaultMeetLink() != null) session.setDefaultMeetLink(request.getDefaultMeetLink());
-        if (request.getDefaultMeetLink() != null) session.setLinkType(getLinkTypeFromUrl(request.getDefaultMeetLink()));
+        if (request.getDefaultMeetLink() != null) {
+            session.setDefaultMeetLink(request.getDefaultMeetLink());
+            session.setLinkType(getLinkTypeFromUrl(request.getDefaultMeetLink()));
+        }
         if (request.getStartTime() != null) session.setStartTime(request.getStartTime());
         if (request.getLastEntryTime() != null) session.setLastEntryTime(request.getLastEntryTime());
 
-
         session.setCreatedByUserId(user.getUserId());
-        LiveSession savedSession = sessionRepository.save(session);
+    }
 
-        // === Handle Deleted Schedules ===
+    private void handleDeletedSchedules(LiveSessionStep1RequestDTO request) {
         if (request.getDeletedScheduleIds() != null) {
             for (String id : request.getDeletedScheduleIds()) {
                 scheduleRepository.deleteById(id);
             }
         }
+    }
 
-        // === Handle Added Schedules ===
+    private void handleAddedSchedules(LiveSessionStep1RequestDTO request, LiveSession session) {
         if (request.getAddedSchedules() != null) {
             for (LiveSessionStep1RequestDTO.ScheduleDTO dto : request.getAddedSchedules()) {
                 SessionSchedule schedule = new SessionSchedule();
-                schedule.setSessionId(savedSession.getId());
+                schedule.setSessionId(session.getId());
                 schedule.setRecurrenceType(request.getRecurrenceType());
                 schedule.setRecurrenceKey(dto.getDay().toLowerCase());
-                schedule.setMeetingDate(parseMeetingDate(request.getSessionEndDate())); // Optional
+                schedule.setMeetingDate(parseMeetingDate(request.getSessionEndDate()));
                 schedule.setStartTime(Time.valueOf(dto.getStartTime()));
-                schedule.setLastEntryTime(request.getLastEntryTime() != null ? new Time(request.getLastEntryTime().getTime()) : null);
+                schedule.setLastEntryTime(
+                        request.getLastEntryTime() != null ? new Time(request.getLastEntryTime().getTime()) : null
+                );
                 schedule.setCustomMeetingLink(dto.getLink() != null ? dto.getLink() : request.getDefaultMeetLink());
-                schedule.setLinkType(dto.getLink() != null ? getLinkTypeFromUrl(dto.getLink()) : getLinkTypeFromUrl(request.getDefaultMeetLink()));
+                schedule.setLinkType(dto.getLink() != null
+                        ? getLinkTypeFromUrl(dto.getLink())
+                        : getLinkTypeFromUrl(request.getDefaultMeetLink()));
                 schedule.setCustomWaitingRoomMediaId(null);
 
                 scheduleRepository.save(schedule);
             }
         }
+    }
 
-        // === Handle Updated Schedules ===
+    private void handleUpdatedSchedules(LiveSessionStep1RequestDTO request) {
         if (request.getUpdatedSchedules() != null) {
             for (LiveSessionStep1RequestDTO.ScheduleDTO dto : request.getUpdatedSchedules()) {
                 SessionSchedule schedule = scheduleRepository.findById(dto.getId())
@@ -88,8 +106,6 @@ public class Step1Service {
                 scheduleRepository.save(schedule);
             }
         }
-
-        return savedSession;
     }
 
     private java.sql.Date parseMeetingDate(String dateStr) {
@@ -98,23 +114,21 @@ public class Step1Service {
         return java.sql.Date.valueOf(date);
     }
 
-
-        public static String getLinkTypeFromUrl(String link) {
-            if (link == null || link.isEmpty()) {
-                return "UNKNOWN";
-            }
-
-            String lowerLink = link.toLowerCase();
-
-            if (lowerLink.contains("youtube.com") || lowerLink.contains("youtu.be")) {
-                return LinkType.YOUTUBE.name();
-            } else if (lowerLink.contains("zoom.us") || lowerLink.contains("zoom.com")) {
-                return LinkType.ZOOM.name();
-            } else if (lowerLink.contains("meet.google.com")) {
-                return LinkType.GMEET.name();
-            } else {
-                return LinkType.RECORDED.name();
-            }
+    public static String getLinkTypeFromUrl(String link) {
+        if (link == null || link.isEmpty()) {
+            return "UNKNOWN";
         }
 
+        String lowerLink = link.toLowerCase();
+
+        if (lowerLink.contains("youtube.com") || lowerLink.contains("youtu.be")) {
+            return LinkType.YOUTUBE.name();
+        } else if (lowerLink.contains("zoom.us") || lowerLink.contains("zoom.com")) {
+            return LinkType.ZOOM.name();
+        } else if (lowerLink.contains("meet.google.com")) {
+            return LinkType.GMEET.name();
+        } else {
+            return LinkType.RECORDED.name();
+        }
+    }
 }

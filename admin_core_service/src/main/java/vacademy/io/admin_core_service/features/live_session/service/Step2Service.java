@@ -3,12 +3,15 @@ package vacademy.io.admin_core_service.features.live_session.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.live_session.dto.LiveSessionStep2RequestDTO;
 import vacademy.io.admin_core_service.features.live_session.entity.*;
 import vacademy.io.admin_core_service.features.live_session.enums.*;
 import vacademy.io.admin_core_service.features.live_session.repository.*;
 import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.List;
 import java.util.UUID;
@@ -41,10 +44,9 @@ public class Step2Service {
         LiveSession session = getSessionOrThrow(request.getSessionId());
 
         updateSessionAccessLevel(session, request);
-        clearExistingData(request.getSessionId());
         processNotificationActions(request, session.getId());
         linkParticipants(request);
-        processCustomFields(request, user);
+        processCustomFields(request);
 
         session.setStatus(LiveSessionStatus.LIVE.name());
         sessionRepository.save(session);
@@ -62,11 +64,6 @@ public class Step2Service {
         if (LiveSessionAccessEnum.PUBLIC.name().equalsIgnoreCase(request.getAccessType())) {
             session.setRegistrationFormLinkForPublicSessions(request.getJoinLink());
         }
-    }
-
-    private void clearExistingData(String sessionId) {
-        // Do NOT clear all notifications here anymore
-        //liveSessionParticipantRepository.deleteAllBySessionId(sessionId);
     }
 
     private void processNotificationActions(LiveSessionStep2RequestDTO request, String sessionId) {
@@ -120,11 +117,11 @@ public class Step2Service {
                 ? extractMinutes(dto.getTime()) : 0);
     }
     // TODO : for later
-    private String resolveChannel(LiveSessionStep2RequestDTO.NotifyBy notifyBy) {
-        if (notifyBy.isMail()) return NotificationMediaTypeEnum.MAIL.name();
-        if (notifyBy.isWhatsapp()) return NotificationMediaTypeEnum.WHATSAPP.name();
-        return NotificationMediaTypeEnum.MAIL.name();
-    }
+//    private String resolveChannel(LiveSessionStep2RequestDTO.NotifyBy notifyBy) {
+//        if (notifyBy.isMail()) return NotificationMediaTypeEnum.MAIL.name();
+//        if (notifyBy.isWhatsapp()) return NotificationMediaTypeEnum.WHATSAPP.name();
+//        return NotificationMediaTypeEnum.MAIL.name();
+//    }
 
     private void linkParticipants(LiveSessionStep2RequestDTO request) {
         if (request.getPackageSessionIds() != null) {
@@ -146,7 +143,7 @@ public class Step2Service {
         }
     }
 
-    private void processCustomFields(LiveSessionStep2RequestDTO request, CustomUserDetails user) {
+    private void processCustomFields(LiveSessionStep2RequestDTO request) {
         int index = 0;
 
         // Add
@@ -172,7 +169,7 @@ public class Step2Service {
                         existing.setConfig(objectMapper.writeValueAsString(dto.getOptions()));
                     }
                 } catch (JsonProcessingException e) {
-                    throw new RuntimeException("Failed to convert field options to JSON", e);
+                    throw new VacademyException(HttpStatus.BAD_REQUEST,"Failed to convert field options to JSON");
                 }
 
                 customFieldRepository.save(existing);

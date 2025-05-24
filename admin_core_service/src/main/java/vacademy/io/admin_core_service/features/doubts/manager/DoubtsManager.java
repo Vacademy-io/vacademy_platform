@@ -14,6 +14,8 @@ import vacademy.io.admin_core_service.features.doubts.dtos.DoubtsDto;
 import vacademy.io.admin_core_service.features.doubts.dtos.DoubtsRequestFilter;
 import vacademy.io.admin_core_service.features.doubts.entity.DoubtAssignee;
 import vacademy.io.admin_core_service.features.doubts.entity.Doubts;
+import vacademy.io.admin_core_service.features.doubts.enums.DoubtAssigneeSourceEnum;
+import vacademy.io.admin_core_service.features.doubts.enums.DoubtAssigneeStatusEnum;
 import vacademy.io.admin_core_service.features.doubts.enums.DoubtStatusEnum;
 import vacademy.io.admin_core_service.features.doubts.service.DoubtService;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -56,7 +58,7 @@ public class DoubtsManager {
 
         Doubts savedDoubt = doubtService.updateOrCreateDoubt(doubts);
         try{
-            if(request.getDoubtAssigneeRequestUserIds()!=null){
+            if(request.getDoubtAssigneeRequestUserIds()!=null && request.getParentId() == null){
                 createDoubtsAssignee(savedDoubt, request.getDoubtAssigneeRequestUserIds());
             }
         } catch (Exception e) {
@@ -80,6 +82,10 @@ public class DoubtsManager {
             if(request.getDoubtAssigneeRequestUserIds()!=null){
                 createDoubtsAssignee(doubtsOpt.get(), request.getDoubtAssigneeRequestUserIds());
             }
+
+            if(request.getDeleteAssigneeRequest()!=null){
+                doubtService.deleteAssigneeForDoubt(request.getDeleteAssigneeRequest());
+            }
         } catch (Exception e) {
             throw new VacademyException("Failed To Update Doubt: " +e.getMessage());
         }
@@ -93,9 +99,9 @@ public class DoubtsManager {
         doubtAssigneeRequestUserIds.forEach(userId->{
             allNewAssignee.add(DoubtAssignee.builder()
                     .doubts(doubts)
-                    .source("USER")
+                    .source(DoubtAssigneeSourceEnum.USER.name())
                     .sourceId(userId)
-                    .status("ACTIVE").build());
+                    .status(DoubtAssigneeStatusEnum.ACTIVE.name()).build());
         });
 
         doubtService.saveOrUpdateDoubtsAssignee(allNewAssignee);

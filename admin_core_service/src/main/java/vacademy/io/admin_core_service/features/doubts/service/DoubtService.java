@@ -5,9 +5,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.doubts.dtos.DoubtAssigneeDto;
 import vacademy.io.admin_core_service.features.doubts.dtos.DoubtsDto;
 import vacademy.io.admin_core_service.features.doubts.entity.DoubtAssignee;
 import vacademy.io.admin_core_service.features.doubts.entity.Doubts;
+import vacademy.io.admin_core_service.features.doubts.enums.DoubtAssigneeStatusEnum;
 import vacademy.io.admin_core_service.features.doubts.enums.DoubtStatusEnum;
 import vacademy.io.admin_core_service.features.doubts.repository.DoubtsAssigneeRepository;
 import vacademy.io.admin_core_service.features.doubts.repository.DoubtsRepository;
@@ -66,6 +68,12 @@ public class DoubtService {
                     doubt.getId(), List.of(DoubtStatusEnum.DELETED.name())
             );
 
+            List<DoubtAssigneeDto> allAssigneeDto = new ArrayList<>();
+
+            if(doubt.getParentId() == null){
+                allAssigneeDto = getAssigneeDtoFromDoubt(doubt);
+            }
+
             response.add(DoubtsDto.builder()
                     .id(doubt.getId())
                     .userId(doubt.getUserId())
@@ -79,10 +87,31 @@ public class DoubtService {
                     .status(doubt.getStatus())
                     .resolvedTime(doubt.getResolvedTime())
                     .raisedTime(doubt.getRaisedTime())
+                    .allDoubtAssignee(allAssigneeDto)
                     .replies(createDtoFromDoubts(childDoubts)) // recursive call here
                     .build());
         });
         return response;
     }
 
+    private List<DoubtAssigneeDto> getAssigneeDtoFromDoubt(Doubts doubt) {
+        List<DoubtAssignee> allAssignee = doubtsAssigneeRepository.findByDoubtIdAndStatusNotIn(doubt.getId(), List.of(DoubtAssigneeStatusEnum.DELETED.name()));
+        List<DoubtAssigneeDto> response = new ArrayList<>();
+        allAssignee.forEach(assignee->{
+            response.add(assignee.getAssigneeDto());
+        });
+
+        return response;
+    }
+
+    public void deleteAssigneeForDoubt(List<String> deleteAssigneeRequest) {
+        if(deleteAssigneeRequest.isEmpty()) return;
+        List<DoubtAssignee> allAssignee = doubtsAssigneeRepository.findAllById(deleteAssigneeRequest);
+
+        allAssignee.forEach(assignee->{
+            assignee.setStatus(DoubtAssigneeStatusEnum.DELETED.name());
+        });
+
+        doubtsAssigneeRepository.saveAll(allAssignee);
+    }
 }

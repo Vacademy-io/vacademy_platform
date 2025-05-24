@@ -42,5 +42,15 @@ public interface UserRoleRepository extends CrudRepository<UserRole, String> {
                                                   @Param("roleName") String roleName);
 
 
-    Optional<UserRole> findByUserIdAndRoleIdAndInstituteId(String id, String roleId, String instituteId);
+    @Query(value = """
+            SELECT ur.* FROM user_role ur
+            JOIN roles r ON r.id = ur.role_id
+            WHERE ur.user_id = :userId
+            AND ur.institute_id = :instituteId
+            AND r.role_name = :roleName
+            ORDER BY ur.created_at LIMIT 1
+            """,nativeQuery = true)
+    Optional<UserRole> findByUserIdAndRoleIdAndInstituteId(@Param("userId") String userId,
+                                                           @Param("roleName") String roleName,
+                                                           @Param("instituteId") String instituteId);
 }

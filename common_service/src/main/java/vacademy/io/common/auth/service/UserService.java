@@ -353,27 +353,27 @@ public class UserService {
     }
 
     public void createOrUpdateUserRole(User savedUser, List<String> addUserRoleRequest, String instituteId) {
-        List<String> newRoleIds = new ArrayList<>();
+        List<String> newRoleNames = new ArrayList<>();
         List<UserRole> updateStatusRoles = new ArrayList<>();
 
-        addUserRoleRequest.forEach(roleId->{
-            Optional<UserRole> userRole = userRoleRepository.findByUserIdAndRoleIdAndInstituteId(savedUser.getId(),roleId,instituteId);
+        addUserRoleRequest.forEach(roleName->{
+            Optional<UserRole> userRole = userRoleRepository.findByUserIdAndRoleIdAndInstituteId(savedUser.getId(),roleName,instituteId);
             if(userRole.isPresent()){
                 userRole.get().setStatus(UserRoleStatus.ACTIVE.name());
                 updateStatusRoles.add(userRole.get());
             }
-            else newRoleIds.add(roleId);
+            else newRoleNames.add(roleName);
         });
 
         userRoleRepository.saveAll(updateStatusRoles);
-        createNewRolesForIds(savedUser, newRoleIds, instituteId);
+        createNewRolesForRoleName(savedUser, newRoleNames, instituteId);
     }
 
-    private void createNewRolesForIds(User savedUser, List<String> newRoleIds, String instituteId) {
+    private void createNewRolesForRoleName(User savedUser, List<String> newRoleNames, String instituteId) {
         List<UserRole> roles = new ArrayList<>();
 
-        newRoleIds.forEach(roleId->{
-            Optional<Role> role = roleRepository.findById(roleId);
+        newRoleNames.forEach(name->{
+            Optional<Role> role = roleRepository.findByName(name);
             if(role.isPresent()){
                 UserRole newRole = new UserRole();
                 newRole.setRole(role.get());

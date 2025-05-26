@@ -85,10 +85,10 @@ export function LoginForm() {
         />
         {/* Toggle Content */}
         <div className="w-full max-w-md">
-          {isEmailLogin ? (
-            <EmailLogin onSwitchToUsername={() => setIsEmailLogin(false)} />
+          {!isEmailLogin ? (
+            <EmailLogin onSwitchToUsername={() => setIsEmailLogin(true)} />
           ) : (
-            <UsernameLogin onSwitchToEmail={() => setIsEmailLogin(true)} />
+            <UsernameLogin onSwitchToEmail={() => setIsEmailLogin(false)} />
           )}
         </div>
 

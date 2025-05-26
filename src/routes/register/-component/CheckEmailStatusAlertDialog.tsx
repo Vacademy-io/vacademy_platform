@@ -324,6 +324,21 @@ const CheckEmailStatusAlertDialog = ({
         }
     };
 
+    const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+        const pasted = e.clipboardData.getData("text").trim();
+        if (/^\d{6}$/.test(pasted)) {
+            e.preventDefault();
+            const otpArray = pasted.split("");
+            otpArray.forEach((char, i) => {
+                form.setValue(`otp.${i}`, char);
+            });
+            // Optional: focus the last box
+            const lastFilledIndex =
+                Math.min(otpArray.length, otpRefs.current.length) - 1;
+            otpRefs.current[lastFilledIndex]?.focus();
+        }
+    };
+
     useEffect(() => {
         const timer = setTimeout(() => {
             setOpen(true);
@@ -448,6 +463,9 @@ const CheckEmailStatusAlertDialog = ({
                                                     }
                                                     onKeyDown={(e) =>
                                                         handleKeyDown(index, e)
+                                                    }
+                                                    onPaste={(e) =>
+                                                        handlePaste(e)
                                                     }
                                                     className="size-10 text-center border border-gray-300 rounded-md focus:outline-none"
                                                 />

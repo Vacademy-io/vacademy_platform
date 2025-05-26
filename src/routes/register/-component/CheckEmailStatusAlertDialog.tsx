@@ -408,7 +408,7 @@ const CheckEmailStatusAlertDialog = ({
     return (
         <AlertDialog open={open} onOpenChange={setOpen}>
             <AlertDialogContent className="p-0">
-                <h1 className="p-4 text-primary-500 bg-primary-50 rounded-lg">
+                <h1 className="p-4 text-primary-500 bg-primary-50 rounded-t-lg">
                     Check Registration Status
                 </h1>
                 <FormProvider {...form}>

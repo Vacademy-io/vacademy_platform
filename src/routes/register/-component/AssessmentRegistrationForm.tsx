@@ -42,6 +42,7 @@ import { AxiosError } from "axios";
 import { toast } from "sonner";
 import AssessmentRegistrationCompleted from "./AssessmentRegistrationCompleted";
 import { useNavigate } from "@tanstack/react-router";
+import PhoneInputField from "@/components/design-system/phone-input-field";
 
 const case1 = (serverTime: number, startDate: string) => {
     const registrationStartDate: number = new Date(
@@ -637,68 +638,91 @@ const AssessmentRegistrationForm = () => {
                             <FormProvider {...form}>
                                 <form className="w-full flex flex-col gap-6 mt-4 sm:max-h-[70vh] sm:overflow-auto">
                                     {Object.entries(form.getValues()).map(
-                                        ([key, value]) => (
-                                            <FormField
-                                                key={key}
-                                                control={form.control}
-                                                name={`${key}.value`}
-                                                render={({ field }) => (
-                                                    <FormItem>
-                                                        <FormControl>
-                                                            {value.type ===
-                                                            "dropdown" ? (
-                                                                <SelectField
-                                                                    label={
-                                                                        value.name
-                                                                    }
+                                        ([key, value]) =>
+                                            key === "phone_number" ? (
+                                                <FormField
+                                                    control={form.control}
+                                                    name={`${key}.value`}
+                                                    render={() => (
+                                                        <FormItem>
+                                                            <FormControl>
+                                                                <PhoneInputField
+                                                                    label="Phone Number"
+                                                                    placeholder="123 456 7890"
                                                                     name={`${key}.value`}
-                                                                    options={
-                                                                        value.comma_separated_options?.map(
-                                                                            (
-                                                                                option: string,
-                                                                                index: number
-                                                                            ) => ({
-                                                                                value: option,
-                                                                                label: option,
-                                                                                _id: index,
-                                                                            })
-                                                                        ) || []
-                                                                    }
                                                                     control={
                                                                         form.control
                                                                     }
-                                                                    required={
-                                                                        value.is_mandatory
-                                                                    }
-                                                                    className="!w-full"
+                                                                    country="in"
+                                                                    required
                                                                 />
-                                                            ) : (
-                                                                <MyInput
-                                                                    inputType="text"
-                                                                    inputPlaceholder={
-                                                                        value.name
-                                                                    }
-                                                                    input={
-                                                                        field.value
-                                                                    }
-                                                                    onChangeFunction={
-                                                                        field.onChange
-                                                                    }
-                                                                    required={
-                                                                        value.is_mandatory
-                                                                    }
-                                                                    size="large"
-                                                                    label={
-                                                                        value.name
-                                                                    }
-                                                                    className="!max-w-full !w-full"
-                                                                />
-                                                            )}
-                                                        </FormControl>
-                                                    </FormItem>
-                                                )}
-                                            />
-                                        )
+                                                            </FormControl>
+                                                        </FormItem>
+                                                    )}
+                                                />
+                                            ) : (
+                                                <FormField
+                                                    key={key}
+                                                    control={form.control}
+                                                    name={`${key}.value`}
+                                                    render={({ field }) => (
+                                                        <FormItem>
+                                                            <FormControl>
+                                                                {value.type ===
+                                                                "dropdown" ? (
+                                                                    <SelectField
+                                                                        label={
+                                                                            value.name
+                                                                        }
+                                                                        name={`${key}.value`}
+                                                                        options={
+                                                                            value.comma_separated_options?.map(
+                                                                                (
+                                                                                    option: string,
+                                                                                    index: number
+                                                                                ) => ({
+                                                                                    value: option,
+                                                                                    label: option,
+                                                                                    _id: index,
+                                                                                })
+                                                                            ) ||
+                                                                            []
+                                                                        }
+                                                                        control={
+                                                                            form.control
+                                                                        }
+                                                                        required={
+                                                                            value.is_mandatory
+                                                                        }
+                                                                        className="!w-full"
+                                                                    />
+                                                                ) : (
+                                                                    <MyInput
+                                                                        inputType="text"
+                                                                        inputPlaceholder={
+                                                                            value.name
+                                                                        }
+                                                                        input={
+                                                                            field.value
+                                                                        }
+                                                                        onChangeFunction={
+                                                                            field.onChange
+                                                                        }
+                                                                        required={
+                                                                            value.is_mandatory
+                                                                        }
+                                                                        size="large"
+                                                                        label={
+                                                                            value.name
+                                                                        }
+                                                                        className="!max-w-full !w-full"
+                                                                    />
+                                                                )}
+                                                            </FormControl>
+                                                        </FormItem>
+                                                    )}
+                                                />
+                                            )
                                     )}
                                     <div className="flex items-center justify-center flex-col gap-4">
                                         <MyButton
@@ -710,6 +734,14 @@ const AssessmentRegistrationForm = () => {
                                                 onSubmit,
                                                 onInvalid
                                             )}
+                                            disable={
+                                                !form.getValues("phone_number")
+                                                    .value ||
+                                                !form.getValues("email")
+                                                    .value ||
+                                                !form.getValues("full_name")
+                                                    .value
+                                            }
                                         >
                                             Register
                                         </MyButton>

@@ -38,7 +38,7 @@ import type {
   DocumentLoadEvent,
   PageChangeEvent,
 } from "@react-pdf-viewer/core";
-import { Button } from "@/components/ui/button";
+// import { Button } from "@/components/ui/button";
 import { PdfViewerComponent } from "../study-library/level-material/subject-material/module-material/chapter-material/slide-material/pdf-viewer-component";
 import { getPublicUrl } from "@/services/upload_file";
 type TestMarks = {

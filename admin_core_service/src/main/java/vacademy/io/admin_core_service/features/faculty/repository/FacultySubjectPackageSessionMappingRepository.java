@@ -6,8 +6,10 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import vacademy.io.admin_core_service.features.faculty.entity.FacultySubjectPackageSessionMapping;
+import vacademy.io.admin_core_service.features.slide.entity.Option;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface FacultySubjectPackageSessionMappingRepository extends JpaRepository<FacultySubjectPackageSessionMapping,String> {
 
@@ -35,6 +37,8 @@ public interface FacultySubjectPackageSessionMappingRepository extends JpaReposi
             @Param("batchesIds") List<String> batches,
             @Param("statusList") List<String> status,
             Pageable pageable);
+
+    Optional<FacultySubjectPackageSessionMapping> findByUserIdAndPackageSessionIdAndSubjectIdAndStatusIn(String userId, String packageSessionId, String subjectId, List<String> status);
 
 //WHERE (:name IS NULL OR :name = '' OR LOWER(a.name) LIKE LOWER(CONCAT('%', :name, '%')))
 }

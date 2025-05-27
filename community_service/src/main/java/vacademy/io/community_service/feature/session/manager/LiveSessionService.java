@@ -1,13 +1,14 @@
 package vacademy.io.community_service.feature.session.manager;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.community_service.feature.presentation.dto.question.AddPresentationDto;
-import vacademy.io.community_service.feature.presentation.dto.question.PresentationSlideDto;
+// import vacademy.io.community_service.feature.presentation.dto.question.PresentationSlideDto; // Assuming not directly used here based on provided code
 import vacademy.io.community_service.feature.presentation.manager.PresentationCrudManager;
 import vacademy.io.community_service.feature.session.dto.admin.CreateSessionDto;
 import vacademy.io.community_service.feature.session.dto.admin.LiveSessionDto;
@@ -17,21 +18,20 @@ import vacademy.io.community_service.feature.session.dto.admin.StartPresentation
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList; // Recommended for studentEmitters
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors; // Added for better stream usage
+import java.util.stream.Collectors;
 
 @Service
 public class LiveSessionService {
     private static final long SESSION_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours
     private static final long HEARTBEAT_TIMEOUT_MS = 60000; // 60 seconds
 
-    // In-memory map for LiveSessionDto - SINGLE INSTANCE ONLY
     private final Map<String, LiveSessionDto> sessions = new ConcurrentHashMap<>();
     private final Map<String, String> inviteCodeToSessionId = new ConcurrentHashMap<>();
 
-    // Heartbeat tracking remains the same
     private final Map<String, Map<String, Long>> sessionParticipantHeartbeats = new ConcurrentHashMap<>();
     private final ScheduledExecutorService heartbeatMonitor = Executors.newSingleThreadScheduledExecutor();
     private final ScheduledExecutorService sessionCleanupScheduler = Executors.newSingleThreadScheduledExecutor();
@@ -40,78 +40,63 @@ public class LiveSessionService {
     PresentationCrudManager presentationCrudManager;
 
     public LiveSessionService() {
-        // Schedule periodic check for inactive participants
         heartbeatMonitor.scheduleAtFixedRate(
                 this::checkInactiveParticipants,
                 0,
                 15,
                 TimeUnit.SECONDS
         );
-        // Schedule periodic cleanup for expired sessions
         sessionCleanupScheduler.scheduleAtFixedRate(
                 this::cleanupExpiredSessions,
                 0,
-                1, // Run every hour
+                1,
                 TimeUnit.HOURS
         );
     }
 
-    /**
-     * Check for participants who haven't sent heartbeats recently and mark them inactive
-     */
     private void checkInactiveParticipants() {
         long currentTime = System.currentTimeMillis();
-
         sessionParticipantHeartbeats.forEach((sessionId, participants) -> {
             LiveSessionDto session = sessions.get(sessionId);
             if (session == null) {
-                // Clean up if session no longer exists in main map
                 sessionParticipantHeartbeats.remove(sessionId);
                 return;
             }
-
             List<String> inactiveUsers = new ArrayList<>();
             participants.forEach((username, lastHeartbeat) -> {
                 if (currentTime - lastHeartbeat > HEARTBEAT_TIMEOUT_MS) {
                     inactiveUsers.add(username);
                 }
             });
-
-            // Update status and notify teacher
             if (!inactiveUsers.isEmpty()) {
                 inactiveUsers.forEach(username -> updateParticipantStatus(session, username, "INACTIVE"));
-                // Remove inactive participants from the heartbeat map
-                inactiveUsers.forEach(participants::remove);
+                inactiveUsers.forEach(participants::remove); // Remove from heartbeat tracking
             }
         });
     }
 
-    /**
-     * Record a heartbeat from a participant
-     */
     public void recordHeartbeat(String sessionId, String username) {
-        // Get or create the heartbeat map for this session
         Map<String, Long> participantHeartbeats = sessionParticipantHeartbeats
                 .computeIfAbsent(sessionId, k -> new ConcurrentHashMap<>());
-
-        // Update the timestamp for this participant
         participantHeartbeats.put(username, System.currentTimeMillis());
-
-        // If participant was previously inactive, mark as active
         LiveSessionDto session = sessions.get(sessionId);
         if (session != null) {
             session.getParticipants().stream()
                     .filter(p -> p.getUsername().equals(username) &&
-                            (p.getStatus() == null || p.getStatus().equals("INACTIVE")))
+                            (p.getStatus() == null || "INACTIVE".equals(p.getStatus())))
                     .findFirst()
                     .ifPresent(p -> updateParticipantStatus(session, username, "ACTIVE"));
         }
     }
 
-
     public LiveSessionDto createSession(CreateSessionDto createSessionDto) {
         LiveSessionDto session = new LiveSessionDto();
         session.setSessionId(UUID.randomUUID().toString());
+        // Assuming LiveSessionDto has a field: private List<SseEmitter> studentEmitters = new CopyOnWriteArrayList<>();
+        // If studentEmitters is initialized elsewhere (e.g. getter returning new ArrayList if null), ensure it's thread-safe
+        if (session.getStudentEmitters() == null) { // Defensive, depends on LiveSessionDto impl
+            session.setStudentEmitters(new CopyOnWriteArrayList<>()); // Explicitly use CopyOnWriteArrayList
+        }
         session.setCanJoinInBetween(createSessionDto.getCanJoinInBetween());
         session.setAllowLearnerHandRaise(createSessionDto.getAllowLearnerHandRaise());
         session.setDefaultSecondsForQuestion(createSessionDto.getDefaultSecondsForQuestion());
@@ -127,13 +112,21 @@ public class LiveSessionService {
         return session;
     }
 
+    /**
+     * Sends the current slide information to all active student emitters for a session.
+     * Handles potential errors when sending to individual emitters (e.g., if an emitter is already completed).
+     */
     private void sendSlideToStudents(LiveSessionDto session) {
-        if (!"LIVE".equals(session.getSessionStatus()) || session.getCurrentSlideIndex() == null) return;
+        if (!"LIVE".equals(session.getSessionStatus()) || session.getCurrentSlideIndex() == null || session.getStudentEmitters() == null) {
+            return;
+        }
 
-        new ArrayList<>(session.getStudentEmitters()).forEach(emitter -> {
+        // Iterate over student emitters. CopyOnWriteArrayList handles concurrent modification safely for iteration.
+        // If not using CopyOnWriteArrayList, new ArrayList<>(session.getStudentEmitters()) creates a snapshot.
+        for (SseEmitter emitter : session.getStudentEmitters()) {
             try {
                 SseEmitter.SseEventBuilder event = SseEmitter.event()
-                        .name("session_event_learner") // Consistent event name
+                        .name("session_event_learner")
                         .id(UUID.randomUUID().toString())
                         .data(Map.of(
                                 "type", "CURRENT_SLIDE",
@@ -141,13 +134,26 @@ public class LiveSessionService {
                                 "totalSlides", (session.getSlides() != null && session.getSlides().getAddedSlides() != null) ? session.getSlides().getAddedSlides().size() : 0
                         ));
                 emitter.send(event);
+            } catch (IllegalStateException e) {
+                // This often means the emitter was already completed (client disconnected, timed out, etc.)
+                System.err.println("Error sending slide to a student emitter (already completed) for session " +
+                        session.getSessionId() + ": " + e.getMessage() + ". Emitter: " + emitter.toString());
+                // The emitter's own onError, onCompletion, or onTimeout handlers (set in addStudentEmitter)
+                // are responsible for cleaning it up from the session.getStudentEmitters() list.
             } catch (IOException e) {
-                // Emitter's onError callback (set in addStudentEmitter) will handle cleanup.
-                // Log here if needed, but avoid duplicate completion calls.
-                System.err.println("Error sending slide to a student emitter during broadcast for session " + session.getSessionId() + ": " + e.getMessage());
+                // For other network-related send issues
+                System.err.println("IOException sending slide to a student emitter for session " +
+                        session.getSessionId() + ": " + e.getMessage() + ". Emitter: " + emitter.toString());
+                // Spring's SseEmitter usually triggers onError for IOException during send,
+                // which should then call your studentEmitterCleanup.
+            } catch (Exception e) {
+                // Catch any other unexpected exceptions during send
+                System.err.println("Unexpected error sending slide to a student emitter for session " +
+                        session.getSessionId() + ": " + e.getClass().getName() + " - " + e.getMessage() + ". Emitter: " + emitter.toString());
             }
-        });
+        }
     }
+
 
     public void addStudentEmitter(String sessionId, SseEmitter emitter, String username) {
         LiveSessionDto session = sessions.get(sessionId);
@@ -166,84 +172,57 @@ public class LiveSessionService {
                 .orElse(null);
 
         if (participant == null) {
-            // This implies /get-details was not called or participant was removed.
-            // For robustness, if canJoinInBetween is true or session not live, could add them.
-            // But safer to assume /get-details is prerequisite.
-            emitter.completeWithError(new VacademyException("Participant " + username + " not registered in session " + sessionId + ". Please join first using invite code."));
+            emitter.completeWithError(new VacademyException("Participant " + username + " not registered in session " + sessionId + ". Please join first."));
             return;
         }
 
-        // Simple way to handle potential old emitters for the same user:
-        // Iterate and complete any other emitters that might be associated with this user if we had a mapping.
-        // With current List<SseEmitter>, it's harder to pinpoint an old emitter for *this specific user*.
-        // A Map<String (username), SseEmitter> in LiveSessionDto would be better.
-        // For now, we add the new one. The old one, if any, should eventually timeout or error.
-
+        // Ensure studentEmitters list is initialized (important if using CopyOnWriteArrayList directly in DTO)
+        if (session.getStudentEmitters() == null) {
+            session.setStudentEmitters(new CopyOnWriteArrayList<>());
+        }
         session.getStudentEmitters().add(emitter);
-        System.out.println("Student emitter added for " + username + " in session " + sessionId);
+        System.out.println("Student emitter added for " + username + " in session " + sessionId + ". Total emitters: " + session.getStudentEmitters().size());
 
-        // Mark participant ACTIVE and notify teacher
         updateParticipantStatus(session, username, "ACTIVE");
-
-        // Initialize/update heartbeat tracking for this user
         sessionParticipantHeartbeats.computeIfAbsent(sessionId, k -> new ConcurrentHashMap<>())
                 .put(username, System.currentTimeMillis());
 
-
-        // Send current session/slide state to the connecting/reconnecting student
+        // Send current state
         if ("LIVE".equals(session.getSessionStatus()) && session.getCurrentSlideIndex() != null) {
             try {
-                SseEmitter.SseEventBuilder event = SseEmitter.event()
-                        .name("session_event_learner") // General event name
-                        .id(UUID.randomUUID().toString())
-                        .data(Map.of(
-                                "type", "CURRENT_SLIDE",
-                                "currentSlideIndex", session.getCurrentSlideIndex(),
-                                "totalSlides", (session.getSlides() != null && session.getSlides().getAddedSlides() != null) ? session.getSlides().getAddedSlides().size() : 0
-                        ));
-                emitter.send(event);
+                emitter.send(SseEmitter.event().name("session_event_learner").id(UUID.randomUUID().toString())
+                        .data(Map.of("type", "CURRENT_SLIDE", "currentSlideIndex", session.getCurrentSlideIndex(),
+                                "totalSlides", (session.getSlides() != null && session.getSlides().getAddedSlides() != null) ? session.getSlides().getAddedSlides().size() : 0)));
             } catch (IOException e) {
                 System.err.println("Error sending initial slide to " + username + " for session " + sessionId + ": " + e.getMessage());
-                // Emitter's onError will handle full cleanup.
             }
-        } else { // Session is INIT (waiting to start) or some other state
+        } else {
             try {
-                SseEmitter.SseEventBuilder event = SseEmitter.event()
-                        .name("session_event_learner")
-                        .id(UUID.randomUUID().toString())
-                        .data(Map.of("type", "SESSION_STATUS", "status", session.getSessionStatus(), "message", "Waiting for session to start or resume."));
-                emitter.send(event);
+                emitter.send(SseEmitter.event().name("session_event_learner").id(UUID.randomUUID().toString())
+                        .data(Map.of("type", "SESSION_STATUS", "status", session.getSessionStatus(), "message", "Waiting for session.")));
             } catch (IOException e) {
                 System.err.println("Error sending waiting status to " + username + " for session " + sessionId + ": " + e.getMessage());
             }
         }
 
-        // Cleanup logic when this specific emitter completes/times out/errors
         Runnable studentEmitterCleanup = () -> {
-            session.getStudentEmitters().remove(emitter);
-            // Participant status is updated to INACTIVE by the heartbeat mechanism (checkInactiveParticipants)
-            // if no new heartbeat or connection comes in.
-            // For immediate feedback upon explicit disconnect/error, we can also update status here.
-            // updateParticipantStatus(session, username, "INACTIVE"); // This will notify teacher.
-            // Let's rely on recordHeartbeat and checkInactiveParticipants for definitive status,
-            // but log the disconnection.
-            System.out.println("Student emitter for " + username + " in session " + sessionId + " cleaned up (completed/timed out/errored).");
-            // The checkInactiveParticipants will eventually mark them INACTIVE if no new heartbeat or connection.
+            boolean removed = session.getStudentEmitters().remove(emitter);
+            if (removed) {
+                System.out.println("Student emitter for " + username + " in session " + sessionId + " removed. Remaining: " + session.getStudentEmitters().size());
+            } else {
+                System.out.println("Student emitter for " + username + " in session " + sessionId + " already removed or not found for cleanup.");
+            }
+            // Participant status to INACTIVE is handled by checkInactiveParticipants if no new heartbeat/connection.
         };
 
         emitter.onCompletion(studentEmitterCleanup);
-        emitter.onTimeout(() -> { // Spring's SseEmitter calls complete() internally on timeout.
-            studentEmitterCleanup.run();
-        });
+        emitter.onTimeout(studentEmitterCleanup::run); // .run() is important if it's not a simple no-arg void method
         emitter.onError(e -> {
             System.err.println("Student emitter error for " + username + " in session " + sessionId + ": " + e.getMessage());
             studentEmitterCleanup.run();
         });
     }
-    /**
-     * Updates a participant's active status and notifies the teacher of this change
-     */
-    // Ensure updateParticipantStatus handles the joinedAt timestamp correctly for "ACTIVE"
+
     private void updateParticipantStatus(LiveSessionDto session, String username, String status) {
         session.getParticipants().stream()
                 .filter(p -> p.getUsername().equals(username))
@@ -251,13 +230,9 @@ public class LiveSessionService {
                 .ifPresent(participant -> {
                     String oldStatus = participant.getStatus();
                     participant.setStatus(status);
-
                     if ("ACTIVE".equals(status) && participant.getJoinedAt() == null) {
-                        participant.setJoinedAt(new Date()); // Set joinedAt when first becoming active
+                        participant.setJoinedAt(new Date());
                     }
-                    // If rejoining and was INACTIVE, joinedAt might already be set. Policy: keep original or update?
-                    // Current code only sets if null.
-
                     if (!Objects.equals(oldStatus, status)) {
                         System.out.println("Participant " + username + " status changed from " + oldStatus + " to " + status + " in session " + session.getSessionId());
                         notifyTeacherAboutParticipants(session);
@@ -268,29 +243,23 @@ public class LiveSessionService {
     public void updateQuizStats(String sessionId, String answer) {
         LiveSessionDto session = sessions.get(sessionId);
         if (session != null) {
-            // Logic to update quiz stats in session object
-            // For now, just sending participants list as an example for teacher
             sendStatsToTeacher(session);
         } else {
             throw new VacademyException("Session not found");
         }
     }
 
-
-    // Improved invite code generation for better uniqueness
     private String generateInviteCode() {
         String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
         Random random = new Random();
         String code;
-        String sessionId;
         do {
-            StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < 6; i++) { // Increased length to 6
+            StringBuilder sb = new StringBuilder(6);
+            for (int i = 0; i < 6; i++) {
                 sb.append(chars.charAt(random.nextInt(chars.length())));
             }
             code = sb.toString();
-            sessionId = inviteCodeToSessionId.get(code); // Check if code is already mapped
-        } while (sessionId != null); // Keep generating until a unique code is found
+        } while (inviteCodeToSessionId.containsKey(code));
         return code;
     }
 
@@ -304,12 +273,11 @@ public class LiveSessionService {
         }
         LiveSessionDto session = sessions.get(sessionId);
         if (session == null) {
-            inviteCodeToSessionId.remove(inviteCode); // Clean up dangling invite code
+            inviteCodeToSessionId.remove(inviteCode);
             throw new VacademyException("Session not found for invite code: " + inviteCode);
         }
-
         if ("FINISHED".equals(session.getSessionStatus())) {
-            throw new VacademyException("Session has already finished. Cannot join/rejoin.");
+            throw new VacademyException("Session has already finished.");
         }
 
         Optional<ParticipantDto> existingParticipantOpt = session.getParticipants().stream()
@@ -318,49 +286,54 @@ public class LiveSessionService {
 
         if (existingParticipantOpt.isPresent()) {
             ParticipantDto existingParticipant = existingParticipantOpt.get();
-            // If participant was INACTIVE or in some other non-ACTIVE state, allow rejoining by resetting.
-            // If they are already ACTIVE, it might be a duplicate attempt or very quick reconnect where old emitter hasn't cleared.
-            // For simplicity, we allow re-affirmation. The emitter setup will handle one active stream.
-            System.out.println("Participant " + participantDto.getUsername() + " rejoining/affirming session " + sessionId + ". Old status: " + existingParticipant.getStatus());
-            existingParticipant.setStatus("INIT"); // Will become ACTIVE on establishing SSE stream
-            // existingParticipant.setJoinedAt(new Date()); // Optionally update joinedAt on rejoin, or keep original
+            System.out.println("Participant " + participantDto.getUsername() + " rejoining session " + sessionId + ". Old status: " + existingParticipant.getStatus());
+            existingParticipant.setStatus("INIT"); // Will become ACTIVE on SSE stream
         } else {
-            // New participant joining
             if (!session.getCanJoinInBetween() && "LIVE".equals(session.getSessionStatus())) {
-                throw new VacademyException("Session is live and does not allow new participants to join in between.");
+                throw new VacademyException("Session is live and does not allow new participants.");
             }
-            participantDto.setStatus("INIT"); // New participants start as INIT
-            participantDto.setJoinedAt(new Date());
+            participantDto.setStatus("INIT");
+            participantDto.setJoinedAt(new Date()); // Set initial join time
             session.getParticipants().add(participantDto);
             System.out.println("New participant " + participantDto.getUsername() + " added to session " + sessionId);
         }
-        // The LiveSessionDto returned will reflect the participant's presence (and INIT status).
-        // We don't directly return participant DTO here, but the session DTO contains the list.
+        notifyTeacherAboutParticipants(session); // Notify teacher about new/rejoining participant
         return session;
     }
+
     private void notifyTeacherAboutParticipants(LiveSessionDto session) {
         if (session.getTeacherEmitter() != null) {
             try {
                 SseEmitter.SseEventBuilder event = SseEmitter.event()
                         .name("participants")
                         .id(UUID.randomUUID().toString())
-                        .data(session.getParticipants());
+                        .data(session.getParticipants()); // Send the whole list
                 session.getTeacherEmitter().send(event);
-            } catch (IOException e) {
-                // Log the error
-                session.getTeacherEmitter().completeWithError(e);
-                session.setTeacherEmitter(null); // Clear broken emitter
+            } catch (Exception e) { // Catch broadly as teacher emitter can also be stale
+                System.err.println("Error notifying teacher about participants for session " + session.getSessionId() + ": " + e.getMessage());
+                // Consider completing the teacher emitter if send fails consistently
+                // session.getTeacherEmitter().completeWithError(e); // This triggers its onError
+                // clearPresenterEmitter(session.getSessionId()); // Or just clear it
             }
         }
     }
 
     public void clearPresenterEmitter(String sessionId) {
         LiveSessionDto session = sessions.get(sessionId);
-        if (session != null && session.getTeacherEmitter() != null) {
-            session.setTeacherEmitter(null);
-            System.out.println("Presenter emitter cleared for session: " + sessionId);
+        if (session != null) {
+            SseEmitter emitter = session.getTeacherEmitter();
+            if (emitter != null) {
+                try {
+                    emitter.complete(); // Attempt to gracefully complete
+                } catch (Exception e) {
+                    System.err.println("Exception completing presenter emitter during clear for session " + sessionId + ": " + e.getMessage());
+                }
+                session.setTeacherEmitter(null);
+                System.out.println("Presenter emitter explicitly cleared for session: " + sessionId);
+            }
         }
     }
+
 
     public void setPresenterEmitter(String sessionId, SseEmitter emitter, boolean sendInitialState) {
         LiveSessionDto session = sessions.get(sessionId);
@@ -369,64 +342,58 @@ public class LiveSessionService {
             return;
         }
 
-        // If there's an old emitter for this session, complete it.
         SseEmitter oldEmitter = session.getTeacherEmitter();
-        if (oldEmitter != null && oldEmitter != emitter) { // Check it's not the same instance
+        if (oldEmitter != null && oldEmitter != emitter) {
             try {
-                oldEmitter.complete(); // Gracefully complete the old one
+                oldEmitter.complete();
+                System.out.println("Old presenter emitter completed for session " + sessionId);
             } catch (Exception e) {
                 System.err.println("Error completing old presenter emitter for session " + sessionId + ": " + e.getMessage());
             }
         }
-
         session.setTeacherEmitter(emitter);
         System.out.println("Presenter emitter set for session: " + sessionId);
 
         emitter.onCompletion(() -> {
             System.out.println("Presenter emitter completed for session: " + sessionId);
-            clearPresenterEmitter(sessionId);
+            if (session.getTeacherEmitter() == emitter) { // Avoid clearing if a new one was set quickly
+                clearPresenterEmitter(sessionId); // Use the method that nullifies
+            }
         });
-        emitter.onTimeout(() -> { // Spring's SseEmitter handles calling complete on timeout.
+        emitter.onTimeout(() -> {
             System.out.println("Presenter emitter timed out for session: " + sessionId);
-            clearPresenterEmitter(sessionId); // Ensure it's cleared from our map
+            if (session.getTeacherEmitter() == emitter) {
+                clearPresenterEmitter(sessionId);
+            }
         });
         emitter.onError(e -> {
             System.err.println("Presenter emitter error for session " + sessionId + ": " + e.getMessage());
-            clearPresenterEmitter(sessionId);
+            if (session.getTeacherEmitter() == emitter) {
+                clearPresenterEmitter(sessionId);
+            }
         });
 
         if (sendInitialState) {
-            // Send current participant list immediately
-            notifyTeacherAboutParticipants(session); // This already sends participant data
-
-            // Send current session state (slide, status, etc.)
-            String sessionStatus = session.getSessionStatus();
+            notifyTeacherAboutParticipants(session);
             Map<String, Object> stateData = new HashMap<>();
-            stateData.put("sessionStatus", sessionStatus);
-            stateData.put("currentSlideIndex", session.getCurrentSlideIndex()); // Will be null if not started
+            stateData.put("sessionStatus", session.getSessionStatus());
+            stateData.put("currentSlideIndex", session.getCurrentSlideIndex());
             stateData.put("totalSlides", (session.getSlides() != null && session.getSlides().getAddedSlides() != null) ? session.getSlides().getAddedSlides().size() : 0);
-            stateData.put("canJoinInBetween", session.getCanJoinInBetween());
-            stateData.put("allowLearnerHandRaise", session.getAllowLearnerHandRaise());
-            // Add other relevant session details for the teacher
-
+            // Add other relevant state...
             try {
-                SseEmitter.SseEventBuilder event = SseEmitter.event()
-                        .name("session_state_presenter") // Clear event name
-                        .id(UUID.randomUUID().toString())
-                        .data(stateData);
-                emitter.send(event);
+                emitter.send(SseEmitter.event().name("session_state_presenter").id(UUID.randomUUID().toString()).data(stateData));
             } catch (IOException e) {
-                // Error sending initial state; onError callback for emitter will handle cleanup.
                 System.err.println("Error sending initial state to presenter for session " + sessionId + ": " + e.getMessage());
             }
         }
     }
 
-
-
     private AddPresentationDto getLinkedPresentation(CreateSessionDto presentation) {
         if ("PRESENTATION".equals(presentation.getSource())) {
-            return presentationCrudManager.getPresentation(presentation.getSourceId()).getBody();
+            // Ensure presentationCrudManager.getPresentation().getBody() does not return null if not found
+            // or handle null appropriately
+            ResponseEntity<AddPresentationDto> response = presentationCrudManager.getPresentation(presentation.getSourceId());
+            return (response != null) ? response.getBody() : null;
         }
         return null;
     }
@@ -435,130 +402,119 @@ public class LiveSessionService {
         if (!StringUtils.hasText(startPresentationDto.getSessionId())) {
             throw new VacademyException("Invalid session ID");
         }
-
         LiveSessionDto session = sessions.get(startPresentationDto.getSessionId());
-        if (session == null) {
-            throw new VacademyException("Session not found");
-        }
-
-        if ("LIVE".equals(session.getSessionStatus())) {
-            throw new VacademyException("Session is already live");
-        }
+        if (session == null) throw new VacademyException("Session not found");
+        if ("LIVE".equals(session.getSessionStatus())) throw new VacademyException("Session is already live");
 
         session.setSessionStatus("LIVE");
-        session.setCurrentSlideIndex(0);
+        session.setCurrentSlideIndex(0); // Start from the first slide
         session.setStartTime(new Date(System.currentTimeMillis()));
-        sendSlideToStudents(session);
-        notifyTeacherAboutParticipants(session); // Notify teacher about initial participants
+        sendSlideToStudents(session); // Notify students about the first slide
+        notifyTeacherAboutParticipants(session); // Update teacher
         return session;
     }
 
     public LiveSessionDto moveTo(StartPresentationDto startPresentationDto) {
         if (!StringUtils.hasText(startPresentationDto.getSessionId())) {
-            throw new VacademyException("Invalid session ID"); // Changed from invite code/username
+            throw new VacademyException("Invalid session ID");
         }
-
         LiveSessionDto session = sessions.get(startPresentationDto.getSessionId());
-
-        if (session != null) {
-            session.setCurrentSlideIndex(startPresentationDto.getMoveTo());
-            sendSlideToStudents(session);
-            return session;
+        if (session == null) {
+            throw new VacademyException("Error Moving Session: Session not found");
         }
-
-        throw new VacademyException("Error Moving Session: Session not found");
+        if (!"LIVE".equals(session.getSessionStatus())) {
+            throw new VacademyException("Error Moving Session: Session is not live");
+        }
+        // Add validation for moveTo index if necessary (e.g., within bounds of available slides)
+        session.setCurrentSlideIndex(startPresentationDto.getMoveTo());
+        sendSlideToStudents(session);
+        // Optionally, notify teacher about the move as well if they need specific confirmation
+        // notifyTeacherAboutSlideChange(session);
+        return session;
     }
 
     public LiveSessionDto finishSession(StartPresentationDto startPresentationDto) {
-        // ... (validation)
         LiveSessionDto session = sessions.get(startPresentationDto.getSessionId());
         if (session == null) throw new VacademyException("Error Finishing Session: Session not found");
         if ("FINISHED".equals(session.getSessionStatus())) {
             System.out.println("Session " + session.getSessionId() + " is already finished.");
-            return session; // Or throw error
+            return session;
         }
 
         session.setSessionStatus("FINISHED");
-        session.setEndTime(new Date()); // Record end time
-
+        session.setEndTime(new Date());
         Map<String, Object> endEventData = Map.of("type", "SESSION_STATUS", "status", "ENDED", "message", "Session has ended.");
 
-        // Notify students
-        new ArrayList<>(session.getStudentEmitters()).forEach(emitter -> {
-            try {
-                emitter.send(SseEmitter.event().name("session_event_learner").id(UUID.randomUUID().toString()).data(endEventData));
-                emitter.complete();
-            } catch (IOException e) { emitter.completeWithError(e); }
-        });
-        session.getStudentEmitters().clear();
+        if (session.getStudentEmitters() != null) {
+            session.getStudentEmitters().forEach(emitter -> {
+                try {
+                    emitter.send(SseEmitter.event().name("session_event_learner").id(UUID.randomUUID().toString()).data(endEventData));
+                    emitter.complete();
+                } catch (Exception e) { /* ignore, emitter might be dead */ }
+            });
+            session.getStudentEmitters().clear();
+        }
 
-        // Notify teacher
         if (session.getTeacherEmitter() != null) {
             try {
                 session.getTeacherEmitter().send(SseEmitter.event().name("session_state_presenter").id(UUID.randomUUID().toString()).data(Map.of("sessionStatus", "FINISHED")));
                 session.getTeacherEmitter().complete();
-            } catch (IOException e) { session.getTeacherEmitter().completeWithError(e); }
+            } catch (Exception e) { /* ignore */ }
             session.setTeacherEmitter(null);
         }
 
-        // Don't remove from 'sessions' map immediately if you want to query details post-finish.
-        // The cleanupExpiredSessions will handle it. Or remove here if no post-finish queries are needed.
-        // For now, let cleanupExpiredSessions handle removal based on expiry.
-        // inviteCodeToSessionId.remove(session.getInviteCode());
-        // sessions.remove(session.getSessionId());
         sessionParticipantHeartbeats.remove(session.getSessionId());
         System.out.println("Session " + session.getSessionId() + " finished.");
+        // Session itself is removed by cleanupExpiredSessions later or can be removed here if desired
         return session;
     }
 
-
     public void cleanupExpiredSessions() {
         long currentTime = System.currentTimeMillis();
-        List<String> sessionsToRemove = new ArrayList<>();
+        sessions.entrySet().removeIf(entry -> {
+            LiveSessionDto session = entry.getValue();
+            boolean expired = session.getCreationTime().getTime() + SESSION_EXPIRY_MS < currentTime || "FINISHED".equals(session.getSessionStatus());
+            // For finished sessions, we might want a shorter expiry or immediate cleanup after some grace period.
+            // For simplicity, let's say finished sessions are also subject to SESSION_EXPIRY_MS from creation,
+            // or you could add specific logic for faster cleanup of FINISHED sessions.
+            // Example: finished and older than 1 hour:
+            // boolean finishedAndOld = "FINISHED".equals(session.getSessionStatus()) && session.getEndTime().getTime() + (60*60*1000) < currentTime;
+            // expired = expired || finishedAndOld;
 
-        sessions.forEach((id, session) -> {
-            if (session.getCreationTime().getTime() + SESSION_EXPIRY_MS < currentTime) {
-                sessionsToRemove.add(id);
-            }
-        });
 
-        sessionsToRemove.forEach(id -> {
-            LiveSessionDto session = sessions.get(id);
-            if (session != null) {
-                // Ensure all emitters are completed before removing session data
-                new ArrayList<>(session.getStudentEmitters()).forEach(SseEmitter::complete);
-                session.getStudentEmitters().clear();
+            if (expired) {
+                System.out.println("Cleaning up session: " + entry.getKey() + (("FINISHED".equals(session.getSessionStatus())) ? " (already finished)" : " (expired)"));
+                if (session.getStudentEmitters() != null) {
+                    session.getStudentEmitters().forEach(emitter -> { try { emitter.complete(); } catch (Exception e) {/*ignore*/} });
+                    session.getStudentEmitters().clear();
+                }
                 if (session.getTeacherEmitter() != null) {
-                    session.getTeacherEmitter().complete();
+                    try { session.getTeacherEmitter().complete(); } catch (Exception e) {/*ignore*/}
                     session.setTeacherEmitter(null);
                 }
-
                 inviteCodeToSessionId.remove(session.getInviteCode());
-                sessions.remove(id);
-                sessionParticipantHeartbeats.remove(id); // Clean up associated heartbeat data
-                System.out.println("Cleaned up expired session: " + id); // For logging
+                sessionParticipantHeartbeats.remove(session.getSessionId());
+                return true; // Remove from sessions map
             }
+            return false;
         });
     }
 
-    // Ensure sendStatsToTeacher sends a clearly named event
     private void sendStatsToTeacher(LiveSessionDto session) {
         if (session.getTeacherEmitter() != null) {
             try {
-                // Example: Sending participant DTOs, replace with actual quiz stats DTO
                 List<ParticipantDto> participantInfo = session.getParticipants().stream()
-                        .map(p -> new ParticipantDto(p.getUsername(), p.getStatus()))
+                        .map(p -> new ParticipantDto(p.getUsername(), p.getStatus())) // Or more detailed stats
                         .collect(Collectors.toList());
-
                 SseEmitter.SseEventBuilder event = SseEmitter.event()
-                        .name("quiz_stats_update") // Clear event name
+                        .name("quiz_stats_update")
                         .id(UUID.randomUUID().toString())
-                        .data(participantInfo); // Replace with actual QuizStatsDto
+                        .data(participantInfo);
                 session.getTeacherEmitter().send(event);
-            } catch (IOException e) {
+            } catch (Exception e) { // Catch broadly
                 System.err.println("Error sending quiz stats to teacher for session " + session.getSessionId() + ": " + e.getMessage());
-                session.getTeacherEmitter().completeWithError(e); // Complete this problematic one
-                session.setTeacherEmitter(null);
+                // Potentially clear a consistently failing teacher emitter
+                // clearPresenterEmitter(session.getSessionId());
             }
         }
     }

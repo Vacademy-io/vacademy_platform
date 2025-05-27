@@ -31,7 +31,7 @@ public class AdminSessionController {
     @GetMapping("/{sessionId}")
     public SseEmitter presenterStream(@PathVariable String sessionId) {
         // Timeout for the emitter itself (e.g., 1 hour)
-        SseEmitter emitter = new SseEmitter(3600000L);
+        SseEmitter emitter = new SseEmitter(3600000L); // 1 hour
 
         // The service method will now handle sending initial state upon successful connection
         liveSessionService.setPresenterEmitter(sessionId, emitter, true);
@@ -57,8 +57,6 @@ public class AdminSessionController {
         heartBeatExecutor.scheduleAtFixedRate(heartbeatTask, 0, 30, TimeUnit.SECONDS);
 
         // Ensure executor shutdown when the SseEmitter is completed, times out, or errors.
-        // These callbacks are set up by setPresenterEmitter in the service as well for application logic,
-        // but this controller-level setup ensures the heartbeat executor specific to this emitter instance is cleaned up.
         emitter.onCompletion(() -> {
             if (!heartBeatExecutor.isShutdown()) heartBeatExecutor.shutdown();
             // Service level onCompletion will handle clearing the emitter from the session

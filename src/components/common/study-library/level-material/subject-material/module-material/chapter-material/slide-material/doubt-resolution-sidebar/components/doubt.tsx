@@ -1,63 +1,66 @@
-import { useEffect, Dispatch, SetStateAction, useState } from "react";
+import { useEffect, useState } from "react";
 import { getUserId } from "@/constants/getUserId";
-import { ArrowSquareOut, CaretUp, TrashSimple } from "@phosphor-icons/react";
+import { ArrowSquareOut, CaretUp } from "@phosphor-icons/react";
 import { CaretDown } from "@phosphor-icons/react";
 import { Reply } from "./reply";
 import { StatusChip } from "@/components/design-system/status-chips";
-import { Switch } from "@/components/ui/switch";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import { useSidebar } from "@/components/ui/sidebar";
 import { Doubt as DoubtType, DoubtFilter } from "../types/get-doubts-type";
-import { handleAddDoubt } from "../helpers/handleAddDoubt";
-import { useAddDoubt } from "../services/AddDoubt";
-import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { formatISODateTimeReadable } from "@/helpers/formatISOTime";
+import { DeleteDoubt } from "./DeleteDoubt";
+import { MarkAsResolved } from "./MarkAsResolved";
+import { useGetUserBasicDetails } from "@/services/getBasicUserDetails";
+import { getPublicUrl } from "@/services/upload_file";
 
-export const Doubt = ({doubt, setDoubtProgressMarkerPdf, setDoubtProgressMarkerVideo, refetch}:{doubt:DoubtType, setDoubtProgressMarkerPdf:Dispatch<SetStateAction<number | null>>, setDoubtProgressMarkerVideo:Dispatch<SetStateAction<number | null>>, filter:DoubtFilter, refetch: () => void}) => {
+export const Doubt = ({doubt, refetch}:{doubt:DoubtType, filter:DoubtFilter, refetch: () => void}) => {
     
-    // const [imageUrl, setImageUrl] = useState<string | null>(null);
-    const imageUrl: string | null = null;
+    const [imageUrl, setImageUrl] = useState<string | null>(null);
+    // const imageUrl: string | null = null;
     const [userId, setUserId] = useState<string | null>(null);
     const [showReplies, setShowReplies] = useState<boolean>(false);
-    const {activeItem} = useContentStore();
+    const {activeItem, setActiveItem} = useContentStore();
     const {setOpen} = useSidebar();
-    const addDoubt = useAddDoubt();
-    const [doubtResolved, setDoubtResolved] = useState<boolean>(doubt.status === "RESOLVED");
-    const [showDeleteDialog, setShowDeleteDialog] = useState<boolean>(false);
-
-    useEffect(() => {
-        setDoubtResolved(doubt.status === "RESOLVED");
-    }, [doubt.status]);
 
     const handleTimeStampClick = (timestamp: number) => {
-        if(activeItem?.source_type == "VIDEO"){
-            setDoubtProgressMarkerVideo(timestamp);
-        }
-        else if(activeItem?.source_type == "DOCUMENT"){
-            setDoubtProgressMarkerPdf(timestamp);
-        }
+        setActiveItem({
+            id: activeItem?.id || "",
+            source_id: activeItem?.source_id || "",
+            source_type: activeItem?.source_type || "",
+            title: activeItem?.title || "",
+            image_file_id: activeItem?.image_file_id || "",
+            description: activeItem?.description || "",
+            status: activeItem?.status || "",
+            slide_order: activeItem?.slide_order || 0,
+            video_slide: activeItem?.video_slide || undefined,
+            document_slide: activeItem?.document_slide || undefined,
+            question_slide: activeItem?.question_slide || undefined,
+            assignment_slide: activeItem?.assignment_slide || undefined,
+            is_loaded: activeItem?.is_loaded || false,
+            new_slide: false,
+            percentage_completed: 0,
+            progress_marker: timestamp
+          });
         setOpen(false);
     }
 
-    const handleMarkAsResolved = () => {
-        setDoubtResolved(!doubtResolved);
-        handleAddDoubt({doubt: doubt.html_text, activeItem: activeItem, addDoubt: addDoubt, status:doubtResolved ? "RESOLVED" : "ACTIVE", id: doubt.id })
-    }
+    const { data: userBasicDetails } = useGetUserBasicDetails([doubt.user_id]);
 
-    const handleDeleteDoubt = () => {
-        handleAddDoubt({doubt: doubt.html_text, activeItem: activeItem, addDoubt: addDoubt, status: "DELETED", id: doubt.id })
-        setShowDeleteDialog(false);
-        console.log("refetching")
-        refetch();
-    }
+    useEffect(() => {
+        const fetchImageUrl = async () => {
+            if (userBasicDetails?.[0]?.face_file_id) {
+                try {
+                    const url = await getPublicUrl(userBasicDetails?.[0]?.face_file_id);
+                    setImageUrl(url);
+                } catch (error) {
+                    console.error('Failed to fetch image URL:', error);
+                }
+            }
+        };
+
+        fetchImageUrl();
+    }, [userBasicDetails?.[0]?.face_file_id]);
+   
 
     useEffect(() => {
         const fetchUserId = async () => {
@@ -92,18 +95,16 @@ export const Doubt = ({doubt, setDoubtProgressMarkerPdf, setDoubtProgressMarkerV
                         </div>
                         <div className="flex gap-3 items-center">
                             <StatusChip text={doubt.status === "RESOLVED" ? "Resolved" : "Unresolved"} textSize="text-caption" status={doubt.status === "RESOLVED" ? "SUCCESS" : "INFO"} />
-                            <p className="text-neutral-500 sm:text-body text-caption">{doubt.raised_time}</p>
+                            <p className="text-neutral-500 sm:text-body text-caption">{formatISODateTimeReadable(doubt.raised_time)}</p>
                         </div>
                     </div>
                     <div className="flex items-center justify-between">
                         <div className="flex gap-2">
                             <p><span className="font-semibold">Timestamp: </span>{doubt.content_position}</p>
-                            <ArrowSquareOut className="cursor-pointer mt-[3px]" onClick={()=>handleTimeStampClick(parseInt(doubt.content_position || "0"))}/>
+                            <ArrowSquareOut className="cursor-pointer mt-[3px]" onClick={()=>handleTimeStampClick(parseInt(doubt.content_position || "0"))}/>   
                         </div>
                         {userId && doubt.user_id === userId && doubt.replies.length>0 && ( 
-                            <div className="flex gap-2 items-center font-semibold ">
-                                Mark as resolved <Switch checked={doubtResolved} onCheckedChange={() => {handleMarkAsResolved()}} />
-                            </div>
+                           <MarkAsResolved doubt={doubt} refetch={refetch}/>
                         )}
                     </div>
                     <div
@@ -113,10 +114,7 @@ export const Doubt = ({doubt, setDoubtProgressMarkerPdf, setDoubtProgressMarkerV
                         className="custom-html-content"
                     />
                     {doubt.user_id==userId && doubt.replies.length==0 && 
-                        <div className="flex gap-1 items-center cursor-pointer" onClick={()=>setShowDeleteDialog(true)}>
-                            <TrashSimple className="text-danger-500" />
-                            <p className="text-body">Delete</p>
-                        </div>
+                       <DeleteDoubt doubt={doubt} refetch={refetch} />
                     }
                 </div>
                 {doubt.replies.length>0 &&
@@ -136,23 +134,6 @@ export const Doubt = ({doubt, setDoubtProgressMarkerPdf, setDoubtProgressMarkerV
                     </div>
                 }
             </div>
-
-            <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>Delete Doubt</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            Are you sure you want to delete this doubt? This action cannot be undone.
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={handleDeleteDoubt} className="bg-danger-500 text-white">
-                            Delete
-                        </AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
         </>
     )
 }

@@ -1,29 +1,32 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Doubt } from "../types/get-doubts-type"
 import { CaretUp } from "@phosphor-icons/react";
 import { CaretDown } from "@phosphor-icons/react";
+import { getPublicUrl } from "@/services/upload_file";
+import { useGetUserBasicDetails } from "@/services/getBasicUserDetails";
 
 export const Reply = ({reply}:{reply: Doubt}) => {
 
-    // const [imageUrl, setImageUrl] = useState<string | null>(null);
-    const imageUrl: string | null = null;
+    const [imageUrl, setImageUrl] = useState<string | null>(null);
     const [showReplies, setShowReplies] = useState<boolean>(false);
 
 
-    // useEffect(() => {
-    //     const fetchImageUrl = async () => {
-    //       if (reply.face_file_id) {
-    //         try {
-    //           const url = await getPublicUrl(reply.face_file_id);
-    //           setImageUrl(url);
-    //         } catch (error) {
-    //           console.error("Failed to fetch image URL:", error);
-    //         }
-    //       }
-    //     };
-    
-    //     fetchImageUrl();
-    //   }, [reply.face_file_id]);
+    const { data: userBasicDetails } = useGetUserBasicDetails([reply.user_id]);
+
+    useEffect(() => {
+        const fetchImageUrl = async () => {
+            if (userBasicDetails?.[0]?.face_file_id) {
+                try {
+                    const url = await getPublicUrl(userBasicDetails?.[0]?.face_file_id);
+                    setImageUrl(url);
+                } catch (error) {
+                    console.error('Failed to fetch image URL:', error);
+                }
+            }
+        };
+
+        fetchImageUrl();
+    }, [userBasicDetails?.[0]?.face_file_id]);
       
     return (
         <div className="flex flex-col gap-3 text-regular max-sm:text-caption">

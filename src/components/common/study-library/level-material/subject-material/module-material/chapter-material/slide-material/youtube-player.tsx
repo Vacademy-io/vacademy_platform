@@ -51,7 +51,6 @@ interface YouTubePlayerProps {
   videoTitle?: string;
   onTimeUpdate?: (currentTime: number) => void;
   ms?: number;
-  doubtProgressMarkerVideo?: number | null;
   questions?: Array<{
     id: string;
     question_time_in_millis: number;
@@ -77,7 +76,6 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   videoId,
   onTimeUpdate,
   ms=0,
-  doubtProgressMarkerVideo=null,
   questions = [],
 }) => {
   const { activeItem } = useContentStore();
@@ -1025,23 +1023,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     }
   }, [ms, player, playerReady])
 
-  // Add new useEffect for doubtProgressMarkerVideo
-  useEffect(() => {
-    // Only seek if doubtProgressMarkerVideo is not null and player is ready
-    console.log("doubtProgressMarkerVideo in youtube player: ",doubtProgressMarkerVideo)
-    if (doubtProgressMarkerVideo !== null && player && playerReady) {
-      const totalSeconds = doubtProgressMarkerVideo / 1000;
-      const minutes = Math.floor(totalSeconds / 60);
-      const seconds = Math.floor(totalSeconds % 60);
-      
-      // Update input fields for display consistency
-      setMinutesInput(minutes.toString());
-      setSecondsInput(seconds.toString());
 
-      // Call seekToTimestamp with the calculated totalSeconds
-      seekToTimestamp(totalSeconds);
-    }
-  }, [doubtProgressMarkerVideo, player, playerReady])
 
   const toggleFullscreen = useCallback(async () => {
     if (!playerContainerRef.current) {

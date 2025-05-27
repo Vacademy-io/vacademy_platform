@@ -17,14 +17,14 @@ import { getEpochTimeInMillis } from "./utils";
 import { PdfViewerComponent } from "./pdf-viewer-component";
 import { Preferences } from "@capacitor/preferences";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
+// import { useMediaRefs } from "@/stores/mediaRefsStore";
 
 interface PDFViewerProps {
   documentId?: string;
   pdfUrl: string;
-  progressMarker?: number | null;
 }
 
-const PDFViewer: React.FC<PDFViewerProps> = ({ documentId, pdfUrl, progressMarker }) => {
+const PDFViewer: React.FC<PDFViewerProps> = ({ documentId, pdfUrl }) => {
   const { addActivity } = useTrackingStore();
   const [currentPage, setCurrentPage] = useState<number>(0);
   const [totalPages, setTotalPages] = useState(0);
@@ -51,7 +51,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ documentId, pdfUrl, progressMarke
   const updateIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const { activeItem } = useContentStore();
-
+  // const { pdfRef } = useMediaRefs();
   // Verification state
   const [showVerification, setShowVerification] = useState(false);
   const [verificationCountdown, setVerificationCountdown] = useState(59);
@@ -455,8 +455,8 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ documentId, pdfUrl, progressMarke
   };
 
   useEffect(() => {
-    setCurrentPage(progressMarker || activeItem?.progress_marker || 0);
-  }, [progressMarker || activeItem?.progress_marker]);
+    setCurrentPage(activeItem?.progress_marker || 0);
+  }, [activeItem?.progress_marker]);
 
   const handlePageChange = (e: PageChangeEvent) => {
     const now = getEpochTimeInMillis();
@@ -473,7 +473,8 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ documentId, pdfUrl, progressMarke
         end_time_in_millis: now,
       });
     }
-
+    // console.log("e.currentPage: ", e.currentPage);
+    // pdfRef.current = e.currentPage;
     setCurrentPage(e.currentPage);
     pageStartTime.current = new Date();
 
@@ -591,7 +592,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ documentId, pdfUrl, progressMarke
         pdfUrl={pdfUrl}
         handlePageChange={handlePageChange}
         handleDocumentLoad={handleDocumentLoad}
-        initialPage={progressMarker || activeItem?.progress_marker}
+        initialPage={activeItem?.progress_marker}
       />
     </div>
   );

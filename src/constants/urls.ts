@@ -55,3 +55,4 @@ export const GET_LAST_7_DAYS_PROGRESS = `${BASE_URL}/admin-core-service/learner-
 
 export const ADD_DOUBT = `${BASE_URL}/admin-core-service/institute/v1/doubts/create`
 export const GET_DOUBTS = `${BASE_URL}/admin-core-service/institute/v1/doubts/get-all`
+export const GET_USER_BASIC_DETAILS = `${BASE_URL}/auth-service/v1/user-details/get-basic-details`;

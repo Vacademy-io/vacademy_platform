@@ -82,6 +82,7 @@ public class DoubtsManager {
             if(request.getDoubtAssigneeRequestUserIds()!=null){
                 createDoubtsAssignee(doubtsOpt.get(), request.getDoubtAssigneeRequestUserIds());
             }
+            doubtService.updateOrCreateDoubt(doubtsOpt.get());
 
             if(request.getDeleteAssigneeRequest()!=null){
                 doubtService.deleteAssigneeForDoubt(request.getDeleteAssigneeRequest());

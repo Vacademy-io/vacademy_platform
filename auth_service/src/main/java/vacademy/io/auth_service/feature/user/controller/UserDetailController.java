@@ -42,7 +42,7 @@ public class UserDetailController {
                                                           @RequestParam("instituteId") String instituteId) {
         return ResponseEntity.ok(userService.getUserTopLevelDetails(userDetails,userId,instituteId));
     }
-    @GetMapping("/get-basic-details")
+    @PostMapping("/get-basic-details")
     public ResponseEntity<List<UserBasicDetailsDto>> getUserBasicDetails(@RequestAttribute("user") CustomUserDetails userDetails,
                                                                          @RequestBody List<String> userIds) {
         return ResponseEntity.ok(userDetailService.getUserBasicDetails(userDetails,userIds));

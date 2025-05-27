@@ -5,6 +5,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.faculty.dto.AddFacultyToSubjectAndBatchDTO;
 import vacademy.io.admin_core_service.features.faculty.dto.FacultyAllResponse;
+import vacademy.io.admin_core_service.features.faculty.dto.FacultyBatchSubjectUpdateRequest;
 import vacademy.io.admin_core_service.features.faculty.dto.FacultyRequestFilter;
 import vacademy.io.admin_core_service.features.faculty.service.FacultyService;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -36,6 +37,12 @@ public class FacultyController {
                                                              @RequestParam(value = "pageNo", defaultValue = DEFAULT_PAGE_NUMBER, required = false) int pageNo,
                                                              @RequestParam(value = "pageSize", defaultValue = DEFAULT_PAGE_SIZE, required = false) int pageSize){
         return facultyService.getAllFaculty(userDetails,instituteId, filter,pageNo,pageSize);
+    }
+
+    @PutMapping("/update-assign-subjects-and-batches")
+    public ResponseEntity<String> updateAssignFacultyToSubjectsAndBatches(@RequestBody FacultyBatchSubjectUpdateRequest request,
+                                                                          @RequestAttribute("user") CustomUserDetails userDetails){
+        return ResponseEntity.ok(facultyService.updateFacultyAssignmentsToSubjects(request,userDetails));
     }
 }
 

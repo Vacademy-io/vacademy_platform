@@ -24,12 +24,12 @@ public class NUMERICQuestionTypeBasedStrategy extends IQuestionTypeBasedStrategy
 
             // Validate input objects and prevent NullPointerException
             if (correctAnswerDto == null || markingDto == null || responseDto == null) {
-                setAnswerStatus(QuestionResponseEnum.INCORRECT.name());
+                setAnswerStatus(QuestionResponseEnum.PENDING.name());
                 return 0.0;
             }
 
             // Extracting correct answer
-            List<Double> validAnswers = correctAnswerDto.getData().getValidAnswer();
+            List<Double> validAnswers = correctAnswerDto.getData().getValidAnswers();
 
             // Extracting student's selected answer
             Double attemptedAnswer = responseDto.getResponseData().getValidAnswer();
@@ -37,7 +37,7 @@ public class NUMERICQuestionTypeBasedStrategy extends IQuestionTypeBasedStrategy
             // Extract marking scheme details safely
             NUMERICMarkingDto.DataFields markingData = markingDto.getData();
             if (markingData == null) {
-                setAnswerStatus(QuestionResponseEnum.INCORRECT.name());
+                setAnswerStatus(QuestionResponseEnum.PENDING.name());
                 return 0.0;
             }
 

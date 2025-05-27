@@ -6,6 +6,7 @@ import lombok.*;
 import org.hibernate.annotations.UuidGenerator;
 
 import java.sql.Timestamp;
+import java.util.Date;
 import java.util.UUID;
 
 @Entity
@@ -40,8 +41,10 @@ public class LiveSession {
     private String subject;
     private String status;
 
-    @Column(updatable = false)
-    private Timestamp createdAt = new Timestamp(System.currentTimeMillis());
-    private Timestamp updatedAt = new Timestamp(System.currentTimeMillis());
+    @Column(name = "created_at", insertable = false, updatable = false)
+    private Date createdAt;
+
+    @Column(name = "updated_at", insertable = false, updatable = false)
+    private Date updatedAt;
 
 }

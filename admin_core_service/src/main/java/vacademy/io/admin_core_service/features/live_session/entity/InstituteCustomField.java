@@ -10,6 +10,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.UuidGenerator;
 
+import java.sql.Date;
 import java.sql.Timestamp;
 
 @Entity
@@ -37,10 +38,10 @@ public class InstituteCustomField {
     @Column(name = "type_id", nullable = false)
     private String typeId; // session id
 
-    @Column(name = "created_at")
-    private Timestamp createdAt;
+    @Column(name = "created_at", insertable = false, updatable = false)
+    private Date createdAt;
 
-    @Column(name = "updated_at")
-    private Timestamp updatedAt;
+    @Column(name = "updated_at", insertable = false, updatable = false)
+    private Date updatedAt;
 }
 

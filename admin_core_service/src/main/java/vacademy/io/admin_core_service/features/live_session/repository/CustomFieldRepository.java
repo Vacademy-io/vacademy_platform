@@ -50,11 +50,12 @@ public interface CustomFieldRepository extends JpaRepository<CustomFields, Strin
           s.title AS sessionTitle,
           s.start_time AS startTime,
           s.last_entry_time AS lastEntryTime,
-          s.access_level AS accessLevel
+          s.access_level AS accessLevel,
+          s.subject
         FROM institute_custom_fields icf
         JOIN custom_fields cf ON icf.custom_field_id = cf.id
         JOIN live_session s ON icf.type_id = s.id
-        WHERE icf.type = 'SESSION' AND s.id = :sessionId
+        WHERE icf.type = 'SESSION' AND s.id = :sessionId AND s.status = 'LIVE'
         """, nativeQuery = true)
     List<FlatFieldProjection> getSessionCustomFieldsBySessionId(@Param("sessionId") String sessionId);
 

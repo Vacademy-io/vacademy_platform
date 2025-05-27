@@ -35,9 +35,11 @@ public class SessionSchedule {
     private String customMeetingLink;
     private String customWaitingRoomMediaId;
 
-    @Column(updatable = false)
-    private Timestamp createdAt = new Timestamp(System.currentTimeMillis());
-    private Timestamp updatedAt = new Timestamp(System.currentTimeMillis());
+    @Column(name = "created_at", insertable = false, updatable = false)
+    private Date createdAt;
+
+    @Column(name = "updated_at", insertable = false, updatable = false)
+    private Date updatedAt;
 
     // Getters, Setters, etc.
 }

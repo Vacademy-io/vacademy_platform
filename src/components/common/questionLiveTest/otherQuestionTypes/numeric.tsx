@@ -6,7 +6,8 @@ import { useAssessmentStore } from "@/stores/assessment-store";
 import { MyInput } from "@/components/design-system/input";
 
 export function NumericInputWithKeypad() {
-  const { currentQuestion, answers, setAnswer } = useAssessmentStore();
+  const { currentQuestion, answers, setAnswer, setQuestionState } =
+    useAssessmentStore();
   const [numericValue, setNumericValue] = useState("");
   const [isDecimal, setIsDecimal] = useState(false);
   const [maxDecimals, setMaxDecimals] = useState(0);
@@ -55,36 +56,36 @@ export function NumericInputWithKeypad() {
 
   // Handle keypad button press
   const handleKeyPress = (key: string) => {
+    if (!currentQuestion) return;
+
+    let updated = numericValue;
+
     if (key === "backspace") {
-      const updated = numericValue.slice(0, -1);
-      setNumericValue(updated);
-      if (currentQuestion) {
-        setAnswer(currentQuestion.question_id, [updated]);
-      }
+      updated = numericValue.slice(0, -1);
     } else if (key === "." && isDecimal && !numericValue.includes(".")) {
-      const updated = numericValue + ".";
-      setNumericValue(updated);
-      if (currentQuestion) {
-        setAnswer(currentQuestion.question_id, [updated]);
-      }
+      updated = numericValue + ".";
     } else if (/[0-9]/.test(key)) {
-      const updated = (() => {
-        if (numericValue.includes(".")) {
-          const parts = numericValue.split(".");
-          if (parts[1].length >= maxDecimals) {
-            return numericValue;
-          }
+      if (numericValue.includes(".")) {
+        const parts = numericValue.split(".");
+        if (parts[1].length >= maxDecimals) {
+          return;
         }
-        return numericValue + key;
-      })();
-      setNumericValue(updated);
-      if (currentQuestion) {
-        setAnswer(currentQuestion.question_id, [updated]);
       }
+      updated = numericValue + key;
     }
+
+    setNumericValue(updated);
+    setAnswer(currentQuestion.question_id, [updated]);
+
+    // Update question state
+    setQuestionState(currentQuestion.question_id, {
+      isVisited: true,
+      isAnswered: updated.trim() !== "",
+    });
   };
 
   // Handle direct input changes
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
 
@@ -92,17 +93,15 @@ export function NumericInputWithKeypad() {
       if (/^-?\d*\.?\d*$/.test(value)) {
         if (value.includes(".")) {
           const parts = value.split(".");
-          if (parts[1].length <= maxDecimals) {
-            setNumericValue(value);
-            if (currentQuestion) {
-              setAnswer(currentQuestion.question_id, [value]);
-            }
-          }
-        } else {
-          setNumericValue(value);
-          if (currentQuestion) {
-            setAnswer(currentQuestion.question_id, [value]);
-          }
+          if (parts[1].length > maxDecimals) return;
+        }
+        setNumericValue(value);
+        if (currentQuestion) {
+          setAnswer(currentQuestion.question_id, [value]);
+          setQuestionState(currentQuestion.question_id, {
+            isVisited: true,
+            isAnswered: value.trim() !== "",
+          });
         }
       }
     } else {
@@ -110,6 +109,10 @@ export function NumericInputWithKeypad() {
         setNumericValue(value);
         if (currentQuestion) {
           setAnswer(currentQuestion.question_id, [value]);
+          setQuestionState(currentQuestion.question_id, {
+            isVisited: true,
+            isAnswered: value.trim() !== "",
+          });
         }
       }
     }

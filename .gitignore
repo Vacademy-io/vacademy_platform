@@ -67,3 +67,20 @@
 /frontend-learner-dashboard/*.njsproj
 /frontend-learner-dashboard/*.sln
 /frontend-learner-dashboard/*.sw?
+
+
+/engage-client/node_modules
+/engage-client/dist
+/engage-client/dist-ssr
+/engage-client/*.local
+
+# Editor directories and files
+/engage-client/.vscode/*
+!/engage-client/.vscode/extensions.json
+/engage-client/.idea
+/engage-client/.DS_Store
+/engage-client/*.suo
+/engage-client/*.ntvs*
+/engage-client/*.njsproj
+/engage-client/*.sln
+/engage-client/*.sw?

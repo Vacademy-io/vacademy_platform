@@ -8,7 +8,9 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.live_session.constants.NotificationConstant;
+import vacademy.io.admin_core_service.features.live_session.entity.SessionGuestRegistration;
 import vacademy.io.admin_core_service.features.live_session.service.NotificationServiceEmailVerification;
+import vacademy.io.admin_core_service.features.live_session.service.RegistrationService;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.notification.dto.EmailOTPRequest;
@@ -19,6 +21,9 @@ public class EmailVerificationManager {
 
     @Autowired
     NotificationServiceEmailVerification notificationService;
+
+    @Autowired
+    RegistrationService registrationService;
 
     @Autowired
     private InternalClientUtils internalClientUtils;
@@ -45,7 +50,7 @@ public class EmailVerificationManager {
         return EmailOTPRequest.builder().to(email).service("auth-service").subject("Vacademy | Otp verification. ").name("Vacademy User").build();
     }
 
-    public Boolean verifyOTP(EmailOTPRequest request) {
+    public Boolean verifyOTP(EmailOTPRequest request , String sessionId) {
 
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(clientName, HttpMethod.POST.name(), notificationServerBaseUrl, NotificationConstant.VERIFY_EMAIL_OTP, request);
 
@@ -53,7 +58,9 @@ public class EmailVerificationManager {
         try {
             Boolean isOtpValid = objectMapper.readValue(response.getBody(), new TypeReference<Boolean>() {
             });
-
+            if(isOtpValid){
+                registrationService.registerGuest(request.getTo() , sessionId);
+            }
             return isOtpValid;
         } catch (JsonProcessingException e) {
             throw new VacademyException(e.getMessage());

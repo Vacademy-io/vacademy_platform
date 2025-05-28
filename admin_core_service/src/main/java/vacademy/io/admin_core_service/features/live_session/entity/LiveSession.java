@@ -22,6 +22,8 @@ public class LiveSession {
     @Column(name = "id", nullable = false, unique = true)
     private String Id;
 
+    private String instituteId;
+
     private Timestamp startTime;
     private Timestamp lastEntryTime;
 

@@ -21,12 +21,12 @@ public class EmailVerification {
     private final EmailVerificationManager emailVerificationManager;
 
     @GetMapping("/send-otp")
-    ResponseEntity<String> sendOtp(@RequestParam("email") String Email, @RequestAttribute("user") CustomUserDetails user) {
+    ResponseEntity<String> sendOtp(@RequestParam("email") String Email) {
         return ResponseEntity.ok(emailVerificationManager.requestOtp(Email));
 
     }
     @PostMapping("/verify-otp")
-    ResponseEntity<Boolean> verifyOtp(@RequestBody EmailOTPRequest emailOTPRequest, @RequestAttribute("user") CustomUserDetails user) {
-     return ResponseEntity.ok(emailVerificationManager.verifyOTP(emailOTPRequest));
+    ResponseEntity<Boolean> verifyOtp(@RequestBody EmailOTPRequest emailOTPRequest , @RequestParam("sessionId") String sessionId) {
+     return ResponseEntity.ok(emailVerificationManager.verifyOTP(emailOTPRequest , sessionId));
     }
 }

@@ -25,12 +25,12 @@ public class CustomFieldValues {
     private String sourceType;
 
     @Column(name = "source_id", nullable = false)
-    private Integer sourceId;
+    private String sourceId;
 
     private String type;
 
     @Column(name = "type_id")
-    private Integer typeId;
+    private String typeId;
 
     @Column(columnDefinition = "TEXT")
     private String value;

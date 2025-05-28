@@ -110,4 +110,14 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             nativeQuery = true)
     Long countDistinctLevelsByInstituteId(@Param("instituteId") String instituteId);
 
+    @Query(value = "SELECT DISTINCT TRIM(tag) FROM package p " +
+            "JOIN package_institute pi ON p.id = pi.package_id, " +
+            "LATERAL unnest(string_to_array(p.comma_separated_tags, ',')) AS tag " +
+            "WHERE pi.institute_id = :instituteId " +
+            "AND p.status != 'DELETED' " +
+            "AND p.comma_separated_tags IS NOT NULL " +
+            "AND p.comma_separated_tags != ''",
+            nativeQuery = true)
+    List<String> findAllDistinctTagsByInstituteId(@Param("instituteId") String instituteId);
+
 }

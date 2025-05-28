@@ -81,4 +81,37 @@ public class InstituteInitManager {
         instituteInfoDTO.setPackageGroups(packageGroupMappingRepository.findAllByInstituteId(institute.get().getId()).stream().map((obj)->obj.mapToDTO()).toList());
         return instituteInfoDTO;
     }
+
+    public InstituteInfoDTO getPublicInstituteDetails(String instituteId) {
+
+        Optional<Institute> institute = instituteRepository.findById(instituteId);
+
+        ObjectMapper objectMapper = new ObjectMapper();
+        if (institute.isEmpty()) {
+            throw new VacademyException("Invalid Institute Id");
+        }
+
+        InstituteInfoDTO instituteInfoDTO = new InstituteInfoDTO();
+        instituteInfoDTO.setInstituteName(institute.get().getInstituteName());
+        instituteInfoDTO.setId(institute.get().getId());
+        instituteInfoDTO.setCity(institute.get().getCity());
+        instituteInfoDTO.setCountry(institute.get().getCountry());
+        instituteInfoDTO.setWebsiteUrl(institute.get().getWebsiteUrl());
+        instituteInfoDTO.setPinCode(institute.get().getPinCode());
+        instituteInfoDTO.setInstituteLogoFileId(institute.get().getLogoFileId());
+        instituteInfoDTO.setDescription(institute.get().getDescription());
+        instituteInfoDTO.setHeldBy(institute.get().getHeldBy());
+        instituteInfoDTO.setFoundedDate(institute.get().getFoundedData());
+        instituteInfoDTO.setAddress(institute.get().getAddress());
+        instituteInfoDTO.setType(institute.get().getInstituteType());
+        instituteInfoDTO.setState(institute.get().getState());
+        instituteInfoDTO.setLanguage(institute.get().getLanguage());
+        instituteInfoDTO.setInstituteThemeCode(institute.get().getInstituteThemeCode());
+        instituteInfoDTO.setSubModules(instituteModuleService.getSubmoduleIdsForInstitute(institute.get().getId()));
+        instituteInfoDTO.setSessions(packageRepository.findDistinctSessionsByInstituteIdAndStatusIn(institute.get().getId(), List.of(PackageSessionStatusEnum.ACTIVE.name())).stream().map((SessionDTO::new)).toList());
+        instituteInfoDTO.setLevels(packageRepository.findDistinctLevelsByInstituteIdAndStatusIn(institute.get().getId(), List.of(PackageSessionStatusEnum.ACTIVE.name())).stream().map((LevelDTO::new)).toList());
+        instituteInfoDTO.setPackageGroups(packageGroupMappingRepository.findAllByInstituteId(institute.get().getId()).stream().map((obj)->obj.mapToDTO()).toList());
+        instituteInfoDTO.setTags(packageRepository.findAllDistinctTagsByInstituteId(institute.get().getId()));
+        return instituteInfoDTO;
+    }
 }

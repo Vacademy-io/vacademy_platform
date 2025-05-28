@@ -3,9 +3,9 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { JoinSessionForm } from '@/components/JoinSessionForm';
 import { getSessionDetails } from '@/services/engageApi';
-import { type SessionDetailsResponse } from '@/types';
 import { toast } from "sonner";
 import { Tv2 } from 'lucide-react';
+
 
 export const JoinPage: React.FC = () => {
   const navigate = useNavigate();

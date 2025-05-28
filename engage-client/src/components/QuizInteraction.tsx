@@ -1,10 +1,10 @@
 // src/components/QuizInteraction.tsx
 import React, { useState, useEffect } from 'react';
-import { type AddedQuestion, type Option as QuizOption } from '@/types';
+import { type AddedQuestion } from '@/types';
 import { Button } from '@/components/ui/button';
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox'; // For multiple choice if needed
 import { submitQuizAnswer, type SubmitAnswerPayload } from '@/services/engageApi';
 import { toast } from 'sonner';

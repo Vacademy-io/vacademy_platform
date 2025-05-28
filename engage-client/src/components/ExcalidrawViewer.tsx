@@ -3,11 +3,10 @@ import React, { useEffect, useState, lazy, Suspense, type ComponentType } from '
 import { fetchExcalidrawContent } from '@/lib/excalidrawUtils';
 import { LoadingSpinner } from './LoadingSpinner';
 import { AlertTriangle } from 'lucide-react';
-
 // Use the main export for types, ExcalidrawElement is usually part of this
 import type {
-   ExcalidrawInitialDataState, BinaryFiles, AppState, ExcalidrawProps
-} from '@excalidraw/excalidraw/types'; // Reverted to /types sub-path
+   ExcalidrawInitialDataState, ExcalidrawProps
+} from '@excalidraw/excalidraw/types';
 
 // Explicitly type the lazy loaded component
 const Excalidraw = lazy(() => 

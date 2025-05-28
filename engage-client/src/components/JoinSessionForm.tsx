@@ -1,6 +1,7 @@
 // src/components/JoinSessionForm.tsx
 import React, { useState } from 'react';
 import { zodResolver } from "@hookform/resolvers/zod";
+import type { ControllerRenderProps } from 'react-hook-form';
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { Button } from '@/components/ui/button';
@@ -8,7 +9,6 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Loader2, LogIn } from 'lucide-react';
-import type { ControllerRenderProps, FieldValues } from 'react-hook-form';
 
 const formSchema = z.object({
   inviteCode: z.string().min(4, "Invite code must be at least 4 characters").max(10, "Invite code too long"),

@@ -1,7 +1,7 @@
 // src/hooks/useEngageSession.ts
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { type SessionDetailsResponse, type Slide, type SseEventData, type UserSession } from '@/types';
-import { toast } from "sonner";
+import { toast } from 'sonner';
+import { type SessionDetailsResponse, type SseEventData, type UserSession } from '@/types';
 
 const SSE_BASE_URL = 'https://backend-stage.vacademy.io/community-service/engage/learner';
 const MAX_RECONNECT_ATTEMPTS = 10;
@@ -243,7 +243,7 @@ export const useEngageSession = ({ inviteCode, username, initialSessionData }: U
     };
     newEventSource.addEventListener('session_event_learner', sessionEventListener);
 
-    const heartbeatListener = (event: MessageEvent) => {
+    const heartbeatListener = (_event: MessageEvent) => {
         // console.log("[SSE] (Server) Heartbeat received:", event.data);
         // Can update a "last seen" timestamp if needed
     };

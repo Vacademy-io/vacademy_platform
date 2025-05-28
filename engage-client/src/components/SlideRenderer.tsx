@@ -4,7 +4,7 @@ import { type Slide, SlideSourceType, type UserSession } from '../types';
 import { ExcalidrawViewer } from './ExcalidrawViewer';
 import { QuizInteraction } from './QuizInteraction';
 // import { FeedbackInteraction } from './FeedbackInteraction'; // If distinct
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { FileQuestion } from 'lucide-react';
 
 interface SlideRendererProps {

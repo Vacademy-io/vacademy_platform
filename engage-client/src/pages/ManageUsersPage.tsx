@@ -11,7 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { MoreHorizontal, Trash2, Edit3, MessageSquarePlus, UserPlus, Upload, X, Send, Loader2 as SpinnerIcon } from 'lucide-react'; // Added Send, SpinnerIcon
+import { MoreHorizontal, Trash2, Edit3, MessageSquarePlus, UserPlus, Upload, Send, Loader2 as SpinnerIcon } from 'lucide-react'; // Added Send, SpinnerIcon
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -42,7 +42,6 @@ import { v4 as uuidv4 } from 'uuid';
 import Papa from 'papaparse'; // Keep as default import
 import type { ParseResult, ParseError } from 'papaparse'; // Import types separately
 import { toast } from "sonner";
-import { cn } from "@/lib/utils"; // For conditional classnames
 
 // Define a type for our user data
 interface User {
@@ -214,8 +213,6 @@ const ManageUsersPage: React.FC = () => {
   };
 
   // Placeholder functions for actions - to be implemented later
-  const handleSendWhatsapp = () => console.log("Send WhatsApp to selected:", Array.from(selectedUserIds));
-  
   const openEditUserDialog = (userId: string) => {
     const userToEdit = users.find(user => user.id === userId);
     if (userToEdit) {

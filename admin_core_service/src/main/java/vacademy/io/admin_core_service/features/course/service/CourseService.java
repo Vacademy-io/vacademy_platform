@@ -29,6 +29,7 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -100,6 +101,12 @@ public class CourseService {
         packageEntity.setWhyLearn(addCourseDTO.getWhyLearnHtml());
         packageEntity.setWhoShouldLearn(addCourseDTO.getWhoShouldLearnHtml());
         packageEntity.setAboutTheCourse(addCourseDTO.getAboutTheCourseHtml());
+        if (addCourseDTO.getTags() != null && !addCourseDTO.getTags().isEmpty()) {
+            packageEntity.setTags(addCourseDTO.getTags().stream()
+                                            .map(String::toLowerCase)
+                                            .map(String::trim)
+                                            .collect(Collectors.joining(",")));
+        }
         return packageEntity;
     }
 
@@ -122,6 +129,14 @@ public class CourseService {
         packageEntity.setWhyLearn(packageDTO.getWhyLearnHtml());
         packageEntity.setWhoShouldLearn(packageDTO.getWhoShouldLearnHtml());
         packageEntity.setAboutTheCourse(packageDTO.getAboutTheCourseHtml());
+        if (packageDTO.getTags() != null && !packageDTO.getTags().isEmpty()) {
+            packageEntity.setTags(packageDTO.getTags().stream()
+                                          .map(String::toLowerCase)
+                                          .map(String::trim)
+                                          .collect(Collectors.joining(",")));
+        } else {
+            packageEntity.setTags(null); // Or empty string, depending on desired behavior for empty list
+        }
         packageRepository.save(packageEntity);
         return "Course updated successfully";
     }

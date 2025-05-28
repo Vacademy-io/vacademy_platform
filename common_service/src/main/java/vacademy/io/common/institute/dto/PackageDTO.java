@@ -9,6 +9,11 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import vacademy.io.common.institute.entity.PackageEntity;
 
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.stream.Collectors;
+
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 @JsonIgnoreProperties(ignoreUnknown = true)
 @Data
@@ -26,6 +31,7 @@ public class PackageDTO {
     private String whyLearnHtml;
     private String whoShouldLearnHtml;
     private String aboutTheCourseHtml;
+    private List<String> tags;
 
     // Constructor from Package entity
     public PackageDTO(PackageEntity packageEntity) {
@@ -39,5 +45,12 @@ public class PackageDTO {
         this.whyLearnHtml = packageEntity.getWhyLearn();
         this.whoShouldLearnHtml = packageEntity.getWhoShouldLearn();
         this.aboutTheCourseHtml = packageEntity.getAboutTheCourse();
+        if (packageEntity.getTags() != null && !packageEntity.getTags().isEmpty()) {
+            this.tags = Arrays.stream(packageEntity.getTags().split(","))
+                              .map(String::trim)
+                              .collect(Collectors.toList());
+        } else {
+            this.tags = Collections.emptyList();
+        }
     }
 }

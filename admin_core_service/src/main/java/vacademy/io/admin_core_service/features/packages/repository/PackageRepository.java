@@ -9,6 +9,8 @@ import vacademy.io.common.institute.entity.LevelProjection;
 import vacademy.io.common.institute.entity.PackageEntity;
 import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.common.institute.entity.session.SessionProjection;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 import java.util.List;
 
@@ -119,5 +121,50 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             "AND p.comma_separated_tags != ''",
             nativeQuery = true)
     List<String> findAllDistinctTagsByInstituteId(@Param("instituteId") String instituteId);
+
+    @Query(value = "SELECT DISTINCT p.* FROM package p " +
+            "JOIN package_institute pi ON p.id = pi.package_id " +
+            // Use LEFT JOIN for level filtering to ensure packages are not dropped if levelIds is null/empty
+            // The actual filtering by levelIds will happen in the WHERE clause
+            "LEFT JOIN package_session ps_level_filter ON p.id = ps_level_filter.package_id AND ps_level_filter.status != 'DELETED' " +
+            "WHERE pi.institute_id = :instituteId " +
+            // Status filter: if statuses list is null or empty, consider all non-DELETED. Otherwise, filter by given statuses.
+            "AND ( (:#{#statuses == null || #statuses.isEmpty()} = true AND p.status != 'DELETED') OR (:#{#statuses != null && !#statuses.isEmpty()} = true AND p.status IN (:statuses)) ) " +
+            // Level IDs filter: only apply if levelIds list is provided and not empty
+            "AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR ps_level_filter.level_id IN (:levelIds)) " +
+            // Tags filter: only apply if tags list is provided and not empty. Compare with processed tags from DB.
+            // Assumes tags in :tags are already lowercase and trimmed by service if needed, or process in SQL.
+            // For robust tag matching (package must have ALL specified tags):
+            "AND (:#{#tags == null || #tags.isEmpty()} = true OR " +
+            "     EXISTS (SELECT 1 FROM unnest(string_to_array(p.comma_separated_tags, ',')) s_tag " +
+            "             WHERE TRIM(lower(s_tag)) IN (SELECT TRIM(lower(input_tag)) FROM unnest(ARRAY[:tags]) input_tag))) " + // Check if any tag matches
+            // If you need ALL tags to match (AND logic for tags):
+            // "AND (:#{#tags == null || #tags.isEmpty()} = true OR " +
+            // "     (SELECT count(DISTINCT TRIM(lower(s_tag))) FROM unnest(string_to_array(p.comma_separated_tags, ',')) s_tag " +
+            // "      WHERE TRIM(lower(s_tag)) IN (SELECT TRIM(lower(input_tag)) FROM unnest(ARRAY[:tags]) input_tag)) = CARDINALITY(ARRAY[:tags]) ) " +
+            // Search by name filter: only apply if searchByName is provided and not empty
+            "AND (:#{#searchByName == null || #searchByName.trim().isEmpty()} = true OR p.package_name ILIKE CONCAT('%', :searchByName, '%')) ",
+            countQuery = "SELECT COUNT(DISTINCT p.id) FROM package p " +
+                    "JOIN package_institute pi ON p.id = pi.package_id " +
+                    "LEFT JOIN package_session ps_level_filter ON p.id = ps_level_filter.package_id AND ps_level_filter.status != 'DELETED' " +
+                    "WHERE pi.institute_id = :instituteId " +
+                    "AND ( (:#{#statuses == null || #statuses.isEmpty()} = true AND p.status != 'DELETED') OR (:#{#statuses != null && !#statuses.isEmpty()} = true AND p.status IN (:statuses)) ) " +
+                    "AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR ps_level_filter.level_id IN (:levelIds)) " +
+                    "AND (:#{#tags == null || #tags.isEmpty()} = true OR " +
+                    "     EXISTS (SELECT 1 FROM unnest(string_to_array(p.comma_separated_tags, ',')) s_tag " +
+                    "             WHERE TRIM(lower(s_tag)) IN (SELECT TRIM(lower(input_tag)) FROM unnest(ARRAY[:tags]) input_tag))) " +
+                    // "AND (:#{#tags == null || #tags.isEmpty()} = true OR " +
+                    // "     (SELECT count(DISTINCT TRIM(lower(s_tag))) FROM unnest(string_to_array(p.comma_separated_tags, ',')) s_tag " +
+                    // "      WHERE TRIM(lower(s_tag)) IN (SELECT TRIM(lower(input_tag)) FROM unnest(ARRAY[:tags]) input_tag)) = CARDINALITY(ARRAY[:tags]) ) " +
+                    "AND (:#{#searchByName == null || #searchByName.trim().isEmpty()} = true OR p.package_name ILIKE CONCAT('%', :searchByName, '%')) ",
+            nativeQuery = true)
+    Page<PackageEntity> findPackagesByCriteria(
+            @Param("instituteId") String instituteId,
+            @Param("statuses") List<String> statuses,
+            @Param("levelIds") List<String> levelIds,
+            @Param("tags") List<String> tags, // Expects a list of strings
+            @Param("searchByName") String searchByName,
+            Pageable pageable
+    );
 
 }

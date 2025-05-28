@@ -37,7 +37,6 @@ export const DoubtResolutionSidebar = () => {
     
     const {data, isLoading, isError, fetchNextPage, hasNextPage, isFetchingNextPage, refetch} = useGetDoubts(filter);
 
-    
     const [allDoubts, setAllDoubts] = useState<DoubtType[]>(data?.pages.flatMap(page => page.content) || []);
     
     useEffect(()=>{

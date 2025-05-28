@@ -17,6 +17,7 @@ import { getEpochTimeInMillis } from "./utils";
 import { PdfViewerComponent } from "./pdf-viewer-component";
 import { Preferences } from "@capacitor/preferences";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
+import { useMediaRefsStore } from "@/stores/mediaRefsStore";
 // import { useMediaRefs } from "@/stores/mediaRefsStore";
 
 interface PDFViewerProps {
@@ -72,6 +73,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ documentId, pdfUrl }) => {
   // Track user activity
   const verificationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const inactivityThreshold = 60000;
+  const {setCurrentPdfPage} = useMediaRefsStore();
 
   // Load saved verification time from Capacitor preferences
   useEffect(() => {
@@ -476,6 +478,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ documentId, pdfUrl }) => {
     // console.log("e.currentPage: ", e.currentPage);
     // pdfRef.current = e.currentPage;
     setCurrentPage(e.currentPage);
+    setCurrentPdfPage(e.currentPage);
     pageStartTime.current = new Date();
 
     // Changing page counts as user activity

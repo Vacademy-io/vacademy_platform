@@ -12,6 +12,8 @@ import { DeleteDoubt } from "./DeleteDoubt";
 import { MarkAsResolved } from "./MarkAsResolved";
 import { useGetUserBasicDetails } from "@/services/getBasicUserDetails";
 import { getPublicUrl } from "@/services/upload_file";
+import { formatTime } from "../../youtube-player";
+import { SmallDummyProfile } from "@/assets/svgs";
 
 export const Doubt = ({doubt, refetch}:{doubt:DoubtType, filter:DoubtFilter, refetch: () => void}) => {
     
@@ -69,6 +71,7 @@ export const Doubt = ({doubt, refetch}:{doubt:DoubtType, filter:DoubtFilter, ref
         };
         fetchUserId();
     }, []);
+    
 
     
     return (
@@ -77,20 +80,20 @@ export const Doubt = ({doubt, refetch}:{doubt:DoubtType, filter:DoubtFilter, ref
                 <div className="flex flex-col gap-2">
                     <div className="flex sm:items-center justify-between sm:flex-row flex-col gap-2">
                         <div className="flex items-center gap-2">
-                            <div className="sm:w-10 sm:h-10 w-8 h-8 rounded-full bg-neutral-300">
-                                {/* add image here */}
-                                {imageUrl ? (
-                                    <img
+                        <div className="size-8 rounded-full bg-neutral-300 sm:size-10">
+                            {/* add image here */}
+                            {imageUrl ? (
+                                <img
                                     src={imageUrl}
                                     alt={doubt.name}
                                     className="size-full rounded-lg object-cover "
-                                    />
-                                ) : (
-                                    <></>
-                                )}
-                            </div>
+                                />
+                            ) : (
+                                <SmallDummyProfile />
+                            )}
+                        </div>
                             <div className="text-subtitle text-neutral-700 font-semibold">
-                                {doubt.name}
+                            {userBasicDetails?.[0].name}
                             </div>
                         </div>
                         <div className="flex gap-3 items-center">
@@ -98,15 +101,17 @@ export const Doubt = ({doubt, refetch}:{doubt:DoubtType, filter:DoubtFilter, ref
                             <p className="text-neutral-500 sm:text-body text-caption">{formatISODateTimeReadable(doubt.raised_time)}</p>
                         </div>
                     </div>
-                    <div className="flex items-center justify-between">
-                        <div className="flex gap-2">
-                            <p><span className="font-semibold">Timestamp: </span>{doubt.content_position}</p>
-                            <ArrowSquareOut className="cursor-pointer mt-[3px]" onClick={()=>handleTimeStampClick(parseInt(doubt.content_position || "0"))}/>   
-                        </div>
-                        {userId && doubt.user_id === userId && doubt.replies.length>0 && ( 
-                           <MarkAsResolved doubt={doubt} refetch={refetch}/>
-                        )}
-                    </div>
+                        {(activeItem?.source_type=="VIDEO" || activeItem?.source_type=="DOCUMENT") &&
+                            <div className="flex items-center justify-between">
+                                <div className="flex gap-2">
+                                    <p><span className="font-semibold">Timestamp: </span>{activeItem?.source_type=="VIDEO" ? formatTime(parseInt(doubt.content_position || "0")/1000) : parseInt(doubt.content_position || "0") + 1 }</p>
+                                    <ArrowSquareOut className="cursor-pointer mt-[3px]" onClick={()=>handleTimeStampClick(parseInt(doubt.content_position || "0"))}/>   
+                                </div>
+                                {userId && doubt.user_id === userId && doubt.replies.length>0 && ( 
+                                <MarkAsResolved doubt={doubt} refetch={refetch}/>
+                                )}
+                            </div>
+                        }
                     <div
                         dangerouslySetInnerHTML={{
                             __html:doubt.html_text || '',

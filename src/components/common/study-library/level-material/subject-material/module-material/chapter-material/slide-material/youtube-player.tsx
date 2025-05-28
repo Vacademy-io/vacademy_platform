@@ -35,6 +35,7 @@ import {
 import { Preferences } from "@capacitor/preferences";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import VideoQuestionOverlay from "./video-question-overlay";
+import { useMediaRefsStore } from "@/stores/mediaRefsStore";
 
 // Add the YouTube PlayerState enum to avoid window.YT references
 enum PlayerState {
@@ -72,6 +73,12 @@ interface YouTubePlayerProps {
   }>;
 }
 
+export const formatTime = (timeInSeconds: number) => {
+  const minutes = Math.floor(timeInSeconds / 60);
+  const seconds = Math.floor(timeInSeconds % 60);
+  return `${minutes}:${seconds < 10 ? "0" : ""}${seconds}`;
+};
+
 export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   videoId,
   onTimeUpdate,
@@ -101,6 +108,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   const { syncVideoTrackingData } = useVideoSync();
   const currentStartTimeInEpochRef = useRef<number>(0);
 
+  
   const [isPlayed, setIsPlayed] = useState(true);
   const [player, setPlayer] = useState<YouTubePlayer | null>(null);
   const [playerReady, setPlayerReady] = useState(false);
@@ -116,14 +124,14 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   const [showFullscreenControls, setShowFullscreenControls] = useState(false);
   const fullscreenControlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
-
+  
   // Question state
   const [currentQuestion, setCurrentQuestion] = useState<any>(null);
   const [showQuestion, setShowQuestion] = useState(false);
   const [answeredQuestions, setAnsweredQuestions] = useState<
-    Record<string, boolean>
+  Record<string, boolean>
   >({});
-
+  
   // Verification state
   const [showVerification, setShowVerification] = useState(false);
   const [verificationCountdown, setVerificationCountdown] = useState(59);
@@ -131,7 +139,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   const [verificationInterval] = useState(180);
   const [lastVerificationTime, setLastVerificationTime] = useState(0);
   const verificationTimerRef = useRef<NodeJS.Timeout | null>(null);
-
+  
   // Concentration metrics
   const [tabSwitchCount, setTabSwitchCount] = useState(0);
   const [pauseCount, setPauseCount] = useState(0);
@@ -141,15 +149,19 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     []
   );
   const [concentrationScore, setConcentrationScore] = useState(100); // Start with perfect score
-  // const [timeToQuestionMap, setTimeToQuestionMap] = useState<
-  //   Array<{ time: number; question: YouTubePlayerProps["questions"][number] }>
-  // >([]);
+  
   const [timeToQuestionMap, setTimeToQuestionMap] = useState<
-    Array<{
-      time: number;
-      question: NonNullable<YouTubePlayerProps["questions"]>[number];
-    }>
+  Array<{
+    time: number;
+    question: NonNullable<YouTubePlayerProps["questions"]>[number];
+  }>
   >([]);
+  
+  const {setCurrentYoutubeTime} = useMediaRefsStore();
+  
+  useEffect(()=>{
+      setCurrentYoutubeTime(currentTime);
+  }, [currentTime])
 
   useEffect(() => {
     if (questions && questions.length > 0) {
@@ -1056,11 +1068,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   }, []);
 
   // Format time for display
-  const formatTime = (timeInSeconds: number) => {
-    const minutes = Math.floor(timeInSeconds / 60);
-    const seconds = Math.floor(timeInSeconds % 60);
-    return `${minutes}:${seconds < 10 ? "0" : ""}${seconds}`;
-  };
+  
 
   // Handle progress bar click for seeking
   const handleProgressBarClick = (e: React.MouseEvent<HTMLDivElement>) => {

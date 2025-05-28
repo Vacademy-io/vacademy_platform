@@ -7,6 +7,7 @@ import { useQueryClient } from "@tanstack/react-query";
 export const useAddDoubt = () => {
    const queryClient = useQueryClient();
 
+
    return useMutation({
     mutationFn: async (doubt: DoubtType) => {
         if(doubt.id==undefined){

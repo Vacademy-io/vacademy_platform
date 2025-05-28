@@ -12,6 +12,7 @@ import vacademy.io.assessment_service.features.question_bank.dto.AddQuestionPape
 import vacademy.io.assessment_service.features.question_bank.dto.AddedQuestionPaperResponseDto;
 import vacademy.io.assessment_service.features.question_bank.dto.EditQuestionPaperDTO;
 import vacademy.io.assessment_service.features.question_bank.entity.QuestionPaper;
+import vacademy.io.assessment_service.features.question_bank.enums.QuestionStatusEnum;
 import vacademy.io.assessment_service.features.question_bank.repository.QuestionPaperRepository;
 import vacademy.io.assessment_service.features.question_core.dto.*;
 import vacademy.io.assessment_service.features.question_core.entity.Option;
@@ -311,6 +312,7 @@ public class AddQuestionPaperFromImportManager {
         if (existingQuestion != null) {
             question = existingQuestion;
         }
+        question.setStatus(QuestionStatusEnum.ACTIVE.name());
         if (questionRequest.getParentRichText() != null) {
             question.setParentRichText(AssessmentRichTextData.fromDTO(questionRequest.getParentRichText()));
         }
@@ -374,7 +376,7 @@ public class AddQuestionPaperFromImportManager {
             option.setMediaId(optionDTO.getMediaId());
 
             if (requestEvaluation.getData().getCorrectOptionIds().contains(String.valueOf(optionDTO.getPreviewId()))) {
-                correctOptionIds.add(optionId.toString());
+                correctOptionIds.add(option.getId());
             }
             options.add(option);
         }

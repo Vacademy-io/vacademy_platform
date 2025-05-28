@@ -6,6 +6,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
+import lombok.ToString;
 import vacademy.io.admin_core_service.features.slide.dto.VideoSlideDTO;
 import vacademy.io.admin_core_service.features.slide.enums.SlideStatus;
 

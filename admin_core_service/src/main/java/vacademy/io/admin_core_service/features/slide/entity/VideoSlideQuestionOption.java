@@ -1,6 +1,7 @@
 package vacademy.io.admin_core_service.features.slide.entity;
 
 import jakarta.persistence.*;
+import lombok.ToString;
 import org.hibernate.annotations.UuidGenerator;
 import vacademy.io.admin_core_service.features.common.entity.RichTextData;
 import lombok.Getter;
@@ -17,7 +18,6 @@ public class VideoSlideQuestionOption {
 
     @Id
     @Column(name = "id", nullable = false)
-    @UuidGenerator
     private String id;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -55,5 +55,7 @@ public class VideoSlideQuestionOption {
 
         this.mediaId = dto.getMediaId();
     }
+
+    public VideoSlideQuestionOption() {}
 
 }

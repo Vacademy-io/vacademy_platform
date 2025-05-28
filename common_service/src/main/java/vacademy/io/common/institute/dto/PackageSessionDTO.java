@@ -24,6 +24,7 @@ public class PackageSessionDTO {
     private Date startTime;
     private String status;
     private PackageDTO packageDTO;
+    private GroupDTO group;
 
     // Constructor from PackageSession entity
     public PackageSessionDTO(PackageSession packageSession) {
@@ -31,6 +32,9 @@ public class PackageSessionDTO {
         this.startTime = packageSession.getStartTime();
         this.status = packageSession.getStatus();
 
+        if (packageSession.getGroup() != null) {
+            this.group = new GroupDTO(packageSession.getGroup());
+        }
 
         if (packageSession.getLevel() != null) {
             this.level = new LevelDTO(packageSession.getLevel());

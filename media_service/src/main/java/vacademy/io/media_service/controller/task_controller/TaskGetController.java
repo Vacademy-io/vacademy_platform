@@ -24,7 +24,7 @@ public class TaskGetController {
 
     @GetMapping("/get-all")
     public ResponseEntity<List<TaskStatusDto>> getAllTasks(@RequestParam("instituteId") String instituteId,
-                                                           @RequestParam("taskType") String taskType) {
+                                                           @RequestParam(value = "taskType", required = false) String taskType) {
         return taskStatusManager.getAllTasks(instituteId, taskType);
     }
 

@@ -16,4 +16,6 @@ public class VideoSlideQuestionOptionDTO {
     private RichTextDataDTO explanationTextData;
 
     private String mediaId;
+
+    private String previewId;
 }

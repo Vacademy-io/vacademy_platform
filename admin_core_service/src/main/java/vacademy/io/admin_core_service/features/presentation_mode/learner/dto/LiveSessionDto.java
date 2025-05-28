@@ -30,7 +30,6 @@ public class LiveSessionDto {
     private SseEmitter teacherEmitter;
     @JsonIgnore
     private Map<String, String> slideStatsJson = new ConcurrentHashMap<>();
-
     private Date creationTime;
     private Date startTime;
 }

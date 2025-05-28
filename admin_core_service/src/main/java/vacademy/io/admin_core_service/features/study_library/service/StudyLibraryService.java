@@ -1,11 +1,16 @@
 package vacademy.io.admin_core_service.features.study_library.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.chapter.dto.ChapterDTO;
 import vacademy.io.admin_core_service.features.chapter.dto.ChapterDTOWithDetail;
 import vacademy.io.admin_core_service.features.chapter.entity.ChapterPackageSessionMapping;
+import vacademy.io.admin_core_service.features.chapter.enums.ChapterStatus;
 import vacademy.io.admin_core_service.features.chapter.repository.ChapterPackageSessionMappingRepository;
+import vacademy.io.admin_core_service.features.chapter.repository.ChapterRepository;
 import vacademy.io.admin_core_service.features.course.dto.CourseDTO;
 import vacademy.io.admin_core_service.features.course.dto.CourseDTOWithDetails;
 import vacademy.io.admin_core_service.features.level.repository.LevelRepository;
@@ -14,7 +19,10 @@ import vacademy.io.admin_core_service.features.module.repository.ModuleChapterMa
 import vacademy.io.admin_core_service.features.module.repository.SubjectModuleMappingRepository;
 import vacademy.io.admin_core_service.features.packages.enums.PackageStatusEnum;
 import vacademy.io.admin_core_service.features.packages.repository.PackageRepository;
+import vacademy.io.admin_core_service.features.slide.enums.QuestionStatusEnum;
+import vacademy.io.admin_core_service.features.slide.enums.SlideStatus;
 import vacademy.io.admin_core_service.features.slide.repository.SlideRepository;
+import vacademy.io.admin_core_service.features.study_library.dto.ChapterDTOWithDetails;
 import vacademy.io.admin_core_service.features.study_library.dto.LevelDTOWithDetails;
 import vacademy.io.admin_core_service.features.study_library.dto.ModuleDTOWithDetails;
 import vacademy.io.admin_core_service.features.study_library.dto.SessionDTOWithDetails;
@@ -55,6 +63,12 @@ public class StudyLibraryService {
 
     @Autowired
     private SlideRepository slideRepository;
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    @Autowired
+    private ChapterRepository chapterRepository;
 
     @Autowired
     private ChapterPackageSessionMappingRepository chapterPackageSessionMappingRepository;
@@ -199,6 +213,30 @@ public class StudyLibraryService {
     public LevelDTOWithDetails buildLevelDTOWithDetails(PackageSession packageSession) {
         List<Subject> subjects = subjectRepository.findDistinctSubjectsByPackageSessionId(packageSession.getId());
         return getLevelDTOWithDetails(subjects, packageSession.getLevel());
+    }
+
+    public List<ChapterDTOWithDetails> getChaptersWithSlides(String moduleId, String packageSessionId, CustomUserDetails userDetails) {
+        String jsonDetails = chapterRepository.getChaptersAndSlidesByModuleIdAndPackageSessionId(
+                moduleId,
+                List.of(ChapterStatus.ACTIVE.name()),
+                packageSessionId,
+                List.of(ChapterStatus.ACTIVE.name()),
+                List.of(SlideStatus.PUBLISHED.name(),SlideStatus.UNSYNC.name(),SlideStatus.DRAFT.name()),
+                List.of(SlideStatus.PUBLISHED.name(),SlideStatus.UNSYNC.name(),SlideStatus.DRAFT.name()),
+                List.of(QuestionStatusEnum.ACTIVE.name()));
+        return getChaptersFromJson(jsonDetails);
+    }
+
+    public List<ChapterDTOWithDetails>getChaptersFromJson(String json){
+        if (json == null) {
+            return new ArrayList<>();
+        }
+        try {
+            return new ObjectMapper().readValue(json, new TypeReference<List<ChapterDTOWithDetails>>(){});
+        }
+        catch (JsonProcessingException jsonProcessingException){
+            throw new VacademyException(jsonProcessingException.getMessage());
+        }
     }
 
 }

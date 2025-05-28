@@ -6,7 +6,7 @@ metadata:
   labels:
     app: assessment-service
 spec:
-  replicas: { { .Values.replicaCount } }
+  replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
       app: assessment-service
@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: assessment-service
-          image: { { .Values.services.assessment_service.image.repository } }:{{ .Values.services.assessment_service.image.tag }}
+          image: {{ .Values.services.assessment_service.image.repository }}:{{ .Values.services.assessment_service.image.tag }}
           imagePullPolicy: Always
           resources:
             requests:
@@ -29,7 +29,7 @@ spec:
           livenessProbe:
             httpGet:
               path: /assessment-service/actuator/health
-              port: { { .Values.services.assessment_service.port } }
+              port: {{ .Values.services.assessment_service.port }}
               scheme: HTTP
             initialDelaySeconds: 180
             periodSeconds: 30
@@ -39,7 +39,7 @@ spec:
           startupProbe:
             httpGet:
               path: /assessment-service/actuator/health
-              port: { { .Values.services.assessment_service.port } }
+              port: {{ .Values.services.assessment_service.port }}
               scheme: HTTP
             initialDelaySeconds: 180
             periodSeconds: 30
@@ -49,7 +49,7 @@ spec:
           readinessProbe:
             httpGet:
               path: /assessment-service/actuator/health
-              port: { { .Values.services.assessment_service.port } }
+              port: {{ .Values.services.assessment_service.port }}
               scheme: HTTP
             initialDelaySeconds: 180
             periodSeconds: 30
@@ -57,4 +57,4 @@ spec:
             failureThreshold: 5
             successThreshold: 1
           ports:
-            - containerPort: { { .Values.services.assessment_service.port } }
+            - containerPort: {{ .Values.services.assessment_service.port }}

@@ -8,6 +8,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.UuidGenerator;
+import vacademy.io.common.institute.dto.SubjectTopLevelDto;
 
 import java.util.Date;
 
@@ -44,4 +45,12 @@ public class Subject {
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;
+
+
+    public SubjectTopLevelDto getSubjectTopLevelDto(){
+        return SubjectTopLevelDto.builder()
+                .id(this.id)
+                .name(this.subjectName)
+                .status(this.status).build();
+    }
 }

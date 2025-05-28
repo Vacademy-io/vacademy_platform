@@ -52,4 +52,13 @@ public interface SubjectRepository extends JpaRepository<Subject, String> {
             "AND s.status = 'ACTIVE' ", nativeQuery = true)
     List<Subject> findDistinctSubjectsByPackageSessionId(@Param("packageSessionId") String packageSessionId);
 
+    @Query(value = """
+            SELECT s.* FROM subject s
+            JOIN faculty_subject_package_session_mapping fm ON fm.subject_id = s.id
+            WHERE fm.user_id = :userId
+            AND fm.package_session_id = :packageSessionId
+            """, nativeQuery = true)
+    List<Subject> findSubjectForFaculty(@Param("userId") String userId,
+                                        @Param("packageSessionId") String packageSessionId);
+
 }

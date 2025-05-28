@@ -4,6 +4,7 @@ package vacademy.io.media_service.dto.task_status;
 import com.fasterxml.jackson.databind.PropertyNamingStrategy;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.*;
+import vacademy.io.common.media.dto.FileDetailsDTO;
 
 import java.util.Date;
 
@@ -25,4 +26,5 @@ public class TaskStatusDto {
     private Date createdAt;
     private Date updatedAt;
     private String parentId;
+    private FileDetailsDTO fileDetail;
 }

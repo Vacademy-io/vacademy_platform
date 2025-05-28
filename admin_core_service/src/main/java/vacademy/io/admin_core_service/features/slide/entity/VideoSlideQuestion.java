@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.slide.entity;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import lombok.ToString;
 import org.hibernate.annotations.UuidGenerator;
 import vacademy.io.admin_core_service.features.common.entity.RichTextData;
 import vacademy.io.admin_core_service.features.slide.dto.VideoSlideQuestionDTO;
@@ -16,7 +17,6 @@ import java.util.List;
 public class VideoSlideQuestion {
 
     @Id
-    @UuidGenerator
     @Column(name = "id", nullable = false)
     private String id;
 
@@ -34,6 +34,9 @@ public class VideoSlideQuestion {
 
     @Column(name = "media_id")
     private String mediaId;
+
+    @Column(name = "can_skip")
+    private boolean canSkip = true;
 
     @Column(name = "question_response_type", nullable = false)
     private String questionResponseType;
@@ -92,6 +95,8 @@ public class VideoSlideQuestion {
                     .toList();
         }
     }
+
+    public VideoSlideQuestion() {}
 
 }
 

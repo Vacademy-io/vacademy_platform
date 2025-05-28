@@ -8,6 +8,7 @@ import lombok.NoArgsConstructor;
 import vacademy.io.common.ai.dto.RichTextDataDTO;
 
 import java.sql.Date;
+import java.util.List;
 
 @Data
 @AllArgsConstructor
@@ -28,4 +29,6 @@ public class AssignmentSlideDTO {
     private Integer reAttemptCount;
 
     private String commaSeparatedMediaIds;
+
+    private List<AssignmentSlideQuestionDTO>questions;
 }

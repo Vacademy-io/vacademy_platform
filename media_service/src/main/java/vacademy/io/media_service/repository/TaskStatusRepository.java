@@ -18,6 +18,8 @@ public interface TaskStatusRepository extends JpaRepository<TaskStatus, String> 
 
     List<TaskStatus> findByInstituteIdAndTypeOrderByCreatedAtDesc(String instituteId, String type);
 
+    List<TaskStatus> findTop50ByInstituteIdOrderByCreatedAtDesc(String instituteId);
+
 
     @Query(value = """
             SELECT * FROM task_status\s

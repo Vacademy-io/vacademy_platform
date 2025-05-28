@@ -115,6 +115,7 @@ public class UserInstituteService {
         institute.setLogoFileId(instituteInfo.getInstituteLogoFileId());
         institute.setLetterHeadFileId(instituteInfo.getLetterHeadFileId());
         institute.setInstituteType(instituteInfo.getType());
+        institute.setInstituteThemeCode(instituteInfo.getInstituteThemeCode());
         return institute;
     }
 
@@ -159,6 +160,7 @@ public class UserInstituteService {
         updateIfNotNull(instituteInfoDTO.getCountry(), institute::setCountry);
         updateIfNotNull(instituteInfoDTO.getState(), institute::setState);
         updateIfNotNull(instituteInfoDTO.getCity(), institute::setCity);
+        updateIfNotNull(instituteInfoDTO.getInstituteThemeCode(), institute::setInstituteThemeCode);
         updateIfNotNull(instituteInfoDTO.getPinCode(), institute::setPinCode);
         updateIfNotNull(instituteInfoDTO.getInstituteLogoFileId(), institute::setLogoFileId);
 

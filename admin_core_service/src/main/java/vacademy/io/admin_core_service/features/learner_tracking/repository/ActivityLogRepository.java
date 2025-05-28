@@ -8,10 +8,12 @@ import org.springframework.data.repository.query.Param;
 import vacademy.io.admin_core_service.features.learner_reports.dto.ChapterSlideProgressProjection;
 import vacademy.io.admin_core_service.features.learner_reports.dto.LearnerActivityDataProjection;
 import vacademy.io.admin_core_service.features.learner_reports.dto.SubjectProgressProjection;
+import vacademy.io.admin_core_service.features.learner_tracking.dto.DailyTimeSpentProjection;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.LearnerActivityProjection;
 import vacademy.io.admin_core_service.features.learner_tracking.entity.ActivityLog;
 
 import java.sql.Date;
+import java.sql.Timestamp;
 import java.util.List;
 
 public interface ActivityLogRepository extends JpaRepository<ActivityLog, String> {
@@ -1171,5 +1173,86 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
             @Param("chapterSlideStatusList") List<String> chapterSlideStatusList,
             @Param("learnerStatusList") List<String> learnerStatusList
     );
+
+    @Query(
+            value = """
+    WITH date_series AS (
+        SELECT generate_series(
+            CAST(:startDate AS DATE),
+            CAST(:endDate AS DATE),
+            INTERVAL '1 day'
+        ) AS activity_date
+    ),
+
+    learner_activities AS (
+        SELECT
+            al.user_id,
+            DATE(al.created_at) AS activity_date,
+            EXTRACT(EPOCH FROM (al.end_time - al.start_time)) * 1000 AS activity_duration_millis
+        FROM activity_log al
+
+        -- Join slide
+        JOIN chapter_to_slides ctsm ON al.slide_id = ctsm.slide_id AND ctsm.status IN (:chapterToSlideStatusList)
+        JOIN slide s ON s.id = al.slide_id AND s.status IN (:slideStatusList)
+
+        -- Join chapter
+        JOIN chapter ch ON ch.id = ctsm.chapter_id AND ch.status IN (:chapterStatusList)
+        JOIN chapter_package_session_mapping cpsm 
+            ON cpsm.chapter_id = ch.id 
+            AND cpsm.package_session_id = :packageSessionId 
+            AND cpsm.status IN (:chapterPackageSessionStatusList)
+
+        -- Join module and subject
+        JOIN module_chapter_mapping mcm ON mcm.chapter_id = ch.id
+        JOIN modules m ON m.id = mcm.module_id AND m.status IN (:moduleStatusList)
+        JOIN subject_module_mapping smm ON smm.module_id = m.id
+        JOIN subject subj ON subj.id = smm.subject_id AND subj.status IN (:subjectStatusList)
+        JOIN subject_session ss ON ss.subject_id = subj.id AND ss.session_id = :packageSessionId
+
+        -- Batch users filter
+        JOIN student_session_institute_group_mapping ssigm 
+            ON ssigm.user_id = al.user_id 
+            AND ssigm.package_session_id = :packageSessionId
+            AND ssigm.status IN (:learnerStatusList)
+        WHERE al.created_at BETWEEN :startDate AND :endDate
+    ),
+
+    daily_user_time AS (
+        SELECT
+            user_id,
+            activity_date,
+            SUM(activity_duration_millis) AS time_spent_millis
+        FROM learner_activities
+        GROUP BY user_id, activity_date
+    )
+
+    SELECT
+        ds.activity_date AS activityDate,
+        COALESCE(dut.time_spent_millis, 0) AS timeSpentByUserMillis,
+        (
+            SELECT AVG(d2.time_spent_millis)
+            FROM daily_user_time d2
+            WHERE d2.activity_date = ds.activity_date
+        ) AS avgTimeSpentByBatchMillis
+    FROM date_series ds
+    LEFT JOIN daily_user_time dut ON ds.activity_date = dut.activity_date AND dut.user_id = :userId
+    ORDER BY ds.activity_date
+    """,
+            nativeQuery = true
+    )
+    List<DailyTimeSpentProjection> getDailyUserAndBatchTimeSpent(
+            @Param("userId") String userId,
+            @Param("packageSessionId") String packageSessionId,
+            @Param("startDate") Timestamp startDate,
+            @Param("endDate") Timestamp endDate,
+            @Param("slideStatusList") List<String> slideStatusList,
+            @Param("chapterToSlideStatusList") List<String> chapterToSlideStatusList,
+            @Param("chapterStatusList") List<String> chapterStatusList,
+            @Param("chapterPackageSessionStatusList") List<String> chapterPackageSessionStatusList,
+            @Param("moduleStatusList") List<String> moduleStatusList,
+            @Param("subjectStatusList") List<String> subjectStatusList,
+            @Param("learnerStatusList") List<String> learnerStatusList
+    );
+
 
 }

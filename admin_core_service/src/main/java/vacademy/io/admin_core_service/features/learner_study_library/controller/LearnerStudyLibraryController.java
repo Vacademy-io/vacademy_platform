@@ -4,6 +4,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.learner_study_library.dto.LearnerModuleDTOWithDetails;
+import vacademy.io.admin_core_service.features.learner_study_library.dto.LearnerSlidesDetailDTO;
+import vacademy.io.admin_core_service.features.learner_study_library.dto.LearnerSubjectProjection;
 import vacademy.io.admin_core_service.features.learner_study_library.service.LearnerStudyLibraryService;
 import vacademy.io.admin_core_service.features.slide.dto.SlideDTO;
 import vacademy.io.admin_core_service.features.slide.dto.SlideDetailProjection;
@@ -19,7 +21,7 @@ public class LearnerStudyLibraryController {
     private LearnerStudyLibraryService learnerStudyLibraryService;
 
     @GetMapping("/init-details")
-    public ResponseEntity<List<SubjectDTO>> getLearnerStudyLibraryInitDetails(
+    public ResponseEntity<List<LearnerSubjectProjection>> getLearnerStudyLibraryInitDetails(
             @RequestParam String packageSessionId,
             @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok(learnerStudyLibraryService.getSubjectsByPackageSessionId(packageSessionId, user));
@@ -36,7 +38,7 @@ public class LearnerStudyLibraryController {
     }
 
     @GetMapping("/slides")
-    public ResponseEntity<List<SlideDTO>> getLearnerSlidesByChapterId(@RequestParam String chapterId, @RequestAttribute("user") CustomUserDetails user) {
+    public ResponseEntity<List<LearnerSlidesDetailDTO>> getLearnerSlidesByChapterId(@RequestParam String chapterId, @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok(learnerStudyLibraryService.getLearnerSlides(chapterId, user));
     }
 }

@@ -18,4 +18,11 @@ public class AddCourseDTO {
     private String thumbnailFileId;
     private Boolean containLevels;
     private List<AddNewSessionDTO> sessions;
+    private Boolean isCoursePublishedToCatalaouge;
+    private String coursePreviewImageMediaId;
+    private String courseBannerMediaId;
+    private String courseMediaId;
+    private String whyLearnHtml;
+    private String whoShouldLearnHtml;
+    private String aboutTheCourseHtml;
 }

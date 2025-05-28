@@ -93,6 +93,13 @@ public class CourseService {
         packageEntity.setPackageName(addCourseDTO.getCourseName());
         packageEntity.setThumbnailFileId(addCourseDTO.getThumbnailFileId());
         packageEntity.setStatus(PackageStatusEnum.ACTIVE.name());
+        packageEntity.setIsCoursePublishedToCatalaouge(addCourseDTO.getIsCoursePublishedToCatalaouge());
+        packageEntity.setCoursePreviewImageMediaId(addCourseDTO.getCoursePreviewImageMediaId());
+        packageEntity.setCourseBannerMediaId(addCourseDTO.getCourseBannerMediaId());
+        packageEntity.setCourseMediaId(addCourseDTO.getCourseMediaId());
+        packageEntity.setWhyLearn(addCourseDTO.getWhyLearnHtml());
+        packageEntity.setWhoShouldLearn(addCourseDTO.getWhoShouldLearnHtml());
+        packageEntity.setAboutTheCourse(addCourseDTO.getAboutTheCourseHtml());
         return packageEntity;
     }
 
@@ -108,6 +115,13 @@ public class CourseService {
         PackageEntity packageEntity = packageRepository.findById(packageId).orElseThrow(() -> new VacademyException("Course not found"));
         packageEntity.setPackageName(packageDTO.getPackageName());
         packageEntity.setThumbnailFileId(packageDTO.getThumbnailFileId());
+        packageEntity.setIsCoursePublishedToCatalaouge(packageDTO.getIsCoursePublishedToCatalaouge());
+        packageEntity.setCoursePreviewImageMediaId(packageDTO.getCoursePreviewImageMediaId());
+        packageEntity.setCourseBannerMediaId(packageDTO.getCourseBannerMediaId());
+        packageEntity.setCourseMediaId(packageDTO.getCourseMediaId());
+        packageEntity.setWhyLearn(packageDTO.getWhyLearnHtml());
+        packageEntity.setWhoShouldLearn(packageDTO.getWhoShouldLearnHtml());
+        packageEntity.setAboutTheCourse(packageDTO.getAboutTheCourseHtml());
         packageRepository.save(packageEntity);
         return "Course updated successfully";
     }

@@ -19,12 +19,6 @@ import { useTheme } from "@/providers/theme/theme-provider";
 import { fetchAndStoreInstituteDetails } from "@/services/fetchAndStoreInstituteDetails";
 import { fetchAndStoreStudentDetails } from "@/services/studentDetails";
 
-// Capacitor Storage keys
-const CapacitorStorage = {
-  accessToken: "accessToken",
-  refreshToken: "refreshToken",
-};
-
 export const getFromStorage = async (key: string) => {
   const result = await Preferences.get({ key });
   return result.value;
@@ -49,8 +43,8 @@ export function LoginForm() {
   useEffect(() => {
     const handleOAuthCallback = async () => {
       const urlParams = new URLSearchParams(window.location.search);
-      const accessToken = urlParams.get("access_token");
-      const refreshToken = urlParams.get("refresh_token");
+      const accessToken = urlParams.get("accessToken");
+      const refreshToken = urlParams.get("refreshToken");
       const error = urlParams.get("error");
 
       if (error) {
@@ -58,12 +52,11 @@ export function LoginForm() {
         toast.error("Authentication failed. Please try again.");
         return;
       }
-
       if (accessToken && refreshToken) {
         try {
           // Store tokens in Capacitor Preferences with specific keys
-          await setToStorage(CapacitorStorage.accessToken, accessToken);
-          await setToStorage(CapacitorStorage.refreshToken, refreshToken);
+          await setToStorage("accessToken", accessToken);
+          await setToStorage("refreshToken", refreshToken);
 
           // Also store in the regular token storage for compatibility
           await setTokenInStorage(TokenKey.accessToken, accessToken);
@@ -81,7 +74,7 @@ export function LoginForm() {
     };
 
     handleOAuthCallback();
-  }, [navigate]);
+  }, []);
 
   // Handle successful login logic
   const handleSuccessfulLogin = async (
@@ -171,6 +164,7 @@ export function LoginForm() {
     try {
       // Create state object with redirect information
       const stateObj = {
+        // from: "http://localhost:8100/login",
         from: "https://learner.vacademy.io/login",
         account_type: "",
       };

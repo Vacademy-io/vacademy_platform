@@ -47,6 +47,7 @@ public class DoubtService {
                                                Date endDate,
                                                List<String> userIds,
                                                List<String> status,
+                                               List<String> batchIds,
                                                Pageable pageable) {
         List<String> filteredContentTypes = Optional.ofNullable(contentTypes).orElse(Collections.emptyList());
         List<String> filteredContentPositions = Optional.ofNullable(contentPositions).orElse(Collections.emptyList());
@@ -54,8 +55,9 @@ public class DoubtService {
         List<String> filteredSourceIds = Optional.ofNullable(sourceIds).orElse(Collections.emptyList());
         List<String> filteredUserIds = Optional.ofNullable(userIds).orElse(Collections.emptyList());
         List<String> filteredStatus = Optional.ofNullable(status).orElse(Collections.emptyList());
+        List<String> filteredBatchIds = Optional.ofNullable(batchIds).orElse(Collections.emptyList());
 
-        return doubtsRepository.findDoubtsWithFilter(filteredContentPositions,filteredContentTypes,filteredSources,filteredSourceIds,filteredUserIds,filteredStatus,startDate,endDate,pageable);
+        return doubtsRepository.findDoubtsWithFilter(filteredContentPositions,filteredContentTypes,filteredSources,filteredSourceIds,filteredUserIds,filteredStatus,filteredBatchIds,startDate,endDate,pageable);
     }
 
     public List<DoubtsDto> createDtoFromDoubts(List<Doubts> allDoubts) {

@@ -119,7 +119,7 @@ public class DoubtsManager {
         Pageable pageable = PageRequest.of(pageNo,pageSize,sortColumns);
 
         Page<Doubts> paginatedDoubts = doubtService.getAllDoubtsWithFilter(filter.getContentTypes(), filter.getContentPositions(),filter.getSources(),
-                filter.getSourceIds(),filter.getStartDate(),filter.getEndDate(), filter.getUserIds(), filter.getStatus(), pageable);
+                filter.getSourceIds(),filter.getStartDate(),filter.getEndDate(), filter.getUserIds(), filter.getStatus(), filter.getBatchIds(), pageable);
 
 
         return ResponseEntity.ok(createDoubtAllResponse(paginatedDoubts));

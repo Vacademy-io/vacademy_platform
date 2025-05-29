@@ -13,6 +13,7 @@ import QuestionSlide from "./question-slide";
 import AssignmentSlide from "./assignment-slide";
 import VideoQuestionOverlay from "./video-question-overlay";
 import CustomVideoPlayer from "./custom-video-player";
+import PresentationViewer from "./presentation-viewer";
 
 export const SlideMaterial = () => {
   const { activeItem } = useContentStore();
@@ -208,6 +209,17 @@ export const SlideMaterial = () => {
             );
             if (!url) throw new Error("Error generating PDF URL");
             setContent(<PDFViewer pdfUrl={url} />);
+          } else if (activeItem.document_slide?.type === "PRESENTATION") {
+            const url = await getPublicUrl(
+              activeItem.document_slide.published_data || ""
+            );
+            if (!url) throw new Error("Failed to retrieve presentation URL");
+            setContent(
+              <PresentationViewer
+                presentationUrl={url}
+                documentId={activeItem.id}
+              />
+            );
           }
           break;
 

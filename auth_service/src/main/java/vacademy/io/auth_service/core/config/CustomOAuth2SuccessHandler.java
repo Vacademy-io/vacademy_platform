@@ -173,7 +173,7 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
 
     private JwtResponseDto getTokenByClientUrlAndUserEmail(String clientUrl, String fullName, String email) {
         try {
-            if (clientUrl.contains("learner")) {
+            if (clientUrl.contains("localhost")) {
                 return learnerOAuth2Manager.loginUserByEmail(email);
             } else {
                 if (clientUrl.contains("signup")) {

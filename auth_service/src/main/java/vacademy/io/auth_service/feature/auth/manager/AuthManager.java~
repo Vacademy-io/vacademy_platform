@@ -206,9 +206,6 @@ public class AuthManager {
     public JwtResponseDto loginViaOtp(AuthRequestDto authRequestDTO) {
         validateOtp(authRequestDTO);
         User user = getUserByEmail(authRequestDTO.getEmail());
-        if (!user.isRootUser()){
-            throw new UsernameNotFoundException("invalid user request..!!");
-        }
         return generateJwtResponse(authRequestDTO, user);
     }
 

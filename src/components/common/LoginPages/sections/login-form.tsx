@@ -171,7 +171,7 @@ export function LoginForm() {
     try {
       // Create state object with redirect information
       const stateObj = {
-        from: "http://localhost:8100/login",
+        from: "https://learner.vacademy.io/login",
         account_type: "",
       };
 

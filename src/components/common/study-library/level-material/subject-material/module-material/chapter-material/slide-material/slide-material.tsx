@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import PDFViewer from "./pdf-viewer";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import { EmptySlideMaterial } from "@/assets/svgs";
-import YouTubePlayerWrapper, { YouTubePlayerComp } from "./youtube-player";
+import YouTubePlayerWrapper from "./youtube-player";
 import { convertHtmlToPdf } from "@/utils/html-to-pdf";
 import { useFileUpload } from "@/hooks/use-file-upload";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
@@ -193,6 +193,15 @@ export const SlideMaterial = () => {
               setContent(
                 <div key={`video-${activeItem.id}`} className="h-full w-full">
                   <YouTubePlayerWrapper
+                    videoId={extractVideoId(
+                      activeItem.video_slide?.published_url ||
+                        activeItem.video_slide?.url ||
+                        ""
+                    )}
+                    onTimeUpdate={handleVideoTimeUpdate}
+                    ref={playerRef}
+                  />
+                  {/* <YouTubePlayerWrapper
                   ref={playerRef}
                   videoId={extractVideoId(
                     activeItem.video_slide?.published_url ||
@@ -201,7 +210,7 @@ export const SlideMaterial = () => {
                   )}
                   onTimeUpdate={handleVideoTimeUpdate}
                   questions={activeItem.video_slide?.questions}
-                  />
+                  /> */}
                 </div>
               );
               break;

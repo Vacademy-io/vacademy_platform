@@ -19,3 +19,12 @@ export type DashbaordResponse = {
   tests_assigned: number;
   slides: DashboardSlide[];
 };
+
+
+export type UserActivity = {
+  time_spent_by_user_millis: number;
+  activity_date: string; // ISO 8601 date string
+  avg_time_spent_by_batch_millis: number;
+};
+
+export type UserActivityArray = UserActivity[];

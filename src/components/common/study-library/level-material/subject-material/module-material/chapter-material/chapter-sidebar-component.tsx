@@ -5,8 +5,8 @@ import { getModuleName } from "@/utils/study-library/get-name-by-id/getModuleNam
 import { getSubjectName } from "@/utils/study-library/get-name-by-id/getSubjectNameById";
 import { ChevronRightIcon } from "@radix-ui/react-icons";
 import { useNavigate, useRouter } from "@tanstack/react-router";
-import { Dispatch, SetStateAction } from "react";
-
+import { Dispatch, SetStateAction, useEffect, useState } from "react";
+import { useStudyLibraryStore } from "@/stores/study-library/use-study-library-store";
 interface ChapterSidebarComponentProps {
     currentModuleId: string;
     setCurrentModuleId: Dispatch<SetStateAction<string>>;
@@ -21,6 +21,7 @@ export const ChapterSidebarComponent = ({
     const { subjectId, moduleId } = router.state.location.search;
     const { open } = useSidebar();
     const { modulesWithChaptersData } = useModulesWithChaptersStore();
+    const { studyLibraryData } = useStudyLibraryStore();
 
     if ( !subjectId || !moduleId) return <p>Error in route</p>;
 
@@ -35,9 +36,15 @@ export const ChapterSidebarComponent = ({
         });
     };
 
-    const subjectName = getSubjectName(subjectId);
-    const moduleName = getModuleName(moduleId);
-    const truncatedModule = truncateString(moduleName, 10);
+    const [subjectName, setSubjectName] = useState("");
+    const [moduleName, setModuleName] = useState("");
+    const [truncatedModule, setTruncatedModule] = useState("");
+
+    useEffect(()=>{
+        setSubjectName(getSubjectName(subjectId, studyLibraryData) || "");
+        setModuleName(getModuleName(moduleId, modulesWithChaptersData) || "");
+        setTruncatedModule(truncateString(moduleName, 10));
+    }, [studyLibraryData, modulesWithChaptersData])
 
     return (
         <div className={`flex w-full flex-col gap-6 ${open ? "px-10" : "px-6"}`}>

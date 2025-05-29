@@ -52,3 +52,8 @@ export const GET_OPEN_REGISTRATION_DETAILS = `${BASE_URL}/assessment-service/ope
 export const GET_PARTICIPANTS_STATUS = `${BASE_URL}/assessment-service/open-registrations/v1/participant-status`;
 export const REGISTER_PARTICIPANT_URL = `${BASE_URL}/assessment-service/open-registrations/register/v1/`;
 export const GET_USERID_URL = `${BASE_URL}/admin-core-service/institute/open_learner/v1/add-institute_learner`;
+export const GET_LAST_7_DAYS_PROGRESS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/learner/v1/daily-time-spent`
+
+export const ADD_DOUBT = `${BASE_URL}/admin-core-service/institute/v1/doubts/create`
+export const GET_DOUBTS = `${BASE_URL}/admin-core-service/institute/v1/doubts/get-all`
+export const GET_USER_BASIC_DETAILS = `${BASE_URL}/auth-service/v1/user-details/get-basic-details`;

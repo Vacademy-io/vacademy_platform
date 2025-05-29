@@ -49,11 +49,9 @@ authenticatedAxiosInstance.interceptors.request.use(
   async (request) => {
     const accessToken = await getTokenFromStorage(TokenKey.accessToken);
     const instituteId = await getTokenFromStorage("InstituteId");
-    console.log("Request interceptor called", instituteId);
 
     // Add instituteId to headers if available
     if (instituteId) {
-      console.log("Institute ID:", instituteId);
       request.headers["clientId"] = instituteId;
       request.headers["X-Institute-Id"] = instituteId;
     }

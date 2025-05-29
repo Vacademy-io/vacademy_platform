@@ -1,13 +1,28 @@
-import { MyTable } from "@/components/design-system/table"
-import { ColumnDef } from "@tanstack/react-table"
+import { MyTable } from "@/components/design-system/table";
+import { ColumnDef } from "@tanstack/react-table";
+import { UserActivityArray } from "../-types/dashboard-data-types";
+import { formatTimeFromMillis } from "@/helpers/formatTimeFromMiliseconds";
+import dayjs from "dayjs";
 
 interface StudentProgress {
     date: string;
-    time_spent: number;
-    time_spent_batch: number;
+    time_spent: string;
+    time_spent_batch: string;
+    raw_date: string; // For sorting purposes
 }
 
-export const StudentProgressTable = () => {
+export const StudentProgressTable = ({ userActivity }: { userActivity: UserActivityArray }) => {
+    // Transform API data for the table
+    const tableData: StudentProgress[] = userActivity.map(item => ({
+        raw_date: item.activity_date, // Keep original date for sorting
+        date: dayjs(item.activity_date).format("DD MMM YYYY"),
+        time_spent: formatTimeFromMillis(item.time_spent_by_user_millis),
+        time_spent_batch: formatTimeFromMillis(item.avg_time_spent_by_batch_millis)
+    }));
+    
+    // Sort by date, newest first
+    tableData.sort((a, b) => new Date(b.raw_date).getTime() - new Date(a.raw_date).getTime());
+
     const columns: ColumnDef<StudentProgress>[] = [
         {
             accessorKey: "date",
@@ -15,37 +30,22 @@ export const StudentProgressTable = () => {
         },
         {
             accessorKey: "time_spent",
-            header: "Time Spent",
+            header: "Your Time Spent",
         },
         {
             accessorKey: "time_spent_batch",
-            header: "Time Spent by Batch(Avg)",
+            header: "Batch Average Time",
         }
     ];
 
     return (
         <MyTable
             data={{
-                content: [{
-                    date: "2024-01-01",
-                    time_spent: 10,
-                    time_spent_batch: 10,
-                },
-                {
-                    date: "2024-01-02",
-                    time_spent: 20,
-                    time_spent_batch: 20,
-                },
-                {
-                    date: "2024-01-03",
-                    time_spent: 30,
-                    time_spent_batch: 30,
-                },
-                ],
+                content: tableData,
                 total_pages: 1,
                 page_no: 0,
-                page_size: 7,
-                total_elements: 7,
+                page_size: tableData.length,
+                total_elements: tableData.length,
                 last: true
             }}
             columns={columns}

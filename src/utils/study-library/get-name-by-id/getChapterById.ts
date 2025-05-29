@@ -1,8 +1,7 @@
 // utils/chapter.ts
-import { useModulesWithChaptersStore } from "@/stores/study-library/use-modules-with-chapters-store";
+import { ModulesWithChapters } from "@/stores/study-library/use-modules-with-chapters-store";
 
-export const getChapterName = (chapterId: string): string | null => {
-    const modulesWithChaptersData = useModulesWithChaptersStore.getState().modulesWithChaptersData;
+export const getChapterName = (chapterId: string, modulesWithChaptersData:  ModulesWithChapters[] | null): string | null => {
     
     if (!modulesWithChaptersData) return null;
 

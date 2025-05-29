@@ -1,55 +1,70 @@
-"use client";
-
 import { useEffect, useRef, useState } from "react";
 import PDFViewer from "./pdf-viewer";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import { EmptySlideMaterial } from "@/assets/svgs";
-import YouTubePlayerWrapper from "./youtube-player";
+import YouTubePlayerWrapper, { YouTubePlayerComp } from "./youtube-player";
 import { convertHtmlToPdf } from "@/utils/html-to-pdf";
 import { useFileUpload } from "@/hooks/use-file-upload";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { extractVideoId } from "@/utils/study-library/tracking/extractVideoId";
+import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
+import { ChatText } from "@phosphor-icons/react";
+import { DoubtResolutionSidebar } from "./doubt-resolution-sidebar/components/sidebar";
+import CustomVideoPlayer from "./custom-video-player";
 import QuestionSlide from "./question-slide";
 import AssignmentSlide from "./assignment-slide";
 import VideoQuestionOverlay from "./video-question-overlay";
-import CustomVideoPlayer from "./custom-video-player";
 import PresentationViewer from "./presentation-viewer";
 
 export const SlideMaterial = () => {
   const { activeItem } = useContentStore();
   const selectionRef = useRef(null);
+  const loadGenerationRef = useRef(0);
   const [heading, setHeading] = useState(activeItem?.title || "");
   const [content, setContent] = useState<JSX.Element | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { uploadFile, getPublicUrl } = useFileUpload();
+  const { toggleSidebar, open } = useSidebar();
+  // const { currentPdfPage } = useMediaRefsStore();
 
   const [currentVideoQuestion, setCurrentVideoQuestion] = useState<any>(null);
   const [showVideoQuestion, setShowVideoQuestion] = useState(false);
   const playerRef = useRef<any>(null);
 
+  //   useEffect(() => {
+  //     console.log("currentPdfPage: ", currentPdfPage);
+  //   }, [currentPdfPage]);
+
   const handleConvertAndUpload = async (
     htmlString: string | null
   ): Promise<string | null> => {
-    if (!htmlString) return null;
+    if (htmlString == null) return null;
     try {
       setIsUploading(true);
       setError(null);
+
+      // Step 1: Convert HTML to PDF
       const pdfBlob = await convertHtmlToPdf(htmlString);
+
+      // Step 2: Convert Blob to File
       const pdfFile = new File([pdfBlob], "document.pdf", {
         type: "application/pdf",
       });
+
+      // Step 3: Upload the PDF file
       const uploadedFileId = await uploadFile({
         file: pdfFile,
         setIsUploading,
         userId: "your-user-id",
         source: "PDF",
-        sourceId: "",
-        publicUrl: true,
+        sourceId: "", // Optional
+        publicUrl: true, // Set to true to get a public URL
       });
+
       if (uploadedFileId) {
         const publicUrl = await getPublicUrl(uploadedFileId);
-        return publicUrl;
+        return publicUrl; // Return the public URL as a string
       }
     } catch (error) {
       console.error("Upload Failed:", error);
@@ -57,7 +72,7 @@ export const SlideMaterial = () => {
     } finally {
       setIsUploading(false);
     }
-    return null;
+    return null; // Return null if the upload fails
   };
 
   const handleVideoTimeUpdate = (currentTime: number) => {
@@ -124,9 +139,12 @@ export const SlideMaterial = () => {
     }
   };
 
-  const loadContent = async () => {
+  const loadContent = async (generationId: number) => {
+    if (generationId !== loadGenerationRef.current) return;
     setError(null);
+
     if (!activeItem) {
+      if (generationId !== loadGenerationRef.current) return;
       setContent(
         <div className="flex h-[500px] flex-col items-center justify-center rounded-lg py-10">
           <EmptySlideMaterial />
@@ -137,60 +155,90 @@ export const SlideMaterial = () => {
       );
       return;
     }
+
+    if (generationId !== loadGenerationRef.current) return;
     setContent(<DashboardLoader />);
 
     try {
       switch (activeItem.source_type) {
         case "VIDEO": {
+          if (generationId !== loadGenerationRef.current) return;
           const videoSourceType = activeItem.video_slide?.source_type;
           const videoStatus = activeItem.status;
-
           const fileId =
             videoStatus === "PUBLISHED"
               ? activeItem.video_slide?.published_url
               : activeItem.video_slide?.url;
 
-          if (videoSourceType === "FILE_ID") {
-            if (!fileId) {
-              throw new Error("Video file ID not available");
+          switch (videoSourceType) {
+            case "FILE_ID": {
+              if (!fileId) throw new Error("Video file ID not available");
+              const videoUrl = await getPublicUrl(fileId);
+              if (!videoUrl) throw new Error("Failed to retrieve video URL");
+              setContent(
+                <div
+                  key={`video-${activeItem.id}`}
+                  className="h-full w-full overflow-hidden rounded-lg"
+                >
+                  <CustomVideoPlayer
+                    videoUrl={videoUrl}
+                    onTimeUpdate={handleVideoTimeUpdate}
+                    ref={playerRef}
+                  />
+                </div>
+              );
+              break;
             }
-
-            const videoUrl = await getPublicUrl(fileId);
-            if (!videoUrl) throw new Error("Failed to retrieve video URL");
-
-            setContent(
-              <div
-                key={`video-${activeItem.id}`}
-                className="h-full w-full overflow-hidden rounded-lg"
-              >
-                <CustomVideoPlayer
-                  videoUrl={videoUrl}
-                  onTimeUpdate={handleVideoTimeUpdate}
+            default:
+              setContent(
+                <div key={`video-${activeItem.id}`} className="h-full w-full">
+                  <YouTubePlayerWrapper
                   ref={playerRef}
-                />
-              </div>
-            );
-          } else {
-            setContent(
-              <div key={`video-${activeItem.id}`} className="h-full w-full">
-                {/* <YouTubePlayerComp
                   videoId={extractVideoId(
                     activeItem.video_slide?.published_url ||
-                      activeItem.video_slide?.url ||
-                      ""
-                  )}
-                  // onTimeUpdate={handleVideoTimeUpdate}
-                /> */}
-                <YouTubePlayerWrapper
-                  videoId={extractVideoId(
-                    activeItem.video_slide?.published_url ||
-                      activeItem.video_slide?.url ||
-                      ""
+                    activeItem.video_slide?.url ||
+                    ""
                   )}
                   onTimeUpdate={handleVideoTimeUpdate}
-                  ref={playerRef}
-                />
-              </div>
+                  questions={activeItem.video_slide?.questions}
+                  />
+                </div>
+              );
+              break;
+          }
+          break;
+        }
+
+        // case "DOCUMENT": {
+        //     switch (activeItem.document_slide?.type) {
+        //         case "PDF": {
+        //             const url = await getPublicUrl(activeItem?.document_slide?.published_data || "");
+        //             if (generationId !== loadGenerationRef.current) return;
+        //             if (!url) throw new Error("Failed to retrieve PDF URL");
+        //             setContent(<PDFViewer pdfUrl={url} />);
+        //             break;
+        //         }
+        //         case "DOC": {
+        //             const url = await handleConvertAndUpload(activeItem.document_slide?.published_data);
+        //             if (generationId !== loadGenerationRef.current) return;
+        //             if (url == null) throw new Error("Error generating PDF URL");
+        //             setContent(<PDFViewer pdfUrl={url} />);
+        //             break;
+        //         }
+        //         default:
+        //             // Handle unknown document type if needed
+        //             break;
+        //     }
+        //     break;
+        // }
+
+        case "QUESTION": {
+          if (activeItem.question_slide) {
+            setContent(
+              <QuestionSlide
+                questionData={activeItem.question_slide}
+                onSubmit={handleQuestionSubmit}
+              />
             );
           }
           break;
@@ -222,20 +270,7 @@ export const SlideMaterial = () => {
             );
           }
           break;
-
-        case "QUESTION":
-          if (activeItem.question_slide) {
-            setContent(
-              <QuestionSlide
-                questionData={activeItem.question_slide}
-                onSubmit={handleQuestionSubmit}
-              />
-            );
-          }
-
-          break;
-
-        case "ASSIGNMENT":
+        case "ASSIGNMENT": {
           if (activeItem.assignment_slide) {
             setContent(
               <AssignmentSlide
@@ -246,32 +281,50 @@ export const SlideMaterial = () => {
             );
           }
           break;
+        }
 
         default:
-          setContent(
-            <div className="flex h-[500px] flex-col items-center justify-center rounded-lg py-10">
-              <EmptySlideMaterial />
-              <p className="mt-4 text-neutral-500">Unsupported content type</p>
-            </div>
-          );
+          // Handle unknown source_type if needed
+          break;
       }
     } catch (err) {
       console.error("Error loading content:", err);
-      setError(err instanceof Error ? err.message : "Failed to load content");
-      setContent(
-        <div className="flex h-[300px] flex-col items-center justify-center">
-          <p className="text-red-500">
-            {error || "An error occurred while loading content"}
-          </p>
-        </div>
-      );
+      if (generationId === loadGenerationRef.current) {
+        setError(err instanceof Error ? err.message : "Failed to load content");
+        setContent(
+          <div className="flex h-[300px] flex-col items-center justify-center">
+            <p className="text-red-500">
+              {error || "An error occurred while loading content"}
+            </p>
+          </div>
+        );
+      }
     }
   };
 
   useEffect(() => {
+    loadGenerationRef.current += 1;
+    const currentGeneration = loadGenerationRef.current;
+
+    if (open) {
+      toggleSidebar();
+    }
+
     if (activeItem) {
       setHeading(activeItem.title || "");
-      loadContent();
+      loadContent(currentGeneration);
+    } else {
+      setHeading("No content");
+      if (currentGeneration === loadGenerationRef.current) {
+        setContent(
+          <div className="flex h-[500px] flex-col items-center justify-center rounded-lg py-10">
+            <EmptySlideMaterial />
+            <p className="mt-4 text-neutral-500">
+              No study material has been added yet
+            </p>
+          </div>
+        );
+      }
     }
   }, [activeItem]);
 
@@ -281,11 +334,14 @@ export const SlideMaterial = () => {
         <h3 className="text-subtitle font-semibold text-neutral-600">
           {heading || "No content"}
         </h3>
+        <SidebarTrigger className="[&_svg]:size-6">
+          <ChatText className="text-neutral-500" />
+        </SidebarTrigger>
       </div>
       <div
         className={`mx-auto mt-8 ${
-          activeItem?.source_type === "DOCUMENT" &&
-          activeItem?.document_slide?.type === "PDF"
+          activeItem?.source_type == "DOCUMENT" &&
+          activeItem?.document_slide?.type == "PDF"
             ? "h-[calc(100vh-200px)] w-[500px]"
             : "h-full"
         } w-full overflow-hidden`}
@@ -306,6 +362,7 @@ export const SlideMaterial = () => {
           />
         )}
       </div>
+      <DoubtResolutionSidebar />
     </div>
   );
 };

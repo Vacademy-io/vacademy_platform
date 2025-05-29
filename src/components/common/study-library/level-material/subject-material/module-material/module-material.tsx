@@ -8,6 +8,7 @@ import { getSubjectName } from "@/utils/study-library/get-name-by-id/getSubjectN
 import { fetchModulesWithChapters } from "@/services/study-library/getModulesWithChapters";
 import { PullToRefreshWrapper } from "@/components/design-system/pull-to-refresh";
 import { getPackageSessionId } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
+import { useStudyLibraryStore } from "@/stores/study-library/use-study-library-store";
 
 export const ModuleMaterial = () => {
   const { setNavHeading } = useNavHeadingStore();
@@ -17,6 +18,7 @@ export const ModuleMaterial = () => {
 
   const { modulesWithChaptersData, setModulesWithChaptersData } =
     useModulesWithChaptersStore();
+  const { studyLibraryData } = useStudyLibraryStore();
 
   const handleBackClick = () => {
     router.navigate({
@@ -24,7 +26,7 @@ export const ModuleMaterial = () => {
     });
   };
 
-  const subjectName = getSubjectName(subjectId);
+  const subjectName = getSubjectName(subjectId, studyLibraryData);
 
   const heading = (
     <div className="flex items-center gap-2">

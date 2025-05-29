@@ -26,8 +26,8 @@ const CapacitorStorage = {
 };
 
 export const getFromStorage = async (key: string) => {
-  const result = await Preferences.get({ key });
-  return result.value;
+    const result = await Preferences.get({ key });
+    return result.value;
 };
 
 export const setToStorage = async (key: string, value: string) => {
@@ -154,14 +154,15 @@ export function LoginForm() {
       const studentDetails = await getFromStorage("StudentDetails");
       const instituteDetails = await getFromStorage("InstituteDetails");
 
-      if (
-        !isNullOrEmptyOrUndefined(token) &&
-        !isNullOrEmptyOrUndefined(studentDetails) &&
-        !isNullOrEmptyOrUndefined(instituteDetails)
-      ) {
-        navigate({ to: "/dashboard" });
-      }
-    };
+
+            if (
+                !isNullOrEmptyOrUndefined(token) &&
+                !isNullOrEmptyOrUndefined(studentDetails) &&
+                !isNullOrEmptyOrUndefined(instituteDetails)
+            ) {
+                navigate({ to: "/dashboard" });
+            }
+        };
 
     redirect();
   }, [navigate]);

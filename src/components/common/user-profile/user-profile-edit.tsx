@@ -234,7 +234,6 @@ export default function EditProfile() {
             return;
           }
 
-          console.log("Student details to use:", studentDetails);
           setStudentData(studentDetails);
 
           // Pre-fill the form with student data
@@ -371,7 +370,7 @@ export default function EditProfile() {
     <FormProvider {...methods}>
       <div className="bg-white rounded-lg w-full max-w-md mx-auto shadow-lg sm:max-w-md md:max-w-lg lg:max-w-xl">
         <div className="p-4 flex items-center justify-between border-b">
-          <h1 className="text-lg font-medium text-orange-500">Edit Profile</h1>
+          <h1 className="text-lg font-medium text-primary-500">Edit Profile</h1>
           <button onClick={handleCancel} className="text-gray-500">
             <X size={20} weight="bold" />
           </button>

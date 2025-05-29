@@ -35,6 +35,7 @@ import {
 import { Preferences } from "@capacitor/preferences";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import VideoQuestionOverlay from "./video-question-overlay";
+import { useMediaRefsStore } from "@/stores/mediaRefsStore";
 
 // Add the YouTube PlayerState enum to avoid window.YT references
 enum PlayerState {
@@ -50,6 +51,7 @@ interface YouTubePlayerProps {
   videoId: string;
   videoTitle?: string;
   onTimeUpdate?: (currentTime: number) => void;
+  ms?: number;
   questions?: Array<{
     id: string;
     question_time_in_millis: number;
@@ -71,9 +73,16 @@ interface YouTubePlayerProps {
   }>;
 }
 
+export const formatTime = (timeInSeconds: number) => {
+  const minutes = Math.floor(timeInSeconds / 60);
+  const seconds = Math.floor(timeInSeconds % 60);
+  return `${minutes}:${seconds < 10 ? "0" : ""}${seconds}`;
+};
+
 export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   videoId,
   onTimeUpdate,
+  ms=0,
   questions = [],
 }) => {
   const { activeItem } = useContentStore();
@@ -99,6 +108,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   const { syncVideoTrackingData } = useVideoSync();
   const currentStartTimeInEpochRef = useRef<number>(0);
 
+  
   const [isPlayed, setIsPlayed] = useState(true);
   const [player, setPlayer] = useState<YouTubePlayer | null>(null);
   const [playerReady, setPlayerReady] = useState(false);
@@ -114,14 +124,14 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   const [showFullscreenControls, setShowFullscreenControls] = useState(false);
   const fullscreenControlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
-
+  
   // Question state
   const [currentQuestion, setCurrentQuestion] = useState<any>(null);
   const [showQuestion, setShowQuestion] = useState(false);
   const [answeredQuestions, setAnsweredQuestions] = useState<
-    Record<string, boolean>
+  Record<string, boolean>
   >({});
-
+  
   // Verification state
   const [showVerification, setShowVerification] = useState(false);
   const [verificationCountdown, setVerificationCountdown] = useState(59);
@@ -129,7 +139,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   const [verificationInterval] = useState(180);
   const [lastVerificationTime, setLastVerificationTime] = useState(0);
   const verificationTimerRef = useRef<NodeJS.Timeout | null>(null);
-
+  
   // Concentration metrics
   const [tabSwitchCount, setTabSwitchCount] = useState(0);
   const [pauseCount, setPauseCount] = useState(0);
@@ -139,15 +149,19 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     []
   );
   const [concentrationScore, setConcentrationScore] = useState(100); // Start with perfect score
-  // const [timeToQuestionMap, setTimeToQuestionMap] = useState<
-  //   Array<{ time: number; question: YouTubePlayerProps["questions"][number] }>
-  // >([]);
+  
   const [timeToQuestionMap, setTimeToQuestionMap] = useState<
-    Array<{
-      time: number;
-      question: NonNullable<YouTubePlayerProps["questions"]>[number];
-    }>
+  Array<{
+    time: number;
+    question: NonNullable<YouTubePlayerProps["questions"]>[number];
+  }>
   >([]);
+  
+  const {setCurrentYoutubeTime} = useMediaRefsStore();
+  
+  useEffect(()=>{
+      setCurrentYoutubeTime(currentTime);
+  }, [currentTime])
 
   useEffect(() => {
     if (questions && questions.length > 0) {
@@ -963,39 +977,65 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     }
   };
 
-  const seekToTimestamp = async () => {
+  const seekToTimestamp = async (targetTimeInSeconds?: number) => {
     if (!player || !playerReady) return;
 
-    // Convert inputs to numbers
-    const minutes = minutesInput === "" ? 0 : Number.parseInt(minutesInput);
-    const seconds = secondsInput === "" ? 0 : Number.parseInt(secondsInput);
+    let totalSecondsToSeek: number;
 
-    // Calculate total seconds
-    const totalSeconds = minutes * 60 + seconds;
+    if (typeof targetTimeInSeconds === "number") {
+        totalSecondsToSeek = targetTimeInSeconds;
+    } else {
+        const minutes =
+            minutesInput === "" ? 0 : Number.parseInt(minutesInput);
+        const seconds =
+            secondsInput === "" ? 0 : Number.parseInt(secondsInput);
+        totalSecondsToSeek = minutes * 60 + seconds;
+    }
 
     try {
-      // Get video duration
       const videoDuration = await safeGetNumber(player.getDuration());
 
+      let finalSeekTime = totalSecondsToSeek;
       // Ensure timestamp is within valid range
-      if (totalSeconds <= 0) {
-        player.seekTo(0, true);
-      } else if (totalSeconds >= videoDuration) {
-        player.seekTo(videoDuration, true);
-      } else {
-        player.seekTo(totalSeconds, true);
+      if (finalSeekTime <= 0) {
+          finalSeekTime = 0;
+      } else if (finalSeekTime >= videoDuration) {
+          finalSeekTime = videoDuration;
       }
+      
+      player.seekTo(finalSeekTime, true);
 
       // Update currentTime state to reflect new position
-      setCurrentTime(totalSeconds);
+      setCurrentTime(finalSeekTime);
 
-      // Optional: Clear inputs after seeking
+      // Optional: Clear inputs after seeking if called via button without targetTimeInSeconds
+      // if (typeof targetTimeInSeconds === 'undefined') {
       // setMinutesInput("");
       // setSecondsInput("");
+      // }
     } catch (error) {
       console.error("Error seeking to timestamp:", error);
     }
   };
+
+  useEffect(()=>{
+    // Only seek if ms is greater than 0 and player is ready
+    console.log("ms: ",ms)
+    if (ms > 0 && player && playerReady) {
+        const totalSeconds = ms / 1000;
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = Math.floor(totalSeconds % 60); // Use Math.floor for whole seconds
+        
+        // Update input fields for display consistency
+        setMinutesInput(minutes.toString());
+        setSecondsInput(seconds.toString());
+
+        // Call seekToTimestamp with the calculated totalSeconds
+        seekToTimestamp(totalSeconds);
+    }
+  }, [ms, player, playerReady])
+
+
 
   const toggleFullscreen = useCallback(async () => {
     if (!playerContainerRef.current) {
@@ -1028,11 +1068,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   }, []);
 
   // Format time for display
-  const formatTime = (timeInSeconds: number) => {
-    const minutes = Math.floor(timeInSeconds / 60);
-    const seconds = Math.floor(timeInSeconds % 60);
-    return `${minutes}:${seconds < 10 ? "0" : ""}${seconds}`;
-  };
+  
 
   // Handle progress bar click for seeking
   const handleProgressBarClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -1340,7 +1376,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
             buttonType="secondary"
             scale="medium"
             layoutVariant="icon"
-            onClick={seekToTimestamp}
+            onClick={() => seekToTimestamp()}
             disable={!playerReady}
           >
             <Check />

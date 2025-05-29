@@ -10,7 +10,7 @@ import { InitStudyLibraryProvider } from '@/providers/study-library/init-study-l
 import { ModulesWithChaptersProvider } from '@/providers/study-library/modules-with-chapters-provider'
 import { useContentStore } from '@/stores/study-library/chapter-sidebar-store'
 import { useQueryClient } from '@tanstack/react-query'
-
+import { useStudyLibraryStore } from '@/stores/study-library/use-study-library-store'
 interface ModulesSearchParams {
   subjectId: string
   moduleId: string
@@ -34,6 +34,7 @@ function ModuleMaterialPage() {
   const [currentModuleId, setCurrentModuleId] = useState(moduleId);
   const { setNavHeading } = useNavHeadingStore();
   const { setActiveItem } = useContentStore();
+  const { studyLibraryData } = useStudyLibraryStore();
 
   const queryClient = useQueryClient(); // Get the queryClient instance
 
@@ -60,7 +61,11 @@ function ModuleMaterialPage() {
   }, [currentModuleId, subjectId]);
 
   // Module page heading
-  const subjectName = getSubjectName(subjectId);
+  const [subjectName, setSubjectName] = useState("");
+
+  useEffect(()=>{
+    setSubjectName(getSubjectName(subjectId, studyLibraryData) || "");
+  }, [studyLibraryData])
 
   const handleBackClick = () => {
     navigate({
@@ -80,7 +85,7 @@ function ModuleMaterialPage() {
 
   useEffect(() => {
     setNavHeading(heading);
-  }, []);
+  }, [subjectName]);
 
   return (
     <LayoutContainer sidebarComponent={<ChapterSidebarComponent

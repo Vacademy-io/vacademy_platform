@@ -1,8 +1,8 @@
 import { LayoutContainer } from '@/components/common/layout-container/layout-container'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ChevronRightIcon } from '@radix-ui/react-icons'
-import {  useSidebar } from '@/components/ui/sidebar'
-import { useEffect } from 'react'
+import {  SidebarProvider, useSidebar } from '@/components/ui/sidebar'
+import { useEffect, useState } from 'react'
 import { truncateString } from '@/lib/reusable/truncateString'
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore'
 import { CaretLeft } from 'phosphor-react'
@@ -15,6 +15,8 @@ import { useContentStore } from '@/stores/study-library/chapter-sidebar-store'
 import { InitStudyLibraryProvider } from '@/providers/study-library/init-study-library-provider'
 import { ModulesWithChaptersProvider } from '@/providers/study-library/modules-with-chapters-provider'
 import { useSlides, Slide } from '@/hooks/study-library/use-slides'
+import { useStudyLibraryStore } from '@/stores/study-library/use-study-library-store'
+import { useModulesWithChaptersStore } from '@/stores/study-library/use-modules-with-chapters-store'
 
 interface ChapterSearchParams {
   subjectId: string
@@ -43,6 +45,8 @@ function Slides() {
   const navigate = useNavigate();
   const { setItems, activeItem, setActiveItem } = useContentStore();
   const { slides } = useSlides(chapterId || "");
+  const {studyLibraryData} = useStudyLibraryStore();
+  const {modulesWithChaptersData} = useModulesWithChaptersStore();
 
   useEffect(() => {
     if (slides?.length) {
@@ -87,12 +91,17 @@ function Slides() {
       });
   };
 
- 
+ const [moduleName, setModuleName] = useState("");
+ const [chapterName, setChapterName] = useState("");
+ const [subjectName, setSubjectName] = useState("");
 
-  const subjectName = getSubjectName(subjectId);
-  const moduleName = getModuleName(moduleId);
-  const chapterName = getChapterName(chapterId);
   const trucatedChapterName = truncateString(chapterName || "", 9);
+
+  useEffect(()=>{
+    setModuleName(getModuleName(moduleId, modulesWithChaptersData));
+    setChapterName(getChapterName(chapterId, modulesWithChaptersData) || "");
+    setSubjectName(getSubjectName(subjectId, studyLibraryData) || "");
+  }, [modulesWithChaptersData, studyLibraryData])
 
 
   const SidebarComponent = (
@@ -159,13 +168,15 @@ function Slides() {
 
   useEffect(() => {
       setNavHeading(heading);
-  }, []);
+  }, [subjectName]);
 
   return (
     <LayoutContainer sidebarComponent={SidebarComponent}>
         <InitStudyLibraryProvider>
             <ModulesWithChaptersProvider subjectId={subjectId}>
-                <SlideMaterial />
+                <SidebarProvider defaultOpen={false}>
+                    <SlideMaterial />
+                </SidebarProvider>
             </ModulesWithChaptersProvider>
       </InitStudyLibraryProvider>
     </LayoutContainer>

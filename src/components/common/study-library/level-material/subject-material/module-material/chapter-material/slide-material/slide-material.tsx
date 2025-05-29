@@ -200,6 +200,7 @@ export const SlideMaterial = () => {
                     )}
                     onTimeUpdate={handleVideoTimeUpdate}
                     ref={playerRef}
+                    ms={activeItem.progress_marker}
                   />
                   {/* <YouTubePlayerWrapper
                   ref={playerRef}

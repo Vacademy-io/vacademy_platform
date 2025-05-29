@@ -140,71 +140,52 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
     Page<LearnerActivityProjection> findStudentActivityBySlideId(@Param("slideId") String slideId, Pageable pageable);
 
     @Query(value = """
-            WITH video_progress AS (
-                SELECT 
-                    s.id AS slide_id,
+    WITH individual_slide_progress AS (
+        SELECT 
+            s.id AS slide_id,
+            CASE 
+                WHEN s.source_type = 'VIDEO' THEN 
                     LEAST(
-                        COALESCE(
-                            (SUM(EXTRACT(EPOCH FROM (vt.end_time - vt.start_time))) * 1000 
-                            / NULLIF(COALESCE(v.published_video_length, 1), 0)) * 100, 
+                        COALESCE(SUM(EXTRACT(EPOCH FROM (vt.end_time - vt.start_time))) * 1000 
+                                 / NULLIF(COALESCE(v.published_video_length, 1), 0) * 100, 
                         0), 
-                    100) AS video_completion
-                FROM slide s
-                LEFT JOIN video v ON s.source_id = v.id AND s.source_type = 'VIDEO'
-                LEFT JOIN activity_log al ON al.slide_id = s.id
-                LEFT JOIN video_tracked vt ON vt.activity_id = al.id
-                WHERE 
-                    al.created_at BETWEEN :startDate AND :endDate
-                GROUP BY s.id, v.published_video_length
-            ),
-            document_progress AS (
-                SELECT 
-                    s.id AS slide_id,
+                    100)
+                WHEN s.source_type IN ('DOCUMENT', 'PDF') THEN 
                     LEAST(
-                        COALESCE(
-                            (COUNT(DISTINCT dt.page_number) * 100.0 / NULLIF(COALESCE(ds.published_document_total_pages, 1), 0)), 
-                        0), 100) AS document_completion
-                FROM slide s
-                LEFT JOIN document_slide ds ON s.source_id = ds.id AND s.source_type IN ('DOCUMENT', 'PDF')
-                LEFT JOIN activity_log al ON al.slide_id = s.id
-                LEFT JOIN document_tracked dt ON dt.activity_id = al.id
-                WHERE 
-                    al.created_at BETWEEN :startDate AND :endDate
-                GROUP BY s.id, ds.published_document_total_pages
-            ),
-            slide_completion AS (
-                SELECT DISTINCT ON (s.id) 
-                    s.id AS slide_id,
-                    COALESCE(
-                        CASE 
-                            WHEN vp.video_completion IS NOT NULL AND dp.document_completion IS NOT NULL 
-                                THEN (vp.video_completion + dp.document_completion) / 2
-                            WHEN vp.video_completion IS NOT NULL THEN vp.video_completion
-                            WHEN dp.document_completion IS NOT NULL THEN dp.document_completion
-                            ELSE 0
-                        END, 0) AS slide_completion_percentage
-                FROM 
-                    subject_session sps
-                JOIN subject_module_mapping smm ON smm.subject_id = sps.subject_id
-                JOIN subject sub ON sub.id = smm.subject_id
-                JOIN modules m ON m.id = smm.module_id
-                JOIN module_chapter_mapping mcm ON mcm.module_id = m.id
-                JOIN chapter c ON c.id = mcm.chapter_id
-                JOIN chapter_to_slides cs ON cs.chapter_id = c.id
-                JOIN slide s ON s.id = cs.slide_id
-                LEFT JOIN video_progress vp ON vp.slide_id = s.id
-                LEFT JOIN document_progress dp ON dp.slide_id = s.id
-                WHERE 
-                    sps.session_id = :sessionId
-                    AND sub.status IN :subjectStatusList
-                    AND m.status IN :moduleStatusList
-                    AND c.status IN :chapterStatusList
-                    AND cs.status IN :slideStatusList
-                    AND s.status IN :slideStatusList
-            )
-            SELECT AVG(slide_completion_percentage) 
-            FROM slide_completion;
-            """, nativeQuery = true)
+                        COALESCE(COUNT(DISTINCT dt.page_number) * 100.0 
+                                 / NULLIF(COALESCE(ds.published_document_total_pages, 1), 0), 
+                        0), 
+                    100)
+                ELSE 0
+            END AS slide_completion
+        FROM slide s
+        LEFT JOIN activity_log al ON al.slide_id = s.id
+        LEFT JOIN video_tracked vt ON vt.activity_id = al.id
+        LEFT JOIN video v ON s.source_id = v.id AND s.source_type = 'VIDEO'
+        LEFT JOIN document_tracked dt ON dt.activity_id = al.id
+        LEFT JOIN document_slide ds ON s.source_id = ds.id AND s.source_type IN ('DOCUMENT', 'PDF')
+        JOIN chapter_to_slides cs ON cs.slide_id = s.id
+        JOIN chapter c ON c.id = cs.chapter_id
+        JOIN module_chapter_mapping mcm ON mcm.chapter_id = c.id
+        JOIN modules m ON m.id = mcm.module_id
+        JOIN subject_module_mapping smm ON smm.module_id = m.id
+        JOIN subject sub ON sub.id = smm.subject_id
+        JOIN subject_session sps ON sps.subject_id = sub.id
+        JOIN chapter_package_session_mapping cpsm ON cpsm.chapter_id = c.id AND cpsm.package_session_id = :sessionId
+        WHERE 
+            al.created_at BETWEEN :startDate AND :endDate
+            AND sps.session_id = :sessionId
+            AND sub.status IN :subjectStatusList
+            AND m.status IN :moduleStatusList
+            AND c.status IN :chapterStatusList
+            AND cpsm.status IN :chapterToSessionStatusList
+            AND s.status IN :slideStatusList
+            AND cs.status IN :slideStatusList
+            AND s.source_type IN :slideTypeList
+        GROUP BY s.id, s.source_type, v.published_video_length, ds.published_document_total_pages
+    )
+    SELECT AVG(slide_completion) FROM individual_slide_progress
+    """, nativeQuery = true)
     Double getBatchCourseCompletionPercentage(
             @Param("sessionId") String sessionId,
             @Param("startDate") Date startDate,
@@ -212,9 +193,10 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
             @Param("subjectStatusList") List<String> subjectStatusList,
             @Param("moduleStatusList") List<String> moduleStatusList,
             @Param("chapterStatusList") List<String> chapterStatusList,
-            @Param("slideStatusList") List<String> slideStatusList
+            @Param("chapterToSessionStatusList") List<String> chapterToSessionStatusList,
+            @Param("slideStatusList") List<String> slideStatusList,
+            @Param("slideTypeList") List<String> slideTypeList
     );
-
 
     @Query(value = """ 
                 WITH activity_duration AS (

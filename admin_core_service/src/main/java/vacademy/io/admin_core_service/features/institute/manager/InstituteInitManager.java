@@ -4,6 +4,7 @@ package vacademy.io.admin_core_service.features.institute.manager;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.group.repository.PackageGroupMappingRepository;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.institute.service.InstituteModuleService;
@@ -40,6 +41,7 @@ public class InstituteInitManager {
     @Autowired
     private PackageGroupMappingRepository packageGroupMappingRepository;
 
+    @Transactional
     public InstituteInfoDTO getInstituteDetails(String instituteId) {
 
         Optional<Institute> institute = instituteRepository.findById(instituteId);
@@ -69,6 +71,7 @@ public class InstituteInitManager {
         instituteInfoDTO.setInstituteThemeCode(institute.get().getInstituteThemeCode());
         instituteInfoDTO.setSubModules(instituteModuleService.getSubmoduleIdsForInstitute(institute.get().getId()));
         instituteInfoDTO.setSessions(packageRepository.findDistinctSessionsByInstituteIdAndStatusIn(institute.get().getId(), List.of(PackageSessionStatusEnum.ACTIVE.name())).stream().map((SessionDTO::new)).toList());
+        System.out.println(packageSessionRepository.findPackageSessionsByInstituteId(institute.get().getId(), List.of(PackageSessionStatusEnum.ACTIVE.name())));
         instituteInfoDTO.setBatchesForSessions(packageSessionRepository.findPackageSessionsByInstituteId(institute.get().getId(), List.of(PackageSessionStatusEnum.ACTIVE.name())).stream().map((obj) -> {
             return new PackageSessionDTO(obj);
         }).toList());

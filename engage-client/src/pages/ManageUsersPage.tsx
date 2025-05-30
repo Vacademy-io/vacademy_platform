@@ -50,13 +50,15 @@ interface User {
   id: string;
   name: string;
   whatsappNumber: string;
+  email?: string; // Added optional email field
 }
 
 // Expected CSV Row structure
 interface CsvRow {
-  name?: string;
-  whatsappNumber?: string;
-  // Allow other columns, but we only care about these two
+  "Full name"?: string; // Updated to match new CSV header
+  "Best Contact Number. - Whatsapp number where zoom link can be sent."?: string; // Updated to match new CSV header
+  "Email id to send joining details "?: string; // Added email header
+  // Allow other columns, but we only care about these
   [key: string]: any; 
 }
 
@@ -88,6 +90,7 @@ const ManageUsersPage: React.FC = () => {
   const [isAddUserDialogOpen, setIsAddUserDialogOpen] = useState(false);
   const [newUserName, setNewUserName] = useState('');
   const [newUserWhatsapp, setNewUserWhatsapp] = useState('');
+  const [newUserEmail, setNewUserEmail] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const [csvProcessingError, setCsvProcessingError] = useState<string | null>(null); // For CSV errors
 
@@ -96,6 +99,7 @@ const ManageUsersPage: React.FC = () => {
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [editUserName, setEditUserName] = useState('');
   const [editUserWhatsapp, setEditUserWhatsapp] = useState('');
+  const [editUserEmail, setEditUserEmail] = useState('');
   const [editFormError, setEditFormError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null); // Ref for file input
@@ -121,8 +125,129 @@ const ManageUsersPage: React.FC = () => {
     daily_habit_text: '',
   });
 
+  // State for Send Email Dialog
+  const [isSendEmailDialogOpen, setIsSendEmailDialogOpen] = useState(false);
+  const [emailSubject, setEmailSubject] = useState('');
+  const [emailBody, setEmailBody] = useState('');
+  const emailBodyTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const [emailSendingStatuses, setEmailSendingStatuses] = useState<UserMessageStatus[]>([]);
+  const [isBulkEmailSending, setIsBulkEmailSending] = useState(false);
+
+  // State for Email Preview
+  const [showEmailPreview, setShowEmailPreview] = useState(false);
+  const [emailPreviewHtml, setEmailPreviewHtml] = useState('');
+
+  const baseEmailHtmlTemplate = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Email Preview</title> <!-- Title for preview window, not actual email -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #fdf8f6;
+            margin: 0;
+            padding: 0;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        .email-container {
+            max-width: 600px;
+            margin: 40px auto;
+            background-color: #ffffff;
+            border-radius: 16px;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.05);
+            overflow: hidden;
+        }
+        .header {
+            background-color: #e8dcd9;
+            padding: 32px 24px;
+            text-align: center;
+            border-top-left-radius: 16px;
+            border-top-right-radius: 16px;
+        }
+        .content {
+            padding: 32px 24px;
+            color: #374151;
+            line-height: 1.6;
+        }
+        .button {
+            display: inline-block;
+            background-color: #8B4513;
+            color: #ffffff;
+            padding: 12px 24px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: background-color 0.3s ease;
+        }
+        .button:hover {
+            background-color: #6F360F;
+        }
+        .footer {
+            background-color: #fdf8f6;
+            padding: 24px;
+            text-align: center;
+            color: #6b7280;
+            font-size: 0.875rem;
+            border-bottom-left-radius: 16px;
+            border-bottom-right-radius: 16px;
+        }
+        /* Additional styles for content if needed */
+        .content p { margin-bottom: 1em; }
+        .content h1, .content h2, .content h3 { margin-bottom: 0.5em; color: #8B4513; }
+        .content ul, .content ol { margin-left: 20px; margin-bottom: 1em; }
+        .content a { color: #8B4513; text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <div class="header">
+             <h1 style="font-size: 24px; color: #6F360F; margin:0;">Aanandham Yoga</h1>
+        </div>
+        <div class="content">
+            {{EMAIL_BODY_CONTENT}}
+        </div>
+        <div class="footer">
+            
+            <p>&copy; ${new Date().getFullYear()} Aanandham Yoga</p>
+        </div>
+    </div>
+</body>
+</html>
+`;
+
+  const placeholderList = [
+    { value: '{{name}}', label: 'Name' },
+    { value: '{{whatsappNumber}}', label: 'WhatsApp' },
+    { value: '{{email}}', label: 'Email' },
+    { value: '{{join_link}}', label: 'Join Link' },
+    { value: '{{morning_quote}}', label: 'Morning Quote' },
+    { value: '{{daily_habit_heading}}', label: 'Habit Heading' },
+    { value: '{{daily_habit_sub_heading}}', label: 'Habit Sub-Heading' },
+    { value: '{{daily_habit_text}}', label: 'Habit Text' },
+  ];
+
   const handleCustomFieldChange = (fieldName: keyof typeof customFields, value: string) => {
     setCustomFields(prev => ({ ...prev, [fieldName]: value }));
+  };
+
+  const insertPlaceholder = (placeholder: string) => {
+    const textarea = emailBodyTextareaRef.current;
+    if (textarea) {
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const text = textarea.value;
+      const newText = text.substring(0, start) + placeholder + text.substring(end);
+      setEmailBody(newText);
+      textarea.focus();
+      setTimeout(() => {
+        textarea.setSelectionRange(start + placeholder.length, start + placeholder.length);
+      }, 0);
+    }
   };
 
   const handleSelectAll = (checked: boolean | 'indeterminate') => {
@@ -179,66 +304,90 @@ const ManageUsersPage: React.FC = () => {
         let invalidCount = 0;
         const newUsersFromCsv: User[] = [];
         const validationErrorMessages: string[] = [];
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/; // Simple email validation regex
 
         data.forEach((row: CsvRow, index: number) => {
-          // Use new headers
           const name = row["Full name"]?.trim();
-          let whatsappNumberInput = row["Best Contact Number. - Whatsapp number where zoom link can be sent."]?.trim();
+          const originalWhatsappInput = row["Best Contact Number. - Whatsapp number where zoom link can be sent."]?.trim();
+          let emailInput = row["Email id to send joining details "]?.trim(); // Trim first
+          let processedNumberPart = originalWhatsappInput;
           let formattedWhatsappNumber = "";
 
-          // Remove all spaces from whatsappNumberInput if it exists
-          if (whatsappNumberInput) {
-            whatsappNumberInput = whatsappNumberInput.replace(/\s+/g, '');
+          // Process Email: lowercase and remove all spaces
+          if (emailInput) {
+            emailInput = emailInput.toLowerCase().replace(/\s+/g, '');
           }
 
-          if (!name) {
-            invalidCount++;
-            validationErrorMessages.push(`Row ${index + 2}: Missing 'Full name'.`);
-            // Do not return yet, check whatsappNumberInput as well for complete error reporting if desired
-          }
+          if (processedNumberPart) {
+            // Remove initial spaces that might have been missed by trim, or all spaces
+            processedNumberPart = processedNumberPart.replace(/\s+/g, ''); 
 
-          if (!whatsappNumberInput) {
-            invalidCount++;
-            // Ensure we don't double-count if name was also missing by checking if this row is already marked for an error
-            if (!validationErrorMessages.some(msg => msg.startsWith(`Row ${index + 2}:`))) {
-                validationErrorMessages.push(`Row ${index + 2}: Missing 'Best Contact Number'.`);
+            let hadPlusPrefix = false;
+            if (processedNumberPart.startsWith('+')) {
+              hadPlusPrefix = true;
+              processedNumberPart = processedNumberPart.substring(1);
             }
-            // If both are missing, or just this one, we can't proceed with this row.
-            return; 
-          }
-          
-          // Apply new WhatsApp number formatting logic
-          if (whatsappNumberInput.startsWith('+')) {
-            formattedWhatsappNumber = whatsappNumberInput.substring(1);
-          } else if (whatsappNumberInput.startsWith('0')) {
-            formattedWhatsappNumber = '44' + whatsappNumberInput.substring(1);
-          } else {
-            // Check if it's all digits before prepending 91, to avoid 91+non-digit
-            if (/^\d+$/.test(whatsappNumberInput)) {
-                 formattedWhatsappNumber = '91' + whatsappNumberInput;
+            
+            // Now, remove all non-digit characters from the number part
+            processedNumberPart = processedNumberPart.replace(/\D/g, '');
+
+            if (hadPlusPrefix) {
+              // If it had a '+', we assume the country code was included and cleaned. 
+              // Common issue: +44 (0) 7... -> after stripping non-digits, leading 0 might reappear if not handled.
+              // Example: +44(0)7... -> 4407... -> if 0 is stripped again -> 447... (Correct)
+              // If it becomes like 4407..., stripping the 0 if it's a UK style number part after CC
+              if (processedNumberPart.startsWith('440')) {
+                processedNumberPart = '44' + processedNumberPart.substring(3); // Keep 44, remove 0, take rest
+              }
+              formattedWhatsappNumber = processedNumberPart;
+            } else if (processedNumberPart.startsWith('0')) {
+              // Starts with 0 (and didn't have +), strip 0, add 44 (UK)
+              formattedWhatsappNumber = '44' + processedNumberPart.substring(1);
             } else {
-                // If it's not starting with +, 0 and not all digits, it's invalid before even country code logic
-                invalidCount++;
-                validationErrorMessages.push(`Row ${index + 2}: Invalid characters in WhatsApp number '${whatsappNumberInput}'.`);
-                return;
+              // No '+', no leading '0', assume Indian, add 91
+              // but only if processedNumberPart is not empty after stripping non-digits
+              if (processedNumberPart) { // Ensure it's not empty after stripping non-digits
+                formattedWhatsappNumber = '91' + processedNumberPart;
+              } else {
+                // If it became empty, it was invalid input (e.g. just symbols)
+                // This will be caught by the later checks if name/whatsappNumberInput was missing initially
+                // or by the length check if formattedWhatsappNumber remains empty.
+              }
             }
+          } // End of if (processedNumberPart)
+          
+          let rowHasError = false;
+          if (!name) {
+            validationErrorMessages.push(`Row ${index + 2}: Missing 'Full name'.`);
+            rowHasError = true;
+          }
+          if (!originalWhatsappInput) { // Check original input for presence
+            validationErrorMessages.push(`Row ${index + 2}: Missing 'Best Contact Number'.`);
+            rowHasError = true;
+          }
+          if (emailInput && !emailRegex.test(emailInput)) {
+            validationErrorMessages.push(`Row ${index + 2}: Invalid email format for '${emailInput}'.`);
+            rowHasError = true;
           }
 
-          if (!name) { // If name was missing, but we processed whatsapp, now we return.
+          if (rowHasError) { // If basic field presence errors, skip further processing for this row
+            invalidCount++;
             return;
           }
-
-          // Validate the formatted number
-          if (!/^\d{10,15}$/.test(formattedWhatsappNumber)) {
+          
+          // After all formatting, check formattedWhatsappNumber
+          // It should be purely digits now. The main check is length.
+          if (!formattedWhatsappNumber || !/^\d{10,15}$/.test(formattedWhatsappNumber)) {
+            validationErrorMessages.push(`Row ${index + 2}: Invalid WhatsApp format for '${originalWhatsappInput || "(empty)"}' (processed to: '${formattedWhatsappNumber || "(empty)"}'). Must result in 10-15 digits.`);
             invalidCount++;
-            validationErrorMessages.push(`Row ${index + 2}: Invalid WhatsApp format for '${whatsappNumberInput}' (formatted: ${formattedWhatsappNumber}). Must be 10-15 digits after formatting.`);
             return;
           }
 
           newUsersFromCsv.push({
             id: uuidv4(),
-            name,
-            whatsappNumber: formattedWhatsappNumber, // Use the formatted number
+            name: name!, // name is checked for undefined above
+            whatsappNumber: formattedWhatsappNumber,
+            email: emailInput || undefined, // Use processed email or undefined
           });
           importedCount++;
         });
@@ -284,6 +433,7 @@ const ManageUsersPage: React.FC = () => {
       setEditingUser(userToEdit);
       setEditUserName(userToEdit.name);
       setEditUserWhatsapp(userToEdit.whatsappNumber);
+      setEditUserEmail(userToEdit.email || '');
       setEditFormError(null); // Clear previous errors
       setIsEditUserDialogOpen(true);
     }
@@ -305,7 +455,7 @@ const ManageUsersPage: React.FC = () => {
       setFormError("User name cannot be empty.");
       return;
     }
-    const whatsappTrimmed = newUserWhatsapp.trim();
+    const whatsappTrimmed = newUserWhatsapp.trim().replace(/\s+/g, '');
     if (!whatsappTrimmed) {
       setFormError("WhatsApp number cannot be empty.");
       return;
@@ -314,16 +464,23 @@ const ManageUsersPage: React.FC = () => {
         setFormError("Invalid WhatsApp number. Must be 10-15 digits (e.g., 1234567890).");
         return;
     }
+    const emailProcessed = newUserEmail.trim().toLowerCase().replace(/\s+/g, '');
+    if (emailProcessed && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailProcessed)) {
+        setFormError("Invalid email format.");
+        return;
+    }
     setFormError(null);
 
     const newUser: User = {
       id: uuidv4(),
       name: newUserName.trim(),
       whatsappNumber: whatsappTrimmed,
+      email: emailProcessed || undefined,
     };
     setUsers(prevUsers => [newUser, ...prevUsers]);
     setNewUserName('');
     setNewUserWhatsapp('');
+    setNewUserEmail('');
     setIsAddUserDialogOpen(false);
     toast.success("User added successfully!");
   };
@@ -335,7 +492,7 @@ const ManageUsersPage: React.FC = () => {
       setEditFormError("User name cannot be empty.");
       return;
     }
-    const whatsappTrimmed = editUserWhatsapp.trim();
+    const whatsappTrimmed = editUserWhatsapp.trim().replace(/\s+/g, '');
     if (!whatsappTrimmed) {
       setEditFormError("WhatsApp number cannot be empty.");
       return;
@@ -344,12 +501,17 @@ const ManageUsersPage: React.FC = () => {
         setEditFormError("Invalid WhatsApp number. Must be 10-15 digits (e.g., 1234567890).");
         return;
     }
+    const emailProcessed = editUserEmail.trim().toLowerCase().replace(/\s+/g, '');
+    if (emailProcessed && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailProcessed)) {
+        setEditFormError("Invalid email format.");
+        return;
+    }
     setEditFormError(null);
 
     setUsers(prevUsers => 
       prevUsers.map(user => 
         user.id === editingUser.id 
-          ? { ...user, name: editUserName.trim(), whatsappNumber: whatsappTrimmed }
+          ? { ...user, name: editUserName.trim(), whatsappNumber: whatsappTrimmed, email: emailProcessed || undefined }
           : user
       )
     );
@@ -427,6 +589,157 @@ const ManageUsersPage: React.FC = () => {
     toast.success("All users have been cleared.");
   };
 
+  const generateEmailPreviewHtml = () => {
+    if (!emailBody.trim()) {
+      // If body is empty, show a simple message within the template
+      const emptyBodyMessage = '<p class="text-gray-500 italic">Email body is empty. Start typing to see a preview.</p>';
+      setEmailPreviewHtml(baseEmailHtmlTemplate.replace('{{EMAIL_BODY_CONTENT}}', emptyBodyMessage));
+      return;
+    }
+
+    let populatedBodyContent = emailBody;
+    const firstRecipientStatus = emailSendingStatuses.find(status => users.find(u => u.id === status.userId && u.email));
+    const sampleUser = firstRecipientStatus ? users.find(u => u.id === firstRecipientStatus.userId) : null;
+
+    const samplePlaceholders = {
+      name: sampleUser?.name || '[Sample Name]',
+      whatsappNumber: sampleUser?.whatsappNumber || '[Sample WhatsApp]',
+      email: sampleUser?.email || '[Sample Email]',
+      join_link: customFields.join_link || '[Join Link]',
+      morning_quote: customFields.morning_quote || '[Morning Quote]',
+      daily_habit_heading: customFields.daily_habit_heading || '[Habit Heading]',
+      daily_habit_sub_heading: customFields.daily_habit_sub_heading || '[Habit Sub-Heading]',
+      daily_habit_text: customFields.daily_habit_text || '[Habit Text]',
+    };
+
+    for (const key in samplePlaceholders) {
+      const placeholder = `{{${key}}}`;
+      populatedBodyContent = populatedBodyContent.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), samplePlaceholders[key as keyof typeof samplePlaceholders]);
+    }
+
+    // Heuristic to check if user input is already HTML
+    const isLikelyHtml = populatedBodyContent.trim().startsWith('<') && populatedBodyContent.includes('</');
+    // Heuristic to check if user input is a full HTML document
+    const isFullHtmlDoc = isLikelyHtml && /<html\b[^>]*>/i.test(populatedBodyContent) && /<body\b[^>]*>/i.test(populatedBodyContent);
+
+    if (isFullHtmlDoc) {
+      setEmailPreviewHtml(populatedBodyContent); // Use user's full HTML
+    } else if (isLikelyHtml) {
+      // User provided an HTML snippet, embed it in our template
+      setEmailPreviewHtml(baseEmailHtmlTemplate.replace('{{EMAIL_BODY_CONTENT}}', populatedBodyContent));
+    } else {
+      // Plain text: convert newlines to <br> and embed in our template
+      const plainTextAsHtml = populatedBodyContent.replace(/\n/g, '<br />');
+      setEmailPreviewHtml(baseEmailHtmlTemplate.replace('{{EMAIL_BODY_CONTENT}}', plainTextAsHtml));
+    }
+  };
+
+  const handleSendBulkEmail = async () => {
+    if (!emailSubject.trim() || !emailBody.trim()) {
+      toast.error("Subject and body are required.");
+      return;
+    }
+    
+    if (emailSendingStatuses.length === 0) {
+        toast.error("No valid recipients to send email to.");
+        return;
+    }
+
+    setIsBulkEmailSending(true);
+    toast.info("Processing emails...", { id: 'bulk-email-progress' });
+
+    setEmailSendingStatuses(prevStatuses => 
+        prevStatuses.map(s => ({ ...s, status: 'sending' }))
+    );
+
+    const usersFromState = users;
+
+    const apiUsersPayload = emailSendingStatuses.map(statusEntry => {
+      const user = usersFromState.find(u => u.id === statusEntry.userId);
+      if (!user || !user.email) return null; 
+      return {
+        user_id: user.id,
+        channel_id: user.email,
+        placeholders: {
+          name: user.name,
+          whatsappNumber: user.whatsappNumber || '',
+          email: user.email,
+          join_link: customFields.join_link,
+          morning_quote: customFields.morning_quote,
+          daily_habit_heading: customFields.daily_habit_heading,
+          daily_habit_sub_heading: customFields.daily_habit_sub_heading,
+          daily_habit_text: customFields.daily_habit_text,
+        },
+      };
+    }).filter(p => p !== null) as any[];
+
+    if (apiUsersPayload.length === 0) {
+        toast.error("Could not prepare payload for any user.");
+        setIsBulkEmailSending(false);
+        setEmailSendingStatuses(prevStatuses => 
+            prevStatuses.map(s => ({ ...s, status: 'pending' }))
+        );
+        return;
+    }
+
+    // Determine the final API body based on whether emailBody is plain text or HTML
+    let finalApiBody = emailBody; // This is the user's input with {{placeholders}}
+    const originalUserInputIsLikelyHtml = emailBody.trim().startsWith('<') && emailBody.includes('</');
+    const originalUserInputIsFullHtmlDoc = originalUserInputIsLikelyHtml && 
+                                         /<html\b[^>]*>/i.test(emailBody) && 
+                                         /<body\b[^>]*>/i.test(emailBody);
+
+    if (!originalUserInputIsLikelyHtml) { // If plain text
+        const plainTextWithPlaceholdersAsHtml = emailBody.replace(/\n/g, '<br />');
+        finalApiBody = baseEmailHtmlTemplate.replace('{{EMAIL_BODY_CONTENT}}', plainTextWithPlaceholdersAsHtml);
+    } else if (originalUserInputIsLikelyHtml && !originalUserInputIsFullHtmlDoc) { // HTML snippet
+        // Wrap snippet in the base template to ensure consistent structure for the backend
+        finalApiBody = baseEmailHtmlTemplate.replace('{{EMAIL_BODY_CONTENT}}', emailBody);
+    }
+    // If originalUserInputIsFullHtmlDoc, finalApiBody remains as emailBody (user's full HTML with placeholders)
+
+    const requestBody = {
+      body: finalApiBody, // Use the potentially wrapped body with {{placeholders}} intact
+      notification_type: "EMAIL",
+      subject: emailSubject,
+      source: "USER_MANAGEMENT_BULK_EMAIL",
+      source_id: uuidv4(),
+      users: apiUsersPayload,
+    };
+
+    try {
+      const response = await fetch('https://backend-stage.vacademy.io/notification-service/v1/send-email-to-users-public', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (response.ok) {
+        toast.success(`Successfully sent request for ${apiUsersPayload.length} email(s). Check individual statuses if API provides them.`, { id: 'bulk-email-progress' });
+        setEmailSendingStatuses(prevStatuses => 
+          prevStatuses.map(s => ({ ...s, status: 'sent' }))
+        );
+      } else {
+        const errorData = await response.json().catch(() => ({ message: "Failed to parse error response" }));
+        console.error("API Error:", response.status, errorData);
+        toast.error(`API Error: ${errorData.message || response.statusText}`, { id: 'bulk-email-progress' });
+        setEmailSendingStatuses(prevStatuses => 
+          prevStatuses.map(s => ({ ...s, status: 'failed', error: errorData.message || response.statusText }))
+        );
+      }
+    } catch (error: any) {
+      console.error("Network or other error sending email:", error);
+      toast.error(`Error: ${error.message || "An unexpected error occurred."}`, { id: 'bulk-email-progress' });
+      setEmailSendingStatuses(prevStatuses => 
+        prevStatuses.map(s => ({ ...s, status: 'failed', error: error.message || "Network error" }))
+      );
+    }
+
+    setIsBulkEmailSending(false);
+  };
+
   return (
     <div className="p-4 md:p-6 lg:p-8 bg-gray-50 min-h-screen">
       <input
@@ -446,7 +759,7 @@ const ManageUsersPage: React.FC = () => {
             <Upload className="mr-2 size-4" />
             Import CSV
           </Button>
-          <Dialog open={isAddUserDialogOpen} onOpenChange={(isOpen) => {setIsAddUserDialogOpen(isOpen); if(!isOpen) {setNewUserName(''); setNewUserWhatsapp(''); setFormError(null);}}}>
+          <Dialog open={isAddUserDialogOpen} onOpenChange={(isOpen) => {setIsAddUserDialogOpen(isOpen); if(!isOpen) {setNewUserName(''); setNewUserWhatsapp(''); setNewUserEmail(''); setFormError(null);}}}>
             <DialogTrigger asChild>
               <Button className="bg-primary text-primary-foreground hover:bg-primary/90">
                 <UserPlus className="mr-2 size-4" />
@@ -484,6 +797,19 @@ const ManageUsersPage: React.FC = () => {
                     onChange={(e) => setNewUserWhatsapp(e.target.value)}
                     className="col-span-3"
                     placeholder="e.g., 1234567890 (10-15 digits)"
+                  />
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="add-email" className="text-right">
+                    Email (Optional)
+                  </Label>
+                  <Input
+                    id="add-email"
+                    type="email"
+                    value={newUserEmail}
+                    onChange={(e) => setNewUserEmail(e.target.value)}
+                    className="col-span-3"
+                    placeholder="e.g., user@example.com"
                   />
                 </div>
                 {formError && (
@@ -639,6 +965,19 @@ const ManageUsersPage: React.FC = () => {
                   </Label>
                   <Input id="edit-whatsapp" type="tel" value={editUserWhatsapp} onChange={(e) => setEditUserWhatsapp(e.target.value)} className="col-span-3" placeholder="e.g., 1234567890 (10-15 digits)" />
                 </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="edit-email" className="text-right">
+                    Email (Optional)
+                  </Label>
+                  <Input
+                    id="edit-email"
+                    type="email"
+                    value={editUserEmail}
+                    onChange={(e) => setEditUserEmail(e.target.value)}
+                    className="col-span-3"
+                    placeholder="e.g., user@example.com"
+                  />
+                </div>
                 {editFormError && (<p className="col-span-4 text-sm text-red-600 text-center pt-1">{editFormError}</p>)}
               </div>
               <DialogFooter>
@@ -708,16 +1047,37 @@ const ManageUsersPage: React.FC = () => {
         <CardHeader className="border-b px-4 py-3 sm:px-6 sm:py-4">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
             <CardTitle className="text-lg font-medium text-gray-700">User List ({users.length})</CardTitle>
-            <Button 
-              variant="default" 
-              size="sm" 
-              onClick={handleInitiateSendMessage} // Changed to open the dialog
-              disabled={selectedUserIds.size === 0}
-              className="bg-green-600 hover:bg-green-700 text-white"
-            >
-              <MessageSquarePlus className="mr-2 size-4" />
-              Send WhatsApp ({selectedUserIds.size})
-            </Button>
+            <div className="flex space-x-2 flex-wrap gap-y-2">
+              <Button 
+                variant="default" 
+                size="sm" 
+                onClick={handleInitiateSendMessage} 
+                disabled={selectedUserIds.size === 0}
+                className="bg-green-600 hover:bg-green-700 text-white"
+              >
+                <MessageSquarePlus className="mr-2 size-4" />
+                Send WhatsApp ({selectedUserIds.size})
+              </Button>
+              {/* Send Email Button */}
+              <Button 
+                variant="default"
+                size="sm"
+                onClick={() => {
+                  const usersToEmail = users.filter(user => selectedUserIds.has(user.id) && user.email);
+                  if (usersToEmail.length === 0) {
+                    toast.error("No selected users have email addresses.");
+                    return;
+                  }
+                  setEmailSendingStatuses(usersToEmail.map(u => ({ userId: u.id, name: u.name, status: 'pending' })));
+                  setIsSendEmailDialogOpen(true);
+                }}
+                disabled={selectedUserIds.size === 0}
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                <Send className="mr-2 size-4" /> {/* Using Send icon for email */}
+                Send Email ({selectedUserIds.size > 0 ? users.filter(u => selectedUserIds.has(u.id) && u.email).length : 0})
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="p-0">
@@ -733,13 +1093,14 @@ const ManageUsersPage: React.FC = () => {
                 </TableHead>
                 <TableHead className="px-4 py-3 text-xs font-medium uppercase tracking-wider text-gray-600">Name</TableHead>
                 <TableHead className="px-4 py-3 text-xs font-medium uppercase tracking-wider text-gray-600">WhatsApp Number</TableHead>
+                <TableHead className="px-4 py-3 text-xs font-medium uppercase tracking-wider text-gray-600">Email</TableHead>
                 <TableHead className="text-right px-4 py-3 text-xs font-medium uppercase tracking-wider text-gray-600">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {users.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="h-24 text-center text-gray-500">
+                  <TableCell colSpan={5} className="h-24 text-center text-gray-500">
                     No users found. Click "Add User" or "Import CSV" to get started.
                   </TableCell>
                 </TableRow>
@@ -755,6 +1116,7 @@ const ManageUsersPage: React.FC = () => {
                     </TableCell>
                     <TableCell className="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">{user.name}</TableCell>
                     <TableCell className="px-4 py-3 text-gray-600">{user.whatsappNumber}</TableCell>
+                    <TableCell className="px-4 py-3 text-gray-600">{user.email || 'N/A'}</TableCell>
                     <TableCell className="text-right px-4 py-3">
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -788,6 +1150,104 @@ const ManageUsersPage: React.FC = () => {
           </Table>
         </CardContent>
       </Card>
+
+      {/* Send Email Dialog */}
+      <Dialog open={isSendEmailDialogOpen} onOpenChange={(isOpen) => { if (isBulkEmailSending && isOpen) return; setIsSendEmailDialogOpen(isOpen); if (!isOpen) { setEmailSubject(''); setEmailBody(''); setEmailSendingStatuses([]); } }}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Compose and Send Email</DialogTitle>
+            <DialogDescription>
+              Compose your email below. Selected users with email addresses will receive it.
+              Number of recipients: {emailSendingStatuses.length}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4 space-y-4">
+            <div>
+              <Label htmlFor="email-subject">Subject</Label>
+              <Input 
+                id="email-subject" 
+                value={emailSubject} 
+                onChange={(e) => setEmailSubject(e.target.value)} 
+                placeholder="Your email subject" 
+                className="mt-1"
+                disabled={isBulkEmailSending}
+              />
+            </div>
+            <div>
+              <Label htmlFor="email-body">Body</Label>
+              <div className="mt-1 mb-2 flex flex-wrap gap-2 items-center">
+                {placeholderList.map(p => (
+                  <Button key={p.value} variant="outline" size="sm" onClick={() => insertPlaceholder(p.value)} disabled={isBulkEmailSending || showEmailPreview} className="text-xs px-2 py-1 h-auto">
+                    Insert {p.label}
+                  </Button>
+                ))}
+                <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => {
+                        if (showEmailPreview) {
+                            setShowEmailPreview(false);
+                        } else {
+                            generateEmailPreviewHtml();
+                            setShowEmailPreview(true);
+                        }
+                    }}
+                    disabled={isBulkEmailSending}
+                    className="text-xs px-2 py-1 h-auto ml-auto"
+                >
+                    {showEmailPreview ? 'Hide Preview' : 'Show Preview'}
+                </Button>
+              </div>
+              {!showEmailPreview ? (
+                <Textarea 
+                  id="email-body" 
+                  ref={emailBodyTextareaRef}
+                  value={emailBody} 
+                  onChange={(e) => setEmailBody(e.target.value)} 
+                  placeholder="Type your email message here...\nUse placeholders like {{name}} or {{join_link}}."
+                  className="mt-1 min-h-[200px] max-h-[400px] overflow-y-auto"
+                  rows={10}
+                  disabled={isBulkEmailSending}
+                />
+              ) : (
+                <div 
+                  id="email-preview-area"
+                  className="mt-1 p-3 border rounded-md min-h-[200px] max-h-[400px] overflow-y-auto bg-gray-50 prose prose-sm max-w-none"
+                  dangerouslySetInnerHTML={{ __html: emailPreviewHtml }}
+                />
+              )}
+            </div>
+            {isBulkEmailSending && emailSendingStatuses.length > 0 && (
+              <div className="max-h-48 overflow-y-auto space-y-2 pr-2">
+                <p className="text-sm font-medium mb-2">Sending Progress ({emailSendingStatuses.filter(s=>s.status === 'sent' || s.status === 'failed').length}/{emailSendingStatuses.length}):</p>
+                {emailSendingStatuses.map(s => (
+                  <div key={s.userId} className="text-xs flex justify-between items-center p-1.5 rounded bg-gray-100">
+                    <span>{s.name}</span>
+                    {s.status === 'pending' && <span className="text-gray-500">Pending...</span>}
+                    {s.status === 'sending' && <SpinnerIcon className="size-3 animate-spin text-blue-500" />}
+                    {s.status === 'sent' && <span className="text-green-600 font-medium">Sent</span>}
+                    {s.status === 'failed' && <span className="text-red-600 font-medium" title={s.error}>Failed</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button" variant="outline" disabled={isBulkEmailSending}>Cancel</Button>
+            </DialogClose>
+            <Button 
+              type="button" 
+              onClick={handleSendBulkEmail}
+              disabled={!emailSubject.trim() || !emailBody.trim() || emailSendingStatuses.length === 0 || isBulkEmailSending}
+              className="bg-blue-600 hover:bg-blue-700 text-white min-w-[120px]"
+            >
+              {isBulkEmailSending ? <SpinnerIcon className="animate-spin mr-2 size-4" /> : <Send className="mr-2 size-4" />} 
+              {isBulkEmailSending ? 'Sending...' : `Send to ${emailSendingStatuses.length}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

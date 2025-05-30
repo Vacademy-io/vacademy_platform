@@ -39,7 +39,6 @@ public class BatchController {
     @PostMapping("/search")
     public ResponseEntity<Page<PackageDTOWithBatchDetails>> searchPackages(
             @RequestBody PackageSearchRequestDTO searchRequest,
-            @RequestAttribute("user") CustomUserDetails user,
             Pageable pageable) {
 
         Page<PackageDTOWithBatchDetails> results = batchService.searchPackagesByInstitute(
@@ -48,7 +47,6 @@ public class BatchController {
                 searchRequest.getLevelIds(),
                 searchRequest.getTags(),
                 searchRequest.getSearchByName(),
-                user,
                 pageable);
         return ResponseEntity.ok(results);
     }

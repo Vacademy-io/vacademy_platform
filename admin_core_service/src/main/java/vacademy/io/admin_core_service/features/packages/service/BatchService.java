@@ -58,7 +58,6 @@ public class BatchService {
             List<String> levelIds,
             List<String> tagsToSearch,
             String searchByName,
-            CustomUserDetails user,
             Pageable pageable) {
 
         List<String> processedTags = null;

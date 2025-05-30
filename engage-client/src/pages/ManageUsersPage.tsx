@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -42,6 +42,8 @@ import { v4 as uuidv4 } from 'uuid';
 import Papa from 'papaparse'; // Keep as default import
 import type { ParseResult, ParseError } from 'papaparse'; // Import types separately
 import { toast } from "sonner";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"; // Import AlertDialog components
+import { Textarea } from "@/components/ui/textarea"; // Import Textarea
 
 // Define a type for our user data
 interface User {
@@ -104,6 +106,25 @@ const ManageUsersPage: React.FC = () => {
   const [userMessageStatuses, setUserMessageStatuses] = useState<UserMessageStatus[]>([]);
   const [isBulkSending, setIsBulkSending] = useState(false);
 
+  // State for Clear All Users confirmation
+  const [isClearAllDialogOpen, setIsClearAllDialogOpen] = useState(false);
+
+  // State for CSV import error details
+  const [csvImportErrorDetails, setCsvImportErrorDetails] = useState<string[]>([]);
+
+  // State for custom template fields
+  const [customFields, setCustomFields] = useState({
+    join_link: '',
+    morning_quote: '',
+    daily_habit_heading: '',
+    daily_habit_sub_heading: '',
+    daily_habit_text: '',
+  });
+
+  const handleCustomFieldChange = (fieldName: keyof typeof customFields, value: string) => {
+    setCustomFields(prev => ({ ...prev, [fieldName]: value }));
+  };
+
   const handleSelectAll = (checked: boolean | 'indeterminate') => {
     if (checked === true) {
       setSelectedUserIds(new Set(users.map(user => user.id)));
@@ -137,6 +158,7 @@ const ManageUsersPage: React.FC = () => {
     }
 
     setCsvProcessingError(null);
+    setCsvImportErrorDetails([]); // Clear previous detailed errors
     toast.info("Processing CSV file...", { id: 'csv-processing' });
 
     Papa.parse<CsvRow>(file, {
@@ -149,6 +171,7 @@ const ManageUsersPage: React.FC = () => {
           const errorMessages = parseErrors.slice(0,3).map((err: ParseError) => `Row ${err.row}: ${err.message}`).join("; \n");
           toast.error(`Error parsing CSV: ${errorMessages}`, { id: 'csv-processing' });
           setCsvProcessingError(`Some rows could not be parsed. Please check console for details.`);
+          setCsvImportErrorDetails(parseErrors.map(err => `Row ${err.row}: ${err.message}`));
           return;
         }
 
@@ -158,27 +181,69 @@ const ManageUsersPage: React.FC = () => {
         const validationErrorMessages: string[] = [];
 
         data.forEach((row: CsvRow, index: number) => {
-          const name = row.name?.trim();
-          const whatsappNumber = row.whatsappNumber?.trim();
+          // Use new headers
+          const name = row["Full name"]?.trim();
+          let whatsappNumberInput = row["Best Contact Number. - Whatsapp number where zoom link can be sent."]?.trim();
+          let formattedWhatsappNumber = "";
 
-          if (!name || !whatsappNumber) {
+          // Remove all spaces from whatsappNumberInput if it exists
+          if (whatsappNumberInput) {
+            whatsappNumberInput = whatsappNumberInput.replace(/\s+/g, '');
+          }
+
+          if (!name) {
             invalidCount++;
-            validationErrorMessages.push(`Row ${index + 2}: Missing name or WhatsApp number.`);
+            validationErrorMessages.push(`Row ${index + 2}: Missing 'Full name'.`);
+            // Do not return yet, check whatsappNumberInput as well for complete error reporting if desired
+          }
+
+          if (!whatsappNumberInput) {
+            invalidCount++;
+            // Ensure we don't double-count if name was also missing by checking if this row is already marked for an error
+            if (!validationErrorMessages.some(msg => msg.startsWith(`Row ${index + 2}:`))) {
+                validationErrorMessages.push(`Row ${index + 2}: Missing 'Best Contact Number'.`);
+            }
+            // If both are missing, or just this one, we can't proceed with this row.
+            return; 
+          }
+          
+          // Apply new WhatsApp number formatting logic
+          if (whatsappNumberInput.startsWith('+')) {
+            formattedWhatsappNumber = whatsappNumberInput.substring(1);
+          } else if (whatsappNumberInput.startsWith('0')) {
+            formattedWhatsappNumber = '44' + whatsappNumberInput.substring(1);
+          } else {
+            // Check if it's all digits before prepending 91, to avoid 91+non-digit
+            if (/^\d+$/.test(whatsappNumberInput)) {
+                 formattedWhatsappNumber = '91' + whatsappNumberInput;
+            } else {
+                // If it's not starting with +, 0 and not all digits, it's invalid before even country code logic
+                invalidCount++;
+                validationErrorMessages.push(`Row ${index + 2}: Invalid characters in WhatsApp number '${whatsappNumberInput}'.`);
+                return;
+            }
+          }
+
+          if (!name) { // If name was missing, but we processed whatsapp, now we return.
             return;
           }
-          if (!/^\d{10,15}$/.test(whatsappNumber)) {
+
+          // Validate the formatted number
+          if (!/^\d{10,15}$/.test(formattedWhatsappNumber)) {
             invalidCount++;
-            validationErrorMessages.push(`Row ${index + 2}: Invalid WhatsApp format for '${whatsappNumber}' (must be 10-15 digits).`);
+            validationErrorMessages.push(`Row ${index + 2}: Invalid WhatsApp format for '${whatsappNumberInput}' (formatted: ${formattedWhatsappNumber}). Must be 10-15 digits after formatting.`);
             return;
           }
 
           newUsersFromCsv.push({
             id: uuidv4(),
             name,
-            whatsappNumber,
+            whatsappNumber: formattedWhatsappNumber, // Use the formatted number
           });
           importedCount++;
         });
+
+        setCsvImportErrorDetails(validationErrorMessages); // Store detailed errors for display
 
         if (newUsersFromCsv.length > 0) {
           setUsers(prevUsers => [...newUsersFromCsv, ...prevUsers]);
@@ -355,6 +420,13 @@ const ManageUsersPage: React.FC = () => {
     // setTimeout(() => setIsSendMessageDialogOpen(false), 3000);
   };
 
+  const handleConfirmClearAllUsers = () => {
+    setUsers([]);
+    setSelectedUserIds(new Set());
+    setIsClearAllDialogOpen(false);
+    toast.success("All users have been cleared.");
+  };
+
   return (
     <div className="p-4 md:p-6 lg:p-8 bg-gray-50 min-h-screen">
       <input
@@ -369,7 +441,7 @@ const ManageUsersPage: React.FC = () => {
             <h1 className="text-2xl font-semibold text-gray-800">Manage Users</h1>
             <p className="text-sm text-gray-600">Add, import, and manage your user list.</p>
         </div>
-        <div className="flex space-x-2">
+        <div className="flex space-x-2 flex-wrap gap-y-2">
           <Button variant="outline" onClick={handleImportCsvClick} className="bg-white">
             <Upload className="mr-2 size-4" />
             Import CSV
@@ -428,12 +500,120 @@ const ManageUsersPage: React.FC = () => {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+          {/* Clear All Users Button and Dialog */}
+          <AlertDialog open={isClearAllDialogOpen} onOpenChange={setIsClearAllDialogOpen}>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive" disabled={users.length === 0}>
+                <Trash2 className="mr-2 size-4" />
+                Clear All Users ({users.length})
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This action cannot be undone. This will permanently delete all
+                  {users.length > 0 ? ` ${users.length} ` : ' '}
+                  user(s) from the list.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={handleConfirmClearAllUsers} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">
+                  Yes, delete all users
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </header>
+
+      {/* Custom Template Fields Section */}
+      <Card className="mb-6 shadow-md">
+        <CardHeader>
+          <CardTitle className="text-lg font-medium text-gray-700">Custom Message Variables</CardTitle>
+          <CardDescription className="text-sm text-gray-500">
+            Define values for placeholders that can be used in your WhatsApp message templates.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+          <div>
+            <Label htmlFor="join_link" className="text-sm font-medium text-gray-700">Join Link (URL)</Label>
+            <Input 
+              id="join_link" 
+              value={customFields.join_link} 
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleCustomFieldChange('join_link', e.target.value)} 
+              placeholder="https://example.com/meeting" 
+              className="mt-1"
+            />
+          </div>
+          <div>
+            <Label htmlFor="daily_habit_heading" className="text-sm font-medium text-gray-700">Daily Habit Heading</Label>
+            <Input 
+              id="daily_habit_heading" 
+              value={customFields.daily_habit_heading} 
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleCustomFieldChange('daily_habit_heading', e.target.value)} 
+              placeholder="e.g., Your Habit for Today"
+              className="mt-1"
+            />
+          </div>
+          <div>
+            <Label htmlFor="daily_habit_sub_heading" className="text-sm font-medium text-gray-700">Daily Habit Sub-Heading</Label>
+            <Input 
+              id="daily_habit_sub_heading" 
+              value={customFields.daily_habit_sub_heading} 
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleCustomFieldChange('daily_habit_sub_heading', e.target.value)} 
+              placeholder="e.g., Focus on this simple task"
+              className="mt-1"
+            />
+          </div>
+          <div className="md:col-span-2">
+            <Label htmlFor="morning_quote" className="text-sm font-medium text-gray-700">Morning Quote</Label>
+            <Textarea 
+              id="morning_quote" 
+              value={customFields.morning_quote} 
+              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => handleCustomFieldChange('morning_quote', e.target.value)} 
+              placeholder="Enter your morning quote here..."
+              className="mt-1"
+              rows={3}
+            />
+          </div>
+          <div className="md:col-span-2">
+            <Label htmlFor="daily_habit_text" className="text-sm font-medium text-gray-700">Daily Habit Text</Label>
+            <Textarea 
+              id="daily_habit_text" 
+              value={customFields.daily_habit_text} 
+              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => handleCustomFieldChange('daily_habit_text', e.target.value)} 
+              placeholder="Describe the daily habit..."
+              className="mt-1"
+              rows={4}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
       {csvProcessingError && (
         <div className="mb-4 p-3 rounded-md bg-red-50 text-red-700 border border-red-200 text-sm">
             {csvProcessingError}
         </div>
+      )}
+      {/* Display CSV Import Error Details */}
+      {csvImportErrorDetails.length > 0 && (
+        <Card className="mb-6 shadow-md bg-amber-50 border-amber-200">
+          <CardHeader>
+            <CardTitle className="text-lg font-medium text-amber-800">CSV Import Issues ({csvImportErrorDetails.length})</CardTitle>
+            <CardDescription className="text-sm text-amber-700">
+              The following rows from your CSV file could not be imported. Please correct them and try again.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ul className="list-disc pl-5 space-y-1 text-sm text-amber-700 max-h-60 overflow-y-auto">
+              {csvImportErrorDetails.map((errorMsg, index) => (
+                <li key={index}>{errorMsg}</li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
       )}
 
       {/* Edit User Dialog */}

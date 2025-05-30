@@ -21,15 +21,16 @@ interface JoinSessionFormProps {
   onJoin: (inviteCode: string, username: string) => Promise<void>;
   isJoining: boolean;
   initialError?: string | null;
+  initialInviteCode?: string;
 }
 
-export const JoinSessionForm: React.FC<JoinSessionFormProps> = ({ onJoin, isJoining, initialError }) => {
+export const JoinSessionForm: React.FC<JoinSessionFormProps> = ({ onJoin, isJoining, initialError, initialInviteCode }) => {
   const [error, setError] = useState<string | null>(initialError || null);
 
   const form = useForm<JoinFormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      inviteCode: "",
+      inviteCode: initialInviteCode || "",
       username: "",
     },
   });
@@ -76,10 +77,10 @@ export const JoinSessionForm: React.FC<JoinSessionFormProps> = ({ onJoin, isJoin
               name="username"
               render={({ field }: { field: ControllerRenderProps<JoinFormValues, 'username'> }) => (
                 <FormItem>
-                  <FormLabel className="text-slate-700 text-sm font-medium">Your Name</FormLabel>
+                  <FormLabel className="text-slate-700 text-sm font-medium">your username</FormLabel>
                   <FormControl>
                     <Input
-                      placeholder="Enter your name"
+                      placeholder="Enter your username"
                       {...field}
                       className="text-base h-10 focus:ring-2 focus:ring-blue-500 transition-shadow duration-200 ease-in-out"
                       disabled={isJoining}

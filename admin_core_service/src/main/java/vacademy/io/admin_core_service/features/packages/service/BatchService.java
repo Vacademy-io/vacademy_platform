@@ -5,6 +5,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerStatusEnum;
 import vacademy.io.admin_core_service.features.learner_invitation.enums.LearnerInvitationCodeStatusEnum;
 import vacademy.io.admin_core_service.features.learner_invitation.enums.LearnerInvitationSourceTypeEnum;
@@ -52,6 +53,7 @@ public class BatchService {
         return "Package Session deleted successfully.";
     }
 
+    @Transactional(readOnly = true)
     public Page<PackageDTOWithBatchDetails> searchPackagesByInstitute(
             String instituteId,
             List<String> statuses,
@@ -60,18 +62,24 @@ public class BatchService {
             String searchByName,
             Pageable pageable) {
 
-        List<String> processedTags = null;
+        List<String> tagsForQuery;
         if (tagsToSearch != null && !tagsToSearch.isEmpty()) {
-            processedTags = tagsToSearch.stream()
-                                      .map(String::toLowerCase)
-                                      .map(String::trim)
-                                      .filter(tag -> !tag.isEmpty())
-                                      .collect(Collectors.toList());
-            if (processedTags.isEmpty()) processedTags = null;
+            List<String> processedInputTags = tagsToSearch.stream()
+                                                      .map(String::toLowerCase)
+                                                      .map(String::trim)
+                                                      .filter(tag -> !tag.isEmpty())
+                                                      .collect(Collectors.toList());
+            if (!processedInputTags.isEmpty()) {
+                tagsForQuery = processedInputTags;
+            } else {
+                tagsForQuery = List.of("__EMPTY_TAGS_LIST_PLACEHOLDER__");
+            }
+        } else {
+            tagsForQuery = List.of("__NO_TAGS_FILTER_PLACEHOLDER__");
         }
 
         Page<PackageEntity> packageEntityPage = packageRepository.findPackagesByCriteria(
-                instituteId, statuses, levelIds, processedTags, searchByName, pageable);
+                instituteId, statuses, levelIds, tagsForQuery, searchByName, pageable);
 
         List<PackageDTOWithBatchDetails> packageDetailsList = new ArrayList<>();
         for (PackageEntity packageEntity : packageEntityPage.getContent()) {

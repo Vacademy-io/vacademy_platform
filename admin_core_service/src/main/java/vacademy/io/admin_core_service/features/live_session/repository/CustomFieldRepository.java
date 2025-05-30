@@ -34,29 +34,35 @@ public interface CustomFieldRepository extends JpaRepository<CustomFields, Strin
     }
 
     @Query(value = """
-        SELECT
-          cf.id AS customFieldId,
-          cf.field_key AS fieldKey,
-          cf.field_name AS fieldName,
-          cf.field_type AS fieldType,
-          cf.default_value AS defaultValue,
-          cf.config AS config,
-          cf.form_order AS formOrder,
-          cf.is_mandatory AS isMandatory,
-          cf.is_filter AS isFilter,
-          cf.is_sortable AS isSortable,
-          icf.institute_id AS instituteId,
-          s.id AS sessionId,
-          s.title AS sessionTitle,
-          s.start_time AS startTime,
-          s.last_entry_time AS lastEntryTime,
-          s.access_level AS accessLevel,
-          s.subject
-        FROM institute_custom_fields icf
-        JOIN custom_fields cf ON icf.custom_field_id = cf.id
-        JOIN live_session s ON icf.type_id = s.id
-        WHERE icf.type = 'SESSION' AND s.id = :sessionId AND s.status = 'LIVE'
-        """, nativeQuery = true)
+    SELECT
+      cf.id               AS customFieldId,
+      cf.field_key        AS fieldKey,
+      cf.field_name       AS fieldName,
+      cf.field_type       AS fieldType,
+      cf.default_value    AS defaultValue,
+      cf.config           AS config,
+      cf.form_order       AS formOrder,
+      cf.is_mandatory     AS isMandatory,
+      cf.is_filter        AS isFilter,
+      cf.is_sortable      AS isSortable,
+
+      s.institute_id      AS instituteId,
+      s.id                AS sessionId,
+      s.title             AS sessionTitle,
+      s.start_time        AS startTime,
+      s.last_entry_time   AS lastEntryTime,
+      s.access_level      AS accessLevel,
+      s.subject           AS subject
+    FROM live_session s
+    LEFT JOIN institute_custom_fields icf
+           ON icf.type     = 'SESSION'
+          AND icf.type_id  = s.id
+    LEFT JOIN custom_fields cf
+           ON cf.id = icf.custom_field_id
+    WHERE s.id     = :sessionId
+      AND s.status = 'LIVE'
+    """, nativeQuery = true)
     List<FlatFieldProjection> getSessionCustomFieldsBySessionId(@Param("sessionId") String sessionId);
+
 
 }

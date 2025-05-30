@@ -5,7 +5,6 @@ import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-
 import java.sql.Time;
 import java.sql.Date;
 
@@ -16,6 +15,7 @@ import java.sql.Date;
 @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
 public class LiveSessionListDTO {
     private String sessionId;
+    private String scheduleId;
     private Date meetingDate;
     private Time startTime;
     private Time lastEntryTime;
@@ -27,4 +27,3 @@ public class LiveSessionListDTO {
 
     // Getters and Setters
 }
-

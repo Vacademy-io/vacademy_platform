@@ -32,7 +32,29 @@ public class ApplicationSecurityConfig {
 
     private static final String[] INTERNAL_PATHS = {"/auth-service/internal/**"};
 
-    private static final String[] ALLOWED_PATHS = {"/auth-service/v1/internal/**", "/auth-service/v1/user/internal/create-user", "/auth-service/v1/user/internal/create-user-or-get-existing", "/auth-service/v1/user/internal/user-details-list", "/auth-service/v1/signup-root", "/auth-service/v1/refresh-token", "/auth-service/v1/login-root", "/auth-service/learner/v1/**", "/auth-service/actuator/**", "/auth-service/swagger-ui.html", "/auth-service/v1/report/alert/**", "/auth-service/v3/api-docs/**", "/auth-service/swagger-ui/**", "/auth-service/webjars/swagger-ui/**", "/auth-service/api-docs/**", "/auth-service/v1/send-password", "/auth-service/v1/send-password", "/auth-service/v1/user/internal/users-credential   ", "/auth-service/internal/v1/user-roles/users-of-status","/auth-service/oauth2/**","/auth-service/login/**"};
+    private static final String[] ALLOWED_PATHS = {
+            "/auth-service/v1/internal/**",
+            "/auth-service/v1/user/internal/create-user",
+            "/auth-service/v1/user/internal/create-user-or-get-existing",
+            "/auth-service/v1/user/internal/user-details-list",
+            "/auth-service/v1/signup-root",
+            "/auth-service/v1/refresh-token",
+            "/auth-service/v1/login-root",
+            "/auth-service/learner/v1/**",
+            "/auth-service/actuator/**",
+            "/auth-service/swagger-ui.html",
+            "/auth-service/v1/report/alert/**",
+            "/auth-service/v3/api-docs/**",
+            "/auth-service/swagger-ui/**",
+            "/auth-service/webjars/swagger-ui/**",
+            "/auth-service/api-docs/**",
+            "/auth-service/v1/send-password",
+            "/auth-service/v1/user/internal/users-credential",
+            "/auth-service/internal/v1/user-roles/users-of-status",
+            "/auth-service/oauth2/**",
+            "/auth-service/login/**",
+            "/auth-service/v1/**"
+    };
 
     @Autowired
     JwtAuthFilter jwtAuthFilter;
@@ -57,7 +79,7 @@ public class ApplicationSecurityConfig {
                 .csrf().disable()
                 .cors().and()
                 .sessionManagement()
-                .sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
+                .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 .and()
                 .authorizeHttpRequests(authz -> authz
                         .requestMatchers(ALLOWED_PATHS).permitAll()

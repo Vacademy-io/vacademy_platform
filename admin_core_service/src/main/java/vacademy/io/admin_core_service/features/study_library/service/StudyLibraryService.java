@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.chapter.dto.ChapterDTO;
 import vacademy.io.admin_core_service.features.chapter.dto.ChapterDTOWithDetail;
 import vacademy.io.admin_core_service.features.chapter.entity.ChapterPackageSessionMapping;
@@ -73,6 +74,7 @@ public class StudyLibraryService {
     @Autowired
     private ChapterPackageSessionMappingRepository chapterPackageSessionMappingRepository;
 
+    @Transactional
     public List<CourseDTOWithDetails> getStudyLibraryInitDetails(String instituteId) {
         validateInstituteId(instituteId);
 

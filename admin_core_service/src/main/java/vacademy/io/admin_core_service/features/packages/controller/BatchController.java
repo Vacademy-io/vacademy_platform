@@ -1,8 +1,11 @@
 package vacademy.io.admin_core_service.features.packages.controller;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.packages.dto.PackageDTOWithBatchDetails;
+import vacademy.io.admin_core_service.features.packages.dto.PackageSearchRequestDTO;
 import vacademy.io.admin_core_service.features.packages.service.BatchService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
@@ -31,5 +34,20 @@ public class BatchController {
     @DeleteMapping("/delete-batches")
     public ResponseEntity<String> deleteBatches(@RequestBody String[] packageSessionIds, @RequestAttribute("user") CustomUserDetails userDetails) {
         return ResponseEntity.ok(batchService.deletePackageSession(packageSessionIds, userDetails));
+    }
+
+    @PostMapping("/search")
+    public ResponseEntity<Page<PackageDTOWithBatchDetails>> searchPackages(
+            @RequestBody PackageSearchRequestDTO searchRequest,
+            Pageable pageable) {
+
+        Page<PackageDTOWithBatchDetails> results = batchService.searchPackagesByInstitute(
+                searchRequest.getInstituteId(),
+                searchRequest.getStatus(),
+                searchRequest.getLevelIds(),
+                searchRequest.getTags(),
+                searchRequest.getSearchByName(),
+                pageable);
+        return ResponseEntity.ok(results);
     }
 }

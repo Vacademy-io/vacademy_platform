@@ -64,4 +64,7 @@ public class PackageEntity {
     @Column(name = "about_the_course", columnDefinition = "TEXT")
     private String aboutTheCourse;
 
+    @Column(name = "comma_separated_tags")
+    private String tags;
+
 }

@@ -38,6 +38,7 @@ import vacademy.io.common.exceptions.ExpiredTokenException;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.dto.InstituteIdAndNameDTO;
 import vacademy.io.common.institute.dto.InstituteInfoDTO;
+import vacademy.io.common.notification.dto.EmailOTPRequest;
 import vacademy.io.common.notification.dto.GenericEmailRequest;
 
 import java.util.*;
@@ -184,4 +185,67 @@ public class AuthManager {
         genericEmailRequest.setSubject("Welcome to Vacademy");
         notificationService.sendGenericHtmlMail(genericEmailRequest);
     }
+
+    public String requestOtp(AuthRequestDto authRequestDTO) {
+        Optional<User> user = userRepository.findTopByEmailOrderByCreatedAtDesc(authRequestDTO.getEmail());
+
+        if (user.isEmpty()) {
+            throw new UsernameNotFoundException("invalid user request..!!");
+        } else {
+            // todo: generate OTP for
+            notificationService.sendOtp(makeOtp(authRequestDTO.getEmail()));
+            return "OTP sent to " + authRequestDTO.getEmail();
+        }
+
+    }
+
+    private EmailOTPRequest makeOtp(String email) {
+        return EmailOTPRequest.builder().to(email).service("auth-service").subject("Vacademy | Otp verification. ").name("Vacademy User").build();
+    }
+
+    public JwtResponseDto loginViaOtp(AuthRequestDto authRequestDTO) {
+        validateOtp(authRequestDTO);
+        User user = getUserByEmail(authRequestDTO.getEmail());
+        if (!user.isRootUser()){
+            throw new UsernameNotFoundException("invalid user request..!!");
+        }
+        return generateJwtResponse(authRequestDTO, user);
+    }
+
+    private void validateOtp(AuthRequestDto authRequestDTO) {
+        if (authRequestDTO.getOtp() == null) {
+            throw new UsernameNotFoundException("invalid user request..!!");
+        }
+
+        boolean isValidOtp = notificationService.verifyOTP(
+                EmailOTPRequest.builder()
+                        .otp(authRequestDTO.getOtp())
+                        .to(authRequestDTO.getEmail())
+                        .build()
+        );
+        if (!isValidOtp) {
+            throw new UsernameNotFoundException("invalid user request..!!");
+        }
+    }
+
+    private User getUserByEmail(String email) {
+        return userRepository.findTopByEmailOrderByCreatedAtDesc(email)
+                .orElseThrow(() -> new UsernameNotFoundException("invalid user request..!!"));
+    }
+
+    private JwtResponseDto generateJwtResponse(AuthRequestDto authRequestDTO, User user) {
+        String username = user.getUsername();
+
+        refreshTokenService.deleteAllRefreshToken(user);
+
+        List<UserRole> userRoles = userRoleRepository.findByUser(user);
+
+        RefreshToken refreshToken = refreshTokenService.createRefreshToken(username, authRequestDTO.getClientName());
+
+        return JwtResponseDto.builder()
+                .accessToken(jwtService.generateToken(user, userRoles))
+                .refreshToken(refreshToken.getToken())
+                .build();
+    }
+
 }

@@ -66,4 +66,9 @@ public class EmailController {
         return ResponseEntity.ok(notificationService.sendNotification(emailToUsersDTO));
     }
 
+    @PostMapping("/send-email-to-users-public")
+    public ResponseEntity<String> sendEmailsToUsersPublic(@RequestBody NotificationDTO emailToUsersDTO) {
+        return ResponseEntity.ok(notificationService.sendNotification(emailToUsersDTO));
+    }
+
 }

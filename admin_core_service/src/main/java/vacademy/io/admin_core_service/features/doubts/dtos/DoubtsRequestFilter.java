@@ -27,5 +27,6 @@ public class DoubtsRequestFilter {
     private List<String> sources;
     private List<String> sourceIds;
     private List<String> status;
+    private List<String> batchIds;
     Map<String, String> sortColumns;
 }

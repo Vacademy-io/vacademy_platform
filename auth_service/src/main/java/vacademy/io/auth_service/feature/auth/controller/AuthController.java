@@ -62,6 +62,16 @@ public class AuthController {
         String response = passwordResetManager.sendPasswordToUser(email);
         return ResponseEntity.ok(response);
     }
+
+    @PostMapping("/request-otp")
+    public String requestOtp(@RequestBody AuthRequestDto authRequestDTO) {
+        return authManager.requestOtp(authRequestDTO);
+    }
+
+    @PostMapping("/login-otp")
+    public JwtResponseDto loginViaOtp(@RequestBody AuthRequestDto authRequestDTO) {
+        return authManager.loginViaOtp(authRequestDTO);
+    }
 }
 
 

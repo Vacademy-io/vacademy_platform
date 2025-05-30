@@ -23,6 +23,7 @@ import { Route as DashboardIndexImport } from './routes/dashboard/index'
 import { Route as SessionSelectionPageIndexImport } from './routes/SessionSelectionPage/index'
 import { Route as UserProfileEditIndexImport } from './routes/user-profile/edit/index'
 import { Route as StudyLibraryCoursesIndexImport } from './routes/study-library/courses/index'
+import { Route as RegisterLiveClassIndexImport } from './routes/register/live-class/index'
 import { Route as LoginForgotPasswordIndexImport } from './routes/login/forgot-password/index'
 import { Route as HomeworkReportsIndexImport } from './routes/homework/reports/index'
 import { Route as HomeworkListIndexImport } from './routes/homework/list/index'
@@ -111,6 +112,12 @@ const UserProfileEditIndexRoute = UserProfileEditIndexImport.update({
 const StudyLibraryCoursesIndexRoute = StudyLibraryCoursesIndexImport.update({
   id: '/study-library/courses/',
   path: '/study-library/courses/',
+  getParentRoute: () => rootRoute,
+} as any)
+
+const RegisterLiveClassIndexRoute = RegisterLiveClassIndexImport.update({
+  id: '/register/live-class/',
+  path: '/register/live-class/',
   getParentRoute: () => rootRoute,
 } as any)
 
@@ -332,6 +339,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginForgotPasswordIndexImport
       parentRoute: typeof rootRoute
     }
+    '/register/live-class/': {
+      id: '/register/live-class/'
+      path: '/register/live-class'
+      fullPath: '/register/live-class'
+      preLoaderRoute: typeof RegisterLiveClassIndexImport
+      parentRoute: typeof rootRoute
+    }
     '/study-library/courses/': {
       id: '/study-library/courses/'
       path: '/study-library/courses'
@@ -431,6 +445,7 @@ export interface FileRoutesByFullPath {
   '/homework/list': typeof HomeworkListIndexRoute
   '/homework/reports': typeof HomeworkReportsIndexRoute
   '/login/forgot-password': typeof LoginForgotPasswordIndexRoute
+  '/register/live-class': typeof RegisterLiveClassIndexRoute
   '/study-library/courses': typeof StudyLibraryCoursesIndexRoute
   '/user-profile/edit': typeof UserProfileEditIndexRoute
   '/assessment/examination/$assessmentId/LearnerLiveTest': typeof AssessmentExaminationAssessmentIdLearnerLiveTestRoute
@@ -461,6 +476,7 @@ export interface FileRoutesByTo {
   '/homework/list': typeof HomeworkListIndexRoute
   '/homework/reports': typeof HomeworkReportsIndexRoute
   '/login/forgot-password': typeof LoginForgotPasswordIndexRoute
+  '/register/live-class': typeof RegisterLiveClassIndexRoute
   '/study-library/courses': typeof StudyLibraryCoursesIndexRoute
   '/user-profile/edit': typeof UserProfileEditIndexRoute
   '/assessment/examination/$assessmentId/LearnerLiveTest': typeof AssessmentExaminationAssessmentIdLearnerLiveTestRoute
@@ -492,6 +508,7 @@ export interface FileRoutesById {
   '/homework/list/': typeof HomeworkListIndexRoute
   '/homework/reports/': typeof HomeworkReportsIndexRoute
   '/login/forgot-password/': typeof LoginForgotPasswordIndexRoute
+  '/register/live-class/': typeof RegisterLiveClassIndexRoute
   '/study-library/courses/': typeof StudyLibraryCoursesIndexRoute
   '/user-profile/edit/': typeof UserProfileEditIndexRoute
   '/assessment/examination/$assessmentId/LearnerLiveTest': typeof AssessmentExaminationAssessmentIdLearnerLiveTestRoute
@@ -524,6 +541,7 @@ export interface FileRouteTypes {
     | '/homework/list'
     | '/homework/reports'
     | '/login/forgot-password'
+    | '/register/live-class'
     | '/study-library/courses'
     | '/user-profile/edit'
     | '/assessment/examination/$assessmentId/LearnerLiveTest'
@@ -553,6 +571,7 @@ export interface FileRouteTypes {
     | '/homework/list'
     | '/homework/reports'
     | '/login/forgot-password'
+    | '/register/live-class'
     | '/study-library/courses'
     | '/user-profile/edit'
     | '/assessment/examination/$assessmentId/LearnerLiveTest'
@@ -582,6 +601,7 @@ export interface FileRouteTypes {
     | '/homework/list/'
     | '/homework/reports/'
     | '/login/forgot-password/'
+    | '/register/live-class/'
     | '/study-library/courses/'
     | '/user-profile/edit/'
     | '/assessment/examination/$assessmentId/LearnerLiveTest'
@@ -613,6 +633,7 @@ export interface RootRouteChildren {
   HomeworkListIndexRoute: typeof HomeworkListIndexRoute
   HomeworkReportsIndexRoute: typeof HomeworkReportsIndexRoute
   LoginForgotPasswordIndexRoute: typeof LoginForgotPasswordIndexRoute
+  RegisterLiveClassIndexRoute: typeof RegisterLiveClassIndexRoute
   StudyLibraryCoursesIndexRoute: typeof StudyLibraryCoursesIndexRoute
   UserProfileEditIndexRoute: typeof UserProfileEditIndexRoute
   AssessmentExaminationAssessmentIdLearnerLiveTestRoute: typeof AssessmentExaminationAssessmentIdLearnerLiveTestRoute
@@ -643,6 +664,7 @@ const rootRouteChildren: RootRouteChildren = {
   HomeworkListIndexRoute: HomeworkListIndexRoute,
   HomeworkReportsIndexRoute: HomeworkReportsIndexRoute,
   LoginForgotPasswordIndexRoute: LoginForgotPasswordIndexRoute,
+  RegisterLiveClassIndexRoute: RegisterLiveClassIndexRoute,
   StudyLibraryCoursesIndexRoute: StudyLibraryCoursesIndexRoute,
   UserProfileEditIndexRoute: UserProfileEditIndexRoute,
   AssessmentExaminationAssessmentIdLearnerLiveTestRoute:
@@ -690,6 +712,7 @@ export const routeTree = rootRoute
         "/homework/list/",
         "/homework/reports/",
         "/login/forgot-password/",
+        "/register/live-class/",
         "/study-library/courses/",
         "/user-profile/edit/",
         "/assessment/examination/$assessmentId/LearnerLiveTest",
@@ -750,6 +773,9 @@ export const routeTree = rootRoute
     },
     "/login/forgot-password/": {
       "filePath": "login/forgot-password/index.tsx"
+    },
+    "/register/live-class/": {
+      "filePath": "register/live-class/index.tsx"
     },
     "/study-library/courses/": {
       "filePath": "study-library/courses/index.tsx"

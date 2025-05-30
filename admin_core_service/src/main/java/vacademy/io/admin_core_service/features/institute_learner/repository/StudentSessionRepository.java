@@ -71,6 +71,8 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
 
     List<StudentSessionInstituteGroupMapping> findAllByInstituteIdAndUserId(String instituteId, String userId);
 
+    List<StudentSessionInstituteGroupMapping> findAllByInstituteIdAndUserIdAndStatusIn(String instituteId, String userId,List<String>status);
+
     @Query(value = "SELECT COUNT(ss.id) " +
             "FROM student_session_institute_group_mapping ss " +
             "JOIN package_session ps ON ss.package_session_id = ps.id " +
@@ -117,4 +119,8 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
             @Param("instituteId") String instituteId,
             @Param("userId") String userId,
             @Param("statuses") List<String> statuses);
+
+
+    Optional<StudentSessionInstituteGroupMapping> findTopByUserIdAndInstituteIdOrderByCreatedAtDesc(String userId, String instituteId);
+
 }

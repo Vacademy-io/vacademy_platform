@@ -3,6 +3,7 @@ export const BASE_URL = "https://backend-stage.vacademy.io";
 export const INSTITUTE_ID = "c70f40a5-e4d3-4b6c-a498-e612d0d4b133";
 
 export const LOGIN_URL = `${BASE_URL}/auth-service/learner/v1/login`;
+export const LOGIN_URL_GOOGLE_GITHUB = `${BASE_URL}/auth-service/oauth2/authorization`;
 export const REQUEST_OTP = `${BASE_URL}/auth-service/learner/v1/request-otp`;
 export const LOGIN_OTP = `${BASE_URL}/auth-service/learner/v1/login-otp`;
 export const REFRESH_TOKEN_URL = `${BASE_URL}/auth-service/learner/v1/refresh-token`;
@@ -56,3 +57,6 @@ export const GET_LAST_7_DAYS_PROGRESS = `${BASE_URL}/admin-core-service/learner-
 // Live session
 export const LIVE_SESSION_REQUEST_OTP = `${BASE_URL}/notification-service/v1/send-email-otp`
 export const LIVE_SESSION_VERIFY_OTP = `${BASE_URL}/notification-service/v1/verify-email-otp`
+export const ADD_DOUBT = `${BASE_URL}/admin-core-service/institute/v1/doubts/create`
+export const GET_DOUBTS = `${BASE_URL}/admin-core-service/institute/v1/doubts/get-all`
+export const GET_USER_BASIC_DETAILS = `${BASE_URL}/auth-service/v1/user-details/get-basic-details`;

@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "clear-cache": "rm -rf .vite node_modules/.vite node_modules/.cache dist .tsbuildinfo tsconfig.tsbuildinfo && pnpm store prune",
+    "fresh-start": "pnpm clear-cache && pnpm install && pnpm dev"
   },
   "dependencies": {
     "@capacitor-community/privacy-screen": "^6.0.0",
@@ -25,6 +27,7 @@
     "@dnd-kit/sortable": "^9.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@edtr-io/mathquill": "^0.11.0",
+    "@excalidraw/excalidraw": "^0.18.0",
     "@hookform/resolvers": "^3.9.1",
     "@phosphor-icons/react": "^2.1.7",
     "@radix-ui/react-alert-dialog": "^1.1.4",

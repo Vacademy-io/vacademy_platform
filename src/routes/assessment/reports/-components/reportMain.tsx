@@ -91,7 +91,10 @@ const AssessmentReportList = ({
         assessmentId: report.assessment_id,
         attemptId: report.attempt_id,
       },
-      state: { report } as any,
+      state: {
+        report,
+        evaluationType: report.evaluation_type,
+      } as any,
     });
   };
 

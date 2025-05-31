@@ -1,5 +1,3 @@
-"use client";
-
 import { DotOutline, Export } from "@phosphor-icons/react";
 import { MyButton } from "@/components/design-system/button";
 import { Separator } from "@radix-ui/react-separator";
@@ -35,6 +33,14 @@ import {
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
 import { MarksStatusIndicator } from "./marks-chip";
+import { FileText } from "lucide-react";
+import type {
+  DocumentLoadEvent,
+  PageChangeEvent,
+} from "@react-pdf-viewer/core";
+// import { Button } from "@/components/ui/button";
+import { PdfViewerComponent } from "../study-library/level-material/subject-material/module-material/chapter-material/slide-material/pdf-viewer-component";
+import { getPublicUrl } from "@/services/upload_file";
 type TestMarks = {
   total_achievable_marks: number;
   section_wise_achievable_marks: Record<string, number>;
@@ -43,16 +49,35 @@ export const TestReportDialog = ({
   testReport,
   examType,
   assessmentDetails,
+  evaluationType,
 }: TestReportDialogProps) => {
   const report = useRouter();
   const [instituteDetails, setInstituteDetails] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
   const { setNavHeading } = useNavHeadingStore();
+  type PdfFileType = {
+    fileId: string;
+    fileName: string;
+    fileUrl: string;
+    size: number;
+    file: File | null;
+  };
+
+  // Somewhere at the top of your component
+  const [pdfFile, setPdfFile] = useState<PdfFileType | null>(null);
+
+  // const { pdfFile } = useAssessmentStore();
+  // setPdfFile: (file) => set({ pdfFile: file }),
+  const [showPdfPreview, setShowPdfPreview] = useState(false);
+  const [pdfDocumentInfo, setPdfDocumentInfo] = useState({
+    numPages: 0,
+    currentPage: 0,
+  });
 
   // const { state } = report.__store.state.location.state as ParsedHistoryState;
   // const studentReport: Report = state?.report || {};
   const locationState = report.__store.state.location
-    .state as ParsedHistoryState;
+    .state as unknown as ParsedHistoryState;
   const defaultReport: Report = {
     assessment_id: "",
     attempt_id: "",
@@ -66,6 +91,7 @@ export const TestReportDialog = ({
     sections: {},
     attempt_date: "",
     play_mode: "",
+    evaluation_type: "",
   };
 
   const studentReport: Report = locationState?.report || defaultReport;
@@ -170,10 +196,60 @@ export const TestReportDialog = ({
   const [selectedSection, setSelectedSection] = useState(
     sectionsInfo?.length ? sectionsInfo[0]?.id : undefined
   );
+  console.log("assessmentDetails", assessmentDetails);
+  const evaluation_type = evaluationType;
 
   console.log("testReport", testReport, "selectedSection", selectedSection);
+  const evaluated_file_id = testReport?.evaluated_file_id;
+  console.log("evaluated_file_id", evaluated_file_id);
   const currentSectionAllQuestions = testReport?.all_sections[selectedSection!];
   console.log("currentSectionAllQuestions", currentSectionAllQuestions);
+
+  useEffect(() => {
+    if (evaluated_file_id) {
+      console.log("Evaluated file ID:", evaluated_file_id);
+      const fetchAndSetFile = async () => {
+        try {
+          const publicUrl = await getPublicUrl(evaluated_file_id);
+          console.log("Public URL:", publicUrl);
+          console.log("File ID:", evaluated_file_id);
+
+          // Assuming you have file details somewhere (like file.name, file.size)
+          setPdfFile({
+            fileId: evaluated_file_id,
+            fileName: "Evaluated File.pdf", // replace this if you have actual name
+            fileUrl: publicUrl,
+            size: 0, // replace this if you have actual file size
+            file: null, // or blob/file object if you have it
+          });
+        } catch (error) {
+          console.error("Error fetching public URL:", error);
+        }
+      };
+
+      fetchAndSetFile();
+    }
+  }, [evaluated_file_id]);
+  const handleDocumentLoad = (e: DocumentLoadEvent) => {
+    setPdfDocumentInfo((prev) => ({
+      ...prev,
+      numPages: e.doc.numPages,
+    }));
+    console.log("pdfDocumentInfo", pdfDocumentInfo);
+  };
+
+  const handlePageChange = (e: PageChangeEvent) => {
+    setPdfDocumentInfo((prev) => ({
+      ...prev,
+      currentPage: e.currentPage,
+    }));
+  };
+
+  const handlePreviewPdf = () => {
+    if (pdfFile) {
+      setShowPdfPreview(true);
+    }
+  };
 
   if (testReport === null || studentReport === null || examType === undefined) {
     return;
@@ -619,7 +695,25 @@ export const TestReportDialog = ({
             )}
           </div>
         </div>
-        <div className="fixed bottom-0 left-0 right-0 p-4 bg-white shadow-md md:hidden lg:hidden">
+        {evaluation_type === "MANUAL" && pdfFile && (
+          <div className="sticky bottom-0 left-0 right-0 p-4 bg-white shadow-md">
+            <div className="flex justify-center">
+              <MyButton
+                buttonType="primary"
+                scale="large"
+                layoutVariant="default"
+                onClick={handlePreviewPdf}
+                className="flex items-center gap-2"
+              >
+                <FileText className="h-4 w-4" />
+                View PDF
+              </MyButton>
+            </div>
+          </div>
+        )}
+        <div
+          className={`fixed bottom-0 left-0 right-0 p-4 bg-white shadow-md md:hidden lg:hidden ${evaluation_type === "MANUAL" && pdfFile ? "mb-16" : ""}`}
+        >
           <div className="flex justify-center">
             <MyButton
               buttonType="secondary"
@@ -636,6 +730,35 @@ export const TestReportDialog = ({
             </MyButton>
           </div>
         </div>
+        {showPdfPreview && pdfFile ? (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-opacity-50 p-4">
+            <div className="bg-white rounded-lg w-full max-w-5xl h-[90vh] flex flex-col">
+              {/* <div className="flex justify-between items-center p-4 border-b">
+                <Button
+                  variant="ghost"
+                  onClick={() => setShowPdfPreview(false)}
+                >
+                  <span className="sr-only">Back</span>← Back
+                </Button>
+              </div> */}
+              <div className="flex-1 overflow-auto">
+                <PdfViewerComponent
+                  pdfUrl={pdfFile.fileUrl}
+                  handleDocumentLoad={handleDocumentLoad}
+                  handlePageChange={handlePageChange}
+                />
+              </div>
+              <div className="p-4 border-t">
+                <MyButton
+                  buttonType="secondary"
+                  onClick={() => setShowPdfPreview(false)}
+                >
+                  Close
+                </MyButton>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     </>
   );

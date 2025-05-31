@@ -560,12 +560,18 @@ const EnrollByInvite = () => {
     let phoneValue = personalInfo.mobile;
 
     if (inviteData && inviteData.custom_fields) {
+      // const emailField = inviteData.custom_fields.find(
+      //   (field) => field.field_name === "Email"
+      // );
       const emailField = inviteData.custom_fields.find(
-        (field) => field.field_name === "Email"
+        (field) => field.field_name.toLowerCase() === "email"
       );
       const phoneField = inviteData.custom_fields.find(
-        (field) => field.field_name === "Phone Number"
+        (field) =>
+          field.field_name.toLowerCase().includes("phone") ||
+          field.field_name.toLowerCase().includes("mobile")
       );
+
       const fullNameField = inviteData.custom_fields.find(
         (field) => field.field_name === "Full Name"
       );
@@ -690,6 +696,7 @@ const EnrollByInvite = () => {
       );
       console.log("Enrollment response:", response.data);
       setSuccess(true);
+      // setStep(1); // Reset to step 1 after successful submission
       toast.success("Enrollment submitted successfully!");
     } catch (error) {
       console.error("Error submitting enrollment:", error);
@@ -798,13 +805,17 @@ const EnrollByInvite = () => {
             // Step 1: Level Selection with Package and Session context
             <div className="space-y-6">
               <div className="border-t pt-4">
-                <h3 className="font-medium mb-2">Select Levels</h3>
-                <p className="text-xs text-gray-500 mb-2">
-                  Pre-selected levels are not selectable
-                </p>
-                <p className="text-xs text-gray-500 mb-4">
-                  Select the levels you want to enroll in
-                </p>
+                <h3 className="font-medium mb-2">Select Course</h3>
+                {batchOptions?.max_selectable_packages !== 0 && (
+                  <p className="text-xs text-gray-500 mb-2">
+                    Pre-selected levels are not selectable
+                  </p>
+                )}
+                {batchOptions?.max_selectable_packages !== 0 && (
+                  <p className="text-xs text-gray-500 mb-4">
+                    Select the levels you want to enroll in
+                  </p>
+                )}
                 <p className="text-xs text-gray-500 mb-2">{}</p>
               </div>
 

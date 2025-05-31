@@ -62,7 +62,7 @@ export const ModuleCard = ({ module }: { module: ModulesWithChapters}) => {
                     <img
                         src={imageUrl}
                         alt={module.module.module_name}
-                        className="w-full rounded-lg object-cover h-[70%]"
+                        className="w-full rounded-lg object-contain h-[70%]"
                     />
                 ) : (
                     <div className="flex w-full items-center justify-center rounded-lg bg-neutral-100 h-[80%]">

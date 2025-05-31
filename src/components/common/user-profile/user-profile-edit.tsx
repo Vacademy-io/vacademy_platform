@@ -234,7 +234,6 @@ export default function EditProfile() {
             return;
           }
 
-          console.log("Student details to use:", studentDetails);
           setStudentData(studentDetails);
 
           // Pre-fill the form with student data

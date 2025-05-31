@@ -29,7 +29,7 @@ export function ResponseBreakdownComponent({
 }) {
   const chartData = [
     {
-      responseType: "correct",
+      responseType: "Attempted",
       value: responseData.attempted,
       fill: "#97D4B4",
     },

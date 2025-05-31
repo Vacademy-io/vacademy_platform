@@ -9,7 +9,6 @@ import {
 } from "@/constants/helper";
 import {
   renderCorrectAnswer,
-  renderStudentResponse,
   ResponseBreakdownComponent,
 } from "./response-breakdown-component";
 import { MarksBreakdownComponent } from "./marks-breakdown-component";
@@ -41,6 +40,7 @@ import type {
 // import { Button } from "@/components/ui/button";
 import { PdfViewerComponent } from "../study-library/level-material/subject-material/module-material/chapter-material/slide-material/pdf-viewer-component";
 import { getPublicUrl } from "@/services/upload_file";
+import { renderStudentResponse } from "./question-response-renderer";
 type TestMarks = {
   total_achievable_marks: number;
   section_wise_achievable_marks: Record<string, number>;
@@ -341,7 +341,7 @@ export const TestReportDialog = ({
         <div className="p-6 text-h3 font-semibold text-primary-500">
           Score Report
         </div>
-        <div className="flex flex-col md:flex-col lg:flex-row items-center gap-10 lg:gap-20 p-6">
+        <div className="flex flex-col md:flex-col lg:flex-row gap-10 lg:gap-20 p-6">
           <div className=" flex sm:flex-row lg:flex-col items-center gap-20 p-6">
             <div className="flex flex-col">
               <h1>Rank</h1>
@@ -643,6 +643,22 @@ export const TestReportDialog = ({
                                   : "bg-neutral-50"
                             }`}
                           >
+                            {/* <div>
+                              {review.student_response_options &&
+                              review.student_response_options.length > 0 ? (
+                                review.student_response_options.map(
+                                  (option, idx) => {
+                                    return (
+                                      <p key={idx}>
+                                        {parseHtmlToString(option.option_name)}
+                                      </p>
+                                    );
+                                  }
+                                )
+                              ) : (
+                                <p>No response</p>
+                              )}
+                            </div> */}
                             {renderStudentResponse(review)}
                           </div>
                         </div>

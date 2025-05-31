@@ -5,7 +5,18 @@ export const renderStudentResponse = (review: any) => {
   if (!review.student_response_options) return <p>No response</p>;
 
   try {
-    const responseData = JSON.parse(review.student_response_options);
+    // Handle both string and object formats
+    const responseData =
+      typeof review.student_response_options === "string"
+        ? JSON.parse(review.student_response_options)
+        : review.student_response_options;
+
+    // If it's an array, it's in the legacy format with direct option names
+    if (Array.isArray(review.student_response_options)) {
+      return review.student_response_options.map((option: any, idx: number) => (
+        <p key={idx}>{parseHtmlToString(option.option_name)}</p>
+      ));
+    }
 
     switch (review.question_type) {
       case "ONE_WORD":
@@ -24,6 +35,22 @@ export const renderStudentResponse = (review: any) => {
 
       case "MCQS":
         if (responseData.responseData?.optionIds?.length) {
+          // If we have the options array with names, use it
+          if (Array.isArray(review.options)) {
+            return responseData.responseData.optionIds.map(
+              (optionId: string) => {
+                const option = review.options.find(
+                  (opt: any) => opt.id === optionId
+                );
+                return option ? (
+                  <p key={optionId}>{parseHtmlToString(option.option_name)}</p>
+                ) : (
+                  <p key={optionId}>Option {optionId}</p>
+                );
+              }
+            );
+          }
+          // Fallback to showing IDs if no option names available
           return (
             <p>
               Selected option ID:{" "}
@@ -35,6 +62,22 @@ export const renderStudentResponse = (review: any) => {
 
       case "MCQM":
         if (responseData.responseData?.optionIds?.length) {
+          // If we have the options array with names, use it
+          if (Array.isArray(review.options)) {
+            return responseData.responseData.optionIds.map(
+              (optionId: string) => {
+                const option = review.options.find(
+                  (opt: any) => opt.id === optionId
+                );
+                return option ? (
+                  <p key={optionId}>{parseHtmlToString(option.option_name)}</p>
+                ) : (
+                  <p key={optionId}>Option {optionId}</p>
+                );
+              }
+            );
+          }
+          // Fallback to showing IDs if no option names available
           return (
             <p>
               Selected option IDs:{" "}

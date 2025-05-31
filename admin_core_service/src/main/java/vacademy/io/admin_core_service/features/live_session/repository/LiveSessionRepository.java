@@ -113,6 +113,14 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
     List<LiveSessionRepository.LiveSessionListProjection> findPreviousSessions(@Param("instituteId") String instituteId);
 
 
+
+        // TODO:
+        //  WHERE (
+        //        (lsp.source_type = 'BATCH' AND lsp.source_id = :batchId)
+        //        OR
+        //        (lsp.source_type = 'USER' AND lsp.source_id = :userId)
+        //    )
+
         @Query(value = """
         SELECT
             s.id AS sessionId,

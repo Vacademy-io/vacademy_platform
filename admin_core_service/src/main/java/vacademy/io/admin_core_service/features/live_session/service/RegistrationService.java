@@ -48,7 +48,7 @@ public class RegistrationService {
             CustomFieldValues value = CustomFieldValues.builder()
                     .id(UUID.randomUUID().toString())
                     .customFieldId(fieldDto.getCustomFieldId())
-                    .sourceType("GUEST")  // or any logic you want
+                    .sourceType("EXTERNAL_PARTICIPANT")  // or any logic you want
                     .sourceId(guestUserId) // passed as parameter or obtained elsewhere
                     .type("SESSION")      // optional
                     .typeId(null)         // or requestDto.getSessionId() if int, else convert

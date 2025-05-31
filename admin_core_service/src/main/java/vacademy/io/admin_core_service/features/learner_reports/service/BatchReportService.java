@@ -89,7 +89,12 @@ public class BatchReportService {
                 filter.getStartDate(),
                 filter.getEndDate(),
                 filter.getPackageSessionId(),
-                ACTIVE_LEARNERS
+                ACTIVE_LEARNERS,
+                ACTIVE_SUBJECTS,
+                ACTIVE_MODULES,
+                ACTIVE_CHAPTERS,
+                ACTIVE_CHAPTERS,
+                VALID_SLIDE_STATUSES
         );
     }
 

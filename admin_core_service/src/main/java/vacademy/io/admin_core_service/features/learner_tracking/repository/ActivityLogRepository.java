@@ -199,39 +199,66 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
     );
 
     @Query(value = """ 
-                WITH activity_duration AS (
-                    SELECT 
-                        al.user_id,
-                        COALESCE(SUM(EXTRACT(EPOCH FROM (al.end_time - al.start_time))) / 60, 0) AS total_time_spent_minutes
-                    FROM activity_log al
-                    WHERE al.created_at BETWEEN :startDate AND :endDate
-                    GROUP BY al.user_id
-                ),
-                batch_time_spent AS (
-                    SELECT 
-                        ssig.package_session_id,
-                        SUM(COALESCE(ad.total_time_spent_minutes, 0)) AS total_time_spent,
-                        COUNT(DISTINCT ssig.user_id) AS total_learners
-                    FROM student_session_institute_group_mapping ssig
-                    LEFT JOIN activity_duration ad ON ssig.user_id = ad.user_id
-                    WHERE 
-                        ssig.package_session_id = :packageSessionId
-                        AND ssig.status IN :statusList
-                    GROUP BY ssig.package_session_id
-                )
-                SELECT 
-                    CASE 
-                        WHEN total_learners > 0 THEN total_time_spent / total_learners 
-                        ELSE 0 
-                    END AS avg_time_spent_minutes
-                FROM batch_time_spent;
-            """, nativeQuery = true)
+    WITH filtered_activity_log AS (
+        SELECT al.*
+        FROM activity_log al
+        JOIN slide s ON s.id = al.slide_id
+        JOIN chapter_to_slides cs ON cs.slide_id = s.id
+        JOIN chapter c ON c.id = cs.chapter_id
+        JOIN module_chapter_mapping mcm ON mcm.chapter_id = c.id
+        JOIN modules m ON m.id = mcm.module_id
+        JOIN subject_module_mapping smm ON smm.module_id = m.id
+        JOIN subject sub ON sub.id = smm.subject_id
+        JOIN subject_session sps ON sps.subject_id = sub.id
+        JOIN chapter_package_session_mapping cpsm ON cpsm.chapter_id = c.id AND cpsm.package_session_id = :packageSessionId
+        WHERE 
+            al.created_at BETWEEN :startDate AND :endDate
+            AND sps.session_id = :packageSessionId
+            AND sub.status IN :subjectStatusList
+            AND m.status IN :moduleStatusList
+            AND c.status IN :chapterStatusList
+            AND cpsm.status IN :chapterToSessionStatusList
+            AND s.status IN :slideStatusList
+            AND cs.status IN :slideStatusList
+    ),
+    activity_duration AS (
+        SELECT 
+            al.user_id,
+            COALESCE(SUM(EXTRACT(EPOCH FROM (al.end_time - al.start_time))) / 60, 0) AS total_time_spent_minutes
+        FROM filtered_activity_log al
+        GROUP BY al.user_id
+    ),
+    batch_time_spent AS (
+        SELECT 
+            ssig.package_session_id,
+            SUM(COALESCE(ad.total_time_spent_minutes, 0)) AS total_time_spent,
+            COUNT(DISTINCT ssig.user_id) AS total_learners
+        FROM student_session_institute_group_mapping ssig
+        LEFT JOIN activity_duration ad ON ssig.user_id = ad.user_id
+        WHERE 
+            ssig.package_session_id = :packageSessionId
+            AND ssig.status IN :statusList
+        GROUP BY ssig.package_session_id
+    )
+    SELECT 
+        CASE 
+            WHEN total_learners > 0 THEN total_time_spent / total_learners 
+            ELSE 0 
+        END AS avg_time_spent_minutes
+    FROM batch_time_spent
+""", nativeQuery = true)
     Double findAverageTimeSpentByBatch(
             @Param("startDate") Date startDate,
             @Param("endDate") Date endDate,
             @Param("packageSessionId") String packageSessionId,
-            @Param("statusList") List<String> statusList
+            @Param("statusList") List<String> statusList,
+            @Param("subjectStatusList") List<String> subjectStatusList,
+            @Param("moduleStatusList") List<String> moduleStatusList,
+            @Param("chapterStatusList") List<String> chapterStatusList,
+            @Param("chapterToSessionStatusList") List<String> chapterToSessionStatusList,
+            @Param("slideStatusList") List<String> slideStatusList
     );
+
 
     @Query(value = """ 
             WITH total_time_spent AS (

@@ -28,8 +28,13 @@ import {
 } from "@/constants/urls";
 import { toast } from "sonner";
 import { transformToGuestRegistrationDTO } from "../-utils/helper";
-import { Navigate, useRouter } from "@tanstack/react-router";
+import { useRouter } from "@tanstack/react-router";
 import { AccessLevel } from "../-types/enum";
+import {
+  ApiError,
+  DropdownOption,
+  RegistrationFormValues,
+} from "../-types/type";
 
 export const verifyEmailSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -48,11 +53,11 @@ export default function LiveClassRegistrationPage() {
   const { sessionId } = router.state.location.search;
   const { data, isLoading } = useSessionCustomFields(sessionId || "");
 
-  useEffect(()=>{
-    if(data?.accessLevel === AccessLevel.PRIVATE){
-      router.navigate({ to: "/study-library/live-class" }); 
+  useEffect(() => {
+    if (data?.accessLevel === AccessLevel.PRIVATE) {
+      router.navigate({ to: "/study-library/live-class" });
     }
-  },[data])
+  }, [data]);
   console.log("data ", data);
   const schema = generateZodSchema(data?.customFields);
   const form = useForm({
@@ -72,7 +77,7 @@ export default function LiveClassRegistrationPage() {
     formState: { errors },
   } = form;
 
-  const onSubmit = (formValues: Record<string, any>) => {
+  const onSubmit = (formValues: RegistrationFormValues) => {
     console.log("here");
     console.log("data ", formValues);
     try {
@@ -96,17 +101,18 @@ export default function LiveClassRegistrationPage() {
   const sendEmailOtp = async (email: string) => {
     try {
       await axios.get(LIVE_SESSION_REQUEST_OTP, {
-        params: { to: email }, // ✅ GET request uses params
+        params: { to: email },
         headers: {
           "Content-Type": "application/json",
         },
       });
       setIsOTPSent(true);
-      toast.success("OTP sent successfully"); // ✅ More appropriate
-    } catch (error: any) {
+      toast.success("OTP sent successfully");
+    } catch (error) {
+      const apiError = error as ApiError;
       console.error(
         "Failed to send OTP:",
-        error?.response?.data || error.message
+        apiError.response?.data || apiError.message
       );
       toast.error("Failed to send OTP");
       throw error;
@@ -117,7 +123,7 @@ export default function LiveClassRegistrationPage() {
     try {
       const response = await axios.post(
         LIVE_SESSION_VERIFY_OTP,
-        { to: email, otp }, // ✅ Correct placement of request body
+        { to: email, otp },
         {
           headers: {
             "Content-Type": "application/json",
@@ -136,10 +142,11 @@ export default function LiveClassRegistrationPage() {
       }
 
       return response.data;
-    } catch (error: any) {
+    } catch (error) {
+      const apiError = error as ApiError;
       console.error(
         "Failed to verify OTP:",
-        error?.response?.data || error.message
+        apiError.response?.data || apiError.message
       );
       toast.error("OTP verification failed");
       throw error;
@@ -267,10 +274,7 @@ export default function LiveClassRegistrationPage() {
                           label={responseField.fieldName}
                           name={responseField.fieldKey}
                           options={JSON.parse(responseField.config).map(
-                            (
-                              option: { name: string; label: string },
-                              idx: number
-                            ) => ({
+                            (option: DropdownOption, idx: number) => ({
                               value: option.name,
                               label: option.label,
                               _id: idx,

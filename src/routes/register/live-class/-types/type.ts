@@ -20,3 +20,26 @@ export interface SessionCustomFieldsResponse {
   instituteId: string;
   customFields: CustomField[];
 }
+
+export interface ApiError {
+  response?: {
+    data?: unknown;
+    status?: number;
+    statusText?: string;
+  };
+  message: string;
+}
+
+export interface FormFieldValue {
+  value: string | number | boolean;
+  label?: string;
+}
+
+export interface RegistrationFormValues {
+  [key: string]: FormFieldValue | string;
+}
+
+export interface DropdownOption {
+  name: string;
+  label: string;
+}

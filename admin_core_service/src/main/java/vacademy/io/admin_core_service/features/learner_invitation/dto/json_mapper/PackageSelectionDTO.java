@@ -1,7 +1,6 @@
 package vacademy.io.admin_core_service.features.learner_invitation.dto.json_mapper;
 
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
-import com.fasterxml.jackson.databind.PropertyNamingStrategy;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.Data;
 import java.util.List;
@@ -9,36 +8,22 @@ import java.util.List;
 @Data
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class PackageSelectionDTO {
-    private boolean instituteAssigned;
-    private int maxSelectablePackages;
-    private List<PackageDTO> preSelectedPackages;
-    private List<PackageDTO> learnerChoicePackages;
+
+    private String packageId;
+    private String packageName;
+    private List<SelectedSession> selectedSessions;
 
     @Data
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public static class PackageDTO {
-        private boolean instituteAssigned;              // optional, may be absent in learnerChoicePackages
-        private int maxSelectableSessions;
-        private String name;
-        private String id;
-        private List<SessionDTO> preSelectedSessionDtos;  // optional, may be absent in learnerChoicePackages
-        private List<SessionDTO> learnerChoiceSessions;
+    public static class SelectedSession {
+        private String sessionId;
+        private String sessionName;
+        private List<SelectedLevel> selectedLevels;
     }
 
     @Data
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public static class SessionDTO {
-        private boolean instituteAssigned;              // optional, may be absent in learnerChoiceSessions under learnerChoicePackages
-        private int maxSelectableLevels;
-        private String name;
-        private String id;
-        private List<LevelDTO> preSelectedLevels;       // optional, may be absent in learnerChoiceSessions
-        private List<LevelDTO> learnerChoiceLevels;
-    }
-
-    @Data
-    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public static class LevelDTO {
+    public static class SelectedLevel {
         private String id;
         private String name;
         private String packageSessionId;

@@ -1,6 +1,7 @@
 package vacademy.io.admin_core_service.features.learner_invitation.services;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -71,7 +72,7 @@ public class LearnerInvitationResponseService {
         validateRegistrationRequest(learnerInvitationResponseDTO);
 
         LearnerInvitation invitation = getValidInvitation(learnerInvitationResponseDTO.getLearnerInvitationId());
-        PackageSelectionDTO packageSelection = parsePackageSelection(learnerInvitationResponseDTO.getBatchSelectionResponseJson());
+        List<PackageSelectionDTO> packageSelection = parsePackageSelection(learnerInvitationResponseDTO.getBatchSelectionResponseJson());
 
         Optional<Student> existingStudent = findExistingStudent(
                 learnerInvitationResponseDTO.getEmail(),
@@ -85,7 +86,7 @@ public class LearnerInvitationResponseService {
                     existingStudent.get().getUserId(),
                     invitation.getInstituteId(),
                     packageSelection,
-                    new BooleanWrapper(false) // Using wrapper for pass-by-reference behavior
+                    new BooleanWrapper(false)
             );
         }
 
@@ -139,21 +140,21 @@ public class LearnerInvitationResponseService {
     private void registerNewStudent(
             LearnerInvitationResponseDTO responseDTO,
             LearnerInvitation invitation,
-            PackageSelectionDTO packageSelection) {
+            List<PackageSelectionDTO> packageSelection) {
 
         Student student = createInitialStudent(responseDTO, invitation, packageSelection);
         createSessionMappings(
                 student.getUserId(),
                 invitation.getInstituteId(),
                 packageSelection,
-                new BooleanWrapper(true) // Using wrapper for pass-by-reference behavior
+                new BooleanWrapper(true)
         );
     }
 
     private Student createInitialStudent(
             LearnerInvitationResponseDTO responseDTO,
             LearnerInvitation invitation,
-            PackageSelectionDTO packageSelection) {
+            List<PackageSelectionDTO> packageSelection) {
 
         InstituteStudentDTO studentDTO = buildStudentDTO(responseDTO);
         PackageSession firstSession = findFirstValidPackageSession(packageSelection);
@@ -170,7 +171,7 @@ public class LearnerInvitationResponseService {
     private void createSessionMappings(
             String userId,
             String instituteId,
-            PackageSelectionDTO packageSelection,
+            List<PackageSelectionDTO> packageSelection,
             BooleanWrapper skipFirstWrapper) {
 
         List<StudentSessionInstituteGroupMapping> mappings = buildSessionMappings(
@@ -188,168 +189,61 @@ public class LearnerInvitationResponseService {
     private List<StudentSessionInstituteGroupMapping> buildSessionMappings(
             String userId,
             String instituteId,
-            PackageSelectionDTO packageSelection,
+            List<PackageSelectionDTO> packageSelection,
             BooleanWrapper skipFirstWrapper) {
 
         StudentSessionInstituteGroupMapping latestMapping = getLatestStudentMapping(userId, instituteId);
-        List<String> existingSessionIds = getExistingInvitedSessionIds(userId, instituteId);
-
+        Set<String> existingSessionIds = getExistingInvitedSessionIds(userId, instituteId);
         List<StudentSessionInstituteGroupMapping> mappings = new ArrayList<>();
         BooleanWrapper skippedWrapper = new BooleanWrapper(!skipFirstWrapper.getValue());
-        // Process learner choice packages
-        processPackageSelections(
-                packageSelection.getLearnerChoicePackages(),
-                latestMapping,
-                existingSessionIds,
-                mappings,
-                skippedWrapper
-        );
 
-        // Process pre-selected packages
-        processPackageSelections(
-                packageSelection.getPreSelectedPackages(),
-                latestMapping,
-                existingSessionIds,
-                mappings,
-                skippedWrapper
-        );
+        if (packageSelection != null) {
+            for (PackageSelectionDTO packageItem : packageSelection) {
+                if (packageItem.getSelectedSessions() != null) {
+                    for (PackageSelectionDTO.SelectedSession session : packageItem.getSelectedSessions()) {
+                        if (session.getSelectedLevels() != null) {
+                            for (PackageSelectionDTO.SelectedLevel level : session.getSelectedLevels()) {
+                                if (skippedWrapper.getValue() == false) {
+                                    skippedWrapper.setValue(true);
+                                    continue;
+                                }
+
+                                PackageSession packageSession = findPackageSession(
+                                        level.getId(),
+                                        session.getSessionId(),
+                                        packageItem.getPackageId()
+                                );
+
+                                if (packageSession != null && !existingSessionIds.contains(packageSession.getId())) {
+                                    mappings.add(buildSessionMapping(latestMapping, packageSession));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         return mappings;
     }
 
-    private void processPackageSelections(
-            List<PackageSelectionDTO.PackageDTO> packages,
-            StudentSessionInstituteGroupMapping latestMapping,
-            List<String> existingSessionIds,
-            List<StudentSessionInstituteGroupMapping> mappings,
-            BooleanWrapper skippedWrapper) {
-
-        if (packages == null) {
-            return;
+    private PackageSession findFirstValidPackageSession(List<PackageSelectionDTO> packageSelection) {
+        if (packageSelection == null) {
+            throw new VacademyException("Package selection is missing or empty.");
         }
 
-        for (PackageSelectionDTO.PackageDTO packageDTO : packages) {
-            if (packageDTO == null) continue;
-
-            // Process learner choice sessions
-            List<PackageSelectionDTO.SessionDTO> learnerChoiceSessions = packageDTO.getLearnerChoiceSessions();
-            if (learnerChoiceSessions != null) {
-                processSessionSelections(
-                        learnerChoiceSessions,
-                        packageDTO,
-                        latestMapping,
-                        existingSessionIds,
-                        mappings,
-                        skippedWrapper
-                );
-            }
-
-            // Process pre-selected sessions
-            List<PackageSelectionDTO.SessionDTO> preSelectedSessionDtos = packageDTO.getPreSelectedSessionDtos();
-            if (preSelectedSessionDtos != null) {
-                processSessionSelections(
-                        preSelectedSessionDtos,
-                        packageDTO,
-                        latestMapping,
-                        existingSessionIds,
-                        mappings,
-                        skippedWrapper
-                );
-            }
-        }
-    }
-
-    private void processSessionSelections(
-            List<PackageSelectionDTO.SessionDTO> sessions,
-            PackageSelectionDTO.PackageDTO packageDTO,
-            StudentSessionInstituteGroupMapping latestMapping,
-            List<String> existingSessionIds,
-            List<StudentSessionInstituteGroupMapping> mappings,
-            BooleanWrapper skippedWrapper) {
-
-        if (sessions == null) {
-            return;
+        PackageSelectionDTO firstPackage = packageSelection.get(0);
+        if (firstPackage.getSelectedSessions() == null || firstPackage.getSelectedSessions().isEmpty()) {
+            throw new VacademyException("No sessions selected in the package.");
         }
 
-        for (PackageSelectionDTO.SessionDTO sessionDTO : sessions) {
-            if (sessionDTO == null) continue;
-
-            // Process learner choice levels
-            List<PackageSelectionDTO.LevelDTO> learnerChoiceLevels = sessionDTO.getLearnerChoiceLevels();
-            if (learnerChoiceLevels != null) {
-                processLevelSelections(
-                        learnerChoiceLevels,
-                        sessionDTO,
-                        packageDTO,
-                        latestMapping,
-                        existingSessionIds,
-                        mappings,
-                        skippedWrapper
-                );
-            }
-
-            // Process pre-selected levels
-            List<PackageSelectionDTO.LevelDTO> preSelectedLevels = sessionDTO.getPreSelectedLevels();
-            if (preSelectedLevels != null) {
-                processLevelSelections(
-                        preSelectedLevels,
-                        sessionDTO,
-                        packageDTO,
-                        latestMapping,
-                        existingSessionIds,
-                        mappings,
-                        skippedWrapper
-                );
-            }
-        }
-    }
-
-    private void processLevelSelections(
-            List<PackageSelectionDTO.LevelDTO> levels,
-            PackageSelectionDTO.SessionDTO sessionDTO,
-            PackageSelectionDTO.PackageDTO packageDTO,
-            StudentSessionInstituteGroupMapping latestMapping,
-            List<String> existingSessionIds,
-            List<StudentSessionInstituteGroupMapping> mappings,
-            BooleanWrapper skippedWrapper) {
-
-        if (levels == null) {
-            return;
+        PackageSelectionDTO.SelectedSession firstSession = firstPackage.getSelectedSessions().get(0);
+        if (firstSession.getSelectedLevels() == null || firstSession.getSelectedLevels().isEmpty()) {
+            throw new VacademyException("No levels selected in the session.");
         }
 
-        for (PackageSelectionDTO.LevelDTO levelDTO : levels) {
-            if (levelDTO == null) continue;
-            if (skippedWrapper.getValue() == false){
-                skippedWrapper.setValue(true);
-                continue;
-            }
-            PackageSession session = findPackageSession(
-                    levelDTO.getId(),
-                    sessionDTO.getId(),
-                    packageDTO.getId()
-            );
-            System.out.println(session);
-            if (session != null && !existingSessionIds.contains(session.getId())) {
-                mappings.add(buildSessionMapping(latestMapping, session));
-            }
-        }
-    }
-
-    // Wrapper class to simulate pass-by-reference for boolean
-    private static class BooleanWrapper {
-        private boolean value;
-
-        public BooleanWrapper(boolean value) {
-            this.value = value;
-        }
-
-        public boolean getValue() {
-            return value;
-        }
-
-        public void setValue(boolean value) {
-            this.value = value;
-        }
+        PackageSelectionDTO.SelectedLevel firstLevel = firstSession.getSelectedLevels().get(0);
+        return findPackageSession(firstLevel.getId(), firstSession.getSessionId(), firstPackage.getPackageId());
     }
 
     private StudentSessionInstituteGroupMapping buildSessionMapping(
@@ -371,130 +265,27 @@ public class LearnerInvitationResponseService {
     private PackageSession findPackageSession(String levelId, String sessionId, String packageId) {
         Optional<PackageSession> packageSession = packageSessionRepository
                 .findTopByLevelIdAndSessionIdAndPackageEntityIdAndStatusesOrderByCreatedAtDesc(
-                        levelId, "DEFAULT-INVITATION-SESSION", packageId, ACTIVE_PACKAGE_STATUSES
+                        levelId, sessionId, packageId, ACTIVE_PACKAGE_STATUSES
                 );
 
-        if (packageSession.isPresent()) {
-            return packageSession.get();
-        } else {
-            throw new VacademyException("Package session not found.");
-        }
+        return packageSession.orElseThrow(() -> new VacademyException("Package session not found."));
     }
 
-    private PackageSession findFirstValidPackageSession(PackageSelectionDTO packageSelection) {
-        if (packageSelection == null) {
-            throw new VacademyException("Package selection is missing.");
+    // Wrapper class to simulate pass-by-reference for boolean
+    private static class BooleanWrapper {
+        private boolean value;
+
+        public BooleanWrapper(boolean value) {
+            this.value = value;
         }
 
-        // Search in learner choice packages first
-        List<PackageSelectionDTO.PackageDTO> learnerChoicePackages = packageSelection.getLearnerChoicePackages();
-        if (learnerChoicePackages != null) {
-            for (PackageSelectionDTO.PackageDTO packageDTO : learnerChoicePackages) {
-                if (packageDTO == null) continue;
-
-                List<PackageSelectionDTO.SessionDTO> learnerChoiceSessions = packageDTO.getLearnerChoiceSessions();
-                if (learnerChoiceSessions != null) {
-                    for (PackageSelectionDTO.SessionDTO sessionDTO : learnerChoiceSessions) {
-                        if (sessionDTO == null) continue;
-
-                        List<PackageSelectionDTO.LevelDTO> learnerChoiceLevels = sessionDTO.getLearnerChoiceLevels();
-                        if (learnerChoiceLevels != null) {
-                            for (PackageSelectionDTO.LevelDTO levelDTO : learnerChoiceLevels) {
-                                if (levelDTO == null) continue;
-                                return findPackageSession(levelDTO.getId(), sessionDTO.getId(), packageDTO.getId());
-                            }
-                        }
-
-                        List<PackageSelectionDTO.LevelDTO> preSelectedLevels = sessionDTO.getPreSelectedLevels();
-                        if (preSelectedLevels != null) {
-                            for (PackageSelectionDTO.LevelDTO levelDTO : preSelectedLevels) {
-                                if (levelDTO == null) continue;
-                                return findPackageSession(levelDTO.getId(), sessionDTO.getId(), packageDTO.getId());
-                            }
-                        }
-                    }
-                }
-
-                List<PackageSelectionDTO.SessionDTO> preSelectedSessionDtos = packageDTO.getPreSelectedSessionDtos();
-                if (preSelectedSessionDtos != null) {
-                    for (PackageSelectionDTO.SessionDTO sessionDTO : preSelectedSessionDtos) {
-                        if (sessionDTO == null) continue;
-
-                        List<PackageSelectionDTO.LevelDTO> learnerChoiceLevels = sessionDTO.getLearnerChoiceLevels();
-                        if (learnerChoiceLevels != null) {
-                            for (PackageSelectionDTO.LevelDTO levelDTO : learnerChoiceLevels) {
-                                if (levelDTO == null) continue;
-                                return findPackageSession(levelDTO.getId(), sessionDTO.getId(), packageDTO.getId());
-                            }
-                        }
-
-                        List<PackageSelectionDTO.LevelDTO> preSelectedLevels = sessionDTO.getPreSelectedLevels();
-                        if (preSelectedLevels != null) {
-                            for (PackageSelectionDTO.LevelDTO levelDTO : preSelectedLevels) {
-                                if (levelDTO == null) continue;
-                                return findPackageSession(levelDTO.getId(), sessionDTO.getId(), packageDTO.getId());
-                            }
-                        }
-                    }
-                }
-            }
+        public boolean getValue() {
+            return value;
         }
 
-        // If not found in learner choice, search in pre-selected packages
-        List<PackageSelectionDTO.PackageDTO> preSelectedPackages = packageSelection.getPreSelectedPackages();
-        if (preSelectedPackages != null) {
-            for (PackageSelectionDTO.PackageDTO packageDTO : preSelectedPackages) {
-                if (packageDTO == null) continue;
-
-                List<PackageSelectionDTO.SessionDTO> learnerChoiceSessions = packageDTO.getLearnerChoiceSessions();
-                if (learnerChoiceSessions != null) {
-                    for (PackageSelectionDTO.SessionDTO sessionDTO : learnerChoiceSessions) {
-                        if (sessionDTO == null) continue;
-
-                        List<PackageSelectionDTO.LevelDTO> learnerChoiceLevels = sessionDTO.getLearnerChoiceLevels();
-                        if (learnerChoiceLevels != null) {
-                            for (PackageSelectionDTO.LevelDTO levelDTO : learnerChoiceLevels) {
-                                if (levelDTO == null) continue;
-                                return findPackageSession(levelDTO.getId(), sessionDTO.getId(), packageDTO.getId());
-                            }
-                        }
-
-                        List<PackageSelectionDTO.LevelDTO> preSelectedLevels = sessionDTO.getPreSelectedLevels();
-                        if (preSelectedLevels != null) {
-                            for (PackageSelectionDTO.LevelDTO levelDTO : preSelectedLevels) {
-                                if (levelDTO == null) continue;
-                                return findPackageSession(levelDTO.getId(), sessionDTO.getId(), packageDTO.getId());
-                            }
-                        }
-                    }
-                }
-
-                List<PackageSelectionDTO.SessionDTO> preSelectedSessionDtos = packageDTO.getPreSelectedSessionDtos();
-                if (preSelectedSessionDtos != null) {
-                    for (PackageSelectionDTO.SessionDTO sessionDTO : preSelectedSessionDtos) {
-                        if (sessionDTO == null) continue;
-
-                        List<PackageSelectionDTO.LevelDTO> learnerChoiceLevels = sessionDTO.getLearnerChoiceLevels();
-                        if (learnerChoiceLevels != null) {
-                            for (PackageSelectionDTO.LevelDTO levelDTO : learnerChoiceLevels) {
-                                if (levelDTO == null) continue;
-                                return findPackageSession(levelDTO.getId(), sessionDTO.getId(), packageDTO.getId());
-                            }
-                        }
-
-                        List<PackageSelectionDTO.LevelDTO> preSelectedLevels = sessionDTO.getPreSelectedLevels();
-                        if (preSelectedLevels != null) {
-                            for (PackageSelectionDTO.LevelDTO levelDTO : preSelectedLevels) {
-                                if (levelDTO == null) continue;
-                                return findPackageSession(levelDTO.getId(), sessionDTO.getId(), packageDTO.getId());
-                            }
-                        }
-                    }
-                }
-            }
+        public void setValue(boolean value) {
+            this.value = value;
         }
-
-        throw new VacademyException("Please select at least one batch.");
     }
 
     // Data Access Methods ======================================================
@@ -538,12 +329,12 @@ public class LearnerInvitationResponseService {
                 .orElseThrow(() -> new VacademyException("Student session not found"));
     }
 
-    private List<String> getExistingInvitedSessionIds(String userId, String instituteId) {
+    private Set<String> getExistingInvitedSessionIds(String userId, String instituteId) {
         return studentSessionRepository
                 .findAllByInstituteIdAndUserIdAndStatusIn(instituteId, userId, INVITED_STATUSES)
                 .stream()
                 .map(mapping -> mapping.getPackageSession().getId())
-                .collect(Collectors.toList());
+                .collect(Collectors.toSet());
     }
 
     private Institute getInstitute(String instituteId) {
@@ -593,13 +384,21 @@ public class LearnerInvitationResponseService {
 
     // Utility Methods ==========================================================
 
-    private PackageSelectionDTO parsePackageSelection(String batchSelectionJson) {
+    private List<PackageSelectionDTO> parsePackageSelection(String batchSelectionJson) {
         try {
-            return objectMapper.readValue(batchSelectionJson, PackageSelectionDTO.class);
+            System.out.println(batchSelectionJson);
+            if (!StringUtils.hasText(batchSelectionJson)) {
+                throw new VacademyException("Batch selection JSON cannot be empty");
+            }
+
+            return objectMapper.readValue(batchSelectionJson, new TypeReference<List<PackageSelectionDTO>>() {});
         } catch (JsonProcessingException e) {
-            throw new VacademyException("Error occurred while processing your request");
+            throw new VacademyException("Invalid package selection format: " + e.getMessage());
+        } catch (Exception e) {
+            throw new VacademyException("Error processing package selection: " + e.getMessage());
         }
     }
+
 
     private void sendStatusUpdateNotifications(List<LearnerInvitationResponse> responses) {
         if (!responses.isEmpty()) {

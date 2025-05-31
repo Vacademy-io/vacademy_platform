@@ -5,7 +5,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.faculty.dto.AddFacultyToSubjectAndBatchDTO;
 import vacademy.io.admin_core_service.features.faculty.dto.FacultyAllResponse;
-import vacademy.io.admin_core_service.features.faculty.dto.FacultyBatchSubjectUpdateRequest;
+import vacademy.io.admin_core_service.features.faculty.dto.FacultyBatchSubjectDTO;
 import vacademy.io.admin_core_service.features.faculty.dto.FacultyRequestFilter;
 import vacademy.io.admin_core_service.features.faculty.service.FacultyService;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -40,9 +40,17 @@ public class FacultyController {
     }
 
     @PutMapping("/update-assign-subjects-and-batches")
-    public ResponseEntity<String> updateAssignFacultyToSubjectsAndBatches(@RequestBody FacultyBatchSubjectUpdateRequest request,
+    public ResponseEntity<String> updateAssignFacultyToSubjectsAndBatches(@RequestBody FacultyBatchSubjectDTO request,
                                                                           @RequestAttribute("user") CustomUserDetails userDetails){
         return ResponseEntity.ok(facultyService.updateFacultyAssignmentsToSubjects(request,userDetails));
+    }
+
+    @GetMapping("/batch-subject-assignments")
+    public FacultyBatchSubjectDTO getFacultyBatchSubjectAssignments(
+            @RequestParam String userId,
+            @RequestAttribute("user") CustomUserDetails userDetails
+    ) {
+        return facultyService.getAllFacultyBatchSubject(userId, userDetails);
     }
 }
 

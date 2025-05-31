@@ -58,6 +58,7 @@ public class Step1Service {
         }
         if (request.getStartTime() != null) session.setStartTime(request.getStartTime());
         if (request.getLastEntryTime() != null) session.setLastEntryTime(request.getLastEntryTime());
+        if(request.getInstituteId() != null) session.setInstituteId(request.getInstituteId());
 
         session.setCreatedByUserId(user.getUserId());
     }
@@ -72,23 +73,36 @@ public class Step1Service {
 
     private void handleAddedSchedules(LiveSessionStep1RequestDTO request, LiveSession session) {
         if (request.getAddedSchedules() != null) {
-            for (LiveSessionStep1RequestDTO.ScheduleDTO dto : request.getAddedSchedules()) {
-                SessionSchedule schedule = new SessionSchedule();
-                schedule.setSessionId(session.getId());
-                schedule.setRecurrenceType(request.getRecurrenceType());
-                schedule.setRecurrenceKey(dto.getDay().toLowerCase());
-                schedule.setMeetingDate(parseMeetingDate(request.getSessionEndDate()));
-                schedule.setStartTime(Time.valueOf(dto.getStartTime()));
-                schedule.setLastEntryTime(
-                        request.getLastEntryTime() != null ? new Time(request.getLastEntryTime().getTime()) : null
-                );
-                schedule.setCustomMeetingLink(dto.getLink() != null ? dto.getLink() : request.getDefaultMeetLink());
-                schedule.setLinkType(dto.getLink() != null
-                        ? getLinkTypeFromUrl(dto.getLink())
-                        : getLinkTypeFromUrl(request.getDefaultMeetLink()));
-                schedule.setCustomWaitingRoomMediaId(null);
+            LocalDate startDate = request.getStartTime().toLocalDateTime().toLocalDate(); // first possible date
+            LocalDate endDate = LocalDate.parse(request.getSessionEndDate(), DateTimeFormatter.ISO_DATE);
 
-                scheduleRepository.save(schedule);
+            for (LiveSessionStep1RequestDTO.ScheduleDTO dto : request.getAddedSchedules()) {
+                String dayOfWeek = dto.getDay().toUpperCase(); // e.g., "WEDNESDAY"
+
+                // Loop through weeks to add recurring schedules on the specified day
+                LocalDate current = getNextOrSameDay(startDate, dayOfWeek);
+                while (!current.isAfter(endDate)) {
+                    SessionSchedule schedule = new SessionSchedule();
+                    schedule.setSessionId(session.getId());
+                    schedule.setRecurrenceType(request.getRecurrenceType());
+                    schedule.setRecurrenceKey(dayOfWeek.toLowerCase()); // for tracking like "wednesday"
+                    schedule.setMeetingDate(java.sql.Date.valueOf(current));
+                    schedule.setStartTime(Time.valueOf(dto.getStartTime()));
+                    java.time.LocalTime parsedStartTime = java.time.LocalTime.parse(dto.getStartTime());
+                    java.time.LocalTime computedLastEntryTime = parsedStartTime.plusHours(Long.parseLong(dto.getDuration()));
+
+                    schedule.setLastEntryTime(Time.valueOf(computedLastEntryTime));
+
+                    schedule.setCustomMeetingLink(dto.getLink() != null ? dto.getLink() : request.getDefaultMeetLink());
+                    schedule.setLinkType(dto.getLink() != null
+                            ? getLinkTypeFromUrl(dto.getLink())
+                            : getLinkTypeFromUrl(request.getDefaultMeetLink()));
+                    schedule.setCustomWaitingRoomMediaId(null);
+
+                    scheduleRepository.save(schedule);
+
+                    current = current.plusWeeks(1);
+                }
             }
         }
     }
@@ -131,4 +145,13 @@ public class Step1Service {
             return LinkType.RECORDED.name();
         }
     }
+
+    private LocalDate getNextOrSameDay(LocalDate startDate, String dayOfWeekStr) {
+        java.time.DayOfWeek targetDay = java.time.DayOfWeek.valueOf(dayOfWeekStr);
+        java.time.DayOfWeek startDay = startDate.getDayOfWeek();
+
+        int daysToAdd = (targetDay.getValue() - startDay.getValue() + 7) % 7;
+        return startDate.plusDays(daysToAdd);
+    }
+
 }

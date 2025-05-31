@@ -24,6 +24,7 @@ public class GetRegistrationDataService {
         CustomFieldRepository.FlatFieldProjection first = flatList.get(0);
 
         List<RegistrationFromResponseDTO.CustomFieldDTO> customFields = flatList.stream()
+                .filter(f -> f.getCustomFieldId() != null)
                 .map(f -> new RegistrationFromResponseDTO.CustomFieldDTO(
                         f.getCustomFieldId(),
                         f.getFieldKey(),

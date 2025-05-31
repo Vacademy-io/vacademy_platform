@@ -15,6 +15,7 @@ import java.util.List;
 @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
 public class LiveSessionStep1RequestDTO {
     private String sessionId;
+    private String instituteId;
     private String title;
     private String subject;
     private String descriptionHtml;

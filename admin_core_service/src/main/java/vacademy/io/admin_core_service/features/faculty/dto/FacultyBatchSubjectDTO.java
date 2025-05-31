@@ -8,7 +8,7 @@ import java.util.List;
 
 @Data
 @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
-public class FacultyBatchSubjectUpdateRequest {
+public class FacultyBatchSubjectDTO {
     private String facultyId;
     private List<BatchSubjectAssignment> batchSubjectAssignments;
 

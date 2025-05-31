@@ -10,12 +10,15 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.UuidGenerator;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.util.Date;
 
+@Getter
+@Setter
 @Entity
 @Table(name = "package")
-@Data
 @NoArgsConstructor
 @AllArgsConstructor
 public class PackageEntity {
@@ -66,5 +69,12 @@ public class PackageEntity {
 
     @Column(name = "comma_separated_tags")
     private String tags;
+
+    @Column(name = "course_depth")
+    private Integer courseDepth;
+
+    @Lob
+    @Column(name = "course_html_description", columnDefinition = "TEXT")
+    private String courseHtmlDescription;
 
 }

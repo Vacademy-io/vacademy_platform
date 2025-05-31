@@ -29,10 +29,10 @@ export const SlideRenderer: React.FC<SlideRendererProps> = ({ currentSlide, sess
     case SlideSourceType.Excalidraw:
       return (
         <div className={slideContainerStyle + " bg-slate-200"}>
-          <div className="w-full h-full max-w-6xl bg-white rounded-lg shadow-xl overflow-hidden border border-slate-300">
+          <div className="w-full h-full max-w-6xl">
             <ExcalidrawViewer
               key={currentSlide.id}
-              fileId={currentSlide.source_id} // or currentSlide.content
+              fileId={currentSlide.source_id}
               slideTitle={currentSlide.title}
             />
           </div>

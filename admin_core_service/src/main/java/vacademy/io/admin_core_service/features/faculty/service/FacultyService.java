@@ -46,7 +46,7 @@ public class FacultyService {
             }
         }
         facultyRepository.saveAll(mappings);
-        return "success";
+        return userDTO.getId();
     }
 
     @Transactional

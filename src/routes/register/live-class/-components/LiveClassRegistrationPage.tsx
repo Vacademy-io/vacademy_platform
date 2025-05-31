@@ -1,7 +1,7 @@
 import { MyButton } from "@/components/design-system/button";
 import { MyDialog } from "@/components/design-system/dialog";
 import { MyInput } from "@/components/design-system/input";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSessionCustomFields } from "../-hooks/useGetRegistrationFormData";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { generateZodSchema } from "../-types/registrationFormSchema";
@@ -21,12 +21,15 @@ import { z } from "zod";
 import { useMutation } from "@tanstack/react-query";
 import axios from "axios";
 import {
+  LIVE_SESSION_REQUEST_OTP,
+  LIVE_SESSION_VERIFY_OTP,
   REQUEST_OTP,
   // SEND_LIVE_SESSION_EMAIL_VERIFICATION_OTP,
 } from "@/constants/urls";
 import { toast } from "sonner";
 import { transformToGuestRegistrationDTO } from "../-utils/helper";
-import { useRouter } from "@tanstack/react-router";
+import { Navigate, useRouter } from "@tanstack/react-router";
+import { AccessLevel } from "../-types/enum";
 
 export const verifyEmailSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -41,11 +44,16 @@ export default function LiveClassRegistrationPage() {
   const [timer, setTimer] = useState(0);
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-
   const router = useRouter();
   const { sessionId } = router.state.location.search;
   const { data, isLoading } = useSessionCustomFields(sessionId || "");
-  console.log("data " , data)
+
+  useEffect(()=>{
+    if(data?.accessLevel === AccessLevel.PRIVATE){
+      router.navigate({ to: "/study-library/live-class" }); 
+    }
+  },[data])
+  console.log("data ", data);
   const schema = generateZodSchema(data?.customFields);
   const form = useForm({
     resolver: zodResolver(schema),
@@ -87,30 +95,29 @@ export default function LiveClassRegistrationPage() {
   };
   const sendEmailOtp = async (email: string) => {
     try {
-      await axios.get(
-        `http://localhost:8072/admin-core-service/live-session/email-verification/send-otp`,
-        {
-          params: { email },
-          headers: {
-            "Content-Type": "application/json",
-          },
-        }
-      );
+      await axios.get(LIVE_SESSION_REQUEST_OTP, {
+        params: { to: email }, // ✅ GET request uses params
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
       setIsOTPSent(true);
-      toast.message("Otp is sent successfully");
+      toast.success("OTP sent successfully"); // ✅ More appropriate
     } catch (error: any) {
       console.error(
         "Failed to send OTP:",
         error?.response?.data || error.message
       );
+      toast.error("Failed to send OTP");
       throw error;
     }
   };
+
   const verifyEmailOtp = async (email: string, otp: string) => {
     try {
       const response = await axios.post(
-        `http://localhost:8072/admin-core-service/live-session/email-verification/verify-otp`,
-        { to: email, otp },
+        LIVE_SESSION_VERIFY_OTP,
+        { to: email, otp }, // ✅ Correct placement of request body
         {
           headers: {
             "Content-Type": "application/json",

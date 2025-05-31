@@ -54,4 +54,5 @@ export const GET_USERID_URL = `${BASE_URL}/admin-core-service/institute/open_lea
 export const GET_LAST_7_DAYS_PROGRESS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/learner/v1/daily-time-spent`
 
 // Live session
-export const SEND_LIVE_SESSION_EMAIL_VERIFICATION_OTP = `${BASE_URL}/admin-core-service/live-session/email-verification/send-otp`
+export const LIVE_SESSION_REQUEST_OTP = `${BASE_URL}/notification-service/v1/send-email-otp`
+export const LIVE_SESSION_VERIFY_OTP = `${BASE_URL}/notification-service/v1/verify-email-otp`

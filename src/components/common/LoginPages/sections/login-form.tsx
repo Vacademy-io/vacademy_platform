@@ -20,8 +20,8 @@ import { fetchAndStoreInstituteDetails } from "@/services/fetchAndStoreInstitute
 import { fetchAndStoreStudentDetails } from "@/services/studentDetails";
 
 export const getFromStorage = async (key: string) => {
-    const result = await Preferences.get({ key });
-    return result.value;
+  const result = await Preferences.get({ key });
+  return result.value;
 };
 
 export const setToStorage = async (key: string, value: string) => {
@@ -147,15 +147,14 @@ export function LoginForm() {
       const studentDetails = await getFromStorage("StudentDetails");
       const instituteDetails = await getFromStorage("InstituteDetails");
 
-
-            if (
-                !isNullOrEmptyOrUndefined(token) &&
-                !isNullOrEmptyOrUndefined(studentDetails) &&
-                !isNullOrEmptyOrUndefined(instituteDetails)
-            ) {
-                navigate({ to: "/dashboard" });
-            }
-        };
+      if (
+        !isNullOrEmptyOrUndefined(token) &&
+        !isNullOrEmptyOrUndefined(studentDetails) &&
+        !isNullOrEmptyOrUndefined(instituteDetails)
+      ) {
+        navigate({ to: "/dashboard" });
+      }
+    };
 
     redirect();
   }, [navigate]);
@@ -192,7 +191,34 @@ export function LoginForm() {
           heading="Hello, Student!"
           subHeading="Ready to learn something new? Log in and continue your academic adventure!"
         />
+        {/* OAuth Login Buttons */}
+        <div className="flex w-full flex-col items-center justify-center gap-4 px-4 md:px-8 lg:px-12">
+          <button
+            className="flex w-[300px] items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium text-neutral-700 shadow-sm transition-colors hover:bg-neutral-50"
+            onClick={() => handleOAuthLogin("google")}
+            type="button"
+          >
+            <FcGoogle className="size-5" />
+            Continue with Google
+          </button>
+          <button
+            className="flex w-[300px] items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium text-neutral-700 shadow-sm transition-colors hover:bg-neutral-50"
+            onClick={() => handleOAuthLogin("github")}
+            type="button"
+          >
+            <GitHubLogoIcon className="size-5" />
+            Continue with GitHub
+          </button>
 
+          <div className="relative flex items-center justify-center">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t" />
+            </div>
+            <div className="relative bg-white px-4 text-sm text-neutral-500">
+              or continue with
+            </div>
+          </div>
+        </div>
         {/* Toggle Content */}
         <div className="w-full max-w-md">
           {isEmailLogin ? (
@@ -200,25 +226,6 @@ export function LoginForm() {
           ) : (
             <UsernameLogin onSwitchToEmail={() => setIsEmailLogin(true)} />
           )}
-        </div>
-
-        {/* OAuth Login Buttons */}
-        <div className="flex flex-col gap-3 w-full max-w-md">
-          <button
-            className="bg-background border border-gray-50 p-2 rounded-lg flex items-center w-full gap-2 flex-row justify-center mt-4 text-lg hover:bg-gray-50 transition-colors"
-            onClick={() => handleOAuthLogin("google")}
-          >
-            <FcGoogle className="w-5 h-5" />
-            Log in with Google
-          </button>
-
-          <button
-            className="bg-background border border-gray-50 p-2 rounded-lg flex items-center w-full gap-2 flex-row justify-center mt-4 text-lg hover:bg-gray-50 transition-colors"
-            onClick={() => handleOAuthLogin("github")}
-          >
-            <GitHubLogoIcon className="w-5 h-5" />
-            Log in with GitHub
-          </button>
         </div>
       </div>
     </div>

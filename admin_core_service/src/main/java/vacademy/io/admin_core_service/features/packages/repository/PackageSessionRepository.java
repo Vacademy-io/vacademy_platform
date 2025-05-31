@@ -152,4 +152,20 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
 
     @Query("SELECT ps FROM PackageSession ps WHERE ps.level.id IN :levelIds")
     List<PackageSession> findByLevelIds(@Param("levelIds") List<String> levelIds);
+
+    @Query("""
+    SELECT ps
+    FROM PackageSession ps
+    WHERE ps.level.id = :levelId
+      AND ps.session.id = :sessionId
+      AND ps.packageEntity.id = :packageEntityId
+      AND ps.status IN :statuses
+    ORDER BY ps.createdAt DESC
+""")
+    Optional<PackageSession> findTopByLevelIdAndSessionIdAndPackageEntityIdAndStatusesOrderByCreatedAtDesc(
+            @Param("levelId") String levelId,
+            @Param("sessionId") String sessionId,
+            @Param("packageEntityId") String packageEntityId,
+            @Param("statuses") List<String> statuses
+    );
 }

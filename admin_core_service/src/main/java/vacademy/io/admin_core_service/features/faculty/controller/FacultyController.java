@@ -46,11 +46,11 @@ public class FacultyController {
     }
 
     @GetMapping("/batch-subject-assignments")
-    public FacultyBatchSubjectDTO getFacultyBatchSubjectAssignments(
+    public ResponseEntity<FacultyBatchSubjectDTO> getFacultyBatchSubjectAssignments(
             @RequestParam String userId,
             @RequestAttribute("user") CustomUserDetails userDetails
     ) {
-        return facultyService.getAllFacultyBatchSubject(userId, userDetails);
+        return ResponseEntity.ok(facultyService.getAllFacultyBatchSubject(userId, userDetails));
     }
 }
 

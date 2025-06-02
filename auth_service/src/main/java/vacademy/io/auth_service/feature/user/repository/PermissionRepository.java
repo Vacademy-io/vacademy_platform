@@ -4,12 +4,12 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.CrudRepository;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
-import vacademy.io.common.auth.entity.UserAuthority;
+import vacademy.io.common.auth.entity.Permissions;
 
 import java.util.List;
 
 @Repository
-public interface PermissionRepository extends CrudRepository<UserAuthority, String> {
+public interface PermissionRepository extends CrudRepository<Permissions, String> {
 
 
     @Query(value = "SELECT DISTINCT p.* " +
@@ -25,13 +25,13 @@ public interface PermissionRepository extends CrudRepository<UserAuthority, Stri
             "JOIN permissions p ON up.permission_id = p.id " +
             "WHERE u.id = :userId",
             nativeQuery = true)
-    List<UserAuthority> findPermissionsByUserId(@Param("userId") String userId);
+    List<Permissions> findPermissionsByUserId(@Param("userId") String userId);
 
 
     @Query(value = "SELECT p.* " +
             "FROM permissions p",
             nativeQuery = true)
-    List<UserAuthority> findAllPermissionsWithTag();
+    List<Permissions> findAllPermissionsWithTag();
 
     @Query(value = "SELECT DISTINCT p.* " +
             "FROM role_permission rp " +
@@ -39,7 +39,7 @@ public interface PermissionRepository extends CrudRepository<UserAuthority, Stri
             "JOIN roles r ON rp.role_id = r.id " +
             "WHERE r.id IN :roleId",
             nativeQuery = true)
-    List<UserAuthority> findPermissionsByListOfRoleId(@Param("roleId") List<String> roleId);
+    List<Permissions> findPermissionsByListOfRoleId(@Param("roleId") List<String> roleId);
 
     @Query(value = "SELECT COUNT(*) > 0 FROM users WHERE id = :userId", nativeQuery = true)
     boolean existsByUserId(@Param("userId") String userId);
@@ -54,6 +54,6 @@ public interface PermissionRepository extends CrudRepository<UserAuthority, Stri
             "JOIN permissions p ON rp.permission_id = p.id " +
             "WHERE ur.user_id = :userId AND ur.institute_id = :instituteId",
             nativeQuery = true)
-    List<UserAuthority> findPermissionsByUserIdAndInstituteId(@Param("userId") String userId, @Param("instituteId") String instituteId);
+    List<Permissions> findPermissionsByUserIdAndInstituteId(@Param("userId") String userId, @Param("instituteId") String instituteId);
 
 }

@@ -14,7 +14,7 @@ import java.sql.Timestamp;
 @NoArgsConstructor
 @AllArgsConstructor
 @Table(name = "permissions")
-public class UserAuthority {
+public class Permissions {
 
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO)

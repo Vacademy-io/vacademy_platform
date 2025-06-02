@@ -5,7 +5,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import vacademy.io.auth_service.feature.user.dto.PermissionDTO;
 import vacademy.io.auth_service.feature.user.repository.PermissionRepository;
-import vacademy.io.common.auth.entity.UserAuthority;
+import vacademy.io.common.auth.entity.Permissions;
 import vacademy.io.common.exceptions.RoleNotFoundException;
 import vacademy.io.common.exceptions.UserNotFoundException;
 
@@ -25,7 +25,7 @@ public class PermissionService {
         if (!ifUserExist(userId)) {
             throw new UserNotFoundException("User with Id " + userId + " not found");
         }
-        List<UserAuthority> permissions = permissionRepository.findPermissionsByUserId(userId);
+        List<Permissions> permissions = permissionRepository.findPermissionsByUserId(userId);
 
         return permissions.stream()
                 .map(permission -> new PermissionDTO(permission.getId(), permission.getName(), permission.getTag()
@@ -43,7 +43,7 @@ public class PermissionService {
                 throw new RoleNotFoundException("Role with Id " + role + " not found");
             }
         }
-        List<UserAuthority> permissions = permissionRepository.findPermissionsByListOfRoleId(roleId);
+        List<Permissions> permissions = permissionRepository.findPermissionsByListOfRoleId(roleId);
 
         return permissions.stream()
                 .map(permission -> new PermissionDTO(permission.getId(), permission.getName(), permission.getTag()
@@ -52,7 +52,7 @@ public class PermissionService {
     }
 
     public List<PermissionDTO> getAllPermissionsWithTag() {
-        List<UserAuthority> permissions = permissionRepository.findAllPermissionsWithTag();
+        List<Permissions> permissions = permissionRepository.findAllPermissionsWithTag();
 
         return permissions.stream()
                 .map(permission -> new PermissionDTO(permission.getId(), permission.getName(), permission.getTag()

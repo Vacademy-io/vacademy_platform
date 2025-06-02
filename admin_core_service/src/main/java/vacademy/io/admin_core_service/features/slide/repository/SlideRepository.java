@@ -4,13 +4,11 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.security.core.parameters.P;
-import vacademy.io.admin_core_service.features.slide.dto.LearnerRecentSlides;
-import vacademy.io.admin_core_service.features.slide.dto.SlideCountProjection;
-import vacademy.io.admin_core_service.features.slide.dto.SlideDetailProjection;
-import vacademy.io.admin_core_service.features.slide.dto.SlideDetailWithOperationProjection;
+import vacademy.io.admin_core_service.features.slide.dto.*;
 import vacademy.io.admin_core_service.features.slide.entity.Slide;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface SlideRepository extends JpaRepository<Slide, String> {
     @Query("""
@@ -796,6 +794,41 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
             @Param("slideStatus") List<String> slideStatus,
             @Param("chapterToSlidesStatus") List<String> chapterToSlidesStatus,
             @Param("videoSlideQuestionStatus") List<String> videoSlideQuestionStatus
+    );
+
+
+    @Query(value = """
+    SELECT 
+        cpsm.created_at AS createdAt,
+        c.id AS topChapterId,
+        cpsm.package_session_id AS packageSessionId,
+        sub.id AS subjectId
+    FROM slide s
+    JOIN chapter_to_slides cs ON cs.slide_id = s.id
+    JOIN chapter c ON c.id = cs.chapter_id
+    JOIN chapter_package_session_mapping cpsm ON cpsm.chapter_id = c.id
+    JOIN module_chapter_mapping mcm ON mcm.chapter_id = c.id
+    JOIN modules m ON m.id = mcm.module_id
+    JOIN subject_module_mapping smm ON smm.module_id = m.id
+    JOIN subject sub ON sub.id = smm.subject_id
+    JOIN subject_session sps ON sps.subject_id = sub.id
+    WHERE 
+        s.id = :slideId
+        AND sub.status IN :subjectStatusList
+        AND m.status IN :moduleStatusList
+        AND c.status IN :chapterStatusList
+        AND cpsm.status IN :chapterToSessionStatusList
+        AND s.status IN :slideStatusList
+        AND cs.status IN :slideStatusList
+    LIMIT 1
+    """, nativeQuery = true)
+    Optional<SlideMetadataProjection> findSlideMetadataBySlideId(
+            @Param("slideId") String slideId,
+            @Param("subjectStatusList") List<String> subjectStatusList,
+            @Param("moduleStatusList") List<String> moduleStatusList,
+            @Param("chapterStatusList") List<String> chapterStatusList,
+            @Param("chapterToSessionStatusList") List<String> chapterToSessionStatusList,
+            @Param("slideStatusList") List<String> slideStatusList
     );
 
 }

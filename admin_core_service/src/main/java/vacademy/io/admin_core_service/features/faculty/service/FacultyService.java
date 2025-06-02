@@ -64,7 +64,7 @@ public class FacultyService {
 
                 if (subjectAssignment.isNewAssignment()) {
                     FacultySubjectPackageSessionMapping newMapping = new FacultySubjectPackageSessionMapping(
-                            userDetails.getId(),
+                            updateRequest.getFacultyId(),
                             batchId,
                             subjectId,
                             userDetails.getFullName(),

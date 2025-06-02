@@ -4,12 +4,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import vacademy.io.community_service.feature.session.dto.admin.AdminSlideResponseViewDto;
 import vacademy.io.community_service.feature.session.dto.admin.CreateSessionDto;
 import vacademy.io.community_service.feature.session.dto.admin.LiveSessionDto;
 import vacademy.io.community_service.feature.session.dto.admin.StartPresentationDto;
 import vacademy.io.community_service.feature.session.manager.LiveSessionService;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -24,51 +26,39 @@ public class AdminSessionController {
 
     @PostMapping("/create")
     public ResponseEntity<LiveSessionDto> createSession(@RequestBody CreateSessionDto createSessionDto) {
-        LiveSessionDto inviteCode = liveSessionService.createSession(createSessionDto);
-        return ResponseEntity.ok(inviteCode);
+        LiveSessionDto sessionDto = liveSessionService.createSession(createSessionDto);
+        return ResponseEntity.ok(sessionDto);
     }
 
-    @GetMapping("/{sessionId}")
+    @GetMapping("/{sessionId}/stream") // Renamed for clarity, or keep as /{sessionId} if preferred
     public SseEmitter presenterStream(@PathVariable String sessionId) {
-        // Timeout for the emitter itself (e.g., 1 hour)
-        SseEmitter emitter = new SseEmitter(3600000L); // 1 hour
+        SseEmitter emitter = new SseEmitter(3L * 60 * 60 * 1000); // 3 hours, for example
 
-        // The service method will now handle sending initial state upon successful connection
-        liveSessionService.setPresenterEmitter(sessionId, emitter, true);
+        liveSessionService.setPresenterEmitter(sessionId, emitter, true); // Send initial state
 
-        // Heartbeat mechanism to keep the connection alive and allow client to detect silent drops
         final ScheduledExecutorService heartBeatExecutor = Executors.newSingleThreadScheduledExecutor();
         Runnable heartbeatTask = () -> {
             try {
-                // Send a distinct heartbeat event for the presenter
                 emitter.send(SseEmitter.event().name("presenter_heartbeat").id(UUID.randomUUID().toString()).data("ping"));
             } catch (IOException e) {
-                // This error means the connection is likely broken.
-                // The emitter's onError or onCompletion will be triggered by the send failure.
-                // We should ensure the heartbeat executor is shut down.
                 if (!heartBeatExecutor.isShutdown()) {
                     heartBeatExecutor.shutdown();
                 }
-                // No need to call emitter.completeWithError(e) here, as the send failure itself will propagate.
             }
         };
-
-        // Schedule the heartbeat
         heartBeatExecutor.scheduleAtFixedRate(heartbeatTask, 0, 30, TimeUnit.SECONDS);
 
-        // Ensure executor shutdown when the SseEmitter is completed, times out, or errors.
         emitter.onCompletion(() -> {
             if (!heartBeatExecutor.isShutdown()) heartBeatExecutor.shutdown();
-            // Service level onCompletion will handle clearing the emitter from the session
+            // Service handles clearing the emitter from the session.
         });
         emitter.onTimeout(() -> {
             if (!heartBeatExecutor.isShutdown()) heartBeatExecutor.shutdown();
-            // Service level onTimeout will handle clearing
-            // Spring Boot SseEmitter infrastructure calls complete() internally on timeout.
+            // Service handles clearing the emitter from the session.
         });
         emitter.onError(e -> {
             if (!heartBeatExecutor.isShutdown()) heartBeatExecutor.shutdown();
-            // Service level onError will handle clearing
+            // Service handles clearing the emitter from the session.
         });
 
         return emitter;
@@ -92,4 +82,12 @@ public class AdminSessionController {
         return ResponseEntity.ok(liveSessionDto);
     }
 
+    // New endpoint to get slide responses
+    @GetMapping("/{sessionId}/slide/{slideId}/responses")
+    public ResponseEntity<List<AdminSlideResponseViewDto>> getSlideResponses(
+            @PathVariable String sessionId,
+            @PathVariable String slideId) {
+        List<AdminSlideResponseViewDto> responses = liveSessionService.getSlideResponses(sessionId, slideId);
+        return ResponseEntity.ok(responses);
+    }
 }

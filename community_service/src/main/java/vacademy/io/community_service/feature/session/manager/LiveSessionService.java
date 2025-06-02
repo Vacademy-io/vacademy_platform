@@ -1,5 +1,7 @@
 package vacademy.io.community_service.feature.session.manager;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
@@ -9,11 +11,14 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.community_service.feature.presentation.dto.question.AddPresentationDto;
 // import vacademy.io.community_service.feature.presentation.dto.question.PresentationSlideDto; // Assuming not directly used here based on provided code
+import vacademy.io.community_service.feature.presentation.dto.question.PresentationSlideDto;
+import vacademy.io.community_service.feature.presentation.dto.question.QuestionDTO;
 import vacademy.io.community_service.feature.presentation.manager.PresentationCrudManager;
-import vacademy.io.community_service.feature.session.dto.admin.CreateSessionDto;
-import vacademy.io.community_service.feature.session.dto.admin.LiveSessionDto;
-import vacademy.io.community_service.feature.session.dto.admin.ParticipantDto;
-import vacademy.io.community_service.feature.session.dto.admin.StartPresentationDto;
+import vacademy.io.community_service.feature.session.dto.admin.*;
+import vacademy.io.community_service.feature.session.dto.participant.MarkResponseRequestDto;
+import vacademy.io.community_service.feature.session.dto.participant.ParticipantResponseDto;
+import vacademy.io.community_service.feature.session.dto.participant.SlideResponsesLogDto;
+import vacademy.io.community_service.feature.session.dto.participant.SubmittedResponseDataDto;
 
 import java.io.IOException;
 import java.util.*;
@@ -31,13 +36,20 @@ public class LiveSessionService {
 
     private final Map<String, LiveSessionDto> sessions = new ConcurrentHashMap<>();
     private final Map<String, String> inviteCodeToSessionId = new ConcurrentHashMap<>();
+    private static final long TEACHER_RESPONSE_UPDATE_DEBOUNCE_MS = 10000; // 10 seconds
 
     private final Map<String, Map<String, Long>> sessionParticipantHeartbeats = new ConcurrentHashMap<>();
     private final ScheduledExecutorService heartbeatMonitor = Executors.newSingleThreadScheduledExecutor();
     private final ScheduledExecutorService sessionCleanupScheduler = Executors.newSingleThreadScheduledExecutor();
 
+    private final ScheduledExecutorService teacherResponseUpdateNotifier = Executors.newSingleThreadScheduledExecutor();
+    private final Map<String, Map<String, Long>> pendingTeacherNotifications = new ConcurrentHashMap<>(); // sessionId -> slideId -> lastUpdateTime
+
     @Autowired
     PresentationCrudManager presentationCrudManager;
+
+    @Autowired
+    private ObjectMapper objectMapper; // For JSON processing
 
     public LiveSessionService() {
         heartbeatMonitor.scheduleAtFixedRate(
@@ -52,7 +64,59 @@ public class LiveSessionService {
                 1,
                 TimeUnit.HOURS
         );
+        teacherResponseUpdateNotifier.scheduleAtFixedRate(
+                this::processPendingTeacherNotifications,
+                TEACHER_RESPONSE_UPDATE_DEBOUNCE_MS, // Initial delay
+                TEACHER_RESPONSE_UPDATE_DEBOUNCE_MS, // Period
+                TimeUnit.MILLISECONDS
+        );
     }
+
+    private void processPendingTeacherNotifications() {
+        pendingTeacherNotifications.forEach((sessionId, slideUpdates) -> {
+            LiveSessionDto session = sessions.get(sessionId);
+            if (session == null || session.getTeacherEmitter() == null || slideUpdates.isEmpty()) {
+                pendingTeacherNotifications.remove(sessionId); // Clean up if session gone or no updates
+                return;
+            }
+
+            slideUpdates.forEach((slideId, lastUpdateTime) -> {
+                if (session.getTeacherEmitter() != null) {
+                    try {
+                        SseEmitter.SseEventBuilder event = SseEmitter.event()
+                                .name("slide_response_updated")
+                                .id(UUID.randomUUID().toString())
+                                .data(Map.of(
+                                        "session_id", sessionId,
+                                        "slide_id", slideId,
+                                        "last_updated_at", lastUpdateTime
+                                ));
+                        session.getTeacherEmitter().send(event);
+                        System.out.println("Sent slide_response_updated SSE to teacher for session " + sessionId + ", slide " + slideId);
+                    } catch (Exception e) {
+                        System.err.println("Error sending slide_response_updated SSE to teacher for session " + sessionId + ": " + e.getMessage());
+                        // Potentially clear emitter if it's consistently failing, though setPresenterEmitter handles some of this
+                    }
+                }
+            });
+            slideUpdates.clear(); // Clear processed updates for this session
+        });
+        // Remove sessions that have no more pending updates
+        pendingTeacherNotifications.entrySet().removeIf(entry -> entry.getValue().isEmpty());
+    }
+
+    private void scheduleTeacherResponseUpdateNotification(String sessionId, String slideId) {
+        LiveSessionDto session = sessions.get(sessionId);
+        if (session == null || session.getTeacherEmitter() == null) {
+            return;
+        }
+        // Store the latest update time for this slide in this session
+        pendingTeacherNotifications
+                .computeIfAbsent(sessionId, k -> new ConcurrentHashMap<>())
+                .put(slideId, System.currentTimeMillis());
+    }
+
+
 
     private void checkInactiveParticipants() {
         long currentTime = System.currentTimeMillis();
@@ -516,6 +580,154 @@ public class LiveSessionService {
                 // Potentially clear a consistently failing teacher emitter
                 // clearPresenterEmitter(session.getSessionId());
             }
+        }
+    }
+    public void recordParticipantResponse(String sessionId, String slideId, MarkResponseRequestDto responseRequest) {
+        LiveSessionDto session = sessions.get(sessionId);
+        if (session == null) {
+            throw new VacademyException("Session not found: " + sessionId);
+        }
+        if (!"LIVE".equals(session.getSessionStatus())) {
+            throw new VacademyException("Session is not live. Cannot record response.");
+        }
+        if (session.getSlides() == null || session.getSlides().getAddedSlides() == null ||
+                session.getSlides().getAddedSlides().stream().noneMatch(s -> s.getId().equals(slideId))) {
+            throw new VacademyException("Invalid slide ID: " + slideId + " for this session.");
+        }
+
+        ParticipantResponseDto participantResponse = new ParticipantResponseDto(
+                responseRequest.getUsername(),
+                responseRequest.getTimeToResponseMillis(),
+                System.currentTimeMillis(),
+                new SubmittedResponseDataDto(
+                        responseRequest.getResponseType(),
+                        responseRequest.getSelectedOptionIds(),
+                        responseRequest.getTextAnswer()
+                )
+        );
+
+        session.getSlideStatsJson().compute(slideId, (sId, currentJson) -> {
+            SlideResponsesLogDto slideLog;
+            if (currentJson == null) {
+                slideLog = new SlideResponsesLogDto();
+            } else {
+                try {
+                    slideLog = objectMapper.readValue(currentJson, SlideResponsesLogDto.class);
+                } catch (JsonProcessingException e) {
+                    System.err.println("Error deserializing slide stats for slide " + sId + ": " + e.getMessage());
+                    slideLog = new SlideResponsesLogDto(); // Start fresh if corruption
+                }
+            }
+            // Optional: Prevent duplicate responses or allow updates based on studentAttempts
+            // For now, we add all responses.
+            slideLog.getResponses().add(participantResponse);
+            try {
+                return objectMapper.writeValueAsString(slideLog);
+            } catch (JsonProcessingException e) {
+                System.err.println("Error serializing slide stats for slide " + sId + ": " + e.getMessage());
+                return currentJson; // Fallback to old value on error
+            }
+        });
+
+        System.out.println("Response recorded for user " + responseRequest.getUsername() + " for slide " + slideId + " in session " + sessionId);
+        scheduleTeacherResponseUpdateNotification(sessionId, slideId);
+    }
+
+
+    public List<AdminSlideResponseViewDto> getSlideResponses(String sessionId, String slideId) {
+        LiveSessionDto session = sessions.get(sessionId);
+        if (session == null) {
+            throw new VacademyException("Session not found: " + sessionId);
+        }
+        if (session.getSlides() == null || session.getSlides().getAddedSlides() == null) {
+            throw new VacademyException("No slides found in session " + sessionId);
+        }
+
+        PresentationSlideDto currentSlide = session.getSlides().getAddedSlides().stream()
+                .filter(s -> s.getId().equals(slideId))
+                .findFirst()
+                .orElseThrow(() -> new VacademyException("Slide not found: " + slideId + " in session " + sessionId));
+
+        String responsesJson = session.getSlideStatsJson().get(slideId);
+        if (responsesJson == null) {
+            return Collections.emptyList();
+        }
+
+        SlideResponsesLogDto slideLog;
+        try {
+            slideLog = objectMapper.readValue(responsesJson, SlideResponsesLogDto.class);
+        } catch (JsonProcessingException e) {
+            System.err.println("Error deserializing slide responses for admin view: " + e.getMessage());
+            throw new VacademyException("Could not retrieve responses due to data error.");
+        }
+
+        List<AdminSlideResponseViewDto> adminViews = new ArrayList<>();
+        for (ParticipantResponseDto pResponse : slideLog.getResponses()) {
+            Boolean isCorrect = evaluateResponse(pResponse, currentSlide.getAddedQuestion());
+            adminViews.add(new AdminSlideResponseViewDto(
+                    pResponse.getUsername(),
+                    pResponse.getTimeToResponseMillis(),
+                    pResponse.getSubmittedAt(),
+                    pResponse.getResponseData(),
+                    isCorrect
+            ));
+        }
+
+        // Sort: Correct answers first, then by timeToResponseMillis
+        adminViews.sort(Comparator
+                .comparing((AdminSlideResponseViewDto r) -> r.getIsCorrect() == null ? 2 : (r.getIsCorrect() ? 0 : 1)) // nulls last, then true, then false
+                .thenComparing(AdminSlideResponseViewDto::getTimeToResponseMillis, Comparator.nullsLast(Long::compareTo))
+        );
+
+        return adminViews;
+    }
+    private Boolean evaluateResponse(ParticipantResponseDto participantResponse, QuestionDTO question) {
+        if (question == null || !StringUtils.hasText(question.getAutoEvaluationJson())) {
+            return null; // Cannot evaluate
+        }
+
+        AutoEvaluationDto autoEval;
+        try {
+            autoEval = objectMapper.readValue(question.getAutoEvaluationJson(), AutoEvaluationDto.class);
+        } catch (JsonProcessingException e) {
+            System.err.println("Error parsing autoEvaluationJson: " + e.getMessage());
+            return null; // Cannot parse evaluation criteria
+        }
+
+        if (autoEval.getData() == null) return null;
+
+        String questionType = autoEval.getType() != null ? autoEval.getType().toUpperCase() : "";
+        String participantResponseType = participantResponse.getResponseData().getType() != null ? participantResponse.getResponseData().getType().toUpperCase() : "";
+
+        // Ensure response type matches question type from auto-evaluation.
+        // The participantResponse.responseData.type should ideally come from the question definition client-side.
+        // If autoEval.type is the source of truth for question type:
+        if (!questionType.equals(participantResponseType)) {
+            System.err.println("Mismatch between question type in auto-eval ("+questionType+") and response type ("+participantResponseType+") for user " + participantResponse.getUsername());
+            // Consider how to handle this: for now, let's proceed if participantResponseType is one we know.
+        }
+
+
+        switch (participantResponseType) { // Using participant's declared response type
+            case "MCQS":
+            case "MCQM":
+                List<String> correctOptionIds = autoEval.getData().getCorrectOptionIds();
+                List<String> submittedOptionIds = participantResponse.getResponseData().getSelectedOptionIds();
+                if (correctOptionIds == null || submittedOptionIds == null) return false;
+                if (correctOptionIds.size() != submittedOptionIds.size()) return false;
+                return new HashSet<>(correctOptionIds).equals(new HashSet<>(submittedOptionIds));
+            case "ONE_WORD":
+            case "NUMERIC":
+                String correctAnswerText = autoEval.getData().getAnswer();
+                String submittedAnswerText = participantResponse.getResponseData().getTextAnswer();
+                if (correctAnswerText == null || submittedAnswerText == null) return false;
+                // Simple comparison: case-insensitive and trimmed
+                return correctAnswerText.trim().equalsIgnoreCase(submittedAnswerText.trim());
+            case "LONG_ANSWER":
+                // Typically not auto-evaluated, or needs more complex logic
+                return null; // Or false if we decide non-auto-evaluable are "incorrect" by default
+            default:
+                return null; // Unknown type
         }
     }
 }

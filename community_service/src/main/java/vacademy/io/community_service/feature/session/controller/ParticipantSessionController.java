@@ -30,7 +30,7 @@ public class ParticipantSessionController {
         return ResponseEntity.ok(session);
     }
 
-    @GetMapping("/{sessionId}/stream") // Renamed for clarity, or keep as /{sessionId}
+    @GetMapping("/{sessionId}")
     public SseEmitter learnerStream(@PathVariable String sessionId, @RequestParam String username) {
         SseEmitter emitter = new SseEmitter(3L * 60 * 60 * 1000); // 3 hours, for example
 

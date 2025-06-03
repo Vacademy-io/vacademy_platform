@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { toast } from 'sonner';
 import { type SessionDetailsResponse, type SseEventData, type UserSession } from '@/types';
 
-const SSE_BASE_URL = 'http://localhost:8073/community-service/engage/learner';
+const SSE_BASE_URL = 'https://backend-stage.vacademy.io/community-service/engage/learner';
 const MAX_RECONNECT_ATTEMPTS = 10;
 const INITIAL_RECONNECT_DELAY_MS = 1000; // 1 second
 const CLIENT_HEARTBEAT_INTERVAL_MS = 30000; // 30 seconds

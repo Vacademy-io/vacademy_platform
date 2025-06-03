@@ -94,7 +94,7 @@ public class JwtService {
     }
 
 
-    public String generateToken(User userDetails, List<UserRole> userRoles) {
+    public String generateToken(User userDetails, List<UserRole> userRoles,List<String>userPermissions) {
         // Create a map to hold extra claims (payload for the JWT)
         Map<String, Object> extraClaims = new HashMap<>();
 
@@ -105,7 +105,7 @@ public class JwtService {
         extraClaims.put("email", userDetails.getEmail());
         extraClaims.put("is_root_user", userDetails.isRootUser());  // Indicate if it's a root user
         extraClaims.put("authorities", UserRoleService.createInstituteRoleMap(userRoles));
-
+        extraClaims.put("permissions", userPermissions);
         return buildToken(extraClaims, userDetails, AuthConstant.jwtTokenExpiryInMillis);
     }
 }

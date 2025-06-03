@@ -13,8 +13,10 @@ import vacademy.io.auth_service.feature.auth.dto.RegisterRequest;
 import vacademy.io.auth_service.feature.user.repository.PermissionRepository;
 import vacademy.io.common.auth.entity.RefreshToken;
 import vacademy.io.common.auth.entity.User;
+import vacademy.io.common.auth.entity.UserPermission;
 import vacademy.io.common.auth.entity.UserRole;
 import vacademy.io.common.auth.repository.RoleRepository;
+import vacademy.io.common.auth.repository.UserPermissionRepository;
 import vacademy.io.common.auth.repository.UserRepository;
 import vacademy.io.common.auth.service.JwtService;
 import vacademy.io.common.auth.service.RefreshTokenService;
@@ -43,6 +45,9 @@ public class AuthService {
     @Value("${admin.core.service.base_url}")
     private String adminCoreServiceBaseUrl;
 
+    @Autowired
+    private UserPermissionRepository userPermissionRepository;
+
     @Transactional
     public User createUser(RegisterRequest registerRequest, Set<UserRole> roles) {
 
@@ -68,7 +73,8 @@ public class AuthService {
 
         // Check if the user is a root user
         if (user.isRootUser()) {
-            String accessToken = jwtService.generateToken(user, userRoles);
+            List<String>userPermissions = userPermissionRepository.findByUserId(user.getId()).stream().map(UserPermission::getPermissionId).toList();
+            String accessToken = jwtService.generateToken(user, userRoles,userPermissions);
 
             // Return a JwtResponseDto with access token and refresh token
             return JwtResponseDto.builder()

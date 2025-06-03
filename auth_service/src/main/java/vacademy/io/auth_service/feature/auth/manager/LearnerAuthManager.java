@@ -13,8 +13,10 @@ import vacademy.io.auth_service.feature.notification.service.NotificationService
 import vacademy.io.common.auth.dto.RefreshTokenRequestDTO;
 import vacademy.io.common.auth.entity.RefreshToken;
 import vacademy.io.common.auth.entity.User;
+import vacademy.io.common.auth.entity.UserPermission;
 import vacademy.io.common.auth.entity.UserRole;
 import vacademy.io.common.auth.enums.UserRoleStatus;
+import vacademy.io.common.auth.repository.UserPermissionRepository;
 import vacademy.io.common.auth.repository.UserRepository;
 import vacademy.io.common.auth.repository.UserRoleRepository;
 import vacademy.io.common.auth.service.JwtService;
@@ -46,6 +48,9 @@ public class LearnerAuthManager {
     @Autowired
     NotificationService notificationService;
 
+    @Autowired
+    UserPermissionRepository userPermissionRepository;
+
     public JwtResponseDto loginUser(AuthRequestDto authRequestDTO) {
         Authentication authentication;
 
@@ -72,9 +77,9 @@ public class LearnerAuthManager {
             if (userRoles.isEmpty()) {
                 throw new UsernameNotFoundException("invalid user request..!!");
             }
-
+            List<String>userPermissions = userPermissionRepository.findByUserId(user.getId()).stream().map(UserPermission::getPermissionId).toList();
             RefreshToken refreshToken = refreshTokenService.createRefreshToken(authRequestDTO.getUserName(), authRequestDTO.getClientName());
-            return JwtResponseDto.builder().accessToken(jwtService.generateToken(user, userRoles)).refreshToken(refreshToken.getToken()).build();
+            return JwtResponseDto.builder().accessToken(jwtService.generateToken(user, userRoles,userPermissions)).refreshToken(refreshToken.getToken()).build();
 
         } else {
             throw new UsernameNotFoundException("invalid user request..!!");
@@ -134,7 +139,8 @@ public class LearnerAuthManager {
 
 
             RefreshToken refreshToken = refreshTokenService.createRefreshToken(username, authRequestDTO.getClientName());
-            return JwtResponseDto.builder().accessToken(jwtService.generateToken(user.get(), userRoles)).refreshToken(refreshToken.getToken()).build();
+            List<String>userPermissions = userPermissionRepository.findByUserId(user.get().getId()).stream().map(UserPermission::getPermissionId).toList();
+            return JwtResponseDto.builder().accessToken(jwtService.generateToken(user.get(), userRoles,userPermissions)).refreshToken(refreshToken.getToken()).build();
 
         } else {
             throw new UsernameNotFoundException("invalid user request..!!");
@@ -146,9 +152,9 @@ public class LearnerAuthManager {
         return refreshTokenService.findByToken(refreshTokenRequestDTO.getToken()).map(refreshTokenService::verifyExpiration).map(RefreshToken::getUserInfo).map(userInfo -> {
 
             List<UserRole> userRoles = userRoleRepository.findByUser(userInfo);
-
+            List<String>userPermissions = userPermissionRepository.findByUserId(userInfo.getId()).stream().map(UserPermission::getPermissionId).toList();
             // Generate new access token
-            String accessToken = jwtService.generateToken(userInfo, userRoles);
+            String accessToken = jwtService.generateToken(userInfo, userRoles,userPermissions);
             // Return the new JWT token
             return JwtResponseDto.builder().accessToken(accessToken).build();
         }).orElseThrow(() -> new ExpiredTokenException(refreshTokenRequestDTO.getToken() + " Refresh token is. Please make a new login..!"));

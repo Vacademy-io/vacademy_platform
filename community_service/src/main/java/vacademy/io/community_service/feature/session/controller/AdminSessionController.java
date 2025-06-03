@@ -30,7 +30,7 @@ public class AdminSessionController {
         return ResponseEntity.ok(sessionDto);
     }
 
-    @GetMapping("/{sessionId}/stream") // Renamed for clarity, or keep as /{sessionId} if preferred
+    @GetMapping("/{sessionId}")
     public SseEmitter presenterStream(@PathVariable String sessionId) {
         SseEmitter emitter = new SseEmitter(3L * 60 * 60 * 1000); // 3 hours, for example
 

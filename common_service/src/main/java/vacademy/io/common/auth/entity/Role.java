@@ -33,7 +33,7 @@ public class Role {
             joinColumns = @JoinColumn(name = "role_id"),
             inverseJoinColumns = @JoinColumn(name = "permission_id")
     )
-    private Set<UserAuthority> authorities = new HashSet<>();
+    private Set<Permissions> authorities = new HashSet<>();
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private Timestamp createdAt;

@@ -22,6 +22,8 @@ public class LiveSession {
 
     private String instituteId;
 
+    private String instituteId;
+
     private Timestamp startTime;
     private Timestamp lastEntryTime;
 

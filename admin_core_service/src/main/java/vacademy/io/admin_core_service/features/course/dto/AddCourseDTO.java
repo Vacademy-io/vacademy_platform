@@ -26,4 +26,6 @@ public class AddCourseDTO {
     private String whoShouldLearnHtml;
     private String aboutTheCourseHtml;
     private List<String> tags;
+    private Integer courseDepth;
+    private String courseHtmlDescription;
 }

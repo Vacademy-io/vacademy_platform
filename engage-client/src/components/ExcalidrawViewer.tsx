@@ -100,7 +100,7 @@ export const ExcalidrawViewer: React.FC<ExcalidrawViewerProps> = ({ fileId, slid
 
   if (currentInitialData && currentInitialData.elements) {
     return (
-      <div className="w-full h-full excalidraw-wrapper border-2 border-red-500">
+      <div className="w-full h-full excalidraw-wrapper bg-slate-50 rounded-lg overflow-hidden shadow-sm">
         <Suspense fallback={<LoadingSpinner text="Initializing Excalidraw..." className="h-full" />}>
           <Excalidraw
             key={fileId}

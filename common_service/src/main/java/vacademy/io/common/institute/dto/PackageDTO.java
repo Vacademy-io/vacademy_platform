@@ -32,6 +32,8 @@ public class PackageDTO {
     private String whoShouldLearnHtml;
     private String aboutTheCourseHtml;
     private List<String> tags;
+    private Integer courseDepth;
+    private String courseHtmlDescriptionHtml;
 
     // Constructor from Package entity
     public PackageDTO(PackageEntity packageEntity) {
@@ -52,5 +54,7 @@ public class PackageDTO {
         } else {
             this.tags = Collections.emptyList();
         }
+        this.courseDepth = packageEntity.getCourseDepth();
+        this.courseHtmlDescriptionHtml = packageEntity.getCourseHtmlDescription();
     }
 }

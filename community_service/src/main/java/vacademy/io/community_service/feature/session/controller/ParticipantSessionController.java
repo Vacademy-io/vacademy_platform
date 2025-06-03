@@ -1,11 +1,14 @@
 package vacademy.io.community_service.feature.session.controller;
 
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import vacademy.io.community_service.feature.session.dto.admin.LiveSessionDto;
 import vacademy.io.community_service.feature.session.dto.admin.ParticipantDto;
+
+import vacademy.io.community_service.feature.session.dto.participant.MarkResponseRequestDto;
 import vacademy.io.community_service.feature.session.manager.LiveSessionService;
 
 import java.io.IOException;
@@ -21,28 +24,23 @@ public class ParticipantSessionController {
     @Autowired
     LiveSessionService liveSessionService;
 
-    // joinSession (get-details) remains largely the same, relies on service logic
     @PostMapping("/get-details/{inviteCode}")
     public ResponseEntity<LiveSessionDto> joinSession(@PathVariable String inviteCode, @RequestBody ParticipantDto participantDto) {
-        // Service method handles logic for new vs rejoining participant based on username and current status
         LiveSessionDto session = liveSessionService.getDetailsSession(inviteCode, participantDto);
         return ResponseEntity.ok(session);
     }
 
-    @GetMapping("/{sessionId}")
+    @GetMapping("/{sessionId}/stream") // Renamed for clarity, or keep as /{sessionId}
     public SseEmitter learnerStream(@PathVariable String sessionId, @RequestParam String username) {
-        SseEmitter emitter = new SseEmitter(3600000L); // 1-hour timeout for the emitter
+        SseEmitter emitter = new SseEmitter(3L * 60 * 60 * 1000); // 3 hours, for example
 
-        // The service method handles adding the emitter, sending initial state, and setting up app-level cleanup
         liveSessionService.addStudentEmitter(sessionId, emitter, username);
 
-        // Heartbeat from server to client to keep connection alive / detect silent drops by client
         final ScheduledExecutorService heartBeatExecutor = Executors.newSingleThreadScheduledExecutor();
         Runnable heartbeatTask = () -> {
             try {
                 emitter.send(SseEmitter.event().name("learner_heartbeat").id(UUID.randomUUID().toString()).data("ping"));
             } catch (IOException e) {
-                // Connection likely broken, emitter's onError/onCompletion will be triggered by the send failure.
                 if (!heartBeatExecutor.isShutdown()) {
                     heartBeatExecutor.shutdown();
                 }
@@ -50,16 +48,13 @@ public class ParticipantSessionController {
         };
         heartBeatExecutor.scheduleAtFixedRate(heartbeatTask, 0, 30, TimeUnit.SECONDS);
 
-        // Ensure heartbeat executor is shut down when the emitter's lifecycle ends.
-        // The service's addStudentEmitter sets its own onCompletion/onError/onTimeout for application logic.
-        // This controller adds its own for the heartbeat executor cleanup specific to this emitter instance.
         emitter.onCompletion(() -> {
             if (!heartBeatExecutor.isShutdown()) heartBeatExecutor.shutdown();
-            // The service's addStudentEmitter.onCompletion will handle app logic like INACTIVE status
+            // Service's addStudentEmitter handles app logic cleanup
         });
         emitter.onTimeout(() -> {
             if (!heartBeatExecutor.isShutdown()) heartBeatExecutor.shutdown();
-            emitter.complete(); // Ensure emitter itself is completed
+            // emitter.complete(); // SseEmitter infrastructure typically calls complete internally on timeout
         });
         emitter.onError(e -> {
             if (!heartBeatExecutor.isShutdown()) heartBeatExecutor.shutdown();
@@ -67,12 +62,23 @@ public class ParticipantSessionController {
         return emitter;
     }
 
-    // recordHeartbeat (client to server) remains the same
     @PostMapping("/{sessionId}/heartbeat")
     public ResponseEntity<?> recordHeartbeat(
             @PathVariable String sessionId,
             @RequestParam String username) {
         liveSessionService.recordHeartbeat(sessionId, username);
+        return ResponseEntity.ok().build();
+    }
+
+    // New endpoint for participants to submit responses
+    @PostMapping("/{sessionId}/slide/{slideId}/respond")
+    public ResponseEntity<?> recordResponse(
+            @PathVariable String sessionId,
+            @PathVariable String slideId,
+            @Valid @RequestBody MarkResponseRequestDto responseRequest) {
+        // Ensure username in request matches authenticated user if security is in place
+        // For now, using username from request body as specified.
+        liveSessionService.recordParticipantResponse(sessionId, slideId, responseRequest);
         return ResponseEntity.ok().build();
     }
 }

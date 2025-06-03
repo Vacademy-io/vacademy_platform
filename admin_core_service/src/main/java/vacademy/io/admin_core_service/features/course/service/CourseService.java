@@ -107,6 +107,8 @@ public class CourseService {
                                             .map(String::trim)
                                             .collect(Collectors.joining(",")));
         }
+        packageEntity.setCourseDepth(addCourseDTO.getCourseDepth());
+        packageEntity.setCourseHtmlDescription(addCourseDTO.getCourseHtmlDescription());
         return packageEntity;
     }
 
@@ -137,6 +139,8 @@ public class CourseService {
         } else {
             packageEntity.setTags(null); // Or empty string, depending on desired behavior for empty list
         }
+        packageEntity.setCourseDepth(packageDTO.getCourseDepth());
+        packageEntity.setCourseHtmlDescription(packageDTO.getCourseHtmlDescriptionHtml());
         packageRepository.save(packageEntity);
         return "Course updated successfully";
     }

@@ -13,6 +13,8 @@ import vacademy.io.admin_core_service.features.faculty.dto.*;
 import vacademy.io.admin_core_service.features.faculty.entity.FacultySubjectPackageSessionMapping;
 import vacademy.io.admin_core_service.features.faculty.enums.FacultyStatusEnum;
 import vacademy.io.admin_core_service.features.faculty.repository.FacultySubjectPackageSessionMappingRepository;
+import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
+import vacademy.io.admin_core_service.features.subject.enums.SubjectStatusEnum;
 import vacademy.io.admin_core_service.features.subject.service.SubjectService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -21,9 +23,8 @@ import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.dto.SubjectTopLevelDto;
 import vacademy.io.common.institute.entity.student.Subject;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -45,25 +46,25 @@ public class FacultyService {
             }
         }
         facultyRepository.saveAll(mappings);
-        return "success";
+        return userDTO.getId();
     }
 
     @Transactional
     public String updateFacultyAssignmentsToSubjects(
-            FacultyBatchSubjectUpdateRequest updateRequest,
+            FacultyBatchSubjectDTO updateRequest,
             CustomUserDetails userDetails
     ) {
         List<FacultySubjectPackageSessionMapping> updatedMappings = new ArrayList<>();
 
-        for (FacultyBatchSubjectUpdateRequest.BatchSubjectAssignment batchAssignment : updateRequest.getBatchSubjectAssignments()) {
+        for (FacultyBatchSubjectDTO.BatchSubjectAssignment batchAssignment : updateRequest.getBatchSubjectAssignments()) {
             String batchId = batchAssignment.getBatchId();
 
-            for (FacultyBatchSubjectUpdateRequest.SubjectAssignment subjectAssignment : batchAssignment.getSubjectAssignments()) {
+            for (FacultyBatchSubjectDTO.SubjectAssignment subjectAssignment : batchAssignment.getSubjectAssignments()) {
                 String subjectId = subjectAssignment.getSubjectId();
 
                 if (subjectAssignment.isNewAssignment()) {
                     FacultySubjectPackageSessionMapping newMapping = new FacultySubjectPackageSessionMapping(
-                            userDetails.getId(),
+                            updateRequest.getFacultyId(),
                             batchId,
                             subjectId,
                             userDetails.getFullName(),
@@ -144,5 +145,47 @@ public class FacultyService {
         });
 
         return dtos;
+    }
+
+    public FacultyBatchSubjectDTO getAllFacultyBatchSubject(String userId, CustomUserDetails userDetails) {
+        List<FacultyBatchSubjectFlatRow> facultyBatchSubjectFlatRows =
+                facultyRepository.findFacultyBatchSubjectsFiltered(
+                        userId,
+                        List.of(FacultyStatusEnum.ACTIVE.name()),
+                        List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
+                        List.of(SubjectStatusEnum.ACTIVE.name())
+                );
+
+        return mapToNestedDTO(facultyBatchSubjectFlatRows);
+    }
+
+
+
+    private FacultyBatchSubjectDTO mapToNestedDTO(List<FacultyBatchSubjectFlatRow> rows) {
+        FacultyBatchSubjectDTO dto = new FacultyBatchSubjectDTO();
+        dto.setFacultyId(rows.isEmpty() ? null : rows.get(0).getFacultyId());
+
+        Map<String, List<FacultyBatchSubjectFlatRow>> byBatch = rows.stream()
+                .collect(Collectors.groupingBy(FacultyBatchSubjectFlatRow::getBatchId));
+
+        List<FacultyBatchSubjectDTO.BatchSubjectAssignment> assignments = byBatch.entrySet().stream()
+                .map(entry -> {
+                    FacultyBatchSubjectDTO.BatchSubjectAssignment bsa = new FacultyBatchSubjectDTO.BatchSubjectAssignment();
+                    bsa.setBatchId(entry.getKey());
+                    List<FacultyBatchSubjectDTO.SubjectAssignment> subjects = entry.getValue().stream()
+                            .map(row -> {
+                                FacultyBatchSubjectDTO.SubjectAssignment sa = new FacultyBatchSubjectDTO.SubjectAssignment();
+                                sa.setSubjectId(row.getSubjectId());
+                                sa.setNewAssignment(row.getIsNewAssignment());
+                                return sa;
+                            })
+                            .collect(Collectors.toList());
+                    bsa.setSubjectAssignments(subjects);
+                    return bsa;
+                })
+                .collect(Collectors.toList());
+
+        dto.setBatchSubjectAssignments(assignments);
+        return dto;
     }
 }

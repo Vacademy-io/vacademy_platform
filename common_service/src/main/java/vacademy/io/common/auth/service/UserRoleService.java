@@ -1,7 +1,7 @@
 package vacademy.io.common.auth.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import vacademy.io.common.auth.entity.UserAuthority;
+import vacademy.io.common.auth.entity.Permissions;
 import vacademy.io.common.auth.entity.UserRole;
 
 import java.util.HashMap;
@@ -32,7 +32,7 @@ public class UserRoleService {
                     .collect(Collectors.toList());
 
             List<String> permissions = roles.stream()
-                    .flatMap(userRole -> userRole.getRole().getAuthorities().stream().map((UserAuthority::getName))) // Assuming getPermissions() returns a list of permissions
+                    .flatMap(userRole -> userRole.getRole().getAuthorities().stream().map((Permissions::getName))) // Assuming getPermissions() returns a list of permissions
                     .distinct() // To avoid duplicates
                     .collect(Collectors.toList());
 

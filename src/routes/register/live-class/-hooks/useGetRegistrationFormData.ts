@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { SessionCustomFieldsResponse } from "../-types/type";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
+import { LIVE_SESSION_GET_REGISTRATION_DATA } from "@/constants/urls";
 
 const fetchSessionCustomFields = async (
   sessionId: string
@@ -8,7 +9,7 @@ const fetchSessionCustomFields = async (
   try {
     const response = await authenticatedAxiosInstance({
       method: "GET",
-      url: "http://localhost:8072/admin-core-service/live-session/get-registration-data",
+      url: LIVE_SESSION_GET_REGISTRATION_DATA,
       params: {
         sessionId,
       },

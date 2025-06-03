@@ -1,9 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
-import {
-  DaySession,
-  SessionDetails,
-} from "../-types/types";
+import { DaySession, SessionDetails } from "../-types/types";
+import { LIVE_SESSION_GET_LIVE_AND_UPCOMING } from "@/constants/urls";
 
 const isSessionLive = (session: SessionDetails): boolean => {
   const now = new Date();
@@ -12,7 +10,14 @@ const isSessionLive = (session: SessionDetails): boolean => {
     `${session.meeting_date}T${session.last_entry_time}`
   );
 
-  return now >= sessionDate && now <= lastEntryTime;
+  // Calculate waiting room start time using waiting_room_time from backend
+  const waitingRoomStart = new Date(sessionDate);
+  waitingRoomStart.setMinutes(
+    waitingRoomStart.getMinutes() - session.waiting_room_time
+  );
+
+  // Session is live if we're either in waiting room or main session time
+  return now >= waitingRoomStart && now <= lastEntryTime;
 };
 
 const fetchLiveAndUpcomingSessions = async (
@@ -24,24 +29,28 @@ const fetchLiveAndUpcomingSessions = async (
   try {
     const response = await authenticatedAxiosInstance({
       method: "GET",
-      url: "http://localhost:8072/admin-core-service/get-sessions/learner/live-and-upcoming",
+      url: LIVE_SESSION_GET_LIVE_AND_UPCOMING,
       params: {
         batchId,
       },
     });
 
-    console.log("Raw API Response:", response.data);
-
     const allSessions = (response.data as DaySession[]).reduce<
       SessionDetails[]
     >((acc, day) => [...acc, ...day.sessions], []);
 
+    const now = new Date();
     const live_sessions = allSessions.filter(isSessionLive);
-    const upcoming_sessions = allSessions.filter(
-      (session) =>
-        !isSessionLive(session) &&
-        new Date(`${session.meeting_date}T${session.start_time}`) > new Date()
-    );
+    const upcoming_sessions = allSessions.filter((session) => {
+      const sessionDate = new Date(
+        `${session.meeting_date}T${session.start_time}`
+      );
+      const waitingRoomStart = new Date(sessionDate);
+      waitingRoomStart.setMinutes(
+        waitingRoomStart.getMinutes() - session.waiting_room_time
+      );
+      return !isSessionLive(session) && waitingRoomStart > now;
+    });
 
     // Sort upcoming sessions by date and time
     upcoming_sessions.sort((a, b) => {
@@ -55,7 +64,6 @@ const fetchLiveAndUpcomingSessions = async (
       upcoming_sessions,
     };
 
-    console.log("Transformed Data:", transformedData);
     return transformedData;
   } catch (error) {
     console.error("Error fetching live and upcoming sessions:", error);

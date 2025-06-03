@@ -39,6 +39,7 @@ export interface RawApiResponse {
 
 export interface SessionDetails {
   session_id: string;
+  waiting_room_time: number;
   schedule_id: string;
   meeting_date: string;
   start_time: string;
@@ -53,4 +54,37 @@ export interface SessionDetails {
 export interface DaySession {
   date: string;
   sessions: SessionDetails[];
+}
+
+export interface SessionDetailsResponse {
+  sessionId: string;
+  scheduleId: string;
+  instituteId: string;
+  sessionStartTime: string;
+  lastEntryTime: string;
+  accessLevel: string;
+  meetingType: string | null;
+  linkType: string;
+  sessionStreamingServiceType: string | null;
+  defaultMeetLink: string;
+  waitingRoomLink: string | null;
+  waitingRoomTime: number;
+  registrationFormLinkForPublicSessions: string | null;
+  createdByUserId: string;
+  title: string;
+  descriptionHtml: string;
+  notificationEmailMessage: string | null;
+  attendanceEmailMessage: string | null;
+  coverFileId: string | null;
+  subject: string;
+  thumbnailFileId: string;
+  backgroundScoreFileId: string;
+  status: string;
+  recurrenceType: string;
+  recurrenceKey: string;
+  meetingDate: string;
+  scheduleStartTime: string;
+  scheduleLastEntryTime: string;
+  customMeetingLink: string;
+  customWaitingRoomMediaId: string | null;
 }

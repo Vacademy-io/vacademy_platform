@@ -16,6 +16,8 @@ const CatalogPage= () => {
     setError,
   } = useCatalogStore();
 
+  
+
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const idFromUrl = urlParams.get('instituteId');
@@ -99,8 +101,8 @@ const CatalogPage= () => {
         <h4>Sub Modules:</h4>
         {instituteData.sub_modules?.length > 0 ? (
           <ul>
-            {instituteData.sub_modules.map((mod: any) => (
-              <li key={mod.id}>
+            {instituteData.sub_modules.map((mod: any,index:number) => (
+              <li key={mod.id || index}>
                 {mod.module} - {mod.sub_module}
               </li>
             ))}
@@ -113,8 +115,8 @@ const CatalogPage= () => {
         <h4>Sessions:</h4>
         {instituteData.sessions?.length > 0 ? (
           <ul>
-            {instituteData.sessions.map((session: any) => (
-              <li key={session.id}>
+            {instituteData.sessions.map((session: any,index:number) => (
+              <li key={session.id || index}>
                 {session.session_name || 'Unnamed Session'} - {session.status}
               </li>
             ))}
@@ -127,8 +129,8 @@ const CatalogPage= () => {
         <h4>Levels:</h4>
         {instituteData.levels?.length > 0 ? (
           <ul>
-            {instituteData.levels.map((level: any) => (
-              <li key={level.id}>{level.level_name}</li>
+            {instituteData.levels.map((level: any,index:number) => (
+              <li key={level.id || index}>{level.level_name}</li>
             ))}
           </ul>
         ) : (

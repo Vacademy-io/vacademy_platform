@@ -20,6 +20,7 @@ import { Route as LearnerInvitationResponseIndexImport } from './routes/learner-
 import { Route as InstituteSelectionIndexImport } from './routes/institute-selection/index'
 import { Route as DeleteUserIndexImport } from './routes/delete-user/index'
 import { Route as DashboardIndexImport } from './routes/dashboard/index'
+import { Route as CoursesIndexImport } from './routes/courses/index'
 import { Route as SessionSelectionPageIndexImport } from './routes/SessionSelectionPage/index'
 import { Route as UserProfileEditIndexImport } from './routes/user-profile/edit/index'
 import { Route as StudyLibraryCoursesIndexImport } from './routes/study-library/courses/index'
@@ -93,6 +94,12 @@ const DeleteUserIndexRoute = DeleteUserIndexImport.update({
 const DashboardIndexRoute = DashboardIndexImport.update({
   id: '/dashboard/',
   path: '/dashboard/',
+  getParentRoute: () => rootRoute,
+} as any)
+
+const CoursesIndexRoute = CoursesIndexImport.update({
+  id: '/courses/',
+  path: '/courses/',
   getParentRoute: () => rootRoute,
 } as any)
 
@@ -225,6 +232,13 @@ declare module '@tanstack/react-router' {
       path: '/SessionSelectionPage'
       fullPath: '/SessionSelectionPage'
       preLoaderRoute: typeof SessionSelectionPageIndexImport
+      parentRoute: typeof rootRoute
+    }
+    '/courses/': {
+      id: '/courses/'
+      path: '/courses'
+      fullPath: '/courses'
+      preLoaderRoute: typeof CoursesIndexImport
       parentRoute: typeof rootRoute
     }
     '/dashboard/': {
@@ -416,6 +430,7 @@ declare module '@tanstack/react-router' {
 
 export interface FileRoutesByFullPath {
   '/SessionSelectionPage': typeof SessionSelectionPageIndexRoute
+  '/courses': typeof CoursesIndexRoute
   '/dashboard': typeof DashboardIndexRoute
   '/delete-user': typeof DeleteUserIndexRoute
   '/institute-selection': typeof InstituteSelectionIndexRoute
@@ -446,6 +461,7 @@ export interface FileRoutesByFullPath {
 
 export interface FileRoutesByTo {
   '/SessionSelectionPage': typeof SessionSelectionPageIndexRoute
+  '/courses': typeof CoursesIndexRoute
   '/dashboard': typeof DashboardIndexRoute
   '/delete-user': typeof DeleteUserIndexRoute
   '/institute-selection': typeof InstituteSelectionIndexRoute
@@ -477,6 +493,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRoute
   '/SessionSelectionPage/': typeof SessionSelectionPageIndexRoute
+  '/courses/': typeof CoursesIndexRoute
   '/dashboard/': typeof DashboardIndexRoute
   '/delete-user/': typeof DeleteUserIndexRoute
   '/institute-selection/': typeof InstituteSelectionIndexRoute
@@ -509,6 +526,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/SessionSelectionPage'
+    | '/courses'
     | '/dashboard'
     | '/delete-user'
     | '/institute-selection'
@@ -538,6 +556,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/SessionSelectionPage'
+    | '/courses'
     | '/dashboard'
     | '/delete-user'
     | '/institute-selection'
@@ -567,6 +586,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/SessionSelectionPage/'
+    | '/courses/'
     | '/dashboard/'
     | '/delete-user/'
     | '/institute-selection/'
@@ -598,6 +618,7 @@ export interface FileRouteTypes {
 
 export interface RootRouteChildren {
   SessionSelectionPageIndexRoute: typeof SessionSelectionPageIndexRoute
+  CoursesIndexRoute: typeof CoursesIndexRoute
   DashboardIndexRoute: typeof DashboardIndexRoute
   DeleteUserIndexRoute: typeof DeleteUserIndexRoute
   InstituteSelectionIndexRoute: typeof InstituteSelectionIndexRoute
@@ -628,6 +649,7 @@ export interface RootRouteChildren {
 
 const rootRouteChildren: RootRouteChildren = {
   SessionSelectionPageIndexRoute: SessionSelectionPageIndexRoute,
+  CoursesIndexRoute: CoursesIndexRoute,
   DashboardIndexRoute: DashboardIndexRoute,
   DeleteUserIndexRoute: DeleteUserIndexRoute,
   InstituteSelectionIndexRoute: InstituteSelectionIndexRoute,
@@ -675,6 +697,7 @@ export const routeTree = rootRoute
       "filePath": "__root.tsx",
       "children": [
         "/SessionSelectionPage/",
+        "/courses/",
         "/dashboard/",
         "/delete-user/",
         "/institute-selection/",
@@ -705,6 +728,9 @@ export const routeTree = rootRoute
     },
     "/SessionSelectionPage/": {
       "filePath": "SessionSelectionPage/index.tsx"
+    },
+    "/courses/": {
+      "filePath": "courses/index.tsx"
     },
     "/dashboard/": {
       "filePath": "dashboard/index.tsx"

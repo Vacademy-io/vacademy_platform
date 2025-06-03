@@ -4,7 +4,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.live_session.dto.GroupedSessionsByDateDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.LiveSessionListDTO;
-import vacademy.io.admin_core_service.features.live_session.dto.ScheduledSessionDTO;
 import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
@@ -24,6 +23,10 @@ public class GetLiveSessionService {
 
         return projections.stream().map(p -> new LiveSessionListDTO(
                 p.getSessionId(),
+                p.getWaitingRoomTime(),
+                p.getThumbnailFileId(),
+                p.getBackgroundScoreFileId(),
+                p.getSessionStreamingServiceType(),
                 p.getScheduleId(),
                 p.getMeetingDate(),
                 p.getStartTime(),
@@ -42,6 +45,10 @@ public class GetLiveSessionService {
 
         List<LiveSessionListDTO> flatList = projections.stream().map(p -> new LiveSessionListDTO(
                 p.getSessionId(),
+                p.getWaitingRoomTime(),
+                p.getThumbnailFileId(),
+                p.getBackgroundScoreFileId(),
+                p.getSessionStreamingServiceType(),
                 p.getScheduleId(),
                 p.getMeetingDate(),
                 p.getStartTime(),
@@ -72,6 +79,10 @@ public class GetLiveSessionService {
 
         List<LiveSessionListDTO> flatList = projections.stream().map(p -> new LiveSessionListDTO(
                 p.getSessionId(),
+                p.getWaitingRoomTime(),
+                p.getThumbnailFileId(),
+                p.getBackgroundScoreFileId(),
+                p.getSessionStreamingServiceType(),
                 p.getScheduleId(),
                 p.getMeetingDate(),
                 p.getStartTime(),
@@ -102,6 +113,10 @@ public class GetLiveSessionService {
 
         List<LiveSessionListDTO> flatList = projections.stream().map(p -> new LiveSessionListDTO(
                 p.getSessionId(),
+                p.getWaitingRoomTime(),
+                p.getThumbnailFileId(),
+                p.getBackgroundScoreFileId(),
+                p.getSessionStreamingServiceType(),
                 p.getScheduleId(),
                 p.getMeetingDate(),
                 p.getStartTime(),

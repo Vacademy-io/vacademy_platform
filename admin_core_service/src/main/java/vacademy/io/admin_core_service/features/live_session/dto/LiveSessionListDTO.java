@@ -15,6 +15,10 @@ import java.sql.Date;
 @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
 public class LiveSessionListDTO {
     private String sessionId;
+    private Integer waitingRoomTime;
+    private String thumbnailFileId;
+    private String backgroundScoreFileId;
+    private String sessionStreamingServiceType;
     private String scheduleId;
     private Date meetingDate;
     private Time startTime;

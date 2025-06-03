@@ -24,6 +24,12 @@ public class LiveSessionStep1RequestDTO {
     private Timestamp lastEntryTime;
     private String sessionEndDate; // Note: fixed casing to `sessionEndDate`
     private String recurrenceType; // e.g., "WEEKLY"
+    private String linkType;
+    private String waitingRoomTime;
+    private String thumbnailFileId;
+    private String backgroundScoreFileId;
+    private Boolean allowRewind;
+    private String sessionStreamingServiceType;
 
     private List<ScheduleDTO> addedSchedules;
     private List<ScheduleDTO> updatedSchedules;

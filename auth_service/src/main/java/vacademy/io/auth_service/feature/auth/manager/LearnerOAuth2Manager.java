@@ -11,8 +11,10 @@ import vacademy.io.auth_service.feature.auth.dto.JwtResponseDto;
 import vacademy.io.auth_service.feature.notification.service.NotificationService;
 import vacademy.io.common.auth.entity.RefreshToken;
 import vacademy.io.common.auth.entity.User;
+import vacademy.io.common.auth.entity.UserPermission;
 import vacademy.io.common.auth.entity.UserRole;
 import vacademy.io.common.auth.enums.UserRoleStatus;
+import vacademy.io.common.auth.repository.UserPermissionRepository;
 import vacademy.io.common.auth.repository.UserRepository;
 import vacademy.io.common.auth.repository.UserRoleRepository;
 import vacademy.io.common.auth.service.JwtService;
@@ -36,6 +38,9 @@ public class LearnerOAuth2Manager {
     @Autowired
     UserRoleRepository userRoleRepository;
 
+    @Autowired
+    UserPermissionRepository userPermissionRepository;
+
 
     public JwtResponseDto loginUserByEmail(String email) {
         Optional<User> userOptional = userRepository.findTopByEmailOrderByCreatedAtDesc(email);
@@ -52,6 +57,7 @@ public class LearnerOAuth2Manager {
         }
 
         RefreshToken refreshToken = refreshTokenService.createRefreshToken(user.getUsername(), "oauth2-client");
-        return JwtResponseDto.builder().accessToken(jwtService.generateToken(user, userRoles)).refreshToken(refreshToken.getToken()).build();
+        List<String>userPermissions = userPermissionRepository.findByUserId(user.getId()).stream().map(UserPermission::getPermissionId).toList();
+        return JwtResponseDto.builder().accessToken(jwtService.generateToken(user, userRoles,userPermissions)).refreshToken(refreshToken.getToken()).build();
     }
 }

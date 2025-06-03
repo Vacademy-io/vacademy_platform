@@ -9,6 +9,7 @@ import vacademy.io.common.auth.dto.UserWithRolesDTO;
 import vacademy.io.common.auth.entity.Role;
 import vacademy.io.common.auth.entity.User;
 import vacademy.io.common.auth.entity.UserRole;
+import vacademy.io.common.auth.enums.UserRoleStatus;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.auth.repository.RoleRepository;
 import vacademy.io.common.auth.repository.UserRepository;
@@ -42,6 +43,10 @@ public class RoleService {
 
         List<UserRole> userRoles = new ArrayList<>();
         for (Role role : roles) {
+            List<UserRole>userRolesList = userRoleRepository.findByUserAndStatusAndRoleName(user, UserRoleStatus.ACTIVE.name(), role.getName());
+            if (userRolesList.size() > 0) {
+                continue;
+            }
             userRoles.add(createUserRole(user, role, roleStatus, addRolesToUserDTO.getInstituteId()));
         }
 

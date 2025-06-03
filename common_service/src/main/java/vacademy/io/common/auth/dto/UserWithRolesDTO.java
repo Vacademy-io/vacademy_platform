@@ -9,6 +9,7 @@ import vacademy.io.common.auth.entity.User;
 
 import java.util.Date;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Data
@@ -30,7 +31,7 @@ public class UserWithRolesDTO {
     private boolean isRootUser;
     private String password;
     private String profilePicFileId;
-    private List<UserRoleDTO> roles;
+    private Set<UserRoleDTO> roles;
     private String status;
 
     public UserWithRolesDTO() {
@@ -51,10 +52,7 @@ public class UserWithRolesDTO {
         this.isRootUser = user.isRootUser();
         this.profilePicFileId = user.getProfilePicFileId();
         this.roles = user.getRoles().stream()
-                .map(UserRoleDTO::new).collect(Collectors.toList());
-        if (this.roles != null && this.roles.size() != 0) {
-            this.status = this.roles.get(0).getStatus();
-        }
+                .map(UserRoleDTO::new).collect(Collectors.toSet());
     }
 }
 

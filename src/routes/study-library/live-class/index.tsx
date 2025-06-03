@@ -6,6 +6,7 @@ import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore
 import { useLiveSessions } from "./-hooks/useLiveSessions";
 import { SessionDetails } from "./-types/types";
 import { MyButton } from "@/components/design-system/button";
+import { useNavigate } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/study-library/live-class/")({
   component: RouteComponent,
@@ -13,6 +14,7 @@ export const Route = createFileRoute("/study-library/live-class/")({
 
 function RouteComponent() {
   const { setNavHeading } = useNavHeadingStore();
+  const navigate = useNavigate();
   const {
     data: sessions,
     isLoading,
@@ -40,6 +42,34 @@ function RouteComponent() {
     });
   };
 
+  const handleJoinSession = (session: SessionDetails) => {
+    const now = new Date();
+    const sessionDate = new Date(
+      `${session.meeting_date}T${session.start_time}`
+    );
+    const waitingRoomStart = new Date(sessionDate);
+    waitingRoomStart.setMinutes(
+      waitingRoomStart.getMinutes() - session.waiting_room_time
+    );
+
+    // Check if we're in waiting room period or main session
+    const isInWaitingRoom = now >= waitingRoomStart && now < sessionDate;
+    const isInMainSession = now >= sessionDate;
+
+    if (isInWaitingRoom) {
+      // Navigate to waiting room
+      navigate({
+        to: "/study-library/live-class/waiting-room",
+        search: { sessionId: session.schedule_id },
+      });
+    } else if (isInMainSession) {
+      // Navigate to live session
+      if (session.meeting_link) {
+        window.open(session.meeting_link, "_blank", "noopener,noreferrer");
+      }
+    }
+  };
+
   const calculateDuration = (startTime: string, lastEntryTime: string) => {
     const [startHours, startMinutes] = startTime.split(":").map(Number);
     const [endHours, endMinutes] = lastEntryTime.split(":").map(Number);
@@ -47,7 +77,6 @@ function RouteComponent() {
     let durationMinutes =
       endHours * 60 + endMinutes - (startHours * 60 + startMinutes);
 
-    // Handle case where session ends next day
     if (durationMinutes < 0) {
       durationMinutes += 24 * 60;
     }
@@ -65,44 +94,39 @@ function RouteComponent() {
   };
 
   const renderSession = (session: SessionDetails, isLive: boolean) => (
-    <div
-      key={session.session_id}
-      className="p-4 border rounded-lg bg-white shadow-sm hover:shadow-md transition-shadow w-full"
-    >
-      <div className="flex justify-between items-start">
-        <div>
-          <h3 className="font-medium text-lg">{session.title}</h3>
-          <p className="text-sm text-gray-600 mt-1">{session.subject}</p>
-        </div>
-        <div className="flex flex-col items-end gap-2">
-          <span className="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800">
-            {session.recurrence_type.toLowerCase()}
-          </span>
-          {isLive && (
-            <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800">
-              Live Now
-            </span>
+    isLive && console.log("session ", session),
+    (
+      <div
+        key={session.session_id}
+        className="p-4 border rounded-lg bg-white shadow-sm hover:shadow-md transition-shadow w-full"
+      >
+        <div className="flex justify-between items-center">
+          <div>
+            <h3 className="font-medium text-lg">{session.title}</h3>
+          </div>
+          {isLive && session.meeting_link && (
+            <MyButton
+              buttonType="secondary"
+              className="mt-4"
+              onClick={() => handleJoinSession(session)}
+            >
+              Join Session
+            </MyButton>
           )}
         </div>
-      </div>
 
-      <div className="mt-4 flex flex-row gap-6">
-        <p className="text-sm">
-          <span className="font-medium">Starts:</span>{" "}
-          {formatDateTime(session.meeting_date, session.start_time)}
-        </p>
-        <p className="text-sm">
-          <span className="font-medium">Duration:</span>{" "}
-          {calculateDuration(session.start_time, session.last_entry_time)}
-        </p>
+        <div className="mt-4 flex flex-row gap-6 items-center justify-between">
+          <p className="text-sm">
+            <span className="font-medium">Starts:</span>{" "}
+            {formatDateTime(session.meeting_date, session.start_time)}
+          </p>
+          <p className="text-sm">
+            <span className="font-medium">Duration:</span>{" "}
+            {calculateDuration(session.start_time, session.last_entry_time)}
+          </p>
+        </div>
       </div>
-
-      {isLive && session.meeting_link && (
-        <MyButton buttonType="secondary" className="mt-2">
-          Join Session
-        </MyButton>
-      )}
-    </div>
+    )
   );
 
   if (isLoading) {
@@ -127,6 +151,7 @@ function RouteComponent() {
 
   const liveSessions = sessions?.live_sessions ?? [];
   const upcomingSessions = sessions?.upcoming_sessions ?? [];
+
 
   return (
     <LayoutContainer>

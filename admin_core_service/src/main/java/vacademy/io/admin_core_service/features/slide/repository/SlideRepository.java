@@ -530,7 +530,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
     SELECT json_agg(slide_data ORDER BY slide_order IS NOT NULL, slide_order, created_at DESC) AS slides
     FROM (
         -- VIDEO SLIDES
-        SELECT
+        SELECT DISTINCT ON (s.id)
             s.created_at,
             cs.slide_order,
             json_build_object(
@@ -611,7 +611,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
         UNION ALL
 
         -- DOCUMENT SLIDES
-        SELECT 
+        SELECT DISTINCT ON (s.id)
             s.created_at,
             cs.slide_order,
             json_build_object(
@@ -653,7 +653,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
         UNION ALL
 
         -- QUESTION SLIDES
-        SELECT 
+        SELECT DISTINCT ON (s.id)
             s.created_at,
             cs.slide_order,
             json_build_object(
@@ -716,7 +716,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
         UNION ALL
 
         -- ASSIGNMENT SLIDES
-        SELECT
+        SELECT DISTINCT ON (s.id)
             s.created_at,
             cs.slide_order,
             json_build_object(

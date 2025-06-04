@@ -64,7 +64,7 @@ public class Step1Service {
         if(request.getInstituteId() != null) session.setInstituteId(request.getInstituteId());
         if(request.getBackgroundScoreFileId() != null) session.setBackgroundScoreFileId(request.getBackgroundScoreFileId());
         if(request.getThumbnailFileId() != null) session.setThumbnailFileId(request.getThumbnailFileId());
-        if(request.getWaitingRoomTime() != null) session.setWaitingRoomLink(request.getWaitingRoomTime());
+        if(request.getWaitingRoomTime() != null) session.setWaitingRoomTime(request.getWaitingRoomTime());
         if(request.getLinkType() != null) session.setLinkType(request.getLinkType());
         if(request.getAllowRewind() != null) session.setAllowRewind(request.getAllowRewind());
         if(request.getSessionStreamingServiceType() != null) session.setSessionStreamingServiceType(request.getSessionStreamingServiceType());

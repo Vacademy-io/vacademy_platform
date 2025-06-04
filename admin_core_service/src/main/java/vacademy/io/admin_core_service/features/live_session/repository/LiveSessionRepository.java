@@ -82,7 +82,8 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         FROM live_session s
         JOIN session_schedules ss ON s.id = ss.session_id
         WHERE s.status = 'LIVE'
-          AND ss.meeting_date > CURRENT_DATE
+          AND ss.meeting_date >= CURRENT_DATE
+          AND CURRENT_TIME < ss.start_time
           AND s.institute_id = :instituteId
           ORDER BY ss.meeting_date ASC, ss.start_time ASC
         """,
@@ -104,7 +105,8 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         FROM live_session s
         JOIN session_schedules ss ON s.id = ss.session_id
         WHERE s.status = 'LIVE'
-          AND ss.meeting_date < CURRENT_DATE
+          AND ss.meeting_date =< CURRENT_DATE
+          AND CURRENT_TIME > ss.last_entry_time
           AND s.institute_id = :instituteId
           ORDER BY ss.meeting_date ASC, ss.start_time ASC
         """,
@@ -121,7 +123,7 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         //    )
 
     @Query(value = """
-        SELECT
+        SELECT DISTINCT
             s.id AS sessionId,
             s.waiting_room_time AS waitingRoomTime,
             s.thumbnail_file_id AS thumbnailFileId,

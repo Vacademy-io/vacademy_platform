@@ -25,7 +25,7 @@ public class LiveSessionStep1RequestDTO {
     private String sessionEndDate; // Note: fixed casing to `sessionEndDate`
     private String recurrenceType; // e.g., "WEEKLY"
     private String linkType;
-    private String waitingRoomTime;
+    private Integer waitingRoomTime;
     private String thumbnailFileId;
     private String backgroundScoreFileId;
     private Boolean allowRewind;

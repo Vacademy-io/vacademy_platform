@@ -31,14 +31,18 @@ function WaitingRoomComponent() {
   } = useSessionDetails(sessionId);
 
   const fetchThumbnail = async () => {
-    const thumbnail = await getPublicUrl(sessionDetails?.thumbnailFileId);
-    setThumbnail(thumbnail);
+    if (sessionDetails?.thumbnailFileId) {
+      const thumbnailUrl = await getPublicUrl(sessionDetails.thumbnailFileId);
+      setThumbnail(thumbnailUrl);
+    }
   };
 
   useEffect(() => {
     setNavHeading("Waiting Room");
-    fetchThumbnail();
-  }, []);
+    if (sessionDetails?.thumbnailFileId) {
+      fetchThumbnail();
+    }
+  }, [sessionDetails]);
 
   // Handle session start
   useEffect(() => {
@@ -51,7 +55,10 @@ function WaitingRoomComponent() {
 
         if (now >= sessionStart && sessionDetails.defaultMeetLink) {
           // Redirect to the meeting when session starts
-          if (sessionDetails.sessionStreamingServiceType === SessionStreamingServiceType.EMBED) {
+          if (
+            sessionDetails.sessionStreamingServiceType ===
+            SessionStreamingServiceType.EMBED
+          ) {
             console.log("embed");
             navigate({
               to: "/study-library/live-class/embed",
@@ -117,7 +124,7 @@ function WaitingRoomComponent() {
           <img
             src={thumbnail}
             alt="Session Thumbnail"
-            className="w-1/2 h-1/2 rounded-lg"
+            className="w-full max-h-[300px] rounded-lg object-contain bg-gray-50"
           />
         )}
         {sessionDetails && (

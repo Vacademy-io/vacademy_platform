@@ -5,7 +5,7 @@ import { useState, useEffect } from "react";
 import { MyInput } from "@/components/design-system/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { MyButton } from "@/components/design-system/button";
+// import { MyButton } from "@/components/design-system/button";
 import { useMutation } from "@tanstack/react-query";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { SUBMIT_SLIDE_ANSWERS } from "@/constants/urls";
@@ -79,7 +79,7 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
   const [isDecimal, setIsDecimal] = useState(false);
   const [maxDecimals, setMaxDecimals] = useState(0);
   // const [questionResponses, setQuestionResponses] =
-    useState<QuestionResponseMap>({});
+  useState<QuestionResponseMap>({});
 
   const maxAttempts = questionData?.re_attempt_count || 1;
   const questionType = questionData?.question_type || "MCQS";
@@ -403,41 +403,41 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
       case "MCQS":
       case "TRUE_FALSE":
         return (
-          <div className="space-y-4">
+          <div className="space-y-2 sm:space-y-3">
             {questionData?.options?.map((option, index) => (
               <div
                 key={option.id}
                 onClick={() => handleOptionSelect(option.id)}
-                className={`flex flex-row-reverse items-center justify-between rounded-lg border p-4 w-full ${
+                className={`flex flex-row-reverse items-center justify-between rounded-md border p-3 w-full transition-all duration-200 hover:border-gray-400 ${
                   selectedOption === option.id
-                    ? "border-primary-500 bg-primary-50"
+                    ? "border-gray-600 bg-gray-50"
                     : "border-gray-200"
                 }`}
               >
                 <div className="relative flex items-center">
                   <div
-                    className={`w-6 h-6 border rounded-md flex items-center justify-center ${
+                    className={`w-5 h-5 border rounded-md flex items-center justify-center transition-colors ${
                       selectedOption === option.id
-                        ? "bg-green-500 border-green-500"
+                        ? "bg-gray-800 border-gray-800"
                         : "border-gray-300"
                     }`}
                   >
                     {selectedOption === option.id && (
-                      <span className="text-white font-bold">✔</span>
+                      <span className="text-white text-sm">✓</span>
                     )}
                   </div>
                 </div>
 
                 <label
-                  className={`flex-grow text-sm ${
+                  className={`flex-grow text-sm sm:text-base ${
                     selectedOption === option.id
-                      ? "font-semibold"
+                      ? "font-medium text-gray-900"
                       : "text-gray-700"
                   }`}
                 >
                   {questionType === "TRUE_FALSE"
                     ? option.text.content
-                    : `(${String.fromCharCode(97 + index)}) ${option.text.content}`}
+                    : `${String.fromCharCode(97 + index)}. ${option.text.content}`}
                 </label>
               </div>
             ))}
@@ -446,39 +446,39 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
 
       case "MCQM":
         return (
-          <div className="space-y-4">
+          <div className="space-y-2 sm:space-y-3">
             {questionData?.options?.map((option, index) => (
               <div
                 key={option.id}
                 onClick={() => handleOptionSelect(option.id)}
-                className={`flex flex-row-reverse items-center justify-between rounded-lg border p-4 w-full ${
+                className={`flex flex-row-reverse items-center justify-between rounded-md border p-3 w-full transition-all duration-200 hover:border-gray-400 ${
                   selectedOptions.includes(option.id)
-                    ? "border-primary-500 bg-primary-50"
+                    ? "border-gray-600 bg-gray-50"
                     : "border-gray-200"
                 }`}
               >
                 <div className="relative flex items-center">
                   <div
-                    className={`w-6 h-6 border rounded-md flex items-center justify-center ${
+                    className={`w-5 h-5 border rounded-md flex items-center justify-center transition-colors ${
                       selectedOptions.includes(option.id)
-                        ? "bg-green-500 border-green-500"
+                        ? "bg-gray-800 border-gray-800"
                         : "border-gray-300"
                     }`}
                   >
                     {selectedOptions.includes(option.id) && (
-                      <span className="text-white font-bold">✔</span>
+                      <span className="text-white text-sm">✓</span>
                     )}
                   </div>
                 </div>
 
                 <label
-                  className={`flex-grow text-sm ${
+                  className={`flex-grow text-sm sm:text-base ${
                     selectedOptions.includes(option.id)
-                      ? "font-semibold"
+                      ? "font-medium text-gray-900"
                       : "text-gray-700"
                   }`}
                 >
-                  {`(${String.fromCharCode(97 + index)}) ${option.text.content}`}
+                  {`${String.fromCharCode(97 + index)}. ${option.text.content}`}
                 </label>
               </div>
             ))}
@@ -487,13 +487,13 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
 
       case "ONE_WORD":
         return (
-          <div className="w-full max-w-md mx-auto mt-4">
+          <div className="w-full max-w-md mx-auto mt-2 sm:mt-4">
             <MyInput
               inputType="text"
               input={inputValue}
               onChangeFunction={handleInputChange}
               inputPlaceholder="Type your one-word answer"
-              className="text-xl py-4 font-medium w-full"
+              className="text-base sm:text-lg py-3 font-normal w-full border-gray-300 focus:border-gray-600 focus:ring-gray-600"
               onCopy={(e) => e.preventDefault()}
               onCut={(e) => e.preventDefault()}
               onPaste={(e) => e.preventDefault()}
@@ -503,12 +503,12 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
 
       case "LONG_ANSWER":
         return (
-          <div className="w-full max-w-2xl mx-auto mt-4">
+          <div className="w-full max-w-2xl mx-auto mt-2 sm:mt-4">
             <Textarea
               value={inputValue}
               onChange={handleInputChange}
               placeholder="Type your answer..."
-              className="min-h-[200px] text-base"
+              className="min-h-[150px] sm:min-h-[200px] text-base border-gray-300 focus:border-gray-600 focus:ring-gray-600"
               onCopy={(e) => e.preventDefault()}
               onCut={(e) => e.preventDefault()}
               onPaste={(e) => e.preventDefault()}
@@ -518,7 +518,7 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
 
       case "NUMERIC":
         return (
-          <div className="space-y-4 mt-6">
+          <div className="space-y-3 sm:space-y-4 mt-4">
             <div className="flex justify-center">
               <MyInput
                 inputType="text"
@@ -528,21 +528,21 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
                   isDecimal ? "Enter decimal value" : "Enter integer value"
                 }
                 inputMode="numeric"
-                className="text-xl py-4 font-medium w-full max-w-md"
+                className="text-base sm:text-lg py-3 font-normal w-full max-w-md border-gray-300 focus:border-gray-600 focus:ring-gray-600"
                 onCopy={(e) => e.preventDefault()}
                 onCut={(e) => e.preventDefault()}
                 onPaste={(e) => e.preventDefault()}
               />
             </div>
 
-            <Card className="max-w-md mx-auto">
-              <CardContent className="p-4">
-                <div className="grid grid-cols-3 gap-2">
+            <Card className="max-w-md mx-auto bg-white shadow-sm">
+              <CardContent className="p-3">
+                <div className="grid grid-cols-3 gap-1.5">
                   {[7, 8, 9, 4, 5, 6, 1, 2, 3].map((num) => (
                     <Button
                       key={num}
                       variant="outline"
-                      className="h-14 text-xl font-medium"
+                      className="h-12 text-base font-normal hover:bg-gray-100 border-gray-200"
                       onClick={() => handleKeyPress(num.toString())}
                     >
                       {num}
@@ -550,7 +550,7 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
                   ))}
                   <Button
                     variant="outline"
-                    className="h-14 text-xl font-medium"
+                    className="h-12 text-base font-normal hover:bg-gray-100 border-gray-200"
                     onClick={() => handleKeyPress("0")}
                   >
                     0
@@ -558,7 +558,7 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
                   {isDecimal && (
                     <Button
                       variant="outline"
-                      className="h-14 text-xl font-medium"
+                      className="h-12 text-base font-normal hover:bg-gray-100 border-gray-200"
                       onClick={() => handleKeyPress(".")}
                       disabled={numericValue.includes(".")}
                     >
@@ -567,17 +567,17 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
                   )}
                   <Button
                     variant="outline"
-                    className="h-14 text-xl font-medium"
+                    className="h-12 text-base font-normal hover:bg-gray-100 border-gray-200"
                     onClick={() => handleKeyPress("backspace")}
                   >
                     ←
                   </Button>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 mt-2">
+                <div className="grid grid-cols-2 gap-1.5 mt-1.5">
                   <Button
                     variant="outline"
-                    className="h-14"
+                    className="h-12 text-base font-normal hover:bg-gray-100 border-gray-200"
                     onClick={() => handleKeyPress("clear")}
                   >
                     Clear
@@ -604,9 +604,9 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
     (questionType === "NUMERIC" && !numericValue.trim());
 
   return (
-    <div className="w-full max-w-2xl mx-auto bg-white rounded-lg shadow-sm p-6">
+    <div className="w-full max-w-2xl mx-auto bg-white rounded-lg shadow-sm p-4 sm:p-6">
       <h2
-        className="text-xl font-semibold text-neutral-800 mb-4"
+        className="text-lg sm:text-xl font-medium text-gray-900 mb-3 sm:mb-4"
         dangerouslySetInnerHTML={{
           __html: `Question: ${questionData?.text_data?.content}`,
         }}
@@ -626,8 +626,8 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
         </div>
       )} */}
 
-      <div className="mt-6">
-        <h3 className="text-lg font-medium text-neutral-700 mb-3">
+      <div className="mt-4 sm:mt-6">
+        <h3 className="text-base sm:text-lg font-medium text-gray-700 mb-2 sm:mb-3">
           {questionType === "MCQS"
             ? "Select one answer:"
             : questionType === "TRUE_FALSE"
@@ -645,16 +645,18 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
       </div>
 
       <div className="mt-6 flex justify-center">
-        <MyButton
+        <button
           type="button"
-          scale="large"
-          buttonType="primary"
-          layoutVariant="default"
           onClick={handleSubmit}
           disabled={isSubmitDisabled}
+          className={`px-6 py-2.5 rounded-md text-sm sm:text-base font-medium transition-colors ${
+            isSubmitDisabled
+              ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+              : "bg-gray-900 text-white hover:bg-gray-800"
+          }`}
         >
           {isSubmitting ? "Submitting..." : "Submit"}
-        </MyButton>
+        </button>
       </div>
     </div>
   );

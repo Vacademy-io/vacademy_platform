@@ -551,23 +551,24 @@ const AssignmentSlide = ({
   };
 
   return (
-    <div className="max-w-3xl mx-auto">
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle>
-            Assignment: {assignmentData.text_data?.content || activeItem?.title}
+    <div className="max-w-3xl mx-auto px-4 sm:px-6">
+      <Card className="mb-4 sm:mb-6 bg-white shadow-sm">
+        <CardHeader className="space-y-2">
+          <CardTitle className="text-lg sm:text-xl font-medium text-gray-900">
+            {assignmentData.text_data?.content || activeItem?.title}
           </CardTitle>
-          <CardDescription>
+          <CardDescription className="text-sm sm:text-base text-gray-600">
             <div className="flex flex-col space-y-1 mt-2">
               <span>
-                <strong>Start Date:</strong>{" "}
+                <strong className="font-medium">Start Date:</strong>{" "}
                 {formatDate(assignmentData.live_date)}
               </span>
               <span>
-                <strong>Due Date:</strong> {formatDate(assignmentData.end_date)}
+                <strong className="font-medium">Due Date:</strong>{" "}
+                {formatDate(assignmentData.end_date)}
               </span>
               <span>
-                <strong>Attempts Allowed:</strong>{" "}
+                <strong className="font-medium">Attempts Allowed:</strong>{" "}
                 {assignmentData.re_attempt_count || "Unlimited"}
               </span>
             </div>
@@ -575,7 +576,7 @@ const AssignmentSlide = ({
         </CardHeader>
         <CardContent>
           {assignmentData.parent_rich_text?.content && (
-            <div className="mb-6 prose max-w-none">
+            <div className="prose max-w-none text-gray-700 text-sm sm:text-base">
               <div
                 dangerouslySetInnerHTML={{
                   __html: assignmentData.parent_rich_text.content,
@@ -588,10 +589,14 @@ const AssignmentSlide = ({
 
       {/* Questions Section */}
       {assignmentData.questions && assignmentData.questions.length > 0 && (
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>Questions</CardTitle>
-            <CardDescription>Please answer all questions below</CardDescription>
+        <Card className="mb-4 sm:mb-6 bg-white shadow-sm">
+          <CardHeader className="space-y-1">
+            <CardTitle className="text-lg sm:text-xl font-medium text-gray-900">
+              Questions
+            </CardTitle>
+            <CardDescription className="text-sm sm:text-base text-gray-600">
+              Please answer all questions below
+            </CardDescription>
           </CardHeader>
           <CardContent>
             {assignmentData.questions
@@ -599,8 +604,21 @@ const AssignmentSlide = ({
               .map((question: Question, index: number) => (
                 <div
                   key={question.id}
-                  className="mb-8 pb-6 border-b border-gray-200 last:border-0 last:mb-0 last:pb-0"
+                  className="mb-6 pb-6 border-b border-gray-200 last:border-0 last:mb-0 last:pb-0"
                 >
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-3 gap-2">
+                    <h3 className="text-base sm:text-lg font-medium text-gray-900">
+                      {index + 1}. {question.text_data.content}
+                    </h3>
+                    <div className="text-xs sm:text-sm text-gray-500 sm:text-right">
+                      <div>
+                        Type: {getQuestionTypeDisplay(question.question_type)}
+                      </div>
+                      <div>
+                        Attempts: {question.re_attempt_count || "Unlimited"}
+                      </div>
+                    </div>
+                  </div>
                   {renderQuestion(question, index)}
                 </div>
               ))}
@@ -609,10 +627,12 @@ const AssignmentSlide = ({
       )}
 
       {/* File Upload Section */}
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle>Upload Files</CardTitle>
-          <CardDescription>
+      <Card className="mb-4 sm:mb-6 bg-white shadow-sm">
+        <CardHeader className="space-y-1">
+          <CardTitle className="text-lg sm:text-xl font-medium text-gray-900">
+            Upload Files
+          </CardTitle>
+          <CardDescription className="text-sm sm:text-base text-gray-600">
             Upload any required files for this assignment
           </CardDescription>
         </CardHeader>
@@ -631,23 +651,27 @@ const AssignmentSlide = ({
 
       {/* Submit Button */}
       <div className="flex justify-end">
-        <Button
+        <button
           onClick={handleSubmit}
           disabled={isSubmitting || isUploading}
-          className="px-6 py-2.5"
+          className={`px-6 py-2.5 rounded-md text-sm sm:text-base font-medium transition-colors ${
+            isSubmitting || isUploading
+              ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+              : "bg-gray-900 text-white hover:bg-gray-800"
+          }`}
         >
           {isSubmitting ? "Submitting..." : "Submit Assignment"}
-        </Button>
+        </button>
       </div>
 
       {/* Success/Error Messages */}
       {submitSuccess && (
-        <div className="mt-4 p-4 bg-green-50 text-green-700 rounded-md">
+        <div className="mt-4 p-3 sm:p-4 bg-gray-50 text-gray-800 rounded-md text-sm sm:text-base border border-gray-200">
           Assignment submitted successfully!
         </div>
       )}
       {submitError && (
-        <div className="mt-4 p-4 bg-red-50 text-red-700 rounded-md">
+        <div className="mt-4 p-3 sm:p-4 bg-gray-50 text-gray-800 rounded-md text-sm sm:text-base border border-gray-200">
           Error: {submitError}
         </div>
       )}

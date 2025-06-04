@@ -17,11 +17,9 @@ import vacademy.io.auth_service.feature.auth.service.AuthService;
 import vacademy.io.auth_service.feature.notification.service.NotificationEmailBody;
 import vacademy.io.auth_service.feature.notification.service.NotificationService;
 import vacademy.io.auth_service.feature.user.util.RandomCredentialGenerator;
-import vacademy.io.common.auth.entity.RefreshToken;
-import vacademy.io.common.auth.entity.Role;
-import vacademy.io.common.auth.entity.User;
-import vacademy.io.common.auth.entity.UserRole;
+import vacademy.io.common.auth.entity.*;
 import vacademy.io.common.auth.enums.UserRoleStatus;
+import vacademy.io.common.auth.repository.UserPermissionRepository;
 import vacademy.io.common.auth.repository.UserRepository;
 import vacademy.io.common.auth.repository.UserRoleRepository;
 import vacademy.io.common.auth.service.JwtService;
@@ -51,6 +49,9 @@ public class AdminOAuth2Manager {
     @Autowired
     NotificationService notificationService;
 
+    @Autowired
+    private UserPermissionRepository userPermissionRepository;
+
 
     public JwtResponseDto loginUserByEmail(String email) {
         Optional<User> userOptional = userRepository.findTopByEmailOrderByCreatedAtDesc(email);
@@ -67,9 +68,9 @@ public class AdminOAuth2Manager {
         if (!userRoles.isEmpty()) {
             userRoleRepository.updateUserRoleStatusByInstituteIdAndUserId(UserRoleStatus.ACTIVE.name(), userRoles.get(0).getInstituteId(), List.of(user.getId()));
         }
-
+        List<String>userPermissions = userPermissionRepository.findByUserId(user.getId()).stream().map(UserPermission::getPermissionId).toList();
         RefreshToken refreshToken = refreshTokenService.createRefreshToken(user.getUsername(), "oauth2-client");
-        return JwtResponseDto.builder().accessToken(jwtService.generateToken(user, userRoles)).refreshToken(refreshToken.getToken()).build();
+        return JwtResponseDto.builder().accessToken(jwtService.generateToken(user, userRoles,userPermissions)).refreshToken(refreshToken.getToken()).build();
     }
 
     public JwtResponseDto registerRootUser(String fullName,String email) {
@@ -117,7 +118,8 @@ public class AdminOAuth2Manager {
 
         // Check if the user is a root user
         if (user.isRootUser()) {
-            String accessToken = jwtService.generateToken(user, userRoles);
+            List<String>userPermissions = userPermissionRepository.findByUserId(user.getId()).stream().map(UserPermission::getPermissionId).toList();
+            String accessToken = jwtService.generateToken(user, userRoles,userPermissions);
 
             // Return a JwtResponseDto with access token and refresh token
             return JwtResponseDto.builder()

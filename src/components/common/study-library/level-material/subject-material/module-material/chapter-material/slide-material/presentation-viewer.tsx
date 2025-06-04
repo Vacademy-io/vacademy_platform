@@ -1,8 +1,6 @@
 import type React from "react";
 import { useEffect, useState, useRef } from "react";
-import { Excalidraw } from "@excalidraw/excalidraw";
-// import type { ExcalidrawElement } from "@excalidraw/excalidraw/types/element/types";
-// import type { AppState } from "@excalidraw/excalidraw/types/types";
+import { Excalidraw, THEME } from "@excalidraw/excalidraw";
 import { v4 as uuidv4 } from "uuid";
 import { useTrackingStore } from "@/stores/study-library/pdf-tracking-store";
 import { getISTTime, getEpochTimeInMillis } from "./utils";
@@ -17,7 +15,6 @@ const PresentationViewer: React.FC<PresentationViewerProps> = ({
   presentationUrl,
   documentId,
 }) => {
-  // const [presentationData, setPresentationData] = useState<ExcalidrawElement[]>(
   const [presentationData, setPresentationData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -32,24 +29,21 @@ const PresentationViewer: React.FC<PresentationViewerProps> = ({
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const viewStartTime = useRef<Date>(new Date());
 
-  // ✅ Robust Excalidraw data extraction utility
-  // const extractExcalidrawData = (htmlContent: string): ExcalidrawElement[] => {
   const extractExcalidrawData = (htmlContent: string): any[] => {
     try {
       const parser = new DOMParser();
       const doc = parser.parseFromString(htmlContent, "text/html");
 
-      // 1️⃣ Try <script type="application/json">
+      // Try <script type="application/json">
       const jsonScript = doc.querySelector('script[type="application/json"]');
       if (jsonScript) {
         const data = JSON.parse(jsonScript.textContent || "{}");
-        console.log("✅ Found data in <script type='application/json'>");
         if (data.isExcalidraw && Array.isArray(data.elements)) {
           return data.elements;
         }
       }
 
-      // 2️⃣ Try inline <script> containing 'const excalidrawData ='
+      // Try inline <script> containing 'const excalidrawData ='
       const scripts = doc.querySelectorAll("script");
       for (const script of scripts) {
         const content = script.textContent || "";
@@ -58,29 +52,27 @@ const PresentationViewer: React.FC<PresentationViewerProps> = ({
         );
         if (match && match[1]) {
           const data = JSON.parse(match[1]);
-          console.log("✅ Found data in inline <script>");
           if (data.isExcalidraw && Array.isArray(data.elements)) {
             return data.elements;
           }
         }
       }
 
-      // 3️⃣ Try a div with data-excalidraw attribute
+      // Try a div with data-excalidraw attribute
       const dataDiv = doc.querySelector("[data-excalidraw]");
       if (dataDiv) {
         const data = JSON.parse(
           dataDiv.getAttribute("data-excalidraw") || "{}"
         );
-        console.log("✅ Found data in [data-excalidraw] div");
         if (data.isExcalidraw && Array.isArray(data.elements)) {
           return data.elements;
         }
       }
 
-      console.warn("⚠️ No valid Excalidraw data found.");
+      console.warn("No valid Excalidraw data found.");
       return [];
     } catch (err) {
-      console.error("❌ Error extracting Excalidraw data:", err);
+      console.error("Error extracting Excalidraw data:", err);
       return [];
     }
   };
@@ -100,7 +92,6 @@ const PresentationViewer: React.FC<PresentationViewerProps> = ({
 
         const htmlContent = await response.text();
         const data = extractExcalidrawData(htmlContent);
-
         setPresentationData(data);
         setError(null);
       } catch (err) {
@@ -227,10 +218,9 @@ const PresentationViewer: React.FC<PresentationViewerProps> = ({
           elements: presentationData,
           appState: {
             viewModeEnabled: true,
-            zenModeEnabled: false,
             gridModeEnabled: false,
-            // } as Partial<AppState>,
-          } as Partial<any>,
+            theme: THEME.LIGHT,
+          },
         }}
         viewModeEnabled={true}
         UIOptions={{
@@ -244,6 +234,9 @@ const PresentationViewer: React.FC<PresentationViewerProps> = ({
             image: false,
           },
         }}
+        renderTopRightUI={() => null}
+        detectScroll={false}
+        handleKeyboardGlobally={false}
       />
     </div>
   );

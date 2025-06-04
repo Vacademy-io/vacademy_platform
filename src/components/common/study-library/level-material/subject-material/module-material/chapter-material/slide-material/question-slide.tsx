@@ -1,18 +1,17 @@
 "use client";
 
 import type React from "react";
-
 import { useState, useEffect } from "react";
-import { Check, X } from "lucide-react";
 import { MyInput } from "@/components/design-system/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { MyButton } from "@/components/design-system/button";
+// import { MyButton } from "@/components/design-system/button";
 import { useMutation } from "@tanstack/react-query";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { SUBMIT_SLIDE_ANSWERS } from "@/constants/urls";
 import { v4 as uuidv4 } from "uuid";
 import { getUserId } from "@/constants/getUserId";
+import { Textarea } from "@/components/ui/textarea";
 
 interface Option {
   id: string;
@@ -44,37 +43,61 @@ interface QuestionSlideProps {
   onSubmit: (
     questionId: string,
     selectedOption: string | string[]
-  ) => Promise<any>;
+  ) => Promise<{
+    success: boolean;
+    isCorrect?: boolean;
+    correctOption?: string;
+    explanation?: string;
+    error?: string;
+  }>;
+}
+
+interface QuestionResponseMap {
+  [key: string]: {
+    value: string | string[];
+    type: string;
+  };
 }
 
 const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
-  const [selectedOption, setSelectedOption] = useState<string | null>(null);
-  const [selectedOptions, setSelectedOptions] = useState<string[]>([]);
-  const [submissionState, setSubmissionState] = useState<
-    "idle" | "submitted" | "correct" | "incorrect"
-  >("idle");
-  const [attempts, setAttempts] = useState(0);
-  const [correctOption, setCorrectOption] = useState<string | null>(null);
-  const [correctOptions, setCorrectOptions] = useState<string[]>([]);
-  const [correctAnswer, setCorrectAnswer] = useState<string | null>(null);
-  const [explanation, setExplanation] = useState<string>("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // For numeric and one-word input
-  const [inputValue, setInputValue] = useState<string>("");
-  const [numericValue, setNumericValue] = useState<string>("");
+  // const { activeItem } = useContentStore();
+  const [selectedOptionsMap, setSelectedOptionsMap] = useState<
+    Record<string, string | null>
+  >({});
+  const [selectedMultiOptionsMap, setSelectedMultiOptionsMap] = useState<
+    Record<string, string[]>
+  >({});
+  const [inputValuesMap, setInputValuesMap] = useState<Record<string, string>>(
+    {}
+  );
+  const [numericValuesMap, setNumericValuesMap] = useState<
+    Record<string, string>
+  >({});
+  const [isSubmittingMap, setIsSubmittingMap] = useState<
+    Record<string, boolean>
+  >({});
   const [isDecimal, setIsDecimal] = useState(false);
   const [maxDecimals, setMaxDecimals] = useState(0);
+  // const [questionResponses, setQuestionResponses] =
+  useState<QuestionResponseMap>({});
 
   const maxAttempts = questionData?.re_attempt_count || 1;
   const questionType = questionData?.question_type || "MCQS";
 
+  // Get slideId from URL
+  const urlParams = new URLSearchParams(window.location.search);
+  const slideId = urlParams.get("slideId") || "unknown";
+  const isSubmitting = isSubmittingMap[slideId] || false;
+
+  // Get current slide's values
+  const selectedOption = selectedOptionsMap[slideId] || null;
+  const selectedOptions = selectedMultiOptionsMap[slideId] || [];
+  const inputValue = inputValuesMap[slideId] || "";
+  const numericValue = numericValuesMap[slideId] || "";
+
   // Submit question mutation
   const submitQuestionMutation = useMutation({
     mutationFn: async (selectedAnswer: string | string[]) => {
-      // Extract slideId and chapterId from URL
-      const urlParams = new URLSearchParams(window.location.search);
-      const slideId = urlParams.get("slideId") || "";
       const userId = await getUserId();
 
       if (!slideId || !userId) {
@@ -85,7 +108,7 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
         id: uuidv4(),
         source_id: slideId,
         source_type: "QUESTION",
-        user_id: "current-user-id", // Replace with actual user ID
+        user_id: userId,
         slide_id: slideId,
         start_time_in_millis: Date.now() - 60000,
         end_time_in_millis: Date.now(),
@@ -95,7 +118,7 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
         question_slides: [
           {
             id: slideId,
-            attempt_number: attempts + 1,
+            attempt_number: maxAttempts,
             response_json: JSON.stringify({
               selectedOption: selectedAnswer,
             }),
@@ -125,7 +148,7 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
     onSuccess: () => {
       console.log("Question answer submitted successfully");
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       console.error("Error submitting question answer:", error);
     },
   });
@@ -136,29 +159,44 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
       if (questionData?.auto_evaluation_json) {
         const evaluationData = JSON.parse(questionData.auto_evaluation_json);
 
-        if (questionType === "MCQS") {
-          // For multiple choice questions
+        if (questionType === "MCQS" || questionType === "TRUE_FALSE") {
+          // For multiple choice questions and true/false
           if (evaluationData.data?.correctOptionIds) {
             const correctId = evaluationData.data.correctOptionIds[0];
-            setCorrectOption(correctId);
+            setSelectedOptionsMap((prev) => ({
+              ...prev,
+              [slideId]: correctId,
+            }));
           } else {
             // If not specified, assume first option is correct (for demo)
-            setCorrectOption(questionData.options[0]?.id);
+            setSelectedOptionsMap((prev) => ({
+              ...prev,
+              [slideId]: questionData.options[0]?.id,
+            }));
           }
         } else if (questionType === "MCQM") {
           // For multiple select questions
           if (evaluationData.data?.correctOptionIds) {
-            setCorrectOptions(evaluationData.data.correctOptionIds);
+            setSelectedMultiOptionsMap((prev) => ({
+              ...prev,
+              [slideId]: evaluationData.data.correctOptionIds,
+            }));
           }
         } else if (questionType === "ONE_WORD" || questionType === "NUMERIC") {
           // For one-word or numeric questions
           if (evaluationData.data?.correctAnswer) {
-            setCorrectAnswer(evaluationData.data.correctAnswer);
+            setInputValuesMap((prev) => ({
+              ...prev,
+              [slideId]: evaluationData.data.correctAnswer,
+            }));
           }
         }
-      } else if (questionType === "MCQS") {
+      } else if (questionType === "MCQS" || questionType === "TRUE_FALSE") {
         // Default to first option if no evaluation data
-        setCorrectOption(questionData.options[0]?.id);
+        setSelectedOptionsMap((prev) => ({
+          ...prev,
+          [slideId]: questionData.options[0]?.id,
+        }));
       }
 
       // Parse options_json for numeric type questions
@@ -169,31 +207,45 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
       }
     } catch (error) {
       console.error("Error parsing JSON data:", error);
-      if (questionType === "MCQS") {
-        setCorrectOption(questionData.options[0]?.id);
+      if (questionType === "MCQS" || questionType === "TRUE_FALSE") {
+        setSelectedOptionsMap((prev) => ({
+          ...prev,
+          [slideId]: questionData.options[0]?.id,
+        }));
       }
     }
   }, [questionData, questionType]);
 
   const handleOptionSelect = (optionId: string) => {
-    if (submissionState === "idle") {
-      if (questionType === "MCQS") {
-        setSelectedOption(optionId);
-      } else if (questionType === "MCQM") {
-        setSelectedOptions((prev) => {
-          if (prev.includes(optionId)) {
-            return prev.filter((id) => id !== optionId);
-          } else {
-            return [...prev, optionId];
-          }
-        });
-      }
+    if (isSubmitting) return;
+
+    if (questionType === "MCQS" || questionType === "TRUE_FALSE") {
+      setSelectedOptionsMap((prev) => ({
+        ...prev,
+        [slideId]: optionId,
+      }));
+    } else if (questionType === "MCQM") {
+      setSelectedMultiOptionsMap((prev) => {
+        const currentOptions = prev[slideId] || [];
+        const newOptions = currentOptions.includes(optionId)
+          ? currentOptions.filter((id) => id !== optionId)
+          : [...currentOptions, optionId];
+        return {
+          ...prev,
+          [slideId]: newOptions,
+        };
+      });
     }
   };
 
-  // Handle direct input changes for one-word questions
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setInputValue(e.target.value);
+  // Update handleInputChange to handle both input and textarea events
+  const handleInputChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+  ) => {
+    setInputValuesMap((prev) => ({
+      ...prev,
+      [slideId]: e.target.value,
+    }));
   };
 
   // Handle numeric input changes
@@ -207,16 +259,25 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
         if (value.includes(".")) {
           const parts = value.split(".");
           if (parts[1].length <= maxDecimals) {
-            setNumericValue(value);
+            setNumericValuesMap((prev) => ({
+              ...prev,
+              [slideId]: value,
+            }));
           }
         } else {
-          setNumericValue(value);
+          setNumericValuesMap((prev) => ({
+            ...prev,
+            [slideId]: value,
+          }));
         }
       }
     } else {
       // Integer only
       if (/^-?\d*$/.test(value)) {
-        setNumericValue(value);
+        setNumericValuesMap((prev) => ({
+          ...prev,
+          [slideId]: value,
+        }));
       }
     }
   };
@@ -224,21 +285,34 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
   // Handle keypad button press for numeric input
   const handleKeyPress = (key: string) => {
     if (key === "backspace") {
-      setNumericValue((prev) => prev.slice(0, -1));
+      setNumericValuesMap((prev) => ({
+        ...prev,
+        [slideId]: (prev[slideId] || "").slice(0, -1),
+      }));
     } else if (key === "clear") {
-      setNumericValue("");
+      setNumericValuesMap((prev) => ({
+        ...prev,
+        [slideId]: "",
+      }));
     } else if (key === "." && isDecimal && !numericValue.includes(".")) {
-      setNumericValue((prev) => prev + ".");
+      setNumericValuesMap((prev) => ({
+        ...prev,
+        [slideId]: (prev[slideId] || "") + ".",
+      }));
     } else if (/[0-9]/.test(key)) {
-      setNumericValue((prev) => {
+      setNumericValuesMap((prev) => {
+        const currentValue = prev[slideId] || "";
         // If there's a decimal point, check we don't exceed max decimal places
-        if (prev.includes(".")) {
-          const parts = prev.split(".");
+        if (currentValue.includes(".")) {
+          const parts = currentValue.split(".");
           if (parts[1].length >= maxDecimals) {
             return prev;
           }
         }
-        return prev + key;
+        return {
+          ...prev,
+          [slideId]: currentValue + key,
+        };
       });
     }
   };
@@ -248,24 +322,33 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
 
     // Check if we have a valid answer to submit
     if (
-      (questionType === "MCQS" && !selectedOption) ||
+      ((questionType === "MCQS" || questionType === "TRUE_FALSE") &&
+        !selectedOption) ||
       (questionType === "MCQM" && selectedOptions.length === 0) ||
-      (questionType === "ONE_WORD" && !inputValue.trim()) ||
+      ((questionType === "ONE_WORD" || questionType === "LONG_ANSWER") &&
+        !inputValue.trim()) ||
       (questionType === "NUMERIC" && !numericValue.trim())
     ) {
       return;
     }
 
-    setIsSubmitting(true);
+    setIsSubmittingMap((prev) => ({
+      ...prev,
+      [slideId]: true,
+    }));
+
     try {
       let submissionValue: string | string[];
 
       // Prepare submission value based on question type
-      if (questionType === "MCQS") {
+      if (questionType === "MCQS" || questionType === "TRUE_FALSE") {
         submissionValue = selectedOption || "";
       } else if (questionType === "MCQM") {
         submissionValue = selectedOptions;
-      } else if (questionType === "ONE_WORD") {
+      } else if (
+        questionType === "ONE_WORD" ||
+        questionType === "LONG_ANSWER"
+      ) {
         submissionValue = inputValue.trim();
       } else if (questionType === "NUMERIC") {
         submissionValue = numericValue.trim();
@@ -274,177 +357,88 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
       }
 
       // Submit to API
-      // Prevent submission if max attempts reached
-      if (attempts >= maxAttempts) {
-        setIsSubmitting(false);
-        // setSubmissionState("incorrect");
-        setExplanation("No more attempts left.");
-        return;
-      }
       await submitQuestionMutation.mutateAsync(submissionValue);
 
       // Call the onSubmit function passed from parent
-      const result = await onSubmit(
-        questionData?.parent_rich_text?.content || "unknown",
-        submissionValue
-      );
+      await onSubmit(slideId, submissionValue);
 
-      // Increment attempts
-      const newAttempts = attempts + 1;
-      setAttempts(newAttempts);
-
-      if (result.success) {
-        let isAnswerCorrect = false;
-
-        // Check if answer is correct based on question type
-        if (questionType === "MCQS") {
-          isAnswerCorrect = selectedOption === correctOption;
-        } else if (questionType === "MCQM") {
-          // Check if all selected options are correct and all correct options are selected
-          isAnswerCorrect =
-            correctOptions.length === selectedOptions.length &&
-            correctOptions.every((id) => selectedOptions.includes(id));
-        } else if (questionType === "ONE_WORD" || questionType === "NUMERIC") {
-          // This logic would depend on how you want to compare answers
-          // Could be exact match, case-insensitive, or using a range for numeric
-          isAnswerCorrect = submissionValue === correctAnswer;
-        }
-
-        if (isAnswerCorrect) {
-          setSubmissionState("correct");
-          // Set explanation for correct answer
-          if (questionType === "MCQS") {
-            const option = questionData.options.find(
-              (opt) => opt.id === selectedOption
-            );
-            setExplanation(
-              option?.explanation_text_data?.content ||
-                questionData.explanation_text_data?.content ||
-                ""
-            );
-          } else {
-            setExplanation(questionData.explanation_text_data?.content || "");
-          }
-        } else {
-          setSubmissionState("incorrect");
-
-          // If max attempts reached, show correct answer
-          if (newAttempts >= maxAttempts) {
-            if (questionType === "MCQS") {
-              // Find explanation for correct option
-              const correctOptionData = questionData.options.find(
-                (opt) => opt.id === correctOption
-              );
-              setExplanation(
-                correctOptionData?.explanation_text_data?.content ||
-                  questionData.explanation_text_data?.content ||
-                  ""
-              );
-            } else if (questionType === "MCQM") {
-              setExplanation(
-                `The correct answers are marked in green. ${questionData.explanation_text_data?.content || ""}`
-              );
-            } else {
-              setExplanation(
-                `The correct answer is: ${correctAnswer}. ${questionData.explanation_text_data?.content || ""}`
-              );
-            }
-          } else if (questionType === "MCQS") {
-            // Show explanation for incorrect option
-            const option = questionData.options.find(
-              (opt) => opt.id === selectedOption
-            );
-            setExplanation(option?.explanation_text_data?.content || "");
-          } else {
-            setExplanation("That's not correct. Try again.");
-          }
-        }
-      } else {
-        // Handle API error
-        console.error("Error submitting answer:", result.error);
+      // Reset inputs after submission
+      if (questionType === "MCQS" || questionType === "TRUE_FALSE") {
+        setSelectedOptionsMap((prev) => ({
+          ...prev,
+          [slideId]: null,
+        }));
+      } else if (questionType === "MCQM") {
+        setSelectedMultiOptionsMap((prev) => ({
+          ...prev,
+          [slideId]: [],
+        }));
+      } else if (
+        questionType === "ONE_WORD" ||
+        questionType === "LONG_ANSWER"
+      ) {
+        setInputValuesMap((prev) => ({
+          ...prev,
+          [slideId]: "",
+        }));
+      } else if (questionType === "NUMERIC") {
+        setNumericValuesMap((prev) => ({
+          ...prev,
+          [slideId]: "",
+        }));
       }
     } catch (error) {
       console.error("Error in submission:", error);
     } finally {
-      setIsSubmitting(false);
+      setIsSubmittingMap((prev) => ({
+        ...prev,
+        [slideId]: false,
+      }));
     }
   };
-
-  const handleRetry = () => {
-    if (attempts < maxAttempts) {
-      setSubmissionState("idle");
-      setSelectedOption(null);
-      // setSelectedOptions([]);
-      setInputValue("");
-      setNumericValue("");
-      setExplanation("");
-    }
-  };
-
-  // Determine if submit button should be disabled
-  const isSubmitDisabled =
-    isSubmitting ||
-    submissionState === "correct" ||
-    (submissionState === "incorrect" && attempts >= maxAttempts) ||
-    (questionType === "MCQS" && !selectedOption) ||
-    (questionType === "MCQM" && selectedOptions.length === 0) ||
-    (questionType === "ONE_WORD" && !inputValue.trim()) ||
-    (questionType === "NUMERIC" && !numericValue.trim());
 
   // Render the appropriate question component based on question type
   const renderQuestionContent = () => {
     switch (questionType) {
       case "MCQS":
+      case "TRUE_FALSE":
         return (
-          <div className="space-y-3">
+          <div className="space-y-2 sm:space-y-3">
             {questionData?.options?.map((option, index) => (
               <div
                 key={option.id}
                 onClick={() => handleOptionSelect(option.id)}
-                className={`flex items-center p-3 border rounded-lg cursor-pointer transition-all ${
+                className={`flex flex-row-reverse items-center justify-between rounded-md border p-3 w-full transition-all duration-200 hover:border-gray-400 ${
                   selectedOption === option.id
-                    ? submissionState === "correct"
-                      ? "border-green-500 bg-green-50"
-                      : submissionState === "incorrect" &&
-                          attempts >= maxAttempts &&
-                          option.id === correctOption
-                        ? "border-green-500 bg-green-50"
-                        : submissionState === "incorrect"
-                          ? "border-red-500 bg-red-50"
-                          : "border-orange-500 bg-orange-50"
-                    : submissionState === "incorrect" &&
-                        attempts >= maxAttempts &&
-                        option.id === correctOption
-                      ? "border-green-500 bg-green-50"
-                      : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                    ? "border-gray-600 bg-gray-50"
+                    : "border-gray-200"
                 }`}
               >
-                <div className="flex-1">
-                  <span className="text-neutral-600">
-                    ({String.fromCharCode(97 + index)}) {option.text.content}
-                  </span>
+                <div className="relative flex items-center">
+                  <div
+                    className={`w-5 h-5 border rounded-md flex items-center justify-center transition-colors ${
+                      selectedOption === option.id
+                        ? "bg-gray-800 border-gray-800"
+                        : "border-gray-300"
+                    }`}
+                  >
+                    {selectedOption === option.id && (
+                      <span className="text-white text-sm">✓</span>
+                    )}
+                  </div>
                 </div>
-                <div className="ml-2">
-                  {selectedOption === option.id &&
-                    (submissionState === "correct" ||
-                    (submissionState === "incorrect" &&
-                      attempts >= maxAttempts &&
-                      option.id === correctOption) ? (
-                      <Check className="h-5 w-5 text-green-500" />
-                    ) : submissionState === "incorrect" &&
-                      selectedOption === option.id ? (
-                      <X className="h-5 w-5 text-red-500" />
-                    ) : (
-                      <div className="h-5 w-5 border border-gray-300 rounded-sm"></div>
-                    ))}
-                  {selectedOption !== option.id &&
-                    (submissionState !== "idle" &&
-                    option.id === correctOption ? (
-                      <Check className="h-5 w-5 text-green-500" />
-                    ) : (
-                      <div className="h-5 w-5 border border-gray-300 rounded-sm"></div>
-                    ))}
-                </div>
+
+                <label
+                  className={`flex-grow text-sm sm:text-base ${
+                    selectedOption === option.id
+                      ? "font-medium text-gray-900"
+                      : "text-gray-700"
+                  }`}
+                >
+                  {questionType === "TRUE_FALSE"
+                    ? option.text.content
+                    : `${String.fromCharCode(97 + index)}. ${option.text.content}`}
+                </label>
               </div>
             ))}
           </div>
@@ -452,52 +446,40 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
 
       case "MCQM":
         return (
-          <div className="space-y-3">
+          <div className="space-y-2 sm:space-y-3">
             {questionData?.options?.map((option, index) => (
               <div
                 key={option.id}
                 onClick={() => handleOptionSelect(option.id)}
-                className={`flex items-center p-3 border rounded-lg cursor-pointer transition-all ${
+                className={`flex flex-row-reverse items-center justify-between rounded-md border p-3 w-full transition-all duration-200 hover:border-gray-400 ${
                   selectedOptions.includes(option.id)
-                    ? submissionState === "correct"
-                      ? "border-green-500 bg-green-50"
-                      : submissionState === "incorrect" &&
-                          attempts >= maxAttempts &&
-                          correctOptions.includes(option.id)
-                        ? "border-green-500 bg-green-50"
-                        : submissionState === "incorrect"
-                          ? "border-red-500 bg-red-50"
-                          : "border-orange-500 bg-orange-50"
-                    : submissionState === "incorrect" &&
-                        attempts >= maxAttempts &&
-                        correctOptions.includes(option.id)
-                      ? "border-green-500 bg-green-50"
-                      : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                    ? "border-gray-600 bg-gray-50"
+                    : "border-gray-200"
                 }`}
               >
-                <div className="flex-1">
-                  <span className="text-neutral-600">
-                    ({String.fromCharCode(97 + index)}) {option.text.content}
-                  </span>
+                <div className="relative flex items-center">
+                  <div
+                    className={`w-5 h-5 border rounded-md flex items-center justify-center transition-colors ${
+                      selectedOptions.includes(option.id)
+                        ? "bg-gray-800 border-gray-800"
+                        : "border-gray-300"
+                    }`}
+                  >
+                    {selectedOptions.includes(option.id) && (
+                      <span className="text-white text-sm">✓</span>
+                    )}
+                  </div>
                 </div>
-                <div className="ml-2">
-                  {selectedOptions.includes(option.id) ? (
-                    submissionState === "correct" ||
-                    (submissionState === "incorrect" &&
-                      attempts >= maxAttempts &&
-                      correctOptions.includes(option.id)) ? (
-                      <Check className="h-5 w-5 text-green-500" />
-                    ) : (
-                      <X className="h-5 w-5 text-red-500" />
-                    )
-                  ) : submissionState === "incorrect" &&
-                    attempts >= maxAttempts &&
-                    correctOptions.includes(option.id) ? (
-                    <Check className="h-5 w-5 text-green-500" />
-                  ) : (
-                    <div className="h-5 w-5 border border-gray-300 rounded-sm"></div>
-                  )}
-                </div>
+
+                <label
+                  className={`flex-grow text-sm sm:text-base ${
+                    selectedOptions.includes(option.id)
+                      ? "font-medium text-gray-900"
+                      : "text-gray-700"
+                  }`}
+                >
+                  {`${String.fromCharCode(97 + index)}. ${option.text.content}`}
+                </label>
               </div>
             ))}
           </div>
@@ -505,29 +487,38 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
 
       case "ONE_WORD":
         return (
-          <div className="w-full max-w-md mx-auto mt-4">
+          <div className="w-full max-w-md mx-auto mt-2 sm:mt-4">
             <MyInput
               inputType="text"
               input={inputValue}
               onChangeFunction={handleInputChange}
               inputPlaceholder="Type your one-word answer"
-              className="text-xl py-4 font-medium w-full"
+              className="text-base sm:text-lg py-3 font-normal w-full border-gray-300 focus:border-gray-600 focus:ring-gray-600"
               onCopy={(e) => e.preventDefault()}
               onCut={(e) => e.preventDefault()}
               onPaste={(e) => e.preventDefault()}
             />
+          </div>
+        );
 
-            {submissionState === "incorrect" && attempts >= maxAttempts && (
-              <div className="mt-4 text-green-700">
-                <p>Correct answer: {correctAnswer}</p>
-              </div>
-            )}
+      case "LONG_ANSWER":
+        return (
+          <div className="w-full max-w-2xl mx-auto mt-2 sm:mt-4">
+            <Textarea
+              value={inputValue}
+              onChange={handleInputChange}
+              placeholder="Type your answer..."
+              className="min-h-[150px] sm:min-h-[200px] text-base border-gray-300 focus:border-gray-600 focus:ring-gray-600"
+              onCopy={(e) => e.preventDefault()}
+              onCut={(e) => e.preventDefault()}
+              onPaste={(e) => e.preventDefault()}
+            />
           </div>
         );
 
       case "NUMERIC":
         return (
-          <div className="space-y-4 mt-6">
+          <div className="space-y-3 sm:space-y-4 mt-4">
             <div className="flex justify-center">
               <MyInput
                 inputType="text"
@@ -537,21 +528,21 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
                   isDecimal ? "Enter decimal value" : "Enter integer value"
                 }
                 inputMode="numeric"
-                className="text-xl py-4 font-medium w-full max-w-md"
+                className="text-base sm:text-lg py-3 font-normal w-full max-w-md border-gray-300 focus:border-gray-600 focus:ring-gray-600"
                 onCopy={(e) => e.preventDefault()}
                 onCut={(e) => e.preventDefault()}
                 onPaste={(e) => e.preventDefault()}
               />
             </div>
 
-            <Card className="max-w-md mx-auto">
-              <CardContent className="p-4">
-                <div className="grid grid-cols-3 gap-2">
+            <Card className="max-w-md mx-auto bg-white shadow-sm">
+              <CardContent className="p-3">
+                <div className="grid grid-cols-3 gap-1.5">
                   {[7, 8, 9, 4, 5, 6, 1, 2, 3].map((num) => (
                     <Button
                       key={num}
                       variant="outline"
-                      className="h-14 text-xl font-medium"
+                      className="h-12 text-base font-normal hover:bg-gray-100 border-gray-200"
                       onClick={() => handleKeyPress(num.toString())}
                     >
                       {num}
@@ -559,7 +550,7 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
                   ))}
                   <Button
                     variant="outline"
-                    className="h-14 text-xl font-medium"
+                    className="h-12 text-base font-normal hover:bg-gray-100 border-gray-200"
                     onClick={() => handleKeyPress("0")}
                   >
                     0
@@ -567,7 +558,7 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
                   {isDecimal && (
                     <Button
                       variant="outline"
-                      className="h-14 text-xl font-medium"
+                      className="h-12 text-base font-normal hover:bg-gray-100 border-gray-200"
                       onClick={() => handleKeyPress(".")}
                       disabled={numericValue.includes(".")}
                     >
@@ -576,17 +567,17 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
                   )}
                   <Button
                     variant="outline"
-                    className="h-14 text-xl font-medium"
+                    className="h-12 text-base font-normal hover:bg-gray-100 border-gray-200"
                     onClick={() => handleKeyPress("backspace")}
                   >
                     ←
                   </Button>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 mt-2">
+                <div className="grid grid-cols-2 gap-1.5 mt-1.5">
                   <Button
                     variant="outline"
-                    className="h-14"
+                    className="h-12 text-base font-normal hover:bg-gray-100 border-gray-200"
                     onClick={() => handleKeyPress("clear")}
                   >
                     Clear
@@ -594,12 +585,6 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
                 </div>
               </CardContent>
             </Card>
-
-            {submissionState === "incorrect" && attempts >= maxAttempts && (
-              <div className="mt-4 text-green-700">
-                <p>Correct answer: {correctAnswer}</p>
-              </div>
-            )}
           </div>
         );
 
@@ -608,10 +593,20 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
     }
   };
 
+  // Update the isSubmitDisabled logic
+  const isSubmitDisabled =
+    isSubmitting ||
+    ((questionType === "MCQS" || questionType === "TRUE_FALSE") &&
+      !selectedOption) ||
+    (questionType === "MCQM" && selectedOptions.length === 0) ||
+    ((questionType === "ONE_WORD" || questionType === "LONG_ANSWER") &&
+      !inputValue.trim()) ||
+    (questionType === "NUMERIC" && !numericValue.trim());
+
   return (
-    <div className="w-full max-w-2xl mx-auto bg-white rounded-lg shadow-sm p-6">
+    <div className="w-full max-w-2xl mx-auto bg-white rounded-lg shadow-sm p-4 sm:p-6">
       <h2
-        className="text-xl font-semibold text-neutral-800 mb-4"
+        className="text-lg sm:text-xl font-medium text-gray-900 mb-3 sm:mb-4"
         dangerouslySetInnerHTML={{
           __html: `Question: ${questionData?.text_data?.content}`,
         }}
@@ -631,66 +626,37 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
         </div>
       )} */}
 
-      <div className="mt-6">
-        <h3 className="text-lg font-medium text-neutral-700 mb-3">
+      <div className="mt-4 sm:mt-6">
+        <h3 className="text-base sm:text-lg font-medium text-gray-700 mb-2 sm:mb-3">
           {questionType === "MCQS"
             ? "Select one answer:"
-            : questionType === "MCQM"
-              ? "Select all that apply:"
-              : questionType === "ONE_WORD"
-                ? "Enter your answer:"
-                : "Enter numeric value:"}
+            : questionType === "TRUE_FALSE"
+              ? "Select True or False:"
+              : questionType === "MCQM"
+                ? "Select all that apply:"
+                : questionType === "ONE_WORD"
+                  ? "Enter your answer:"
+                  : questionType === "LONG_ANSWER"
+                    ? "Type your answer:"
+                    : "Enter numeric value:"}
         </h3>
 
         {renderQuestionContent()}
       </div>
 
-      {/* Feedback and explanation */}
-      {submissionState !== "idle" && (
-        <div
-          className={`mt-6 p-4 rounded-lg ${
-            submissionState === "correct"
-              ? "bg-green-50 border border-green-200"
-              : "bg-red-50 border border-red-200"
+      <div className="mt-6 flex justify-center">
+        <button
+          type="button"
+          onClick={handleSubmit}
+          disabled={isSubmitDisabled}
+          className={`px-6 py-2.5 rounded-md text-sm sm:text-base font-medium transition-colors ${
+            isSubmitDisabled
+              ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+              : "bg-gray-900 text-white hover:bg-gray-800"
           }`}
         >
-          <h4
-            className={`font-medium ${submissionState === "correct" ? "text-green-700" : "text-red-700"}`}
-          >
-            {submissionState === "correct"
-              ? "Correct Answer!"
-              : attempts >= maxAttempts
-                ? "Incorrect. No more attempts left."
-                : `Incorrect. Attempts: ${attempts}/${maxAttempts}`}
-          </h4>
-          {explanation && (
-            <p className="mt-2 text-neutral-600">
-              <span className="font-medium">Explanation:</span> {explanation}
-            </p>
-          )}
-        </div>
-      )}
-
-      <div className="mt-6 flex justify-center">
-        {submissionState === "incorrect" && attempts < maxAttempts ? (
-          <button
-            onClick={handleRetry}
-            className="px-6 py-2 bg-orange-500 text-white rounded-lg font-medium hover:bg-orange-600 transition-colors"
-          >
-            Retry
-          </button>
-        ) : (
-          <MyButton
-            type="button"
-            scale="large"
-            buttonType="primary"
-            layoutVariant="default"
-            onClick={handleSubmit}
-            disabled={isSubmitDisabled || attempts >= maxAttempts}
-          >
-            {isSubmitting ? "Submitting..." : "Submit"}
-          </MyButton>
-        )}
+          {isSubmitting ? "Submitting..." : "Submit"}
+        </button>
       </div>
     </div>
   );

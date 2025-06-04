@@ -1,12 +1,14 @@
 import { LayoutContainer } from "@/components/common/layout-container/layout-container";
 import { createFileRoute } from "@tanstack/react-router";
 import { Helmet } from "react-helmet";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
 import { useLiveSessions } from "./-hooks/useLiveSessions";
 import { SessionDetails } from "./-types/types";
 import { MyButton } from "@/components/design-system/button";
 import { useNavigate } from "@tanstack/react-router";
+import { SessionStreamingServiceType } from "@/routes/register/live-class/-types/enum";
+import { getPackageSessionId } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
 
 export const Route = createFileRoute("/study-library/live-class/")({
   component: RouteComponent,
@@ -15,11 +17,18 @@ export const Route = createFileRoute("/study-library/live-class/")({
 function RouteComponent() {
   const { setNavHeading } = useNavHeadingStore();
   const navigate = useNavigate();
-  const {
-    data: sessions,
-    isLoading,
-    error,
-  } = useLiveSessions("29f4a84e-5fb0-40aa-ac45-1a712d3723b7");
+  const [batchId, setBatchId] = useState<string>("");
+
+  useEffect(() => {
+    const fetchBatchId = async () => {
+      const id = await getPackageSessionId();
+      setBatchId(id);
+    };
+    fetchBatchId();
+  }, []);
+
+  const { data: sessions, isLoading, error } = useLiveSessions(batchId);
+  console.log("sessions ", sessions);
 
   useEffect(() => {
     setNavHeading(
@@ -64,7 +73,17 @@ function RouteComponent() {
       });
     } else if (isInMainSession) {
       // Navigate to live session
-      if (session.meeting_link) {
+      console.log("session ", session);
+      if (
+        session.session_streaming_service_type ===
+        SessionStreamingServiceType.EMBED
+      ) {
+        console.log("embed");
+        navigate({
+          to: "/study-library/live-class/embed",
+          search: { sessionId: session.schedule_id },
+        });
+      } else {
         window.open(session.meeting_link, "_blank", "noopener,noreferrer");
       }
     }
@@ -151,7 +170,6 @@ function RouteComponent() {
 
   const liveSessions = sessions?.live_sessions ?? [];
   const upcomingSessions = sessions?.upcoming_sessions ?? [];
-
 
   return (
     <LayoutContainer>

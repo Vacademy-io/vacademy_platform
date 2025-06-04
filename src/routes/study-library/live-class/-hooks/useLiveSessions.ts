@@ -9,12 +9,16 @@ const isSessionLive = (session: SessionDetails): boolean => {
   const lastEntryTime = new Date(
     `${session.meeting_date}T${session.last_entry_time}`
   );
+  console.log("now ", now);
+  console.log("sessionDate ", sessionDate);
+  console.log("lastEntryTime ", lastEntryTime);
 
   // Calculate waiting room start time using waiting_room_time from backend
   const waitingRoomStart = new Date(sessionDate);
   waitingRoomStart.setMinutes(
     waitingRoomStart.getMinutes() - session.waiting_room_time
   );
+  console.log("waitingRoomStart ", waitingRoomStart);
 
   // Session is live if we're either in waiting room or main session time
   return now >= waitingRoomStart && now <= lastEntryTime;
@@ -38,6 +42,8 @@ const fetchLiveAndUpcomingSessions = async (
     const allSessions = (response.data as DaySession[]).reduce<
       SessionDetails[]
     >((acc, day) => [...acc, ...day.sessions], []);
+
+    console.log("allSessions ", allSessions);
 
     const now = new Date();
     const live_sessions = allSessions.filter(isSessionLive);

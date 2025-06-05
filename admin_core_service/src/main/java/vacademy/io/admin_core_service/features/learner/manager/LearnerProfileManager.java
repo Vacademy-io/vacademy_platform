@@ -4,6 +4,7 @@ package vacademy.io.admin_core_service.features.learner.manager;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.institute_learner.dto.StudentDTO;
 import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
@@ -31,6 +32,7 @@ public class LearnerProfileManager {
     @Autowired
     StudentSessionRepository studentSessionRepository;
 
+    @Transactional
     public ResponseEntity<List<StudentDTO>> getLearnerInfo(CustomUserDetails user, String instituteId) {
         List<Object[]> optionalEntry = instituteStudentRepository.getStudentWithInstituteAndUserId(user.getUserId(), instituteId);
 

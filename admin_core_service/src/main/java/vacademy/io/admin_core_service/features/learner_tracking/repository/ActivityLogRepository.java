@@ -17,24 +17,27 @@ import java.sql.Timestamp;
 import java.util.List;
 
 public interface ActivityLogRepository extends JpaRepository<ActivityLog, String> {
-    @Query(value = """ 
-            SELECT 
-                (EXTRACT(EPOCH FROM (MAX(vt.end_time) - MIN(vt.start_time))) * 1000) / v.published_video_length * 100 AS percentage_watched
-            FROM 
-                activity_log a
-            JOIN 
-                video_tracked vt ON vt.activity_id = a.id
-            JOIN 
-                slide s ON s.id = a.slide_id
-            JOIN 
-                video v ON s.source_id = v.id
-            WHERE 
-                a.user_id = :userId
-                AND a.slide_id = :slideId
-            GROUP BY 
-                v.id, a.user_id, a.slide_id, published_video_length
-            """,
-            nativeQuery = true)
+    @Query(value = """
+    SELECT 
+        CASE 
+            WHEN v.published_video_length IS NULL OR v.published_video_length = 0 THEN 0 
+            ELSE SUM(EXTRACT(EPOCH FROM (vt.end_time - vt.start_time)) * 1000) 
+                 / v.published_video_length * 100 
+        END AS percentage_watched
+    FROM 
+        activity_log a
+    JOIN 
+        video_tracked vt ON vt.activity_id = a.id
+    JOIN 
+        slide s ON s.id = a.slide_id
+    JOIN 
+        video v ON s.source_id = v.id
+    WHERE 
+        a.user_id = :userId
+        AND a.slide_id = :slideId
+    GROUP BY 
+        v.id, a.user_id, a.slide_id, v.published_video_length
+    """, nativeQuery = true)
     Double getPercentageVideoWatched(@Param("slideId") String slideId, @Param("userId") String userId);
 
 
@@ -59,26 +62,95 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
 
 
     @Query(value = """
-            SELECT 
-                COALESCE(SUM(CAST(lo.value AS FLOAT)), 0) / NULLIF(COUNT(DISTINCT cs.slide_id), 0) AS percentage_completed
-            FROM 
-                chapter_to_slides cs
-            LEFT JOIN 
-                learner_operation lo 
-            ON 
-                lo.source_id = cs.slide_id
-                AND lo.operation IN (:learnerOperation)
-                AND lo.user_id = :userId
-            WHERE 
-                cs.status = 'PUBLISHED'
-                AND cs.chapter_id = :chapterId
-            """,
-            nativeQuery = true)
+    SELECT 
+        COALESCE(SUM(CAST(lo.value AS FLOAT)), 0) / NULLIF(COUNT(DISTINCT cs.slide_id), 0) AS percentage_completed
+    FROM 
+        chapter_to_slides cs
+    LEFT JOIN 
+        learner_operation lo 
+        ON lo.source_id = cs.slide_id
+        AND lo.operation IN (:learnerOperation)
+        AND lo.user_id = :userId
+    WHERE 
+        cs.status IN (:statusList)
+        AND cs.chapter_id = :chapterId
+    """, nativeQuery = true)
     Double getChapterCompletionPercentage(
             @Param("userId") String userId,
             @Param("chapterId") String chapterId,
-            @Param("learnerOperation") List<String> learnerOperation
+            @Param("learnerOperation") List<String> learnerOperation,
+            @Param("statusList") List<String> statusList
     );
+
+    @Query(value = """
+    SELECT 
+        COALESCE(SUM(CAST(lo.value AS FLOAT)), 0) / NULLIF(COUNT(DISTINCT mcm.chapter_id), 0) AS percentage_completed
+    FROM 
+        module_chapter_mapping mcm
+    JOIN 
+        chapter c ON c.id = mcm.chapter_id
+    JOIN 
+        chapter_package_session_mapping cpm ON cpm.chapter_id = c.id
+    LEFT JOIN 
+        learner_operation lo ON lo.source_id = mcm.chapter_id
+        AND lo.operation IN (:learnerOperation)
+        AND lo.user_id = :userId
+    WHERE 
+        mcm.module_id = :moduleId
+        AND cpm.status IN (:chapterStatusList)
+        AND c.status IN (:chapterStatusList)
+    """, nativeQuery = true)
+    Double getModuleCompletionPercentage(
+            @Param("userId") String userId,
+            @Param("moduleId") String moduleId,
+            @Param("learnerOperation") List<String> learnerOperation,
+            @Param("chapterStatusList") List<String> chapterStatusList
+    );
+
+    @Query(value = """
+    SELECT 
+        COALESCE(SUM(CAST(lo.value AS FLOAT)), 0) / NULLIF(COUNT(DISTINCT smm.module_id), 0) AS percentage_completed
+    FROM 
+        subject_module_mapping smm
+    JOIN 
+        modules m ON m.id = smm.module_id
+    LEFT JOIN 
+        learner_operation lo ON lo.source_id = m.id
+        AND lo.operation IN (:learnerOperation)
+        AND lo.user_id = :userId
+    WHERE 
+        smm.subject_id = :subjectId
+        AND m.status IN (:moduleStatusList)
+    """, nativeQuery = true)
+    Double getSubjectCompletionPercentage(
+            @Param("userId") String userId,
+            @Param("subjectId") String subjectId,
+            @Param("learnerOperation") List<String> learnerOperation,
+            @Param("moduleStatusList") List<String> moduleStatusList
+    );
+
+    @Query(value = """
+    SELECT 
+        COALESCE(SUM(CAST(lo.value AS FLOAT)), 0) / NULLIF(COUNT(DISTINCT sps.subject_id), 0) AS percentage_completed
+    FROM 
+        subject_session sps
+    JOIN 
+        subject s ON s.id = sps.subject_id
+    LEFT JOIN 
+        learner_operation lo ON lo.source_id = s.id
+         AND lo.operation IN (:learnerOperation)
+        AND lo.user_id = :userId
+    WHERE 
+        sps.session_id = :packageSessionId
+        AND s.status IN (:subjectStatusList)
+    """, nativeQuery = true)
+    Double getPackageSessionCompletionPercentage(
+            @Param("userId") String userId,
+            @Param("learnerOperation") List<String> learnerOperation,
+            @Param("packageSessionId") String packageSessionId,
+            @Param("subjectStatusList") List<String> subjectStatusList
+    );
+
 
     @Query("""
             SELECT DISTINCT al FROM ActivityLog al

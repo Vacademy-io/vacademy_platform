@@ -47,27 +47,27 @@ public class LearnerTrackingService {
     }
 
     @Transactional
-    public ActivityLogDTO addOrUpdateDocumentActivityLog(ActivityLogDTO activityLogDTO, String slideId, String chapterId, CustomUserDetails user) {
+    public ActivityLogDTO addOrUpdateDocumentActivityLog(ActivityLogDTO activityLogDTO, String slideId, String chapterId,String packageSessionId,String moduleId,String subjectId, CustomUserDetails user) {
         validateActivityLogDTO(activityLogDTO, true); // Validate for documents
         ActivityLog activityLog = activityLogDTO.isNewActivity() ?
                 saveActivityLog(activityLogDTO, slideId, user.getUserId()) :
                 updateActivityLog(activityLogDTO, activityLogDTO.getId());
 
         saveDocumentTracking(activityLogDTO, activityLog);
-        learnerTrackingAsyncService.updateLearnerOperationsForDocument(user.getUserId(), slideId, chapterId, activityLogDTO);
+        learnerTrackingAsyncService.updateLearnerOperationsForDocument(user.getUserId(), slideId, chapterId, moduleId,subjectId,packageSessionId,activityLogDTO);
         concentrationScoreService.addConcentrationScore(activityLogDTO.getConcentrationScore(), activityLog);
         return activityLog.toActivityLogDTO();
     }
 
     @Transactional
-    public ActivityLogDTO addOrUpdateVideoActivityLog(ActivityLogDTO activityLogDTO, String slideId, String chapterId, CustomUserDetails user) {
+    public ActivityLogDTO addOrUpdateVideoActivityLog(ActivityLogDTO activityLogDTO, String slideId, String chapterId,String moduleId,String subjectId,String packageSessionId, CustomUserDetails user) {
         validateActivityLogDTO(activityLogDTO, false); // Validate for videos
         ActivityLog activityLog = activityLogDTO.isNewActivity() ?
                 saveActivityLog(activityLogDTO, slideId, user.getUserId()) :
                 updateActivityLog(activityLogDTO, activityLogDTO.getId());
 
         saveVideoTracking(activityLogDTO, activityLog);
-        learnerTrackingAsyncService.updateLearnerOperationsForVideo(user.getUserId(), slideId, chapterId, activityLogDTO);
+        learnerTrackingAsyncService.updateLearnerOperationsForVideo(user.getUserId(), slideId, chapterId,moduleId,subjectId,packageSessionId, activityLogDTO);
         concentrationScoreService.addConcentrationScore(activityLogDTO.getConcentrationScore(), activityLog);
         return activityLog.toActivityLogDTO();
     }

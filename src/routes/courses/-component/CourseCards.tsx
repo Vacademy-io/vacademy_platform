@@ -28,21 +28,33 @@ const ITEMS_PER_PAGE = 4;
 // Individual Card Component
 const CourseCardItem: React.FC<{ course: BasicCourse }> = ({ course }) => {
   const [courseImageUrl, setCourseImageUrl] = useState<string>('/images/placeholder-course.jpg');
+  const [loadingImage, setLoadingImage] = useState<boolean>(true);
 
   useEffect(() => {
+    let isMounted = true;
     if (course.thumbnail_file_id) {
+      setLoadingImage(true);
       (async () => {
         try {
           const url = await getPublicUrl(course.thumbnail_file_id);
-          if (url) {
-            setCourseImageUrl(url);
+          if (isMounted) {
+            if (url) {
+              setCourseImageUrl(url);
+            }
           }
         } catch (error) {
-          console.error("Error fetching image URL:", error);
+          console.error("Error fetching image URL for course:", course.id, error);
+        } finally {
+          if (isMounted) {
+            setLoadingImage(false);
+          }
         }
       })();
+    } else {
+      setLoadingImage(false);
     }
-  }, [course.thumbnail_file_id]);
+    return () => { isMounted = false; };
+  }, [course.thumbnail_file_id, course.id]);
 
   const getLevelName = (c: BasicCourse): string => c.level || 'General';
   const getLevelColor = (c: BasicCourse): string => {
@@ -62,7 +74,13 @@ const CourseCardItem: React.FC<{ course: BasicCourse }> = ({ course }) => {
 
   return (
     <div key={course.id} className="bg-white rounded-lg shadow-lg overflow-hidden flex flex-col">
-      <img src={courseImageUrl} alt={course.packageName} className="w-full h-48 object-cover" />
+      <div className="w-full h-48 bg-gray-200 flex items-center justify-center">
+        {loadingImage ? (
+          <div className="text-gray-500">Loading...</div>
+        ) : (
+          <img src={courseImageUrl} alt={course.packageName} className="w-full h-full object-cover" />
+        )}
+      </div>
       <div className="p-4 flex flex-col flex-grow">
         <div className="flex justify-between items-start mb-2">
           <h3 className="text-lg font-semibold text-gray-800 truncate" title={course.packageName}>{course.packageName}</h3>

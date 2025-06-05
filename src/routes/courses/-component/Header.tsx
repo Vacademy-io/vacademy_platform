@@ -8,27 +8,38 @@ const Header: React.FC = () => {
   
   const { apiFetchedInstituteDetails } = useCatalogStore();
   const [logoUrlToDisplay, setLogoUrlToDisplay] = useState<string>(defaultLogoUrl);
+  const [logoLoading, setLogoLoading] = useState<boolean>(true);
 
   useEffect(() => {
+    let isMounted = true;
     const fetchDynamicLogo = async () => {
       if (apiFetchedInstituteDetails && apiFetchedInstituteDetails.institute_logo_file_id) {
+        if(isMounted) setLogoLoading(true);
         try {
           const url = await getPublicUrl(apiFetchedInstituteDetails.institute_logo_file_id);
-          if (url) {
-            setLogoUrlToDisplay(url);
-          } else {
-            setLogoUrlToDisplay(defaultLogoUrl);
+          if (isMounted) {
+            if (url) {
+              setLogoUrlToDisplay(url);
+            } else {
+              setLogoUrlToDisplay(defaultLogoUrl);
+            }
           }
         } catch (error) {
-          //console.error("Error fetching dynamic institute logo URL:", error);
-          setLogoUrlToDisplay(defaultLogoUrl);
+          console.error("Error fetching dynamic institute logo URL:", error);
+          if (isMounted) setLogoUrlToDisplay(defaultLogoUrl);
+        } finally {
+          if (isMounted) setLogoLoading(false);
         }
       } else {
-        setLogoUrlToDisplay(defaultLogoUrl);
+        if (isMounted) {
+          setLogoUrlToDisplay(defaultLogoUrl);
+          setLogoLoading(false);
+        }
       }
     };
 
     fetchDynamicLogo();
+    return () => { isMounted = false; };
   }, [apiFetchedInstituteDetails]);
 
   const displayName = apiFetchedInstituteDetails?.institute_name || defaultInstituteName;
@@ -48,11 +59,20 @@ const Header: React.FC = () => {
   return (
     <nav className="min-h-[80px] bg-white py-5 px-6 md:px-10 flex flex-col md:flex-row justify-between items-center shadow-sm">
       <div className="flex items-center">
-        <img 
-          src={logoUrlToDisplay} 
-          alt={`${displayName} Logo`} 
-          className="h-10 w-auto object-contain rounded-md border border-gray-200 mr-3 mb-4 md:mb-0"
-        /> 
+        {logoLoading ? (
+          <div 
+            className="h-10 w-24 bg-gray-200 rounded-md border border-gray-200 mr-3 mb-4 md:mb-0 flex items-center justify-center text-gray-400 text-xs"
+            aria-label="Loading logo"
+          >
+            Loading...
+          </div>
+        ) : (
+          <img 
+            src={logoUrlToDisplay} 
+            alt={`${displayName} Logo`} 
+            className="h-10 w-auto max-w-[96px] object-contain rounded-md border border-gray-200 mr-3 mb-4 md:mb-0"
+          /> 
+        )}
         {/* Optional: Display institute name 
         <h1 className="text-lg font-semibold text-gray-700 hidden md:block">{displayName}</h1> 
         */}

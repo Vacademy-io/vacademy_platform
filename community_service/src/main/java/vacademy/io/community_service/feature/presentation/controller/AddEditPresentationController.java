@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.community_service.feature.presentation.dto.question.AddPresentationDto;
 import vacademy.io.community_service.feature.presentation.dto.question.EditPresentationDto;
+import vacademy.io.community_service.feature.presentation.dto.question.PresentationSlideDto;
 import vacademy.io.community_service.feature.presentation.manager.PresentationCrudManager;
 
 import java.util.List;
@@ -23,7 +24,7 @@ public class AddEditPresentationController {
     }
 
     @PostMapping("/edit-presentation")
-    public ResponseEntity<String> editPresentation(@RequestBody EditPresentationDto editPresentationDto) {
+    public ResponseEntity<List<PresentationSlideDto>> editPresentation(@RequestBody EditPresentationDto editPresentationDto) {
         return presentationCrudManager.editPresentation(editPresentationDto);
     }
 
@@ -36,6 +37,16 @@ public class AddEditPresentationController {
     public ResponseEntity<List<AddPresentationDto>> getAllPresentation(@RequestParam String instituteId) {
         return presentationCrudManager.getAllPresentation(instituteId);
 
+    }
+
+    // In class AddEditPresentationController
+
+    @PostMapping("/add-slide/after/{afterSlideOrder}")
+    public ResponseEntity<PresentationSlideDto> addSlideInPresentation(
+            @RequestParam String presentationId,
+            @PathVariable Integer afterSlideOrder,
+            @RequestBody PresentationSlideDto newSlideDto) {
+        return presentationCrudManager.addSlideAfterIndex(presentationId, afterSlideOrder, newSlideDto);
     }
 
 }

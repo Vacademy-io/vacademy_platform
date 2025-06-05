@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input'; // Added Input
 import { Textarea } from '@/components/ui/textarea'; // Added Textarea
 
 // Define BASE_URL - move to a config file or env variable later
-const BASE_URL = 'https://backend-stage.vacademy.io';
+const BASE_URL = 'http://localhost:8073';
 
 interface QuizInteractionProps {
   questionData: AddedQuestion;

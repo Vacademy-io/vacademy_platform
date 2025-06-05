@@ -39,6 +39,7 @@ export const SessionController: React.FC<SessionControllerProps> = ({ sessionSta
       case 'INIT':
         return <WaitingScreen sessionTitle={sessionState.sessionData!.slides.title} />;
       
+      case 'LIVE':
       case 'STARTED':
       case 'PAUSED': // Paused might need a specific screen, but for now shows current slide
         if (sessionState.currentSlide) {

@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import vacademy.io.common.core.utils.DateUtil;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.community_service.feature.presentation.dto.question.AddPresentationDto;
 // import vacademy.io.community_service.feature.presentation.dto.question.PresentationSlideDto; // Assuming not directly used here based on provided code
@@ -728,6 +729,69 @@ public class LiveSessionService {
                 return null; // Or false if we decide non-auto-evaluable are "incorrect" by default
             default:
                 return null; // Unknown type
+        }
+    }
+
+    public LiveSessionDto getUpdatedSession(String sessionId) {
+        if (sessionId == null) {
+            throw new VacademyException("Invalid session code: " + sessionId);
+        }
+        LiveSessionDto session = sessions.get(sessionId);
+        if (session == null) {
+            throw new VacademyException("Session not found for session code: " + sessionId);
+        }
+        if ("FINISHED".equals(session.getSessionStatus())) {
+            throw new VacademyException("Session has already finished.");
+        }
+
+        return session;
+
+    }
+
+    public LiveSessionDto addSlideInLiveSession(PresentationSlideDto presentationSlideDto, String sessionId, Integer afterSlideOrder) {
+        if (sessionId == null) {
+            throw new VacademyException("Invalid session code: " + sessionId);
+        }
+        LiveSessionDto session = sessions.get(sessionId);
+        PresentationSlideDto newSlide = presentationCrudManager.addSlideAfterIndex(sessionId, afterSlideOrder, presentationSlideDto).getBody();
+        session.setSlides(presentationCrudManager.getPresentation(presentationSlideDto.getPresentationId()).getBody());
+        sendUpdateSlideAnnouncementToStudents(session);
+        return session;
+    }
+
+    private void sendUpdateSlideAnnouncementToStudents(LiveSessionDto session) {
+        if (!"LIVE".equals(session.getSessionStatus()) || session.getCurrentSlideIndex() == null || session.getStudentEmitters() == null) {
+            return;
+        }
+
+        // Iterate over student emitters. CopyOnWriteArrayList handles concurrent modification safely for iteration.
+        // If not using CopyOnWriteArrayList, new ArrayList<>(session.getStudentEmitters()) creates a snapshot.
+        for (SseEmitter emitter : session.getStudentEmitters()) {
+            try {
+                SseEmitter.SseEventBuilder event = SseEmitter.event()
+                        .name("update_slides")
+                        .id(UUID.randomUUID().toString())
+                        .data(Map.of(
+                                "lastUpdated", DateUtil.getCurrentUtcTime()
+                        ));
+                emitter.send(event);
+            } catch (IllegalStateException e) {
+                // This often means the emitter was already completed (client disconnected, timed out, etc.)
+                System.err.println("Error sending UpdateSlideAnnouncement to a student emitter (already completed) for session " +
+                        session.getSessionId() + ": " + e.getMessage() + ". Emitter: " + emitter.toString());
+                // The emitter's own onError, onCompletion, or onTimeout handlers (set in addStudentEmitter)
+                // are responsible for cleaning it up from the session.getStudentEmitters() list.
+            } catch (IOException e) {
+                // For other network-related send issues
+                System.err.println("IOException sending UpdateSlideAnnouncement to a student emitter for session " +
+                        session.getSessionId() + ": " + e.getMessage() + ". Emitter: " + emitter.toString());
+                // Spring's SseEmitter usually triggers onError for IOException during send,
+                // which should then call your studentEmitterCleanup.
+            } catch (Exception e) {
+                // Catch any other unexpected exceptions during send
+                System.err.println("Unexpected error sending UpdateSlideAnnouncement to a student emitter for session " +
+                        session.getSessionId() + ": " + e.getClass().getName() + " - " + e.getMessage() + ". Emitter: " + emitter.toString());
+            }
         }
     }
 }

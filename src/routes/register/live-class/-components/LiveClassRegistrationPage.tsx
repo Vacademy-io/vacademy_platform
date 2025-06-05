@@ -44,7 +44,7 @@ export const verifyEmailSchema = z.object({
 });
 
 export default function LiveClassRegistrationPage() {
-  const [dialog, setDialog] = useState<boolean>(false);
+  const [dialog, setDialog] = useState<boolean>(true);
   const [isOtpSent, setIsOTPSent] = useState<boolean>(false);
   const [timer, setTimer] = useState(0);
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
@@ -53,11 +53,19 @@ export default function LiveClassRegistrationPage() {
   const { sessionId } = router.state.location.search;
   const { data, isLoading } = useSessionCustomFields(sessionId || "");
 
+  // useEffect(() => {
+  //   console.log("sessionId ", sessionId);
+  //   if (!sessionId) {
+  //     router.navigate({ to: "/dashboard" });
+  //   }
+  // }, [sessionId]);
+
   useEffect(() => {
     if (data?.accessLevel === AccessLevel.PRIVATE) {
       router.navigate({ to: "/study-library/live-class" });
     }
   }, [data]);
+
   console.log("data ", data);
   const schema = generateZodSchema(data?.customFields);
   const form = useForm({
@@ -78,7 +86,6 @@ export default function LiveClassRegistrationPage() {
   } = form;
 
   const onSubmit = (formValues: RegistrationFormValues) => {
-    console.log("here");
     console.log("data ", formValues);
     try {
       const payload = transformToGuestRegistrationDTO(
@@ -100,12 +107,15 @@ export default function LiveClassRegistrationPage() {
   };
   const sendEmailOtp = async (email: string) => {
     try {
-      await axios.get(LIVE_SESSION_REQUEST_OTP, {
-        params: { to: email },
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
+      await axios.post(
+        LIVE_SESSION_REQUEST_OTP,
+        { to: email },
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
       setIsOTPSent(true);
       toast.success("OTP sent successfully");
     } catch (error) {
@@ -134,7 +144,7 @@ export default function LiveClassRegistrationPage() {
         }
       );
 
-      if (response.data === true) {
+      if (response.status === 200) {
         toast.success("OTP verified successfully");
         handleCloseAlertDialog();
       } else {

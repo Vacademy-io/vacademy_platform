@@ -68,7 +68,7 @@ const Header: React.FC = () => {
           </div>
         )}
         <img 
-          src={logoUrlToDisplay} 
+          src="./images/logo.png" 
           alt={`${displayName} Logo`} 
           className={`h-full w-full object-contain rounded-md border border-gray-200 ${logoLoading ? 'opacity-0' : 'opacity-100'}`}
           onError={() => {

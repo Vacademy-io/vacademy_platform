@@ -24,14 +24,13 @@ public class GetRegistrationData {
     RegistrationService registrationService;
 
     @GetMapping("/get-registration-data")
-    ResponseEntity<RegistrationFromResponseDTO> getRegistrationData(@RequestParam("sessionId") String SessionId, @RequestAttribute("user") CustomUserDetails user) {
-        return ResponseEntity.ok( getRegistrationFromResponseDTO.getRegistrationData(SessionId , user));
-
+    ResponseEntity<RegistrationFromResponseDTO> getRegistrationData(@RequestParam("sessionId") String SessionId) {
+        return ResponseEntity.ok( getRegistrationFromResponseDTO.getRegistrationData(SessionId));
     }
 
     @PostMapping("/register-guest-user")
-    ResponseEntity<Boolean> registerGuestUser(@RequestBody GuestRegistrationRequestDTO requestDTO , @RequestAttribute("user") CustomUserDetails user){
-        registrationService.saveGuestUserDetails(requestDTO , user.getUserId());
+    ResponseEntity<Boolean> registerGuestUser(@RequestBody GuestRegistrationRequestDTO requestDTO){
+        registrationService.saveGuestUserDetails(requestDTO);
         return ResponseEntity.ok(true);
     }
 }

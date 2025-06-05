@@ -4,6 +4,7 @@ package vacademy.io.admin_core_service.features.learner.manager;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.institute.service.InstituteModuleService;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
@@ -38,6 +39,7 @@ public class LearnerInstituteManager {
     @Autowired
     PackageSessionRepository packageSessionRepository;
 
+    @Transactional
     public StudentInstituteInfoDTO getInstituteDetails(String instituteId, String userId) {
         Optional<Institute> institute = instituteRepository.findById(instituteId);
 

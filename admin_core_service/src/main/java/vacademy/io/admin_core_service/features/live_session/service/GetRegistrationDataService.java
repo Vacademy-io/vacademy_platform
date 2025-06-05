@@ -15,7 +15,7 @@ public class GetRegistrationDataService {
 
     private final CustomFieldRepository customFieldRepository;
 
-    public RegistrationFromResponseDTO getRegistrationData(String sessionId, CustomUserDetails user) {
+    public RegistrationFromResponseDTO getRegistrationData(String sessionId) {
         List<CustomFieldRepository.FlatFieldProjection> flatList =
                 customFieldRepository.getSessionCustomFieldsBySessionId(sessionId);
 

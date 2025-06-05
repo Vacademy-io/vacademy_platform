@@ -17,24 +17,27 @@ import java.sql.Timestamp;
 import java.util.List;
 
 public interface ActivityLogRepository extends JpaRepository<ActivityLog, String> {
-    @Query(value = """ 
-            SELECT 
-                (EXTRACT(EPOCH FROM (MAX(vt.end_time) - MIN(vt.start_time))) * 1000) / v.published_video_length * 100 AS percentage_watched
-            FROM 
-                activity_log a
-            JOIN 
-                video_tracked vt ON vt.activity_id = a.id
-            JOIN 
-                slide s ON s.id = a.slide_id
-            JOIN 
-                video v ON s.source_id = v.id
-            WHERE 
-                a.user_id = :userId
-                AND a.slide_id = :slideId
-            GROUP BY 
-                v.id, a.user_id, a.slide_id, published_video_length
-            """,
-            nativeQuery = true)
+    @Query(value = """
+    SELECT 
+        CASE 
+            WHEN v.published_video_length IS NULL OR v.published_video_length = 0 THEN 0 
+            ELSE SUM(EXTRACT(EPOCH FROM (vt.end_time - vt.start_time)) * 1000) 
+                 / v.published_video_length * 100 
+        END AS percentage_watched
+    FROM 
+        activity_log a
+    JOIN 
+        video_tracked vt ON vt.activity_id = a.id
+    JOIN 
+        slide s ON s.id = a.slide_id
+    JOIN 
+        video v ON s.source_id = v.id
+    WHERE 
+        a.user_id = :userId
+        AND a.slide_id = :slideId
+    GROUP BY 
+        v.id, a.user_id, a.slide_id, v.published_video_length
+    """, nativeQuery = true)
     Double getPercentageVideoWatched(@Param("slideId") String slideId, @Param("userId") String userId);
 
 

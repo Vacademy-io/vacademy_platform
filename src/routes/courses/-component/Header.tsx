@@ -8,7 +8,7 @@ const Header: React.FC = () => {
   
   const { apiFetchedInstituteDetails } = useCatalogStore();
   const [logoUrlToDisplay, setLogoUrlToDisplay] = useState<string>(defaultLogoUrl);
-  const [logoLoading, setLogoLoading] = useState<boolean>(true);
+  const [logoLoading, setLogoLoading] = useState<boolean>(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -58,24 +58,26 @@ const Header: React.FC = () => {
 
   return (
     <nav className="min-h-[80px] bg-white py-5 px-6 md:px-10 flex flex-col md:flex-row justify-between items-center shadow-sm">
-      <div className="flex items-center">
-        {logoLoading ? (
+      <div className="flex items-center relative h-10 w-24 mr-3 mb-4 md:mb-0">
+        {logoLoading && (
           <div 
-            className="h-10 w-24 bg-gray-200 rounded-md border border-gray-200 mr-3 mb-4 md:mb-0 flex items-center justify-center text-gray-400 text-xs"
+            className="absolute inset-0 bg-gray-200 rounded-md border border-gray-200 flex items-center justify-center text-gray-400 text-xs"
             aria-label="Loading logo"
           >
             Loading...
           </div>
-        ) : (
-          <img 
-            src={logoUrlToDisplay} 
-            alt={`${displayName} Logo`} 
-            className="h-10 w-auto max-w-[96px] object-contain rounded-md border border-gray-200 mr-3 mb-4 md:mb-0"
-          /> 
         )}
-        {/* Optional: Display institute name 
-        <h1 className="text-lg font-semibold text-gray-700 hidden md:block">{displayName}</h1> 
-        */}
+        <img 
+          src={logoUrlToDisplay} 
+          alt={`${displayName} Logo`} 
+          className={`h-full w-full object-contain rounded-md border border-gray-200 ${logoLoading ? 'opacity-0' : 'opacity-100'}`}
+          onError={() => {
+            if (logoUrlToDisplay !== defaultLogoUrl) {
+                setLogoUrlToDisplay(defaultLogoUrl);
+            }
+            setLogoLoading(false);
+          }}
+        /> 
       </div>
       
       <div className='flex flex-col md:flex-row items-center gap-6'>

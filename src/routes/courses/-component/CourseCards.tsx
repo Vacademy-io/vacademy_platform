@@ -28,7 +28,7 @@ const ITEMS_PER_PAGE = 4;
 // Individual Card Component
 const CourseCardItem: React.FC<{ course: BasicCourse }> = ({ course }) => {
   const [courseImageUrl, setCourseImageUrl] = useState<string>('/images/placeholder-course.jpg');
-  const [loadingImage, setLoadingImage] = useState<boolean>(true);
+  const [loadingImage, setLoadingImage] = useState<boolean>(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -40,10 +40,13 @@ const CourseCardItem: React.FC<{ course: BasicCourse }> = ({ course }) => {
           if (isMounted) {
             if (url) {
               setCourseImageUrl(url);
+            } else {
+              setCourseImageUrl('/images/placeholder-course.jpg');
             }
           }
         } catch (error) {
           console.error("Error fetching image URL for course:", course.id, error);
+          if (isMounted) setCourseImageUrl('/images/placeholder-course.jpg');
         } finally {
           if (isMounted) {
             setLoadingImage(false);
@@ -51,6 +54,7 @@ const CourseCardItem: React.FC<{ course: BasicCourse }> = ({ course }) => {
         }
       })();
     } else {
+      setCourseImageUrl('/images/placeholder-course.jpg');
       setLoadingImage(false);
     }
     return () => { isMounted = false; };
@@ -74,12 +78,23 @@ const CourseCardItem: React.FC<{ course: BasicCourse }> = ({ course }) => {
 
   return (
     <div key={course.id} className="bg-white rounded-lg shadow-lg overflow-hidden flex flex-col">
-      <div className="w-full h-48 bg-gray-200 flex items-center justify-center">
-        {loadingImage ? (
-          <div className="text-gray-500">Loading...</div>
-        ) : (
-          <img src={courseImageUrl} alt={course.packageName} className="w-full h-full object-cover" />
+      <div className="w-full h-48 bg-gray-200 flex items-center justify-center relative">
+        {loadingImage && (
+          <div className="absolute inset-0 flex items-center justify-center bg-gray-200 bg-opacity-75">
+            <div className="text-gray-500">Loading...</div>
+          </div>
         )}
+        <img 
+          src={courseImageUrl} 
+          alt={course.packageName} 
+          className={`w-full h-full object-cover ${loadingImage ? 'opacity-0' : 'opacity-100'}`}
+          onError={() => {
+            if (courseImageUrl !== '/images/placeholder-course.jpg') {
+              setCourseImageUrl('/images/placeholder-course.jpg');
+            }
+            setLoadingImage(false);
+          }}
+        />
       </div>
       <div className="p-4 flex flex-col flex-grow">
         <div className="flex justify-between items-start mb-2">

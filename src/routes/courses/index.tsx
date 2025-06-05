@@ -1,6 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
 
-import CatalogPageComponent from './-component/CatalogPage'
 import CourseCatalougePage from './-component/CourseCatalougePage'
 
 // Define the route for /courses/
@@ -21,7 +20,7 @@ function CoursesContainerComponent() {
         The catalog below should display based on the 'instituteId' in the URL (e.g., /courses?instituteId=YOUR_UUID).
       </p>
       <hr /> */}
-      <CatalogPageComponent />
+      {/* <CatalogPageComponent /> */}
       <CourseCatalougePage/>
     </div>
   )

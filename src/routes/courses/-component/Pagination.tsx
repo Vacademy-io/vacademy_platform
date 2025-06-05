@@ -12,12 +12,36 @@ interface PaginationProps {
 const Pagination: React.FC<PaginationProps> = ({ currentPage, totalPages, onPageChange }) => {
   const renderPageNumbers = (): (number | string)[] => {
     const pageNumbers: (number | string)[] = [];
-    const displayPages = 4; 
+    const smallTotalPagesThreshold = 4; 
 
-    if (totalPages <= displayPages) {
+    if (totalPages <= smallTotalPagesThreshold) {
       for (let i = 1; i <= totalPages; i++) {
         pageNumbers.push(i);
       }
+    } else if (totalPages > 10) {
+      pageNumbers.push(1);
+      if (totalPages >= 2) pageNumbers.push(2);
+      if (totalPages >= 3) pageNumbers.push(3);
+
+      const dynamicBlockStart = Math.max(4, currentPage - 2);
+      const dynamicBlockEnd = Math.min(totalPages - 1, currentPage + 2);
+
+      if (dynamicBlockStart > 4) {
+        pageNumbers.push('...');
+      }
+
+      for (let i = dynamicBlockStart; i <= dynamicBlockEnd; i++) {
+        pageNumbers.push(i);
+      }
+
+      if (dynamicBlockEnd < totalPages - 1) {
+        pageNumbers.push('...');
+      }
+      
+      if (totalPages > 3) {
+         pageNumbers.push(totalPages);
+      }
+
     } else {
       pageNumbers.push(1);
       let startPage: number, endPage: number;

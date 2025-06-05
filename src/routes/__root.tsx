@@ -9,6 +9,7 @@ import {
   AppUpdate,
   AppUpdateAvailability,
 } from "@capawesome/capacitor-app-update";
+import { Capacitor } from '@capacitor/core';
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { toast } from "sonner";
 import { useUpdate } from "@/stores/useUpdate";
@@ -47,14 +48,16 @@ const RootComponent = () => {
 
   useEffect(() => {
     (async () => {
-      const result = await AppUpdate.getAppUpdateInfo();
-      if (
-        result.updateAvailability === AppUpdateAvailability.UPDATE_AVAILABLE
-      ) {
-        toast.warning("Update available, please update app...");
-        setUpdateAvailable(true);
-        if (result.immediateUpdateAllowed) {
-          await AppUpdate.performImmediateUpdate();
+      if (Capacitor.isNativePlatform()) {
+        const result = await AppUpdate.getAppUpdateInfo();
+        if (
+          result.updateAvailability === AppUpdateAvailability.UPDATE_AVAILABLE
+        ) {
+          toast.warning("Update available, please update app...");
+          setUpdateAvailable(true);
+          if (result.immediateUpdateAllowed) {
+            await AppUpdate.performImmediateUpdate();
+          }
         }
       }
     })();

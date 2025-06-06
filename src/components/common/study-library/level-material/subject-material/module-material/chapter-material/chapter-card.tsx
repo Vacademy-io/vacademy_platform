@@ -41,7 +41,7 @@ export const ChapterCard = ({ chapter }: {chapter: Chapter}) => {
                     </div>
                     <div className="flex items-center gap-2">
                         <CompletionStatusComponent completionPercentage={chapter.percentage_completed} />
-                        <p className="text-body text-neutral-500">({chapter.percentage_completed}% completed)</p>
+                        <p className="text-body text-neutral-500">({chapter.percentage_completed.toFixed(2)}% completed)</p>
                     </div>
                 </div>
                 <div className="flex items-center justify-between">

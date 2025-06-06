@@ -12,14 +12,12 @@ import vacademy.io.admin_core_service.features.institute.repository.InstituteRep
 import vacademy.io.admin_core_service.features.learner_invitation.dto.*;
 import vacademy.io.admin_core_service.features.learner_invitation.entity.LearnerInvitation;
 import vacademy.io.admin_core_service.features.learner_invitation.entity.LearnerInvitationCustomField;
-import vacademy.io.admin_core_service.features.learner_invitation.entity.LearnerInvitationResponse;
 import vacademy.io.admin_core_service.features.learner_invitation.enums.CustomFieldStatusEnum;
 import vacademy.io.admin_core_service.features.learner_invitation.enums.LearnerInvitationCodeStatusEnum;
 import vacademy.io.admin_core_service.features.learner_invitation.enums.LearnerInvitationResponseStatusEnum;
 import vacademy.io.admin_core_service.features.learner_invitation.notification.LearnerInvitationNotification;
 import vacademy.io.admin_core_service.features.learner_invitation.repository.LearnerInvitationRepository;
 import vacademy.io.admin_core_service.features.learner_invitation.repository.LearnerInvitationCustomFieldRepository;
-import vacademy.io.admin_core_service.features.slide.entity.Option;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
@@ -171,7 +169,7 @@ public class LearnerInvitationService {
         if (StringUtils.hasText(dto.getDescription())) field.setDescription(dto.getDescription());
         if (StringUtils.hasText(dto.getDefaultValue())) field.setDefaultValue(dto.getDefaultValue());
         if (StringUtils.hasText(dto.getStatus())) field.setStatus(dto.getStatus());
-
+        field.setFieldOrder(dto.getFieldOrder());
         return field;
     }
 

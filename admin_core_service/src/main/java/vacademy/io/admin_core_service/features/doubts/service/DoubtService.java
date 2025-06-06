@@ -11,8 +11,13 @@ import vacademy.io.admin_core_service.features.doubts.entity.DoubtAssignee;
 import vacademy.io.admin_core_service.features.doubts.entity.Doubts;
 import vacademy.io.admin_core_service.features.doubts.enums.DoubtAssigneeStatusEnum;
 import vacademy.io.admin_core_service.features.doubts.enums.DoubtStatusEnum;
+import vacademy.io.admin_core_service.features.doubts.enums.DoubtsSourceEnum;
 import vacademy.io.admin_core_service.features.doubts.repository.DoubtsAssigneeRepository;
 import vacademy.io.admin_core_service.features.doubts.repository.DoubtsRepository;
+import vacademy.io.admin_core_service.features.slide.dto.SlideMetadataProjection;
+import vacademy.io.admin_core_service.features.slide.entity.Slide;
+import vacademy.io.admin_core_service.features.slide.repository.SlideRepository;
+import vacademy.io.admin_core_service.features.slide.service.SlideMetaDataService;
 
 import java.util.*;
 
@@ -25,6 +30,12 @@ public class DoubtService {
 
     @Autowired
     DoubtsAssigneeRepository doubtsAssigneeRepository;
+
+    @Autowired
+    SlideRepository slideRepository;
+
+    @Autowired
+    private SlideMetaDataService slideMetaDataService;
 
     public Optional<Doubts> getDoubtById(String id){
         return doubtsRepository.findById(id);
@@ -76,6 +87,21 @@ public class DoubtService {
                 allAssigneeDto = getAssigneeDtoFromDoubt(doubt);
             }
 
+            String subjectId = null;
+            String sourceName = null;
+
+            if (DoubtsSourceEnum.SLIDE.name().equals(doubt.getSource())) {
+                Optional<Slide> slideOptional = slideRepository.findById(doubt.getSourceId());
+                if (slideOptional.isPresent()) {
+                    sourceName = slideOptional.get().getTitle();
+
+                    Optional<SlideMetadataProjection> slideMetadataProjection = slideMetaDataService.getSlideMetadataForAdmin(doubt.getSourceId());
+                    if(slideMetadataProjection.isPresent()){
+                        subjectId = slideMetadataProjection.get().getSubjectId();
+                    }
+                }
+            }
+
             response.add(DoubtsDto.builder()
                     .id(doubt.getId())
                     .userId(doubt.getUserId())
@@ -86,6 +112,9 @@ public class DoubtService {
                     .parentLevel(doubt.getParentLevel()==null ? 0 : doubt.getParentLevel())
                     .source(doubt.getSource())
                     .sourceId(doubt.getSourceId())
+                    .subjectId(subjectId)
+                    .sourceName(sourceName)
+                    .batchId(doubt.getPackageSessionId())
                     .status(doubt.getStatus())
                     .resolvedTime(doubt.getResolvedTime())
                     .raisedTime(doubt.getRaisedTime())

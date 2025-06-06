@@ -27,6 +27,8 @@ public class LearnerInvitationCustomField {
     private String defaultValue;
     private String status; // ACTIVE DELETED
 
+    private int fieldOrder;
+
     @ManyToOne
     @JoinColumn(name = "learner_invitation_id", nullable = false)
     private LearnerInvitation learnerInvitation;  // Must match mappedBy value in LearnerInvitation
@@ -48,6 +50,7 @@ public class LearnerInvitationCustomField {
         this.description = learnerInvitationCustomFieldDTO.getDescription();
         this.defaultValue = learnerInvitationCustomFieldDTO.getDefaultValue();
         this.learnerInvitation = learnerInvitation;
+        this.fieldOrder = learnerInvitationCustomFieldDTO.getFieldOrder();
         this.status = CustomFieldStatusEnum.ACTIVE.name();
     }
 

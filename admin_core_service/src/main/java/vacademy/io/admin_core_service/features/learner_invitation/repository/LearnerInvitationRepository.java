@@ -79,4 +79,16 @@ public interface LearnerInvitationRepository extends JpaRepository<LearnerInvita
     int updateStatusBySourceIdsAndSource(@Param("status") String status,
                                          @Param("sourceIds") List<String> sourceIds,
                                          @Param("source") String source);
+
+    @Query("""
+    SELECT li FROM LearnerInvitation li
+    LEFT JOIN FETCH li.customFields cf
+    WHERE li.id = :invitationId
+    AND (cf.status IS NULL OR cf.status IN :statusList)
+""")
+    Optional<LearnerInvitation> findByIdWithFilteredCustomFields(
+            @Param("invitationId") String invitationId,
+            @Param("statusList") List<String> statusList
+    );
+
 }

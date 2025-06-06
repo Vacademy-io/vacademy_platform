@@ -2,7 +2,7 @@
 import axios from 'axios';
 import { type SessionDetailsResponse, type JoinSessionPayload } from '@/types';
 
-const API_BASE_URL = 'http://localhost:8073/community-service/engage/learner';
+const API_BASE_URL = 'https://backend-stage.vacademy.io/community-service/engage/learner';
 
 export const getSessionDetails = async (
     inviteCode: string,

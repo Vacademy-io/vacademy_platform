@@ -2,11 +2,15 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { StarIcon } from 'lucide-react';
 import { getPublicUrl } from '@/services/upload_file';
 
+// A simple in-memory cache for fetched image URLs.
+// This prevents re-fetching the same URL for a given file ID.
+const imageUrlCache = new Map<string, string>();
+
 // Define a basic course type
 interface BasicCourse {
   id: string;
   packageName: string;
-  thumbnail_file_id?: string;
+  thumbnail_file_id?: string; // Reverted to use file_id
   level?: string;
   description?: string;
   tags?: string[];
@@ -28,31 +32,39 @@ const ITEMS_PER_PAGE = 4;
 // Individual Card Component
 const CourseCardItem: React.FC<{ course: BasicCourse }> = ({ course }) => {
   const [courseImageUrl, setCourseImageUrl] = useState<string>('/images/placeholder-course.jpg');
-  const [loadingImage, setLoadingImage] = useState<boolean>(false);
+  const [loadingImage, setLoadingImage] = useState<boolean>(true);
 
   useEffect(() => {
     let isMounted = true;
     if (course.thumbnail_file_id) {
-      setLoadingImage(true);
-      (async () => {
-        try {
-          const url = await getPublicUrl(course.thumbnail_file_id);
-          if (isMounted) {
-            if (url) {
-              setCourseImageUrl(url);
-            } else {
-              setCourseImageUrl('/images/placeholder-course.jpg');
+      const fileId = course.thumbnail_file_id;
+      
+      if (imageUrlCache.has(fileId)) {
+        setCourseImageUrl(imageUrlCache.get(fileId)!);
+        setLoadingImage(false);
+      } else {
+        setLoadingImage(true);
+        (async () => {
+          try {
+            const url = await getPublicUrl(fileId);
+            if (isMounted) {
+              if (url) {
+                imageUrlCache.set(fileId, url);
+                setCourseImageUrl(url);
+              } else {
+                setCourseImageUrl('/images/placeholder-course.jpg');
+              }
+            }
+          } catch (error) {
+            console.error("Error fetching image URL for course:", course.id, error);
+            if (isMounted) setCourseImageUrl('/images/placeholder-course.jpg');
+          } finally {
+            if (isMounted) {
+              setLoadingImage(false);
             }
           }
-        } catch (error) {
-          console.error("Error fetching image URL for course:", course.id, error);
-          if (isMounted) setCourseImageUrl('/images/placeholder-course.jpg');
-        } finally {
-          if (isMounted) {
-            setLoadingImage(false);
-          }
-        }
-      })();
+        })();
+      }
     } else {
       setCourseImageUrl('/images/placeholder-course.jpg');
       setLoadingImage(false);
@@ -84,9 +96,10 @@ const CourseCardItem: React.FC<{ course: BasicCourse }> = ({ course }) => {
             <div className="text-gray-500">Loading...</div>
           </div>
         )}
-        <img 
-          src={courseImageUrl} 
-          alt={course.packageName} 
+        <img
+          src={courseImageUrl}
+          alt={course.packageName}
+          loading="lazy"
           className={`w-full h-full object-cover ${loadingImage ? 'opacity-0' : 'opacity-100'}`}
           onError={() => {
             if (courseImageUrl !== '/images/placeholder-course.jpg') {

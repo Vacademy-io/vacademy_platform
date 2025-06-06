@@ -8,6 +8,8 @@ import CoursesPage from './CoursesPage.tsx';
 import Header from './Header.tsx';
 import HeroSectionCourseCatalog from './HeroSectionCourseCatalog.tsx';
 import { useCatalogStore } from '../-store/catalogStore.ts';
+import axios from 'axios';
+import { getAccessToken} from '@/lib/auth/sessionUtility'; // Assuming auth service path
 // Preferences import is removed as we are fetching from a new API now for these details
 // import { Preferences } from '@capacitor/preferences'; 
 
@@ -55,6 +57,11 @@ const formatTagsForPostgresArray = (tagNames: string[]): string => {
   return `{${formattedTags.join(',')}}`; 
 };
 
+// Define API endpoints in one place for easier management
+const API_BASE_URL = 'https://backend-stage.vacademy.io/admin-core-service';
+const INSTITUTE_DETAILS_API = (id: string) => `${API_BASE_URL}/public/institute/v1/details/${id}`;
+const SEARCH_COURSES_API = `${API_BASE_URL}/batch/v1/search?page=0&size=20`;
+
 const CourseCatalougePage: React.FC = () => {
   const [instituteId, setInstituteId] = useState<string | null>(null);
   const { 
@@ -74,7 +81,7 @@ const CourseCatalougePage: React.FC = () => {
   const [availableTags, setAvailableTags] = useState<{ id: string; name: string }[]>([]);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [availableInstructors, _setAvailableInstructors] = useState(mockInstructors); // Still uses mock
-
+  console.log("access token", getAccessToken());
   // Pagination state (if CoursesPage doesn't manage it internally based on data)
   // For now, assuming CoursesPage handles its own pagination state based on items per page
   // and total items it receives. We pass the raw course data.
@@ -100,28 +107,24 @@ const CourseCatalougePage: React.FC = () => {
       const fetchInstituteApiDetails = async () => {
         console.log(`Fetching API institute details for instituteId: ${instituteId}`);
         try {
-          const apiUrl = `https://backend-stage.vacademy.io/admin-core-service/public/institute/v1/details/${instituteId}`;
-          const response = await fetch(apiUrl, {
-            method: 'GET',
+          const token = await getAccessToken();
+          console.log("Token for Institute Details API:", token);
+          const response = await axios.get(INSTITUTE_DETAILS_API(instituteId), {
             headers: {
               'Content-Type': 'application/json',
-              // Add any other necessary headers if required
+              'Authorization': `Bearer ${token}`,
             },
           });
 
-          if (!response.ok) {
-            const errorData = await response.text(); 
-            console.error("Institute Details API call failed with status:", response.status, "Response:", errorData);
-            throw new Error(`Institute Details API call failed with status: ${response.status}`);
-          }
-
-          const data = await response.json();
+          const data = response.data;
           console.log("API Institute Details Response Data:", data);
           setApiFetchedInstituteDetails(data); // Store the whole object
 
         } catch (error) {
           console.error("Error fetching API institute details:", error);
-          setApiFetchedInstituteDetails(null); // Set to null on error
+          // By not clearing the details here, we prevent a chain reaction
+          // that could cause the course list to blink on a failed API call.
+          // setApiFetchedInstituteDetails(null); 
         }
       };
 
@@ -167,23 +170,25 @@ const CourseCatalougePage: React.FC = () => {
           : []; 
 
         try {
-          const response = await fetch('https://backend-stage.vacademy.io/admin-core-service/batch/v1/search?page=0&size=20', {
+          const token = await getAccessToken();
+          console.log("Token for Search Courses API:", token);
+          const response = await axios({
+            url: SEARCH_COURSES_API,
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
+            headers: { 
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`,
+            },
+            data: {
               institute_id: instituteId,
               status: [], 
               level_ids: selectedLevelIds, 
               tags: apiTagsPayload, 
               search_by_name: searchTerm,
-            }),
+            },
           });
-          if (!response.ok) {
-            const errorResponseText = await response.text();
-            console.error("Courses API call failed:", response.status, errorResponseText);
-            throw new Error(`Courses API call failed: ${response.status}`);
-          }
-          const responseData = await response.json();
+
+          const responseData = response.data;
           
           let coursesToStore = [];
           if (responseData && responseData.content && Array.isArray(responseData.content)) {
@@ -197,7 +202,9 @@ const CourseCatalougePage: React.FC = () => {
           // Removed logic to derive tags from course API response, as it now comes from institute details.
         } catch (error) {
           console.error("Error fetching courses:", error);
-          setDynamicCourses([]);
+          // By not clearing the courses here, we prevent the "blinking" effect on a failed API call.
+          // The root cause (likely an authentication error) still needs to be resolved for new data to load.
+          // setDynamicCourses([]);
         }
       };
       fetchCourses();

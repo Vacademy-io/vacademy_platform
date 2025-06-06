@@ -93,8 +93,9 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
         chapter_package_session_mapping cpm ON cpm.chapter_id = c.id
     LEFT JOIN 
         learner_operation lo ON lo.source_id = mcm.chapter_id
-        AND lo.operation IN (:learnerOperation)
-        AND lo.user_id = :userId
+            AND lo.operation IN (:learnerOperation)
+            AND lo.user_id = :userId
+            AND lo.value ~ '^-?\\d+(\\.\\d+)?$'
     WHERE 
         mcm.module_id = :moduleId
         AND cpm.status IN (:chapterStatusList)
@@ -107,6 +108,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
             @Param("chapterStatusList") List<String> chapterStatusList
     );
 
+
     @Query(value = """
     SELECT 
         COALESCE(SUM(CAST(lo.value AS FLOAT)), 0) / NULLIF(COUNT(DISTINCT smm.module_id), 0) AS percentage_completed
@@ -116,8 +118,9 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
         modules m ON m.id = smm.module_id
     LEFT JOIN 
         learner_operation lo ON lo.source_id = m.id
-        AND lo.operation IN (:learnerOperation)
-        AND lo.user_id = :userId
+            AND lo.operation IN (:learnerOperation)
+            AND lo.user_id = :userId
+            AND lo.value ~ '^-?\\d+(\\.\\d+)?$'
     WHERE 
         smm.subject_id = :subjectId
         AND m.status IN (:moduleStatusList)
@@ -129,6 +132,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
             @Param("moduleStatusList") List<String> moduleStatusList
     );
 
+
     @Query(value = """
     SELECT 
         COALESCE(SUM(CAST(lo.value AS FLOAT)), 0) / NULLIF(COUNT(DISTINCT sps.subject_id), 0) AS percentage_completed
@@ -138,8 +142,9 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
         subject s ON s.id = sps.subject_id
     LEFT JOIN 
         learner_operation lo ON lo.source_id = s.id
-         AND lo.operation IN (:learnerOperation)
-        AND lo.user_id = :userId
+            AND lo.operation IN (:learnerOperation)
+            AND lo.user_id = :userId
+            AND lo.value ~ '^-?\\d+(\\.\\d+)?$'
     WHERE 
         sps.session_id = :packageSessionId
         AND s.status IN (:subjectStatusList)

@@ -27,7 +27,7 @@ public class LearnerInvitationCustomField {
     private String defaultValue;
     private String status; // ACTIVE DELETED
 
-    private int fieldOrder;
+    private Integer fieldOrder;
 
     @ManyToOne
     @JoinColumn(name = "learner_invitation_id", nullable = false)

@@ -69,7 +69,7 @@ export const SubjectCard = ({ subject }: SubjectCardProps) => {
           <div className="text-subtitle font-semibold ">{subject.subject_name}</div>
           <div className="flex  items-center gap-2">
              <CompletionStatusComponent completionPercentage={subject.percentage_completed} />
-            <p className="sm:text-body text-caption text-neutral-500">({subject.percentage_completed.toFixed(2)}% completed)</p>
+            <p className="sm:text-body text-caption text-neutral-500">({subject.percentage_completed}% completed)</p>
           </div>
         </div>
       </div>

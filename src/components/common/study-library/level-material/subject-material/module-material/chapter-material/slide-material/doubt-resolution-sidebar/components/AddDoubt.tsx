@@ -6,8 +6,6 @@ import { useAddDoubt } from "../services/AddDoubt";
 import { ArrowUp } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import { useMediaRefsStore } from "@/stores/mediaRefsStore";
-import { useEffect, useState } from "react";
-import { getPackageSessionId } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
 
 interface AddDoubtProps {
     doubtText: string;
@@ -29,15 +27,6 @@ export const AddDoubt = ({
     const {activeItem} = useContentStore();
     const addDoubt = useAddDoubt()
     const { currentPdfPage, currentYoutubeTime, currentUploadedVideoTime } = useMediaRefsStore();
-    const [packageSessionId, setPackageSessionId] = useState<string | null>(null);
-
-    useEffect(() => {
-        const fetchPackageSessionId = async () => {
-            const id = await getPackageSessionId();
-            setPackageSessionId(id);
-        };
-        fetchPackageSessionId();
-    }, []);
     
     const progressMarker = (() => {
         // If timestamp is provided, use it
@@ -78,7 +67,6 @@ export const AddDoubt = ({
             parent_id: null,
             parent_level: 0,
             doubt_assignee_request_user_ids: [],
-            batch_id: packageSessionId || "",
         }
 
         addDoubt.mutate(doubtData, {

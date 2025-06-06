@@ -35,7 +35,7 @@ export const ChapterSidebarSlides = () => {
         <div
           key={slide.id}
           onClick={() => setActiveItem(slide)} // Pass the entire item
-          className={`flex w-full cursor-pointer justify-between items-center gap-3 rounded-xl px-4 py-2 ${
+          className={`flex w-full cursor-pointer justify-between items-center gap-3 rounded-xl px-4 py-2 ${activeItem?.percentage_completed && activeItem?.percentage_completed >= 80 ? "text-success-600" : "text-neutral-600"} ${
             slide.id === activeItem?.id
               ? "border border-neutral-200 bg-white text-primary-500"
               : "hover:border hover:border-neutral-200 hover:bg-white hover:text-primary-500"
@@ -43,7 +43,7 @@ export const ChapterSidebarSlides = () => {
           title={slide.title || ""}
         >
           <div className="flex items-center gap-3">
-            <p className={`${slide.percentage_completed>=80 && "text-success-600"}`}>{getIcon(slide.source_type)}</p>
+            {getIcon(slide.source_type)}
             <p
               className={`flex-1 text-subtitle ${open ? "visible" : "hidden"} text-body`}
             >
@@ -51,7 +51,7 @@ export const ChapterSidebarSlides = () => {
             </p>
           </div>
           {slide.percentage_completed != null && (
-            <p className="text-body">{slide.percentage_completed>100 ? 100: slide.percentage_completed.toFixed(2)}%</p>
+            <p className="text-body">{slide.percentage_completed}%</p>
           )}
         </div>
       ))}

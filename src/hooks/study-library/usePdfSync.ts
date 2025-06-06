@@ -3,11 +3,9 @@ import { ActivitySchema } from "@/schemas/study-library/pdf-tracking-schema";
 import { useAddDocumentActivity } from "@/services/study-library/tracking-api/add-document-activity";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import { TrackingDataType } from "@/types/tracking-data-type";
-import { getPackageSessionId } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
 import { calculateAndUpdatePageViews } from "@/utils/study-library/tracking/calculateAndUpdatePageViews";
 import { Preferences } from "@capacitor/preferences";
 import { useRouter } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
 import { z } from "zod";
 
 const STORAGE_KEY = "pdf_tracking_data";
@@ -17,16 +15,7 @@ export const usePDFSync = () => {
   const addUpdateDocumentActivity = useAddDocumentActivity();
   const { activeItem } = useContentStore();
   const router = useRouter();
-  const { chapterId, moduleId, subjectId } = router.state.location.search;
-  const [packageSessionId, setPackageSessionId] = useState<string | null>(null);
-
-  useEffect(() => {
-    const fetchPackageSessionId = async () => {
-      const id = await getPackageSessionId();
-      setPackageSessionId(id);
-    };
-    fetchPackageSessionId();
-  }, []);
+  const { chapterId } = router.state.location.search;
 
   const syncPDFTrackingData = async () => {
     try {
@@ -83,9 +72,6 @@ export const usePDFSync = () => {
               slideId: activity.slide_id || "",
               chapterId: chapterId || "",
               requestPayload: apiPayload,
-              packageSessionId: packageSessionId || "",
-              moduleId: moduleId || "",
-              subjectId: subjectId || "",
             });
             activity.sync_status = "SYNCED";
             activity.new_activity = false; // Move this here, after successful API call

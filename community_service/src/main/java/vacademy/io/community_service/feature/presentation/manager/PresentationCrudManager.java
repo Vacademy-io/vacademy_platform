@@ -37,7 +37,7 @@ public class PresentationCrudManager {
     QuestionRepository questionRepository;
 
 
-    public ResponseEntity<String> addPresentation(AddPresentationDto addPresentationDto, String instituteId) {
+    public ResponseEntity<AddPresentationDto> addPresentation(AddPresentationDto addPresentationDto, String instituteId) {
         Presentation newPresentation = createPresentation(addPresentationDto, instituteId);
         newPresentation = presentationRepository.save(newPresentation);
 
@@ -53,7 +53,15 @@ public class PresentationCrudManager {
 
         addEditQuestionSlides(newPresentation, questionSlides);
         addEditExcalidrawSlides(newPresentation, excalidrawSlides);
-        return ResponseEntity.ok(newPresentation.getId());
+
+        AddPresentationDto presentationDto = new AddPresentationDto();
+        presentationDto.setId(newPresentation.getId());
+        presentationDto.setTitle(newPresentation.getTitle());
+        presentationDto.setDescription(newPresentation.getDescription());
+        presentationDto.setCoverFileId(newPresentation.getCoverFileId());
+        presentationDto.setAddedSlides(getPresentationSlides(newPresentation));
+        return ResponseEntity.ok(presentationDto);
+
     }
 
     private Presentation createPresentation(AddPresentationDto addPresentationDto, String instituteId) {

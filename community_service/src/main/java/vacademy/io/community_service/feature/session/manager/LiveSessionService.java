@@ -2,6 +2,7 @@ package vacademy.io.community_service.feature.session.manager;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
@@ -714,14 +715,14 @@ public class LiveSessionService {
             case "MCQM":
                 List<String> correctOptionIds = autoEval.getData().getCorrectOptionIds();
                 List<String> submittedOptionIds = participantResponse.getResponseData().getSelectedOptionIds();
-                if (correctOptionIds == null || submittedOptionIds == null) return false;
-                if (correctOptionIds.size() != submittedOptionIds.size()) return false;
+                if (correctOptionIds == null || submittedOptionIds == null) return null;
+                if (correctOptionIds.size() != submittedOptionIds.size()) return null;
                 return new HashSet<>(correctOptionIds).equals(new HashSet<>(submittedOptionIds));
             case "ONE_WORD":
             case "NUMERIC":
                 String correctAnswerText = autoEval.getData().getAnswer();
                 String submittedAnswerText = participantResponse.getResponseData().getTextAnswer();
-                if (correctAnswerText == null || submittedAnswerText == null) return false;
+                if (correctAnswerText == null || submittedAnswerText == null) return null;
                 // Simple comparison: case-insensitive and trimmed
                 return correctAnswerText.trim().equalsIgnoreCase(submittedAnswerText.trim());
             case "LONG_ANSWER":
@@ -748,12 +749,13 @@ public class LiveSessionService {
 
     }
 
+    @Transactional
     public LiveSessionDto addSlideInLiveSession(PresentationSlideDto presentationSlideDto, String sessionId, Integer afterSlideOrder) {
         if (sessionId == null) {
             throw new VacademyException("Invalid session code: " + sessionId);
         }
         LiveSessionDto session = sessions.get(sessionId);
-        PresentationSlideDto newSlide = presentationCrudManager.addSlideAfterIndex(sessionId, afterSlideOrder, presentationSlideDto).getBody();
+        PresentationSlideDto newSlide = presentationCrudManager.addSlideAfterIndex(presentationSlideDto.getPresentationId(), afterSlideOrder, presentationSlideDto).getBody();
         session.setSlides(presentationCrudManager.getPresentation(presentationSlideDto.getPresentationId()).getBody());
         sendUpdateSlideAnnouncementToStudents(session);
         return session;

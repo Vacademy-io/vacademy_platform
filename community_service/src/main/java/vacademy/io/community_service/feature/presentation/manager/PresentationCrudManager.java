@@ -198,7 +198,7 @@ public class PresentationCrudManager {
     }
 
     List<PresentationSlideDto> getPresentationSlides(Presentation presentation) {
-        Set<PresentationSlide> presentationSlides = presentation.getPresentationSlides();
+        List<PresentationSlide> presentationSlides = presentationSlideRepository.findAllByPresentationAndStatusNotOrderBySlideOrderAsc(presentation, "DELETED");
         List<PresentationSlideDto> presentationSlideDtos = new ArrayList<>();
         for (PresentationSlide presentationSlide : presentationSlides) {
             PresentationSlideDto presentationSlideDto = new PresentationSlideDto();

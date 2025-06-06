@@ -13,6 +13,7 @@ import vacademy.io.admin_core_service.features.learner_invitation.dto.*;
 import vacademy.io.admin_core_service.features.learner_invitation.entity.LearnerInvitation;
 import vacademy.io.admin_core_service.features.learner_invitation.entity.LearnerInvitationCustomField;
 import vacademy.io.admin_core_service.features.learner_invitation.entity.LearnerInvitationResponse;
+import vacademy.io.admin_core_service.features.learner_invitation.enums.CustomFieldStatusEnum;
 import vacademy.io.admin_core_service.features.learner_invitation.enums.LearnerInvitationCodeStatusEnum;
 import vacademy.io.admin_core_service.features.learner_invitation.enums.LearnerInvitationResponseStatusEnum;
 import vacademy.io.admin_core_service.features.learner_invitation.notification.LearnerInvitationNotification;
@@ -175,7 +176,7 @@ public class LearnerInvitationService {
     }
 
     public LearnerInvitationDTO getLearnerInvitationById(String learnerInvitationId, CustomUserDetails user) {
-        LearnerInvitation learnerInvitation = learnerInvitationRepository.findById(learnerInvitationId)
+        LearnerInvitation learnerInvitation = learnerInvitationRepository.findByIdWithFilteredCustomFields(learnerInvitationId,List.of(CustomFieldStatusEnum.ACTIVE.name()))
                 .orElseThrow(() -> new VacademyException("Learner invitation not found"));
         return learnerInvitation.mapToDTO();
     }

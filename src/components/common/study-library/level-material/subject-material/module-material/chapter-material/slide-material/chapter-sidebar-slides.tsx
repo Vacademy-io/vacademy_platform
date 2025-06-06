@@ -51,7 +51,7 @@ export const ChapterSidebarSlides = () => {
             </p>
           </div>
           {slide.percentage_completed != null && (
-            <p className="text-body">{slide.percentage_completed>100 ? 100:slide.percentage_completed}%</p>
+            <p className="text-body">{slide.percentage_completed>100 ? 100: slide.percentage_completed.toFixed(2)}%</p>
           )}
         </div>
       ))}

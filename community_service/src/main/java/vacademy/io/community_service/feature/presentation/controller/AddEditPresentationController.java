@@ -21,7 +21,6 @@ public class AddEditPresentationController {
     @PostMapping("/add-presentation")
     public ResponseEntity<AddPresentationDto> addPresentation(@RequestBody AddPresentationDto addPresentationDto, @RequestParam(required = false) String instituteId) {
         return presentationCrudManager.addPresentation(addPresentationDto, instituteId);
-
     }
 
     @PostMapping("/edit-presentation")

@@ -6,6 +6,7 @@ import {
 import { Worker } from "@react-pdf-viewer/core";
 
 import { defaultLayoutPlugin } from "@react-pdf-viewer/default-layout";
+import { pageNavigationPlugin } from "@react-pdf-viewer/page-navigation";
 import type {
   ToolbarProps,
   ToolbarSlot,
@@ -14,18 +15,35 @@ import type {
 
 import "@react-pdf-viewer/core/lib/styles/index.css";
 import "@react-pdf-viewer/default-layout/lib/styles/index.css";
+import "@react-pdf-viewer/page-navigation/lib/styles/index.css";
+import { forwardRef, useImperativeHandle } from "react";
 
-export const PdfViewerComponent = ({
-  pdfUrl,
-  handleDocumentLoad,
-  handlePageChange,
-  initialPage=0
-}: {
+export interface PdfViewerComponentRef {
+  jumpToPage: (pageIndex: number) => void;
+}
+
+export const PdfViewerComponent = forwardRef<PdfViewerComponentRef, {
   pdfUrl: string;
   handleDocumentLoad: (e: DocumentLoadEvent) => void;
   handlePageChange: (e: PageChangeEvent) => void;
   initialPage?: number;
-}) => {
+}>(({
+  pdfUrl,
+  handleDocumentLoad,
+  handlePageChange,
+  initialPage = 0
+}, ref) => {
+  // Create page navigation plugin instance
+  const pageNavigationPluginInstance = pageNavigationPlugin();
+  const { jumpToPage } = pageNavigationPluginInstance;
+
+  // Expose jumpToPage function through ref
+  useImperativeHandle(ref, () => ({
+    jumpToPage: (pageIndex: number) => {
+      jumpToPage(pageIndex);
+    },
+  }), [jumpToPage]);
+
   const transform: TransformToolbarSlot = (slot: ToolbarSlot) => ({
     ...slot,
     Download: () => <></>,
@@ -34,12 +52,15 @@ export const PdfViewerComponent = ({
     Print: () => <></>,
     SwitchSelectionModeMenuItem: () => <></>,
   });
+  
   const renderToolbar = (
     Toolbar: (props: ToolbarProps) => React.ReactElement
   ) => <Toolbar>{renderDefaultToolbar(transform)}</Toolbar>;
+  
   const defaultLayoutPluginInstance = defaultLayoutPlugin({
     renderToolbar,
   });
+  
   const { renderDefaultToolbar } =
     defaultLayoutPluginInstance.toolbarPluginInstance;
 
@@ -50,10 +71,10 @@ export const PdfViewerComponent = ({
           fileUrl={pdfUrl}
           onDocumentLoad={handleDocumentLoad}
           onPageChange={handlePageChange}
-          plugins={[defaultLayoutPluginInstance]}
+          plugins={[defaultLayoutPluginInstance, pageNavigationPluginInstance]}
           initialPage={initialPage}
         />
       </div>
     </Worker>
   );
-};
+});

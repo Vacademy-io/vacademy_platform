@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "clear-cache": "rm -rf .vite node_modules/.vite node_modules/.cache dist .tsbuildinfo tsconfig.tsbuildinfo && pnpm store prune",
+    "fresh-start": "pnpm clear-cache && pnpm install && pnpm dev"
   },
   "dependencies": {
     "@capacitor-community/privacy-screen": "^6.0.0",

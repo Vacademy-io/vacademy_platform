@@ -1,0 +1,210 @@
+import { LayoutContainer } from "@/components/common/layout-container/layout-container";
+import { createFileRoute } from "@tanstack/react-router";
+import { Helmet } from "react-helmet";
+import { useEffect, useState } from "react";
+import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
+import { useLiveSessions } from "./-hooks/useLiveSessions";
+import { SessionDetails } from "./-types/types";
+import { MyButton } from "@/components/design-system/button";
+import { useNavigate } from "@tanstack/react-router";
+import { SessionStreamingServiceType } from "@/routes/register/live-class/-types/enum";
+import { getPackageSessionId } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
+
+export const Route = createFileRoute("/study-library/live-class/")({
+  component: RouteComponent,
+});
+
+function RouteComponent() {
+  const { setNavHeading } = useNavHeadingStore();
+  const navigate = useNavigate();
+  const [batchId, setBatchId] = useState<string>("");
+
+  useEffect(() => {
+    const fetchBatchId = async () => {
+      const id = await getPackageSessionId();
+      setBatchId(id);
+    };
+    fetchBatchId();
+  }, []);
+
+  const { data: sessions, isLoading, error } = useLiveSessions(batchId);
+  console.log("sessions ", sessions);
+
+  useEffect(() => {
+    setNavHeading(
+      <div className="flex items-center gap-2">
+        <div>Live Class</div>
+      </div>
+    );
+  }, [setNavHeading]);
+
+  const formatDateTime = (date: string, time: string) => {
+    const datetime = new Date(`${date}T${time}`);
+    return datetime.toLocaleString("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+  };
+
+  const handleJoinSession = (session: SessionDetails) => {
+    const now = new Date();
+    const sessionDate = new Date(
+      `${session.meeting_date}T${session.start_time}`
+    );
+    const waitingRoomStart = new Date(sessionDate);
+    waitingRoomStart.setMinutes(
+      waitingRoomStart.getMinutes() - session.waiting_room_time
+    );
+
+    // Check if we're in waiting room period or main session
+    const isInWaitingRoom = now >= waitingRoomStart && now < sessionDate;
+    const isInMainSession = now >= sessionDate;
+
+    if (isInWaitingRoom) {
+      // Navigate to waiting room
+      navigate({
+        to: "/study-library/live-class/waiting-room",
+        search: { sessionId: session.schedule_id },
+      });
+    } else if (isInMainSession) {
+      // Navigate to live session
+      console.log("session ", session);
+      if (
+        session.session_streaming_service_type ===
+        SessionStreamingServiceType.EMBED
+      ) {
+        console.log("embed");
+        navigate({
+          to: "/study-library/live-class/embed",
+          search: { sessionId: session.schedule_id },
+        });
+      } else {
+        window.open(session.meeting_link, "_blank", "noopener,noreferrer");
+      }
+    }
+  };
+
+  const calculateDuration = (startTime: string, lastEntryTime: string) => {
+    const [startHours, startMinutes] = startTime.split(":").map(Number);
+    const [endHours, endMinutes] = lastEntryTime.split(":").map(Number);
+
+    let durationMinutes =
+      endHours * 60 + endMinutes - (startHours * 60 + startMinutes);
+
+    if (durationMinutes < 0) {
+      durationMinutes += 24 * 60;
+    }
+
+    const hours = Math.floor(durationMinutes / 60);
+    const minutes = durationMinutes % 60;
+
+    if (hours === 0) {
+      return `${minutes} minutes`;
+    } else if (minutes === 0) {
+      return `${hours} hour${hours > 1 ? "s" : ""}`;
+    } else {
+      return `${hours} hour${hours > 1 ? "s" : ""} ${minutes} minutes`;
+    }
+  };
+
+  const renderSession = (session: SessionDetails, isLive: boolean) => (
+    isLive && console.log("session ", session),
+    (
+      <div
+        key={session.session_id}
+        className="p-4 border rounded-lg bg-white shadow-sm hover:shadow-md transition-shadow w-full"
+      >
+        <div className="flex justify-between items-center">
+          <div>
+            <h3 className="font-medium text-lg">{session.title}</h3>
+          </div>
+          {isLive && session.meeting_link && (
+            <MyButton
+              buttonType="secondary"
+              className="mt-4"
+              onClick={() => handleJoinSession(session)}
+            >
+              Join Session
+            </MyButton>
+          )}
+        </div>
+
+        <div className="mt-4 flex flex-row gap-6 items-center justify-between">
+          <p className="text-sm">
+            <span className="font-medium">Starts:</span>{" "}
+            {formatDateTime(session.meeting_date, session.start_time)}
+          </p>
+          <p className="text-sm">
+            <span className="font-medium">Duration:</span>{" "}
+            {calculateDuration(session.start_time, session.last_entry_time)}
+          </p>
+        </div>
+      </div>
+    )
+  );
+
+  if (isLoading) {
+    return (
+      <LayoutContainer>
+        <div className="flex items-center justify-center min-h-[200px]">
+          <div className="animate-pulse text-gray-600">Loading sessions...</div>
+        </div>
+      </LayoutContainer>
+    );
+  }
+
+  if (error) {
+    return (
+      <LayoutContainer>
+        <div className="p-4 border border-red-200 rounded-lg bg-red-50 text-red-700">
+          Error loading sessions: {(error as Error).message}
+        </div>
+      </LayoutContainer>
+    );
+  }
+
+  const liveSessions = sessions?.live_sessions ?? [];
+  const upcomingSessions = sessions?.upcoming_sessions ?? [];
+
+  return (
+    <LayoutContainer>
+      <Helmet>
+        <title>Live Classes</title>
+        <meta name="description" content="Live and upcoming class sessions" />
+      </Helmet>
+
+      <div className="space-y-8">
+        <div>
+          <h2 className="text-2xl font-semibold mb-4">Live Sessions</h2>
+          {liveSessions.length > 0 ? (
+            <div className="space-y-4 w-full">
+              {liveSessions.map((session) => renderSession(session, true))}
+            </div>
+          ) : (
+            <p className="text-gray-600 p-4 bg-gray-50 rounded-lg w-full">
+              No live sessions at the moment
+            </p>
+          )}
+        </div>
+
+        <div>
+          <h2 className="text-2xl font-semibold mb-4">Upcoming Sessions</h2>
+          {upcomingSessions.length > 0 ? (
+            <div className="space-y-4 w-full">
+              {upcomingSessions.map((session) => renderSession(session, false))}
+            </div>
+          ) : (
+            <p className="text-gray-600 p-4 bg-gray-50 rounded-lg w-full">
+              No upcoming sessions scheduled
+            </p>
+          )}
+        </div>
+      </div>
+    </LayoutContainer>
+  );
+}

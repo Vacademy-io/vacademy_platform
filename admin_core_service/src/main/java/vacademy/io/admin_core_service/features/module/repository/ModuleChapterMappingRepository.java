@@ -29,8 +29,8 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
                 'description', m.description
             ),
             'percentage_completed', COALESCE(AVG(chap_data.percentage_completed), 0.0),
-            'chapters', json_agg(
-                json_build_object(
+            'chapters', COALESCE(json_agg(
+                DISTINCT jsonb_build_object(
                     'id', c.id,
                     'chapter_name', c.chapter_name,
                     'status', c.status,
@@ -46,13 +46,14 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
                     'survey_slide_count', chap_data.survey_slide_count,
                     'unknown_count', chap_data.unknown_count
                 )
-            )
+            ) FILTER (WHERE c.id IS NOT NULL), CAST('[]' AS json))
         ) AS module_data
         FROM subject_module_mapping smm
         JOIN modules m ON smm.module_id = m.id AND m.status IN (:moduleStatusList)
-        JOIN module_chapter_mapping mcm ON mcm.module_id = m.id
-        JOIN chapter c ON c.id = mcm.chapter_id AND c.status IN (:chapterStatusList)
-        JOIN chapter_package_session_mapping cpsm ON cpsm.chapter_id = c.id 
+        LEFT JOIN module_chapter_mapping mcm ON mcm.module_id = m.id
+        LEFT JOIN chapter c ON c.id = mcm.chapter_id AND c.status IN (:chapterStatusList)
+        LEFT JOIN chapter_package_session_mapping cpsm 
+            ON cpsm.chapter_id = c.id 
             AND cpsm.status != 'DELETED' 
             AND cpsm.package_session_id = :packageSessionId
         LEFT JOIN (

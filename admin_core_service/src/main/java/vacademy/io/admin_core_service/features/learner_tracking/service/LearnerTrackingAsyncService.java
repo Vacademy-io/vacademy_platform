@@ -73,7 +73,6 @@ public class LearnerTrackingAsyncService {
                                                   String moduleId,
                                                   String subjectId,
                                                   String packageSessionId) {
-        executor.submit(() -> {
             // Separate parameters for operation list and status list
             List<String> learnerOperations = List.of(
                     LearnerOperationEnum.PERCENTAGE_VIDEO_WATCHED.name(),
@@ -84,11 +83,9 @@ public class LearnerTrackingAsyncService {
                     SlideStatus.PUBLISHED.name(),
                     SlideStatus.UNSYNC.name()
             );
-
             Double percentageWatched = activityLogRepository.getChapterCompletionPercentage(
                     userId, chapterId, learnerOperations, statusList
             );
-
             learnerOperationService.addOrUpdateOperation(
                     userId,
                     LearnerOperationSourceEnum.CHAPTER.name(),
@@ -104,14 +101,9 @@ public class LearnerTrackingAsyncService {
                     LearnerOperationEnum.LAST_SLIDE_VIEWED.name(),
                     slideId
             );
-        });
-        try {
             updateModuleCompletionPercentage(userId,moduleId);
             updateSubjectCompletionPercentage(userId,subjectId);
             updatePackageSessionCompletionPercentage(userId,packageSessionId);
-        }catch (Exception e){
-            e.printStackTrace();
-        }
     }
 
     public void updateModuleCompletionPercentage(String userId, String moduleId) {

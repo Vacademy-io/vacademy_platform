@@ -14,10 +14,14 @@ import { getPackageSessionId } from "@/utils/study-library/get-list-from-stores/
 import { fetchStudyLibraryDetails } from "@/services/study-library/getStudyLibraryDetails";
 import { useStudyLibraryStore } from "@/stores/study-library/use-study-library-store";
 import { MyButton } from "@/components/design-system/button";
-import { DashbaordResponse, DashboardSlide } from "./-types/dashboard-data-types";
+import {
+  DashbaordResponse,
+  DashboardSlide,
+} from "./-types/dashboard-data-types";
 import { getIcon } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/chapter-sidebar-slides";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import { PastLearningInsights } from "./-components/PastLearningInsights";
+import { fetchAndStoreInstituteDetails } from "@/services/fetchAndStoreInstituteDetails";
 
 export const Route = createFileRoute("/dashboard/")({
   beforeLoad: async () => {
@@ -26,6 +30,7 @@ export const Route = createFileRoute("/dashboard/")({
     if (!instituteId || !userId) {
       throw new Error("Institute ID or User ID is missing");
     }
+    await fetchAndStoreInstituteDetails(instituteId, userId);
     const response = await fetchStudentDetails(instituteId, userId);
     const studentDetails = response.data[0];
     await Preferences.set({
@@ -74,7 +79,7 @@ export function DashboardComponent() {
       is_loaded: false,
       new_slide: false,
       percentage_completed: 0,
-      progress_marker: slide.progress_marker
+      progress_marker: slide.progress_marker,
     });
     navigate({
       to: `/study-library/courses/levels/subjects/modules/chapters/slides?subjectId=${slide.subject_id}&moduleId=${slide.module_id}&chapterId=${slide.chapter_id}&slideId=${slide.slide_id}`,
@@ -146,8 +151,8 @@ export function DashboardComponent() {
             buttonText="Resume"
             list={data?.slides}
           /> */}
-        
-       <div className="p-4 w-full flex flex-col gap-4 rounded-lg border border-neutral-200 ">
+
+        <div className="p-4 w-full flex flex-col gap-4 rounded-lg border border-neutral-200 ">
           <p className="text-subtitle font-semibold">Continue where you left</p>
           {data?.slides.map((slide) => (
             <div key={slide.slide_id} className="flex gap-2 justify-between">
@@ -155,10 +160,16 @@ export function DashboardComponent() {
                 {getIcon(slide?.source_type)}
                 <p>{slide?.slide_title}</p>
               </div>
-              <MyButton buttonType="secondary" className="w-fit" onClick={()=>handleResumeClick(slide)}>Resume</MyButton>
+              <MyButton
+                buttonType="secondary"
+                className="w-fit"
+                onClick={() => handleResumeClick(slide)}
+              >
+                Resume
+              </MyButton>
             </div>
           ))}
-       </div>
+        </div>
         <div
           onClick={() => {
             navigate({
@@ -172,9 +183,8 @@ export function DashboardComponent() {
             count={testAssignedCount}
             button={false}
           />
-
         </div>
-          <PastLearningInsights />
+        <PastLearningInsights />
       </div>
     </div>
   );

@@ -66,49 +66,51 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
 
 
 @Query(value = """
-        SELECT
-            s.id AS sessionId,
-            ss.id AS scheduleId,
-            ss.meeting_date AS meetingDate,
-            ss.start_time AS startTime,
-            ss.last_entry_time AS lastEntryTime,
-            ss.recurrence_type AS recurrenceType,
-            s.access_level AS accessLevel,
-            s.title AS title,
-            s.subject AS subject,
-            COALESCE(ss.custom_meeting_link, s.default_meet_link) AS meetingLink
-        FROM live_session s
-        JOIN session_schedules ss ON s.id = ss.session_id
-        WHERE s.status = 'LIVE'
-          AND ss.meeting_date >= CURRENT_DATE
-          AND CURRENT_TIME < ss.start_time
-          AND s.institute_id = :instituteId
-          ORDER BY ss.meeting_date ASC, ss.start_time ASC
-        """,
-            nativeQuery = true)
+    SELECT
+    s.id AS sessionId,
+    ss.id AS scheduleId,
+    ss.meeting_date AS meetingDate,
+    ss.start_time AS startTime,
+    ss.last_entry_time AS lastEntryTime,
+    ss.recurrence_type AS recurrenceType,
+    s.access_level AS accessLevel,
+    s.title AS title,
+    s.subject AS subject,
+    COALESCE(ss.custom_meeting_link, s.default_meet_link) AS meetingLink
+    FROM live_session s
+    JOIN session_schedules ss ON s.id = ss.session_id
+    WHERE s.status = 'LIVE'
+    AND (
+            ss.meeting_date > CAST((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata') AS date)
+                    OR (ss.meeting_date = CAST((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata') AS date) AND CAST((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata') AS time) < ss.start_time)
+          )
+    AND s.institute_id = :instituteId
+    ORDER BY ss.meeting_date ASC, ss.start_time ASC
+    """, nativeQuery = true)
     List<LiveSessionRepository.LiveSessionListProjection> findUpcomingSessions(@Param("instituteId") String instituteId);
 
-@Query(value = """
-        SELECT
-            s.id AS sessionId,
-            ss.id AS scheduleId,
-            ss.meeting_date AS meetingDate,
-            ss.start_time AS startTime,
-            ss.last_entry_time AS lastEntryTime,
-            ss.recurrence_type AS recurrenceType,
-            s.access_level AS accessLevel,
-            s.title AS title,
-            s.subject AS subject,
-            COALESCE(ss.custom_meeting_link, s.default_meet_link) AS meetingLink
-        FROM live_session s
-        JOIN session_schedules ss ON s.id = ss.session_id
-        WHERE s.status = 'LIVE'
-          AND ss.meeting_date <= CURRENT_DATE
-          AND CURRENT_TIME > ss.last_entry_time
-          AND s.institute_id = :instituteId
-          ORDER BY ss.meeting_date ASC, ss.start_time ASC
-        """,
-            nativeQuery = true)
+    @Query(value = """
+    SELECT
+        s.id AS sessionId,
+        ss.id AS scheduleId,
+        ss.meeting_date AS meetingDate,
+        ss.start_time AS startTime,
+        ss.last_entry_time AS lastEntryTime,
+        ss.recurrence_type AS recurrenceType,
+        s.access_level AS accessLevel,
+        s.title AS title,
+        s.subject AS subject,
+        COALESCE(ss.custom_meeting_link, s.default_meet_link) AS meetingLink
+    FROM live_session s
+    JOIN session_schedules ss ON s.id = ss.session_id
+    WHERE s.status = 'LIVE'
+      AND (
+            ss.meeting_date < CAST((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata') AS date)
+            OR (ss.meeting_date = CAST((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata') AS date) AND CAST((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata') AS time) > ss.last_entry_time)
+          )
+      AND s.institute_id = :instituteId
+    ORDER BY ss.meeting_date ASC, ss.start_time ASC
+    """, nativeQuery = true)
     List<LiveSessionRepository.LiveSessionListProjection> findPreviousSessions(@Param("instituteId") String instituteId);
 
 

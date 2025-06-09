@@ -21,7 +21,7 @@ public class GuestRegistrationRequestDTO {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class CustomFieldValueDTO {
-        private Integer customFieldId; // FK to custom_fields
+        private String customFieldId; // FK to custom_fields
         private String value;          // actual value filled by guest
     }
 }

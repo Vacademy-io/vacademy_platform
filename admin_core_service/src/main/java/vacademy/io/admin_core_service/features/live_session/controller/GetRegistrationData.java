@@ -33,4 +33,9 @@ public class GetRegistrationData {
         registrationService.saveGuestUserDetails(requestDTO);
         return ResponseEntity.ok(true);
     }
+
+    @GetMapping("/check-email-registration")
+    ResponseEntity<Boolean> checkEmailRegistration(@RequestParam("email") String email , @RequestParam("sessionId") String sessionId){
+        return ResponseEntity.ok(getRegistrationFromResponseDTO.checkEmailRegistration(email , sessionId));
+    }
 }

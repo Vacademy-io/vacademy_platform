@@ -587,7 +587,7 @@ public class ConstantAiTemplate {
                 **Input Topic/Text:**
 
                 {inputText}
-                
+                                
                 **Language to be used for generating content:**
 
                 {language}
@@ -606,8 +606,21 @@ public class ConstantAiTemplate {
                 * **Creative Infographics:** Go beyond simple boxes. Use shapes and layouts to create meaningful visual metaphors (e.g., a branching tree for consequences, a gear system for interconnected causes, a balance scale for comparing arguments). The visuals should directly support the kind of analytical thinking required for the assessment.
                 * **Engaging Styling:** Use a consistent and intentional color palette, vary typography for hierarchy (`fontFamily`, `fontSize`), and use fill styles (`"solid"`, `"cross-hatch"`, `"hachure"`) to distinguish between elements and guide the viewer's attention.
                 * **Format:** The final output for this part must be a JSON array of Excalidraw objects.
-
+                                
+              
+                Layout and Dimensioning Rules 
+                To ensure the generated slides are high-quality and immediately usable, you MUST follow these layout rules for every slide:
+                                
+                Center the Diagram on the Canvas:
+                                
+                All diagrams must be centered around the origin point (0, 0).
+                To achieve this, use a balanced mix of negative and positive x and y coordinates. For example, a diagram 800px wide should span from roughly x: -400 to x: 400. A diagram 600px tall should span from y: -300 to y: 300. This prevents the diagram from being pushed into a corner.
+                Prevent Text Cut-Off:
+                                
+                For every text element, you must set the width and height properties to be significantly larger than the text content it holds. This creates a generous bounding box and prevents the text from being truncated.
+                Rule of Thumb: For a single-line title, use a width of 500-800px. For a multi-line paragraph, use a width of 400-600px and a height that can accommodate all lines comfortably (e.g., 100-200px). It is better for the bounding box to be too big than too small.
                 ---
+                                
 
                 ### **Part 2: Generate Assessment Questions**
 

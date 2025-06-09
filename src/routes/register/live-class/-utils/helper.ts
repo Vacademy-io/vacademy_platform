@@ -1,34 +1,34 @@
-import { CustomField } from "../-types/type";
+import { CustomField, RegistrationFormValues } from "../-types/type";
 
 export interface GuestRegistrationRequestDTO {
-  sessionId: string;
+  session_id: string;
   email: string;
-  customFields: {
+  custom_fields: {
     customFieldId: string;
     value: string;
   }[];
 }
 
 export const transformToGuestRegistrationDTO = (
-  formValues: Record<string, any>,
+  formValues: RegistrationFormValues,
   sessionId: string,
   customFields: CustomField[]
 ): GuestRegistrationRequestDTO => {
   const dto: GuestRegistrationRequestDTO = {
-    sessionId,
-    email: formValues.email,
-    customFields: [],
+    session_id: sessionId,
+    email: formValues.email as string,
+    custom_fields: [],
   };
   console.log("formValues ", formValues);
-  console.log("customFileds " , customFields);
+  console.log("customFileds ", customFields);
 
   for (const field of customFields) {
     const value = formValues[field.fieldKey];
 
     // Only include value if present (especially if not mandatory)
     if (value !== undefined && value !== null) {
-      dto.customFields.push({
-        customFieldId: field.id, // assuming the ID is string UUID, change to number if needed
+      dto.custom_fields.push({
+        customFieldId: field.id,
         value: String(value),
       });
     }

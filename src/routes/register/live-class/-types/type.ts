@@ -14,6 +14,7 @@ export interface CustomField {
 export interface SessionCustomFieldsResponse {
   sessionId: string;
   sessionTitle: string;
+  subject: string;
   startTime: string; // ISO date string
   lastEntryTime: string; // ISO date string
   accessLevel: string;

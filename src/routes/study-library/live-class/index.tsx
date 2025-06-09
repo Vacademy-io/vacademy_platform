@@ -9,6 +9,8 @@ import { MyButton } from "@/components/design-system/button";
 import { useNavigate } from "@tanstack/react-router";
 import { SessionStreamingServiceType } from "@/routes/register/live-class/-types/enum";
 import { getPackageSessionId } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
+import { useMarkAttendance } from "./-hooks/useMarkAttendance";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/study-library/live-class/")({
   component: RouteComponent,
@@ -18,6 +20,7 @@ function RouteComponent() {
   const { setNavHeading } = useNavHeadingStore();
   const navigate = useNavigate();
   const [batchId, setBatchId] = useState<string>("");
+  const { mutateAsync: markAttendance } = useMarkAttendance();
 
   useEffect(() => {
     const fetchBatchId = async () => {
@@ -51,7 +54,7 @@ function RouteComponent() {
     });
   };
 
-  const handleJoinSession = (session: SessionDetails) => {
+  const handleJoinSession = async (session: SessionDetails) => {
     const now = new Date();
     const sessionDate = new Date(
       `${session.meeting_date}T${session.start_time}`
@@ -66,25 +69,50 @@ function RouteComponent() {
     const isInMainSession = now >= sessionDate;
 
     if (isInWaitingRoom) {
-      // Navigate to waiting room
+      // Navigate to waiting room without marking attendance
       navigate({
         to: "/study-library/live-class/waiting-room",
         search: { sessionId: session.schedule_id },
       });
     } else if (isInMainSession) {
-      // Navigate to live session
-      console.log("session ", session);
-      if (
-        session.session_streaming_service_type ===
-        SessionStreamingServiceType.EMBED
-      ) {
-        console.log("embed");
-        navigate({
-          to: "/study-library/live-class/embed",
-          search: { sessionId: session.schedule_id },
+      try {
+        // Mark attendance only when directly joining live session
+        await markAttendance({
+          sessionId: session.session_id,
+          scheduleId: session.schedule_id,
+          userSourceType: "USER",
+          userSourceId: "",
+          details: "Joined live class directly",
         });
-      } else {
-        window.open(session.meeting_link, "_blank", "noopener,noreferrer");
+
+        // Navigate to live session
+        if (
+          session.session_streaming_service_type ===
+          SessionStreamingServiceType.EMBED
+        ) {
+          navigate({
+            to: "/study-library/live-class/embed",
+            search: { sessionId: session.schedule_id },
+          });
+        } else {
+          window.open(session.meeting_link, "_blank", "noopener,noreferrer");
+        }
+      } catch (error) {
+        console.error("Failed to mark attendance:", error);
+        toast.error("Failed to mark attendance");
+
+        // Still proceed with navigation even if attendance marking fails
+        if (
+          session.session_streaming_service_type ===
+          SessionStreamingServiceType.EMBED
+        ) {
+          navigate({
+            to: "/study-library/live-class/embed",
+            search: { sessionId: session.schedule_id },
+          });
+        } else {
+          window.open(session.meeting_link, "_blank", "noopener,noreferrer");
+        }
       }
     }
   };

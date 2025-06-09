@@ -10,6 +10,9 @@ import { CountdownTimer } from "./-components/CountdownTimer";
 import { getPublicUrl } from "@/services/upload_file";
 import { BackgroundMusic } from "./-components/BackgroundMusic";
 import { SessionStreamingServiceType } from "@/routes/register/live-class/-types/enum";
+import { useMarkAttendance } from "../-hooks/useMarkAttendance";
+import { toast } from "sonner";
+
 export const Route = createFileRoute("/study-library/live-class/waiting-room/")(
   {
     validateSearch: z.object({
@@ -24,6 +27,7 @@ function WaitingRoomComponent() {
   const { sessionId } = Route.useSearch();
   const { setNavHeading } = useNavHeadingStore();
   const navigate = useNavigate();
+  const { mutateAsync: markAttendance } = useMarkAttendance();
   const {
     data: sessionDetails,
     isLoading,
@@ -47,31 +51,62 @@ function WaitingRoomComponent() {
   // Handle session start
   useEffect(() => {
     if (sessionDetails) {
-      const checkSessionStart = () => {
+      const checkSessionStart = async () => {
         const now = new Date();
         const sessionStart = new Date(
           `${sessionDetails.meetingDate}T${sessionDetails.scheduleStartTime}`
         );
 
         if (now >= sessionStart && sessionDetails.defaultMeetLink) {
-          // Redirect to the meeting when session starts
-          if (
-            sessionDetails.sessionStreamingServiceType ===
-            SessionStreamingServiceType.EMBED
-          ) {
-            console.log("embed");
-            navigate({
-              to: "/study-library/live-class/embed",
-              search: { sessionId: sessionId },
+          try {
+            // Mark attendance before redirecting
+            await markAttendance({
+              sessionId: sessionDetails.sessionId,
+              scheduleId: sessionId,
+              userSourceType: "USER",
+              userSourceId: "",
+              details: "Joined live class from waiting room",
             });
-          } else {
-            window.open(
-              sessionDetails.defaultMeetLink,
-              "_blank",
-              "noopener,noreferrer"
-            );
-            // Navigate back to live classes page
-            navigate({ to: "/study-library/live-class" });
+
+            // Redirect to the meeting when session starts
+            if (
+              sessionDetails.sessionStreamingServiceType ===
+              SessionStreamingServiceType.EMBED
+            ) {
+              navigate({
+                to: "/study-library/live-class/embed",
+                search: { sessionId: sessionId },
+              });
+            } else {
+              window.open(
+                sessionDetails.defaultMeetLink,
+                "_blank",
+                "noopener,noreferrer"
+              );
+              // Navigate back to live classes page
+              navigate({ to: "/study-library/live-class" });
+            }
+          } catch (error) {
+            console.error("Failed to mark attendance:", error);
+            toast.error("Failed to mark attendance");
+
+            // Still proceed with redirection even if attendance marking fails
+            if (
+              sessionDetails.sessionStreamingServiceType ===
+              SessionStreamingServiceType.EMBED
+            ) {
+              navigate({
+                to: "/study-library/live-class/embed",
+                search: { sessionId: sessionId },
+              });
+            } else {
+              window.open(
+                sessionDetails.defaultMeetLink,
+                "_blank",
+                "noopener,noreferrer"
+              );
+              navigate({ to: "/study-library/live-class" });
+            }
           }
         }
       };
@@ -84,7 +119,7 @@ function WaitingRoomComponent() {
 
       return () => clearInterval(timer);
     }
-  }, [sessionDetails, navigate]);
+  }, [sessionDetails, navigate, markAttendance, sessionId]);
 
   if (isLoading) {
     return <DashboardLoader />;

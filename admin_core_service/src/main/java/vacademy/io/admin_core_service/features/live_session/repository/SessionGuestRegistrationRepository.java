@@ -8,5 +8,6 @@ public interface SessionGuestRegistrationRepository extends JpaRepository<Sessio
 
     @Transactional
     boolean existsBySessionIdAndEmail(String sessionId, String email);
+
 }
 

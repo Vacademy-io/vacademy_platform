@@ -1,0 +1,23 @@
+package vacademy.io.admin_core_service.features.live_session.controller;
+
+
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import vacademy.io.admin_core_service.features.live_session.dto.MarkAttendanceRequestDTO;
+import vacademy.io.admin_core_service.features.live_session.service.LIveSessionAttendanceService;
+import vacademy.io.common.auth.model.CustomUserDetails;
+
+@RestController
+@RequestMapping("/admin-core-service/live-session")
+@RequiredArgsConstructor
+public class LiveSessionAttendance {
+
+    private final LIveSessionAttendanceService liveSessionLogService;
+
+    @PostMapping("/mark-attendance")
+    public ResponseEntity<String> markAttendance(@RequestBody MarkAttendanceRequestDTO request , @RequestAttribute("user") CustomUserDetails user) {
+        liveSessionLogService.markAttendance(request , user);
+        return ResponseEntity.ok("Attendance marked successfully.");
+    }
+}

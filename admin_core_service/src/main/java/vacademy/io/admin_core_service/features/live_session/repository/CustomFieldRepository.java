@@ -21,6 +21,7 @@ public interface CustomFieldRepository extends JpaRepository<CustomFields, Strin
         String getFieldType();
         String getDefaultValue();
         String getConfig();
+        String getSubject();
         int getFormOrder();
         boolean getIsMandatory();
         boolean getIsFilter();

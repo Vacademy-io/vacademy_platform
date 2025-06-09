@@ -18,6 +18,7 @@ public class RegistrationFromResponseDTO {
     private LocalDateTime lastEntryTime;
     private String accessLevel;
     private String instituteId;
+    private String subject;
     private List<CustomFieldDTO> customFields;
 
     @Data

@@ -19,7 +19,7 @@ public class CustomFieldValues {
     private String id;
 
     @Column(name = "custom_field_id", nullable = false)
-    private Integer customFieldId;
+    private String customFieldId;
 
     @Column(name = "source_type", nullable = false)
     private String sourceType;

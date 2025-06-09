@@ -94,6 +94,7 @@ public class ConstantAiTemplate {
             case CHAT_WITH_PDF -> getChatWithPdfTemplate();
             case HTML_TO_QUESTIONS -> getHtmlToQuestionTemplate();
             case EXTRACT_QUESTION_METADATA -> getMetadataOfQuestions();
+            case PRESENTATION_AI_GENERATE -> getSlidesAndAssessmentPromptTemplate();
         };
     }
 
@@ -562,4 +563,211 @@ public class ConstantAiTemplate {
                                    }}
                 """;
     }
+
+
+    /**
+     * Returns the master prompt template for generating Excalidraw slides and
+     * a corresponding critical thinking assessment based on input text.
+     * <p>
+     * The placeholder {inputText} should be replaced with the actual content.
+     * Note: Literal curly braces in the JSON examples are escaped as `{{` and `}}`
+     *
+     * @return A multi-line string containing the full, escaped prompt.
+     */
+    private static String getSlidesAndAssessmentPromptTemplate() {
+        return """
+                **Primary Directive:**
+                You are to act as an Expert AI Curriculum Developer. Your task is to process the provided input topic/text and generate a single, complete JSON object containing two key components:
+
+                1.  A series of visually engaging, infographic-style Excalidraw slides.
+                2.  A structured assessment with a set of questions designed to test deep comprehension and critical thinking.
+
+                The entire output must be a single, valid JSON object.
+
+                **Input Topic/Text:**
+
+                {inputText}
+                
+                **Language to be used for generating content:**
+
+                {language}
+
+                ---
+
+                ### **Part 1: Generate Visual Excalidraw Slides**
+
+                **Your Role:** Visual Information Designer
+
+                **Your Goal:** Tell a visual story by deconstructing the input into 4-6 logical, sequential slides. Each slide must be a complete Excalidraw JSON object.
+
+                **Instructions:**
+
+                * **Narrative Flow:** Each slide must represent a single, core idea. Arrange the slides to create a clear narrative, moving from foundational concepts to more complex analyses or implications.
+                * **Creative Infographics:** Go beyond simple boxes. Use shapes and layouts to create meaningful visual metaphors (e.g., a branching tree for consequences, a gear system for interconnected causes, a balance scale for comparing arguments). The visuals should directly support the kind of analytical thinking required for the assessment.
+                * **Engaging Styling:** Use a consistent and intentional color palette, vary typography for hierarchy (`fontFamily`, `fontSize`), and use fill styles (`"solid"`, `"cross-hatch"`, `"hachure"`) to distinguish between elements and guide the viewer's attention.
+                * **Format:** The final output for this part must be a JSON array of Excalidraw objects.
+
+                ---
+
+                ### **Part 2: Generate Assessment Questions**
+
+                **Your Role:** Expert Assessment Creator
+
+                **Your Goal:** Generate a set of high-quality questions that probe for genuine understanding, application, and analysis of the information presented in the input text.
+
+                **Guiding Principle:** Move beyond simple fact-checking. Your goal is to create questions that assess a learner's ability to think critically *with* the material. Avoid trivial questions about metadata (e.g., "Who wrote the text?").
+
+                #### **Cognitive Depth and Question Strategy (Based on Bloom's Taxonomy)**
+
+                You must generate a diverse range of questions that target different cognitive levels. Ensure the assessment includes a mix of the following types, with a strong emphasis on **Analyze, Apply, and Evaluate**.
+
+                * **1. Understand (Conceptual Questions):**
+                    * **Goal:** Test if the learner can explain concepts in their own words.
+                    * **Example:** "Which of the following statements best *summarizes* the 'greenhouse effect' as described in the text?"
+                * **2. Apply (Application Questions):**
+                    * **Goal:** Test if the learner can use information in a new, concrete situation.
+                    * **Example:** "A city government is proposing a new tree-planting initiative. Based on the lecture, how would this policy *help mitigate* the urban heat island effect?" (This requires a `LONG_ANSWER` or a well-structured `MCQS`).
+                * **3. Analyze (Analytical Questions):**
+                    * **Goal:** Test if the learner can break down information into its component parts and see the relationships between them.
+                    * **Example:** "What is the *most likely relationship* between the decline in arctic sea ice and the changes in global weather patterns mentioned in the text?"
+                * **4. Evaluate (Evaluative Questions):**
+                    * **Goal:** Test if the learner can make and justify a judgment or decision.
+                    * **Example:** "Evaluate the claim that 'individual consumer choices are the most critical factor in combating climate change' using two pieces of evidence from the provided text." (This is ideal for a `LONG_ANSWER`).
+
+                #### **Instructions & Schema:**
+
+                * **Question Type Handling:**
+                    * For `MCQS`/`MCQM`, provide 4 distinct and plausible options. The incorrect options (distractors) should represent common misconceptions. The `correct_options` array must be accurate.
+                    * For `ONE_WORD`/`LONG_ANSWER`, omit the `options` field. Provide a detailed, ideal answer in the `ans` field and a thorough explanation of the underlying concepts in the `exp` field.
+
+                * **Strict Output Format:** The questions must be contained within a JSON object matching the exact structure below.
+
+                ```json
+                {{
+                  "questions": [
+                    {{
+                      "question_number": "number",
+                      "question": {{ "type": "HTML", "content": "string" }},
+                      "options": [
+                        {{ "type": "HTML", "preview_id": "string", "content": "string" }}
+                      ],
+                      "correct_options": ["string"],
+                      "ans": "string",
+                      "exp": "string",
+                      "question_type": "MCQS | MCQM | ONE_WORD | LONG_ANSWER"
+                    }}
+                  ]
+                }}
+                ```
+
+                ---
+
+                ### **Final Output Specification (CRITICAL)**
+
+                Combine the outputs from Part 1 and Part 2 into a single JSON object. The root object must have exactly two keys: `slides` and `assessment`. Your success will be measured by the cognitive depth of the questions and the narrative clarity of the slides.
+
+                **Example of Final Combined Structure (with a detailed Excalidraw slide and a higher-quality question):**
+
+                ```json
+                {{
+                  "slides": [
+                    {{
+                      "type": "excalidraw",
+                      "version": 2,
+                      "source": "[https://excalidraw.com](https://excalidraw.com)",
+                      "elements": [
+                        {{
+                          "id": "A_D8s_J34Teg2BvG923a1",
+                          "type": "text",
+                          "x": -274.5,
+                          "y": -203.859375,
+                          "width": 551,
+                          "height": 50,
+                          "angle": 0,
+                          "strokeColor": "#1e1e1e",
+                          "backgroundColor": "transparent",
+                          "fillStyle": "solid",
+                          "strokeWidth": 2,
+                          "strokeStyle": "solid",
+                          "roughness": 1,
+                          "opacity": 100,
+                          "fontFamily": 3,
+                          "fontSize": 40,
+                          "textAlign": "center",
+                          "verticalAlign": "middle",
+                          "text": "How the Greenhouse Effect Works"
+                        }},
+                        {{
+                          "id": "iVw5_AexnO",
+                          "type": "rectangle",
+                          "x": -431,
+                          "y": -89.859375,
+                          "width": 863,
+                          "height": 339,
+                          "angle": 0,
+                          "strokeColor": "#868e96",
+                          "backgroundColor": "#e9ecef",
+                          "fillStyle": "solid",
+                          "strokeWidth": 2,
+                          "strokeStyle": "solid",
+                          "roughness": 0,
+                          "opacity": 100,
+                          "roundness": {{ "type": 3 }}
+                        }},
+                        {{
+                          "id": "n8Yrnk_pM1",
+                          "type": "text",
+                          "x": -403,
+                          "y": -65.859375,
+                          "width": 178,
+                          "height": 25,
+                          "angle": 0,
+                          "strokeColor": "#868e96",
+                          "backgroundColor": "transparent",
+                          "fillStyle": "solid",
+                          "strokeWidth": 2,
+                          "strokeStyle": "solid",
+                          "roughness": 1,
+                          "opacity": 100,
+                          "fontFamily": 2,
+                          "fontSize": 20,
+                          "textAlign": "center",
+                          "verticalAlign": "middle",
+                          "text": "Earth's Atmosphere"
+                        }}
+                      ],
+                      "appState": {{ "viewBackgroundColor": "#ffffff" }}
+                    }}
+                  ],
+                  "assessment": {{
+                    "questions": [
+                      {{
+                        "question_number": "1",
+                        "question": {{ "type": "HTML", "content": "Based on the text's description of feedback loops, which of the following is the best example of a reinforcing cycle in climate change?" }},
+                        "options": [
+                            {{"type":"HTML", "preview_id": "1", "content":"Increased cloud cover reflecting more sunlight back to space."}},
+                            {{"type":"HTML", "preview_id": "2", "content":"Melting permafrost releasing methane, which is a potent greenhouse gas that causes more warming."}},
+                            {{"type":"HTML", "preview_id": "3", "content":"Governments passing regulations to limit CO2 emissions from factories."}},
+                            {{"type":"HTML", "preview_id": "4", "content":"The seasonal growth of forests absorbing atmospheric CO2."}}
+                        ],
+                        "correct_options": ["2"],
+                        "ans": "Melting permafrost releasing methane, which is a potent greenhouse gas that causes more warming.",
+                        "exp": "This is an example of a reinforcing (or positive) feedback loop because the initial effect (warming) causes a secondary effect (methane release) that further amplifies the initial effect, leading to even more warming. The other options describe balancing/negative feedback loops or external interventions.",
+                        "question_type": "MCQS",
+                        "tags": ["Feedback Loop", "Climate Change", "Methane", "Permafrost", "Greenhouse Gas"],
+                        "level": "medium",
+                        "subjects": ["Climatology", "Environmental Science"],
+                        "classes": ["University", "Class 12"]
+                      }}
+                    ],
+                 }},
+                 
+                 "title": "Critical Analysis of Global Warming"
+                 "slide_sequence": [0, 3, 5] // index of slides that should fit in overall flow of presentation (slides + questions), like 0th index slide should be at 0th index in presentation, 1st index slide should be at 3rd index in presentation
+                 "question_sequence": [1, 6, 2, 4] // index of slides that should fit in overall flow of presentation (slides + questions), like 0th index slide should be at 1st index in presentation
+                 
+                }}
+                """;
+    }
+
 }

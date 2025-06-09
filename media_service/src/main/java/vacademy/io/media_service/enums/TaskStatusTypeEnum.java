@@ -13,5 +13,8 @@ public enum TaskStatusTypeEnum {
     EVALUATION,
 
     EXTRACT_QUESTION_METADATA,
+    PRESENTATION_AI_GENERATE,
     HTML_TO_QUESTIONS;
+
+
 }

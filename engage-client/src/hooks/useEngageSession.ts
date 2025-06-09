@@ -1,7 +1,7 @@
 // src/hooks/useEngageSession.ts
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { toast } from 'sonner';
-import { type SessionDetailsResponse, type SseEventData, type UserSession } from '@/types';
+import { type SessionDetailsResponse, type SseEventData, type UserSession, type Slide } from '@/types';
 
 const SSE_BASE_URL = 'https://backend-stage.vacademy.io/community-service/engage/learner';
 const MAX_RECONNECT_ATTEMPTS = 10;
@@ -125,116 +125,62 @@ export const useEngageSession = ({ inviteCode, username, initialSessionData }: U
         const eventData = JSON.parse(event.data) as SseEventData;
         console.log("[SSE] Received 'session_event_learner':", eventData);
 
-        let newSessionData = sessionState.sessionData;
-        let newCurrentSlide = sessionState.currentSlide;
+        setSessionState((prev: UserSession) => {
+          let newSessionData = prev.sessionData;
+          let newCurrentSlide = prev.currentSlide;
+          let error = prev.error;
 
-        // If this is a CURRENT_SLIDE event and the session is still in INIT, 
-        // implicitly move it to STARTED state to show the slide.
-        if (eventData.type === "CURRENT_SLIDE" && newSessionData?.session_status === "INIT") {
-          newSessionData = { ...newSessionData, session_status: "STARTED" };
-          toast.success("Session Started!", { description: "The presentation is now live." });
-        }
-
-        if (eventData.status) {
-          newSessionData = newSessionData ? { ...newSessionData, session_status: eventData.status } : null;
-          if (eventData.status === 'ENDED' || eventData.status === 'CANCELLED') {
-            toast.info("Session Ended", { description: eventData.message || "The session has concluded." });
-             if (eventSourceRef.current) eventSourceRef.current.close(); // Close SSE on session end
-             if (clientHeartbeatTimerRef.current) clearInterval(clientHeartbeatTimerRef.current); // Stop heartbeats
-          } else if (eventData.status === 'STARTED' && sessionState.sessionData?.session_status === 'INIT' && eventData.type !== "CURRENT_SLIDE") {
-            // Avoid double toast if CURRENT_SLIDE already triggered it
+          // If this is a CURRENT_SLIDE event and the session is still in INIT, 
+          // implicitly move it to STARTED state to show the slide.
+          if (eventData.type === "CURRENT_SLIDE" && newSessionData?.session_status === "INIT") {
+            newSessionData = { ...newSessionData, session_status: "STARTED" };
             toast.success("Session Started!", { description: "The presentation is now live." });
           }
-        }
 
-        // Enhanced diagnostic logging
-        console.log('[DIAGNOSTIC] Processing event:', JSON.parse(JSON.stringify(eventData)));
-        console.log('[DIAGNOSTIC] sessionState.sessionData (start of listener):', JSON.parse(JSON.stringify(sessionState.sessionData)));
-        console.log('[DIAGNOSTIC] newSessionData (before slide logic):', JSON.parse(JSON.stringify(newSessionData)));
-        if (newSessionData && newSessionData.slides) {
-            console.log('[DIAGNOSTIC] newSessionData.slides.added_slides (length):', newSessionData.slides.added_slides ? newSessionData.slides.added_slides.length : 'undefined/null');
-            console.log('[DIAGNOSTIC] newSessionData.slides.added_slides IS ARRAY?: ', Array.isArray(newSessionData.slides.added_slides));
-        } else {
-            console.log('[DIAGNOSTIC] newSessionData or newSessionData.slides is null/undefined.');
-        }
-
-        // Use eventData.currentSlideIndex (camelCase) as received in the SSE event
-        const conditionForSlideUpdate = eventData.currentSlideIndex !== undefined && 
-                                      newSessionData && 
-                                      newSessionData.slides && 
-                                      Array.isArray(newSessionData.slides.added_slides);
-
-        console.log('[DIAGNOSTIC] Condition for slide update block MET? (using eventData.currentSlideIndex):', conditionForSlideUpdate, 'eventData.currentSlideIndex value:', eventData.currentSlideIndex);
-
-        if (conditionForSlideUpdate) {
-          // Within this block, due to conditionForSlideUpdate:
-          // - eventData.currentSlideIndex is a number
-          // - newSessionData is not null
-          // - newSessionData.slides is not null
-          // - newSessionData.slides.added_slides is an array
-
-          newSessionData = { ...newSessionData!, current_slide_index: eventData.currentSlideIndex as number };
-          
-          const targetSlide = newSessionData.slides!.added_slides.find(s => s.slide_order === eventData.currentSlideIndex as number);
-          if (targetSlide) {
-            newCurrentSlide = targetSlide;
-            console.log('[DIAGNOSTIC] Found targetSlide:', JSON.parse(JSON.stringify(targetSlide)));
-          } else {
-            newCurrentSlide = null;
-            console.warn(`[SSE] Slide with slide_order ${eventData.currentSlideIndex as number} not found in added_slides array. Current added_slides:`, JSON.parse(JSON.stringify(newSessionData.slides!.added_slides)));
+          if (eventData.status) {
+            newSessionData = newSessionData ? { ...newSessionData, session_status: eventData.status } : null;
+            if (eventData.status === 'ENDED' || eventData.status === 'CANCELLED') {
+              toast.info("Session Ended", { description: eventData.message || "The session has concluded." });
+               if (eventSourceRef.current) eventSourceRef.current.close(); // Close SSE on session end
+               if (clientHeartbeatTimerRef.current) clearInterval(clientHeartbeatTimerRef.current); // Stop heartbeats
+            } else if (eventData.status === 'STARTED' && prev.sessionData?.session_status === 'INIT' && eventData.type !== "CURRENT_SLIDE") {
+              // Avoid double toast if CURRENT_SLIDE already triggered it
+              toast.success("Session Started!", { description: "The presentation is now live." });
+            }
           }
           
-          console.log('[DEBUG] Attempting to set newCurrentSlide:', JSON.parse(JSON.stringify(newCurrentSlide)), 'for eventData.currentSlideIndex:', eventData.currentSlideIndex as number);
+          const conditionForSlideUpdate = eventData.currentSlideIndex !== undefined && 
+                                        newSessionData && 
+                                        newSessionData.slides && 
+                                        Array.isArray(newSessionData.slides.added_slides);
 
-          if (newCurrentSlide) {
-            // Optional: toast for slide change if desired
-            // toast.info("Slide Changed", { description: `Moved to: ${newCurrentSlide.title || `Slide ${newCurrentSlide.slide_order + 1}`}`, duration: 1500 });
+          if (conditionForSlideUpdate) {
+            newSessionData = { ...newSessionData!, current_slide_index: eventData.currentSlideIndex as number };
+            const targetSlide = newSessionData.slides.added_slides.find((s: Slide) => s.slide_order === eventData.currentSlideIndex);
+
+            if (targetSlide) {
+              newCurrentSlide = targetSlide;
+            } else {
+              newCurrentSlide = null;
+              console.warn(`[SSE] Slide with slide_order ${eventData.currentSlideIndex} not found in added_slides array.`);
+            }
           }
-        } else {
-            let errCSlideIndex: string | number = 'undefined';
-            // Check eventData.currentSlideIndex (camelCase) for logging
-            if (eventData.currentSlideIndex !== undefined) {
-                errCSlideIndex = eventData.currentSlideIndex;
-            }
-            const errNewSessDataExists = !!newSessionData;
-            const errNewSessDataSlidesExists = !!(newSessionData && newSessionData.slides);
-            const errNewSessDataSlidesAddedSlidesIsArray = !!(newSessionData && newSessionData.slides && Array.isArray(newSessionData.slides.added_slides));
-            let errActualAddedSlides: any = 'N/A';
-            if (newSessionData && newSessionData.slides && newSessionData.slides.added_slides) {
-                errActualAddedSlides = JSON.parse(JSON.stringify(newSessionData.slides.added_slides));
-            } else if (newSessionData && newSessionData.slides) {
-                errActualAddedSlides = 'added_slides is null/undefined';
-            } else if (newSessionData) {
-                errActualAddedSlides = 'newSessionData.slides is null/undefined';
-            }
+          
+          if (eventData.slide_data) {
+              newCurrentSlide = eventData.slide_data;
+              if (newSessionData && newSessionData.slides.added_slides) {
+                  const slideIdx = newSessionData.slides.added_slides.findIndex((s: Slide) => s.id === eventData.slide_data!.id);
+                  if (slideIdx !== -1) {
+                      newSessionData.slides.added_slides[slideIdx] = eventData.slide_data;
+                  }
+              }
+          }
 
-            console.error(
-                '[DIAGNOSTIC ERROR] Condition for slide update logic was NOT MET. Values:\n',
-                'eventData.current_slide_index (expected snake_case from type, but check camelCase from event):', errCSlideIndex,
-                'newSessionData present:', errNewSessDataExists,
-                'newSessionData.slides present:', errNewSessDataSlidesExists,
-                'newSessionData.slides.added_slides is_array:', errNewSessDataSlidesAddedSlidesIsArray,
-                'Actual newSessionData.slides.added_slides:', errActualAddedSlides
-            );
-            // If condition fails, newCurrentSlide remains sessionState.currentSlide from the top of the function
-            console.log('[DIAGNOSTIC] newCurrentSlide will remain UNCHANGED from initial sessionState.currentSlide in this event cycle.');
-        }
-        
-        // If the event contains full slide data (less likely for just an index change but possible)
-        if (eventData.slide_data) {
-            newCurrentSlide = eventData.slide_data;
-            if (newSessionData && newSessionData.slides.added_slides) {
-                const slideIdx = newSessionData.slides.added_slides.findIndex(s => s.id === eventData.slide_data!.id);
-                if (slideIdx !== -1) {
-                    newSessionData.slides.added_slides[slideIdx] = eventData.slide_data;
-                }
-            }
-        }
+          if (eventData.type === 'ERROR') {
+            error = eventData.message || "An error occurred in the session.";
+          }
 
-        updateSessionState({
-          sessionData: newSessionData,
-          currentSlide: newCurrentSlide,
-          error: eventData.type === 'ERROR' ? eventData.message || "An error occurred in the session." : sessionState.error,
+          return { ...prev, sessionData: newSessionData, currentSlide: newCurrentSlide, error };
         });
 
       } catch (e) {
@@ -249,11 +195,50 @@ export const useEngageSession = ({ inviteCode, username, initialSessionData }: U
     };
     newEventSource.addEventListener('learner_heartbeat', heartbeatListener);
 
+    const updateSlidesListener = async (event: MessageEvent) => {
+      try {
+        const eventData = JSON.parse(event.data);
+        console.log("[SSE] Received 'update_slides' event:", eventData);
+        toast.info("Checking for presentation updates...");
+
+        const response = await fetch(`${SSE_BASE_URL}/get-updated-details/${sessionState.sessionId}`);
+        
+        if (!response.ok) {
+          const errorBody = await response.text();
+          throw new Error(`Failed to fetch updated session details: ${response.status} ${errorBody}`);
+        }
+        
+        const updatedDetails: SessionDetailsResponse = await response.json();
+        console.log("[SSE] Successfully fetched updated session details:", updatedDetails);
+
+        const newCurrentSlide = updatedDetails.slides.added_slides.find(
+          s => s.slide_order === updatedDetails.current_slide_index
+        ) || null;
+
+        updateSessionState({
+          sessionData: updatedDetails,
+          currentSlide: newCurrentSlide,
+        });
+
+        toast.success("Presentation Updated", {
+          description: "New slides have been loaded.",
+        });
+
+      } catch (e) {
+        console.error("[SSE] Error processing 'update_slides' event:", e);
+        toast.error("Update Failed", {
+          description: "Could not retrieve the latest presentation changes.",
+        });
+      }
+    };
+    newEventSource.addEventListener('update_slides', updateSlidesListener);
+
     // Return a cleanup function for the event source listeners
     return () => {
-        console.log("[SSE] Cleaning up EventSource listeners for this connection instance.");
+        console.log("[SSE] Cleaning up EventSource connection.");
         newEventSource.removeEventListener('session_event_learner', sessionEventListener);
         newEventSource.removeEventListener('learner_heartbeat', heartbeatListener);
+        newEventSource.removeEventListener('update_slides', updateSlidesListener);
         newEventSource.close(); // Ensure this specific instance is closed
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps

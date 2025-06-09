@@ -84,3 +84,10 @@
 /engage-client/*.njsproj
 /engage-client/*.sln
 /engage-client/*.sw?
+
+/assessment_service/target
+/admin_core_service/target
+/auth_service/target
+/community_service/target
+/notification_service/target
+/media_service/target

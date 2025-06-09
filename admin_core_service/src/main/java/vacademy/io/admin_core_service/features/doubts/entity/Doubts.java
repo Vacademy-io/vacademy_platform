@@ -55,6 +55,9 @@ public class Doubts {
     @Column(name = "parent_level")
     private Integer parentLevel;
 
+    @Column(name = "package_session_id")
+    private String packageSessionId;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;
 

@@ -30,6 +30,13 @@ public class ParticipantSessionController {
         return ResponseEntity.ok(session);
     }
 
+
+    @GetMapping("/get-updated-details/{sessionId}")
+    public ResponseEntity<LiveSessionDto> getUpdatedSession(@PathVariable String sessionId) {
+        LiveSessionDto session = liveSessionService.getUpdatedSession(sessionId);
+        return ResponseEntity.ok(session);
+    }
+
     @GetMapping("/{sessionId}")
     public SseEmitter learnerStream(@PathVariable String sessionId, @RequestParam String username) {
         SseEmitter emitter = new SseEmitter(3L * 60 * 60 * 1000); // 3 hours, for example

@@ -4,6 +4,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import vacademy.io.community_service.feature.presentation.dto.question.PresentationSlideDto;
 import vacademy.io.community_service.feature.session.dto.admin.AdminSlideResponseViewDto;
 import vacademy.io.community_service.feature.session.dto.admin.CreateSessionDto;
 import vacademy.io.community_service.feature.session.dto.admin.LiveSessionDto;
@@ -79,6 +80,12 @@ public class AdminSessionController {
     @PostMapping("/finish")
     public ResponseEntity<LiveSessionDto> finishSession(@RequestBody StartPresentationDto startPresentationDto) {
         LiveSessionDto liveSessionDto = liveSessionService.finishSession(startPresentationDto);
+        return ResponseEntity.ok(liveSessionDto);
+    }
+
+    @PostMapping("/add-slide-in-session")
+    public ResponseEntity<LiveSessionDto> addSlideInLiveSession(@RequestBody PresentationSlideDto presentationSlideDto, @RequestParam String sessionId, @RequestParam Integer afterSlideOrder) {
+        LiveSessionDto liveSessionDto = liveSessionService.addSlideInLiveSession(presentationSlideDto, sessionId, afterSlideOrder);
         return ResponseEntity.ok(liveSessionDto);
     }
 

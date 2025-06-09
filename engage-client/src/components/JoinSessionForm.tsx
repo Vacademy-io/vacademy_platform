@@ -64,7 +64,7 @@ export const JoinSessionForm: React.FC<JoinSessionFormProps> = ({ onJoin, isJoin
                       placeholder="e.g., A1B2C"
                       {...field}
                       className="text-base h-10 tracking-wider uppercase focus:ring-2 focus:ring-blue-500 transition-shadow duration-200 ease-in-out"
-                      disabled={isJoining}
+                      disabled={isJoining || !!initialInviteCode}
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => field.onChange(e.target.value.toUpperCase())}
                     />
                   </FormControl>

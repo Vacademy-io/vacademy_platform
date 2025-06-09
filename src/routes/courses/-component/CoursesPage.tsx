@@ -1,10 +1,15 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback,useEffect } from 'react';
 // import { useParams } from 'react-router-dom'; // Removed
 import FilterPanel from './FilterPanel.tsx';
 import SearchAndSortBar from './SearchAndSortBar.tsx';
 import CourseCards from './CourseCards.tsx';
 import Pagination from './Pagination.tsx';
-import { useCatalogStore } from '../-store/catalogStore.ts'; // Uncommented store usage
+import { useCatalogStore } from '../-store/catalogStore.ts'; 
+
+
+
+
+// Uncommented store usage
 // imort { fetchInstituteDataById, fetchCoursesByInstituteId } from '@/services/api.ts'; // Removed API imports
 
 // Mock data - adjust as needed to match your pre-API integration static data structure
@@ -87,6 +92,12 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
   // const [searchTerm, setSearchTerm] = useState<string>(''); // Prop
   const [sortOption, setSortOption] = useState<string>('Newest'); // Kept local for now
 
+  useEffect(() => {
+    const scrollTarget = document.getElementById('course-list');
+    scrollTarget?.scrollIntoView({ behavior: 'smooth' });
+  }, [currentPage]);
+
+  // 
   // const [selectedLevelIds, setSelectedLevelIds] = useState<string[]>([]); // Prop
   // const [selectedTopicNames, setSelectedTopicNames] = useState<string[]>([]); // Prop (renamed to selectedTagNames)
   // const [selectedInstructorNames, setSelectedInstructorNames] = useState<string[]>([]); // Prop
@@ -180,6 +191,8 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
           sortOption={sortOption}
           onSortChange={handleSortChange} // Local sort handler
         />
+
+        <div id="course-list">
         <CourseCards 
           courses={dynamicCourses?.length ? dynamicCourses : mockCoursesFallback} // Use dynamicCourses or fallback
           currentPage={currentPage} 
@@ -187,6 +200,8 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
           searchTerm={searchTerm} // Pass searchTerm for client-side highlighting/filtering if any
           sortOption={sortOption} // Pass sortOption for client-side sorting
         />
+        </div>
+
         <Pagination 
           currentPage={currentPage} 
           totalPages={totalPages}

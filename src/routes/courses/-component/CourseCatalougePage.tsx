@@ -1,5 +1,4 @@
-/*eslint-disable*/
-"use client"
+
 import React, { useState, useEffect, useCallback } from 'react';
 import Footer from './Footer.tsx';
 import InstructorCTASection from './InstructorCTASection.tsx';
@@ -9,7 +8,10 @@ import Header from './Header.tsx';
 import HeroSectionCourseCatalog from './HeroSectionCourseCatalog.tsx';
 import { useCatalogStore } from '../-store/catalogStore.ts';
 import axios from 'axios';
-import { getAccessToken} from '@/lib/auth/sessionUtility'; // Assuming auth service path
+import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
+import { getAccessToken} from '@/lib/auth/sessionUtility';
+import { GET_INSTITUTE_DETAILS,SEARCH_COURSES} from '@/constants/urls';
+//import { redirect, useParams, useSearch } from '@tanstack/react-router';
 // Preferences import is removed as we are fetching from a new API now for these details
 // import { Preferences } from '@capacitor/preferences'; 
 
@@ -58,11 +60,11 @@ const formatTagsForPostgresArray = (tagNames: string[]): string => {
 };
 
 // Define API endpoints in one place for easier management
-const API_BASE_URL = 'https://backend-stage.vacademy.io/admin-core-service';
-const INSTITUTE_DETAILS_API = (id: string) => `${API_BASE_URL}/public/institute/v1/details/${id}`;
-const SEARCH_COURSES_API = `${API_BASE_URL}/batch/v1/search?page=0&size=20`;
+//const API_BASE_URL = 'https://backend-stage.vacademy.io/admin-core-service';
+const INSTITUTE_DETAILS_API = (id: string) => `${GET_INSTITUTE_DETAILS}/${id}`;
+const SEARCH_COURSES_API = `${SEARCH_COURSES}?page=0&size=5`;
 
-const CourseCatalougePage: React.FC = () => {
+const CourseCatalougePage: React.FC = ({ hideHero = false }) => {
   const [instituteId, setInstituteId] = useState<string | null>(null);
   const { 
     // dynamicCourses, // Removed as it's not read in this component
@@ -81,12 +83,18 @@ const CourseCatalougePage: React.FC = () => {
   const [availableTags, setAvailableTags] = useState<{ id: string; name: string }[]>([]);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [availableInstructors, _setAvailableInstructors] = useState(mockInstructors); // Still uses mock
-  console.log("access token", getAccessToken());
+  //console.log("access token", getAccessToken());
   // Pagination state (if CoursesPage doesn't manage it internally based on data)
   // For now, assuming CoursesPage handles its own pagination state based on items per page
   // and total items it receives. We pass the raw course data.
-
+  //const INSTITUTE_DETAILS_API = (id: string) => `${GET_INSTITUTE_DETAILS}/${id}`;
   // useEffect to get instituteId from URL
+
+  //  const {searchUrl} = useSearch<any>({ from: "/study-library/" });
+  // console.log("searchUrl", searchUrl);
+
+  
+
   useEffect(() => {
     const getInstituteIdFromUrl = () => {
       const urlParams = new URLSearchParams(window.location.search);
@@ -103,33 +111,29 @@ const CourseCatalougePage: React.FC = () => {
 
   // useEffect to fetch institute details from the new API when instituteId is available
   useEffect(() => {
-    if (instituteId) {
-      const fetchInstituteApiDetails = async () => {
-        console.log(`Fetching API institute details for instituteId: ${instituteId}`);
-        try {
-          const token = await getAccessToken();
-          console.log("Token for Institute Details API:", token);
-          const response = await axios.get(INSTITUTE_DETAILS_API(instituteId), {
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`,
-            },
-          });
-
-          const data = response.data;
-          console.log("API Institute Details Response Data:", data);
-          setApiFetchedInstituteDetails(data); // Store the whole object
-
-        } catch (error) {
-          console.error("Error fetching API institute details:", error);
-          // By not clearing the details here, we prevent a chain reaction
-          // that could cause the course list to blink on a failed API call.
-          // setApiFetchedInstituteDetails(null); 
+    const fetchInstituteApiDetails = async () => {
+      if (!instituteId) return;
+  
+      console.log(`📡 Fetching institute details for instituteId: ${instituteId}`);
+      try {
+      const token = await getAccessToken()
+        console.log("Token for Institute Details API:", token);
+    const response =  await authenticatedAxiosInstance.get(INSTITUTE_DETAILS_API(instituteId));
+  
+        if (response?.data) {
+          console.log("✅ Institute Details:", response.data);
+          setApiFetchedInstituteDetails(response.data);
+        } else {
+          console.warn("⚠️ No data returned from institute details API");
+          setApiFetchedInstituteDetails(null);
         }
-      };
-
-      fetchInstituteApiDetails();
-    }
+      } catch (error: any) {
+        console.error("❌ Error fetching institute details:", error.message || error);
+        setApiFetchedInstituteDetails(null);
+      }
+    };
+  
+    fetchInstituteApiDetails();
   }, [instituteId, setApiFetchedInstituteDetails]); // Rerun when instituteId changes
 
   // Populate availableLevels and availableTags from apiFetchedInstituteDetails
@@ -240,9 +244,9 @@ const CourseCatalougePage: React.FC = () => {
   }, []);
 
   return (
-    <div>
-      <Header/>
-      <HeroSectionCourseCatalog/>
+      <div>
+        {!hideHero && <Header/>}
+      {!hideHero && <HeroSectionCourseCatalog/>}
       <CoursesPage 
         // Pass filter states and handlers to CoursesPage
         searchTerm={searchTerm}
@@ -268,9 +272,9 @@ const CourseCatalougePage: React.FC = () => {
         // And it expects 'courses' prop. Let's ensure it receives data.
         // The setDynamicCourses updates the store, which CoursesPage should read.
       /> 
-      <InstructorCTASection/>
-      <SupportersSection/>
-      <Footer/>
+     {!hideHero && <InstructorCTASection/>}
+     {!hideHero && <SupportersSection/>}
+     {!hideHero && <Footer/>}
     </div>
   );
 }

@@ -175,7 +175,7 @@ export const SubjectMaterial = () => {
   useEffect(() => {
     setNavHeading(
       <div className="flex items-center gap-2">
-        <div>Subjects</div>
+        <div>Learning Center</div>
       </div>
     );
   }, []);

@@ -1,10 +1,6 @@
-import { createFileRoute, redirect } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router';
+import StudyCourseCatalogWrapper from './-component/StudyCourseCatalogWrapper'; // ✅ Correct import
 
 export const Route = createFileRoute('/study-library/')({
-  beforeLoad: () => {
-    throw redirect({
-        to: '/study-library/courses'
-    })
-  }
-})
-
+  component: StudyCourseCatalogWrapper, // ✅ Use the imported component
+});

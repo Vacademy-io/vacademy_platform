@@ -44,17 +44,6 @@ const Header: React.FC = () => {
 
   const displayName = apiFetchedInstituteDetails?.institute_name || defaultInstituteName;
   
-  useEffect(() => {
-    if (apiFetchedInstituteDetails) {
-      console.log("Header - Institute Details Updated:", {
-        id: apiFetchedInstituteDetails.id,
-        name: displayName,
-        city: apiFetchedInstituteDetails.city,
-        logoFileId: apiFetchedInstituteDetails.institute_logo_file_id,
-        currentLogoUrl: logoUrlToDisplay
-      });
-    }
-  }, [apiFetchedInstituteDetails, displayName, logoUrlToDisplay]);
 
   return (
     <nav className="min-h-[80px] bg-white py-5 px-6 md:px-10 flex flex-col md:flex-row justify-between items-center shadow-sm">

@@ -11,18 +11,22 @@ import vacademy.io.admin_core_service.features.learner_reports.dto.SubjectProgre
 import vacademy.io.admin_core_service.features.learner_tracking.dto.DailyTimeSpentProjection;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.LearnerActivityProjection;
 import vacademy.io.admin_core_service.features.learner_tracking.entity.ActivityLog;
+import vacademy.io.admin_core_service.features.slide.dto.LearnerProgressProjection;
+import vacademy.io.admin_core_service.features.slide.entity.Slide;
 
 import java.sql.Date;
 import java.sql.Timestamp;
 import java.util.List;
+import java.util.Optional;
 
 public interface ActivityLogRepository extends JpaRepository<ActivityLog, String> {
     @Query(value = """
     SELECT 
         CASE 
             WHEN v.published_video_length IS NULL OR v.published_video_length = 0 THEN 0 
-            ELSE SUM(EXTRACT(EPOCH FROM (vt.end_time - vt.start_time)) * 1000) 
-                 / v.published_video_length * 100 
+            ELSE 
+                EXTRACT(EPOCH FROM (MAX(vt.end_time) - MIN(vt.start_time))) * 1000 
+                / v.published_video_length * 100 
         END AS percentage_watched
     FROM 
         activity_log a
@@ -39,7 +43,6 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
         v.id, a.user_id, a.slide_id, v.published_video_length
     """, nativeQuery = true)
     Double getPercentageVideoWatched(@Param("slideId") String slideId, @Param("userId") String userId);
-
 
     @Query(value = """
                 SELECT 
@@ -66,6 +69,8 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
         COALESCE(SUM(CAST(lo.value AS FLOAT)), 0) / NULLIF(COUNT(DISTINCT cs.slide_id), 0) AS percentage_completed
     FROM 
         chapter_to_slides cs
+    JOIN 
+        slide s ON cs.slide_id = s.id
     LEFT JOIN 
         learner_operation lo 
             ON lo.source_id = cs.slide_id
@@ -75,12 +80,14 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
     WHERE 
         cs.status IN (:statusList)
         AND cs.chapter_id = :chapterId
+        AND s.source_type IN (:sourceTypeList)
     """, nativeQuery = true)
     Double getChapterCompletionPercentage(
             @Param("userId") String userId,
             @Param("chapterId") String chapterId,
             @Param("learnerOperation") List<String> learnerOperation,
-            @Param("statusList") List<String> statusList
+            @Param("statusList") List<String> statusList,
+            @Param("sourceTypeList") List<String> sourceTypeList
     );
 
 
@@ -1344,5 +1351,141 @@ LEFT JOIN (
             @Param("learnerStatusList") List<String> learnerStatusList
     );
 
+
+    @Query(value = """
+    SELECT s.id
+    FROM slide s
+    JOIN chapter_to_slides cts ON cts.slide_id = s.id
+    JOIN activity_log al ON al.slide_id = s.id
+    WHERE cts.chapter_id = :chapterId
+      AND al.user_id = :userId
+      AND cts.status IN (:chapterToSlideStatusList)
+      AND s.status IN (:slideStatusList)
+    ORDER BY al.created_at DESC
+    LIMIT 1
+    """, nativeQuery = true)
+    Optional<String> findLatestWatchedSlideIdForChapter(
+            @Param("userId") String userId,
+            @Param("chapterId") String chapterId,
+            @Param("chapterToSlideStatusList") List<String> chapterToSlideStatusList,
+            @Param("slideStatusList") List<String> slideStatusList
+    );
+
+    @Query(value = """
+    WITH 
+    chapter_progress AS (
+        SELECT 
+            COALESCE(SUM(CAST(lo.value AS FLOAT)), 0) / NULLIF(COUNT(DISTINCT cs.slide_id), 0) AS chapter_completion
+        FROM chapter_to_slides cs
+        LEFT JOIN learner_operation lo 
+            ON lo.source_id = cs.slide_id
+            AND lo.operation IN (:learnerOperation)
+            AND lo.user_id = :userId
+            AND lo.value ~ '^-?\\d+(\\.\\d+)?$'
+        WHERE cs.status IN (:chapterToSlideStatusList)
+          AND cs.chapter_id = :chapterId
+    ),
+    module_chapters AS (
+        SELECT DISTINCT mcm.chapter_id
+        FROM module_chapter_mapping mcm
+        JOIN chapter c ON c.id = mcm.chapter_id
+        JOIN chapter_package_session_mapping cpm ON cpm.chapter_id = c.id
+        WHERE mcm.module_id = :moduleId
+          AND cpm.status IN (:chapterStatusList)
+          AND c.status IN (:chapterStatusList)
+    ),
+    module_progress AS (
+        SELECT 
+            COALESCE(SUM(lo_val.chapter_value), 0) / NULLIF(COUNT(mc.chapter_id), 0) AS module_completion
+        FROM module_chapters mc
+        LEFT JOIN (
+            SELECT DISTINCT ON (lo.source_id)
+                lo.source_id,
+                CAST(lo.value AS FLOAT) AS chapter_value
+            FROM learner_operation lo
+            WHERE lo.operation IN (:moduleOperation)
+              AND lo.user_id = :userId
+              AND lo.value ~ '^-?\\d+(\\.\\d+)?$'
+        ) lo_val ON lo_val.source_id = mc.chapter_id
+    ),
+    subject_modules AS (
+        SELECT DISTINCT smm.module_id
+        FROM subject_module_mapping smm
+        JOIN modules m ON m.id = smm.module_id
+        WHERE smm.subject_id = :subjectId
+          AND m.status IN (:moduleStatusList)
+    ),
+    subject_progress AS (
+        SELECT 
+            COALESCE(SUM(CAST(lo.value AS FLOAT)), 0) / NULLIF(COUNT(sm.module_id), 0) AS subject_completion
+        FROM subject_modules sm
+        LEFT JOIN learner_operation lo 
+            ON lo.source_id = sm.module_id
+            AND lo.operation IN (:subjectOperation)
+            AND lo.user_id = :userId
+            AND lo.value ~ '^-?\\d+(\\.\\d+)?$'
+    ),
+    session_subjects AS (
+        SELECT DISTINCT sps.subject_id
+        FROM subject_session sps
+        JOIN subject s ON s.id = sps.subject_id
+        WHERE sps.session_id = :packageSessionId
+          AND s.status IN (:subjectStatusList)
+    ),
+    session_progress AS (
+        SELECT 
+            COALESCE(SUM(CAST(lo.value AS FLOAT)), 0) / NULLIF(COUNT(ss.subject_id), 0) AS session_completion
+        FROM session_subjects ss
+        LEFT JOIN learner_operation lo 
+            ON lo.source_id = ss.subject_id
+            AND lo.operation IN (:sessionOperation)
+            AND lo.user_id = :userId
+            AND lo.value ~ '^-?\\d+(\\.\\d+)?$'
+    ),
+    latest_slide AS (
+        SELECT 
+            s.id AS slide_id,
+            s.title AS slide_title,
+            al.created_at
+        FROM slide s
+        JOIN chapter_to_slides cts ON cts.slide_id = s.id
+        JOIN activity_log al ON al.slide_id = s.id
+        WHERE cts.chapter_id = :chapterId
+          AND al.user_id = :userId
+          AND cts.status IN (:chapterToSlideStatusList)
+          AND s.status IN (:slideStatusList)
+        ORDER BY al.created_at DESC
+        LIMIT 1
+    )
+    SELECT 
+        COALESCE(cp.chapter_completion, 0) AS chapterCompletionPercentage,
+        COALESCE(mp.module_completion, 0) AS moduleCompletionPercentage,
+        COALESCE(sp.subject_completion, 0) AS subjectCompletionPercentage,
+        COALESCE(spp.session_completion, 0) AS packageSessionCompletionPercentage,
+        ls.slide_id AS lastWatchedSlideId,
+        ls.slide_title AS lastWatchedSlideTitle,
+        ls.created_at AS lastWatchedAt
+    FROM chapter_progress cp
+    FULL JOIN module_progress mp ON true
+    FULL JOIN subject_progress sp ON true
+    FULL JOIN session_progress spp ON true
+    FULL JOIN latest_slide ls ON true
+    """, nativeQuery = true)
+    Optional<LearnerProgressProjection> getFullLearnerProgress(
+            @Param("userId") String userId,
+            @Param("chapterId") String chapterId,
+            @Param("moduleId") String moduleId,
+            @Param("subjectId") String subjectId,
+            @Param("packageSessionId") String packageSessionId,
+            @Param("learnerOperation") List<String> learnerOperation,
+            @Param("moduleOperation") List<String> moduleOperation,
+            @Param("subjectOperation") List<String> subjectOperation,
+            @Param("sessionOperation") List<String> sessionOperation,
+            @Param("chapterToSlideStatusList") List<String> chapterToSlideStatusList,
+            @Param("slideStatusList") List<String> slideStatusList,
+            @Param("chapterStatusList") List<String> chapterStatusList,
+            @Param("moduleStatusList") List<String> moduleStatusList,
+            @Param("subjectStatusList") List<String> subjectStatusList
+    );
 
 }

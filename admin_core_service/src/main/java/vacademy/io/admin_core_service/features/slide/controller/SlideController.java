@@ -19,13 +19,23 @@ public class SlideController {
     private final SlideService slideService;
 
     @PostMapping("/add-update-document-slide")
-    public ResponseEntity<String> addDocumentSlide(@RequestBody AddDocumentSlideDTO addDocumentSlideDTO, @RequestParam("chapterId") String chapterId, @RequestParam("instituteId") String instituteId) {
-        return ResponseEntity.ok(slideService.addOrUpdateDocumentSlide(addDocumentSlideDTO, chapterId, instituteId));
+    public ResponseEntity<String> addDocumentSlide(@RequestBody AddDocumentSlideDTO addDocumentSlideDTO,
+                                                   @RequestParam("chapterId") String chapterId,
+                                                   @RequestParam String moduleId,
+                                                   @RequestParam String subjectId,
+                                                   @RequestParam String packageSessionId,
+                                                   @RequestParam("instituteId") String instituteId) {
+        return ResponseEntity.ok(slideService.addOrUpdateDocumentSlide(addDocumentSlideDTO, chapterId,moduleId,subjectId,packageSessionId, instituteId));
     }
 
     @PostMapping("/add-update-video-slide")
-    public ResponseEntity<String> addVideoSlide(@RequestBody AddVideoSlideDTO addVideoSlideDTO, @RequestParam String chapterId, @RequestParam String instituteId) {
-        return ResponseEntity.ok(slideService.addOrUpdateVideoSlide(addVideoSlideDTO, chapterId, instituteId));
+    public ResponseEntity<String> addVideoSlide(@RequestBody AddVideoSlideDTO addVideoSlideDTO,
+                                                @RequestParam String chapterId,
+                                                @RequestParam String moduleId,
+                                                @RequestParam String subjectId,
+                                                @RequestParam String packageSessionId,
+                                                @RequestParam String instituteId) {
+        return ResponseEntity.ok(slideService.addOrUpdateVideoSlide(addVideoSlideDTO, chapterId,moduleId,subjectId,packageSessionId, instituteId));
     }
 
     @GetMapping("/get-slides/{chapterId}")
@@ -50,9 +60,16 @@ public class SlideController {
     @PostMapping("/copy")
     public ResponseEntity<String> copySlide(
             @RequestParam String slideId,
+            @RequestParam String oldChapterId,
+            @RequestParam String oldModuleId,
+            @RequestParam String oldSubjectId,
+            @RequestParam String oldPackageSessionId,
             @RequestParam String newChapterId,
+            @RequestParam String newModuleId,
+            @RequestParam String newSubjectId,
+            @RequestParam String newPackageSessionId,
             @RequestAttribute("user") CustomUserDetails user) {
-        String message = slideService.copySlide(slideId, newChapterId, user);
+        String message = slideService.copySlide(slideId,oldChapterId, oldModuleId, oldSubjectId, oldPackageSessionId,newChapterId, newModuleId, newSubjectId, newPackageSessionId, user);
         return ResponseEntity.ok(message);
     }
 
@@ -60,9 +77,24 @@ public class SlideController {
     public ResponseEntity<String> moveSlide(
             @RequestParam String slideId,
             @RequestParam String oldChapterId,
+            @RequestParam String oldModuleId,
+            @RequestParam String oldSubjectId,
+            @RequestParam String oldPackageSessionId,
             @RequestParam String newChapterId,
+            @RequestParam String newModuleId,
+            @RequestParam String newSubjectId,
+            @RequestParam String newPackageSessionId,
             @RequestAttribute("user") CustomUserDetails user) {
-        String message = slideService.moveSlide(slideId, oldChapterId, newChapterId, user);
+        String message = slideService.moveSlide(slideId,
+                oldChapterId,
+                oldModuleId,
+                oldSubjectId,
+                oldPackageSessionId,
+                newChapterId,
+                newModuleId,
+                newSubjectId,
+                newPackageSessionId,
+                user);
         return ResponseEntity.ok(message);
     }
 

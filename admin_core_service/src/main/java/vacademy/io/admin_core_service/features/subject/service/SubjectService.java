@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.chapter.repository.ChapterPackageSessionMappingRepository;
+import vacademy.io.admin_core_service.features.learner_tracking.service.LearnerTrackingAsyncService;
 import vacademy.io.admin_core_service.features.module.entity.SubjectModuleMapping;
 import vacademy.io.admin_core_service.features.module.enums.ModuleStatusEnum;
 import vacademy.io.admin_core_service.features.module.repository.ModuleChapterMappingRepository;
@@ -39,6 +40,7 @@ public class SubjectService {
     private final ModuleChapterMappingRepository moduleChapterMappingRepository;
     private final ChapterPackageSessionMappingRepository chapterPackageSessionMappingRepository;
     private final ModuleManager moduleManager;
+    private final LearnerTrackingAsyncService learnerTrackingAsyncService;
 
     /**
      * Adds a new subject to the system.
@@ -78,6 +80,9 @@ public class SubjectService {
                 log.error("Error adding subject: {}", e.getMessage());
             }
         }
+        for(String packageSessionId:packageSessionIds){
+            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SUBJECT",null,null,null,null,subject.getId(),packageSessionId);
+        }
         return subjectDTO;
     }
 
@@ -116,7 +121,7 @@ public class SubjectService {
      * @throws VacademyException If the subject ID is null or the subject is not found.
      */
     @Transactional
-    public String deleteSubject(List<String> subjectIds, CustomUserDetails user) {
+    public String deleteSubject(List<String> subjectIds,String packageSessionId, CustomUserDetails user) {
         if (subjectIds == null || subjectIds.isEmpty()) {
             throw new VacademyException("Subject IDs cannot be null or empty");
         }
@@ -127,6 +132,9 @@ public class SubjectService {
 
         subjectRepository.saveAll(subjects);
         chapterPackageSessionMappingRepository.softDeleteChapterMappingsWithoutActiveSubjects(subjectIds);
+        for (String subjectId:subjectIds){
+            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SUBJECT",null,null,null,null,subjectId,packageSessionId);
+        }
         return "Subjects deleted successfully";
     }
 

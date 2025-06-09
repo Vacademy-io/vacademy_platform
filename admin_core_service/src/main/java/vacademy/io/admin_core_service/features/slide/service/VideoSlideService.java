@@ -8,6 +8,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.common.entity.RichTextData;
 import vacademy.io.admin_core_service.features.common.service.RichTextDataService;
+import vacademy.io.admin_core_service.features.learner_tracking.service.LearnerTrackingAsyncService;
 import vacademy.io.admin_core_service.features.slide.dto.*;
 import vacademy.io.admin_core_service.features.slide.entity.*;
 import vacademy.io.admin_core_service.features.slide.enums.SlideStatus;
@@ -43,12 +44,22 @@ public class VideoSlideService {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private LearnerTrackingAsyncService learnerTrackingAsyncService;
+
+
     @Transactional
-    public String addOrUpdateVideoSlide(SlideDTO slideDTO, String chapterId, CustomUserDetails userDetails) {
+    public String addOrUpdateVideoSlide(SlideDTO slideDTO, String chapterId,
+                                        String packageSessionId,
+                                        String moduleId,String subjectId,
+                                        CustomUserDetails userDetails) {
+        String slideId = slideDTO.getId();
         if (slideDTO.isNewSlide()) {
             return addVideoSlide(slideDTO, chapterId);
         }
-        return updateVideoSlide(slideDTO, chapterId);
+        updateVideoSlide(slideDTO, chapterId,moduleId,subjectId,packageSessionId);
+        learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE",slideId,SlideTypeEnum.VIDEO.name(),chapterId,moduleId,subjectId,packageSessionId);
+        return "success";
     }
 
     public String addVideoSlide(SlideDTO slideDTO, String chapterId) {
@@ -81,7 +92,7 @@ public class VideoSlideService {
         return "success";
     }
 
-    public String updateVideoSlide(SlideDTO slideDTO, String chapterId) {
+    public String updateVideoSlide(SlideDTO slideDTO, String chapterId,String moduleId,String subjectId,String packageSessionId) {
         VideoSlideDTO videoSlideDTO = slideDTO.getVideoSlide();
         if (videoSlideDTO == null || !StringUtils.hasText(videoSlideDTO.getId())) {
             throw new VacademyException("Video slide ID is missing");
@@ -108,7 +119,10 @@ public class VideoSlideService {
                 slideDTO.getDescription(),
                 slideDTO.getImageFileId(),
                 slideDTO.getSlideOrder(),
-                chapterId
+                chapterId,
+                packageSessionId,
+                moduleId,
+                subjectId
         );
 
         return "success";

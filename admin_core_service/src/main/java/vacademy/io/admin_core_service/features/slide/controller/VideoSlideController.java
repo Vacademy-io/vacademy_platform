@@ -17,7 +17,10 @@ public class VideoSlideController {
     public String addOrUpdateVideoSlide(@RequestBody SlideDTO slideDTO,
                                         @RequestParam String chapterId,
                                         @RequestParam String instituteId,
+                                        @RequestParam String packageSessionId,
+                                        @RequestParam String moduleId,
+                                        @RequestParam String subjectId,
                                         @RequestAttribute("user") CustomUserDetails userDetails) {
-        return videoSlideService.addOrUpdateVideoSlide(slideDTO, chapterId, userDetails);
+        return videoSlideService.addOrUpdateVideoSlide(slideDTO, chapterId,packageSessionId,moduleId,subjectId, userDetails);
     }
 }

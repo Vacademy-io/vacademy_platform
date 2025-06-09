@@ -10,6 +10,7 @@ import vacademy.io.admin_core_service.features.chapter.entity.Chapter;
 import vacademy.io.admin_core_service.features.chapter.entity.ChapterToSlides;
 import vacademy.io.admin_core_service.features.chapter.repository.ChapterRepository;
 import vacademy.io.admin_core_service.features.chapter.repository.ChapterToSlidesRepository;
+import vacademy.io.admin_core_service.features.learner_tracking.service.LearnerTrackingAsyncService;
 import vacademy.io.admin_core_service.features.slide.dto.*;
 import vacademy.io.admin_core_service.features.slide.entity.DocumentSlide;
 import vacademy.io.admin_core_service.features.slide.entity.Slide;
@@ -39,39 +40,56 @@ public class SlideService {
     private final VideoSlideRepository videoSlideRepository;
     private final SlideNotificationService slideNotificationService;
     private final ObjectMapper objectMapper;
+    private final LearnerTrackingAsyncService learnerTrackingAsyncService;
 
     @Transactional
-    public String addOrUpdateDocumentSlide(AddDocumentSlideDTO addDocumentSlideDTO, String chapterId, String instituteId) {
+    public String addOrUpdateDocumentSlide(AddDocumentSlideDTO addDocumentSlideDTO,
+                                           String chapterId,
+                                           String moduleId,
+                                           String subjectId,
+                                           String packageSessionId,
+                                           String instituteId) {
+        String slideId = addDocumentSlideDTO.getId();
         if (addDocumentSlideDTO.isNewSlide()) {
             return addDocumentSlide(addDocumentSlideDTO, chapterId, instituteId);
+        }else{
+            chapterToSlidesRepository.findByChapterIdAndSlideId(chapterId, addDocumentSlideDTO.getId())
+                    .map(chapterToSlides -> {
+                        updateChapterToSlides(addDocumentSlideDTO.getSlideOrder(), addDocumentSlideDTO.getStatus(), chapterToSlides);
+                        updateSlide(addDocumentSlideDTO.getDescription(), addDocumentSlideDTO.getTitle(), addDocumentSlideDTO.getImageFileId(), addDocumentSlideDTO.getStatus(), chapterToSlides.getSlide());
+                        updateDocument(addDocumentSlideDTO.getDocumentSlide(), addDocumentSlideDTO.getStatus());
+                        notifyIfPublished(addDocumentSlideDTO.getStatus(), addDocumentSlideDTO.isNotify(), instituteId, chapterToSlides);
+                        return "Slide updated successfully";
+                    })
+                    .orElseGet(() -> addDocumentSlide(addDocumentSlideDTO, chapterId, instituteId));
         }
-
-        return chapterToSlidesRepository.findByChapterIdAndSlideId(chapterId, addDocumentSlideDTO.getId())
-                .map(chapterToSlides -> {
-                    updateChapterToSlides(addDocumentSlideDTO.getSlideOrder(), addDocumentSlideDTO.getStatus(), chapterToSlides);
-                    updateSlide(addDocumentSlideDTO.getDescription(), addDocumentSlideDTO.getTitle(), addDocumentSlideDTO.getImageFileId(), addDocumentSlideDTO.getStatus(), chapterToSlides.getSlide());
-                    updateDocument(addDocumentSlideDTO.getDocumentSlide(), addDocumentSlideDTO.getStatus());
-                    notifyIfPublished(addDocumentSlideDTO.getStatus(), addDocumentSlideDTO.isNotify(), instituteId, chapterToSlides);
-                    return "Slide updated successfully";
-                })
-                .orElseGet(() -> addDocumentSlide(addDocumentSlideDTO, chapterId, instituteId));
+        learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE",slideId,SlideTypeEnum.DOCUMENT.name(),chapterId,moduleId,subjectId,packageSessionId);
+        return slideId;
     }
 
     @Transactional
-    public String addOrUpdateVideoSlide(AddVideoSlideDTO addVideoSlideDTO, String chapterId, String instituteId) {
+    public String addOrUpdateVideoSlide(AddVideoSlideDTO addVideoSlideDTO,
+                                        String chapterId,
+                                        String moduleId,
+                                        String subjectId,
+                                        String packageSessionId,
+                                        String instituteId) {
+        String slideId = addVideoSlideDTO.getId();
         if (addVideoSlideDTO.isNewSlide()) {
             return addVideoSlide(addVideoSlideDTO, chapterId, instituteId);
+        }else{
+            chapterToSlidesRepository.findByChapterIdAndSlideId(chapterId, addVideoSlideDTO.getId())
+                    .map(chapterToSlides -> {
+                        updateChapterToSlides(addVideoSlideDTO.getSlideOrder(), addVideoSlideDTO.getStatus(), chapterToSlides);
+                        updateSlide(addVideoSlideDTO.getDescription(), addVideoSlideDTO.getTitle(), addVideoSlideDTO.getImageFileId(), addVideoSlideDTO.getStatus(), chapterToSlides.getSlide());
+                        updateVideoSlide(addVideoSlideDTO.getVideoSlide(), addVideoSlideDTO.getStatus());
+                        notifyIfPublished(addVideoSlideDTO.getStatus(), addVideoSlideDTO.isNotify(), instituteId, chapterToSlides);
+                        return "Slide updated successfully";
+                    })
+                    .orElseGet(() -> addVideoSlide(addVideoSlideDTO, chapterId, instituteId));
         }
-
-        return chapterToSlidesRepository.findByChapterIdAndSlideId(chapterId, addVideoSlideDTO.getId())
-                .map(chapterToSlides -> {
-                    updateChapterToSlides(addVideoSlideDTO.getSlideOrder(), addVideoSlideDTO.getStatus(), chapterToSlides);
-                    updateSlide(addVideoSlideDTO.getDescription(), addVideoSlideDTO.getTitle(), addVideoSlideDTO.getImageFileId(), addVideoSlideDTO.getStatus(), chapterToSlides.getSlide());
-                    updateVideoSlide(addVideoSlideDTO.getVideoSlide(), addVideoSlideDTO.getStatus());
-                    notifyIfPublished(addVideoSlideDTO.getStatus(), addVideoSlideDTO.isNotify(), instituteId, chapterToSlides);
-                    return "Slide updated successfully";
-                })
-                .orElseGet(() -> addVideoSlide(addVideoSlideDTO, chapterId, instituteId));
+        learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE",slideId,SlideTypeEnum.VIDEO.name(),chapterId,moduleId,subjectId,packageSessionId);
+        return slideId;
     }
 
     private void notifyIfPublished(String status, boolean notify, String instituteId, ChapterToSlides chapterToSlides) {
@@ -210,7 +228,16 @@ public class SlideService {
     }
 
     @Transactional
-    public String copySlide(String slideId, String newChapterId, CustomUserDetails user) {
+    public String copySlide(String slideId,
+                            String oldChapterId,
+                            String oldModuleId,
+                            String oldSubjectId,
+                            String oldPackageSessionId,
+                            String newChapterId,
+                            String newModuleId,
+                            String newSubjectId,
+                            String newPackageSessionId,
+                            CustomUserDetails user) {
         Slide slide = getSlideById(slideId);
         Chapter chapter = getChapterById(newChapterId);
 
@@ -222,11 +249,27 @@ public class SlideService {
         }
 
         chapterToSlidesRepository.save(new ChapterToSlides(chapter, newSlide, null, SlideStatus.DRAFT.name()));
+        if (slide.getSourceType().equalsIgnoreCase(SlideTypeEnum.DOCUMENT.name())) {
+            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE",slideId,SlideTypeEnum.DOCUMENT.name(), oldChapterId,oldModuleId,oldSubjectId,oldPackageSessionId);
+            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE",slideId,SlideTypeEnum.DOCUMENT.name(),newChapterId,newModuleId,newSubjectId,newPackageSessionId);
+        }else if (slide.getSourceType().equalsIgnoreCase(SlideTypeEnum.VIDEO.name())) {
+            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE",slideId,SlideTypeEnum.VIDEO.name(),oldChapterId,oldModuleId,oldSubjectId,oldPackageSessionId);
+            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE",slideId,SlideTypeEnum.VIDEO.name(),newChapterId,newModuleId,newSubjectId,newPackageSessionId);
+        }
         return "Slide copied successfully.";
     }
 
     @Transactional
-    public String moveSlide(String slideId, String oldChapterId, String newChapterId, CustomUserDetails user) {
+    public String moveSlide(String slideId,
+                            String oldChapterId,
+                            String oldModuleId,
+                            String oldSubjectId,
+                            String oldPackageSessionId,
+                            String newChapterId,
+                            String newModuleId,
+                            String newSubjectId,
+                            String newPackageSessionId,
+                            CustomUserDetails user) {
         ChapterToSlides existingMapping = getChapterToSlides(oldChapterId, slideId);
         Chapter newChapter = getChapterById(newChapterId);
 
@@ -234,6 +277,14 @@ public class SlideService {
         chapterToSlidesRepository.save(newMapping);
 
         deleteMapping(slideId, oldChapterId);
+        Slide slide = existingMapping.getSlide();
+        if (slide.getSourceType().equalsIgnoreCase(SlideTypeEnum.DOCUMENT.name())) {
+            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE",slideId,SlideTypeEnum.DOCUMENT.name(), oldChapterId,oldModuleId,oldSubjectId,oldPackageSessionId);
+            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE",slideId,SlideTypeEnum.DOCUMENT.name(),newChapterId,newModuleId,newSubjectId,newPackageSessionId);
+        }else if (slide.getSourceType().equalsIgnoreCase(SlideTypeEnum.VIDEO.name())) {
+            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE",slideId,SlideTypeEnum.VIDEO.name(),oldChapterId,oldModuleId,oldSubjectId,oldPackageSessionId);
+            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE",slideId,SlideTypeEnum.VIDEO.name(),newChapterId,newModuleId,newSubjectId,newPackageSessionId);
+        }
         return "Slide moved successfully.";
     }
 
@@ -467,7 +518,7 @@ public class SlideService {
     }
 
 
-    public Slide updateSlide(String slideId, String status, String title, String description, String imageFileId, Integer slideOrder, String chapterId) {
+    public Slide updateSlide(String slideId, String status, String title, String description, String imageFileId, Integer slideOrder, String chapterId,String packageSessionId,String moduleId,String subjectId) {
         Slide slide = slideRepository.findById(slideId).orElseThrow(() -> new VacademyException("Slide not found!!!"));
 
         if (StringUtils.hasText(slideId)) {
@@ -490,6 +541,7 @@ public class SlideService {
         }
         slide = slideRepository.save(slide);
         updateChapterToSlideMapping(chapterId, slide.getId(), slideOrder, status);
+        learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE",slide.getId(),slide.getSourceType(),chapterId,moduleId,subjectId,packageSessionId);
         return slide;
     }
 

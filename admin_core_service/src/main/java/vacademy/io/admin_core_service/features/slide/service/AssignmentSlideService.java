@@ -28,11 +28,11 @@ public class AssignmentSlideService {
     @Autowired
     private RichTextDataService richTextDataService;
 
-    public String addOrUpdateAssignmentSlide(SlideDTO slideDTO, String chapterId, CustomUserDetails userDetails) {
+    public String addOrUpdateAssignmentSlide(SlideDTO slideDTO, String chapterId,String packageSessionId,String moduleId,String subjectId, CustomUserDetails userDetails) {
         if (slideDTO.isNewSlide()) {
             return addAssignmentSlide(slideDTO, chapterId);
         }
-        return updateAssignmentSlide(slideDTO, chapterId);
+        return updateAssignmentSlide(slideDTO, chapterId,packageSessionId,moduleId,subjectId);
     }
 
     public String addAssignmentSlide(SlideDTO slideDTO, String chapterId) {
@@ -52,7 +52,7 @@ public class AssignmentSlideService {
         return "success";
     }
 
-    public String updateAssignmentSlide(SlideDTO slideDTO, String chapterId) {
+    public String updateAssignmentSlide(SlideDTO slideDTO, String chapterId,String packageSessionId,String moduleId,String subjectId) {
         AssignmentSlideDTO assignmentSlideDTO = slideDTO.getAssignmentSlide();
         AssignmentSlide assignmentSlide = assignmentSlideRepository.findById(assignmentSlideDTO.getId())
                 .orElseThrow(() -> new VacademyException("Assignment slide not found"));
@@ -67,7 +67,10 @@ public class AssignmentSlideService {
                 slideDTO.getDescription(),
                 slideDTO.getImageFileId(),
                 slideDTO.getSlideOrder(),
-                chapterId
+                chapterId,
+                packageSessionId,
+                moduleId,
+                subjectId
         );
 
         return "success";

@@ -4,10 +4,10 @@ import { type AddedQuestion } from '@/types';
 import { Button } from '@/components/ui/button';
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox'; // For multiple choice if needed
 import { toast } from 'sonner';
-import { Loader2, Send } from 'lucide-react';
+import { Loader2, Send, Hourglass } from 'lucide-react';
 import { Input } from '@/components/ui/input'; // Added Input
 import { Textarea } from '@/components/ui/textarea'; // Added Textarea
 
@@ -149,6 +149,30 @@ export const QuizInteraction: React.FC<QuizInteractionProps> = ({
   const createMarkup = (htmlContent: string) => {
     return { __html: htmlContent };
   };
+
+  if (!canAttempt) {
+    return (
+      <Card className="w-full max-w-2xl mx-auto shadow-lg my-4 animate-pulse">
+        <CardHeader>
+          <CardTitle className="text-xl sm:text-2xl font-semibold text-slate-800">
+             <span dangerouslySetInnerHTML={createMarkup(questionData.text?.content || "Question Submitted")} />
+          </CardTitle>
+          <CardDescription>You have used all your attempts.</CardDescription>
+        </CardHeader>
+        <CardContent className="text-center py-8">
+            <Hourglass className="mx-auto size-12 text-primary mb-4" />
+            <p className="text-lg font-medium text-slate-600">
+                Waiting for the presenter to move to the next slide...
+            </p>
+        </CardContent>
+         <CardFooter>
+            <p className="text-xs text-slate-500 text-right w-full">
+                Attempts: {submissionCount} / {studentAttemptsAllowed}
+            </p>
+        </CardFooter>
+      </Card>
+    );
+  }
 
   return (
     <Card className="w-full max-w-2xl mx-auto shadow-lg my-4">

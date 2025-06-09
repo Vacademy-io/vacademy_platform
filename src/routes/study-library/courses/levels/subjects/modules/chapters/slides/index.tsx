@@ -171,7 +171,7 @@ function Slides() {
   }, [subjectName]);
 
   return (
-    <LayoutContainer sidebarComponent={SidebarComponent}>
+    <LayoutContainer sidebarComponent={SidebarComponent} className='md:my-0 md:mx-6'>
         <InitStudyLibraryProvider>
             <ModulesWithChaptersProvider subjectId={subjectId}>
                 <SidebarProvider defaultOpen={false}>

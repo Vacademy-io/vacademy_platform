@@ -39,7 +39,7 @@ const AssessmentRegistrationCompleted = ({
       if (authorityKeys.length > 1) {
         navigate({
           to: "/institute-selection",
-          search: { redirect: "/assessment/examination" },
+          search: { redirect: "/assessment/examination" , isPublicAssessment: true },
         });
       } else {
         const instituteId = authorityKeys[0];
@@ -54,7 +54,7 @@ const AssessmentRegistrationCompleted = ({
             if (status == 200) {
               navigate({
                 to: "/SessionSelectionPage",
-                search: { redirect: "/assessment/examination" },
+                search: { redirect: "/assessment/examination" , isPublicAssessment: true},
               });
             } else {
               navigate({
@@ -66,12 +66,14 @@ const AssessmentRegistrationCompleted = ({
             toast.error("Failed to fetch details");
             navigate({
               to: "/assessment/examination",
+              search: { isPublicAssessment: true },
             });
           }
         } else {
           console.error("Institute ID or User ID is undefined");
           navigate({
             to: "/assessment/examination",
+            search: { isPublicAssessment: true },
           });
         }
       }

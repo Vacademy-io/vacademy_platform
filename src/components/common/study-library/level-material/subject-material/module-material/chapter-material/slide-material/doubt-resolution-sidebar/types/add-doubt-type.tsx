@@ -12,6 +12,7 @@ export interface DoubtType {
     parent_id: string | null;
     parent_level: number;
     doubt_assignee_request_user_ids: string[];
+    batch_id: string;
     id?:string;
   }
   

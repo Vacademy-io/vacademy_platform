@@ -31,6 +31,7 @@ import { Preferences } from "@capacitor/preferences";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import VideoQuestionOverlay from "./video-question-overlay";
 import { getPublicUrl } from "@/services/upload_file";
+import { useMediaRefsStore } from "@/stores/mediaRefsStore";
 // import { getPublicUrl } from "@/utils/study-library/storage/get-public-url";
 
 interface CustomVideoPlayerProps {
@@ -110,9 +111,7 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
       []
     );
     const [verificationInterval] = useState(180);
-    const [lastVerificationTime, setLastVerificationTime] = useState(0);
     const verificationTimerRef = useRef<NodeJS.Timeout | null>(null);
-    console.log("verification numbers", lastVerificationTime);
     // Concentration metrics
     const [tabSwitchCount, setTabSwitchCount] = useState(0);
     const [pauseCount, setPauseCount] = useState(0);
@@ -123,6 +122,12 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
     );
     const [concentrationScore, setConcentrationScore] = useState(100); // Start with perfect score
     const [actualVideoUrl, setActualVideoUrl] = useState<string | null>(null);
+
+    const {setCurrentUploadedVideoTime} = useMediaRefsStore();
+
+    useEffect(()=>{
+      setCurrentUploadedVideoTime(currentTime);
+    }, [currentTime])
 
     // Expose methods to parent component via ref
     useImperativeHandle(ref, () => ({
@@ -280,14 +285,7 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
             setConcentrationScore(savedMetrics.concentrationScore || 100);
           }
 
-          // Load last verification time
-          const { value: verificationTimeValue } = await Preferences.get({
-            key: "verification_time",
-          });
-          if (verificationTimeValue) {
-            const savedTime = Number.parseInt(verificationTimeValue, 10);
-            setLastVerificationTime(savedTime);
-          }
+          
         } catch (error) {
           console.error("Error loading saved concentration metrics:", error);
         }
@@ -418,7 +416,6 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
       if (index === 1) {
         // Record verification time
         const currentTimeInSeconds = Math.floor(Date.now() / 1000);
-        setLastVerificationTime(currentTimeInSeconds);
         saveVerificationTime(currentTimeInSeconds);
 
         // Hide verification
@@ -837,6 +834,9 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
       if (videoRef.current) {
         setDuration(videoRef.current.duration);
         setIsLoading(false);
+        // Set the custom video length in the store
+        const { setCurrentCustomVideoLength } = useMediaRefsStore.getState();
+        setCurrentCustomVideoLength(videoRef.current.duration);
       }
     };
 

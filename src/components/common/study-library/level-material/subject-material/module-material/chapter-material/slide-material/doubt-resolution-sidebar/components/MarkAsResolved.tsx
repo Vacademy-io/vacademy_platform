@@ -36,7 +36,7 @@ export const MarkAsResolved = ({doubt, refetch}: {doubt: DoubtType, refetch: () 
 
     return(
         <div className="flex gap-2 items-center font-semibold ">
-            Mark as resolved <Switch checked={doubtResolved} onCheckedChange={() => {handleMarkAsResolved()}} />
+            Mark as resolved <Switch checked={doubtResolved} onCheckedChange={() => {handleMarkAsResolved()}} className="data-[state=checked]:bg-primary-500" />
         </div>
     )
 }

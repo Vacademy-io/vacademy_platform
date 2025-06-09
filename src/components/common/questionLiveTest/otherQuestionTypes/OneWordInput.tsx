@@ -1,27 +1,9 @@
 import { MyInput } from "@/components/design-system/input";
 import { useAssessmentStore } from "@/stores/assessment-store";
 
-// export function OneWordInput() {
-//   const { currentQuestion, answers, setAnswer } = useAssessmentStore();
-//   const currentAnswer =
-//     (currentQuestion && answers[currentQuestion.question_id]?.[0]) || "";
-
-//   return (
-//     <MyInput
-//       type="text"
-//       value={currentAnswer}
-//       onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-//         if (currentQuestion) {
-//           setAnswer(currentQuestion.question_id, [e.target.value]);
-//         }
-//       }}
-//       placeholder="Type your one-word answer"
-//     />
-//   );
-// }
-
 export function OneWordInput() {
-  const { currentQuestion, answers, setAnswer } = useAssessmentStore();
+  const { currentQuestion, answers, setAnswer, setQuestionState } =
+    useAssessmentStore();
   const currentAnswer =
     (currentQuestion && answers[currentQuestion.question_id]?.[0]) || "";
 
@@ -32,11 +14,12 @@ export function OneWordInput() {
       onChangeFunction={(e: React.ChangeEvent<HTMLInputElement>) => {
         if (currentQuestion) {
           setAnswer(currentQuestion.question_id, [e.target.value]);
+          setQuestionState(currentQuestion.question_id, { isVisited: true });
         }
       }}
       inputPlaceholder="Type your one-word answer"
-      onCopy={(e) => e.preventDefault()} 
-      onCut={(e) => e.preventDefault()}  
+      onCopy={(e) => e.preventDefault()}
+      onCut={(e) => e.preventDefault()}
       onPaste={(e) => e.preventDefault()}
     />
   );

@@ -17,8 +17,16 @@ export const SidebarItemsData: SidebarItemsType[] = [
   {
     icon: BookOpen,
     title: "Learning Center",
-    to: "/study-library",
-    
+    subItems:[
+      {
+        subItem:"Study Library",
+        subItemLink:"/study-library",
+      },
+      {
+        subItem : "Live Class",
+        subItemLink:"/study-library/live-class",
+      }
+    ]
   },
   {
     icon: NotePencil,

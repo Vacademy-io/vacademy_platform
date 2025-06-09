@@ -83,7 +83,7 @@ export const ModuleCard = ({ module }: { module: ModulesWithChapters}) => {
                     </div>
                     <div className="flex items-center gap-2">
                         <CompletionStatusComponent completionPercentage={module.percentage_completed} />
-                        <p className="text-neutral-500 text-body">{module.percentage_completed}% completed</p>
+                        <p className="text-neutral-500 text-body">{module.percentage_completed.toFixed(2)}% completed</p>
                     </div>
                 </div>
             </div>

@@ -29,7 +29,7 @@ export function ResponseBreakdownComponent({
 }) {
   const chartData = [
     {
-      responseType: "correct",
+      responseType: "Attempted",
       value: responseData.attempted,
       fill: "#97D4B4",
     },
@@ -91,23 +91,13 @@ export const renderStudentResponse = (review: any) => {
 
       case "MCQS":
         if (responseData.responseData?.optionIds?.length) {
-          return (
-            <p>
-              Selected option ID:{" "}
-              {responseData.responseData.optionIds.join(", ")}
-            </p>
-          );
+          return <p>{responseData.responseData.optionIds.join(", ")}</p>;
         }
         return <p>No option selected</p>;
 
       case "MCQM":
         if (responseData.responseData?.optionIds?.length) {
-          return (
-            <p>
-              Selected option IDs:{" "}
-              {responseData.responseData.optionIds.join(", ")}
-            </p>
-          );
+          return <p>{responseData.responseData.optionIds.join(", ")}</p>;
         }
         return <p>No options selected</p>;
 
@@ -159,11 +149,7 @@ export const renderCorrectAnswer = (review: any) => {
       case "MCQS":
       case "MCQM":
         if (correctData.data?.correctOptionIds?.length) {
-          return (
-            <p>
-              Correct option IDs: {correctData.data.correctOptionIds.join(", ")}
-            </p>
-          );
+          return <p>{correctData.data.correctOptionIds.join(", ")}</p>;
         }
         return <p>No correct options provided</p>;
 

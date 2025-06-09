@@ -16,5 +16,5 @@ export function formatISODateTimeReadable(isoString: string): string {
     const formattedDate = date.toLocaleDateString(undefined, dateOptions);
     const formattedTime = date.toLocaleTimeString(undefined, timeOptions);
 
-    return `${formattedDate} at ${formattedTime}`;
+    return ` ${formattedTime}, ${formattedDate}`;
 }

@@ -7,11 +7,7 @@ import {
   formatDuration,
   getSubjectNameById,
 } from "@/constants/helper";
-import {
-  renderCorrectAnswer,
-  renderStudentResponse,
-  ResponseBreakdownComponent,
-} from "./response-breakdown-component";
+import { ResponseBreakdownComponent } from "./response-breakdown-component";
 import { MarksBreakdownComponent } from "./marks-breakdown-component";
 import { Crown } from "@/svgs";
 import { useEffect, useState } from "react";
@@ -38,13 +34,52 @@ import type {
   DocumentLoadEvent,
   PageChangeEvent,
 } from "@react-pdf-viewer/core";
-// import { Button } from "@/components/ui/button";
 import { PdfViewerComponent } from "../study-library/level-material/subject-material/module-material/chapter-material/slide-material/pdf-viewer-component";
 import { getPublicUrl } from "@/services/upload_file";
+import {
+  renderStudentResponse,
+  renderCorrectAnswer,
+  SectionQuestions,
+} from "./question-response-renderer";
+
 type TestMarks = {
   total_achievable_marks: number;
   section_wise_achievable_marks: Record<string, number>;
 };
+
+// Function to fetch questions data
+const fetchQuestionsData = async (
+  assessmentId: string,
+  sectionIds: string[]
+) => {
+  try {
+    console.log("assessmentId", assessmentId, "sectionIds", sectionIds);
+    const response = await authenticatedAxiosInstance.get(
+      "https://backend-stage.vacademy.io/assessment-service/assessment/add-questions/create/v1/questions-of-sections",
+      {
+        params: {
+          assessmentId,
+          sectionIds: sectionIds.join(","),
+        },
+      }
+    );
+    console.log("response", response);
+    return response.data as SectionQuestions;
+  } catch (error) {
+    console.error("Error fetching questions data:", error);
+    return null;
+  }
+};
+
+interface InstituteDetails {
+  id: string;
+  name: string;
+  subjects: Array<{
+    id: string;
+    subject_name: string;
+  }>;
+}
+
 export const TestReportDialog = ({
   testReport,
   examType,
@@ -52,8 +87,12 @@ export const TestReportDialog = ({
   evaluationType,
 }: TestReportDialogProps) => {
   const report = useRouter();
-  const [instituteDetails, setInstituteDetails] = useState<any>(null);
+  const [instituteDetails, setInstituteDetails] =
+    useState<InstituteDetails | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [questionsData, setQuestionsData] = useState<SectionQuestions | null>(
+    null
+  );
   const { setNavHeading } = useNavHeadingStore();
   type PdfFileType = {
     fileId: string;
@@ -118,6 +157,22 @@ export const TestReportDialog = ({
     fetchTestMarks();
   }, []);
 
+  useEffect(() => {
+    const loadQuestionsData = async () => {
+      if (testReport && studentReport?.assessment_id) {
+        // Get all unique section IDs from the test report
+        const sectionIds = Object.keys(testReport.all_sections);
+        const data = await fetchQuestionsData(
+          studentReport.assessment_id,
+          sectionIds
+        );
+        setQuestionsData(data);
+      }
+    };
+
+    loadQuestionsData();
+  }, [testReport, studentReport?.assessment_id]);
+
   const handleBackClick = () => {
     report.navigate({
       to: `/assessment/reports`,
@@ -152,6 +207,8 @@ export const TestReportDialog = ({
   );
 
   const handleExport = async () => {
+    if (!instituteDetails) return;
+
     const assessmentId = studentReport.assessment_id;
     const attemptId = studentReport.attempt_id;
     const instituteId = instituteDetails.id;
@@ -341,7 +398,7 @@ export const TestReportDialog = ({
         <div className="p-6 text-h3 font-semibold text-primary-500">
           Score Report
         </div>
-        <div className="flex flex-col md:flex-col lg:flex-row items-center gap-10 lg:gap-20 p-6">
+        <div className="flex flex-col md:flex-col lg:flex-row gap-10 lg:gap-20 p-6">
           <div className=" flex sm:flex-row lg:flex-col items-center gap-20 p-6">
             <div className="flex flex-col">
               <h1>Rank</h1>
@@ -643,7 +700,23 @@ export const TestReportDialog = ({
                                   : "bg-neutral-50"
                             }`}
                           >
-                            {renderStudentResponse(review)}
+                            {/* <div>
+                              {review.student_response_options &&
+                              review.student_response_options.length > 0 ? (
+                                review.student_response_options.map(
+                                  (option, idx) => {
+                                    return (
+                                      <p key={idx}>
+                                        {parseHtmlToString(option.option_name)}
+                                      </p>
+                                    );
+                                  }
+                                )
+                              ) : (
+                                <p>No response</p>
+                              )}
+                            </div> */}
+                            {renderStudentResponse(review, questionsData)}
                           </div>
                         </div>
                       </div>
@@ -667,7 +740,7 @@ export const TestReportDialog = ({
                             <div
                               className={`flex w-full rounded-lg bg-success-50 p-4`}
                             >
-                              {renderCorrectAnswer(review)}
+                              {renderCorrectAnswer(review, questionsData)}
                             </div>
                           </div>
                         </div>

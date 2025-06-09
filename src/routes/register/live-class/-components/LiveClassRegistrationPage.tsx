@@ -21,6 +21,7 @@ import { z } from "zod";
 import { useMutation } from "@tanstack/react-query";
 import axios from "axios";
 import {
+  LIVE_SESSION_CHECK_EMAIL_REGISTRATION,
   LIVE_SESSION_REQUEST_OTP,
   LIVE_SESSION_VERIFY_OTP,
   REQUEST_OTP,
@@ -35,6 +36,8 @@ import {
   DropdownOption,
   RegistrationFormValues,
 } from "../-types/type";
+import { useLiveSessionGuestRegistration } from "../-hooks/useLiveSessionGuestRegistration";
+import { useInstituteDetails } from "../-hooks/useInstituteDetails";
 
 export const verifyEmailSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -52,13 +55,15 @@ export default function LiveClassRegistrationPage() {
   const router = useRouter();
   const { sessionId } = router.state.location.search;
   const { data, isLoading } = useSessionCustomFields(sessionId || "");
+  const { data: instituteDetails } = useInstituteDetails();
 
-  // useEffect(() => {
-  //   console.log("sessionId ", sessionId);
-  //   if (!sessionId) {
-  //     router.navigate({ to: "/dashboard" });
-  //   }
-  // }, [sessionId]);
+  const { mutate: registerGuestUser } = useLiveSessionGuestRegistration();
+
+  useEffect(() => {
+    if (!sessionId) {
+      router.navigate({ to: "/dashboard" });
+    }
+  }, [sessionId]);
 
   useEffect(() => {
     if (data?.accessLevel === AccessLevel.PRIVATE) {
@@ -66,7 +71,6 @@ export default function LiveClassRegistrationPage() {
     }
   }, [data]);
 
-  console.log("data ", data);
   const schema = generateZodSchema(data?.customFields);
   const form = useForm({
     resolver: zodResolver(schema),
@@ -94,7 +98,7 @@ export default function LiveClassRegistrationPage() {
         data?.customFields || []
       );
 
-      console.log(payload);
+      registerGuestUser(payload);
     } catch (error) {
       toast.error("Error building request");
       console.error("DTO transformation error:", error);
@@ -105,6 +109,28 @@ export default function LiveClassRegistrationPage() {
     console.log("Validation errors:", errors);
     // You can show a toast or scroll to the first error here
   };
+
+  const checkEmailRegistration = async (email: string) => {
+    try {
+      const response = await axios.post(LIVE_SESSION_CHECK_EMAIL_REGISTRATION, {
+        headers: {
+          "Content-Type": "application/json",
+        },
+        params: {
+          sessionId: data?.sessionId,
+          email: email,
+        },
+      });
+      if (response.data === true) {
+        toast.success("Email already registered");
+      } else {
+        toast.error("Email not registered");
+      }
+    } catch (error) {
+      console.error("Failed to check email registration:", error);
+    }
+  };
+
   const sendEmailOtp = async (email: string) => {
     try {
       await axios.post(
@@ -146,6 +172,7 @@ export default function LiveClassRegistrationPage() {
 
       if (response.status === 200) {
         toast.success("OTP verified successfully");
+        checkEmailRegistration(email);
         handleCloseAlertDialog();
       } else {
         toast.error("Wrong OTP entered");
@@ -222,19 +249,30 @@ export default function LiveClassRegistrationPage() {
     }, 1000);
   };
 
+  const formatDateTime = (dateStr: string | undefined) => {
+    if (!dateStr) return "";
+    return dayjs(dateStr).format("DD MMM YYYY, hh:mm A");
+  };
+
   if (isLoading) return <DashboardLoader />;
-  //   if (error instanceof Error) return <p>Error: {error.message}</p>;
 
   return (
     <>
       <div className="w-screen h-screen bg-primary-50 p-20 flex flex-row justify-around items-center">
         <div className="flex flex-col gap-6 h-full w-[40%] items-center">
-          <div>Logo</div>
+          {instituteDetails?.logoUrl ? (
+            <img
+              src={instituteDetails.logoUrl}
+              alt={instituteDetails.institute_name}
+              className="h-12 w-auto object-contain"
+            />
+          ) : (
+            <div>Logo</div>
+          )}
           <div className="text-h2">{data?.sessionTitle}</div>
           <div>
             {data?.startTime && (
-              //   <CountdownTimer startTime={`${data.startTime}Z`} />
-              <CountdownTimer startTime={"2025-05-27T14:30:00"} />
+              <CountdownTimer startTime={`${data.startTime}Z`} />
             )}
           </div>
           <div>Already Registered? Login with Email</div>
@@ -246,16 +284,18 @@ export default function LiveClassRegistrationPage() {
             <div className="flex flex-row gap-6">
               <div className="flex flex-row gap-2">
                 <div>Start Time:</div>
-                <div>{dayjs(data?.startTime).format("YYYY-MM-DD")}</div>
+                <div>{formatDateTime(data?.startTime)}</div>
               </div>
               <div className="flex flex-row gap-2">
                 <div>End Time:</div>
-                <div>{dayjs(data?.lastEntryTime).format("YYYY-MM-DD")}</div>
+                <div>{formatDateTime(data?.lastEntryTime)}</div>
               </div>
-              <div className="flex flex-row gap-2">
-                <div>Subject:</div>
-                {/* <div>{}</div> */}
-              </div>
+              {data?.subject && (
+                <div className="flex flex-row gap-2">
+                  <div>Subject:</div>
+                  <div>{data.subject}</div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -308,7 +348,7 @@ export default function LiveClassRegistrationPage() {
                                   onChangeFunction={field.onChange}
                                   required={responseField.mandatory}
                                   size="large"
-                                  label={field.name}
+                                  label={responseField.fieldName}
                                   {...field}
                                 />
                               </FormControl>

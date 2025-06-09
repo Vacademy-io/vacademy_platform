@@ -46,7 +46,7 @@ public class LearnerTrackingService {
         this.concentrationScoreService = concentrationScoreService;
     }
 
-    @Transactional
+
     public ActivityLogDTO addOrUpdateDocumentActivityLog(ActivityLogDTO activityLogDTO, String slideId, String chapterId,String packageSessionId,String moduleId,String subjectId, CustomUserDetails user) {
         validateActivityLogDTO(activityLogDTO, true); // Validate for documents
         ActivityLog activityLog = activityLogDTO.isNewActivity() ?
@@ -59,7 +59,7 @@ public class LearnerTrackingService {
         return activityLog.toActivityLogDTO();
     }
 
-    @Transactional
+//    @Transactional
     public ActivityLogDTO addOrUpdateVideoActivityLog(ActivityLogDTO activityLogDTO, String slideId, String chapterId,String moduleId,String subjectId,String packageSessionId, CustomUserDetails user) {
         validateActivityLogDTO(activityLogDTO, false); // Validate for videos
         ActivityLog activityLog = activityLogDTO.isNewActivity() ?

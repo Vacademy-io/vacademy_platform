@@ -68,9 +68,10 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
         chapter_to_slides cs
     LEFT JOIN 
         learner_operation lo 
-        ON lo.source_id = cs.slide_id
-        AND lo.operation IN (:learnerOperation)
-        AND lo.user_id = :userId
+            ON lo.source_id = cs.slide_id
+            AND lo.operation IN (:learnerOperation)
+            AND lo.user_id = :userId
+            AND lo.value ~ '^-?\\d+(\\.\\d+)?$'
     WHERE 
         cs.status IN (:statusList)
         AND cs.chapter_id = :chapterId
@@ -82,32 +83,35 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
             @Param("statusList") List<String> statusList
     );
 
+
     @Query(value = """
     SELECT 
-        COALESCE(SUM(CAST(lo.value AS FLOAT)), 0) / NULLIF(COUNT(DISTINCT mcm.chapter_id), 0) AS percentage_completed
-    FROM 
-        module_chapter_mapping mcm
-    JOIN 
-        chapter c ON c.id = mcm.chapter_id
-    JOIN 
-        chapter_package_session_mapping cpm ON cpm.chapter_id = c.id
-    LEFT JOIN 
-        learner_operation lo ON lo.source_id = mcm.chapter_id
-            AND lo.operation IN (:learnerOperation)
-            AND lo.user_id = :userId
-            AND lo.value ~ '^-?\\d+(\\.\\d+)?$'
-    WHERE 
-        mcm.module_id = :moduleId
-        AND cpm.status IN (:chapterStatusList)
-        AND c.status IN (:chapterStatusList)
-    """, nativeQuery = true)
+        COALESCE(SUM(lo_val.chapter_value), 0) / NULLIF(COUNT(*), 0) AS percentage_completed
+    FROM (
+        SELECT DISTINCT mcm.chapter_id
+        FROM module_chapter_mapping mcm
+        JOIN chapter c ON c.id = mcm.chapter_id
+        JOIN chapter_package_session_mapping cpm ON cpm.chapter_id = c.id
+        WHERE mcm.module_id = :moduleId
+          AND cpm.status IN (:chapterStatusList)
+          AND c.status IN (:chapterStatusList)
+    ) distinct_chapters
+LEFT JOIN (
+    SELECT DISTINCT ON (lo.source_id)
+        lo.source_id,
+        CAST(lo.value AS FLOAT) AS chapter_value
+    FROM learner_operation lo
+    WHERE lo.operation IN (:learnerOperation)
+      AND lo.user_id = :userId
+      AND lo.value ~ '^-?\\d+(\\.\\d+)?$'
+) lo_val ON lo_val.source_id = distinct_chapters.chapter_id
+""", nativeQuery = true)
     Double getModuleCompletionPercentage(
             @Param("userId") String userId,
             @Param("moduleId") String moduleId,
             @Param("learnerOperation") List<String> learnerOperation,
             @Param("chapterStatusList") List<String> chapterStatusList
     );
-
 
     @Query(value = """
     SELECT 

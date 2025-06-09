@@ -9,8 +9,6 @@ import vacademy.io.admin_core_service.features.live_session.dto.GroupedSessionsB
 import vacademy.io.admin_core_service.features.live_session.dto.LiveSessionListDTO;
 import vacademy.io.admin_core_service.features.live_session.service.GetLiveSessionService;
 import vacademy.io.admin_core_service.features.live_session.service.GetSessionByIdService;
-import vacademy.io.admin_core_service.features.live_session.service.Step1Service;
-import vacademy.io.admin_core_service.features.live_session.service.Step2Service;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 import java.util.List;
@@ -20,8 +18,6 @@ import java.util.List;
 @RequiredArgsConstructor
 public class GetSessionsListController {
 
-    private final Step1Service step1Service;
-    private final Step2Service step2Service;
     private final GetLiveSessionService getLiveSessionService;
     private final GetSessionByIdService getSessionByIdService;
 

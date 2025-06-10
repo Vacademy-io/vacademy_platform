@@ -611,7 +611,11 @@ public class ConstantAiTemplate {
                 Layout and Dimensioning Rules 
                 To ensure the generated slides are high-quality and immediately usable, you MUST follow these layout rules for every slide:
                                 
+                lineHeight should not be more than 1.5
+                fontSize should not be more than 20         
                 Center the Diagram on the Canvas:
+                
+                
                                 
                 Treat Top Left as (0, 0).
                 To achieve this, use a balanced mix of x and y coordinates. For example, a diagram 800px wide should span from roughly x: 0 to x: 800. A diagram 600px tall should span from y: 0 to y: 600. This prevents the diagram from being pushed into a corner.

@@ -107,6 +107,40 @@ public class GetLiveSessionService {
                 .toList();
     }
 
+    public List<GroupedSessionsByDateDTO> getDraftedSession(String instituteId, CustomUserDetails user) {
+        List<LiveSessionRepository.LiveSessionListProjection> projections =
+                sessionRepository.findDraftedSessions(instituteId);
+
+        List<LiveSessionListDTO> flatList = projections.stream().map(p -> new LiveSessionListDTO(
+                p.getSessionId(),
+                p.getWaitingRoomTime(),
+                p.getThumbnailFileId(),
+                p.getBackgroundScoreFileId(),
+                p.getSessionStreamingServiceType(),
+                p.getScheduleId(),
+                p.getMeetingDate(),
+                p.getStartTime(),
+                p.getLastEntryTime(),
+                p.getRecurrenceType(),
+                p.getAccessLevel(),
+                p.getTitle(),
+                p.getSubject(),
+                p.getMeetingLink()
+        )).toList();
+
+        // Group by date
+        return flatList.stream()
+                .collect(Collectors.groupingBy(
+                        LiveSessionListDTO::getMeetingDate,
+                        TreeMap::new, // to keep dates sorted
+                        Collectors.toList()
+                ))
+                .entrySet()
+                .stream()
+                .map(entry -> new GroupedSessionsByDateDTO(entry.getKey(), entry.getValue()))
+                .toList();
+    }
+
     public List<GroupedSessionsByDateDTO> getLiveAndUpcomingSession(String instituteId, CustomUserDetails user) {
         List<LiveSessionRepository.LiveSessionListProjection> projections =
                 sessionRepository.findUpcomingSessionsForBatch(instituteId);

@@ -607,7 +607,8 @@ public class ConstantAiTemplate {
                 * **Engaging Styling:** Use a consistent and intentional color palette, vary typography for hierarchy (`fontFamily`, `fontSize`), and use fill styles (`"solid"`, `"cross-hatch"`, `"hachure"`) to distinguish between elements and guide the viewer's attention.
                 * **Format:** The final output for this part must be a JSON array of Excalidraw objects.
                                 
-                              
+                Make the Excalidraw objects as compact, modern and professional looking as possible 
+                           
                 Layout and Dimensioning Rules 
                 To ensure the generated slides are high-quality and immediately usable, you MUST follow these layout rules for every slide:
                                 
@@ -615,8 +616,10 @@ public class ConstantAiTemplate {
                 fontSize should not be more than 20         
                 Center the Diagram on the Canvas:
                 
+                Use default  "fontFamily": 6,
+                For code typo - "fontFamily": 8,
+                For Bold - "fontFamily": 7,    
                 
-                                
                 Treat Top Left as (0, 0).
                 To achieve this, use a balanced mix of x and y coordinates. For example, a diagram 800px wide should span from roughly x: 0 to x: 800. A diagram 600px tall should span from y: 0 to y: 600. This prevents the diagram from being pushed into a corner.
                 Prevent Text Cut-Off:
@@ -633,6 +636,8 @@ public class ConstantAiTemplate {
                 Do NOT use containerId.
                 You MUST manually set a generous bounding box. A good rule is to make the width significantly larger than the text itself appears to need.
                 Crucially, set "autoResize": false for all standalone text elements. This forces Excalidraw to respect the large width and height you define, preventing the text from being cut off on initial load.
+                Give enough space for the text to be contained within the bounding box.
+                If text is too large, it will be cut off, better if it is in small font size and in multiple lines
                                 
                 Define Arrow Paths with points
                                 
@@ -797,9 +802,7 @@ public class ConstantAiTemplate {
                  }},
                  
                  "title": "Critical Analysis of Global Warming"
-                 "slide_sequence": [0, 3, 5] // index of slides that should fit in overall flow of presentation (slides + questions), like 0th index slide should be at 0th index in presentation, 1st index slide should be at 3rd index in presentation
-                 "question_sequence": [1, 6, 2, 4] // index of slides that should fit in overall flow of presentation (slides + questions), like 0th index slide should be at 1st index in presentation
-                 
+                 "slides_order": [Q0,S1,S2,S3,Q1,Q2,Q3,S4,Q4] // give an order of slides in the presentation
                 }}
                 """;
     }

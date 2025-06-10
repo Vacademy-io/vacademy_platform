@@ -16,6 +16,7 @@ import { Route as StudyLibraryIndexImport } from './routes/study-library/index'
 import { Route as RegisterIndexImport } from './routes/register/index'
 import { Route as LogoutIndexImport } from './routes/logout/index'
 import { Route as LoginIndexImport } from './routes/login/index'
+import { Route as LiveClassGuestIndexImport } from './routes/live-class-guest/index'
 import { Route as LearnerInvitationResponseIndexImport } from './routes/learner-invitation-response/index'
 import { Route as InstituteSelectionIndexImport } from './routes/institute-selection/index'
 import { Route as DeleteUserIndexImport } from './routes/delete-user/index'
@@ -26,6 +27,8 @@ import { Route as StudyLibraryLiveClassIndexImport } from './routes/study-librar
 import { Route as StudyLibraryCoursesIndexImport } from './routes/study-library/courses/index'
 import { Route as RegisterLiveClassIndexImport } from './routes/register/live-class/index'
 import { Route as LoginForgotPasswordIndexImport } from './routes/login/forgot-password/index'
+import { Route as LiveClassGuestWaitingRoomIndexImport } from './routes/live-class-guest/waiting-room/index'
+import { Route as LiveClassGuestEmbedIndexImport } from './routes/live-class-guest/embed/index'
 import { Route as HomeworkReportsIndexImport } from './routes/homework/reports/index'
 import { Route as HomeworkListIndexImport } from './routes/homework/list/index'
 import { Route as DashboardNotificationsIndexImport } from './routes/dashboard/notifications/index'
@@ -72,6 +75,12 @@ const LogoutIndexRoute = LogoutIndexImport.update({
 const LoginIndexRoute = LoginIndexImport.update({
   id: '/login/',
   path: '/login/',
+  getParentRoute: () => rootRoute,
+} as any)
+
+const LiveClassGuestIndexRoute = LiveClassGuestIndexImport.update({
+  id: '/live-class-guest/',
+  path: '/live-class-guest/',
   getParentRoute: () => rootRoute,
 } as any)
 
@@ -135,6 +144,19 @@ const RegisterLiveClassIndexRoute = RegisterLiveClassIndexImport.update({
 const LoginForgotPasswordIndexRoute = LoginForgotPasswordIndexImport.update({
   id: '/login/forgot-password/',
   path: '/login/forgot-password/',
+  getParentRoute: () => rootRoute,
+} as any)
+
+const LiveClassGuestWaitingRoomIndexRoute =
+  LiveClassGuestWaitingRoomIndexImport.update({
+    id: '/live-class-guest/waiting-room/',
+    path: '/live-class-guest/waiting-room/',
+    getParentRoute: () => rootRoute,
+  } as any)
+
+const LiveClassGuestEmbedIndexRoute = LiveClassGuestEmbedIndexImport.update({
+  id: '/live-class-guest/embed/',
+  path: '/live-class-guest/embed/',
   getParentRoute: () => rootRoute,
 } as any)
 
@@ -287,6 +309,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LearnerInvitationResponseIndexImport
       parentRoute: typeof rootRoute
     }
+    '/live-class-guest/': {
+      id: '/live-class-guest/'
+      path: '/live-class-guest'
+      fullPath: '/live-class-guest'
+      preLoaderRoute: typeof LiveClassGuestIndexImport
+      parentRoute: typeof rootRoute
+    }
     '/login/': {
       id: '/login/'
       path: '/login'
@@ -355,6 +384,20 @@ declare module '@tanstack/react-router' {
       path: '/homework/reports'
       fullPath: '/homework/reports'
       preLoaderRoute: typeof HomeworkReportsIndexImport
+      parentRoute: typeof rootRoute
+    }
+    '/live-class-guest/embed/': {
+      id: '/live-class-guest/embed/'
+      path: '/live-class-guest/embed'
+      fullPath: '/live-class-guest/embed'
+      preLoaderRoute: typeof LiveClassGuestEmbedIndexImport
+      parentRoute: typeof rootRoute
+    }
+    '/live-class-guest/waiting-room/': {
+      id: '/live-class-guest/waiting-room/'
+      path: '/live-class-guest/waiting-room'
+      fullPath: '/live-class-guest/waiting-room'
+      preLoaderRoute: typeof LiveClassGuestWaitingRoomIndexImport
       parentRoute: typeof rootRoute
     }
     '/login/forgot-password/': {
@@ -480,6 +523,7 @@ export interface FileRoutesByFullPath {
   '/delete-user': typeof DeleteUserIndexRoute
   '/institute-selection': typeof InstituteSelectionIndexRoute
   '/learner-invitation-response': typeof LearnerInvitationResponseIndexRoute
+  '/live-class-guest': typeof LiveClassGuestIndexRoute
   '/login': typeof LoginIndexRoute
   '/logout': typeof LogoutIndexRoute
   '/register': typeof RegisterIndexRoute
@@ -490,6 +534,8 @@ export interface FileRoutesByFullPath {
   '/dashboard/notifications': typeof DashboardNotificationsIndexRoute
   '/homework/list': typeof HomeworkListIndexRoute
   '/homework/reports': typeof HomeworkReportsIndexRoute
+  '/live-class-guest/embed': typeof LiveClassGuestEmbedIndexRoute
+  '/live-class-guest/waiting-room': typeof LiveClassGuestWaitingRoomIndexRoute
   '/login/forgot-password': typeof LoginForgotPasswordIndexRoute
   '/register/live-class': typeof RegisterLiveClassIndexRoute
   '/study-library/courses': typeof StudyLibraryCoursesIndexRoute
@@ -514,6 +560,7 @@ export interface FileRoutesByTo {
   '/delete-user': typeof DeleteUserIndexRoute
   '/institute-selection': typeof InstituteSelectionIndexRoute
   '/learner-invitation-response': typeof LearnerInvitationResponseIndexRoute
+  '/live-class-guest': typeof LiveClassGuestIndexRoute
   '/login': typeof LoginIndexRoute
   '/logout': typeof LogoutIndexRoute
   '/register': typeof RegisterIndexRoute
@@ -524,6 +571,8 @@ export interface FileRoutesByTo {
   '/dashboard/notifications': typeof DashboardNotificationsIndexRoute
   '/homework/list': typeof HomeworkListIndexRoute
   '/homework/reports': typeof HomeworkReportsIndexRoute
+  '/live-class-guest/embed': typeof LiveClassGuestEmbedIndexRoute
+  '/live-class-guest/waiting-room': typeof LiveClassGuestWaitingRoomIndexRoute
   '/login/forgot-password': typeof LoginForgotPasswordIndexRoute
   '/register/live-class': typeof RegisterLiveClassIndexRoute
   '/study-library/courses': typeof StudyLibraryCoursesIndexRoute
@@ -549,6 +598,7 @@ export interface FileRoutesById {
   '/delete-user/': typeof DeleteUserIndexRoute
   '/institute-selection/': typeof InstituteSelectionIndexRoute
   '/learner-invitation-response/': typeof LearnerInvitationResponseIndexRoute
+  '/live-class-guest/': typeof LiveClassGuestIndexRoute
   '/login/': typeof LoginIndexRoute
   '/logout/': typeof LogoutIndexRoute
   '/register/': typeof RegisterIndexRoute
@@ -559,6 +609,8 @@ export interface FileRoutesById {
   '/dashboard/notifications/': typeof DashboardNotificationsIndexRoute
   '/homework/list/': typeof HomeworkListIndexRoute
   '/homework/reports/': typeof HomeworkReportsIndexRoute
+  '/live-class-guest/embed/': typeof LiveClassGuestEmbedIndexRoute
+  '/live-class-guest/waiting-room/': typeof LiveClassGuestWaitingRoomIndexRoute
   '/login/forgot-password/': typeof LoginForgotPasswordIndexRoute
   '/register/live-class/': typeof RegisterLiveClassIndexRoute
   '/study-library/courses/': typeof StudyLibraryCoursesIndexRoute
@@ -585,6 +637,7 @@ export interface FileRouteTypes {
     | '/delete-user'
     | '/institute-selection'
     | '/learner-invitation-response'
+    | '/live-class-guest'
     | '/login'
     | '/logout'
     | '/register'
@@ -595,6 +648,8 @@ export interface FileRouteTypes {
     | '/dashboard/notifications'
     | '/homework/list'
     | '/homework/reports'
+    | '/live-class-guest/embed'
+    | '/live-class-guest/waiting-room'
     | '/login/forgot-password'
     | '/register/live-class'
     | '/study-library/courses'
@@ -618,6 +673,7 @@ export interface FileRouteTypes {
     | '/delete-user'
     | '/institute-selection'
     | '/learner-invitation-response'
+    | '/live-class-guest'
     | '/login'
     | '/logout'
     | '/register'
@@ -628,6 +684,8 @@ export interface FileRouteTypes {
     | '/dashboard/notifications'
     | '/homework/list'
     | '/homework/reports'
+    | '/live-class-guest/embed'
+    | '/live-class-guest/waiting-room'
     | '/login/forgot-password'
     | '/register/live-class'
     | '/study-library/courses'
@@ -651,6 +709,7 @@ export interface FileRouteTypes {
     | '/delete-user/'
     | '/institute-selection/'
     | '/learner-invitation-response/'
+    | '/live-class-guest/'
     | '/login/'
     | '/logout/'
     | '/register/'
@@ -661,6 +720,8 @@ export interface FileRouteTypes {
     | '/dashboard/notifications/'
     | '/homework/list/'
     | '/homework/reports/'
+    | '/live-class-guest/embed/'
+    | '/live-class-guest/waiting-room/'
     | '/login/forgot-password/'
     | '/register/live-class/'
     | '/study-library/courses/'
@@ -686,6 +747,7 @@ export interface RootRouteChildren {
   DeleteUserIndexRoute: typeof DeleteUserIndexRoute
   InstituteSelectionIndexRoute: typeof InstituteSelectionIndexRoute
   LearnerInvitationResponseIndexRoute: typeof LearnerInvitationResponseIndexRoute
+  LiveClassGuestIndexRoute: typeof LiveClassGuestIndexRoute
   LoginIndexRoute: typeof LoginIndexRoute
   LogoutIndexRoute: typeof LogoutIndexRoute
   RegisterIndexRoute: typeof RegisterIndexRoute
@@ -696,6 +758,8 @@ export interface RootRouteChildren {
   DashboardNotificationsIndexRoute: typeof DashboardNotificationsIndexRoute
   HomeworkListIndexRoute: typeof HomeworkListIndexRoute
   HomeworkReportsIndexRoute: typeof HomeworkReportsIndexRoute
+  LiveClassGuestEmbedIndexRoute: typeof LiveClassGuestEmbedIndexRoute
+  LiveClassGuestWaitingRoomIndexRoute: typeof LiveClassGuestWaitingRoomIndexRoute
   LoginForgotPasswordIndexRoute: typeof LoginForgotPasswordIndexRoute
   RegisterLiveClassIndexRoute: typeof RegisterLiveClassIndexRoute
   StudyLibraryCoursesIndexRoute: typeof StudyLibraryCoursesIndexRoute
@@ -720,6 +784,7 @@ const rootRouteChildren: RootRouteChildren = {
   DeleteUserIndexRoute: DeleteUserIndexRoute,
   InstituteSelectionIndexRoute: InstituteSelectionIndexRoute,
   LearnerInvitationResponseIndexRoute: LearnerInvitationResponseIndexRoute,
+  LiveClassGuestIndexRoute: LiveClassGuestIndexRoute,
   LoginIndexRoute: LoginIndexRoute,
   LogoutIndexRoute: LogoutIndexRoute,
   RegisterIndexRoute: RegisterIndexRoute,
@@ -730,6 +795,8 @@ const rootRouteChildren: RootRouteChildren = {
   DashboardNotificationsIndexRoute: DashboardNotificationsIndexRoute,
   HomeworkListIndexRoute: HomeworkListIndexRoute,
   HomeworkReportsIndexRoute: HomeworkReportsIndexRoute,
+  LiveClassGuestEmbedIndexRoute: LiveClassGuestEmbedIndexRoute,
+  LiveClassGuestWaitingRoomIndexRoute: LiveClassGuestWaitingRoomIndexRoute,
   LoginForgotPasswordIndexRoute: LoginForgotPasswordIndexRoute,
   RegisterLiveClassIndexRoute: RegisterLiveClassIndexRoute,
   StudyLibraryCoursesIndexRoute: StudyLibraryCoursesIndexRoute,
@@ -772,6 +839,7 @@ export const routeTree = rootRoute
         "/delete-user/",
         "/institute-selection/",
         "/learner-invitation-response/",
+        "/live-class-guest/",
         "/login/",
         "/logout/",
         "/register/",
@@ -782,6 +850,8 @@ export const routeTree = rootRoute
         "/dashboard/notifications/",
         "/homework/list/",
         "/homework/reports/",
+        "/live-class-guest/embed/",
+        "/live-class-guest/waiting-room/",
         "/login/forgot-password/",
         "/register/live-class/",
         "/study-library/courses/",
@@ -815,6 +885,9 @@ export const routeTree = rootRoute
     "/learner-invitation-response/": {
       "filePath": "learner-invitation-response/index.tsx"
     },
+    "/live-class-guest/": {
+      "filePath": "live-class-guest/index.tsx"
+    },
     "/login/": {
       "filePath": "login/index.tsx"
     },
@@ -844,6 +917,12 @@ export const routeTree = rootRoute
     },
     "/homework/reports/": {
       "filePath": "homework/reports/index.tsx"
+    },
+    "/live-class-guest/embed/": {
+      "filePath": "live-class-guest/embed/index.tsx"
+    },
+    "/live-class-guest/waiting-room/": {
+      "filePath": "live-class-guest/waiting-room/index.tsx"
     },
     "/login/forgot-password/": {
       "filePath": "login/forgot-password/index.tsx"

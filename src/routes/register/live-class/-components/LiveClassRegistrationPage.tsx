@@ -112,7 +112,7 @@ export default function LiveClassRegistrationPage() {
 
   const checkEmailRegistration = async (email: string) => {
     try {
-      const response = await axios.post(LIVE_SESSION_CHECK_EMAIL_REGISTRATION, {
+      const response = await axios.get(LIVE_SESSION_CHECK_EMAIL_REGISTRATION, {
         headers: {
           "Content-Type": "application/json",
         },
@@ -121,6 +121,7 @@ export default function LiveClassRegistrationPage() {
           email: email,
         },
       });
+
       if (response.data === true) {
         toast.success("Email already registered");
       } else {
@@ -251,7 +252,7 @@ export default function LiveClassRegistrationPage() {
 
   const formatDateTime = (dateStr: string | undefined) => {
     if (!dateStr) return "";
-    return dayjs(dateStr).format("DD MMM YYYY, hh:mm A");
+    return dayjs(dateStr).format("hh:mm A");
   };
 
   if (isLoading) return <DashboardLoader />;
@@ -300,8 +301,8 @@ export default function LiveClassRegistrationPage() {
           </div>
         </div>
         <div className="w-[35%] h-full flex items-center justify-center">
-          <div className="bg-white p-6 rounded-lg shadow-md h-[80%] overflow-auto">
-            <div className="flex flex-col gap-4">
+          <div className="bg-white p-6 rounded-lg shadow-md h-full">
+            <div className="flex flex-col gap-4 h-full">
               <div>
                 <div className="font-bold">Live Class Registration Form</div>
                 <div>
@@ -311,70 +312,74 @@ export default function LiveClassRegistrationPage() {
               <FormProvider {...form}>
                 <form
                   onSubmit={handleSubmit(onSubmit, onError)}
-                  className="flex flex-col gap-4"
+                  className="flex flex-col gap-4 h-full"
                 >
-                  {data?.customFields?.map((responseField) => (
-                    <div
-                      key={responseField.fieldKey}
-                      className="flex flex-col gap-4"
-                    >
-                      {responseField.fieldType.toLocaleLowerCase() ===
-                      "dropdown" ? (
-                        <SelectField
-                          label={responseField.fieldName}
-                          name={responseField.fieldKey}
-                          options={JSON.parse(responseField.config).map(
-                            (option: DropdownOption, idx: number) => ({
-                              value: option.name,
-                              label: option.label,
-                              _id: idx,
-                            })
-                          )}
-                          control={form.control}
-                          className="mt-[8px] w-full font-thin"
-                        />
-                      ) : (
-                        <FormField
-                          control={form.control}
-                          name={responseField.fieldKey}
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormControl>
-                                <MyInput
-                                  inputType="text"
-                                  inputPlaceholder={field.name}
-                                  input={field.value}
-                                  labelStyle="font-thin"
-                                  onChangeFunction={field.onChange}
-                                  required={responseField.mandatory}
-                                  size="large"
-                                  label={responseField.fieldName}
-                                  {...field}
-                                />
-                              </FormControl>
-                            </FormItem>
-                          )}
-                        />
-                      )}
+                  <div className="flex flex-col gap-4 overflow-auto h-[85%]">
+                    {data?.customFields?.map((responseField) => (
+                      <div
+                        key={responseField.fieldKey}
+                        className="flex flex-col gap-4"
+                      >
+                        {responseField.fieldType.toLocaleLowerCase() ===
+                        "dropdown" ? (
+                          <SelectField
+                            label={responseField.fieldName}
+                            name={responseField.fieldKey}
+                            options={JSON.parse(responseField.config).map(
+                              (option: DropdownOption, idx: number) => ({
+                                value: option.name,
+                                label: option.label,
+                                _id: idx,
+                              })
+                            )}
+                            control={form.control}
+                            className="mt-[8px] w-full font-thin"
+                          />
+                        ) : (
+                          <FormField
+                            control={form.control}
+                            name={responseField.fieldKey}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormControl>
+                                  <MyInput
+                                    inputType="text"
+                                    inputPlaceholder={field.name}
+                                    input={field.value}
+                                    labelStyle="font-thin"
+                                    onChangeFunction={field.onChange}
+                                    required={responseField.mandatory}
+                                    size="large"
+                                    label={responseField.fieldName}
+                                    {...field}
+                                  />
+                                </FormControl>
+                              </FormItem>
+                            )}
+                          />
+                        )}
 
-                      {errors[responseField.fieldKey] && (
-                        <p style={{ color: "red" }}>
-                          {errors[responseField.fieldKey]?.message?.toString()}
-                        </p>
-                      )}
-                    </div>
-                  ))}
+                        {errors[responseField.fieldKey] && (
+                          <p style={{ color: "red" }}>
+                            {errors[
+                              responseField.fieldKey
+                            ]?.message?.toString()}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
 
-                  <MyButton buttonType="primary" type="submit">
+                  <MyButton buttonType="primary" type="submit" className="mt-4">
                     Join Now
                   </MyButton>
-                  <MyButton
+                  {/* <MyButton
                     buttonType="text"
                     type="button"
                     className="text-primary-500"
                   >
                     Reset Form
-                  </MyButton>
+                  </MyButton> */}
                 </form>
               </FormProvider>
             </div>

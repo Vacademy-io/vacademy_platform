@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import axios from "axios";
 import { LIVE_SESSION_GET_SESSION_BY_SCHEDULE_ID } from "@/constants/urls";
-import { SessionDetailsResponse } from "@/routes/register/live-class/-types/types";
+import { SessionDetailsResponse } from "@/routes/register/live-class/-types/type";
 
 const fetchSessionDetails = async (
   scheduleId: string

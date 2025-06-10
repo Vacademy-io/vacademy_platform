@@ -1,16 +1,32 @@
 export interface SessionDetailsResponse {
   sessionId: string;
-  sessionTitle: string;
-  startTime: string;
+  scheduleId: string;
+  instituteId: string;
+  sessionStartTime: string;
   lastEntryTime: string;
-  subject?: string;
   accessLevel: string;
-  customFields?: Array<{
-    id: string;
-    fieldKey: string;
-    fieldName: string;
-    fieldType: string;
-    mandatory: boolean;
-    config: string;
-  }>;
+  meetingType: string | null;
+  linkType: string;
+  sessionStreamingServiceType: string;
+  defaultMeetLink: string;
+  waitingRoomLink: string | null;
+  waitingRoomTime: number;
+  registrationFormLinkForPublicSessions: string | null;
+  createdByUserId: string;
+  title: string;
+  descriptionHtml: string | null;
+  notificationEmailMessage: string | null;
+  attendanceEmailMessage: string | null;
+  coverFileId: string | null;
+  subject: string;
+  thumbnailFileId: string | null;
+  backgroundScoreFileId: string | null;
+  status: string;
+  recurrenceType: string;
+  recurrenceKey: string;
+  meetingDate: string;
+  scheduleStartTime: string;
+  scheduleLastEntryTime: string;
+  customMeetingLink: string;
+  customWaitingRoomMediaId: string | null;
 }

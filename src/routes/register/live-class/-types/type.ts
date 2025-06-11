@@ -19,6 +19,7 @@ export interface SessionCustomFieldsResponse {
   lastEntryTime: string; // ISO date string
   accessLevel: string;
   instituteId: string;
+  coverFileId: string;
   customFields: CustomField[];
 }
 

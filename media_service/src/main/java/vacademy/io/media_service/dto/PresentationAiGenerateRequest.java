@@ -13,4 +13,5 @@ import lombok.*;
 public class PresentationAiGenerateRequest {
     private String language;
     private String text;
+    private String initialData;
 }

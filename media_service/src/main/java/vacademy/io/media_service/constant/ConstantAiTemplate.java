@@ -95,6 +95,7 @@ public class ConstantAiTemplate {
             case HTML_TO_QUESTIONS -> getHtmlToQuestionTemplate();
             case EXTRACT_QUESTION_METADATA -> getMetadataOfQuestions();
             case PRESENTATION_AI_GENERATE -> getSlidesAndAssessmentPromptTemplate();
+            case PRESENTATION_AI_REGENERATE_SLIDE -> getRegenerateSlidePromptTemplate();
         };
     }
 
@@ -805,6 +806,143 @@ public class ConstantAiTemplate {
                  "slides_order": [Q0,S1,S2,S3,Q1,Q2,Q3,S4,Q4] // give an order of slides in the presentation
                 }}
                 """;
+    }
+
+    private static String getRegenerateSlidePromptTemplate() {
+        return """
+                **Objective**: Regenerate an Excalidraw slide based on user feedback.
+                You are an expert in creating visually appealing and informative presentation slides using Excalidraw.
+                You will be given the JSON representation of an existing Excalidraw slide and a text prompt with instructions for what to change.
+                Modify the JSON to incorporate the feedback, ensuring the output is a valid Excalidraw data structure.
+                Do not change the fundamental structure of the JSON. Only modify the elements as requested.
+                For example, if the user asks to "change the title", find the element that represents the title and update its "text" property.
+                If the user asks to "add a point", you should add a new text element and potentially a shape to contain it.
+    
+                 * **Narrative Flow:** Each slide must represent a single, core idea. Arrange the slides to create a clear narrative, moving from foundational concepts to more complex analyses or implications.
+                * **Creative Infographics:** Go beyond simple boxes. Use shapes and layouts to create meaningful visual metaphors (e.g., a branching tree for consequences, a gear system for interconnected causes, a balance scale for comparing arguments). The visuals should directly support the kind of analytical thinking required for the assessment.
+                * **Engaging Styling:** Use a consistent and intentional color palette, vary typography for hierarchy (`fontFamily`, `fontSize`), and use fill styles (`"solid"`, `"cross-hatch"`, `"hachure"`) to distinguish between elements and guide the viewer's attention.
+                * **Format:** The final output for this part must be a JSON array of Excalidraw objects.
+                                
+                Make the Excalidraw objects as compact, modern and professional looking as possible 
+                Avoid stokes for objects, it looks unprofessional, just give background color
+                Layout and Dimensioning Rules 
+                To ensure the generated slides are high-quality and immediately usable, you MUST follow these layout rules for every slide:
+                                
+                lineHeight should not be more than 1.5
+                fontSize should not be more than 20         
+                Center the Diagram on the Canvas:
+                
+                Use default  "fontFamily": 6,
+                For code typo - "fontFamily": 8,
+                For Bold - "fontFamily": 7,    
+                
+                Treat Top Left as (0, 0).
+                To achieve this, use a balanced mix of x and y coordinates. For example, a diagram 800px wide should span from roughly x: 0 to x: 800. A diagram 600px tall should span from y: 0 to y: 600. This prevents the diagram from being pushed into a corner.
+                Prevent Text Cut-Off:
+                                
+                For every text element, you must set the width and height properties to be significantly larger than the text content it holds. This creates a generous bounding box and prevents the text from being truncated.
+                Rule of Thumb: For a single-line title, use a width of 500-800px. For a multi-line paragraph, use a width of 400-600px and a height that can accommodate all lines comfortably (e.g., 100-200px). It is better for the bounding box to be too big than too small.
+                                
+                Intelligent Text Sizing and Containment (MANDATORY TO PREVENT TRUNCATION):
+                                
+                Rule A: For text that should be inside another shape (like a label in a box):
+                You MUST use the containerId property. Set the containerId of the text element to the id of the shape it belongs to.
+                When using containerId, Excalidraw automatically centers and wraps the text. You do not need to manually calculate a large bounding box for the text.
+                Rule B: For standalone text (like a main title):
+                Do NOT use containerId.
+                You MUST manually set a generous bounding box. A good rule is to make the width significantly larger than the text itself appears to need.
+                Crucially, set "autoResize": false for all standalone text elements. This forces Excalidraw to respect the large width and height you define, preventing the text from being cut off on initial load.
+                Give enough space for the text to be contained within the bounding box.
+                If text is too large, it will be cut off, better if it is in small font size and in multiple lines
+                                
+                Define Arrow Paths with points
+                                
+                For every element with "type": "arrow", you MUST include a points array to define its path. This is a mandatory attribute required to prevent rendering errors.
+                The points are relative to the arrow's x and y coordinates.
+                Example for a horizontal arrow: "points": [[0, 0], [width, 0]]
+                Example for a vertical arrow: "points": [[0, 0], [0, height]]
+                ---
+                
+                **Excalidraw JSON**:
+                {initialData}
+    
+                **User Prompt**:
+                {text}
+    
+                **Output**:
+                Return only the modified Excalidraw JSON. Do not include any other text or explanation.
+                The JSON should be a single object, starting with `{{` and ending with `}}`.
+
+                {{
+                      "type": "excalidraw",
+                      "version": 2,
+                      "source": "[https://excalidraw.com](https://excalidraw.com)",
+                      "elements": [
+                        {{
+                          "id": "A_D8s_J34Teg2BvG923a1",
+                          "type": "text",
+                          "x": -274.5,
+                          "y": -203.859375,
+                          "width": 551,
+                          "height": 50,
+                          "angle": 0,
+                          "strokeColor": "#1e1e1e",
+                          "backgroundColor": "transparent",
+                          "fillStyle": "solid",
+                          "strokeWidth": 2,
+                          "strokeStyle": "solid",
+                          "roughness": 1,
+                          "opacity": 100,
+                          "fontFamily": 3,
+                          "fontSize": 40,
+                          "textAlign": "center",
+                          "verticalAlign": "middle",
+                          "text": "How the Greenhouse Effect Works"
+                        }},
+                        {{
+                          "id": "iVw5_AexnO",
+                          "type": "rectangle",
+                          "x": -431,
+                          "y": -89.859375,
+                          "width": 863,
+                          "height": 339,
+                          "angle": 0,
+                          "strokeColor": "#868e96",
+                          "backgroundColor": "#e9ecef",
+                          "fillStyle": "solid",
+                          "strokeWidth": 2,
+                          "strokeStyle": "solid",
+                          "roughness": 0,
+                          "opacity": 100,
+                          "roundness": {{ "type": 3 }}
+                        }},
+                        {{
+                          "id": "n8Yrnk_pM1",
+                          "type": "text",
+                          "x": -403,
+                          "y": -65.859375,
+                          "width": 178,
+                          "height": 25,
+                          "angle": 0,
+                          "strokeColor": "#868e96",
+                          "backgroundColor": "transparent",
+                          "fillStyle": "solid",
+                          "strokeWidth": 2,
+                          "strokeStyle": "solid",
+                          "roughness": 1,
+                          "opacity": 100,
+                          "fontFamily": 2,
+                          "fontSize": 20,
+                          "textAlign": "center",
+                          "verticalAlign": "middle",
+                          "text": "Earth's Atmosphere"
+                        }}
+                      ],
+                      "appState": {{ "viewBackgroundColor": "#ffffff" }}
+                    }}
+                """;
+
+                
     }
 
 }

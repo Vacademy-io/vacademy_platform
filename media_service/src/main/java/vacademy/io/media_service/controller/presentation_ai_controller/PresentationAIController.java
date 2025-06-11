@@ -53,4 +53,27 @@ public class PresentationAIController {
             throw new VacademyException(e.getMessage());
         }
     }
+
+
+    @PostMapping("/regenerateASlide")
+    public ResponseEntity<String> regenerateASlide(@RequestBody PresentationAiGenerateRequest presentationAiGenerateRequest) {
+
+        try {
+            String template = ConstantAiTemplate.getTemplateBasedOnType(TaskStatusTypeEnum.PRESENTATION_AI_REGENERATE_SLIDE);
+
+            Prompt prompt = new PromptTemplate(template).create(Map.of("initialData", presentationAiGenerateRequest.getInitialData(),
+                    "text", presentationAiGenerateRequest.getText()));
+
+            DeepSeekResponse response = deepSeekApiService.getChatCompletion("google/gemini-2.5-flash-preview-05-20", prompt.getContents().trim(), 40000);
+            if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {
+                throw new VacademyException("Failed To generate Response");
+            }
+            String resultJson = response.getChoices().get(0).getMessage().getContent();
+            String validJson = JsonUtils.extractAndSanitizeJson(resultJson);
+            return ResponseEntity.ok(validJson);
+
+        } catch (Exception e) {
+            throw new VacademyException(e.getMessage());
+        }
+    }
 }

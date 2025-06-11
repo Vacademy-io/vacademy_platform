@@ -613,14 +613,21 @@ public class ConstantAiTemplate {
                 Layout and Dimensioning Rules 
                 To ensure the generated slides are high-quality and immediately usable, you MUST follow these layout rules for every slide:
                                 
+                index Key Integrity: The index key for each element determines its stacking order.
+                                
+                It must be a unique string for every element.
+                It must be lexicographically sortable.
+                You must generate indices in a strictly increasing sequence (e.g., a0, a1, a2, ... a9, aA, aB, ...). Do not generate an index like b0 after b5.
+                Logical & Sequential Generation: Process the user's request by identifying distinct objects or logical groups. Generate all elements for one group (e.g., a flowchart shape and its text label, or a character and their speech bubble) before moving to the next group. This ensures related elements have sequential and correct index keys.
+                                
                 lineHeight should not be more than 1.5
                 fontSize should not be more than 20         
                 Center the Diagram on the Canvas:
-                
+                                
                 Use default  "fontFamily": 6,
                 For code typo - "fontFamily": 8,
                 For Bold - "fontFamily": 7,    
-                
+                                
                 Treat Top Left as (0, 0).
                 To achieve this, use a balanced mix of x and y coordinates. For example, a diagram 800px wide should span from roughly x: 0 to x: 800. A diagram 600px tall should span from y: 0 to y: 600. This prevents the diagram from being pushed into a corner.
                 Prevent Text Cut-Off:
@@ -715,6 +722,7 @@ public class ConstantAiTemplate {
                       "type": "excalidraw",
                       "version": 2,
                       "source": "[https://excalidraw.com](https://excalidraw.com)",
+                      "name": "Give a name to this slide like - How the Greenhouse Effect Works or Question About the Greenhouse Effect",
                       "elements": [
                         {{
                           "id": "A_D8s_J34Teg2BvG923a1",
@@ -817,7 +825,7 @@ public class ConstantAiTemplate {
                 Do not change the fundamental structure of the JSON. Only modify the elements as requested.
                 For example, if the user asks to "change the title", find the element that represents the title and update its "text" property.
                 If the user asks to "add a point", you should add a new text element and potentially a shape to contain it.
-    
+                    
                  * **Narrative Flow:** Each slide must represent a single, core idea. Arrange the slides to create a clear narrative, moving from foundational concepts to more complex analyses or implications.
                 * **Creative Infographics:** Go beyond simple boxes. Use shapes and layouts to create meaningful visual metaphors (e.g., a branching tree for consequences, a gear system for interconnected causes, a balance scale for comparing arguments). The visuals should directly support the kind of analytical thinking required for the assessment.
                 * **Engaging Styling:** Use a consistent and intentional color palette, vary typography for hierarchy (`fontFamily`, `fontSize`), and use fill styles (`"solid"`, `"cross-hatch"`, `"hachure"`) to distinguish between elements and guide the viewer's attention.
@@ -831,11 +839,11 @@ public class ConstantAiTemplate {
                 lineHeight should not be more than 1.5
                 fontSize should not be more than 20         
                 Center the Diagram on the Canvas:
-                
+                                
                 Use default  "fontFamily": 6,
                 For code typo - "fontFamily": 8,
                 For Bold - "fontFamily": 7,    
-                
+                                
                 Treat Top Left as (0, 0).
                 To achieve this, use a balanced mix of x and y coordinates. For example, a diagram 800px wide should span from roughly x: 0 to x: 800. A diagram 600px tall should span from y: 0 to y: 600. This prevents the diagram from being pushed into a corner.
                 Prevent Text Cut-Off:
@@ -861,14 +869,21 @@ public class ConstantAiTemplate {
                 The points are relative to the arrow's x and y coordinates.
                 Example for a horizontal arrow: "points": [[0, 0], [width, 0]]
                 Example for a vertical arrow: "points": [[0, 0], [0, height]]
+                                
+                index Key Integrity:  The index key for each element determines its stacking order.
+                                
+                It must be a unique string for every element.
+                It must be lexicographically sortable.
+                You must generate indices in a strictly increasing sequence (e.g., a0, a1, a2, ... a9, aA, aB, ...). Do not generate an index like b0 after b5.
+                Logical & Sequential Generation: Process the user's request by identifying distinct objects or logical groups. Generate all elements for one group (e.g., a flowchart shape and its text label, or a character and their speech bubble) before moving to the next group. This ensures related elements have sequential and correct index keys.
                 ---
-                
+                                
                 **Excalidraw JSON**:
                 {initialData}
-    
+                    
                 **User Prompt**:
                 {text}
-    
+                    
                 **Output**:
                 Return only the modified Excalidraw JSON. Do not include any other text or explanation.
                 The JSON should be a single object, starting with `{{` and ending with `}}`.

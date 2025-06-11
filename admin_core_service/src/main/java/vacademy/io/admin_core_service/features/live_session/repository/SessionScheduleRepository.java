@@ -66,10 +66,28 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
         ss.meeting_date AS meetingDate,
         ss.start_time AS scheduleStartTime,
         ss.last_entry_time AS scheduleLastEntryTime,
+        ss.custom_meeting_link AS customMeetingLink,
         s.title AS sessionTitle,
         s.subject AS subject,
         s.start_time AS sessionStartTime,
-        s.status AS sessionStatus
+        s.status AS sessionStatus,
+        s.institute_id AS instituteId,
+        s.last_entry_time AS lastEntryTime,
+        s.access_level AS accessLevel,
+        s.meeting_type AS meetingType,
+        s.link_type AS linkType,
+        s.session_streaming_service_type AS sessionStreamingServiceType,
+        s.default_meet_link AS defaultMeetLink,
+        s.waiting_room_link AS waitingRoomLink,
+        s.waiting_room_time AS waitingRoomTime,
+        s.registration_form_link_for_public_sessions AS registrationFormLinkForPublicSessions,
+        s.created_by_user_id AS createdByUserId,
+        s.description_html AS descriptionHtml,
+        s.notification_email_message AS notificationEmailMessage,
+        s.attendance_email_message AS attendanceEmailMessage,
+        s.cover_file_id AS coverFileId,
+        s.thumbnail_file_id AS thumbnailFileId,
+        s.background_score_file_id AS backgroundScoreFileId
     FROM live_session s
     LEFT JOIN session_schedules ss ON s.id = ss.session_id
     WHERE s.id = :sessionId

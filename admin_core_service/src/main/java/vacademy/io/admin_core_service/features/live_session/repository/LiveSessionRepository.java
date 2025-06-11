@@ -25,6 +25,7 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         String getTitle();
         String getSubject();
         String getMeetingLink();
+        String getRegistrationFormLinkForPublicSessions();
     }
 
     public interface ScheduledSessionProjection {
@@ -53,7 +54,8 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         s.access_level AS accessLevel,
         s.title AS title,
         s.subject AS subject,
-        COALESCE(ss.custom_meeting_link, s.default_meet_link) AS meetingLink
+        COALESCE(ss.custom_meeting_link, s.default_meet_link) AS meetingLink,
+        s.registration_form_link_for_public_sessions AS registrationFormLinkForPublicSessions
     FROM live_session s
     JOIN session_schedules ss ON s.id = ss.session_id
     WHERE s.status = 'LIVE'
@@ -76,7 +78,8 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
     s.access_level AS accessLevel,
     s.title AS title,
     s.subject AS subject,
-    COALESCE(ss.custom_meeting_link, s.default_meet_link) AS meetingLink
+    COALESCE(ss.custom_meeting_link, s.default_meet_link) AS meetingLink,
+    s.registration_form_link_for_public_sessions AS registrationFormLinkForPublicSessions
     FROM live_session s
     JOIN session_schedules ss ON s.id = ss.session_id
     WHERE s.status = 'LIVE'
@@ -100,7 +103,8 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         s.access_level AS accessLevel,
         s.title AS title,
         s.subject AS subject,
-        COALESCE(ss.custom_meeting_link, s.default_meet_link) AS meetingLink
+        COALESCE(ss.custom_meeting_link, s.default_meet_link) AS meetingLink,
+        s.registration_form_link_for_public_sessions AS registrationFormLinkForPublicSessions
     FROM live_session s
     JOIN session_schedules ss ON s.id = ss.session_id
     WHERE s.status = 'LIVE'
@@ -112,6 +116,26 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
     ORDER BY ss.meeting_date ASC, ss.start_time ASC
     """, nativeQuery = true)
     List<LiveSessionRepository.LiveSessionListProjection> findPreviousSessions(@Param("instituteId") String instituteId);
+
+    @Query(value = """
+    SELECT
+        s.id AS sessionId,
+        ss.id AS scheduleId,
+        ss.meeting_date AS meetingDate,
+        ss.start_time AS startTime,
+        ss.last_entry_time AS lastEntryTime,
+        ss.recurrence_type AS recurrenceType,
+        s.access_level AS accessLevel,
+        s.title AS title,
+        s.subject AS subject,
+        COALESCE(ss.custom_meeting_link, s.default_meet_link) AS meetingLink,
+        s.registration_form_link_for_public_sessions AS registrationFormLinkForPublicSessions
+    FROM live_session s
+    JOIN session_schedules ss ON s.id = ss.session_id
+    WHERE s.status = 'DRAFT'
+    AND s.institute_id = :instituteId
+    """, nativeQuery = true)
+    List<LiveSessionRepository.LiveSessionListProjection> findDraftedSessions(@Param("instituteId") String instituteId);
 
 
 
@@ -137,6 +161,7 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
             s.access_level AS accessLevel,
             s.title AS title,
             s.subject AS subject,
+            s.registration_form_link_for_public_sessions AS registrationFormLinkForPublicSessions,
             CASE
                 WHEN ss.custom_meeting_link IS NOT NULL AND ss.custom_meeting_link <> '' THEN ss.custom_meeting_link
                 ELSE s.default_meet_link

@@ -21,6 +21,9 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
     @Transactional
     void deleteBySessionIdAndSourceId(String sessionId, String sourceId);
 
+    @Transactional
+    List<LiveSessionParticipants> findBySessionId(String sessionId);
+
     @Query(value = """
         SELECT
             ssgm.user_id AS userId,

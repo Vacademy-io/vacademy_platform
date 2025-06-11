@@ -24,11 +24,12 @@ public class GetSessionByIdResponseDTO {
     private LocalDateTime startTime;
     private LocalDateTime lastEntryTime;
     private String linkType;
-    private String link;
+    private String joinLink;
     private String recurrenceType;
     private LocalDate sessionEndDate;
+    private String accessType;
+    private List<String> packageSessionIds;
     private List<ScheduleItem> addedSchedules;
-    private List<NotificationAction> notificationActions;
 
     @Getter
     @Setter
@@ -59,17 +60,18 @@ public class GetSessionByIdResponseDTO {
 
     @Getter
     @Setter
+    public static class Field{
+        private String id;
+        private String type;
+        private String label;
+        private Boolean required;
+        private Boolean isDefault;
+    }
+
+    @Getter
+    @Setter
     static public class NotificationConfigResponse {
-        private String sessionId;
-        private String accessType;
-        private List<String> packageSessionIds;
-        private List<String> deletedPackageSessionIds = new ArrayList<>();
-        private String joinLink;
         private List<NotificationAction> addedNotificationActions;
-        private List<NotificationAction> updatedNotificationActions = new ArrayList<>();
-        private List<String> deletedNotificationActionIds = new ArrayList<>();
-        private List<Object> addedFields = new ArrayList<>();
-        private List<Object> updatedFields = new ArrayList<>();
-        private List<String> deletedFieldIds = new ArrayList<>();
+        private List<Field> addedFields = new ArrayList<>();
     }
 }

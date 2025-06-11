@@ -49,6 +49,7 @@ public class GetRegistrationDataService {
                 first.getAccessLevel(),
                 first.getInstituteId(),
                 first.getSubject(),
+                first.getCoverFileId(),
                 customFields
         );
     }

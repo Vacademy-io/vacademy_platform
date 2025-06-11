@@ -29,7 +29,7 @@ import {
 } from "@/constants/urls";
 import { toast } from "sonner";
 import { transformToGuestRegistrationDTO } from "../-utils/helper";
-import { useRouter } from "@tanstack/react-router";
+import { useNavigate, useRouter } from "@tanstack/react-router";
 import { AccessLevel } from "../-types/enum";
 import {
   ApiError,
@@ -37,7 +37,7 @@ import {
   RegistrationFormValues,
 } from "../-types/type";
 import { useLiveSessionGuestRegistration } from "../-hooks/useLiveSessionGuestRegistration";
-import { useInstituteDetails } from "../-hooks/useInstituteDetails";
+import { useEarliestScheduleId } from "../-hooks/useEarliestScheduleId";
 
 export const verifyEmailSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -55,7 +55,8 @@ export default function LiveClassRegistrationPage() {
   const router = useRouter();
   const { sessionId } = router.state.location.search;
   const { data, isLoading } = useSessionCustomFields(sessionId || "");
-  const { data: instituteDetails } = useInstituteDetails();
+  const { data: earliestScheduleId } = useEarliestScheduleId(sessionId || "");
+  const navigate = useNavigate();
 
   const { mutate: registerGuestUser } = useLiveSessionGuestRegistration();
 
@@ -124,6 +125,14 @@ export default function LiveClassRegistrationPage() {
 
       if (response.data === true) {
         toast.success("Email already registered");
+        if (sessionId) {
+          navigate({
+            to: "/live-class-guest/waiting-room",
+            search: {
+              sessionId: earliestScheduleId || "",
+            },
+          });
+        }
       } else {
         toast.error("Email not registered");
       }
@@ -280,7 +289,7 @@ export default function LiveClassRegistrationPage() {
     <>
       <div className="w-screen h-screen bg-primary-50 p-20 flex flex-row justify-around items-center">
         <div className="flex flex-col gap-6 h-full w-[40%] items-center">
-          {instituteDetails?.logoUrl ? (
+          {data?.coverFileId ? (
             <img
               src={data?.coverFileId}
               alt={data?.sessionTitle}

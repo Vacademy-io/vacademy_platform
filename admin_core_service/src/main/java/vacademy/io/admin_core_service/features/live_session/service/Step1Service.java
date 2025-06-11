@@ -68,7 +68,8 @@ public class Step1Service {
         if(request.getLinkType() != null) session.setLinkType(request.getLinkType());
         if(request.getAllowRewind() != null) session.setAllowRewind(request.getAllowRewind());
         if(request.getSessionStreamingServiceType() != null) session.setSessionStreamingServiceType(request.getSessionStreamingServiceType());
-
+        if(request.getJoinLink() != null) session.setRegistrationFormLinkForPublicSessions(request.getJoinLink());
+        if(request.getCoverFileId() != null) session.setCoverFileId(request.getCoverFileId());
         session.setCreatedByUserId(user.getUserId());
     }
 
@@ -98,7 +99,7 @@ public class Step1Service {
                     schedule.setMeetingDate(java.sql.Date.valueOf(current));
                     schedule.setStartTime(Time.valueOf(dto.getStartTime()));
                     java.time.LocalTime parsedStartTime = java.time.LocalTime.parse(dto.getStartTime());
-                    java.time.LocalTime computedLastEntryTime = parsedStartTime.plusHours(Long.parseLong(dto.getDuration()));
+                    java.time.LocalTime computedLastEntryTime = parsedStartTime.plusMinutes(Long.parseLong(dto.getDuration()));
 
                     schedule.setLastEntryTime(Time.valueOf(computedLastEntryTime));
 

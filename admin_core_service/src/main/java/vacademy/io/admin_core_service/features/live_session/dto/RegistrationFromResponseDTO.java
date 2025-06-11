@@ -19,6 +19,7 @@ public class RegistrationFromResponseDTO {
     private String accessLevel;
     private String instituteId;
     private String subject;
+    private String coverFileId;
     private List<CustomFieldDTO> customFields;
 
     @Data

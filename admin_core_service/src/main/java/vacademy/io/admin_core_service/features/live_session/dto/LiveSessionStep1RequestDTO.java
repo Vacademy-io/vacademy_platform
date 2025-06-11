@@ -20,6 +20,7 @@ public class LiveSessionStep1RequestDTO {
     private String subject;
     private String descriptionHtml;
     private String defaultMeetLink;
+    private String joinLink;
     private Timestamp startTime;
     private Timestamp lastEntryTime;
     private String sessionEndDate; // Note: fixed casing to `sessionEndDate`
@@ -28,6 +29,7 @@ public class LiveSessionStep1RequestDTO {
     private Integer waitingRoomTime;
     private String thumbnailFileId;
     private String backgroundScoreFileId;
+    private String coverFileId;
     private Boolean allowRewind;
     private String sessionStreamingServiceType;
 

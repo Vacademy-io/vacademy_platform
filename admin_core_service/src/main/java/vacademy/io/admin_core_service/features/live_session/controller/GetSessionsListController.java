@@ -35,7 +35,7 @@ public class GetSessionsListController {
         return ResponseEntity.ok( getLiveSessionService.getPreviousSession( instituteId , user));
     }
     @GetMapping("/draft")
-    ResponseEntity<List<GroupedSessionsByDateDTO>> getDraftedSessions(@RequestParam("instituteId") String instituteId , @RequestAttribute("user") CustomUserDetails user) {
+    ResponseEntity<List<LiveSessionListDTO>> getDraftedSessions(@RequestParam("instituteId") String instituteId , @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok( getLiveSessionService.getDraftedSession( instituteId , user));
     }
 

@@ -13,11 +13,11 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 @RequiredArgsConstructor
 public class LiveSessionAttendance {
 
-    private final LIveSessionAttendanceService liveSessionLogService;
+    private final LIveSessionAttendanceService lIveSessionAttendanceService;
 
     @PostMapping("/mark-attendance")
     public ResponseEntity<String> markAttendance(@RequestBody MarkAttendanceRequestDTO request , @RequestAttribute("user") CustomUserDetails user) {
-        liveSessionLogService.markAttendance(request , user);
+        lIveSessionAttendanceService.markAttendance(request , user);
         return ResponseEntity.ok("Attendance marked successfully.");
     }
 }

@@ -28,6 +28,7 @@ public class LiveSessionListDTO {
     private String title;
     private String subject;
     private String meetingLink;
+    private String registrationFormLinkForPublicSessions;
 
     // Getters and Setters
 }

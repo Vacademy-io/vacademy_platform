@@ -1,10 +1,11 @@
 // src/components/ExcalidrawViewer.tsx
-import React, { useEffect, useState, lazy, Suspense, type ComponentType } from 'react';
+import React, { useEffect, useState, lazy, Suspense, type ComponentType, useCallback } from 'react';
 import { fetchExcalidrawContent } from '@/lib/excalidrawUtils';
 import { LoadingSpinner } from './LoadingSpinner';
 import type {
    ExcalidrawInitialDataState, ExcalidrawProps, ExcalidrawImperativeAPI
 } from '@excalidraw/excalidraw/types';
+import { Focus } from 'lucide-react';
 
 // Explicitly type the lazy loaded component
 const Excalidraw = lazy(() => 
@@ -23,6 +24,7 @@ export const ExcalidrawViewer: React.FC<ExcalidrawViewerProps> = ({ fileId, slid
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentInitialData, setCurrentInitialData] = useState<ExcalidrawInitialDataState | null>(null);
+  const [excalidrawApi, setExcalidrawApi] = useState<ExcalidrawImperativeAPI | null>(null);
 
   useEffect(() => {
     let _isMounted = true;
@@ -76,6 +78,43 @@ export const ExcalidrawViewer: React.FC<ExcalidrawViewerProps> = ({ fileId, slid
     };
   }, [fileId]);
 
+  const handleCenterContent = useCallback((options?: { animate: boolean }) => {
+    const animate = options?.animate ?? true;
+    if (excalidrawApi) {
+      const elements = excalidrawApi.getSceneElements();
+      if (elements && elements.length > 0) {
+        excalidrawApi.scrollToContent(elements, { fitToContent: true, animate });
+      }
+    }
+  }, [excalidrawApi]);
+
+  // Auto-center on initial load
+  useEffect(() => {
+    if (excalidrawApi) {
+      // Use a short timeout to ensure canvas is fully rendered before centering.
+      const timer = setTimeout(() => handleCenterContent({ animate: false }), 100);
+      return () => clearTimeout(timer);
+    }
+  }, [excalidrawApi, handleCenterContent]);
+
+  // Auto-center on window resize (debounced)
+  useEffect(() => {
+    let resizeTimer: NodeJS.Timeout;
+    const debouncedResizeHandler = () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        handleCenterContent({ animate: false });
+      }, 150);
+    };
+
+    window.addEventListener('resize', debouncedResizeHandler);
+    
+    return () => {
+      window.removeEventListener('resize', debouncedResizeHandler);
+      clearTimeout(resizeTimer);
+    };
+  }, [handleCenterContent]);
+
   if (isLoading) {
     return <LoadingSpinner text="Loading drawing..." className="h-full" />;
   }
@@ -87,18 +126,27 @@ export const ExcalidrawViewer: React.FC<ExcalidrawViewerProps> = ({ fileId, slid
         <p className="text-slate-500 text-sm">
           Drawing content could not be loaded.
         </p>
-        {slideTitle && <p className="mt-1 text-xs text-slate-400">Slide: {slideTitle}</p>}
+        {slideTitle && <p className="mt-1 text-base text-slate-400">Slide: {slideTitle}</p>}
       </div>
     );
   }
 
   if (currentInitialData && currentInitialData.elements) {
     return (
-      <div className="w-full h-full excalidraw-wrapper bg-slate-50 rounded-lg overflow-hidden shadow-sm">
+      <div className="w-full h-full excalidraw-wrapper bg-slate-50 rounded-lg overflow-hidden shadow-sm relative">
+        <button
+          onClick={() => handleCenterContent({ animate: true })}
+          className="absolute top-2 left-1/2 -translate-x-1/2 z-10 bg-white p-2 rounded-lg shadow-lg hover:bg-gray-100 transition-colors border border-gray-200"
+          aria-label="Center drawing"
+          title="Center drawing"
+        >
+          <Focus className="size-5 text-gray-600" />
+        </button>
         <Suspense fallback={<LoadingSpinner text="Initializing Excalidraw..." className="h-full" />}>
           <Excalidraw
             key={fileId}
             excalidrawAPI={(api) => {
+              setExcalidrawApi(api);
               if (onApiReady) {
                 onApiReady(api);
               }

@@ -153,19 +153,19 @@ export const QuizInteraction: React.FC<QuizInteractionProps> = ({
   if (!canAttempt) {
     return (
       <Card className="w-full max-w-2xl mx-auto shadow-lg my-4 animate-pulse">
-        <CardHeader>
-          <CardTitle className="text-xl sm:text-2xl font-semibold text-slate-800">
+        <CardHeader className="p-4">
+          <CardTitle className="text-lg font-semibold text-slate-800 max-h-[25vh] overflow-y-auto">
              <span dangerouslySetInnerHTML={createMarkup(questionData.text?.content || "Question Submitted")} />
           </CardTitle>
           <CardDescription>You have used all your attempts.</CardDescription>
         </CardHeader>
-        <CardContent className="text-center py-8">
+        <CardContent className="text-center py-6">
             <Hourglass className="mx-auto size-12 text-primary mb-4" />
             <p className="text-lg font-medium text-slate-600">
                 Waiting for the presenter to move to the next slide...
             </p>
         </CardContent>
-         <CardFooter>
+         <CardFooter className="p-4">
             <p className="text-xs text-slate-500 text-right w-full">
                 Attempts: {submissionCount} / {studentAttemptsAllowed}
             </p>
@@ -176,25 +176,25 @@ export const QuizInteraction: React.FC<QuizInteractionProps> = ({
 
   return (
     <Card className="w-full max-w-2xl mx-auto shadow-lg my-4">
-      <CardHeader>
-        <CardTitle className="text-xl sm:text-2xl font-semibold text-slate-800">
+      <CardHeader className="p-4">
+        <CardTitle className="text-lg font-semibold text-slate-800 max-h-[30vh] overflow-y-auto">
           <span dangerouslySetInnerHTML={createMarkup(questionData.text?.content || "Question")} />
         </CardTitle>
-        {questionData.question_type && <p className="text-sm text-slate-500">Type: {questionData.question_type}</p>}
+        {questionData.question_type && <p className="text-sm text-slate-500 pt-1">Type: {questionData.question_type}</p>}
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-3 p-4 pt-0 max-h-[45vh] overflow-y-auto">
         {currentQuestionCategory === 'multiple_choice' ? (
           questionData.options.length > 0 ? (
             <RadioGroup
               onValueChange={(value: string) => handleOptionChange(value)}
               value={isMultipleChoice ? undefined : selectedOptionIds[0]}
               disabled={!canAttempt || isSubmitting}
-              className="space-y-2"
+              className="space-y-1.5"
             >
               {questionData.options.map((option) => (
                 <div
                   key={option.id}
-                  className={`flex items-center space-x-3 p-3 rounded-lg border transition-all
+                  className={`flex items-center space-x-2 p-2 rounded-lg border transition-all
                               ${selectedOptionIds.includes(option.id) ? 'border-primary bg-primary/10 ring-2 ring-primary' : 'border-slate-200 bg-slate-50 hover:border-slate-300'}
                               ${(!canAttempt || isSubmitting) ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer'}`}
                   onClick={() => !isMultipleChoice && canAttempt && !isSubmitting && handleOptionChange(option.id)}
@@ -205,16 +205,16 @@ export const QuizInteraction: React.FC<QuizInteractionProps> = ({
                       checked={selectedOptionIds.includes(option.id)}
                       onCheckedChange={() => handleOptionChange(option.id)}
                       disabled={!canAttempt || isSubmitting}
-                      className="size-5"
+                      className="size-4"
                     />
                   ) : (
                     <RadioGroupItem
                       value={option.id}
                       id={`option-${option.id}`}
-                      className="size-5 border-slate-400 data-[state=checked]:border-primary data-[state=checked]:text-primary focus:ring-primary"
+                      className="size-4 border-slate-400 data-[state=checked]:border-primary data-[state=checked]:text-primary focus:ring-primary"
                     />
                   )}
-                  <Label htmlFor={`option-${option.id}`} className={`flex-1 text-sm sm:text-base font-medium ${(!canAttempt || isSubmitting) ? 'text-slate-500' : 'text-slate-700'} cursor-pointer`}
+                  <Label htmlFor={`option-${option.id}`} className={`flex-1 text-sm font-medium ${(!canAttempt || isSubmitting) ? 'text-slate-500' : 'text-slate-700'} cursor-pointer`}
                     dangerouslySetInnerHTML={createMarkup(option.text.content || `Option ${option.option_order || ''}`)}
                   />
                 </div>
@@ -252,7 +252,7 @@ export const QuizInteraction: React.FC<QuizInteractionProps> = ({
             Attempts: {submissionCount} / {studentAttemptsAllowed}
         </p>
       </CardContent>
-      <CardFooter>
+      <CardFooter className="p-4">
         <Button
           onClick={handleSubmit}
           disabled={!canAttempt || isSubmitting || 

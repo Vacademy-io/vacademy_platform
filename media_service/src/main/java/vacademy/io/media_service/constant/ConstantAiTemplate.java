@@ -587,7 +587,7 @@ public class ConstantAiTemplate {
                 **Input Topic/Text:**
 
                 {inputText}
-                
+                                
                 **Language to be used for generating content:**
 
                 {language}
@@ -606,8 +606,47 @@ public class ConstantAiTemplate {
                 * **Creative Infographics:** Go beyond simple boxes. Use shapes and layouts to create meaningful visual metaphors (e.g., a branching tree for consequences, a gear system for interconnected causes, a balance scale for comparing arguments). The visuals should directly support the kind of analytical thinking required for the assessment.
                 * **Engaging Styling:** Use a consistent and intentional color palette, vary typography for hierarchy (`fontFamily`, `fontSize`), and use fill styles (`"solid"`, `"cross-hatch"`, `"hachure"`) to distinguish between elements and guide the viewer's attention.
                 * **Format:** The final output for this part must be a JSON array of Excalidraw objects.
-
+                                
+                Make the Excalidraw objects as compact, modern and professional looking as possible 
+                Avoid stokes for objects, it looks unprofessional, just give background color
+                Layout and Dimensioning Rules 
+                To ensure the generated slides are high-quality and immediately usable, you MUST follow these layout rules for every slide:
+                                
+                lineHeight should not be more than 1.5
+                fontSize should not be more than 20         
+                Center the Diagram on the Canvas:
+                
+                Use default  "fontFamily": 6,
+                For code typo - "fontFamily": 8,
+                For Bold - "fontFamily": 7,    
+                
+                Treat Top Left as (0, 0).
+                To achieve this, use a balanced mix of x and y coordinates. For example, a diagram 800px wide should span from roughly x: 0 to x: 800. A diagram 600px tall should span from y: 0 to y: 600. This prevents the diagram from being pushed into a corner.
+                Prevent Text Cut-Off:
+                                
+                For every text element, you must set the width and height properties to be significantly larger than the text content it holds. This creates a generous bounding box and prevents the text from being truncated.
+                Rule of Thumb: For a single-line title, use a width of 500-800px. For a multi-line paragraph, use a width of 400-600px and a height that can accommodate all lines comfortably (e.g., 100-200px). It is better for the bounding box to be too big than too small.
+                                
+                Intelligent Text Sizing and Containment (MANDATORY TO PREVENT TRUNCATION):
+                                
+                Rule A: For text that should be inside another shape (like a label in a box):
+                You MUST use the containerId property. Set the containerId of the text element to the id of the shape it belongs to.
+                When using containerId, Excalidraw automatically centers and wraps the text. You do not need to manually calculate a large bounding box for the text.
+                Rule B: For standalone text (like a main title):
+                Do NOT use containerId.
+                You MUST manually set a generous bounding box. A good rule is to make the width significantly larger than the text itself appears to need.
+                Crucially, set "autoResize": false for all standalone text elements. This forces Excalidraw to respect the large width and height you define, preventing the text from being cut off on initial load.
+                Give enough space for the text to be contained within the bounding box.
+                If text is too large, it will be cut off, better if it is in small font size and in multiple lines
+                                
+                Define Arrow Paths with points
+                                
+                For every element with "type": "arrow", you MUST include a points array to define its path. This is a mandatory attribute required to prevent rendering errors.
+                The points are relative to the arrow's x and y coordinates.
+                Example for a horizontal arrow: "points": [[0, 0], [width, 0]]
+                Example for a vertical arrow: "points": [[0, 0], [0, height]]
                 ---
+                                
 
                 ### **Part 2: Generate Assessment Questions**
 
@@ -763,9 +802,7 @@ public class ConstantAiTemplate {
                  }},
                  
                  "title": "Critical Analysis of Global Warming"
-                 "slide_sequence": [0, 3, 5] // index of slides that should fit in overall flow of presentation (slides + questions), like 0th index slide should be at 0th index in presentation, 1st index slide should be at 3rd index in presentation
-                 "question_sequence": [1, 6, 2, 4] // index of slides that should fit in overall flow of presentation (slides + questions), like 0th index slide should be at 1st index in presentation
-                 
+                 "slides_order": [Q0,S1,S2,S3,Q1,Q2,Q3,S4,Q4] // give an order of slides in the presentation
                 }}
                 """;
     }

@@ -236,6 +236,25 @@ export default function LiveClassRegistrationPage() {
     }
   };
 
+  const handlePaste = (e: React.ClipboardEvent) => {
+    e.preventDefault();
+    const pastedData = e.clipboardData.getData("text").slice(0, 6);
+    const otpArray = Array(6).fill("");
+    [...pastedData].forEach((char, index) => {
+      if (/^\d$/.test(char) && index < 6) {
+        otpArray[index] = char;
+        if (otpRefs.current[index]) {
+          otpRefs.current[index]!.value = char;
+        }
+      }
+    });
+    verificationForm.setValue("otp", otpArray, { shouldValidate: true });
+    // Focus the next empty input or the last input if all are filled
+    const nextEmptyIndex = otpArray.findIndex((val) => !val);
+    const focusIndex = nextEmptyIndex === -1 ? 5 : nextEmptyIndex;
+    otpRefs.current[focusIndex]?.focus();
+  };
+
   const startTimer = () => {
     setTimer(60);
     if (timerRef.current) clearInterval(timerRef.current);
@@ -263,8 +282,8 @@ export default function LiveClassRegistrationPage() {
         <div className="flex flex-col gap-6 h-full w-[40%] items-center">
           {instituteDetails?.logoUrl ? (
             <img
-              src={instituteDetails.logoUrl}
-              alt={instituteDetails.institute_name}
+              src={data?.coverFileId}
+              alt={data?.sessionTitle}
               className="h-12 w-auto object-contain"
             />
           ) : (
@@ -276,7 +295,6 @@ export default function LiveClassRegistrationPage() {
               <CountdownTimer startTime={`${data.startTime}Z`} />
             )}
           </div>
-          <div>Already Registered? Login with Email</div>
           <div>
             <RegistrationLogo />
           </div>
@@ -304,17 +322,14 @@ export default function LiveClassRegistrationPage() {
           <div className="bg-white p-6 rounded-lg shadow-md h-full">
             <div className="flex flex-col gap-4 h-full">
               <div>
-                <div className="font-bold">Live Class Registration Form</div>
-                <div>
-                  Join for the live class by filling in the details below.
-                </div>
+                <div className="font-bold">Registration Form</div>
               </div>
               <FormProvider {...form}>
                 <form
                   onSubmit={handleSubmit(onSubmit, onError)}
                   className="flex flex-col gap-4 h-full"
                 >
-                  <div className="flex flex-col gap-4 overflow-auto h-[85%]">
+                  <div className="flex flex-col gap-4 overflow-auto h-[80%]">
                     {data?.customFields?.map((responseField) => (
                       <div
                         key={responseField.fieldKey}
@@ -437,6 +452,7 @@ export default function LiveClassRegistrationPage() {
                               handleOtpChange(index, e.target.value)
                             }
                             onKeyDown={(e) => handleKeyDown(index, e)}
+                            onPaste={handlePaste}
                             className="size-10 text-center border border-gray-300 rounded-md focus:outline-none"
                           />
                         )}

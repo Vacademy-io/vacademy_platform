@@ -180,7 +180,7 @@ export const PublicPresentationViewerPage: React.FC = () => {
       <div ref={revealElementRef} className="reveal w-full h-full">
         <div className="slides">
           <section className="text-center">
-            <h1 className="text-4xl font-semibold mb-4" dangerouslySetInnerHTML={createMarkup(presentation.title)} />
+            <h1 className="text-3xl font-semibold mb-4" dangerouslySetInnerHTML={createMarkup(presentation.title)} />
             <p className="text-gray-600">Number of slides: {sortedSlides.length}</p>
             {presentationId && <p className="text-sm text-gray-500 mt-2">ID: {presentationId}</p>}
           </section>
@@ -188,14 +188,14 @@ export const PublicPresentationViewerPage: React.FC = () => {
           {sortedSlides.map((slide) => (
             <section key={slide.id} data-slide-id={slide.id} data-slide-order={slide.slide_order} className="text-left">
               {slide.title && slide.source.toLowerCase() !== 'question' && 
-                <div className="absolute bottom-2 left-2 px-2 py-1 bg-gray-100 bg-opacity-80 rounded text-gray-700 z-10 shadow-sm">
-                  <h2 className="text-xs font-medium" dangerouslySetInnerHTML={createMarkup(slide.title)} />
+                <div className="absolute bottom-2 left-2 px-1.5 py-0.5 bg-gray-100 bg-opacity-80 rounded text-gray-700 z-10 shadow-sm">
+                  <h5 className="text-xs font-medium" dangerouslySetInnerHTML={createMarkup(slide.title)} />
                 </div>
               }
 
               {!slide.title && slide.source.toLowerCase() !== 'question' && (
-                <div className="absolute bottom-2 left-2 px-2 py-1 bg-gray-100 bg-opacity-80 rounded text-gray-700 z-10 shadow-sm">
-                  <h2 className="text-xs font-medium">Slide {slide.slide_order + 1}</h2>
+                <div className="absolute top-2 right-2 px-1.5 py-0.5 bg-gray-100 bg-opacity-80 rounded text-gray-700 z-10 shadow-sm">
+                  <div className="text-base font-medium">Slide {slide.slide_order + 1}</div>
                 </div>
               )}
 
@@ -212,21 +212,23 @@ export const PublicPresentationViewerPage: React.FC = () => {
               )}
 
               {slide.source.toLowerCase() === 'question' && slide.added_question && (
-                <div className="p-6 h-full flex flex-col justify-center">
-                  <h3 className="text-2xl font-semibold mb-3" dangerouslySetInnerHTML={createMarkup(slide.added_question.text?.content)} />
-                  {slide.added_question.options && slide.added_question.options.length > 0 && (
-                    <ul className="list-none pl-0 space-y-2 text-lg mb-4">
-                      {slide.added_question.options.map(option => (
-                        <li key={option.id} className="p-2 border border-gray-300 rounded bg-gray-50 text-gray-800" dangerouslySetInnerHTML={createMarkup(option.text?.content)} />
-                      ))}
-                    </ul>
-                  )}
-                  <p className="text-xs text-gray-500 mt-auto">Question Type: {slide.added_question.question_type}</p>
+                <div className="p-4 h-full flex flex-col">
+                  <div className="flex-grow overflow-y-auto pr-2">
+                    <div className="text-base font-semibold mb-5" dangerouslySetInnerHTML={createMarkup(slide.added_question.text?.content)} />
+                    {slide.added_question.options && slide.added_question.options.length > 0 && (
+                      <ul className="list-none pl-0 space-y-1.5 text-base mb-4">
+                        {slide.added_question.options.map(option => (
+                          <li key={option.id} className="p-2 border border-gray-200 rounded bg-gray-50 text-gray-800" dangerouslySetInnerHTML={createMarkup(option.text?.content)} />
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-500 pt-2 flex-shrink-0 border-t border-gray-200">Question Type: {slide.added_question.question_type}</p>
                 </div>
               )}
               
               {slide.source.toLowerCase() !== 'excalidraw' && slide.source.toLowerCase() !== 'question' && (
-                 <div className="p-6 h-full flex flex-col justify-center items-center">
+                 <div className="p-4 h-full flex flex-col justify-center items-center">
                     <p className="text-gray-700 mb-2">Unsupported or generic slide type: <span className="font-semibold">{slide.source}</span></p>
                     <details className="w-full max-w-md bg-gray-50 p-2 border rounded">
                         <summary className="cursor-pointer text-sm text-gray-600">View slide data</summary>

@@ -608,7 +608,7 @@ public class ConstantAiTemplate {
                 * **Format:** The final output for this part must be a JSON array of Excalidraw objects.
                                 
                 Make the Excalidraw objects as compact, modern and professional looking as possible 
-                           
+                Avoid stokes for objects, it looks unprofessional, just give background color
                 Layout and Dimensioning Rules 
                 To ensure the generated slides are high-quality and immediately usable, you MUST follow these layout rules for every slide:
                                 

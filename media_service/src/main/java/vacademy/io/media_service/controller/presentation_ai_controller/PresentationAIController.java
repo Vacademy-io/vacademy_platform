@@ -63,7 +63,6 @@ public class PresentationAIController {
 
             Prompt prompt = new PromptTemplate(template).create(Map.of("initialData", presentationAiGenerateRequest.getInitialData(),
                     "text", presentationAiGenerateRequest.getText()));
-
             DeepSeekResponse response = deepSeekApiService.getChatCompletion("google/gemini-2.5-flash-preview-05-20", prompt.getContents().trim(), 40000);
             if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {
                 throw new VacademyException("Failed To generate Response");

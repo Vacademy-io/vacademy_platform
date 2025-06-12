@@ -16,7 +16,7 @@ import SelectField from "@/components/design-system/select-field";
 import { FormControl, FormField, FormItem } from "@/components/ui/form";
 import dayjs from "dayjs";
 import CountdownTimer from "./CountDown";
-import { RegistrationLogo } from "@/svgs";
+import RegistrationLogo from "@/svgs/registration-logo.svg?url";
 import { z } from "zod";
 import { useMutation } from "@tanstack/react-query";
 import axios from "axios";
@@ -291,15 +291,12 @@ export default function LiveClassRegistrationPage() {
       setIsOTPSent(true);
       startTimer();
       toast.success("OTP sent successfully");
-      // setUserAlreadyRegistered(false);
     },
     onError: async () => {
-      // await removeTokensAndLogout();
       toast.error("This email is not registered", {
         description: "Please register yourself to attempt this assessment",
         duration: 3000,
       });
-      // setUserAlreadyRegistered(true);
       handleCloseAlertDialog();
     },
   });
@@ -368,8 +365,8 @@ export default function LiveClassRegistrationPage() {
 
   return (
     <>
-      <div className="w-screen h-screen bg-primary-50 p-20 flex flex-row justify-around items-center">
-        <div className="flex flex-col gap-6 h-full w-[40%] items-center">
+      <div className="w-screen h-screen max-sm:h-fit bg-primary-50 max-sm:p-0 p-20 flex flex-row max-sm:flex-col max-sm:gap-8 justify-around items-center">
+        <div className="flex flex-col gap-6 h-full w-[40%] max-sm:w-full items-center">
           {data?.coverFileId ? (
             <img
               src={coverFileUrl}
@@ -387,7 +384,11 @@ export default function LiveClassRegistrationPage() {
           </div>
           <div>
             <div className="size-[45vh]">
-              <RegistrationLogo />
+              <img
+                src={RegistrationLogo}
+                alt="Registration Logo"
+                className="size-full"
+              />
             </div>
           </div>
           <div className="flex flex-col gap-1">
@@ -410,7 +411,7 @@ export default function LiveClassRegistrationPage() {
             </div>
           </div>
         </div>
-        <div className="w-[35%] flex items-center justify-center">
+        <div className="w-[35%] max-sm:w-full max-sm:mb-4 flex items-center justify-center">
           <div className="bg-white rounded-lg shadow-md ">
             <div className="flex flex-col gap-4">
               <FormProvider {...form}>
@@ -488,7 +489,7 @@ export default function LiveClassRegistrationPage() {
         open={dialog}
         // onOpenChange={setDialog}
         heading="Verify Email"
-        className="w-1/3 h-fit"
+        className="w-1/3 max-sm:w-screen h-fit max-sm:rounded-md"
       >
         <FormProvider {...verificationForm}>
           <div>

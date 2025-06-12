@@ -382,11 +382,13 @@ export default function LiveClassRegistrationPage() {
           <div className="text-h2">{data?.sessionTitle}</div>
           <div>
             {data?.startTime && (
-              <CountdownTimer startTime={`${data.startTime}Z`} />
+              <CountdownTimer startTime={`${data.startTime}`} />
             )}
           </div>
           <div>
-            <RegistrationLogo />
+            <div className="size-[45vh]">
+              <RegistrationLogo />
+            </div>
           </div>
           <div className="flex flex-col gap-1">
             <div className="font-bold">Live Class Details</div>
@@ -408,18 +410,16 @@ export default function LiveClassRegistrationPage() {
             </div>
           </div>
         </div>
-        <div className="w-[35%] h-full flex items-center justify-center">
-          <div className="bg-white p-6 rounded-lg shadow-md h-full">
-            <div className="flex flex-col gap-4 h-full">
-              <div>
-                <div className="font-bold">Registration Form</div>
-              </div>
+        <div className="w-[35%] flex items-center justify-center">
+          <div className="bg-white rounded-lg shadow-md ">
+            <div className="flex flex-col gap-4">
               <FormProvider {...form}>
                 <form
                   onSubmit={handleSubmit(onSubmit, onError)}
-                  className="flex flex-col gap-4 h-full"
+                  className="flex flex-col gap-4 justify-between m-6"
                 >
-                  <div className="flex flex-col gap-4 overflow-auto h-[80%]">
+                  <div className="font-bold">Registration Form</div>
+                  <div className="flex flex-col gap-4 overflow-auto h-[60vh]">
                     {data?.customFields?.map((responseField) => (
                       <div
                         key={responseField.fieldKey}
@@ -478,13 +478,6 @@ export default function LiveClassRegistrationPage() {
                   <MyButton buttonType="primary" type="submit" className="mt-4">
                     Join Now
                   </MyButton>
-                  {/* <MyButton
-                    buttonType="text"
-                    type="button"
-                    className="text-primary-500"
-                  >
-                    Reset Form
-                  </MyButton> */}
                 </form>
               </FormProvider>
             </div>

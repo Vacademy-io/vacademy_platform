@@ -96,7 +96,10 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
                         "{\"name\":\"%s\", \"email\":\"%s\", \"profile\":\"%s\"}",
                         userInfo.name, email, userInfo.picture
                 );
-                String encodedUserInfo = Base64.getUrlEncoder().encodeToString(userJson.getBytes(StandardCharsets.UTF_8));
+
+                String encodedUserInfo = Base64.getUrlEncoder()
+                        .withoutPadding()
+                        .encodeToString(userJson.getBytes(StandardCharsets.UTF_8));
 
                 String separator = redirectUrl.contains("?") ? "&" : "?";
                 String redirectWithParams = String.format(

@@ -46,7 +46,7 @@ const CountdownTimer: React.FC<TimerProps> = ({ startTime }) => {
   }
 
   return (
-    <div className="flex flex-row items-center gap-3">
+    <div className="flex flex-row max-sm:flex-col items-center gap-3">
       <div className="text-primary-500 text-lg">Class starts in</div>
       <div className="flex flex-row items-baseline justify-center gap-1 text-center">
         {timeLeft.days > 0 && (

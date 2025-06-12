@@ -38,6 +38,10 @@ import {
 } from "../-types/type";
 import { useLiveSessionGuestRegistration } from "../-hooks/useLiveSessionGuestRegistration";
 import { useEarliestScheduleId } from "../-hooks/useEarliestScheduleId";
+import { fetchSessionDetails } from "@/routes/live-class-guest/-hooks/useSessionDetails";
+import { SessionDetailsResponse } from "@/routes/study-library/live-class/-types/types";
+import { SessionStreamingServiceType } from "@/routes/register/live-class/-types/enum";
+import { getPublicFileUrl } from "../-hooks/getPublicUrl";
 
 export const verifyEmailSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -49,6 +53,8 @@ export const verifyEmailSchema = z.object({
 export default function LiveClassRegistrationPage() {
   const [dialog, setDialog] = useState<boolean>(true);
   const [isOtpSent, setIsOTPSent] = useState<boolean>(false);
+  const [sessionDetails, setSessionDetails] =
+    useState<SessionDetailsResponse | null>(null);
   const [timer, setTimer] = useState(0);
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -57,8 +63,18 @@ export default function LiveClassRegistrationPage() {
   const { data, isLoading } = useSessionCustomFields(sessionId || "");
   const { data: earliestScheduleId } = useEarliestScheduleId(sessionId || "");
   const navigate = useNavigate();
+  const [coverFileUrl, setCoverFileUrl] = useState<string | undefined>(
+    undefined
+  );
 
-  const { mutate: registerGuestUser } = useLiveSessionGuestRegistration();
+  const { mutateAsync: registerGuestUser } = useLiveSessionGuestRegistration();
+
+  const fetchSessionDetail = async (id: string) => {
+    console.log("fetching session details");
+    const response = await fetchSessionDetails(id);
+    setSessionDetails(response);
+    console.log("sessionDetails ", response);
+  };
 
   useEffect(() => {
     if (!sessionId) {
@@ -69,8 +85,66 @@ export default function LiveClassRegistrationPage() {
   useEffect(() => {
     if (data?.accessLevel === AccessLevel.PRIVATE) {
       router.navigate({ to: "/study-library/live-class" });
+    } else {
+      fetchCoverFileUrl();
     }
   }, [data]);
+
+  useEffect(() => {
+    if (sessionDetails) {
+      const now = new Date();
+      const sessionDate = new Date(
+        `${sessionDetails?.meetingDate}T${sessionDetails?.scheduleStartTime}`
+      );
+      const waitingRoomStart = new Date(sessionDate);
+      waitingRoomStart.setMinutes(
+        waitingRoomStart.getMinutes() - (sessionDetails?.waitingRoomTime ?? 0)
+      );
+
+      // Check if we're in waiting room period or main session
+      const isInWaitingRoom = now >= waitingRoomStart && now < sessionDate;
+      const isInMainSession = now >= sessionDate;
+
+      if (isInWaitingRoom && sessionDetails?.defaultMeetLink) {
+        navigate({
+          to: "/live-class-guest/waiting-room",
+          search: {
+            sessionId: earliestScheduleId || "",
+          },
+        });
+      } else if (
+        isInMainSession &&
+        sessionDetails?.defaultMeetLink &&
+        sessionDetails?.sessionStreamingServiceType ===
+          SessionStreamingServiceType.EMBED
+      ) {
+        navigate({
+          to: "/live-class-guest/embed",
+          search: {
+            sessionId: earliestScheduleId || "",
+          },
+        });
+      } else if (
+        isInMainSession &&
+        sessionDetails?.defaultMeetLink &&
+        sessionDetails?.sessionStreamingServiceType ===
+          SessionStreamingServiceType.REDIRECT
+      ) {
+        window.open(
+          sessionDetails?.defaultMeetLink,
+          "_blank",
+          "noopener,noreferrer"
+        );
+      } else {
+        toast.error("Session is not live yet");
+      }
+    }
+  }, [sessionDetails]);
+
+  const fetchCoverFileUrl = async () => {
+    const response = await getPublicFileUrl(data?.coverFileId || "");
+    setCoverFileUrl(response);
+  };
 
   const schema = generateZodSchema(data?.customFields);
   const form = useForm({
@@ -90,19 +164,30 @@ export default function LiveClassRegistrationPage() {
     formState: { errors },
   } = form;
 
-  const onSubmit = (formValues: RegistrationFormValues) => {
+  const onSubmit = async (formValues: RegistrationFormValues) => {
     console.log("data ", formValues);
+    let payload;
     try {
-      const payload = transformToGuestRegistrationDTO(
+      payload = transformToGuestRegistrationDTO(
         formValues,
         data?.sessionId || "",
         data?.customFields || []
       );
-
-      registerGuestUser(payload);
     } catch (error) {
       toast.error("Error building request");
       console.error("DTO transformation error:", error);
+      return;
+    }
+
+    try {
+      const response = await registerGuestUser(payload);
+      if (response.status === 200) {
+        toast.success("Registration successful");
+        fetchSessionDetail(earliestScheduleId || "");
+      }
+    } catch (error) {
+      // The hook's onError will show a toast.
+      console.error("Registration API call failed:", error);
     }
   };
 
@@ -126,12 +211,8 @@ export default function LiveClassRegistrationPage() {
       if (response.data === true) {
         toast.success("Email already registered");
         if (sessionId) {
-          navigate({
-            to: "/live-class-guest/waiting-room",
-            search: {
-              sessionId: earliestScheduleId || "",
-            },
-          });
+          fetchSessionDetail(earliestScheduleId || "");
+          console.log("sessionDetails ", sessionDetails);
         }
       } else {
         toast.error("Email not registered");
@@ -291,7 +372,7 @@ export default function LiveClassRegistrationPage() {
         <div className="flex flex-col gap-6 h-full w-[40%] items-center">
           {data?.coverFileId ? (
             <img
-              src={data?.coverFileId}
+              src={coverFileUrl}
               alt={data?.sessionTitle}
               className="h-12 w-auto object-contain"
             />

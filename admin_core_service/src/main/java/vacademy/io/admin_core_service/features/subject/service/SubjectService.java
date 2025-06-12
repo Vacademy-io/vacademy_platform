@@ -337,4 +337,8 @@ public class SubjectService {
         return subjectPackageSessions;
     }
 
+    public List<Subject> getAllSubjectsForFaculty(String userId, String packageSessionId){
+        return subjectRepository.findSubjectForFaculty(userId,packageSessionId);
+    }
+
 }

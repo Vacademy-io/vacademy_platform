@@ -1,0 +1,11 @@
+{
+    "name": "vacademy-engage-client", // <-- Add or correct this line
+    "compatibility_date": "2025-05-28", // <-- Add this line
+
+    "site": {
+      "bucket": "./dist" // Or your assets output directory
+    },
+    "assets": { // if you are using this specific asset configuration
+      "directory": "./dist"
+    }
+  }

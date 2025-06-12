@@ -39,7 +39,7 @@ public class OneWordQuestionTypeBasedStrategy extends IQuestionTypeBasedStrategy
             // Extract marking scheme details safely
             OneWordMarkingDto.DataFields markingData = markingDto.getData();
             if (markingData == null) {
-                setAnswerStatus(QuestionResponseEnum.INCORRECT.name());
+                setAnswerStatus(QuestionResponseEnum.PENDING.name());
                 return 0.0;
             }
 

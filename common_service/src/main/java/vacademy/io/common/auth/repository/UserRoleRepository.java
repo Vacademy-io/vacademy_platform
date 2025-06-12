@@ -11,6 +11,7 @@ import vacademy.io.common.auth.entity.User;
 import vacademy.io.common.auth.entity.UserRole;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface UserRoleRepository extends CrudRepository<UserRole, String> {
@@ -41,4 +42,15 @@ public interface UserRoleRepository extends CrudRepository<UserRole, String> {
                                                   @Param("roleName") String roleName);
 
 
+    @Query(value = """
+            SELECT ur.* FROM user_role ur
+            JOIN roles r ON r.id = ur.role_id
+            WHERE ur.user_id = :userId
+            AND ur.institute_id = :instituteId
+            AND r.role_name = :roleName
+            ORDER BY ur.created_at LIMIT 1
+            """,nativeQuery = true)
+    Optional<UserRole> findByUserIdAndRoleIdAndInstituteId(@Param("userId") String userId,
+                                                           @Param("roleName") String roleName,
+                                                           @Param("instituteId") String instituteId);
 }

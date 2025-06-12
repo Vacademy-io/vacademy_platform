@@ -24,8 +24,18 @@ public class LearnerTrackingController {
             @RequestBody ActivityLogDTO activityLogDTO,
             @RequestParam String slideId,
             @RequestParam String chapterId,
+            @RequestParam String packageSessionId,
+            @RequestParam String moduleId,
+            @RequestParam String subjectId,
             @RequestAttribute("user") CustomUserDetails user) {
-        return ResponseEntity.ok(learnerTrackingService.addOrUpdateDocumentActivityLog(activityLogDTO, slideId, chapterId, user));
+        return ResponseEntity.ok(learnerTrackingService.addOrUpdateDocumentActivityLog(
+                activityLogDTO,
+                slideId,
+                chapterId,
+                packageSessionId,
+                moduleId,
+                subjectId,
+                user));
     }
 
     @PostMapping("/add-or-update-video-activity")
@@ -33,8 +43,11 @@ public class LearnerTrackingController {
             @RequestBody ActivityLogDTO activityLogDTO,
             @RequestParam String slideId,
             @RequestParam String chapterId,
+            @RequestParam String packageSessionId,
+            @RequestParam String moduleId,
+            @RequestParam String subjectId,
             @RequestAttribute("user") CustomUserDetails user) {
-        return ResponseEntity.ok(learnerTrackingService.addOrUpdateVideoActivityLog(activityLogDTO, slideId, chapterId, user));
+        return ResponseEntity.ok(learnerTrackingService.addOrUpdateVideoActivityLog(activityLogDTO, slideId, chapterId,moduleId, subjectId, packageSessionId, user));
     }
 
     @GetMapping("/get-learner-document-activity-logs")

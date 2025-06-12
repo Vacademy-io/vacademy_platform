@@ -63,6 +63,10 @@ public class VideoSlide {
             }
             if (addVideoSlideDTO.getPublishedVideoLengthInMillis() != null) {
                 this.publishedVideoLengthInMillis = addVideoSlideDTO.getPublishedVideoLengthInMillis();
+            }else if(addVideoSlideDTO.getVideoLengthInMillis() != null){
+                this.publishedVideoLengthInMillis = addVideoSlideDTO.getVideoLengthInMillis();
+            }else if(this.videoLengthInMillis != null){
+                this.publishedVideoLengthInMillis = this.videoLengthInMillis;
             }
         }
         this.setSourceType(addVideoSlideDTO.getSourceType());

@@ -160,6 +160,7 @@ public class UserInstituteService {
         updateIfNotNull(instituteInfoDTO.getCountry(), institute::setCountry);
         updateIfNotNull(instituteInfoDTO.getState(), institute::setState);
         updateIfNotNull(instituteInfoDTO.getCity(), institute::setCity);
+        updateIfNotNull(instituteInfoDTO.getInstituteThemeCode(), institute::setInstituteThemeCode);
         updateIfNotNull(instituteInfoDTO.getPinCode(), institute::setPinCode);
         updateIfNotNull(instituteInfoDTO.getInstituteLogoFileId(), institute::setLogoFileId);
 

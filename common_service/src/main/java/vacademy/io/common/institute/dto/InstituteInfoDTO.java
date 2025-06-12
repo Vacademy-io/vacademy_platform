@@ -43,4 +43,5 @@ public class InstituteInfoDTO {
     private List<Integer> sessionExpiryDays;
     private List<PackageGroupDTO>packageGroups;
     private String letterHeadFileId;
+    private List<String> tags;
 }

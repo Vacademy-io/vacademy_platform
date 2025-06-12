@@ -14,6 +14,6 @@ public class NUMERICCorrectAnswerDto {
     @Getter
     @Setter
     public static class DataFields {
-        private List<Double> validAnswer;
+        private List<Double> validAnswers;
     }
 }

@@ -227,6 +227,10 @@ public class AddQuestionManager {
 
 
     private void handleLongAnswerQuestion(Question question, QuestionDTO questionRequest) throws JsonProcessingException {
+
+        if (questionRequest.getAutoEvaluationJson() == null) {
+            return;
+        }
         // Retrieve the long answer evaluation from the request
         LongAnswerEvaluationDTO requestLongAnswerEvaluation = (LongAnswerEvaluationDTO) questionEvaluationService.getEvaluationJson(
                 questionRequest.getAutoEvaluationJson(), LongAnswerEvaluationDTO.class);

@@ -3,6 +3,7 @@ package vacademy.io.assessment_service.features.assessment.service.marking_strat
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.util.Pair;
 import org.springframework.stereotype.Component;
 import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.long_answer.LongAanswerCorrectAnswerDto;
 import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.long_answer.LongAnswerMarkingDto;
@@ -17,7 +18,7 @@ import java.util.Set;
 @Slf4j
 @Component
 public class LongAnswerQuestionTypeBasedStrategy extends IQuestionTypeBasedStrategy {
-    public static double calculateMarksViaMatching(String correctAnswer, String studentAnswer, double totalMarks, double negativeMarks) {
+    public static Pair<Double, String> calculateMarksViaMatching(String correctAnswer, String studentAnswer, double totalMarks, double negativeMarks) {
         // Convert answers to sets of words (ignore case & split by spaces)
         Set<String> correctWords = new HashSet<>(Arrays.asList(correctAnswer.toLowerCase().split("\\s+")));
         Set<String> studentWords = new HashSet<>(Arrays.asList(studentAnswer.toLowerCase().split("\\s+")));
@@ -30,14 +31,14 @@ public class LongAnswerQuestionTypeBasedStrategy extends IQuestionTypeBasedStrat
         union.addAll(studentWords);
 
         double similarity = (double) intersection.size() / union.size();
-
         // Determine marks based on similarity
         if (similarity >= 0.8) {
-            return totalMarks; // Full marks for high similarity
+
+            return Pair.of(totalMarks, QuestionResponseEnum.CORRECT.name()); // Full marks for high similarity
         } else if (similarity >= 0.5) {
-            return totalMarks * 0.5; // 50% marks for moderate similarity
+            return Pair.of(totalMarks*0.5, QuestionResponseEnum.CORRECT.name()); // 50% marks for moderate similarity
         } else {
-            return -negativeMarks; // Apply negative marking for low similarity
+            return Pair.of(-negativeMarks, QuestionResponseEnum.INCORRECT.name());
         }
     }
 
@@ -67,7 +68,7 @@ public class LongAnswerQuestionTypeBasedStrategy extends IQuestionTypeBasedStrat
             // Extract marking scheme details safely
             LongAnswerMarkingDto.DataFields markingData = markingDto.getData();
             if (markingData == null) {
-                setAnswerStatus(QuestionResponseEnum.INCORRECT.name());
+                setAnswerStatus(QuestionResponseEnum.PENDING.name());
                 return 0.0;
             }
 
@@ -79,16 +80,16 @@ public class LongAnswerQuestionTypeBasedStrategy extends IQuestionTypeBasedStrat
                 setAnswerStatus(QuestionResponseEnum.PENDING.name());
                 return 0.0;
             }
-
-            // Check if the answer is completely correct
-            if (attemptedAnswer.equals(correctAnswer)) {
-                setAnswerStatus(QuestionResponseEnum.CORRECT.name());
-                return calculateMarksViaMatching(attemptedAnswer, correctAnswer, totalMarks, negativeMarks);
+            Pair<Double, String> marksStatusMap = calculateMarksViaMatching(attemptedAnswer, correctAnswer, totalMarks, negativeMarks);
+            if(marksStatusMap == null){
+                setAnswerStatus(QuestionResponseEnum.PENDING.name());
+                return 0.0;
+            }
+            else{
+                setAnswerStatus(marksStatusMap.getSecond());
+                return marksStatusMap.getFirst();
             }
 
-            // If incorrect response, apply negative marking
-            setAnswerStatus(QuestionResponseEnum.INCORRECT.name());
-            return -(negativeMarks);
 
         } catch (Exception e) {
             log.error("Error Occurred: " + e.getMessage());

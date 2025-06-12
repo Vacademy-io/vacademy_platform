@@ -1,0 +1,93 @@
+# Compiled files
+/frontend-admin-dashboard/dist
+/frontend-admin-dashboard/dist-ssr
+/frontend-admin-dashboard/*.local
+
+# dependencies
+/frontend-admin-dashboard/node_modules
+/frontend-admin-dashboard/.pnp
+/frontend-admin-dashboard/.pnp.js
+
+# testing
+/frontend-admin-dashboard/coverage
+
+# next.js
+/frontend-admin-dashboard/.next/
+/frontend-admin-dashboard/out/
+
+# production
+/frontend-admin-dashboard/build
+
+# misc
+/frontend-admin-dashboard/.DS_Store
+/frontend-admin-dashboard/*.pem
+/frontend-admin-dashboard/android/.idea
+
+# debug
+/frontend-admin-dashboard/npm-debug.log*
+/frontend-admin-dashboard/yarn-debug.log*
+/frontend-admin-dashboard/yarn-error.log*
+
+# local env files
+/frontend-admin-dashboard/.env
+/frontend-admin-dashboard/.env.local
+/frontend-admin-dashboard/.env.development.local
+/frontend-admin-dashboard/.env.test.local
+/frontend-admin-dashboard/.env.production.local
+
+# vercel
+/frontend-admin-dashboard/.vercel
+/frontend-admin-dashboard/.capgo
+
+/frontend-admin-dashboard/*storybook.log
+
+
+# Logs
+/frontend-learner-dashboard/logs
+/frontend-learner-dashboard/*.log
+/frontend-learner-dashboard/npm-debug.log*
+/frontend-learner-dashboard/yarn-debug.log*
+/frontend-learner-dashboard/yarn-error.log*
+/frontend-learner-dashboard/pnpm-debug.log*
+/frontend-learner-dashboard/lerna-debug.log*
+
+# Dependencies and builds
+/frontend-learner-dashboard/node_modules
+/frontend-learner-dashboard/dist
+/frontend-learner-dashboard/dist-ssr
+/frontend-learner-dashboard/*.local
+
+# Editor directories and files
+/frontend-learner-dashboard/.vscode/*
+!/frontend-learner-dashboard/.vscode/extensions.json
+/frontend-learner-dashboard/.idea
+/frontend-learner-dashboard/.DS_Store
+/frontend-learner-dashboard/*.suo
+/frontend-learner-dashboard/*.ntvs*
+/frontend-learner-dashboard/*.njsproj
+/frontend-learner-dashboard/*.sln
+/frontend-learner-dashboard/*.sw?
+
+
+/engage-client/node_modules
+/engage-client/dist
+/engage-client/dist-ssr
+/engage-client/*.local
+
+# Editor directories and files
+/engage-client/.vscode/*
+!/engage-client/.vscode/extensions.json
+/engage-client/.idea
+/engage-client/.DS_Store
+/engage-client/*.suo
+/engage-client/*.ntvs*
+/engage-client/*.njsproj
+/engage-client/*.sln
+/engage-client/*.sw?
+
+/assessment_service/target
+/admin_core_service/target
+/auth_service/target
+/community_service/target
+/notification_service/target
+/media_service/target

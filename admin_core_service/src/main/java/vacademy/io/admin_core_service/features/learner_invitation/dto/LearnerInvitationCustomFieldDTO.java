@@ -17,4 +17,5 @@ public class LearnerInvitationCustomFieldDTO {
     private Boolean isMandatory = true;
     private String commaSeparatedOptions;
     private String status;
+    private Integer fieldOrder;
 }

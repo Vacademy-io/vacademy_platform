@@ -23,12 +23,10 @@ import vacademy.io.auth_service.feature.auth.service.AuthService;
 import vacademy.io.auth_service.feature.notification.service.NotificationEmailBody;
 import vacademy.io.auth_service.feature.notification.service.NotificationService;
 import vacademy.io.common.auth.dto.RefreshTokenRequestDTO;
-import vacademy.io.common.auth.entity.RefreshToken;
-import vacademy.io.common.auth.entity.Role;
-import vacademy.io.common.auth.entity.User;
-import vacademy.io.common.auth.entity.UserRole;
+import vacademy.io.common.auth.entity.*;
 import vacademy.io.common.auth.enums.UserRoleStatus;
 import vacademy.io.common.auth.repository.RoleRepository;
+import vacademy.io.common.auth.repository.UserPermissionRepository;
 import vacademy.io.common.auth.repository.UserRepository;
 import vacademy.io.common.auth.repository.UserRoleRepository;
 import vacademy.io.common.auth.service.JwtService;
@@ -38,6 +36,7 @@ import vacademy.io.common.exceptions.ExpiredTokenException;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.dto.InstituteIdAndNameDTO;
 import vacademy.io.common.institute.dto.InstituteInfoDTO;
+import vacademy.io.common.notification.dto.EmailOTPRequest;
 import vacademy.io.common.notification.dto.GenericEmailRequest;
 
 import java.util.*;
@@ -79,6 +78,9 @@ public class AuthManager {
 
     @Autowired
     private NotificationService notificationService;
+
+    @Autowired
+    private UserPermissionRepository userPermissionRepository;
 
     public JwtResponseDto registerRootUser(RegisterRequest registerRequest) {
         if (Objects.isNull(registerRequest)) throw new VacademyException("Invalid Request");
@@ -157,7 +159,8 @@ public class AuthManager {
             }
 
             RefreshToken refreshToken = refreshTokenService.createRefreshToken(authRequestDTO.getUserName(), authRequestDTO.getClientName());
-            return JwtResponseDto.builder().accessToken(jwtService.generateToken(user, userRoles)).refreshToken(refreshToken.getToken()).build();
+            List<String>userPermissions = userPermissionRepository.findByUserId(user.getId()).stream().map(UserPermission::getPermissionId).toList();
+            return JwtResponseDto.builder().accessToken(jwtService.generateToken(user, userRoles,userPermissions)).refreshToken(refreshToken.getToken()).build();
 
         } else {
             throw new UsernameNotFoundException("invalid user request..!!");
@@ -168,9 +171,9 @@ public class AuthManager {
         return refreshTokenService.findByToken(refreshTokenRequestDTO.getToken()).map(refreshTokenService::verifyExpiration).map(RefreshToken::getUserInfo).map(userInfo -> {
 
             List<UserRole> userRoles = userRoleRepository.findByUser(userInfo);
-
+            List<String>userPermissions = userPermissionRepository.findByUserId(userInfo.getId()).stream().map(UserPermission::getPermissionId).toList();
             // Generate new access token
-            String accessToken = jwtService.generateToken(userInfo, userRoles);
+            String accessToken = jwtService.generateToken(userInfo, userRoles,userPermissions);
             // Return the new JWT token
             return JwtResponseDto.builder().accessToken(accessToken).build();
         }).orElseThrow(() -> new ExpiredTokenException(refreshTokenRequestDTO.getToken() + " Refresh token is. Please make a new login..!"));
@@ -184,4 +187,67 @@ public class AuthManager {
         genericEmailRequest.setSubject("Welcome to Vacademy");
         notificationService.sendGenericHtmlMail(genericEmailRequest);
     }
+
+    public String requestOtp(AuthRequestDto authRequestDTO) {
+        Optional<User> user = userRepository.findTopByEmailOrderByCreatedAtDesc(authRequestDTO.getEmail());
+
+        if (user.isEmpty()) {
+            throw new UsernameNotFoundException("invalid user request..!!");
+        } else {
+            // todo: generate OTP for
+            notificationService.sendOtp(makeOtp(authRequestDTO.getEmail()));
+            return "OTP sent to " + authRequestDTO.getEmail();
+        }
+
+    }
+
+    private EmailOTPRequest makeOtp(String email) {
+        return EmailOTPRequest.builder().to(email).service("auth-service").subject("Vacademy | Otp verification. ").name("Vacademy User").build();
+    }
+
+    public JwtResponseDto loginViaOtp(AuthRequestDto authRequestDTO) {
+        validateOtp(authRequestDTO);
+        User user = getUserByEmail(authRequestDTO.getEmail());
+        if (!user.isRootUser()){
+            throw new UsernameNotFoundException("invalid user request..!!");
+        }
+        return generateJwtResponse(authRequestDTO, user);
+    }
+
+    private void validateOtp(AuthRequestDto authRequestDTO) {
+        if (authRequestDTO.getOtp() == null) {
+            throw new UsernameNotFoundException("invalid user request..!!");
+        }
+
+        boolean isValidOtp = notificationService.verifyOTP(
+                EmailOTPRequest.builder()
+                        .otp(authRequestDTO.getOtp())
+                        .to(authRequestDTO.getEmail())
+                        .build()
+        );
+        if (!isValidOtp) {
+            throw new UsernameNotFoundException("invalid user request..!!");
+        }
+    }
+
+    private User getUserByEmail(String email) {
+        return userRepository.findTopByEmailOrderByCreatedAtDesc(email)
+                .orElseThrow(() -> new UsernameNotFoundException("invalid user request..!!"));
+    }
+
+    private JwtResponseDto generateJwtResponse(AuthRequestDto authRequestDTO, User user) {
+        String username = user.getUsername();
+
+        refreshTokenService.deleteAllRefreshToken(user);
+
+        List<UserRole> userRoles = userRoleRepository.findByUser(user);
+
+        RefreshToken refreshToken = refreshTokenService.createRefreshToken(username, authRequestDTO.getClientName());
+        List<String>userPermissions = userPermissionRepository.findByUserId(user.getId()).stream().map(UserPermission::getPermissionId).toList();
+        return JwtResponseDto.builder()
+                .accessToken(jwtService.generateToken(user, userRoles,userPermissions))
+                .refreshToken(refreshToken.getToken())
+                .build();
+    }
+
 }

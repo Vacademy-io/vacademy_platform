@@ -135,6 +135,8 @@ public class VideoSlideService {
             videoSlideQuestion.setParentRichText(new RichTextData(videoSlideQuestionDTO.getParentRichText()));
         }
 
+        videoSlideQuestion.setCanSkip(videoSlideQuestionDTO.isCanSkip());
+
         if (videoSlideQuestionDTO.getTextData() != null) {
             videoSlideQuestion.setTextData(new RichTextData(videoSlideQuestionDTO.getTextData()));
         }
@@ -274,7 +276,7 @@ public class VideoSlideService {
             RichTextDataDTO parentRichTextDTO = videoSlideQuestionDTO.getTextData();
             videoSlideQuestion.setParentRichText(new RichTextData(parentRichTextDTO));
         }
-
+        videoSlideQuestion.setCanSkip(videoSlideQuestionDTO.isCanSkip());
         if (videoSlideQuestionDTO.getExplanationTextData() != null) {
             RichTextDataDTO explanationTextDTO = videoSlideQuestionDTO.getExplanationTextData();
             videoSlideQuestion.setExplanationTextData(new RichTextData(explanationTextDTO));
@@ -330,8 +332,12 @@ public class VideoSlideService {
                     option = new VideoSlideQuestionOption(optionDTO, videoSlideQuestion);
                 } else {
                     // Update existing option
-                    option.setText(new RichTextData(optionDTO.getText()));
-                    option.setExplanationTextData(new RichTextData(optionDTO.getExplanationTextData()));
+                   if (optionDTO.getText() != null){
+                       option.setText(new RichTextData(optionDTO.getText()));
+                   }
+                   if (optionDTO.getExplanationTextData() != null){
+                       option.setExplanationTextData(new RichTextData(optionDTO.getExplanationTextData()));
+                   }
                 }
                 optionsToSave.add(option);
 

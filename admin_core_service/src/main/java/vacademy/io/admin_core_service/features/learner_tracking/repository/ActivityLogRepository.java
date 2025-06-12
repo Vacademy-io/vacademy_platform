@@ -8,31 +8,36 @@ import org.springframework.data.repository.query.Param;
 import vacademy.io.admin_core_service.features.learner_reports.dto.ChapterSlideProgressProjection;
 import vacademy.io.admin_core_service.features.learner_reports.dto.LearnerActivityDataProjection;
 import vacademy.io.admin_core_service.features.learner_reports.dto.SubjectProgressProjection;
+import vacademy.io.admin_core_service.features.learner_tracking.dto.DailyTimeSpentProjection;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.LearnerActivityProjection;
 import vacademy.io.admin_core_service.features.learner_tracking.entity.ActivityLog;
 
 import java.sql.Date;
+import java.sql.Timestamp;
 import java.util.List;
 
 public interface ActivityLogRepository extends JpaRepository<ActivityLog, String> {
-    @Query(value = """ 
-            SELECT 
-                (EXTRACT(EPOCH FROM (MAX(vt.end_time) - MIN(vt.start_time))) * 1000) / v.published_video_length * 100 AS percentage_watched
-            FROM 
-                activity_log a
-            JOIN 
-                video_tracked vt ON vt.activity_id = a.id
-            JOIN 
-                slide s ON s.id = a.slide_id
-            JOIN 
-                video v ON s.source_id = v.id
-            WHERE 
-                a.user_id = :userId
-                AND a.slide_id = :slideId
-            GROUP BY 
-                v.id, a.user_id, a.slide_id, published_video_length
-            """,
-            nativeQuery = true)
+    @Query(value = """
+    SELECT 
+        CASE 
+            WHEN v.published_video_length IS NULL OR v.published_video_length = 0 THEN 0 
+            ELSE SUM(EXTRACT(EPOCH FROM (vt.end_time - vt.start_time)) * 1000) 
+                 / v.published_video_length * 100 
+        END AS percentage_watched
+    FROM 
+        activity_log a
+    JOIN 
+        video_tracked vt ON vt.activity_id = a.id
+    JOIN 
+        slide s ON s.id = a.slide_id
+    JOIN 
+        video v ON s.source_id = v.id
+    WHERE 
+        a.user_id = :userId
+        AND a.slide_id = :slideId
+    GROUP BY 
+        v.id, a.user_id, a.slide_id, v.published_video_length
+    """, nativeQuery = true)
     Double getPercentageVideoWatched(@Param("slideId") String slideId, @Param("userId") String userId);
 
 
@@ -57,26 +62,104 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
 
 
     @Query(value = """
-            SELECT 
-                COALESCE(SUM(CAST(lo.value AS FLOAT)), 0) / NULLIF(COUNT(DISTINCT cs.slide_id), 0) AS percentage_completed
-            FROM 
-                chapter_to_slides cs
-            LEFT JOIN 
-                learner_operation lo 
-            ON 
-                lo.source_id = cs.slide_id
-                AND lo.operation IN (:learnerOperation)
-                AND lo.user_id = :userId
-            WHERE 
-                cs.status = 'PUBLISHED'
-                AND cs.chapter_id = :chapterId
-            """,
-            nativeQuery = true)
+    SELECT 
+        COALESCE(SUM(CAST(lo.value AS FLOAT)), 0) / NULLIF(COUNT(DISTINCT cs.slide_id), 0) AS percentage_completed
+    FROM 
+        chapter_to_slides cs
+    LEFT JOIN 
+        learner_operation lo 
+            ON lo.source_id = cs.slide_id
+            AND lo.operation IN (:learnerOperation)
+            AND lo.user_id = :userId
+            AND lo.value ~ '^-?\\d+(\\.\\d+)?$'
+    WHERE 
+        cs.status IN (:statusList)
+        AND cs.chapter_id = :chapterId
+    """, nativeQuery = true)
     Double getChapterCompletionPercentage(
             @Param("userId") String userId,
             @Param("chapterId") String chapterId,
-            @Param("learnerOperation") List<String> learnerOperation
+            @Param("learnerOperation") List<String> learnerOperation,
+            @Param("statusList") List<String> statusList
     );
+
+
+    @Query(value = """
+    SELECT 
+        COALESCE(SUM(lo_val.chapter_value), 0) / NULLIF(COUNT(*), 0) AS percentage_completed
+    FROM (
+        SELECT DISTINCT mcm.chapter_id
+        FROM module_chapter_mapping mcm
+        JOIN chapter c ON c.id = mcm.chapter_id
+        JOIN chapter_package_session_mapping cpm ON cpm.chapter_id = c.id
+        WHERE mcm.module_id = :moduleId
+          AND cpm.status IN (:chapterStatusList)
+          AND c.status IN (:chapterStatusList)
+    ) distinct_chapters
+LEFT JOIN (
+    SELECT DISTINCT ON (lo.source_id)
+        lo.source_id,
+        CAST(lo.value AS FLOAT) AS chapter_value
+    FROM learner_operation lo
+    WHERE lo.operation IN (:learnerOperation)
+      AND lo.user_id = :userId
+      AND lo.value ~ '^-?\\d+(\\.\\d+)?$'
+) lo_val ON lo_val.source_id = distinct_chapters.chapter_id
+""", nativeQuery = true)
+    Double getModuleCompletionPercentage(
+            @Param("userId") String userId,
+            @Param("moduleId") String moduleId,
+            @Param("learnerOperation") List<String> learnerOperation,
+            @Param("chapterStatusList") List<String> chapterStatusList
+    );
+
+    @Query(value = """
+    SELECT 
+        COALESCE(SUM(CAST(lo.value AS FLOAT)), 0) / NULLIF(COUNT(DISTINCT smm.module_id), 0) AS percentage_completed
+    FROM 
+        subject_module_mapping smm
+    JOIN 
+        modules m ON m.id = smm.module_id
+    LEFT JOIN 
+        learner_operation lo ON lo.source_id = m.id
+            AND lo.operation IN (:learnerOperation)
+            AND lo.user_id = :userId
+            AND lo.value ~ '^-?\\d+(\\.\\d+)?$'
+    WHERE 
+        smm.subject_id = :subjectId
+        AND m.status IN (:moduleStatusList)
+    """, nativeQuery = true)
+    Double getSubjectCompletionPercentage(
+            @Param("userId") String userId,
+            @Param("subjectId") String subjectId,
+            @Param("learnerOperation") List<String> learnerOperation,
+            @Param("moduleStatusList") List<String> moduleStatusList
+    );
+
+
+    @Query(value = """
+    SELECT 
+        COALESCE(SUM(CAST(lo.value AS FLOAT)), 0) / NULLIF(COUNT(DISTINCT sps.subject_id), 0) AS percentage_completed
+    FROM 
+        subject_session sps
+    JOIN 
+        subject s ON s.id = sps.subject_id
+    LEFT JOIN 
+        learner_operation lo ON lo.source_id = s.id
+            AND lo.operation IN (:learnerOperation)
+            AND lo.user_id = :userId
+            AND lo.value ~ '^-?\\d+(\\.\\d+)?$'
+    WHERE 
+        sps.session_id = :packageSessionId
+        AND s.status IN (:subjectStatusList)
+    """, nativeQuery = true)
+    Double getPackageSessionCompletionPercentage(
+            @Param("userId") String userId,
+            @Param("learnerOperation") List<String> learnerOperation,
+            @Param("packageSessionId") String packageSessionId,
+            @Param("subjectStatusList") List<String> subjectStatusList
+    );
+
 
     @Query("""
             SELECT DISTINCT al FROM ActivityLog al
@@ -138,71 +221,52 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
     Page<LearnerActivityProjection> findStudentActivityBySlideId(@Param("slideId") String slideId, Pageable pageable);
 
     @Query(value = """
-            WITH video_progress AS (
-                SELECT 
-                    s.id AS slide_id,
+    WITH individual_slide_progress AS (
+        SELECT 
+            s.id AS slide_id,
+            CASE 
+                WHEN s.source_type = 'VIDEO' THEN 
                     LEAST(
-                        COALESCE(
-                            (SUM(EXTRACT(EPOCH FROM (vt.end_time - vt.start_time))) * 1000 
-                            / NULLIF(COALESCE(v.published_video_length, 1), 0)) * 100, 
+                        COALESCE(SUM(EXTRACT(EPOCH FROM (vt.end_time - vt.start_time))) * 1000 
+                                 / NULLIF(COALESCE(v.published_video_length, 1), 0) * 100, 
                         0), 
-                    100) AS video_completion
-                FROM slide s
-                LEFT JOIN video v ON s.source_id = v.id AND s.source_type = 'VIDEO'
-                LEFT JOIN activity_log al ON al.slide_id = s.id
-                LEFT JOIN video_tracked vt ON vt.activity_id = al.id
-                WHERE 
-                    al.created_at BETWEEN :startDate AND :endDate
-                GROUP BY s.id, v.published_video_length
-            ),
-            document_progress AS (
-                SELECT 
-                    s.id AS slide_id,
+                    100)
+                WHEN s.source_type IN ('DOCUMENT', 'PDF') THEN 
                     LEAST(
-                        COALESCE(
-                            (COUNT(DISTINCT dt.page_number) * 100.0 / NULLIF(COALESCE(ds.published_document_total_pages, 1), 0)), 
-                        0), 100) AS document_completion
-                FROM slide s
-                LEFT JOIN document_slide ds ON s.source_id = ds.id AND s.source_type IN ('DOCUMENT', 'PDF')
-                LEFT JOIN activity_log al ON al.slide_id = s.id
-                LEFT JOIN document_tracked dt ON dt.activity_id = al.id
-                WHERE 
-                    al.created_at BETWEEN :startDate AND :endDate
-                GROUP BY s.id, ds.published_document_total_pages
-            ),
-            slide_completion AS (
-                SELECT DISTINCT ON (s.id) 
-                    s.id AS slide_id,
-                    COALESCE(
-                        CASE 
-                            WHEN vp.video_completion IS NOT NULL AND dp.document_completion IS NOT NULL 
-                                THEN (vp.video_completion + dp.document_completion) / 2
-                            WHEN vp.video_completion IS NOT NULL THEN vp.video_completion
-                            WHEN dp.document_completion IS NOT NULL THEN dp.document_completion
-                            ELSE 0
-                        END, 0) AS slide_completion_percentage
-                FROM 
-                    subject_session sps
-                JOIN subject_module_mapping smm ON smm.subject_id = sps.subject_id
-                JOIN subject sub ON sub.id = smm.subject_id
-                JOIN modules m ON m.id = smm.module_id
-                JOIN module_chapter_mapping mcm ON mcm.module_id = m.id
-                JOIN chapter c ON c.id = mcm.chapter_id
-                JOIN chapter_to_slides cs ON cs.chapter_id = c.id
-                JOIN slide s ON s.id = cs.slide_id
-                LEFT JOIN video_progress vp ON vp.slide_id = s.id
-                LEFT JOIN document_progress dp ON dp.slide_id = s.id
-                WHERE 
-                    sps.session_id = :sessionId
-                    AND sub.status IN :subjectStatusList
-                    AND m.status IN :moduleStatusList
-                    AND c.status IN :chapterStatusList
-                    AND cs.status IN :slideStatusList
-                    AND s.status IN :slideStatusList
-            )
-            SELECT AVG(slide_completion_percentage) 
-            FROM slide_completion;
-            """, nativeQuery = true)
+                        COALESCE(COUNT(DISTINCT dt.page_number) * 100.0 
+                                 / NULLIF(COALESCE(ds.published_document_total_pages, 1), 0), 
+                        0), 
+                    100)
+                ELSE 0
+            END AS slide_completion
+        FROM slide s
+        LEFT JOIN activity_log al ON al.slide_id = s.id
+        LEFT JOIN video_tracked vt ON vt.activity_id = al.id
+        LEFT JOIN video v ON s.source_id = v.id AND s.source_type = 'VIDEO'
+        LEFT JOIN document_tracked dt ON dt.activity_id = al.id
+        LEFT JOIN document_slide ds ON s.source_id = ds.id AND s.source_type IN ('DOCUMENT', 'PDF')
+        JOIN chapter_to_slides cs ON cs.slide_id = s.id
+        JOIN chapter c ON c.id = cs.chapter_id
+        JOIN module_chapter_mapping mcm ON mcm.chapter_id = c.id
+        JOIN modules m ON m.id = mcm.module_id
+        JOIN subject_module_mapping smm ON smm.module_id = m.id
+        JOIN subject sub ON sub.id = smm.subject_id
+        JOIN subject_session sps ON sps.subject_id = sub.id
+        JOIN chapter_package_session_mapping cpsm ON cpsm.chapter_id = c.id AND cpsm.package_session_id = :sessionId
+        WHERE 
+            al.created_at BETWEEN :startDate AND :endDate
+            AND sps.session_id = :sessionId
+            AND sub.status IN :subjectStatusList
+            AND m.status IN :moduleStatusList
+            AND c.status IN :chapterStatusList
+            AND cpsm.status IN :chapterToSessionStatusList
+            AND s.status IN :slideStatusList
+            AND cs.status IN :slideStatusList
+            AND s.source_type IN :slideTypeList
+        GROUP BY s.id, s.source_type, v.published_video_length, ds.published_document_total_pages
+    )
+    SELECT AVG(slide_completion) FROM individual_slide_progress
+    """, nativeQuery = true)
     Double getBatchCourseCompletionPercentage(
             @Param("sessionId") String sessionId,
             @Param("startDate") Date startDate,
@@ -210,44 +274,72 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
             @Param("subjectStatusList") List<String> subjectStatusList,
             @Param("moduleStatusList") List<String> moduleStatusList,
             @Param("chapterStatusList") List<String> chapterStatusList,
-            @Param("slideStatusList") List<String> slideStatusList
+            @Param("chapterToSessionStatusList") List<String> chapterToSessionStatusList,
+            @Param("slideStatusList") List<String> slideStatusList,
+            @Param("slideTypeList") List<String> slideTypeList
     );
 
-
     @Query(value = """ 
-                WITH activity_duration AS (
-                    SELECT 
-                        al.user_id,
-                        COALESCE(SUM(EXTRACT(EPOCH FROM (al.end_time - al.start_time))) / 60, 0) AS total_time_spent_minutes
-                    FROM activity_log al
-                    WHERE al.created_at BETWEEN :startDate AND :endDate
-                    GROUP BY al.user_id
-                ),
-                batch_time_spent AS (
-                    SELECT 
-                        ssig.package_session_id,
-                        SUM(COALESCE(ad.total_time_spent_minutes, 0)) AS total_time_spent,
-                        COUNT(DISTINCT ssig.user_id) AS total_learners
-                    FROM student_session_institute_group_mapping ssig
-                    LEFT JOIN activity_duration ad ON ssig.user_id = ad.user_id
-                    WHERE 
-                        ssig.package_session_id = :packageSessionId
-                        AND ssig.status IN :statusList
-                    GROUP BY ssig.package_session_id
-                )
-                SELECT 
-                    CASE 
-                        WHEN total_learners > 0 THEN total_time_spent / total_learners 
-                        ELSE 0 
-                    END AS avg_time_spent_minutes
-                FROM batch_time_spent;
-            """, nativeQuery = true)
+    WITH filtered_activity_log AS (
+        SELECT al.*
+        FROM activity_log al
+        JOIN slide s ON s.id = al.slide_id
+        JOIN chapter_to_slides cs ON cs.slide_id = s.id
+        JOIN chapter c ON c.id = cs.chapter_id
+        JOIN module_chapter_mapping mcm ON mcm.chapter_id = c.id
+        JOIN modules m ON m.id = mcm.module_id
+        JOIN subject_module_mapping smm ON smm.module_id = m.id
+        JOIN subject sub ON sub.id = smm.subject_id
+        JOIN subject_session sps ON sps.subject_id = sub.id
+        JOIN chapter_package_session_mapping cpsm ON cpsm.chapter_id = c.id AND cpsm.package_session_id = :packageSessionId
+        WHERE 
+            al.created_at BETWEEN :startDate AND :endDate
+            AND sps.session_id = :packageSessionId
+            AND sub.status IN :subjectStatusList
+            AND m.status IN :moduleStatusList
+            AND c.status IN :chapterStatusList
+            AND cpsm.status IN :chapterToSessionStatusList
+            AND s.status IN :slideStatusList
+            AND cs.status IN :slideStatusList
+    ),
+    activity_duration AS (
+        SELECT 
+            al.user_id,
+            COALESCE(SUM(EXTRACT(EPOCH FROM (al.end_time - al.start_time))) / 60, 0) AS total_time_spent_minutes
+        FROM filtered_activity_log al
+        GROUP BY al.user_id
+    ),
+    batch_time_spent AS (
+        SELECT 
+            ssig.package_session_id,
+            SUM(COALESCE(ad.total_time_spent_minutes, 0)) AS total_time_spent,
+            COUNT(DISTINCT ssig.user_id) AS total_learners
+        FROM student_session_institute_group_mapping ssig
+        LEFT JOIN activity_duration ad ON ssig.user_id = ad.user_id
+        WHERE 
+            ssig.package_session_id = :packageSessionId
+            AND ssig.status IN :statusList
+        GROUP BY ssig.package_session_id
+    )
+    SELECT 
+        CASE 
+            WHEN total_learners > 0 THEN total_time_spent / total_learners 
+            ELSE 0 
+        END AS avg_time_spent_minutes
+    FROM batch_time_spent
+""", nativeQuery = true)
     Double findAverageTimeSpentByBatch(
             @Param("startDate") Date startDate,
             @Param("endDate") Date endDate,
             @Param("packageSessionId") String packageSessionId,
-            @Param("statusList") List<String> statusList
+            @Param("statusList") List<String> statusList,
+            @Param("subjectStatusList") List<String> subjectStatusList,
+            @Param("moduleStatusList") List<String> moduleStatusList,
+            @Param("chapterStatusList") List<String> chapterStatusList,
+            @Param("chapterToSessionStatusList") List<String> chapterToSessionStatusList,
+            @Param("slideStatusList") List<String> slideStatusList
     );
+
 
     @Query(value = """ 
             WITH total_time_spent AS (
@@ -1171,5 +1263,86 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
             @Param("chapterSlideStatusList") List<String> chapterSlideStatusList,
             @Param("learnerStatusList") List<String> learnerStatusList
     );
+
+    @Query(
+            value = """
+    WITH date_series AS (
+        SELECT generate_series(
+            CAST(:startDate AS DATE),
+            CAST(:endDate AS DATE),
+            INTERVAL '1 day'
+        ) AS activity_date
+    ),
+
+    learner_activities AS (
+        SELECT
+            al.user_id,
+            DATE(al.created_at) AS activity_date,
+            EXTRACT(EPOCH FROM (al.end_time - al.start_time)) * 1000 AS activity_duration_millis
+        FROM activity_log al
+
+        -- Join slide
+        JOIN chapter_to_slides ctsm ON al.slide_id = ctsm.slide_id AND ctsm.status IN (:chapterToSlideStatusList)
+        JOIN slide s ON s.id = al.slide_id AND s.status IN (:slideStatusList)
+
+        -- Join chapter
+        JOIN chapter ch ON ch.id = ctsm.chapter_id AND ch.status IN (:chapterStatusList)
+        JOIN chapter_package_session_mapping cpsm 
+            ON cpsm.chapter_id = ch.id 
+            AND cpsm.package_session_id = :packageSessionId 
+            AND cpsm.status IN (:chapterPackageSessionStatusList)
+
+        -- Join module and subject
+        JOIN module_chapter_mapping mcm ON mcm.chapter_id = ch.id
+        JOIN modules m ON m.id = mcm.module_id AND m.status IN (:moduleStatusList)
+        JOIN subject_module_mapping smm ON smm.module_id = m.id
+        JOIN subject subj ON subj.id = smm.subject_id AND subj.status IN (:subjectStatusList)
+        JOIN subject_session ss ON ss.subject_id = subj.id AND ss.session_id = :packageSessionId
+
+        -- Batch users filter
+        JOIN student_session_institute_group_mapping ssigm 
+            ON ssigm.user_id = al.user_id 
+            AND ssigm.package_session_id = :packageSessionId
+            AND ssigm.status IN (:learnerStatusList)
+        WHERE al.created_at BETWEEN :startDate AND :endDate
+    ),
+
+    daily_user_time AS (
+        SELECT
+            user_id,
+            activity_date,
+            SUM(activity_duration_millis) AS time_spent_millis
+        FROM learner_activities
+        GROUP BY user_id, activity_date
+    )
+
+    SELECT
+        ds.activity_date AS activityDate,
+        COALESCE(dut.time_spent_millis, 0) AS timeSpentByUserMillis,
+        (
+            SELECT AVG(d2.time_spent_millis)
+            FROM daily_user_time d2
+            WHERE d2.activity_date = ds.activity_date
+        ) AS avgTimeSpentByBatchMillis
+    FROM date_series ds
+    LEFT JOIN daily_user_time dut ON ds.activity_date = dut.activity_date AND dut.user_id = :userId
+    ORDER BY ds.activity_date
+    """,
+            nativeQuery = true
+    )
+    List<DailyTimeSpentProjection> getDailyUserAndBatchTimeSpent(
+            @Param("userId") String userId,
+            @Param("packageSessionId") String packageSessionId,
+            @Param("startDate") Timestamp startDate,
+            @Param("endDate") Timestamp endDate,
+            @Param("slideStatusList") List<String> slideStatusList,
+            @Param("chapterToSlideStatusList") List<String> chapterToSlideStatusList,
+            @Param("chapterStatusList") List<String> chapterStatusList,
+            @Param("chapterPackageSessionStatusList") List<String> chapterPackageSessionStatusList,
+            @Param("moduleStatusList") List<String> moduleStatusList,
+            @Param("subjectStatusList") List<String> subjectStatusList,
+            @Param("learnerStatusList") List<String> learnerStatusList
+    );
+
 
 }

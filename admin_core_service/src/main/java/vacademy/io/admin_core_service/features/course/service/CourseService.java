@@ -29,6 +29,7 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -93,6 +94,21 @@ public class CourseService {
         packageEntity.setPackageName(addCourseDTO.getCourseName());
         packageEntity.setThumbnailFileId(addCourseDTO.getThumbnailFileId());
         packageEntity.setStatus(PackageStatusEnum.ACTIVE.name());
+        packageEntity.setIsCoursePublishedToCatalaouge(addCourseDTO.getIsCoursePublishedToCatalaouge());
+        packageEntity.setCoursePreviewImageMediaId(addCourseDTO.getCoursePreviewImageMediaId());
+        packageEntity.setCourseBannerMediaId(addCourseDTO.getCourseBannerMediaId());
+        packageEntity.setCourseMediaId(addCourseDTO.getCourseMediaId());
+        packageEntity.setWhyLearn(addCourseDTO.getWhyLearnHtml());
+        packageEntity.setWhoShouldLearn(addCourseDTO.getWhoShouldLearnHtml());
+        packageEntity.setAboutTheCourse(addCourseDTO.getAboutTheCourseHtml());
+        if (addCourseDTO.getTags() != null && !addCourseDTO.getTags().isEmpty()) {
+            packageEntity.setTags(addCourseDTO.getTags().stream()
+                                            .map(String::toLowerCase)
+                                            .map(String::trim)
+                                            .collect(Collectors.joining(",")));
+        }
+        packageEntity.setCourseDepth(addCourseDTO.getCourseDepth());
+        packageEntity.setCourseHtmlDescription(addCourseDTO.getCourseHtmlDescription());
         return packageEntity;
     }
 
@@ -108,6 +124,23 @@ public class CourseService {
         PackageEntity packageEntity = packageRepository.findById(packageId).orElseThrow(() -> new VacademyException("Course not found"));
         packageEntity.setPackageName(packageDTO.getPackageName());
         packageEntity.setThumbnailFileId(packageDTO.getThumbnailFileId());
+        packageEntity.setIsCoursePublishedToCatalaouge(packageDTO.getIsCoursePublishedToCatalaouge());
+        packageEntity.setCoursePreviewImageMediaId(packageDTO.getCoursePreviewImageMediaId());
+        packageEntity.setCourseBannerMediaId(packageDTO.getCourseBannerMediaId());
+        packageEntity.setCourseMediaId(packageDTO.getCourseMediaId());
+        packageEntity.setWhyLearn(packageDTO.getWhyLearnHtml());
+        packageEntity.setWhoShouldLearn(packageDTO.getWhoShouldLearnHtml());
+        packageEntity.setAboutTheCourse(packageDTO.getAboutTheCourseHtml());
+        if (packageDTO.getTags() != null && !packageDTO.getTags().isEmpty()) {
+            packageEntity.setTags(packageDTO.getTags().stream()
+                                          .map(String::toLowerCase)
+                                          .map(String::trim)
+                                          .collect(Collectors.joining(",")));
+        } else {
+            packageEntity.setTags(null); // Or empty string, depending on desired behavior for empty list
+        }
+        packageEntity.setCourseDepth(packageDTO.getCourseDepth());
+        packageEntity.setCourseHtmlDescription(packageDTO.getCourseHtmlDescriptionHtml());
         packageRepository.save(packageEntity);
         return "Course updated successfully";
     }

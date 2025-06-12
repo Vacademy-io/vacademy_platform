@@ -37,7 +37,7 @@ public class PresentationCrudManager {
     QuestionRepository questionRepository;
 
 
-    public ResponseEntity<String> addPresentation(AddPresentationDto addPresentationDto, String instituteId) {
+    public ResponseEntity<AddPresentationDto> addPresentation(AddPresentationDto addPresentationDto, String instituteId) {
         Presentation newPresentation = createPresentation(addPresentationDto, instituteId);
         newPresentation = presentationRepository.save(newPresentation);
 
@@ -53,7 +53,15 @@ public class PresentationCrudManager {
 
         addEditQuestionSlides(newPresentation, questionSlides);
         addEditExcalidrawSlides(newPresentation, excalidrawSlides);
-        return ResponseEntity.ok(newPresentation.getId());
+
+        AddPresentationDto presentationDto = new AddPresentationDto();
+        presentationDto.setId(newPresentation.getId());
+        presentationDto.setTitle(newPresentation.getTitle());
+        presentationDto.setDescription(newPresentation.getDescription());
+        presentationDto.setCoverFileId(newPresentation.getCoverFileId());
+        presentationDto.setAddedSlides(getPresentationSlides(newPresentation));
+        return ResponseEntity.ok(presentationDto);
+
     }
 
     private Presentation createPresentation(AddPresentationDto addPresentationDto, String instituteId) {
@@ -126,7 +134,7 @@ public class PresentationCrudManager {
     }
 
 
-    public ResponseEntity<String> editPresentation(EditPresentationDto editPresentationDto) {
+    public ResponseEntity<List<PresentationSlideDto>> editPresentation(EditPresentationDto editPresentationDto) {
         Optional<Presentation> presentation = presentationRepository.findById(editPresentationDto.getId());
 
         if (presentation.isEmpty())
@@ -178,7 +186,8 @@ public class PresentationCrudManager {
         }
 
         presentationSlideRepository.saveAll(deletedSlides);
-        return ResponseEntity.ok("Presentation updated successfully");
+
+        return ResponseEntity.ok(getPresentationSlides(presentation.get()));
 
     }
 
@@ -197,7 +206,7 @@ public class PresentationCrudManager {
     }
 
     List<PresentationSlideDto> getPresentationSlides(Presentation presentation) {
-        Set<PresentationSlide> presentationSlides = presentation.getPresentationSlides();
+        List<PresentationSlide> presentationSlides = presentationSlideRepository.findAllByPresentationAndStatusNotOrderBySlideOrderAsc(presentation, "DELETED");
         List<PresentationSlideDto> presentationSlideDtos = new ArrayList<>();
         for (PresentationSlide presentationSlide : presentationSlides) {
             PresentationSlideDto presentationSlideDto = new PresentationSlideDto();
@@ -224,5 +233,61 @@ public class PresentationCrudManager {
         if (instituteId == null)
             throw new VacademyException("Institute id not found");
         return ResponseEntity.ok(presentationRepository.findAllByInstituteIdAndStatusIn(instituteId, List.of("PUBLISHED")).stream().map(AddPresentationDto::new).toList());
+    }
+
+    // In class PresentationCrudManager
+
+    public ResponseEntity<PresentationSlideDto> addSlideAfterIndex(String presentationId, Integer afterSlideOrder, PresentationSlideDto newSlideDto) {
+        // 1. Find the presentation
+        Optional<Presentation> presentationOptional = presentationRepository.findById(presentationId);
+        if (presentationOptional.isEmpty()) {
+            throw new VacademyException("Presentation not found with id: " + presentationId);
+        }
+        Presentation presentation = presentationOptional.get();
+
+        // 2. Fetch all non-deleted slides, sorted by their current order
+        List<PresentationSlide> slides = presentationSlideRepository.findAllByPresentationAndStatusNotOrderBySlideOrderAsc(presentation, "DELETED");
+
+        // 3. Make space for the new slide by incrementing the order of subsequent slides
+        List<PresentationSlide> slidesToUpdate = new ArrayList<>();
+        for (PresentationSlide slide : slides) {
+            if (slide.getSlideOrder() != null && slide.getSlideOrder() > afterSlideOrder) {
+                slide.setSlideOrder(slide.getSlideOrder() + 1);
+                slidesToUpdate.add(slide);
+            }
+        }
+        presentationSlideRepository.saveAll(slidesToUpdate);
+
+        // 4. Set the order for the new slide
+        newSlideDto.setSlideOrder(afterSlideOrder + 1);
+
+        // 5. Create and save the new slide using existing logic
+        List<PresentationSlide> newSlides;
+        if (newSlideDto.getSource().equalsIgnoreCase("excalidraw")) {
+            newSlides = addEditExcalidrawSlides(presentation, List.of(newSlideDto));
+        } else if (newSlideDto.getSource().equalsIgnoreCase("question")) {
+            newSlides = addEditQuestionSlides(presentation, List.of(newSlideDto));
+        } else {
+            throw new VacademyException("Unknown slide source: " + newSlideDto.getSource());
+        }
+
+        if (newSlides == null || newSlides.isEmpty()) {
+            throw new VacademyException("Failed to create the new slide.");
+        }
+
+        // 6. Create a DTO from the newly saved slide entity and return it
+        PresentationSlide newSlideEntity = newSlides.get(0);
+        PresentationSlideDto resultDto = new PresentationSlideDto();
+        resultDto.setId(newSlideEntity.getId());
+        resultDto.setPresentationId(newSlideEntity.getPresentation().getId());
+        resultDto.setTitle(newSlideEntity.getTitle());
+        resultDto.setSourceId(newSlideEntity.getSourceId());
+        resultDto.setSource(newSlideEntity.getSource());
+        resultDto.setSlideOrder(newSlideEntity.getSlideOrder());
+        resultDto.setContent(newSlideEntity.getContent());
+        resultDto.setStatus(newSlideEntity.getStatus());
+        resultDto.setDefaultTime(newSlideEntity.getDefaultTime());
+
+        return ResponseEntity.ok(resultDto);
     }
 }

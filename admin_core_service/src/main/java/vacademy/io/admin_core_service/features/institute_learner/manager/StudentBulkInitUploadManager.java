@@ -66,8 +66,15 @@ public class StudentBulkInitUploadManager {
         if (!autoGenerateConfig.isAutoGenerateEnrollmentId()) {
             headers.add(createHeader("string", false, "ENROLLMENT_NUMBER", order++, List.of("1234", "5678", "9012")));
         }
-        headers.add(createRegexHeader("regex", false, "MOBILE_NUMBER", "^\\+\\d{1,3}-\\d{6,14}$",
-                "Mobile number must be in format +<country_code>-<number>", order++, List.of("+91-9123456789", "+1-9876543210", "+44-712345678901")));
+        headers.add(createRegexHeader(
+                "regex",
+                false,
+                "MOBILE_NUMBER",
+                "^\\+\\d{1,3}-\\d{6,14}$",
+                "Mobile number must include country code and be in the format +<country_code>-<number>",
+                order++,
+                List.of("+91-9123456789", "+1-9876543210", "+44-712345678901")
+        ));
 
 
         // Adding date header
@@ -131,19 +138,49 @@ public class StudentBulkInitUploadManager {
             headers.add(createHeader("string", true, "MOTHER_NAME", order++, List.of("John Henry", "Doe Walker", "Smith Jones")));
         }
         if (optionalFieldsConfig.isIncludeParentsMobileNumber()) {
-            headers.add(createRegexHeader("regex", false, "PARENTS_MOBILE_NUMBER", "^\\+\\d{1,3}-\\d{6,14}$",
-                    "Mobile number must be in format +<country_code>-<number>", order++, List.of("+91-9123456789", "+1-9876543210", "+44-712345678901")));
+            headers.add(createRegexHeader(
+                    "regex",
+                    false,
+                    "PARENTS_MOBILE_NUMBER",
+                    "^\\+\\d{1,3}-\\d{6,14}$",
+                    "Mobile number must include country code and be in the format +<country_code>-<number>",
+                    order++,
+                    List.of("+91-9123456789", "+1-9876543210", "+44-712345678901")
+            ));
         } else {
-            headers.add(createRegexHeader("regex", true, "PARENTS_MOBILE_NUMBER", "^\\+\\d{1,3}-\\d{6,14}$",
-                    "Mobile number must be in format +<country_code>-<number>", order++, List.of("+91-9123456789", "+1-9876543210", "+44-712345678901")));
+            headers.add(createRegexHeader(
+                    "regex",
+                    true,
+                    "PARENTS_MOBILE_NUMBER",
+                    "^\\+\\d{1,3}-\\d{6,14}$",
+                    "Mobile number must include country code and be in the format +<country_code>-<number>",
+                    order++,
+                    List.of("+91-9123456789", "+1-9876543210", "+44-712345678901")
+            ));
         }
+
         if (optionalFieldsConfig.isIncludeParentsToMotherMobile()) {
-            headers.add(createRegexHeader("regex", false, "PARENTS_TO_MOTHER_MOBILE_NUMBER", "^\\+\\d{1,3}-\\d{6,14}$",
-                    "Mobile number must be in format +<country_code>-<number>", order++, List.of("+91-9123456789", "+1-9876543210", "+44-712345678901")));
+            headers.add(createRegexHeader(
+                    "regex",
+                    false,
+                    "PARENTS_TO_MOTHER_MOBILE_NUMBER",
+                    "^\\+\\d{1,3}-\\d{6,14}$",
+                    "Mobile number must include country code and be in the format +<country_code>-<number>",
+                    order++,
+                    List.of("+91-9123456789", "+1-9876543210", "+44-712345678901")
+            ));
         } else {
-            headers.add(createRegexHeader("regex", true, "PARENTS_TO_MOTHER_MOBILE_NUMBER", "^\\+\\d{1,3}-\\d{6,14}$",
-                    "Mobile number must be in format +<country_code>-<number>", order++, List.of("+91-9123456789", "+1-9876543210", "+44-712345678901")));
+            headers.add(createRegexHeader(
+                    "regex",
+                    true,
+                    "PARENTS_TO_MOTHER_MOBILE_NUMBER",
+                    "^\\+\\d{1,3}-\\d{6,14}$",
+                    "Mobile number must include country code and be in the format +<country_code>-<number>",
+                    order++,
+                    List.of("+91-9123456789", "+1-9876543210", "+44-712345678901")
+            ));
         }
+
         if (optionalFieldsConfig.isIncludeParentsEmail()) {
             emailHeader = createRegexHeader("regex", false, "PARENTS_EMAIL",
                     "^(?![\\s\\S])|^((?!\\.)[\\w\\-_.]*[^.])(@\\w+)(\\.\\w+(\\.\\w+)?[^.\\W])$",

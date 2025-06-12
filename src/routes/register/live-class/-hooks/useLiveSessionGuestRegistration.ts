@@ -20,10 +20,7 @@ export const useLiveSessionGuestRegistration = () => {
           },
         }
       );
-      return response.data;
-    },
-    onSuccess: () => {
-      toast.success("Registration successful!");
+      return response;
     },
     onError: (error: AxiosError<ErrorResponse>) => {
       console.error("Registration failed:", error);
@@ -31,4 +28,3 @@ export const useLiveSessionGuestRegistration = () => {
     },
   });
 };
- 

@@ -64,7 +64,6 @@ function GuestEmbedComponent() {
 
   return (
     <div className="w-screen h-screen bg-primary-50">
-
       <div className="flex flex-col h-full">
         <div className="flex justify-between items-center p-4">
           <h1 className="text-2xl font-bold">

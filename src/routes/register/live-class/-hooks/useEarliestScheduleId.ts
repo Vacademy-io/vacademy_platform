@@ -1,17 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
-import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
+import axios from "axios";
 import { LIVE_SESSION_GET_EARLIEST_SCHEDULE_ID } from "@/constants/urls";
 
 const fetchEarliestScheduleId = async (sessionId: string): Promise<string> => {
   try {
-    const response = await authenticatedAxiosInstance.get(
-      LIVE_SESSION_GET_EARLIEST_SCHEDULE_ID,
-      {
-        params: {
-          sessionId,
-        },
-      }
-    );
+    const response = await axios.get(LIVE_SESSION_GET_EARLIEST_SCHEDULE_ID, {
+      params: {
+        sessionId,
+      },
+    });
     return response.data;
   } catch (error) {
     console.error("Error fetching earliest schedule ID:", error);

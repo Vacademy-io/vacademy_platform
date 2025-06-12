@@ -14,5 +14,5 @@ export enum LinkType {
 
 export enum SessionStreamingServiceType {
     EMBED = "embed",
-    EXTERNAL = "external",
+    REDIRECT = "redirect",
 }

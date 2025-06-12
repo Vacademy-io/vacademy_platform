@@ -3,7 +3,7 @@ import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { SessionDetailsResponse } from "../-types/types";
 import { LIVE_SESSION_GET_SESSION_BY_SCHEDULE_ID } from "@/constants/urls";
 
-const fetchSessionDetails = async (
+export const fetchSessionDetails = async (
   scheduleId: string
 ): Promise<SessionDetailsResponse> => {
   try {

@@ -9,11 +9,11 @@ import { BackgroundMusic } from "@/routes/study-library/live-class/waiting-room/
 import { SessionStreamingServiceType } from "@/routes/register/live-class/-types/enum";
 import { useMarkAttendance } from "../-hooks/useMarkAttendance";
 import { toast } from "sonner";
+import dayjs from "dayjs";
 
 export const Route = createFileRoute("/live-class-guest/waiting-room/")({
   validateSearch: z.object({
     sessionId: z.string(),
-    // guestId: z.string(),
   }),
   component: GuestWaitingRoomComponent,
 });
@@ -45,68 +45,91 @@ function GuestWaitingRoomComponent() {
   // Handle session start
   useEffect(() => {
     if (sessionDetails) {
-      const checkSessionStart = async () => {
-        const now = new Date();
-        const sessionStart = new Date(
-          `${sessionDetails.meetingDate}T${sessionDetails.scheduleStartTime}`
+      const checkSessionStatus = async () => {
+        const now = dayjs();
+        const sessionStart = dayjs(sessionDetails.sessionStartTime);
+        const waitingRoomStart = sessionStart.subtract(
+          sessionDetails.waitingRoomTime,
+          "minute"
         );
 
-        if (now >= sessionStart && sessionDetails.defaultMeetLink) {
-          try {
-            // Mark attendance before redirecting
-            if (
-              sessionDetails.sessionStreamingServiceType ===
-              SessionStreamingServiceType.EMBED
-            ) {
-              navigate({
-                to: "/live-class-guest/embed",
-                search: { sessionId: sessionId },
-              });
-            } else {
-              window.open(
-                sessionDetails.defaultMeetLink,
-                "_blank",
-                "noopener,noreferrer"
-              );
-              // Navigate back to registration page
-              navigate({
-                to: "/register/live-class",
-                search: { sessionId: sessionId },
-              });
-            }
-          } catch (error) {
-            console.error("Failed to mark attendance:", error);
-            toast.error("Failed to mark attendance");
+        // Case 1: Session has already started.
+        if (now.isAfter(sessionStart) || now.isSame(sessionStart)) {
+          if (sessionDetails.defaultMeetLink) {
+            try {
+              // Mark attendance before redirecting
+              // await markAttendance({
+              //   sessionId: sessionDetails.sessionId,
+              //   scheduleId: sessionId,
+              //   userSourceType: "GUEST",
+              //   userSourceId: guestId,
+              //   details: "Guest joined live class from waiting room",
+              // });
 
-            // Still proceed with redirection even if attendance marking fails
-            if (
-              sessionDetails.sessionStreamingServiceType ===
-              SessionStreamingServiceType.EMBED
-            ) {
-              navigate({
-                to: "/live-class-guest/embed",
-                search: { sessionId: sessionId },
-              });
-            } else {
-              window.open(
-                sessionDetails.defaultMeetLink,
-                "_blank",
-                "noopener,noreferrer"
-              );
-              navigate({
-                to: "/register/live-class",
-                search: { sessionId: sessionId },
-              });
+              if (
+                sessionDetails.sessionStreamingServiceType ===
+                SessionStreamingServiceType.EMBED
+              ) {
+                navigate({
+                  to: "/live-class-guest/embed",
+                  search: { sessionId },
+                });
+              } else {
+                window.open(
+                  sessionDetails.defaultMeetLink,
+                  "_blank",
+                  "noopener,noreferrer"
+                );
+                // Navigate back to registration page
+                navigate({
+                  to: "/register/live-class",
+                  search: { sessionId: sessionDetails.sessionId },
+                });
+              }
+            } catch (error) {
+              console.error("Failed to mark attendance:", error);
+              toast.error("Failed to mark attendance");
+              // Still proceed with redirection
+              if (
+                sessionDetails.sessionStreamingServiceType ===
+                SessionStreamingServiceType.EMBED
+              ) {
+                navigate({
+                  to: "/live-class-guest/embed",
+                  search: { sessionId },
+                });
+              } else {
+                window.open(
+                  sessionDetails.defaultMeetLink,
+                  "_blank",
+                  "noopener,noreferrer"
+                );
+                navigate({
+                  to: "/register/live-class",
+                  search: { sessionId: sessionDetails.sessionId },
+                });
+              }
             }
           }
         }
+        // Case 2: It's too early for the waiting room.
+        else if (now.isBefore(waitingRoomStart)) {
+          toast.info("The waiting room is not open yet.", {
+            description: `It will open ${sessionDetails.waitingRoomTime} minutes before the session starts.`,
+          });
+          navigate({
+            to: "/register/live-class",
+            search: { sessionId: sessionDetails.sessionId },
+          });
+        }
+        // Case 3: We are in the waiting room window. Let the component render.
       };
 
       // Check immediately
-      checkSessionStart();
+      checkSessionStatus();
 
       // Check every 30 seconds
-      const timer = setInterval(checkSessionStart, 30000);
+      const timer = setInterval(checkSessionStatus, 30000);
 
       return () => clearInterval(timer);
     }

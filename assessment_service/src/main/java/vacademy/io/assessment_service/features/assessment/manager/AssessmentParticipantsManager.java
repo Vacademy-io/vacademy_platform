@@ -807,8 +807,13 @@ public class AssessmentParticipantsManager {
 
     @Async
     public CompletableFuture<Void> releaseResultWrapper(Assessment assessment, String instituteId, ReleaseRequestDto request, String type) {
-        return CompletableFuture.runAsync(() -> processReleaseParticipants(assessment, instituteId, request, type))
-                .thenRun(() -> sendNotificationToAdmin(assessment, instituteId));
+        return CompletableFuture.runAsync(() -> {
+            try {
+                processReleaseParticipants(assessment, instituteId, request, type);
+            } catch (Exception e) {
+                log.error("Error processing participants", e);
+            }
+        }).thenRun(() -> sendNotificationToAdmin(assessment, instituteId));
     }
 
     private void sendNotificationToAdmin(Assessment assessment, String instituteId) {

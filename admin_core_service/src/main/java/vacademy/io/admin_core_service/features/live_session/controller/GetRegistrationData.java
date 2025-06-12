@@ -23,6 +23,9 @@ public class GetRegistrationData {
     @Autowired
     RegistrationService registrationService;
 
+    @Autowired
+    GetSessionByIdService getSessionByIdService;
+
     @GetMapping("/get-registration-data")
     ResponseEntity<RegistrationFromResponseDTO> getRegistrationData(@RequestParam("sessionId") String SessionId) {
         return ResponseEntity.ok( getRegistrationFromResponseDTO.getRegistrationData(SessionId));
@@ -37,5 +40,10 @@ public class GetRegistrationData {
     @GetMapping("/check-email-registration")
     ResponseEntity<Boolean> checkEmailRegistration(@RequestParam("email") String email , @RequestParam("sessionId") String sessionId){
         return ResponseEntity.ok(getRegistrationFromResponseDTO.checkEmailRegistration(email , sessionId));
+    }
+
+    @GetMapping("/get-earliest-schedule-id")
+    ResponseEntity<String> getEarliestScheduleId(@RequestParam("sessionId") String sessionId){
+        return ResponseEntity.ok(getSessionByIdService.findEarliestSchedule(sessionId));
     }
 }

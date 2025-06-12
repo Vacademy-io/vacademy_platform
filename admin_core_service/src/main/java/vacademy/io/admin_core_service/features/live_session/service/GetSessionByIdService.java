@@ -13,11 +13,9 @@ import vacademy.io.admin_core_service.features.live_session.entity.LiveSessionPa
 import vacademy.io.admin_core_service.features.live_session.repository.*;
 
 import java.time.Duration;
-import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -192,12 +190,7 @@ public class GetSessionByIdService {
                 .orElseThrow(() -> new EntityNotFoundException("Schedule not found"));
     }
 
-    public GetSessionDetailsBySessionIdResponseDTO getSessionByScheduleIdForGuestUser(String scheduleId , String guestId) {
-
-        if(!sessionGuestRegistrationRepository.existsById(guestId)){
-            throw new RuntimeException("Guest user is not registered");
-        }
-
+    public GetSessionDetailsBySessionIdResponseDTO getSessionByScheduleIdForGuestUser(String scheduleId) {
 
         return scheduleRepository.findScheduleDetailsById(scheduleId)
                 .map(p -> GetSessionDetailsBySessionIdResponseDTO.builder()
@@ -233,5 +226,9 @@ public class GetSessionByIdService {
                         .customWaitingRoomMediaId(p.getCustomWaitingRoomMediaId())
                         .build())
                 .orElseThrow(() -> new EntityNotFoundException("Schedule not found"));
+    }
+
+    public String findEarliestSchedule(String sessionId){
+        return scheduleRepository.findEarliestScheduleIdBySessionId(sessionId);
     }
 }

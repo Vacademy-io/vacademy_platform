@@ -134,4 +134,13 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
     """, nativeQuery = true)
         Optional<ScheduleDetailsProjection> findScheduleDetailsById(@Param("scheduleId") String scheduleId);
 
+
+    @Query(value = """
+        SELECT id
+        FROM session_schedules
+        WHERE session_id = :sessionId
+        ORDER BY meeting_date ASC, start_time ASC
+        LIMIT 1
+    """, nativeQuery = true)
+    String findEarliestScheduleIdBySessionId(@Param("sessionId") String sessionId);
 }

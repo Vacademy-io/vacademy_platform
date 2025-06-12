@@ -24,7 +24,9 @@ import { Route as CoursesIndexImport } from './routes/courses/index'
 import { Route as SessionSelectionPageIndexImport } from './routes/SessionSelectionPage/index'
 import { Route as UserProfileEditIndexImport } from './routes/user-profile/edit/index'
 import { Route as StudyLibraryLiveClassIndexImport } from './routes/study-library/live-class/index'
+import { Route as StudyLibraryInProgressIndexImport } from './routes/study-library/in-progress/index'
 import { Route as StudyLibraryCoursesIndexImport } from './routes/study-library/courses/index'
+import { Route as StudyLibraryCompletedIndexImport } from './routes/study-library/completed/index'
 import { Route as RegisterLiveClassIndexImport } from './routes/register/live-class/index'
 import { Route as LoginForgotPasswordIndexImport } from './routes/login/forgot-password/index'
 import { Route as HomeworkReportsIndexImport } from './routes/homework/reports/index'
@@ -127,11 +129,26 @@ const StudyLibraryLiveClassIndexRoute = StudyLibraryLiveClassIndexImport.update(
   } as any,
 )
 
+const StudyLibraryInProgressIndexRoute =
+  StudyLibraryInProgressIndexImport.update({
+    id: '/study-library/in-progress/',
+    path: '/study-library/in-progress/',
+    getParentRoute: () => rootRoute,
+  } as any)
+
 const StudyLibraryCoursesIndexRoute = StudyLibraryCoursesIndexImport.update({
   id: '/study-library/courses/',
   path: '/study-library/courses/',
   getParentRoute: () => rootRoute,
 } as any)
+
+const StudyLibraryCompletedIndexRoute = StudyLibraryCompletedIndexImport.update(
+  {
+    id: '/study-library/completed/',
+    path: '/study-library/completed/',
+    getParentRoute: () => rootRoute,
+  } as any,
+)
 
 const RegisterLiveClassIndexRoute = RegisterLiveClassIndexImport.update({
   id: '/register/live-class/',
@@ -385,11 +402,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RegisterLiveClassIndexImport
       parentRoute: typeof rootRoute
     }
+    '/study-library/completed/': {
+      id: '/study-library/completed/'
+      path: '/study-library/completed'
+      fullPath: '/study-library/completed'
+      preLoaderRoute: typeof StudyLibraryCompletedIndexImport
+      parentRoute: typeof rootRoute
+    }
     '/study-library/courses/': {
       id: '/study-library/courses/'
       path: '/study-library/courses'
       fullPath: '/study-library/courses'
       preLoaderRoute: typeof StudyLibraryCoursesIndexImport
+      parentRoute: typeof rootRoute
+    }
+    '/study-library/in-progress/': {
+      id: '/study-library/in-progress/'
+      path: '/study-library/in-progress'
+      fullPath: '/study-library/in-progress'
+      preLoaderRoute: typeof StudyLibraryInProgressIndexImport
       parentRoute: typeof rootRoute
     }
     '/study-library/live-class/': {
@@ -507,7 +538,9 @@ export interface FileRoutesByFullPath {
   '/homework/reports': typeof HomeworkReportsIndexRoute
   '/login/forgot-password': typeof LoginForgotPasswordIndexRoute
   '/register/live-class': typeof RegisterLiveClassIndexRoute
+  '/study-library/completed': typeof StudyLibraryCompletedIndexRoute
   '/study-library/courses': typeof StudyLibraryCoursesIndexRoute
+  '/study-library/in-progress': typeof StudyLibraryInProgressIndexRoute
   '/study-library/live-class': typeof StudyLibraryLiveClassIndexRoute
   '/user-profile/edit': typeof UserProfileEditIndexRoute
   '/assessment/examination/$assessmentId/LearnerLiveTest': typeof AssessmentExaminationAssessmentIdLearnerLiveTestRoute
@@ -542,7 +575,9 @@ export interface FileRoutesByTo {
   '/homework/reports': typeof HomeworkReportsIndexRoute
   '/login/forgot-password': typeof LoginForgotPasswordIndexRoute
   '/register/live-class': typeof RegisterLiveClassIndexRoute
+  '/study-library/completed': typeof StudyLibraryCompletedIndexRoute
   '/study-library/courses': typeof StudyLibraryCoursesIndexRoute
+  '/study-library/in-progress': typeof StudyLibraryInProgressIndexRoute
   '/study-library/live-class': typeof StudyLibraryLiveClassIndexRoute
   '/user-profile/edit': typeof UserProfileEditIndexRoute
   '/assessment/examination/$assessmentId/LearnerLiveTest': typeof AssessmentExaminationAssessmentIdLearnerLiveTestRoute
@@ -578,7 +613,9 @@ export interface FileRoutesById {
   '/homework/reports/': typeof HomeworkReportsIndexRoute
   '/login/forgot-password/': typeof LoginForgotPasswordIndexRoute
   '/register/live-class/': typeof RegisterLiveClassIndexRoute
+  '/study-library/completed/': typeof StudyLibraryCompletedIndexRoute
   '/study-library/courses/': typeof StudyLibraryCoursesIndexRoute
+  '/study-library/in-progress/': typeof StudyLibraryInProgressIndexRoute
   '/study-library/live-class/': typeof StudyLibraryLiveClassIndexRoute
   '/user-profile/edit/': typeof UserProfileEditIndexRoute
   '/assessment/examination/$assessmentId/LearnerLiveTest': typeof AssessmentExaminationAssessmentIdLearnerLiveTestRoute
@@ -615,7 +652,9 @@ export interface FileRouteTypes {
     | '/homework/reports'
     | '/login/forgot-password'
     | '/register/live-class'
+    | '/study-library/completed'
     | '/study-library/courses'
+    | '/study-library/in-progress'
     | '/study-library/live-class'
     | '/user-profile/edit'
     | '/assessment/examination/$assessmentId/LearnerLiveTest'
@@ -649,7 +688,9 @@ export interface FileRouteTypes {
     | '/homework/reports'
     | '/login/forgot-password'
     | '/register/live-class'
+    | '/study-library/completed'
     | '/study-library/courses'
+    | '/study-library/in-progress'
     | '/study-library/live-class'
     | '/user-profile/edit'
     | '/assessment/examination/$assessmentId/LearnerLiveTest'
@@ -683,7 +724,9 @@ export interface FileRouteTypes {
     | '/homework/reports/'
     | '/login/forgot-password/'
     | '/register/live-class/'
+    | '/study-library/completed/'
     | '/study-library/courses/'
+    | '/study-library/in-progress/'
     | '/study-library/live-class/'
     | '/user-profile/edit/'
     | '/assessment/examination/$assessmentId/LearnerLiveTest'
@@ -719,7 +762,9 @@ export interface RootRouteChildren {
   HomeworkReportsIndexRoute: typeof HomeworkReportsIndexRoute
   LoginForgotPasswordIndexRoute: typeof LoginForgotPasswordIndexRoute
   RegisterLiveClassIndexRoute: typeof RegisterLiveClassIndexRoute
+  StudyLibraryCompletedIndexRoute: typeof StudyLibraryCompletedIndexRoute
   StudyLibraryCoursesIndexRoute: typeof StudyLibraryCoursesIndexRoute
+  StudyLibraryInProgressIndexRoute: typeof StudyLibraryInProgressIndexRoute
   StudyLibraryLiveClassIndexRoute: typeof StudyLibraryLiveClassIndexRoute
   UserProfileEditIndexRoute: typeof UserProfileEditIndexRoute
   AssessmentExaminationAssessmentIdLearnerLiveTestRoute: typeof AssessmentExaminationAssessmentIdLearnerLiveTestRoute
@@ -754,7 +799,9 @@ const rootRouteChildren: RootRouteChildren = {
   HomeworkReportsIndexRoute: HomeworkReportsIndexRoute,
   LoginForgotPasswordIndexRoute: LoginForgotPasswordIndexRoute,
   RegisterLiveClassIndexRoute: RegisterLiveClassIndexRoute,
+  StudyLibraryCompletedIndexRoute: StudyLibraryCompletedIndexRoute,
   StudyLibraryCoursesIndexRoute: StudyLibraryCoursesIndexRoute,
+  StudyLibraryInProgressIndexRoute: StudyLibraryInProgressIndexRoute,
   StudyLibraryLiveClassIndexRoute: StudyLibraryLiveClassIndexRoute,
   UserProfileEditIndexRoute: UserProfileEditIndexRoute,
   AssessmentExaminationAssessmentIdLearnerLiveTestRoute:
@@ -807,7 +854,9 @@ export const routeTree = rootRoute
         "/homework/reports/",
         "/login/forgot-password/",
         "/register/live-class/",
+        "/study-library/completed/",
         "/study-library/courses/",
+        "/study-library/in-progress/",
         "/study-library/live-class/",
         "/user-profile/edit/",
         "/assessment/examination/$assessmentId/LearnerLiveTest",
@@ -877,8 +926,14 @@ export const routeTree = rootRoute
     "/register/live-class/": {
       "filePath": "register/live-class/index.tsx"
     },
+    "/study-library/completed/": {
+      "filePath": "study-library/completed/index.tsx"
+    },
     "/study-library/courses/": {
       "filePath": "study-library/courses/index.tsx"
+    },
+    "/study-library/in-progress/": {
+      "filePath": "study-library/in-progress/index.tsx"
     },
     "/study-library/live-class/": {
       "filePath": "study-library/live-class/index.tsx"

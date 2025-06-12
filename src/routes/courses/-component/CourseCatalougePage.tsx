@@ -64,7 +64,11 @@ const formatTagsForPostgresArray = (tagNames: string[]): string => {
 const INSTITUTE_DETAILS_API = (id: string) => `${GET_INSTITUTE_DETAILS}/${id}`;
 const SEARCH_COURSES_API = `${SEARCH_COURSES}?page=0&size=5`;
 
-const CourseCatalougePage: React.FC = ({ hideHero = false }) => {
+interface CourseCataloguePageProps {
+  hideHero?: boolean;
+}
+
+const CourseCatalougePage: React.FC<CourseCataloguePageProps> = ({ hideHero = false }) => {
   const [instituteId, setInstituteId] = useState<string | null>(null);
   const { 
     // dynamicCourses, // Removed as it's not read in this component

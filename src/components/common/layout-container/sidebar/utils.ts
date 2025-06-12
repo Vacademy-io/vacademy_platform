@@ -19,7 +19,7 @@ export const SidebarItemsData: SidebarItemsType[] = [
     title: "Learning Center",
     subItems:[
       {
-        subItem:"Study Library",
+        subItem:"Courses",
         subItemLink:"/study-library",
       },
       {

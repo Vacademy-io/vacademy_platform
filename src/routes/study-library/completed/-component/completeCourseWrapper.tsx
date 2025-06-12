@@ -1,18 +1,18 @@
 // src/routes/study-library/-component/StudyCourseCatalogWrapper.tsx
 
 import React from 'react';
-import CourseCatalougePage from '../../courses/-component/CourseCatalougePage'; // Adjust path as needed
-import Tab from './Tab';
-import HeroSection from './HeroSection';
+//import CourseCatalougePage from '../../courses/-component/CourseCatalougePage'; // Adjust path as needed
+//import Tab from './Tab';
+//import HeroSection from './HeroSection';
 import { useEffect } from 'react';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 
-const StudyCourseCatalogWrapper: React.FC = () => {
+const completeCourseWrapper: React.FC = () => {
 
   const {setNavHeading} = useNavHeadingStore()
   useEffect(()=>{
-    setNavHeading("Courses")
+    setNavHeading("Complete Course")
   }, [])
 
   return (
@@ -24,16 +24,17 @@ const StudyCourseCatalogWrapper: React.FC = () => {
       <div className="h-screenw-[80%] flex flex-col">
         
         {/* Uncomment below if Tab is needed */} 
-        <HeroSection />
-        <Tab />
+        {/* <HeroSection /> */}
+        {/* <Tab /> */}
         {/* Course Catalogue */}
-        <div className="flex-1 overflow-y-auto">
+        {/* <div className="flex-1 overflow-y-auto">
           <CourseCatalougePage hideHero={true} />
-        </div>
+        </div> */}
+        <h2>Complete Courses</h2>
       </div>
     </div>
     </LayoutContainer>
   );
 };
 
-export default StudyCourseCatalogWrapper;
+export default completeCourseWrapper;

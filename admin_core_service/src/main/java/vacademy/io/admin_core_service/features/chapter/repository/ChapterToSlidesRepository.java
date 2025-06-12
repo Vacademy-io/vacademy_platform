@@ -28,4 +28,10 @@ public interface ChapterToSlidesRepository extends JpaRepository<ChapterToSlides
     @Query("SELECT cts FROM ChapterToSlides cts WHERE cts.chapter.id = :chapterId AND cts.status <> 'DELETED'")
     List<ChapterToSlides> findByChapterId(@Param("chapterId") String chapterId);
 
+    @Query(value = """
+            SELECT cts.* FROM chapter_to_slides cts
+            WHERE cts.slide_id = :slideId ORDER BY cts.created_at DESC LIMIT 1
+            """, nativeQuery = true)
+    Optional<ChapterToSlides> findBySlideId(@Param("slideId") String slideId);
+
 }

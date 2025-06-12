@@ -126,7 +126,7 @@ public class QuestionWiseMarksService {
                 String questionResponse = getQuestionDetails(questionAttemptDto.getQuestionId(), jsonContent);
 
                 Optional<QuestionWiseMarks> existingEntry = getQuestionWiseMarkForAssessmentIdAndSectionIdAndQuestionIdAndAttemptId(
-                        assessment.getId(), studentAttempt.getId(), questionAttemptDto.getQuestionId(), sectionId
+                        assessment.getId(), studentAttempt.getId(), sectionId, questionAttemptDto.getQuestionId()
                 );
 
                 if (existingEntry.isEmpty()) {

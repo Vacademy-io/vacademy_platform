@@ -36,6 +36,7 @@ public class BatchService {
     @Autowired
     private PackageRepository packageRepository;
 
+    @Transactional
     public List<PackageDTOWithBatchDetails> getBatchDetails(String sessionId,String instituteId, CustomUserDetails user){
         List<PackageEntity>packages = packageSessionRepository.findPackagesBySessionIdAndStatuses(sessionId,instituteId,List.of(PackageSessionStatusEnum.ACTIVE.name()));
         List<PackageDTOWithBatchDetails>packageDTOWithBatchDetails = new ArrayList<>();

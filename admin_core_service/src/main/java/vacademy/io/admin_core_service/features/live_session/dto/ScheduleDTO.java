@@ -17,7 +17,6 @@ public interface ScheduleDTO {
     LocalDateTime getSessionStartTime();
     String getAccessType();
     String getSessionStatus();
-
     String getInstituteId();
     Timestamp getLastEntryTime();
     String getAccessLevel();

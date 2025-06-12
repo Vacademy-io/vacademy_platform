@@ -18,8 +18,8 @@ public class AttendanceReport {
 
     private final AttendanceReportService attendanceReportService;
 
-    @PostMapping("/by-session-id")
-    ResponseEntity<List<AttendanceReportDTO>> getReportBySessionIds(@RequestBody List<String> sessionIds , @RequestAttribute("user") CustomUserDetails user){
-        return ResponseEntity.ok(attendanceReportService.generateReport(sessionIds));
+    @GetMapping("/by-session-id")
+    ResponseEntity<List<AttendanceReportDTO>> getReportBySessionIds(@RequestParam("sessionId") String sessionId , @RequestParam("scheduleId") String scheduleId , @RequestParam("accessType") String accessType , @RequestAttribute("user") CustomUserDetails user){
+        return ResponseEntity.ok(attendanceReportService.generateReport(sessionId , scheduleId , accessType));
     }
 }

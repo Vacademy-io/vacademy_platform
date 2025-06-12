@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.module.service;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.chapter.enums.ChapterStatus;
 import vacademy.io.admin_core_service.features.chapter.repository.ChapterPackageSessionMappingRepository;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.module.dto.ModuleDTO;
@@ -12,6 +13,7 @@ import vacademy.io.admin_core_service.features.module.enums.ModuleStatusEnum;
 import vacademy.io.admin_core_service.features.module.repository.ModuleRepository;
 import vacademy.io.admin_core_service.features.module.repository.SubjectModuleMappingRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
+import vacademy.io.admin_core_service.features.slide.enums.SlideStatus;
 import vacademy.io.admin_core_service.features.subject.repository.SubjectChapterModuleAndPackageSessionMappingRepository;
 import vacademy.io.admin_core_service.features.subject.repository.SubjectRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -23,6 +25,7 @@ import vacademy.io.common.institute.entity.student.Subject;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -196,5 +199,10 @@ public class ModuleService {
         subjectModuleMappingRepository.saveAll(existingMappings);
 
         return "Module order updated successfully.";
+    }
+
+    public Optional<Module> getModuleBySlideIdAndPackageSessionIdWithStatusFilters(String slideId, String packageSessionId){
+        return moduleRepository.findModuleBySlideIdAndPackageSessionIdWithStatusFilters(slideId,packageSessionId,List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
+                List.of(ChapterStatus.ACTIVE.name()), List.of(ModuleStatusEnum.ACTIVE.name()));
     }
 }

@@ -5,6 +5,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.chapter.entity.ChapterToSlides;
+import vacademy.io.admin_core_service.features.chapter.repository.ChapterToSlidesRepository;
 import vacademy.io.admin_core_service.features.doubts.dtos.DoubtAssigneeDto;
 import vacademy.io.admin_core_service.features.doubts.dtos.DoubtsDto;
 import vacademy.io.admin_core_service.features.doubts.entity.DoubtAssignee;
@@ -14,10 +16,12 @@ import vacademy.io.admin_core_service.features.doubts.enums.DoubtStatusEnum;
 import vacademy.io.admin_core_service.features.doubts.enums.DoubtsSourceEnum;
 import vacademy.io.admin_core_service.features.doubts.repository.DoubtsAssigneeRepository;
 import vacademy.io.admin_core_service.features.doubts.repository.DoubtsRepository;
+import vacademy.io.admin_core_service.features.module.service.ModuleService;
 import vacademy.io.admin_core_service.features.slide.dto.SlideMetadataProjection;
 import vacademy.io.admin_core_service.features.slide.entity.Slide;
 import vacademy.io.admin_core_service.features.slide.repository.SlideRepository;
 import vacademy.io.admin_core_service.features.slide.service.SlideMetaDataService;
+import vacademy.io.common.institute.entity.module.Module;
 
 import java.util.*;
 
@@ -36,6 +40,12 @@ public class DoubtService {
 
     @Autowired
     private SlideMetaDataService slideMetaDataService;
+
+    @Autowired
+    private ModuleService moduleService;
+
+    @Autowired
+    private ChapterToSlidesRepository chapterToSlidesRepository;
 
     public Optional<Doubts> getDoubtById(String id){
         return doubtsRepository.findById(id);
@@ -82,9 +92,18 @@ public class DoubtService {
             );
 
             List<DoubtAssigneeDto> allAssigneeDto = new ArrayList<>();
+            String moduleId = null;
+            String chapterId = null;
 
             if(doubt.getParentId() == null){
                 allAssigneeDto = getAssigneeDtoFromDoubt(doubt);
+                Optional<Module> module = moduleService.getModuleBySlideIdAndPackageSessionIdWithStatusFilters(doubt.getSourceId(), doubt.getPackageSessionId());
+                if(module.isPresent()){
+                    moduleId = module.get().getId();
+                }
+
+                Optional<ChapterToSlides> chapterToSlides = chapterToSlidesRepository.findBySlideId(doubt.getSourceId());
+                if(chapterToSlides.isPresent()) chapterId = chapterToSlides.get().getChapter().getId();
             }
 
             String subjectId = null;
@@ -119,6 +138,8 @@ public class DoubtService {
                     .resolvedTime(doubt.getResolvedTime())
                     .raisedTime(doubt.getRaisedTime())
                     .allDoubtAssignee(allAssigneeDto)
+                    .moduleId(moduleId)
+                    .chapterId(chapterId)
                     .replies(createDtoFromDoubts(childDoubts)) // recursive call here
                     .build());
         });

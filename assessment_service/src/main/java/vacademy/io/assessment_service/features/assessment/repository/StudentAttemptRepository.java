@@ -186,7 +186,7 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
 
     @Query(value = """
             WITH LatestAttempts AS (
-                SELECT sa.id AS attemptId, sa.total_marks AS achievedMarks, aur.user_id AS userId,
+                SELECT sa.id AS attemptId, ROUND(CAST(sa.total_marks AS NUMERIC), 2) AS achievedMarks, aur.user_id AS userId,
                        ROW_NUMBER() OVER (PARTITION BY aur.user_id ORDER BY sa.created_at DESC) AS rn
                 FROM student_attempt sa
                 JOIN assessment_user_registration aur ON aur.id = sa.registration_id
@@ -525,7 +525,7 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                                 aur.participant_name AS studentName,
                                 aur.source_id AS batchId,
                                 sa.total_time_in_seconds AS completionTimeInSeconds,
-                                sa.total_marks AS achievedMarks,
+                                ROUND(CAST(sa.total_marks AS NUMERIC), 2) AS achievedMarks,
                                 aur.status,
                                 sa.submit_time,
                                 ROW_NUMBER() OVER (PARTITION BY aur.user_id ORDER BY sa.created_at DESC) AS rn,
@@ -541,6 +541,7 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                                         SELECT COUNT(*) AS totalParticipants FROM RankedAttempts WHERE rn = 1
                                     )
                         SELECT
+                            rank,
                             attemptId,
                             userId,
                             studentName,
@@ -548,7 +549,6 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                             completionTimeInSeconds,
                             achievedMarks,
                             status,
-                            rank,
                             ROUND(CAST(100.0 * (1.0 - (CAST(ra.rank - 1 AS FLOAT) / NULLIF(t.totalParticipants * 1.0, 0))) AS NUMERIC), 2) AS percentile
                         FROM RankedAttempts as ra,TotalParticipants as t
                         WHERE rn = 1
@@ -591,6 +591,8 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                                                                              @Param("name") String name,
                                                                              @Param("evaluationStatus") List<String> evaluationStatus,
                                                                              Pageable pageable);
+
+    List<StudentAttempt> findByStatusNotIn(List<String> name);
 }
 
 

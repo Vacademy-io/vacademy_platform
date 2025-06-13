@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.Data;
 
 import java.util.List;
+import java.util.Map;
 
 @Data
 @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
@@ -14,4 +15,5 @@ public class LearnerPackageFilterDTO {
     private List<String>tag;
     private double minPercentageCompleted;
     private double maxPercentageCompleted;
+    private Map<String, String> sortColumns;
 }

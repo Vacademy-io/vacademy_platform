@@ -48,6 +48,7 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
         String getThumbnailFileId();
         String getBackgroundScoreFileId();
         String getStatus();
+        String getAllowRewind();
 
         String getRecurrenceType();
         String getRecurrenceKey();
@@ -120,6 +121,7 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
             s.thumbnail_file_id AS thumbnailFileId,
             s.background_score_file_id AS backgroundScoreFileId,
             s.status AS status,
+            s.allow_rewind,
             ss.recurrence_type AS recurrenceType,
             ss.recurrence_key AS recurrenceKey,
             ss.meeting_date AS meetingDate,

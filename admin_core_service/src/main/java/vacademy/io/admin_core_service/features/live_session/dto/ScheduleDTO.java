@@ -18,7 +18,7 @@ public interface ScheduleDTO {
     String getAccessType();
     String getSessionStatus();
     String getInstituteId();
-    Timestamp getLastEntryTime();
+    LocalDateTime getLastEntryTime();
     String getAccessLevel();
     String getMeetingType();
     String getLinkType();

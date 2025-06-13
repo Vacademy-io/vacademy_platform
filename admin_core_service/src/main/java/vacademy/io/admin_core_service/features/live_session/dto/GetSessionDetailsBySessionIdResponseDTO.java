@@ -38,6 +38,7 @@ public class GetSessionDetailsBySessionIdResponseDTO {
     private String thumbnailFileId;
     private String backgroundScoreFileId;
     private String status;
+    private String allowRewind;
 
     private String recurrenceType;
     private String recurrenceKey;

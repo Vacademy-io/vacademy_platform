@@ -67,12 +67,11 @@ public class GetSessionByIdService {
                 LocalTime lastEntryTime = schedule.getScheduleLastEntryTime();
 
                 long durationMinutes = Duration.between(startTime, lastEntryTime).toMinutes();
-                long durationHours = Duration.between(startTime, lastEntryTime).toHours();
 
                 item.setId(schedule.getScheduleId());
                 item.setDay(schedule.getMeetingDate().getDayOfWeek().name().toLowerCase());
                 item.setStartTime(schedule.getScheduleStartTime().toString());
-                item.setDuration(String.valueOf(durationHours)); // or durationMinutes if preferred
+                item.setDuration(String.valueOf(durationMinutes)); // or durationMinutes if preferred
                 item.setLink(schedule.getCustomMeetingLink());
                 addedSchedules.add(item);
             }
@@ -95,11 +94,15 @@ public class GetSessionByIdService {
             dto.setDescriptionHtml(first.getDescriptionHtml());
             dto.setDefaultMeetLink(first.getDefaultMeetLink());
             dto.setStartTime(first.getSessionStartTime());
-            dto.setLastEntryTime(first.getScheduleLastEntryTime().atDate(first.getMeetingDate()));
+            dto.setLastEntryTime(first.getLastEntryTime());
             dto.setLinkType(first.getLinkType());
             dto.setJoinLink(first.getRegistrationFormLinkForPublicSessions());
             dto.setRecurrenceType(first.getRecurrenceType());
             dto.setAccessType(first.getAccessLevel());
+            dto.setWaitingRoomTime(first.getWaitingRoomTime().toString());
+            dto.setThumbnailFileId(first.getThumbnailFileId());
+            dto.setBackgroundScoreFileId(first.getBackgroundScoreFileId());
+            dto.setSessionStreamingServiceType(first.getSessionStreamingServiceType());
         }
 
         if (last != null) {
@@ -186,6 +189,7 @@ public class GetSessionByIdService {
                         .scheduleLastEntryTime(p.getScheduleLastEntryTime())
                         .customMeetingLink(p.getCustomMeetingLink())
                         .customWaitingRoomMediaId(p.getCustomWaitingRoomMediaId())
+                        .allowRewind(p.getAllowRewind())
                         .build())
                 .orElseThrow(() -> new EntityNotFoundException("Schedule not found"));
     }

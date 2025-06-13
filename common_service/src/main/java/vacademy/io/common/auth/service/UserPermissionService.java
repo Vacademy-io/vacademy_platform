@@ -16,6 +16,9 @@ public class UserPermissionService {
     @Autowired
     private UserPermissionRepository userPermissionRepository;
 
+    @Autowired
+    private UserService userService;
+
     public String updateUserPermission(EditUserPermissionRequestDTO editUserPermissionRequestDTO) {
         Set<String>toRemove = editUserPermissionRequestDTO.getRemovedPermissionIds();
         Set<String>toAdd = editUserPermissionRequestDTO.getAddedPermissionIds();
@@ -29,6 +32,7 @@ public class UserPermissionService {
             userPermissions.add(userPermission);
         }
         userPermissionRepository.saveAll(userPermissions);
+        userService.updateLastTokenUpdatedTime(List.of(editUserPermissionRequestDTO.getUserId()));
         return "success";
     }
 

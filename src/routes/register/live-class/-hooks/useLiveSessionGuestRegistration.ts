@@ -20,7 +20,7 @@ export const useLiveSessionGuestRegistration = () => {
           },
         }
       );
-      return response;
+      return response.data;
     },
     onError: (error: AxiosError<ErrorResponse>) => {
       console.error("Registration failed:", error);

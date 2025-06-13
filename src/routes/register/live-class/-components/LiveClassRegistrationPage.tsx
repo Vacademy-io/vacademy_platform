@@ -42,6 +42,7 @@ import { fetchSessionDetails } from "@/routes/live-class-guest/-hooks/useSession
 import { SessionDetailsResponse } from "@/routes/study-library/live-class/-types/types";
 import { SessionStreamingServiceType } from "@/routes/register/live-class/-types/enum";
 import { getPublicFileUrl } from "../-hooks/getPublicUrl";
+import { useMarkAttendance } from "@/routes/live-class-guest/-hooks/useMarkAttendance";
 
 export const verifyEmailSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -66,8 +67,10 @@ export default function LiveClassRegistrationPage() {
   const [coverFileUrl, setCoverFileUrl] = useState<string | undefined>(
     undefined
   );
-
+  const [registrationResponse, setRegistrationResponse] = useState<string>("");
   const { mutateAsync: registerGuestUser } = useLiveSessionGuestRegistration();
+
+  const { mutateAsync: markAttendance } = useMarkAttendance();
 
   const fetchSessionDetail = async (id: string) => {
     console.log("fetching session details");
@@ -105,39 +108,51 @@ export default function LiveClassRegistrationPage() {
       const isInWaitingRoom = now >= waitingRoomStart && now < sessionDate;
       const isInMainSession = now >= sessionDate;
 
-      if (isInWaitingRoom && sessionDetails?.defaultMeetLink) {
-        navigate({
-          to: "/live-class-guest/waiting-room",
-          search: {
-            sessionId: earliestScheduleId || "",
-          },
-        });
-      } else if (
-        isInMainSession &&
-        sessionDetails?.defaultMeetLink &&
-        sessionDetails?.sessionStreamingServiceType ===
-          SessionStreamingServiceType.EMBED
-      ) {
-        navigate({
-          to: "/live-class-guest/embed",
-          search: {
-            sessionId: earliestScheduleId || "",
-          },
-        });
-      } else if (
-        isInMainSession &&
-        sessionDetails?.defaultMeetLink &&
-        sessionDetails?.sessionStreamingServiceType ===
-          SessionStreamingServiceType.REDIRECT
-      ) {
-        window.open(
-          sessionDetails?.defaultMeetLink,
-          "_blank",
-          "noopener,noreferrer"
-        );
-      } else {
-        toast.error("Session is not live yet");
-      }
+      const handleSessionNavigation = async () => {
+        if (isInWaitingRoom && sessionDetails?.defaultMeetLink) {
+          navigate({
+            to: "/live-class-guest/waiting-room",
+            search: {
+              sessionId: earliestScheduleId || "",
+              guestId: registrationResponse || "",
+            },
+          });
+        } else if (
+          isInMainSession &&
+          sessionDetails?.defaultMeetLink &&
+          sessionDetails?.sessionStreamingServiceType ===
+            SessionStreamingServiceType.EMBED
+        ) {
+          await markAttendance({
+            sessionId: sessionDetails.sessionId,
+            scheduleId: earliestScheduleId || "",
+            userSourceType: "EXTERNAL_USER",
+            userSourceId: registrationResponse || "",
+            details: "Guest joined live class from waiting room",
+          });
+          navigate({
+            to: "/live-class-guest/embed",
+            search: {
+              sessionId: earliestScheduleId || "",
+            },
+          });
+        } else if (
+          isInMainSession &&
+          sessionDetails?.defaultMeetLink &&
+          sessionDetails?.sessionStreamingServiceType ===
+            SessionStreamingServiceType.REDIRECT
+        ) {
+          window.open(
+            sessionDetails?.defaultMeetLink,
+            "_blank",
+            "noopener,noreferrer"
+          );
+        } else {
+          toast.error("Session is not live yet");
+        }
+      };
+
+      handleSessionNavigation();
     }
   }, [sessionDetails]);
 
@@ -181,7 +196,9 @@ export default function LiveClassRegistrationPage() {
 
     try {
       const response = await registerGuestUser(payload);
-      if (response.status === 200) {
+      setRegistrationResponse(response);
+      console.log("response ", response.status);
+      if (response) {
         toast.success("Registration successful");
         fetchSessionDetail(earliestScheduleId || "");
       }

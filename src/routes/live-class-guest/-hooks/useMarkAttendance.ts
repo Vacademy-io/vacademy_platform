@@ -1,12 +1,12 @@
 import { useMutation } from "@tanstack/react-query";
 import axios, { AxiosError } from "axios";
-import { LIVE_SESSION_MARK_ATTENDANCE } from "@/constants/urls";
+import { LIVE_SESSION_MARK_ATTENDANCE_FOR_GUEST } from "@/constants/urls";
 import { toast } from "sonner";
 
 interface MarkAttendancePayload {
   sessionId: string;
   scheduleId: string;
-  userSourceType: "USER" | "GUEST";
+  userSourceType: "USER" | "EXTERNAL_USER";
   userSourceId: string;
   details?: string;
 }
@@ -14,7 +14,7 @@ interface MarkAttendancePayload {
 export const useMarkAttendance = () => {
   return useMutation({
     mutationFn: async (payload: MarkAttendancePayload) => {
-      const response = await axios.post(LIVE_SESSION_MARK_ATTENDANCE, payload);
+      const response = await axios.post(LIVE_SESSION_MARK_ATTENDANCE_FOR_GUEST, payload);
       return response.data;
     },
     onSuccess: () => {

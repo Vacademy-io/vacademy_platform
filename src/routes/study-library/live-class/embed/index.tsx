@@ -95,7 +95,10 @@ function EmbedComponent() {
           </h1>
           <div>Live</div>
         </div>
-        <div className="flex-grow relative flex items-center justify-center bg-gray-900">
+        <div className="flex-grow relative flex items-center justify-center p-2">
+          <div className="absolute top-10 right-10 p-2 px-4 bg-red-500 text-white z-[1] rounded">
+            Live
+          </div>
           {renderEmbededSession()}
         </div>
       </div>

@@ -214,6 +214,8 @@ public class GetLiveSessionService {
                 .toList();
     }
 
-
+    public void deleteLiveSession(String sessionId){
+        sessionRepository.softDeleteLiveSessionById(sessionId);
+    }
 
 }

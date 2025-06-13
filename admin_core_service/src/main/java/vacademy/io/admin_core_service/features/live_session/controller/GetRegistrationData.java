@@ -32,9 +32,8 @@ public class GetRegistrationData {
     }
 
     @PostMapping("/register-guest-user")
-    ResponseEntity<Boolean> registerGuestUser(@RequestBody GuestRegistrationRequestDTO requestDTO){
-        registrationService.saveGuestUserDetails(requestDTO);
-        return ResponseEntity.ok(true);
+    ResponseEntity<String> registerGuestUser(@RequestBody GuestRegistrationRequestDTO requestDTO){
+        return ResponseEntity.ok(registrationService.saveGuestUserDetails(requestDTO));
     }
 
     @GetMapping("/check-email-registration")

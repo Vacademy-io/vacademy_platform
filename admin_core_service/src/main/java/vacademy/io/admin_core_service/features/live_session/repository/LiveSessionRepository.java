@@ -1,6 +1,8 @@
 package vacademy.io.admin_core_service.features.live_session.repository;
 
+import jakarta.transaction.Transactional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -175,6 +177,12 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         ORDER BY ss.meeting_date, ss.start_time
     """, nativeQuery = true)
     List<LiveSessionRepository.LiveSessionListProjection> findUpcomingSessionsForBatch(@Param("batchId") String batchId);
+
+
+    @Modifying
+    @Transactional
+    @Query(value = "UPDATE live_session SET status = 'DELETED' WHERE id = :sessionId", nativeQuery = true)
+    void softDeleteLiveSessionById(@Param("sessionId") String sessionId);
 
 }
 

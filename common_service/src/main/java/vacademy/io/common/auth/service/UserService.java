@@ -418,9 +418,9 @@ public class UserService {
     }
 
 
-    public UserJwtUpdateDetail getUserJwtUpdateDetail(CustomUserDetails userDetails) {
+    public UserJwtUpdateDetail getUserJwtUpdateDetail(CustomUserDetails userDetails,String userId) {
         UserJwtUpdateDetail userJwtUpdateDetail = new UserJwtUpdateDetail();
-        Optional<User> user = userRepository.findById(userDetails.getId());
+        Optional<User> user = userRepository.findById(userId);
         if (user.isPresent()) {
             userJwtUpdateDetail.setUpdatedAt(user.get().getLastTokenUpdateTime());
         }

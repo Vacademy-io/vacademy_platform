@@ -54,7 +54,7 @@ public class UserDetailController {
     }
 
     @GetMapping("/jwt-update-time")
-    public ResponseEntity<UserJwtUpdateDetail> getUserJwtUpdateTime(@RequestAttribute("user") CustomUserDetails userDetails) {
-        return ResponseEntity.ok(userService.getUserJwtUpdateDetail(userDetails));
+    public ResponseEntity<UserJwtUpdateDetail> getUserJwtUpdateTime(@RequestAttribute("user") CustomUserDetails userDetails,@RequestParam("userId") String userId) {
+        return ResponseEntity.ok(userService.getUserJwtUpdateDetail(userDetails,userId));
     }
 }

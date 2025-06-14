@@ -13,6 +13,7 @@ import vacademy.io.common.core.utils.DateUtil;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.community_service.feature.presentation.dto.question.AddPresentationDto;
 // import vacademy.io.community_service.feature.presentation.dto.question.PresentationSlideDto; // Assuming not directly used here based on provided code
+import vacademy.io.community_service.feature.presentation.dto.question.OptionDTO;
 import vacademy.io.community_service.feature.presentation.dto.question.PresentationSlideDto;
 import vacademy.io.community_service.feature.presentation.dto.question.QuestionDTO;
 import vacademy.io.community_service.feature.presentation.manager.PresentationCrudManager;
@@ -21,6 +22,7 @@ import vacademy.io.community_service.feature.session.dto.participant.MarkRespons
 import vacademy.io.community_service.feature.session.dto.participant.ParticipantResponseDto;
 import vacademy.io.community_service.feature.session.dto.participant.SlideResponsesLogDto;
 import vacademy.io.community_service.feature.session.dto.participant.SubmittedResponseDataDto;
+import vacademy.io.community_service.feature.session.util.JsonUtils;
 
 import java.io.IOException;
 import java.util.*;
@@ -35,11 +37,9 @@ import java.util.stream.Collectors;
 public class LiveSessionService {
     private static final long SESSION_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours
     private static final long HEARTBEAT_TIMEOUT_MS = 60000; // 60 seconds
-
+    private static final long TEACHER_RESPONSE_UPDATE_DEBOUNCE_MS = 10000; // 10 seconds
     private final Map<String, LiveSessionDto> sessions = new ConcurrentHashMap<>();
     private final Map<String, String> inviteCodeToSessionId = new ConcurrentHashMap<>();
-    private static final long TEACHER_RESPONSE_UPDATE_DEBOUNCE_MS = 10000; // 10 seconds
-
     private final Map<String, Map<String, Long>> sessionParticipantHeartbeats = new ConcurrentHashMap<>();
     private final ScheduledExecutorService heartbeatMonitor = Executors.newSingleThreadScheduledExecutor();
     private final ScheduledExecutorService sessionCleanupScheduler = Executors.newSingleThreadScheduledExecutor();
@@ -51,6 +51,12 @@ public class LiveSessionService {
     PresentationCrudManager presentationCrudManager;
 
     @Autowired
+    NotificationService notificationService;
+
+    @Autowired
+    DeepSeekApiService deepSeekApiService;
+
+
     private ObjectMapper objectMapper; // For JSON processing
 
     public LiveSessionService() {
@@ -117,7 +123,6 @@ public class LiveSessionService {
                 .computeIfAbsent(sessionId, k -> new ConcurrentHashMap<>())
                 .put(slideId, System.currentTimeMillis());
     }
-
 
 
     private void checkInactiveParticipants() {
@@ -551,11 +556,17 @@ public class LiveSessionService {
             if (expired) {
                 System.out.println("Cleaning up session: " + entry.getKey() + (("FINISHED".equals(session.getSessionStatus())) ? " (already finished)" : " (expired)"));
                 if (session.getStudentEmitters() != null) {
-                    session.getStudentEmitters().forEach(emitter -> { try { emitter.complete(); } catch (Exception e) {/*ignore*/} });
+                    session.getStudentEmitters().forEach(emitter -> {
+                        try {
+                            emitter.complete();
+                        } catch (Exception e) {/*ignore*/}
+                    });
                     session.getStudentEmitters().clear();
                 }
                 if (session.getTeacherEmitter() != null) {
-                    try { session.getTeacherEmitter().complete(); } catch (Exception e) {/*ignore*/}
+                    try {
+                        session.getTeacherEmitter().complete();
+                    } catch (Exception e) {/*ignore*/}
                     session.setTeacherEmitter(null);
                 }
                 inviteCodeToSessionId.remove(session.getInviteCode());
@@ -584,6 +595,7 @@ public class LiveSessionService {
             }
         }
     }
+
     public void recordParticipantResponse(String sessionId, String slideId, MarkResponseRequestDto responseRequest) {
         LiveSessionDto session = sessions.get(sessionId);
         if (session == null) {
@@ -683,6 +695,7 @@ public class LiveSessionService {
 
         return adminViews;
     }
+
     private Boolean evaluateResponse(ParticipantResponseDto participantResponse, QuestionDTO question) {
         if (question == null || !StringUtils.hasText(question.getAutoEvaluationJson())) {
             return null; // Cannot evaluate
@@ -705,7 +718,7 @@ public class LiveSessionService {
         // The participantResponse.responseData.type should ideally come from the question definition client-side.
         // If autoEval.type is the source of truth for question type:
         if (!questionType.equals(participantResponseType)) {
-            System.err.println("Mismatch between question type in auto-eval ("+questionType+") and response type ("+participantResponseType+") for user " + participantResponse.getUsername());
+            System.err.println("Mismatch between question type in auto-eval (" + questionType + ") and response type (" + participantResponseType + ") for user " + participantResponse.getUsername());
             // Consider how to handle this: for now, let's proceed if participantResponseType is one we know.
         }
 
@@ -796,4 +809,220 @@ public class LiveSessionService {
             }
         }
     }
+
+    public LiveSessionDto sendParticipantNotifications(NotifyPresentationRequestDto notifyPresentationRequestDto) {
+        NotifyPresentationDto notifyPresentationDto = getNotifyPresentationRequestDto(notifyPresentationRequestDto);
+        if (notifyPresentationDto == null || !StringUtils.hasText(notifyPresentationDto.getSessionId())) {
+            throw new VacademyException("NotifyPresentationDto and SessionId cannot be null");
+        }
+
+        LiveSessionDto session = sessions.get(notifyPresentationDto.getSessionId());
+        if (session == null) {
+            throw new VacademyException("Session not found: " + notifyPresentationDto.getSessionId());
+        }
+
+        // Filter for participants who have an email address
+        session.getParticipants().stream()
+                .filter(participant -> StringUtils.hasText(participant.getEmail()))
+                .forEach(participant -> {
+                    try {
+                        String userResponsesHtml = buildUserResponsesHtml(session, participant);
+                        String emailBody = buildHtmlEmailBody(session, notifyPresentationDto, participant, userResponsesHtml);
+                        String subject = "Summary of your session: " + session.getSlides().getTitle();
+
+                        // Create the request payload for the notification service
+                        EmailUserDto emailUser = new EmailUserDto(participant.getUserId(), participant.getEmail(), Collections.emptyMap());
+                        EmailRequestDto emailRequest = new EmailRequestDto(
+                                emailBody,
+                                "EMAIL",
+                                subject,
+                                "COMMUNITY_SERVICE_SESSION_SUMMARY",
+                                session.getSessionId(),
+                                Collections.singletonList(emailUser)
+                        );
+
+                        // Send the email via the notification service
+                        notificationService.sendEmail(emailRequest);
+                    } catch (Exception e) {
+                        System.err.println("Failed to process and send email for participant " + participant.getUsername() + ". Error: " + e.getMessage());
+                        // Continue to the next participant
+                    }
+                });
+
+        return session;
+    }
+
+    private String buildUserResponsesHtml(LiveSessionDto session, ParticipantDto participant) {
+        StringBuilder responsesBuilder = new StringBuilder();
+        responsesBuilder.append("<h3>Your Responses</h3>");
+
+        if (session.getSlideStatsJson() == null || session.getSlideStatsJson().isEmpty()) {
+            responsesBuilder.append("<p>No responses were recorded for you in this session.</p>");
+            return responsesBuilder.toString();
+        }
+
+        Map<String, String> userResponseMap = new HashMap<>();
+
+        for (PresentationSlideDto slide : session.getSlides().getAddedSlides()) {
+            if (slide.getAddedQuestion() == null) continue;
+
+            String responsesJson = session.getSlideStatsJson().get(slide.getId());
+            if (!StringUtils.hasText(responsesJson)) continue;
+
+            try {
+                SlideResponsesLogDto slideLog = objectMapper.readValue(responsesJson, SlideResponsesLogDto.class);
+
+                // Find the last response by the user for this slide
+                slideLog.getResponses().stream()
+                        .filter(pResponse -> participant.getUsername().equals(pResponse.getUsername()))
+                        .reduce((first, second) -> second) // get last element
+                        .ifPresent(pResponse -> {
+                            String questionTitle = slide.getTitle();
+                            String answerText = "N/A";
+                            String responseType = pResponse.getResponseData().getType();
+
+                            if ("MCQS".equalsIgnoreCase(responseType) || "MCQM".equalsIgnoreCase(responseType)) {
+                                List<String> selectedIds = pResponse.getResponseData().getSelectedOptionIds();
+                                if (selectedIds != null && !selectedIds.isEmpty()) {
+                                    Map<String, String> optionMap = slide.getAddedQuestion().getOptions().stream()
+                                            .collect(Collectors.toMap(OptionDTO::getId, o -> o.getText().getContent()));
+                                    answerText = selectedIds.stream()
+                                            .map(id -> optionMap.getOrDefault(id, "Unknown Option"))
+                                            .collect(Collectors.joining(", "));
+                                }
+                            } else { // Handles ONE_WORD, NUMERIC, LONG_ANSWER
+                                answerText = pResponse.getResponseData().getTextAnswer();
+                            }
+
+                            userResponseMap.put(questionTitle, answerText);
+                        });
+
+            } catch (JsonProcessingException e) {
+                System.err.println("Could not parse responses for slide " + slide.getId() + " for user " + participant.getUsername() + ". Error: " + e.getMessage());
+            }
+        }
+
+        if (userResponseMap.isEmpty()) {
+            responsesBuilder.append("<p>No responses were recorded for you in this session.</p>");
+        } else {
+            responsesBuilder.append("<ul style='padding-left: 20px; list-style-type: none;'>");
+            userResponseMap.forEach((question, answer) -> {
+                responsesBuilder.append(String.format(
+                        "<li style='margin-bottom: 12px;'><strong>%s:</strong><br/>%s</li>",
+                        question, answer
+                ));
+            });
+            responsesBuilder.append("</ul>");
+        }
+
+        return responsesBuilder.toString();
+    }
+
+    private String buildHtmlEmailBody(LiveSessionDto session, NotifyPresentationDto notifyDto, ParticipantDto participant, String userResponsesHtml) {
+        String presentationUrl = "https://engage.vacademy.io/presentation/public/" + session.getSessionId();
+        String sessionTitle = session.getSlides() != null ? session.getSlides().getTitle() : "the session";
+
+        StringBuilder adminCommentHtml = new StringBuilder();
+        if (StringUtils.hasText(notifyDto.getAdminComment())) {
+            adminCommentHtml.append("<h3>A Note from the Host</h3><p>").append(notifyDto.getAdminComment()).append("</p>");
+        }
+
+        StringBuilder summaryHtml = new StringBuilder();
+        if (StringUtils.hasText(notifyDto.getHtmlSummary())) {
+            summaryHtml.append("<h3>Session Summary</h3>").append(notifyDto.getHtmlSummary());
+        }
+
+        StringBuilder actionPointsHtml = new StringBuilder();
+        if (notifyDto.getHtmlActionPoints() != null && !notifyDto.getHtmlActionPoints().isEmpty()) {
+            actionPointsHtml.append("<h3>Action Points</h3><ul>");
+            notifyDto.getHtmlActionPoints().forEach(point -> actionPointsHtml.append("<li>").append(point).append("</li>"));
+            actionPointsHtml.append("</ul>");
+        }
+
+        // Using the provided HTML template as a base
+        return String.format(
+                        "<!DOCTYPE html>...<div class='content'>" + // Start of template up to content div
+                                "<h3>Hi %s,</h3>" +
+                                "<p>Thank you for attending the session: <strong>%s</strong>.</p>" +
+                                "%s" + // Admin Comment
+                                "%s" + // Summary
+                                "%s" + // Action Points
+                                "%s" + // User's personal responses
+                                "<br/><p style='text-align:center;'><a href='%s' class='button'>View Full Presentation</a></p>" +
+                                "</div>...</body></html>", // Rest of the template
+                        participant.getName(),
+                        sessionTitle,
+                        adminCommentHtml.toString(),
+                        summaryHtml.toString(),
+                        actionPointsHtml.toString(),
+                        userResponsesHtml,
+                        presentationUrl
+                ).replace("<!DOCTYPE html>...<div class='content'>", getEmailTemplatePrefix())
+                .replace("</div>...</body></html>", getEmailTemplateSuffix());
+    }
+
+    // Helper to keep the main builder method clean
+    private String getEmailTemplatePrefix() {
+        return "<!DOCTYPE html>...<div class=\"content\">"; // Paste the first part of your template here
+    }
+
+    private String getEmailTemplateSuffix() {
+        return "</div><div class=\"footer\"><p>&copy; 2025 Volt by Vacademy</p></div></div></body></html>";
+    }
+
+    /**
+     * Processes a session transcript using an AI service to generate a summary,
+     * action points, and an admin comment.
+     *
+     * @param notifyPresentationRequestDto The request containing the transcript and sessionId.
+     * @return A NotifyPresentationDto populated with AI-generated content.
+     */
+    private NotifyPresentationDto getNotifyPresentationRequestDto(NotifyPresentationRequestDto notifyPresentationRequestDto) {
+        if (notifyPresentationRequestDto == null || !StringUtils.hasText(notifyPresentationRequestDto.getTranscript())) {
+            throw new VacademyException("Transcript cannot be empty for AI processing.");
+        }
+
+        // 1. Construct the prompt for the AI model
+        String prompt = "You are an expert session summarizer. Based on the following session transcript, please generate a JSON object with three keys: 'htmlSummary', 'htmlActionPoints', and 'adminComment'.\n\n" +
+                "1.  'htmlSummary': Provide a concise summary of the session's key topics and discussions. The summary must be formatted as a single HTML string, using <p> tags for paragraphs.\n" +
+                "2.  'htmlActionPoints': Identify the main action items or key takeaways from the session. Format this as a JSON array of strings, where each string is an action point.\n" +
+                "3.  'adminComment': Write a brief, friendly, and encouraging comment from the session host to the participants. This should be a single string of plain text.\n\n" +
+                "Your entire output must be a single, valid JSON object and nothing else. Do not include explanations or markdown formatting like ```json.\n\n" +
+                "Here is the transcript:\n" +
+                "---\n" +
+                notifyPresentationRequestDto.getTranscript() + "\n" +
+                "---\n\n" +
+                "JSON Output:";
+
+        // 2. Call the DeepSeek API
+        // Model: "deepseek/chat", maxTokens can be adjusted as needed.
+        DeepSeekResponse aiResponse = deepSeekApiService.getChatCompletion("google/gemini-2.5-flash-preview-05-20", prompt, 10024);
+
+        if (aiResponse == null || aiResponse.getChoices() == null || aiResponse.getChoices().isEmpty() || !StringUtils.hasText(aiResponse.getChoices().get(0).getMessage().getContent())) {
+            throw new RuntimeException("Failed to get a valid response from the AI service.");
+        }
+
+        String jsonContent = aiResponse.getChoices().get(0).getMessage().getContent().trim();
+        jsonContent = JsonUtils.extractAndSanitizeJson(jsonContent);
+
+
+        try {
+            // 3. Parse the JSON content into our DTO
+            AiGeneratedContentDto parsedContent = objectMapper.readValue(jsonContent, AiGeneratedContentDto.class);
+
+            // 4. Create and return the final DTO for the email logic
+            NotifyPresentationDto finalDto = new NotifyPresentationDto();
+            finalDto.setSessionId(notifyPresentationRequestDto.getSessionId());
+            finalDto.setHtmlSummary(parsedContent.getHtmlSummary());
+            finalDto.setHtmlActionPoints(parsedContent.getHtmlActionPoints());
+            finalDto.setAdminComment(parsedContent.getAdminComment());
+
+            return finalDto;
+
+        } catch (Exception e) {
+            System.err.println("Failed to parse JSON response from AI. Raw content was: " + jsonContent);
+            throw new RuntimeException("Failed to parse AI response content. See server logs for details.", e);
+        }
+    }
+
 }

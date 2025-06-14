@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.chapter.enums.ChapterStatus;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerStatusEnum;
+import vacademy.io.admin_core_service.features.learner_operation.repository.LearnerOperationRepository;
 import vacademy.io.admin_core_service.features.learner_reports.dto.*;
 import vacademy.io.admin_core_service.features.learner_tracking.repository.ActivityLogRepository;
 import vacademy.io.admin_core_service.features.learner_tracking.repository.ConcentrationScoreRepository;
@@ -40,6 +41,7 @@ public class BatchReportService {
     private final ActivityLogRepository activityLogRepository;
     private final ConcentrationScoreRepository concentrationScoreRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final LearnerOperationRepository learnerOperationRepository;
 
     public ProgressReportDTO getBatchReport(ReportFilterDTO filter, CustomUserDetails userDetails) {
         validateBatchReportFilter(filter);
@@ -62,7 +64,7 @@ public class BatchReportService {
     }
 
     private Double getPercentageCourseCompleted(ReportFilterDTO filter) {
-        return activityLogRepository.getBatchCourseCompletionPercentage(
+        return activityLogRepository.getBatchCourseCompletionPercentagePerLearner(
                 filter.getPackageSessionId(),
                 filter.getStartDate(),
                 filter.getEndDate(),
@@ -71,7 +73,8 @@ public class BatchReportService {
                 ACTIVE_CHAPTERS,
                 ACTIVE_CHAPTERS,
                 VALID_SLIDE_STATUSES,
-                SLIDE_TYPES
+                SLIDE_TYPES,
+                ACTIVE_LEARNERS
         );
     }
 

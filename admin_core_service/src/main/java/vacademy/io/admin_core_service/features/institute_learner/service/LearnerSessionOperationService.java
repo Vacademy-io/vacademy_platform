@@ -111,7 +111,6 @@ public class LearnerSessionOperationService {
 
             if (studentSessionInstituteGroupMappingOptional.isPresent()) {
                 StudentSessionInstituteGroupMapping studentSessionInstituteGroupMapping = studentSessionInstituteGroupMappingOptional.get();
-
                 // Always update enrolledDate to current time
                 studentSessionInstituteGroupMapping.setEnrolledDate(new Date());
 

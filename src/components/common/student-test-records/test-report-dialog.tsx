@@ -110,6 +110,7 @@ export const TestReportDialog = ({
     numPages: 0,
     currentPage: 0,
   });
+  console.log("pdfDocumentInfo", pdfDocumentInfo);
 
   // const { state } = report.__store.state.location.state as ParsedHistoryState;
   // const studentReport: Report = state?.report || {};

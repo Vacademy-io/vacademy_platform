@@ -53,7 +53,6 @@ const fetchQuestionsData = async (
   sectionIds: string[]
 ) => {
   try {
-    console.log("assessmentId", assessmentId, "sectionIds", sectionIds);
     const response = await authenticatedAxiosInstance.get(
       "https://backend-stage.vacademy.io/assessment-service/assessment/add-questions/create/v1/questions-of-sections",
       {
@@ -63,7 +62,6 @@ const fetchQuestionsData = async (
         },
       }
     );
-    console.log("response", response);
     return response.data as SectionQuestions;
   } catch (error) {
     console.error("Error fetching questions data:", error);
@@ -146,7 +144,6 @@ export const TestReportDialog = ({
             assessmentId,
           },
         });
-        console.log("testMarks", response);
         const data = response?.data;
         setTestMarks(data);
       } catch (error) {
@@ -193,7 +190,6 @@ export const TestReportDialog = ({
   useEffect(() => {
     const fetchInstituteDetails = async () => {
       const response = await Preferences.get({ key: "InstituteDetails" });
-      console.log("response InstituteDetails", response);
       setInstituteDetails(response?.value ? JSON.parse(response.value) : null);
     };
 
@@ -253,23 +249,16 @@ export const TestReportDialog = ({
   const [selectedSection, setSelectedSection] = useState(
     sectionsInfo?.length ? sectionsInfo[0]?.id : undefined
   );
-  console.log("assessmentDetails", assessmentDetails);
   const evaluation_type = evaluationType;
 
-  console.log("testReport", testReport, "selectedSection", selectedSection);
   const evaluated_file_id = testReport?.evaluated_file_id;
-  console.log("evaluated_file_id", evaluated_file_id);
   const currentSectionAllQuestions = testReport?.all_sections[selectedSection!];
-  console.log("currentSectionAllQuestions", currentSectionAllQuestions);
 
   useEffect(() => {
     if (evaluated_file_id) {
-      console.log("Evaluated file ID:", evaluated_file_id);
       const fetchAndSetFile = async () => {
         try {
           const publicUrl = await getPublicUrl(evaluated_file_id);
-          console.log("Public URL:", publicUrl);
-          console.log("File ID:", evaluated_file_id);
 
           // Assuming you have file details somewhere (like file.name, file.size)
           setPdfFile({
@@ -292,7 +281,6 @@ export const TestReportDialog = ({
       ...prev,
       numPages: e.doc.numPages,
     }));
-    console.log("pdfDocumentInfo", pdfDocumentInfo);
   };
 
   const handlePageChange = (e: PageChangeEvent) => {

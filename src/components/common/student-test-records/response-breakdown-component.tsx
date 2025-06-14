@@ -66,6 +66,7 @@ import { parseHtmlToString } from "@/lib/utils";
 // Function to render student response based on question type
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const renderStudentResponse = (review: any) => {
+  console.log("review ", review);
   if (!review.student_response_options) return <p>No response</p>;
 
   try {
@@ -74,7 +75,9 @@ export const renderStudentResponse = (review: any) => {
       typeof review.student_response_options === "string"
         ? JSON.parse(review.student_response_options)
         : review.student_response_options;
-
+    console.log("responseData ", responseData);
+    console.log("review.question_type ", review.question_type);
+    console.log("review.student_response_options ", responseData.responseData);
     switch (review.question_type) {
       case "ONE_WORD":
         return <p>{responseData.responseData?.answer || "No response"}</p>;

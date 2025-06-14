@@ -92,18 +92,28 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
                     email = oAuth2VendorToUserDetailService.getEmailByProviderIdAndSubject(userInfo.providerId, userInfo.sub);
                 }
                 boolean isEmailVerified = (email!= null);
-                String userJson = String.format(
-                        "{\"name\":\"%s\", \"email\":\"%s\", \"profile\":\"%s\"}",
-                        userInfo.name, email, userInfo.picture
-                );
-                String encodedUserInfo = Base64.getUrlEncoder().encodeToString(userJson.getBytes(StandardCharsets.UTF_8));
+                String userJson = null;
+                if (isEmailVerified){
+                    userJson =String.format(
+                            "{\"name\":\"%s\", \"email\":\"%s\", \"profile\":\"%s\"}",
+                            userInfo.name, email, userInfo.picture);
+                }else{
+                    userJson =String.format(
+                            "{\"name\":\"%s\", \"profile\":\"%s\"}",
+                            userInfo.name, userInfo.picture);
+                }
+                String encodedUserInfo = Base64.getUrlEncoder()
+                        .withoutPadding()
+                        .encodeToString(userJson.getBytes(StandardCharsets.UTF_8));
 
+                String separator = redirectUrl.contains("?") ? "&" : "?";
                 String redirectWithParams = String.format(
-                        "%s?signupData=%s&state=%s&emailVerified=%s",
+                        "%s%ssignupData=%s&state=%s&emailVerified=%s",
                         redirectUrl,
+                        separator,
                         URLEncoder.encode(encodedUserInfo, StandardCharsets.UTF_8),
                         URLEncoder.encode(encodedState != null ? encodedState : "", StandardCharsets.UTF_8),
-                        URLEncoder.encode(String.valueOf(isEmailVerified),StandardCharsets.UTF_8)
+                        URLEncoder.encode(String.valueOf(isEmailVerified), StandardCharsets.UTF_8)
                 );
                 response.sendRedirect(redirectWithParams);
                 oAuth2VendorToUserDetailService.saveOrUpdateOAuth2VendorToUserDetail(userInfo.providerId, email, userInfo.sub);
@@ -167,14 +177,17 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
 
 
     private void redirectWithTokens(HttpServletResponse response, String redirectUrl, JwtResponseDto jwtResponseDto) throws IOException {
+        String separator = redirectUrl.contains("?") ? "&" : "?";
         String tokenizedRedirectUrl = String.format(
-                "%s?accessToken=%s&refreshToken=%s",
+                "%s%saccessToken=%s&refreshToken=%s",
                 redirectUrl,
+                separator,
                 URLEncoder.encode(jwtResponseDto.getAccessToken(), StandardCharsets.UTF_8),
                 URLEncoder.encode(jwtResponseDto.getRefreshToken(), StandardCharsets.UTF_8)
         );
         response.sendRedirect(tokenizedRedirectUrl);
     }
+
 
     private void sendErrorRedirect(HttpServletResponse response, String baseUrl, String errorMessage) throws IOException {
         if (response.isCommitted()) {

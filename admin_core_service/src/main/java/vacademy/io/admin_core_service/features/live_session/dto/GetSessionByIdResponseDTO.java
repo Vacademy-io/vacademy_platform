@@ -28,6 +28,10 @@ public class GetSessionByIdResponseDTO {
     private String recurrenceType;
     private LocalDate sessionEndDate;
     private String accessType;
+    private String waitingRoomTime;
+    private String thumbnailFileId;
+    private String backgroundScoreFileId;
+    private String sessionStreamingServiceType;
     private List<String> packageSessionIds;
     private List<ScheduleItem> addedSchedules;
 

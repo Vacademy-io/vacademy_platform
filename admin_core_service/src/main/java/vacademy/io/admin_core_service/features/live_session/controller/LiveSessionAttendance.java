@@ -20,4 +20,11 @@ public class LiveSessionAttendance {
         lIveSessionAttendanceService.markAttendance(request , user);
         return ResponseEntity.ok("Attendance marked successfully.");
     }
+    @PostMapping("/mark-guest-attendance")
+    public ResponseEntity<String> markGuestAttendance(@RequestBody MarkAttendanceRequestDTO request ) {
+        lIveSessionAttendanceService.markAttendanceForGuest(request);
+        return ResponseEntity.ok("Attendance marked successfully.");
+    }
+
+
 }

@@ -416,4 +416,21 @@ public class UserService {
 
         return userTopLevelDto;
     }
+
+
+    public UserJwtUpdateDetail getUserJwtUpdateDetail(CustomUserDetails userDetails,String userId) {
+        UserJwtUpdateDetail userJwtUpdateDetail = new UserJwtUpdateDetail();
+        Optional<User> user = userRepository.findById(userId);
+        if (user.isPresent()) {
+            userJwtUpdateDetail.setUpdatedAt(user.get().getLastTokenUpdateTime());
+        }
+        return userJwtUpdateDetail;
+    }
+
+    public void updateLastTokenUpdatedTime(List<String> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return;
+        }
+        userRepository.updateLastTokenUpdateTime(userIds);
+    }
 }

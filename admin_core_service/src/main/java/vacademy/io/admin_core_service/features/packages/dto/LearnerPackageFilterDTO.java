@@ -10,8 +10,10 @@ import java.util.Map;
 @Data
 @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
 public class LearnerPackageFilterDTO {
+    private List<String>status;
     private List<String>levelIds;
     private List<String>facultyIds;
+    private String searchByName;
     private List<String>tag;
     private double minPercentageCompleted;
     private double maxPercentageCompleted;

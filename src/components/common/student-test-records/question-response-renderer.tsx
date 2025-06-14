@@ -90,6 +90,7 @@ export const renderStudentResponse = (
         );
 
       case "MCQS":
+      case "TRUE_FALSE":
         if (responseData.responseData?.optionIds?.length) {
           const optionId = responseData.responseData.optionIds[0]; // MCQS has single selection
           const optionName = findOptionName(

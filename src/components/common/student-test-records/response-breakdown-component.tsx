@@ -64,6 +64,7 @@ export function ResponseBreakdownComponent({
 import { parseHtmlToString } from "@/lib/utils";
 
 // Function to render student response based on question type
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const renderStudentResponse = (review: any) => {
   if (!review.student_response_options) return <p>No response</p>;
 
@@ -90,6 +91,7 @@ export const renderStudentResponse = (review: any) => {
         );
 
       case "MCQS":
+      case "TRUE_FALSE":
         if (responseData.responseData?.optionIds?.length) {
           return <p>{responseData.responseData.optionIds.join(", ")}</p>;
         }
@@ -120,6 +122,7 @@ export const renderStudentResponse = (review: any) => {
 };
 
 // Function to render correct answer based on question type
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const renderCorrectAnswer = (review: any) => {
   if (!review.correct_options) return <p>No correct answer provided</p>;
 
@@ -148,6 +151,7 @@ export const renderCorrectAnswer = (review: any) => {
 
       case "MCQS":
       case "MCQM":
+      case "TRUE_FALSE":
         if (correctData.data?.correctOptionIds?.length) {
           return <p>{correctData.data.correctOptionIds.join(", ")}</p>;
         }
@@ -155,6 +159,7 @@ export const renderCorrectAnswer = (review: any) => {
 
       default:
         if (Array.isArray(review.correct_options)) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           return review.correct_options.map((option: any, idx: number) => (
             <p key={idx}>{parseHtmlToString(option.option_name)}</p>
           ));

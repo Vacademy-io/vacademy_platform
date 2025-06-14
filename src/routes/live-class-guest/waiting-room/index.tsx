@@ -14,13 +14,14 @@ import dayjs from "dayjs";
 export const Route = createFileRoute("/live-class-guest/waiting-room/")({
   validateSearch: z.object({
     sessionId: z.string(),
+    guestId: z.string(),
   }),
   component: GuestWaitingRoomComponent,
 });
 
 function GuestWaitingRoomComponent() {
   const [thumbnail, setThumbnail] = useState<string | null>(null);
-  const { sessionId } = Route.useSearch();
+  const { sessionId, guestId   } = Route.useSearch();
   const navigate = useNavigate();
   const { mutateAsync: markAttendance } = useMarkAttendance();
   const {
@@ -58,13 +59,13 @@ function GuestWaitingRoomComponent() {
           if (sessionDetails.defaultMeetLink) {
             try {
               // Mark attendance before redirecting
-              // await markAttendance({
-              //   sessionId: sessionDetails.sessionId,
-              //   scheduleId: sessionId,
-              //   userSourceType: "GUEST",
-              //   userSourceId: guestId,
-              //   details: "Guest joined live class from waiting room",
-              // });
+              await markAttendance({
+                sessionId: sessionDetails.sessionId,
+                scheduleId: sessionId,
+                userSourceType: "EXTERNAL_USER",
+                userSourceId: guestId,
+                details: "Guest joined live class from waiting room",
+              });
 
               if (
                 sessionDetails.sessionStreamingServiceType ===

@@ -6,7 +6,7 @@ import { toast } from "sonner";
 interface MarkAttendancePayload {
   sessionId: string;
   scheduleId: string;
-  userSourceType: "USER" | "GUEST";
+  userSourceType: "USER" | "EXTERNAL_USER";
   userSourceId: string;
   details?: string;
 }

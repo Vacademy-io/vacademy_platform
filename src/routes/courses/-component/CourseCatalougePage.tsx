@@ -62,7 +62,7 @@ const formatTagsForPostgresArray = (tagNames: string[]): string => {
 // Define API endpoints in one place for easier management
 //const API_BASE_URL = 'https://backend-stage.vacademy.io/admin-core-service';
 const INSTITUTE_DETAILS_API = (id: string) => `${GET_INSTITUTE_DETAILS}/${id}`;
-const SEARCH_COURSES_API = `${SEARCH_COURSES}?page=0&size=5`;
+const SEARCH_COURSES_API = `${SEARCH_COURSES}`;
 
 interface CourseCataloguePageProps {
   hideHero?: boolean;

@@ -30,7 +30,7 @@ export const ChapterSidebarSlides = () => {
   }
 
   return (
-    <div className="flex w-full flex-col items-center gap-6 text-neutral-600">
+    <div className="bg-yellow-400 flex w-full flex-col items-center gap-6 text-neutral-600">
       {slides?.map((slide: Slide) => (
         <div
           key={slide.id}
@@ -42,7 +42,7 @@ export const ChapterSidebarSlides = () => {
           }`}
           title={slide.title || ""}
         >
-          <div className="flex items-center gap-3">
+          <div className="bg-blue-400 flex items-center gap-3">
             <p className={`${slide.percentage_completed>=80 && "text-success-600"}`}>{getIcon(slide.source_type)}</p>
             <p
               className={`flex-1 text-subtitle ${open ? "visible" : "hidden"} text-body`}

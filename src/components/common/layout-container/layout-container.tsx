@@ -17,11 +17,11 @@ export const LayoutContainer = ({
     <div
       className={`flex flex-col md:flex-row w-full ${open ? "md:gap-12" : "md:gap-16"}`}
     >
-      <div className="w-full md:w-auto">
+      <div className="bg-blue-400 w-full md:w-auto">
         <MySidebar sidebarComponent={sidebarComponent} />
       </div>
 
-      <div className="w-full flex flex-col flex-1">
+      <div className=" w-full flex flex-col flex-1">
         <Navbar />
         <div className={cn("m-4 md:m-7 max-w-full", className)}>{children}</div>
       </div>

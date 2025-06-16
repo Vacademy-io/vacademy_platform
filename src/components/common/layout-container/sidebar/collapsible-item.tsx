@@ -7,16 +7,16 @@ import { SidebarItemProps } from "../../../../types/layout-container-types";
 import { useSidebar } from "@/components/ui/sidebar";
 import { Link } from "@tanstack/react-router";
 import { useRouter } from "@tanstack/react-router";
+import { cn } from "@/lib/utils";
 
 export const CollapsibleItem = ({ icon, title, subItems }: SidebarItemProps) => {
     const [hover, setHover] = useState<boolean>(false);
-    const { state, toggleSidebar } = useSidebar(); // Access sidebar state and toggle function
-
-    const toggleHover = () => setHover(!hover);
+    const { state, toggleSidebar } = useSidebar();
     const router = useRouter();
-
     const currentRoute = router.state.location.pathname;
     const routeMatches = subItems?.some((item) => item.subItemLink === currentRoute);
+
+    const toggleHover = () => setHover(!hover);
 
     return (
         <Collapsible
@@ -25,57 +25,64 @@ export const CollapsibleItem = ({ icon, title, subItems }: SidebarItemProps) => 
             onMouseLeave={toggleHover}
         >
             <CollapsibleTrigger
-                className="flex w-full items-center justify-between"
+                className={cn(
+                    "flex w-full items-center justify-between",
+                    hover || routeMatches ? "bg-white" : "bg-none"
+                )}
                 onClick={() => {
-                    if (state === "collapsed") toggleSidebar(); // Open sidebar if it’s collapsed
+                    if (state === "collapsed") toggleSidebar();
                 }}
             >
-                <div
-                    className={`flex w-full cursor-pointer items-center gap-1 rounded-lg px-4 py-2 ${
-                        hover || routeMatches ? "bg-white" : "bg-none"
-                    }`}
-                >
+                <div className="flex w-full cursor-pointer items-center gap-1 rounded-lg px-4 py-2">
                     <div className="flex items-center">
                         {icon &&
                             React.createElement(icon, {
-                                className: `${state === "expanded" ? "size-7" : "size-6"} ${
+                                className: cn(
+                                    state === "expanded" ? "size-7" : "size-6",
                                     hover || routeMatches ? "text-primary-500" : "text-neutral-400"
-                                }`,
+                                ),
                                 weight: "fill",
                             })}
-                        <SidebarGroup
-                            className={`${
-                                hover || routeMatches ? "text-primary-500" : "text-neutral-600"
-                            } text-body font-regular text-neutral-600 group-data-[collapsible=icon]:hidden`}
+                        <span
+                            className={cn(
+                                "text-body font-regular",
+                                hover || routeMatches ? "text-primary-500" : "text-neutral-600",
+                                "group-data-[collapsible=icon]:hidden"
+                            )}
                         >
                             {title}
-                        </SidebarGroup>
+                        </span>
                     </div>
-                    <SidebarGroup className="ml-auto w-fit group-data-[collapsible=icon]:hidden">
-                        <ChevronDownIcon
-                            className={`ml-auto transition-transform group-data-[state=open]/collapsible:rotate-180 ${
-                                hover || routeMatches ? "text-primary-500" : "text-neutral-600"
-                            }`}
-                        />
-                    </SidebarGroup>
+                    <ChevronDownIcon
+                        className={cn(
+                            "ml-auto h-4 w-4 shrink-0 transition-transform duration-200",
+                            hover || routeMatches ? "text-primary-500" : "text-neutral-400",
+                            "group-data-[collapsible=icon]:hidden"
+                        )}
+                    />
                 </div>
             </CollapsibleTrigger>
-            <CollapsibleContent>
-                <SidebarGroup className="flex flex-col gap-1 pl-12 group-data-[collapsible=icon]:hidden">
-                    {subItems?.map((obj, key) => (
-                        <Link to={obj.subItemLink} key={key}>
-                            <div
-                                className={`cursor-pointer text-body font-regular text-neutral-600 hover:text-primary-500 ${
-                                    currentRoute === obj.subItemLink
-                                        ? "text-primary-500"
-                                        : "text-neutral-600"
-                                }`}
-                            >
-                                {obj.subItem}
-                            </div>
-                        </Link>
-                    ))}
-                </SidebarGroup>
+            <CollapsibleContent className="space-y-1">
+                {subItems?.map((item, index) => (
+                    <Link
+                        key={index}
+                        to={item.subItemLink}
+                        className={cn(
+                            "flex w-full cursor-pointer items-center gap-1 rounded-lg px-4 py-2",
+                            currentRoute === item.subItemLink ? "bg-white" : "bg-none"
+                        )}
+                    >
+                        <span
+                            className={cn(
+                                "text-body font-regular",
+                                currentRoute === item.subItemLink ? "text-primary-500" : "text-neutral-600",
+                                "group-data-[collapsible=icon]:hidden"
+                            )}
+                        >
+                            {item.subItemTitle}
+                        </span>
+                    </Link>
+                ))}
             </CollapsibleContent>
         </Collapsible>
     );

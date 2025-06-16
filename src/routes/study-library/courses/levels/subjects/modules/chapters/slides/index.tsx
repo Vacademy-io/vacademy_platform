@@ -105,7 +105,7 @@ function Slides() {
 
 
   const SidebarComponent = (
-      <div className="flex w-full flex-col items-center">
+      <div className="bg-red-400 flex w-full flex-col items-center">
           <div className={`flex w-full flex-col gap-6 ${open ? "px-6" : "px-6"} -mt-10`}>
               <div className="flex flex-wrap items-center gap-1 text-neutral-500">
                   <p
@@ -126,7 +126,7 @@ function Slides() {
                       {open ? chapterName : trucatedChapterName}
                   </p>
               </div>
-              <div className="flex w-full flex-col items-center gap-6">
+              <div className=" flex w-full flex-col items-center gap-6">
                   <ChapterSidebarSlides />
               </div>
           </div>
@@ -162,7 +162,7 @@ function Slides() {
   const heading = (
       <div className="flex items-center gap-4">
           <CaretLeft onClick={handleBackClick} className="cursor-pointer" />
-          <div>{`${subjectName}`}</div>
+          <div>{`${subjectName} - ${moduleName} - ${chapterName}`}</div>
       </div>
   );
 
@@ -171,14 +171,15 @@ function Slides() {
   }, [subjectName]);
 
   return (
-    <LayoutContainer sidebarComponent={SidebarComponent} className='md:my-0 md:mx-6'>
+     <LayoutContainer sidebarComponent={SidebarComponent} className='md:my-0 md:mx-6'>
         <InitStudyLibraryProvider>
             <ModulesWithChaptersProvider subjectId={subjectId}>
-                <SidebarProvider defaultOpen={false}>
+                 <SidebarProvider defaultOpen={false}>
                     <SlideMaterial />
-                </SidebarProvider>
+                </SidebarProvider> 
             </ModulesWithChaptersProvider>
+        
       </InitStudyLibraryProvider>
-    </LayoutContainer>
+      </LayoutContainer>
   )
 }

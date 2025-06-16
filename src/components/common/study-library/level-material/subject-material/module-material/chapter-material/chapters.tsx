@@ -18,6 +18,7 @@ export const Chapters = ({ chapters}:{chapters:Chapter[]}) => {
                         chapter={chapter}
                     />
                 ))}
+                
             </div>
         </div>
     )

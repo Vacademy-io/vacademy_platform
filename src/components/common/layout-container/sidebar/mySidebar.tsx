@@ -46,11 +46,11 @@ export const MySidebar = ({
               )}
             </div>
             <div className="text-[18px] font-semibold text-primary-500 group-data-[collapsible=icon]:hidden">
-              {instituteName}
+              {instituteName || "Institute Name"}
             </div>
         </SidebarHeader>
         <SidebarMenu
-          className={`flex  flex-col justify-center gap-6 py-4 ${
+          className={`flex flex-col justify-center gap-6 py-4 ${
             state == "expanded" ? "items-stretch" : "items-center"
           }`}
         >

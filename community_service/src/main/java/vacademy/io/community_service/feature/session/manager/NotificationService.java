@@ -12,8 +12,6 @@ import vacademy.io.community_service.feature.session.dto.admin.EmailRequestDto;
 @Service
 public class NotificationService {
 
-    @Autowired
-    private RestTemplate restTemplate;
 
     @Autowired
     private ObjectMapper objectMapper;
@@ -21,6 +19,8 @@ public class NotificationService {
     private final String emailApiUrl = "https://backend-stage.vacademy.io/notification-service/v1/send-email-to-users-public";
 
     public void sendEmail(EmailRequestDto emailRequest) {
+
+        RestTemplate restTemplate = new RestTemplate();
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
 

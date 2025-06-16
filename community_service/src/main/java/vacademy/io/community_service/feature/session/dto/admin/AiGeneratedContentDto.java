@@ -7,7 +7,6 @@ import lombok.Data;
 import java.util.List;
 
 @Data
-@JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 @JsonIgnoreProperties(ignoreUnknown = true) // To prevent errors if the AI adds extra fields
 public class AiGeneratedContentDto {
     private String htmlSummary;

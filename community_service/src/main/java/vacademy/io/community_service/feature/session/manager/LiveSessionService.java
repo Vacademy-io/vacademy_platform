@@ -57,8 +57,6 @@ public class LiveSessionService {
     DeepSeekApiService deepSeekApiService;
 
 
-    private ObjectMapper objectMapper; // For JSON processing
-
     public LiveSessionService() {
         heartbeatMonitor.scheduleAtFixedRate(
                 this::checkInactiveParticipants,
@@ -598,6 +596,8 @@ public class LiveSessionService {
 
     public void recordParticipantResponse(String sessionId, String slideId, MarkResponseRequestDto responseRequest) {
         LiveSessionDto session = sessions.get(sessionId);
+        ObjectMapper objectMapper = new ObjectMapper();
+
         if (session == null) {
             throw new VacademyException("Session not found: " + sessionId);
         }
@@ -650,6 +650,8 @@ public class LiveSessionService {
 
     public List<AdminSlideResponseViewDto> getSlideResponses(String sessionId, String slideId) {
         LiveSessionDto session = sessions.get(sessionId);
+        ObjectMapper objectMapper = new ObjectMapper();
+
         if (session == null) {
             throw new VacademyException("Session not found: " + sessionId);
         }
@@ -697,6 +699,9 @@ public class LiveSessionService {
     }
 
     private Boolean evaluateResponse(ParticipantResponseDto participantResponse, QuestionDTO question) {
+
+        ObjectMapper objectMapper = new ObjectMapper();
+
         if (question == null || !StringUtils.hasText(question.getAutoEvaluationJson())) {
             return null; // Cannot evaluate
         }
@@ -853,6 +858,8 @@ public class LiveSessionService {
     }
 
     private String buildUserResponsesHtml(LiveSessionDto session, ParticipantDto participant) {
+        ObjectMapper objectMapper = new ObjectMapper();
+
         StringBuilder responsesBuilder = new StringBuilder();
         responsesBuilder.append("<h3>Your Responses</h3>");
 
@@ -978,7 +985,7 @@ public class LiveSessionService {
      * @return A NotifyPresentationDto populated with AI-generated content.
      */
     private NotifyPresentationDto getNotifyPresentationRequestDto(NotifyPresentationRequestDto notifyPresentationRequestDto) {
-        if (notifyPresentationRequestDto == null || !StringUtils.hasText(notifyPresentationRequestDto.getTranscript())) {
+        if (notifyPresentationRequestDto == null || !StringUtils.hasText(notifyPresentationRequestDto.getTranscript()) || notifyPresentationRequestDto.getSessionId() == null || notifyPresentationRequestDto.getSessionId().isEmpty()) {
             throw new VacademyException("Transcript cannot be empty for AI processing.");
         }
 
@@ -1004,6 +1011,7 @@ public class LiveSessionService {
 
         String jsonContent = aiResponse.getChoices().get(0).getMessage().getContent().trim();
         jsonContent = JsonUtils.extractAndSanitizeJson(jsonContent);
+        ObjectMapper objectMapper = new ObjectMapper();
 
 
         try {

@@ -1,20 +1,17 @@
 import { useQuery } from "@tanstack/react-query";
-import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
-import { SessionDetailsResponse } from "../-types/types";
+import axios from "axios";
 import { LIVE_SESSION_GET_SESSION_BY_SCHEDULE_ID } from "@/constants/urls";
+import { SessionDetailsResponse } from "@/routes/register/live-class/-types/type";
 
 export const fetchSessionDetails = async (
   scheduleId: string
 ): Promise<SessionDetailsResponse> => {
   try {
-    const response = await authenticatedAxiosInstance({
-      method: "GET",
-      url: LIVE_SESSION_GET_SESSION_BY_SCHEDULE_ID,
+    const response = await axios.get(LIVE_SESSION_GET_SESSION_BY_SCHEDULE_ID, {
       params: {
         scheduleId,
       },
     });
-
     return response.data;
   } catch (error) {
     console.error("Error fetching session details:", error);

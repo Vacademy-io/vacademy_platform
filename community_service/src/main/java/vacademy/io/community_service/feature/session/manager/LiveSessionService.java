@@ -168,6 +168,8 @@ public class LiveSessionService {
         }
         session.setCanJoinInBetween(createSessionDto.getCanJoinInBetween());
         session.setAllowLearnerHandRaise(createSessionDto.getAllowLearnerHandRaise());
+        session.setIsSessionRecorded(createSessionDto.getIsSessionRecorded());
+        session.setAllowChat(createSessionDto.getAllowChat());
         session.setDefaultSecondsForQuestion(createSessionDto.getDefaultSecondsForQuestion());
         session.setShowResultsAtLastSlide(createSessionDto.getShowResultsAtLastSlide());
         session.setStudentAttempts(createSessionDto.getStudentAttempts());

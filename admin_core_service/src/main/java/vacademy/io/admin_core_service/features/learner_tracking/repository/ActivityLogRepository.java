@@ -224,6 +224,7 @@ LEFT JOIN (
     WITH individual_slide_progress AS (
         SELECT 
             s.id AS slide_id,
+            al.user_id,
             CASE 
                 WHEN s.source_type = 'VIDEO' THEN 
                     LEAST(
@@ -253,6 +254,8 @@ LEFT JOIN (
         JOIN subject sub ON sub.id = smm.subject_id
         JOIN subject_session sps ON sps.subject_id = sub.id
         JOIN chapter_package_session_mapping cpsm ON cpsm.chapter_id = c.id AND cpsm.package_session_id = :sessionId
+        JOIN student_session_institute_group_mapping ssigm ON ssigm.package_session_id = sps.session_id AND ssigm.user_id = al.user_id
+       
         WHERE 
             al.created_at BETWEEN :startDate AND :endDate
             AND sps.session_id = :sessionId
@@ -263,11 +266,17 @@ LEFT JOIN (
             AND s.status IN :slideStatusList
             AND cs.status IN :slideStatusList
             AND s.source_type IN :slideTypeList
-        GROUP BY s.id, s.source_type, v.published_video_length, ds.published_document_total_pages
+            AND ssigm.status IN :ssigmStatusList
+        GROUP BY s.id, s.source_type, v.published_video_length, ds.published_document_total_pages, al.user_id
+    ),
+    user_wise_progress AS (
+        SELECT user_id, AVG(slide_completion) AS user_avg_completion
+        FROM individual_slide_progress
+        GROUP BY user_id
     )
-    SELECT AVG(slide_completion) FROM individual_slide_progress
+    SELECT COALESCE(AVG(user_avg_completion), 0) FROM user_wise_progress
     """, nativeQuery = true)
-    Double getBatchCourseCompletionPercentage(
+    Double getBatchCourseCompletionPercentagePerLearner(
             @Param("sessionId") String sessionId,
             @Param("startDate") Date startDate,
             @Param("endDate") Date endDate,
@@ -276,7 +285,8 @@ LEFT JOIN (
             @Param("chapterStatusList") List<String> chapterStatusList,
             @Param("chapterToSessionStatusList") List<String> chapterToSessionStatusList,
             @Param("slideStatusList") List<String> slideStatusList,
-            @Param("slideTypeList") List<String> slideTypeList
+            @Param("slideTypeList") List<String> slideTypeList,
+            @Param("ssigmStatusList") List<String> ssigmStatusList
     );
 
     @Query(value = """ 

@@ -12,6 +12,7 @@ public class CorsConfig implements WebMvcConfigurer {
 
     @Override
     public void addCorsMappings(CorsRegistry registry) {
+
         registry.addMapping("/**")
                 .allowedOrigins("http://localhost:5173", "http://localhost:3020" ,"https://dash.vacademy.io", "https://volt.vacademy.io", "https://learner.vacademy.io", "https://afddd839.vacademy-platform.pages.dev", "https://engage.vacademy.io", "https://www.engage.vacademy.io") // Allow requests from any origin
                 .allowedMethods("*")

@@ -828,34 +828,145 @@ public class LiveSessionService {
     }
 
     private String buildHtmlEmailBody(LiveSessionDto session, NotifyPresentationDto notifyDto, ParticipantDto participant, String userResponsesHtml) {
-        String presentationUrl = "https://engage.vacademy.io/presentation/public/" + session.getSessionId();
-        String sessionTitle = session.getSlides() != null ? session.getSlides().getTitle() : "the session";
+        String presentationUrl = "https://engage.vacademy.io/presentation/public/" + session.getSlides().getId();
+        String sessionTitle = session.getSlides().getTitle();
+        String participantName = participant.getName() != null ? participant.getName() : "there";
 
-        StringBuilder adminCommentHtml = new StringBuilder();
+        String adminCommentHtml = "";
         if (StringUtils.hasText(notifyDto.getAdminComment())) {
-            adminCommentHtml.append("<h3>A Note from the Host</h3><p>").append(notifyDto.getAdminComment()).append("</p>");
+            adminCommentHtml = String.format("""
+                    <h3 style="color: #2c3e50; font-size: 18px; margin-top: 20px;">A Note from the Host</h3>
+                    <p style="color: #34495e; font-size: 16px; line-height: 1.6;">%s</p>
+                    """, notifyDto.getAdminComment());
         }
 
-        StringBuilder summaryHtml = new StringBuilder();
+        String summaryHtml = "";
         if (StringUtils.hasText(notifyDto.getHtmlSummary())) {
-            summaryHtml.append("<h3>Session Summary</h3>").append(notifyDto.getHtmlSummary());
+            summaryHtml = String.format("""
+                    <h3 style="color: #2c3e50; font-size: 18px; margin-top: 20px;">Session Summary</h3>
+                    <div style="color: #34495e; font-size: 16px; line-height: 1.6;">%s</div>
+                    """, notifyDto.getHtmlSummary());
         }
 
-        StringBuilder actionPointsHtml = new StringBuilder();
+        String actionPointsHtml = "";
         if (notifyDto.getHtmlActionPoints() != null && !notifyDto.getHtmlActionPoints().isEmpty()) {
-            actionPointsHtml.append("<h3>Action Points</h3><ul>");
-            notifyDto.getHtmlActionPoints().forEach(point -> actionPointsHtml.append("<li>").append(point).append("</li>"));
-            actionPointsHtml.append("</ul>");
+            StringBuilder pointsBuilder = new StringBuilder();
+            notifyDto.getHtmlActionPoints().forEach(point -> pointsBuilder.append(String.format("<li style=\"margin-bottom: 10px;\">%s</li>", point)));
+            actionPointsHtml = String.format("""
+                    <h3 style="color: #2c3e50; font-size: 18px; margin-top: 20px;">Action Points</h3>
+                    <ul style="color: #34495e; font-size: 16px; line-height: 1.6; padding-left: 20px;">%s</ul>
+                    """, pointsBuilder.toString());
         }
 
-        // Using the provided HTML template as a base
-        return String.format("<!DOCTYPE html>...<div class='content'>" + // Start of template up to content div
-                        "<h3>Hi %s,</h3>" + "<p>Thank you for attending the session: <strong>%s</strong>.</p>" + "%s" + // Admin Comment
-                        "%s" + // Summary
-                        "%s" + // Action Points
-                        "%s" + // User's personal responses
-                        "<br/><p style='text-align:center;'><a href='%s' class='button'>View Full Presentation</a></p>" + "</div>...</body></html>", // Rest of the template
-                participant.getName(), sessionTitle, adminCommentHtml.toString(), summaryHtml.toString(), actionPointsHtml.toString(), userResponsesHtml, presentationUrl).replace("<!DOCTYPE html>...<div class='content'>", getEmailTemplatePrefix()).replace("</div>...</body></html>", getEmailTemplateSuffix());
+        String userResponsesContent = "";
+        if (StringUtils.hasText(userResponsesHtml)) {
+            userResponsesContent = String.format("""
+                    <h3 style="color: #2c3e50; font-size: 18px; margin-top: 20px;">Your Responses</h3>
+                    <div style="color: #34495e; font-size: 16px; line-height: 1.6;">%s</div>
+                    """, userResponsesHtml);
+        }
+
+        return String.format("""
+                <!DOCTYPE html>
+                <html lang="en">
+                <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>Session Follow-up: %s</title>
+                    <style>
+                        @import url('https://fonts.googleapis.com/css2?family=Lato:wght@400;700&display=swap');
+                        body {
+                            margin: 0;
+                            padding: 0;
+                            background-color: #f4f4f4;
+                            font-family: 'Lato', sans-serif;
+                        }
+                        .email-container {
+                            max-width: 600px;
+                            margin: 20px auto;
+                            background-color: #ffffff;
+                            border-radius: 8px;
+                            overflow: hidden;
+                            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+                        }
+                        .header {
+                            background-color: #2c3e50;
+                            color: #ffffff;
+                            padding: 40px;
+                            text-align: center;
+                        }
+                        .header h1 {
+                            margin: 0;
+                            font-size: 24px;
+                        }
+                        .content {
+                            padding: 30px 40px;
+                        }
+                        .content h3 {
+                            color: #2c3e50;
+                            font-size: 18px;
+                            margin-top: 20px;
+                        }
+                        .content p, .content ul, .content div {
+                            color: #34495e;
+                            font-size: 16px;
+                            line-height: 1.6;
+                        }
+                        .button-container {
+                            text-align: center;
+                            margin-top: 30px;
+                        }
+                        .button {
+                            background-color: #3498db;
+                            color: #ffffff;
+                            padding: 15px 30px;
+                            text-decoration: none;
+                            border-radius: 5px;
+                            font-weight: bold;
+                            display: inline-block;
+                        }
+                        .footer {
+                            background-color: #ecf0f1;
+                            padding: 20px;
+                            text-align: center;
+                            font-size: 12px;
+                            color: #7f8c8d;
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="email-container">
+                        <div class="header">
+                            <h1>Session Follow-up</h1>
+                        </div>
+                        <div class="content">
+                            <p>Hi %s,</p>
+                            <p>Thank you for attending the session: <strong>%s</strong>.</p>
+                            %s
+                            %s
+                            %s
+                            %s
+                            <div class="button-container">
+                                <a href="%s" class="button">View Full Presentation</a>
+                            </div>
+                        </div>
+                        <div class="footer">
+                            <p>&copy; %s Vcademy.io. All rights reserved.</p>
+                        </div>
+                    </div>
+                </body>
+                </html>
+                """,
+                sessionTitle,
+                participantName,
+                sessionTitle,
+                adminCommentHtml,
+                summaryHtml,
+                actionPointsHtml,
+                userResponsesContent,
+                presentationUrl,
+                java.time.Year.now()
+        );
     }
 
     // Helper to keep the main builder method clean

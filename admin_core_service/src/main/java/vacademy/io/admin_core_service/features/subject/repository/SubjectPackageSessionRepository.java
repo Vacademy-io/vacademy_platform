@@ -96,4 +96,5 @@ public interface SubjectPackageSessionRepository extends JpaRepository<SubjectPa
             nativeQuery = true)
     Long countDistinctSubjectsByInstituteId(@Param("instituteId") String instituteId);
 
+    Optional<SubjectPackageSession> findBySubjectIdAndPackageSessionId(String subjectId, String packageSessionId);
 }

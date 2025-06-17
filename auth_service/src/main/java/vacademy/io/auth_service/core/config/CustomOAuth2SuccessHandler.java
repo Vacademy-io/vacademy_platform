@@ -92,16 +92,7 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
                     email = oAuth2VendorToUserDetailService.getEmailByProviderIdAndSubject(userInfo.providerId, userInfo.sub);
                 }
                 boolean isEmailVerified = (email!= null);
-                String userJson = null;
-                if (isEmailVerified){
-                    userJson =String.format(
-                            "{\"name\":\"%s\", \"email\":\"%s\", \"profile\":\"%s\"}",
-                            userInfo.name, email, userInfo.picture);
-                }else{
-                    userJson =String.format(
-                            "{\"name\":\"%s\", \"profile\":\"%s\"}",
-                            userInfo.name, userInfo.picture);
-                }
+                String userJson = getString(isEmailVerified, userInfo, email);
                 String encodedUserInfo = Base64.getUrlEncoder()
                         .withoutPadding()
                         .encodeToString(userJson.getBytes(StandardCharsets.UTF_8));
@@ -138,6 +129,20 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
             log.error("Failed during OAuth2 user processing", e);
             sendErrorRedirect(response, redirectUrl, e.getMessage());
         }
+    }
+
+    private static String getString(boolean isEmailVerified, UserInfo userInfo, String email) {
+        String userJson = null;
+        if (isEmailVerified){
+            userJson =String.format(
+                    "{\"name\":\"%s\", \"email\":\"%s\", \"profile\":\"%s\", \"sub\":\"%s\", \"provider\":\"%s\"}",
+                    userInfo.name, email, userInfo.picture, userInfo.sub, userInfo.providerId);
+        }else{
+            userJson =String.format(
+                    "{\"name\":\"%s\", \"profile\":\"%s\", \"sub\":\"%s\", \"provider\":\"%s\"}",
+                    userInfo.name, userInfo.picture, userInfo.sub, userInfo.providerId);
+        }
+        return userJson;
     }
 
 

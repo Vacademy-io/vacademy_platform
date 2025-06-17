@@ -269,7 +269,7 @@ public class UserService {
     public List<UserCredentials> getUsersCredentials(List<String> userIds) {
         Iterable<User> userEntities = userRepository.findAllById(userIds);
         return StreamSupport.stream(userEntities.spliterator(), false)
-                .map(user -> new UserCredentials(user.getUsername(), user.getPassword(), user.getId()))
+                .map(user -> new UserCredentials(user.getUsername(), user.getPassword(), user.getId(),user.getProfilePicFileId()))
                 .collect(Collectors.toList());
     }
 

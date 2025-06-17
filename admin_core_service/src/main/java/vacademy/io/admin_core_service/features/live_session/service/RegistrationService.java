@@ -44,7 +44,7 @@ public class RegistrationService {
 
 
     @Transactional
-    public void saveGuestUserDetails(GuestRegistrationRequestDTO requestDto) {
+    public String saveGuestUserDetails(GuestRegistrationRequestDTO requestDto) {
         String guestUserId = registerGuest(requestDto.getEmail() , requestDto.getSessionId());
 
         for (GuestRegistrationRequestDTO.CustomFieldValueDTO fieldDto : requestDto.getCustomFields()) {
@@ -60,5 +60,6 @@ public class RegistrationService {
 
             customFieldValuesRepository.save(value);
         }
+        return guestUserId;
     }
 }

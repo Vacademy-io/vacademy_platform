@@ -24,8 +24,8 @@ public class GuestController {
     private LIveSessionAttendanceService lIveSessionAttendanceService;
 
     @GetMapping("/get-session-by-schedule-id")
-    ResponseEntity<GetSessionDetailsBySessionIdResponseDTO> getSessionByScheduleIdForGuestUser(@RequestParam("scheduleId") String scheduleId , @RequestParam("guestId") String guestId){
-        return ResponseEntity.ok(getSessionByIdService.getSessionByScheduleIdForGuestUser(scheduleId , guestId));
+    ResponseEntity<GetSessionDetailsBySessionIdResponseDTO> getSessionByScheduleIdForGuestUser(@RequestParam("scheduleId") String scheduleId ){
+        return ResponseEntity.ok(getSessionByIdService.getSessionByScheduleIdForGuestUser(scheduleId));
     }
 
     @PostMapping("/mark-attendance")

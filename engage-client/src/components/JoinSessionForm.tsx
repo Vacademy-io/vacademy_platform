@@ -87,6 +87,9 @@ export const JoinSessionForm: React.FC<JoinSessionFormProps> = ({ onJoin, isJoin
                     />
                   </FormControl>
                   <FormMessage />
+                  <p className="text-xs text-slate-500 pt-1">
+                    Keep your username as your email to get the session action points, recording and presentation details.
+                  </p>
                 </FormItem>
               )}
             />

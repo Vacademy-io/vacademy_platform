@@ -16,6 +16,7 @@ import java.sql.Time;
 import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 
 @Service
@@ -83,7 +84,10 @@ public class Step1Service {
 
     private void handleAddedSchedules(LiveSessionStep1RequestDTO request, LiveSession session) {
         if (request.getAddedSchedules() != null && !request.getAddedSchedules().isEmpty()) {
-            LocalDate startDate = request.getStartTime().toLocalDateTime().toLocalDate(); // first possible date
+            LocalDate startDate = request.getStartTime()
+                    .toInstant()
+                    .atZone(ZoneOffset.UTC)
+                    .toLocalDate();
             LocalDate endDate = LocalDate.parse(request.getSessionEndDate(), DateTimeFormatter.ISO_DATE);
 
             for (LiveSessionStep1RequestDTO.ScheduleDTO dto : request.getAddedSchedules()) {

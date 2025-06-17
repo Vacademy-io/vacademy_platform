@@ -5,10 +5,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import vacademy.io.community_service.feature.presentation.dto.question.PresentationSlideDto;
-import vacademy.io.community_service.feature.session.dto.admin.AdminSlideResponseViewDto;
-import vacademy.io.community_service.feature.session.dto.admin.CreateSessionDto;
-import vacademy.io.community_service.feature.session.dto.admin.LiveSessionDto;
-import vacademy.io.community_service.feature.session.dto.admin.StartPresentationDto;
+import vacademy.io.community_service.feature.session.dto.admin.*;
 import vacademy.io.community_service.feature.session.manager.LiveSessionService;
 
 import java.io.IOException;
@@ -80,6 +77,12 @@ public class AdminSessionController {
     @PostMapping("/finish")
     public ResponseEntity<LiveSessionDto> finishSession(@RequestBody StartPresentationDto startPresentationDto) {
         LiveSessionDto liveSessionDto = liveSessionService.finishSession(startPresentationDto);
+        return ResponseEntity.ok(liveSessionDto);
+    }
+
+    @PostMapping("/finish-send-notifications")
+    public ResponseEntity<LiveSessionDto> sendParticipantNotifications(@RequestBody NotifyPresentationRequestDto notifyPresentationRequestDto) {
+        LiveSessionDto liveSessionDto = liveSessionService.sendParticipantNotifications(notifyPresentationRequestDto);
         return ResponseEntity.ok(liveSessionDto);
     }
 

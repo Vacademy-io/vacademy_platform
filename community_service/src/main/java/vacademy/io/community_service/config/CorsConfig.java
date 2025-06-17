@@ -1,6 +1,8 @@
 package vacademy.io.community_service.config;
 
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.web.client.RestTemplate;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
@@ -11,9 +13,15 @@ public class CorsConfig implements WebMvcConfigurer {
     @Override
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/**")
-                .allowedOrigins("http://localhost:5173", "http://localhost:3020" ,"https://dash.vacademy.io", "https://learner.vacademy.io", "https://afddd839.vacademy-platform.pages.dev", "https://engage.vacademy.io", "https://www.engage.vacademy.io") // Allow requests from any origin
+                .allowedOrigins("http://localhost:5173", "http://localhost:3020" ,"https://dash.vacademy.io", "https://volt.vacademy.io", "https://learner.vacademy.io", "https://afddd839.vacademy-platform.pages.dev", "https://engage.vacademy.io", "https://www.engage.vacademy.io") // Allow requests from any origin
                 .allowedMethods("*")
                 .allowCredentials(true) // Allow any HTTP method (GET, POST, etc.)
                 .allowedHeaders("*"); // Allow any headers
+    }
+
+    // In one of your @Configuration classes
+    @Bean
+    public RestTemplate restTemplate() {
+        return new RestTemplate();
     }
 }

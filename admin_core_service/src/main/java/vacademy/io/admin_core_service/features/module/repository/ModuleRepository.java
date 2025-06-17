@@ -12,7 +12,7 @@ public interface ModuleRepository extends JpaRepository<Module, String> {
 
     @Query(value = """
     SELECT m.*
-    FROM module m
+    FROM modules m
     JOIN module_chapter_mapping mcm ON mcm.module_id = m.id
     JOIN chapter c ON c.id = mcm.chapter_id
     JOIN chapter_package_session_mapping cpsm ON cpsm.chapter_id = c.id
@@ -21,8 +21,7 @@ public interface ModuleRepository extends JpaRepository<Module, String> {
       AND cpsm.package_session_id = :packageSessionId
       AND cts.status IN (:chapterToSlideStatusList)
       AND cpsm.status IN (:chapterToPackageSessionStatusList)
-      AND m.status IN (:moduleStatusList)
-      ORDER BY m.created_at LIMIT 1
+      AND m.status IN (:moduleStatusList) LIMIT 1
     """, nativeQuery = true)
     Optional<Module> findModuleBySlideIdAndPackageSessionIdWithStatusFilters(
             @Param("slideId") String slideId,

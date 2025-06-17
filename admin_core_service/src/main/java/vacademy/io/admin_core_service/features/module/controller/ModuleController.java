@@ -17,8 +17,8 @@ public class ModuleController {
     private final ModuleService moduleService;
 
     @PostMapping("/add-module")
-    public ResponseEntity<ModuleDTO> addModule(@RequestParam String subjectId, @RequestBody ModuleDTO moduleDTO, @RequestAttribute("user") CustomUserDetails user) {
-        return ResponseEntity.ok(moduleService.addModule(subjectId, moduleDTO, user));
+    public ResponseEntity<ModuleDTO> addModule(@RequestParam String subjectId,@RequestParam String commaSeparatedPackageSessionIds, @RequestBody ModuleDTO moduleDTO, @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(moduleService.addModule(subjectId,commaSeparatedPackageSessionIds, moduleDTO, user));
     }
 
     @PostMapping("/delete-module")

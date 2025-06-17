@@ -22,4 +22,6 @@ public class RegisterRequest {
     private String password;
     private List<String> userRoles;
     private InstituteInfoDTO institute;
+    private String subjectId;
+    private String vendorId;
 }

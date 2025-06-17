@@ -16,6 +16,7 @@ import vacademy.io.admin_core_service.features.packages.repository.PackageSessio
 import vacademy.io.admin_core_service.features.slide.enums.SlideStatus;
 import vacademy.io.admin_core_service.features.subject.repository.SubjectChapterModuleAndPackageSessionMappingRepository;
 import vacademy.io.admin_core_service.features.subject.repository.SubjectRepository;
+import vacademy.io.admin_core_service.features.subject.service.SubjectService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
@@ -39,14 +40,19 @@ public class ModuleService {
     private final PackageSessionRepository packageSessionRepository;
     private final SubjectModuleMappingRepository subjectModuleMappingRepository;
     private final ChapterPackageSessionMappingRepository chapterPackageSessionMappingRepository;
-
+    private final SubjectService subjectService;
     // Add module to subject
     @Transactional
-    public ModuleDTO addModule(String subjectId, ModuleDTO moduleDTO, CustomUserDetails user) {
+    public ModuleDTO addModule(String subjectId,String commaSeparatedPackageSessionIds, ModuleDTO moduleDTO, CustomUserDetails user) {
         // Validate subject ID
         if (subjectId == null) {
             throw new VacademyException("Subject ID cannot be null");
         }
+
+        if (subjectId.equalsIgnoreCase("DEFAULT")) {
+            subjectService.addDefaultSubject(commaSeparatedPackageSessionIds);
+        }
+
 
         // Validate module details
         validateModule(moduleDTO);

@@ -341,4 +341,20 @@ public class SubjectService {
         return subjectRepository.findSubjectForFaculty(userId,packageSessionId);
     }
 
+    public void addDefaultSubject(String commaSeparatedPackageSessionIds) {
+        String[] packageSessionIds = commaSeparatedPackageSessionIds.split(",");
+        List<SubjectPackageSession>subjectPackageSessions = new ArrayList<>();
+        Subject subject = subjectRepository.findById("DEFAULT").get();
+        for (String packageSessionId : packageSessionIds) {
+            Optional<SubjectPackageSession>optionalSubjectPackageSession = subjectPackageSessionRepository.findBySubjectIdAndPackageSessionId(subject.getId(), packageSessionId);
+            if (optionalSubjectPackageSession.isEmpty()) {
+                PackageSession packageSession = packageSessionRepository.findById(packageSessionId).get();
+                SubjectPackageSession newMapping = new SubjectPackageSession(subject, packageSession, null);
+                subjectPackageSessions.add(newMapping);
+            }
+        }
+        subjectPackageSessionRepository.saveAll(subjectPackageSessions);
+    }
+
+
 }

@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.chapter.service;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.chapter.dto.ChapterDTO;
 import vacademy.io.admin_core_service.features.chapter.dto.UpdateChapterOrderDTO;
 import vacademy.io.admin_core_service.features.chapter.entity.Chapter;
@@ -42,6 +43,11 @@ public class ChapterService {
         validateRequest(chapterDTO, moduleId, commaSeparatedPackageSessionIds);
         Chapter chapter = saveChapter(chapterDTO);
         Optional<SubjectModuleMapping> subjectModuleMapping = subjectModuleMappingRepository.findByModuleId(moduleId);
+//        if (subjectModuleMapping.isEmpty()){
+//            if (StringUtils.hasText(moduleId) && moduleId.equals("DEFAULT")) {
+//                SubjectModuleMapping
+//            }
+//        }
         chapterDTO.setId(chapter.getId());
         chapterDTO.setStatus(ChapterStatus.ACTIVE.name());
         List<Module> modules = subjectService.processSubjectsAndModules(Arrays.stream(getPackageSessionIds(commaSeparatedPackageSessionIds)).toList(), subjectModuleMapping.get().getSubject(), subjectModuleMapping.get().getModule());

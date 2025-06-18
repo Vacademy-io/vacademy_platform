@@ -10,6 +10,7 @@ import vacademy.io.admin_core_service.features.learner_tracking.entity.ActivityL
 import vacademy.io.admin_core_service.features.learner_tracking.entity.VideoSlideQuestionTracked;
 import vacademy.io.admin_core_service.features.learner_tracking.repository.ActivityLogRepository;
 import vacademy.io.admin_core_service.features.learner_tracking.repository.VideoSlideQuestionTrackedRepository;
+import vacademy.io.admin_core_service.features.slide.enums.SlideTypeEnum;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 import java.util.List;
@@ -37,6 +38,7 @@ public class VideoSlideQuestionTrackingService {
 
     public String saveOrUpdateVideoSlideQuestionLogs(ActivityLogDTO activityLogDTO, String slideId, String userId, CustomUserDetails user) {
         ActivityLog activityLog;
+        activityLogDTO.setSourceType(SlideTypeEnum.VIDEO_QUESTION.name());
         if (activityLogDTO.isNewActivity()) {
             activityLog = activityLogService.saveActivityLog(activityLogDTO, userId, slideId);
         } else {
@@ -49,7 +51,7 @@ public class VideoSlideQuestionTrackingService {
     }
 
     public Page<ActivityLogDTO> getVideoSlideQuestionActivityLogs(String userId, String slideId, Pageable pageable, CustomUserDetails userDetails) {
-        Page<ActivityLog> activityLogs = activityLogRepository.findActivityLogsWithVideoSlideQuestions(userId, slideId, pageable);
+        Page<ActivityLog> activityLogs = activityLogRepository.findActivityLogsWithVideoSlideQuestions(userId, slideId,SlideTypeEnum.VIDEO_QUESTION.name(), pageable);
         return activityLogs
                 .map(ActivityLog::toActivityLogDTO);
     }

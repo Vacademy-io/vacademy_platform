@@ -60,10 +60,17 @@ public class LearnerReportService {
     }
 
     private Double getAverageTimeSpent(ReportFilterDTO filter) {
-        return activityLogRepository.findTimeSpentByLearner(
+        return activityLogRepository.findTimeSpentByLearnerWithFilters(
                 filter.getStartDate(),
                 filter.getEndDate(),
-                filter.getUserId()
+                filter.getUserId(),
+                filter.getPackageSessionId(),
+                ACTIVE_SUBJECTS,
+                ACTIVE_MODULES,
+                ACTIVE_CHAPTERS,
+                VALID_SLIDE_STATUSES,
+                ACTIVE_CHAPTERS,
+                SLIDE_TYPES
         );
     }
 

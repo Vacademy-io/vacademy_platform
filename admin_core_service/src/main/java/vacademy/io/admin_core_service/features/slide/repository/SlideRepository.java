@@ -831,4 +831,37 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
             @Param("slideStatusList") List<String> slideStatusList
     );
 
+    @Query(value = """
+    SELECT 
+        s.source_type AS sourceType,
+        COUNT(DISTINCT s.id) AS slideCount
+    FROM slide s
+    JOIN chapter_to_slides cs ON cs.slide_id = s.id
+    JOIN chapter c ON c.id = cs.chapter_id
+    JOIN module_chapter_mapping mcm ON mcm.chapter_id = c.id
+    JOIN modules m ON m.id = mcm.module_id
+    JOIN subject_module_mapping smm ON smm.module_id = m.id
+    JOIN subject sub ON sub.id = smm.subject_id
+    JOIN subject_session ss ON ss.subject_id = sub.id
+    JOIN chapter_package_session_mapping cpsm ON cpsm.chapter_id = c.id
+    WHERE 
+        ss.session_id = :sessionId
+        AND cpsm.package_session_id = :sessionId
+        AND sub.status IN :subjectStatusList
+        AND m.status IN :moduleStatusList
+        AND c.status IN :chapterStatusList
+        AND cs.status IN :slideStatusList
+        AND s.status IN :slideStatusList
+        AND cpsm.status IN :chapterPackageStatusList
+    GROUP BY s.source_type
+""", nativeQuery = true)
+    List<SlideTypeCountProjection> getSlideCountsBySourceType(
+            @Param("sessionId") String sessionId,
+            @Param("subjectStatusList") List<String> subjectStatusList,
+            @Param("moduleStatusList") List<String> moduleStatusList,
+            @Param("chapterStatusList") List<String> chapterStatusList,
+            @Param("slideStatusList") List<String> slideStatusList,
+            @Param("chapterPackageStatusList") List<String> chapterPackageStatusList
+    );
+
 }

@@ -10,6 +10,7 @@ import vacademy.io.admin_core_service.features.chapter.entity.Chapter;
 import vacademy.io.admin_core_service.features.chapter.entity.ChapterToSlides;
 import vacademy.io.admin_core_service.features.chapter.repository.ChapterRepository;
 import vacademy.io.admin_core_service.features.chapter.repository.ChapterToSlidesRepository;
+import vacademy.io.admin_core_service.features.common.constants.ValidStatusListConstants;
 import vacademy.io.admin_core_service.features.slide.dto.*;
 import vacademy.io.admin_core_service.features.slide.entity.DocumentSlide;
 import vacademy.io.admin_core_service.features.slide.entity.Slide;
@@ -515,5 +516,31 @@ public class SlideService {
         } catch (Exception e) {
             throw new VacademyException("Unable to map to SlideDTO list: " + e.getMessage());
         }
+    }
+
+    public List<SlideTypeCountProjection> getSlideCountsBySourceType(
+            String sessionId
+    ) {
+        return slideRepository.getSlideCountsBySourceType(
+                sessionId,
+                ValidStatusListConstants.ACTIVE_SUBJECTS,
+                ValidStatusListConstants.ACTIVE_MODULES,
+                ValidStatusListConstants.ACTIVE_CHAPTERS,
+                ValidStatusListConstants.VALID_SLIDE_STATUSES,
+                ValidStatusListConstants.ACTIVE_CHAPTERS
+        );
+    }
+
+    public List<SlideTypeCountProjection> getSlideCountsBySourceTypeForLearner(
+            String sessionId
+    ) {
+        return slideRepository.getSlideCountsBySourceType(
+                sessionId,
+                ValidStatusListConstants.ACTIVE_SUBJECTS,
+                ValidStatusListConstants.ACTIVE_MODULES,
+                ValidStatusListConstants.ACTIVE_CHAPTERS,
+                ValidStatusListConstants.VALID_LEARNER_STATUSES,
+                ValidStatusListConstants.ACTIVE_CHAPTERS
+        );
     }
 }

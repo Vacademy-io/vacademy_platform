@@ -810,19 +810,45 @@ LEFT JOIN (
     );
 
 
-    @Query(value = """ 
-                SELECT 
-                    COALESCE(SUM(EXTRACT(EPOCH FROM (al.end_time - al.start_time))) / 60, 0) AS total_time_spent_minutes
-                FROM activity_log al
-                WHERE 
-                    al.created_at BETWEEN :startDate AND :endDate
-                    AND al.user_id = :userId
-            """, nativeQuery = true)
-    Double findTimeSpentByLearner(
+    @Query(value = """
+    SELECT 
+        COALESCE(SUM(EXTRACT(EPOCH FROM (al.end_time - al.start_time))) / 60, 0) AS total_time_spent_minutes
+    FROM activity_log al
+    JOIN slide s ON s.id = al.slide_id
+    JOIN chapter_to_slides cs ON cs.slide_id = s.id
+    JOIN chapter c ON c.id = cs.chapter_id
+    JOIN module_chapter_mapping mcm ON mcm.chapter_id = c.id
+    JOIN modules m ON m.id = mcm.module_id
+    JOIN subject_module_mapping smm ON smm.module_id = m.id
+    JOIN subject sub ON sub.id = smm.subject_id
+    JOIN subject_session ss ON ss.subject_id = sub.id
+    JOIN chapter_package_session_mapping cpsm ON cpsm.chapter_id = c.id
+    WHERE 
+        al.created_at BETWEEN :startDate AND :endDate
+        AND al.user_id = :userId
+        AND ss.session_id = :sessionId
+        AND cpsm.package_session_id = :sessionId
+        AND sub.status IN :subjectStatusList
+        AND m.status IN :moduleStatusList
+        AND c.status IN :chapterStatusList
+        AND cs.status IN :slideStatusList
+        AND s.status IN :slideStatusList
+        AND cpsm.status IN :chapterPackageStatusList
+        AND s.source_type IN :sourceTypeList
+""", nativeQuery = true)
+    Double findTimeSpentByLearnerWithFilters(
             @Param("startDate") Date startDate,
             @Param("endDate") Date endDate,
-            @Param("userId") String userId
+            @Param("userId") String userId,
+            @Param("sessionId") String sessionId,
+            @Param("subjectStatusList") List<String> subjectStatusList,
+            @Param("moduleStatusList") List<String> moduleStatusList,
+            @Param("chapterStatusList") List<String> chapterStatusList,
+            @Param("slideStatusList") List<String> slideStatusList,
+            @Param("chapterPackageStatusList") List<String> chapterPackageStatusList,
+            @Param("sourceTypeList") List<String> sourceTypeList
     );
+
 
     @Query(value = """
                 WITH date_series AS (

@@ -5,6 +5,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.security.core.parameters.P;
 import vacademy.io.admin_core_service.features.learner_reports.dto.ChapterSlideProgressProjection;
 import vacademy.io.admin_core_service.features.learner_reports.dto.LearnerActivityDataProjection;
 import vacademy.io.admin_core_service.features.learner_reports.dto.SubjectProgressProjection;
@@ -189,13 +190,17 @@ LEFT JOIN (
                                                          Pageable pageable);
 
     @Query("""
-            SELECT DISTINCT al FROM ActivityLog al
-            LEFT JOIN FETCH al.videoSlideQuestionTracked vt
-            WHERE al.userId = :userId AND al.slideId = :slideId
-            """)
-    Page<ActivityLog> findActivityLogsWithVideoSlideQuestions(@Param("userId") String userId,
-                                                          @Param("slideId") String slideId,
-                                                          Pageable pageable);
+    SELECT DISTINCT al FROM ActivityLog al
+    LEFT JOIN FETCH al.videoSlideQuestionTracked vt
+    WHERE al.userId = :userId AND al.slideId = :slideId AND al.sourceType = :sourceType
+    """)
+    Page<ActivityLog> findActivityLogsWithVideoSlideQuestions(
+            @Param("userId") String userId,
+            @Param("slideId") String slideId,
+            @Param("sourceType") String sourceType,
+            Pageable pageable
+    );
+
 
 
     @Query("""

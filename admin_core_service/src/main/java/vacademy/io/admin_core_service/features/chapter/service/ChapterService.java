@@ -52,6 +52,7 @@ public class ChapterService {
         }else{
             modules = new ArrayList<>();
             modules.add(subjectModuleMapping.get().getModule());
+            processPackageSessionMappings(chapter, commaSeparatedPackageSessionIds, chapterDTO.getChapterOrder());
         }
         processChapterModuleMapping(chapter, modules);
         return chapterDTO;

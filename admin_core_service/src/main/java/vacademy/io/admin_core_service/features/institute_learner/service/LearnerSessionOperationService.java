@@ -106,7 +106,7 @@ public class LearnerSessionOperationService {
                             instituteStudentDetails.getPackageSessionId(),
                             instituteStudentDetails.getInstituteId(),
                             student.getUserId(),
-                            List.of(LearnerSessionStatusEnum.ACTIVE.name())
+                            List.of(LearnerSessionStatusEnum.ACTIVE.name(),LearnerSessionStatusEnum.INVITED.name(),LearnerSessionStatusEnum.TERMINATED.name(),LearnerSessionStatusEnum.INACTIVE.name())
                     );
 
             if (studentSessionInstituteGroupMappingOptional.isPresent()) {

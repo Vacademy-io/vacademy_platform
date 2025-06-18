@@ -120,7 +120,6 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
             @Param("userId") String userId,
             @Param("statuses") List<String> statuses);
 
-
     Optional<StudentSessionInstituteGroupMapping> findTopByUserIdAndInstituteIdOrderByCreatedAtDesc(String userId, String instituteId);
 
 }

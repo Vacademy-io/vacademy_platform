@@ -123,6 +123,10 @@ public class LearnerSessionOperationService {
                     studentSessionInstituteGroupMapping.setInstituteEnrolledNumber(instituteStudentDetails.getEnrollmentId());
                 }
 
+                if (instituteStudentDetails.getAccessDays() != null) {
+                    studentSessionInstituteGroupMapping.setExpiryDate(makeExpiryDate(instituteStudentDetails.getEnrollmentDate(), Integer.parseInt(instituteStudentDetails.getAccessDays())));
+                }
+
                 studentSessionRepository.save(studentSessionInstituteGroupMapping);
                 return;
             }

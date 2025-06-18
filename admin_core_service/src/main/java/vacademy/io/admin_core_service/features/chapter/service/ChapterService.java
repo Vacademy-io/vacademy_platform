@@ -43,15 +43,16 @@ public class ChapterService {
         validateRequest(chapterDTO, moduleId, commaSeparatedPackageSessionIds);
         Chapter chapter = saveChapter(chapterDTO);
         Optional<SubjectModuleMapping> subjectModuleMapping = subjectModuleMappingRepository.findByModuleId(moduleId);
-//        if (subjectModuleMapping.isEmpty()){
-//            if (StringUtils.hasText(moduleId) && moduleId.equals("DEFAULT")) {
-//                SubjectModuleMapping
-//            }
-//        }
+        List<Module> modules = null;
         chapterDTO.setId(chapter.getId());
         chapterDTO.setStatus(ChapterStatus.ACTIVE.name());
-        List<Module> modules = subjectService.processSubjectsAndModules(Arrays.stream(getPackageSessionIds(commaSeparatedPackageSessionIds)).toList(), subjectModuleMapping.get().getSubject(), subjectModuleMapping.get().getModule());
-        processPackageSessionMappings(chapter, commaSeparatedPackageSessionIds, chapterDTO.getChapterOrder());
+        if(!moduleId.trim().equalsIgnoreCase("DEFAULT")){
+            modules = subjectService.processSubjectsAndModules(Arrays.stream(getPackageSessionIds(commaSeparatedPackageSessionIds)).toList(), subjectModuleMapping.get().getSubject(), subjectModuleMapping.get().getModule());
+            processPackageSessionMappings(chapter, commaSeparatedPackageSessionIds, chapterDTO.getChapterOrder());
+        }else{
+            modules = new ArrayList<>();
+            modules.add(subjectModuleMapping.get().getModule());
+        }
         processChapterModuleMapping(chapter, modules);
         return chapterDTO;
     }

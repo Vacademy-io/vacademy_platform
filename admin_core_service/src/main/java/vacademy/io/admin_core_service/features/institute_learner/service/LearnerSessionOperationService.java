@@ -106,7 +106,7 @@ public class LearnerSessionOperationService {
                             instituteStudentDetails.getPackageSessionId(),
                             instituteStudentDetails.getInstituteId(),
                             student.getUserId(),
-                            List.of(LearnerSessionStatusEnum.ACTIVE.name())
+                            List.of(LearnerSessionStatusEnum.ACTIVE.name(),LearnerSessionStatusEnum.INVITED.name(),LearnerSessionStatusEnum.TERMINATED.name(),LearnerSessionStatusEnum.INACTIVE.name())
                     );
 
             if (studentSessionInstituteGroupMappingOptional.isPresent()) {
@@ -121,6 +121,10 @@ public class LearnerSessionOperationService {
 
                 if (instituteStudentDetails.getEnrollmentId() != null) {
                     studentSessionInstituteGroupMapping.setInstituteEnrolledNumber(instituteStudentDetails.getEnrollmentId());
+                }
+
+                if (instituteStudentDetails.getAccessDays() != null) {
+                    studentSessionInstituteGroupMapping.setExpiryDate(makeExpiryDate(instituteStudentDetails.getEnrollmentDate(), Integer.parseInt(instituteStudentDetails.getAccessDays())));
                 }
 
                 studentSessionRepository.save(studentSessionInstituteGroupMapping);

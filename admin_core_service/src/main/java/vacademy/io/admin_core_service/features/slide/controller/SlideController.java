@@ -73,7 +73,7 @@ public class SlideController {
 
     @GetMapping("/slide-counts-by-source-type")
     public ResponseEntity<List<SlideTypeCountProjection>> getSlideCountsBySourceType(
-            @RequestParam String packageSessionId
+        @RequestParam String packageSessionId
     ) {
         List<SlideTypeCountProjection> result = slideService.getSlideCountsBySourceType(packageSessionId);
         return ResponseEntity.ok(result);
@@ -81,7 +81,7 @@ public class SlideController {
 
     @GetMapping("/learner-slide-counts-by-source-type")
     public ResponseEntity<List<SlideTypeCountProjection>> getLearnerSlideCountsBySourceType(
-            @RequestParam String packageSessionId
+        @RequestParam String packageSessionId
     ) {
         List<SlideTypeCountProjection> result = slideService.getSlideCountsBySourceTypeForLearner(packageSessionId);
         return ResponseEntity.ok(result);

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import Footer from './Footer.tsx';
 import InstructorCTASection from './InstructorCTASection.tsx';
@@ -10,7 +9,7 @@ import { useCatalogStore } from '../-store/catalogStore.ts';
 import axios from 'axios';
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { getAccessToken} from '@/lib/auth/sessionUtility';
-import { GET_INSTITUTE_DETAILS,SEARCH_COURSES} from '@/constants/urls';
+import { INSTITUTE_DETAIL, SEARCH_COURSES } from '@/constants/urls';
 //import { redirect, useParams, useSearch } from '@tanstack/react-router';
 // Preferences import is removed as we are fetching from a new API now for these details
 // import { Preferences } from '@capacitor/preferences'; 
@@ -61,7 +60,7 @@ const formatTagsForPostgresArray = (tagNames: string[]): string => {
 
 // Define API endpoints in one place for easier management
 //const API_BASE_URL = 'https://backend-stage.vacademy.io/admin-core-service';
-const INSTITUTE_DETAILS_API = (id: string) => `${GET_INSTITUTE_DETAILS}/${id}`;
+const INSTITUTE_DETAILS_API = (id: string) => `${INSTITUTE_DETAIL}/${id}`;
 const SEARCH_COURSES_API = `${SEARCH_COURSES}`;
 
 interface CourseCataloguePageProps {

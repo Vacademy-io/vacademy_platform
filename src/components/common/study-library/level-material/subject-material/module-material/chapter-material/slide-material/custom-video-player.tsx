@@ -246,27 +246,161 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
       }
     };
 
-    // Load the actual video URL if it's a FILE_ID
-    useEffect(() => {
-      const loadVideoUrl = async () => {
-        try {
-          if (sourceType === "FILE_ID") {
-            setIsLoading(true);
-            const url = await getPublicUrl(videoUrl);
-            setActualVideoUrl(url);
-          } else {
-            setActualVideoUrl(videoUrl);
-          }
-        } catch (error) {
-          console.error("Error loading video URL:", error);
-          setError("Failed to load video. Please try again.");
-        } finally {
-          setIsLoading(false);
-        }
-      };
+    // Add cleanup function
+    const cleanup = useCallback(() => {
+      console.log('Cleaning up video player');
+      if (videoRef.current) {
+        // Stop video playback
+        videoRef.current.pause();
+        videoRef.current.src = '';
+        videoRef.current.load();
+      }
+      
+      // Clear all intervals and timeouts
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
+        progressIntervalRef.current = null;
+      }
+      if (verificationTimerRef.current) {
+        clearInterval(verificationTimerRef.current);
+        verificationTimerRef.current = null;
+      }
+      if (fullscreenControlsTimeoutRef.current) {
+        clearTimeout(fullscreenControlsTimeoutRef.current);
+        fullscreenControlsTimeoutRef.current = null;
+      }
+      if (updateIntervalRef.current) {
+        clearInterval(updateIntervalRef.current);
+        updateIntervalRef.current = null;
+      }
 
+      // Reset states
+      setIsPlayed(false);
+      setIsLoading(true);
+      setError(null);
+      setCurrentTime(0);
+      setDuration(0);
+      setActualVideoUrl(null);
+    }, []);
+
+    // Cleanup on unmount
+    useEffect(() => {
+      return () => {
+        cleanup();
+      };
+    }, [cleanup]);
+
+    // Cleanup when videoUrl changes
+    useEffect(() => {
+      cleanup();
       loadVideoUrl();
-    }, [videoUrl, sourceType]);
+    }, [videoUrl, sourceType, cleanup]);
+
+    // Update loadVideoUrl to handle cleanup
+    const loadVideoUrl = async () => {
+      try {
+        console.log('Loading video URL:', videoUrl);
+        console.log('Source type:', sourceType);
+
+        if (!videoUrl) {
+          throw new Error('No video URL provided');
+        }
+
+        // Cleanup existing video before loading new one
+        if (videoRef.current) {
+          videoRef.current.pause();
+          videoRef.current.src = '';
+          videoRef.current.load();
+        }
+
+        let finalUrl = videoUrl;
+        if (sourceType === "FILE_ID") {
+          try {
+            console.log('Converting file ID to URL:', videoUrl);
+            const publicUrl = await getPublicUrl(videoUrl);
+            console.log('getPublicUrl response:', publicUrl);
+            
+            if (!publicUrl) {
+              throw new Error('Failed to get public URL');
+            }
+            
+            finalUrl = publicUrl;
+            console.log('Final video URL:', finalUrl);
+          } catch (error) {
+            console.error('Error getting public URL:', error);
+            throw new Error('Failed to get video URL from file ID');
+          }
+        }
+
+        // Set the URL first to allow video element to start loading
+        setActualVideoUrl(finalUrl);
+        setError(null);
+      } catch (error) {
+        console.error('Error loading video:', error);
+        setError(error instanceof Error ? error.message : 'Error loading video');
+        setActualVideoUrl(null);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    // Handle video element events
+    const handleLoadedMetadata = () => {
+      if (videoRef.current) {
+        console.log('Video metadata loaded');
+        console.log('Video duration:', videoRef.current.duration);
+        console.log('Video ready state:', videoRef.current.readyState);
+        setDuration(videoRef.current.duration);
+        setIsLoading(false);
+        // Set the custom video length in the store
+        const { setCurrentCustomVideoLength } = useMediaRefsStore.getState();
+        setCurrentCustomVideoLength(videoRef.current.duration);
+      }
+    };
+
+    const handleCanPlay = () => {
+      console.log('Video can play');
+      setIsLoading(false);
+    };
+
+    const handleVideoError = (e: React.SyntheticEvent<HTMLVideoElement, Event>) => {
+      console.error('Video error:', e);
+      const videoElement = e.target as HTMLVideoElement;
+      const error = videoElement.error;
+      let errorMessage = 'Error loading video';
+      
+      if (error) {
+        switch (error.code) {
+          case MediaError.MEDIA_ERR_ABORTED:
+            errorMessage = 'Video playback was aborted';
+            break;
+          case MediaError.MEDIA_ERR_NETWORK:
+            errorMessage = 'Network error while loading video';
+            break;
+          case MediaError.MEDIA_ERR_DECODE:
+            errorMessage = 'Video format not supported';
+            break;
+          case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
+            errorMessage = 'Video source not supported';
+            break;
+        }
+      }
+      
+      console.error('Video error details:', {
+        error: error,
+        networkState: videoElement.networkState,
+        readyState: videoElement.readyState,
+        src: videoElement.src,
+        currentSrc: videoElement.currentSrc
+      });
+      
+      setError(errorMessage);
+      setIsLoading(false);
+    };
 
     // Load saved verification time from Capacitor preferences
     useEffect(() => {
@@ -456,8 +590,14 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
     ]);
 
     const calculatePercentageWatched = (totalDuration: number) => {
-      const netDuration = calculateNetDuration(currentTimestamps.current);
-      return ((netDuration / totalDuration) * 100).toFixed(2);
+      if (!totalDuration || totalDuration <= 0) return "0.000";
+      const percentage = (currentTime / totalDuration) * 100;
+      console.log('Debug - Video Progress:', {
+        currentTime: currentTime.toFixed(2),
+        totalDuration: totalDuration.toFixed(2),
+        percentage: percentage.toFixed(2)
+      });
+      return percentage.toFixed(2);
     };
 
     const clearUpdateInterval = useCallback(() => {
@@ -660,23 +800,6 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
       };
     }, []);
 
-    // Clean up on unmount
-    useEffect(() => {
-      return () => {
-        clearUpdateInterval();
-        stopProgressTracking();
-        if (timerRef.current) {
-          clearInterval(timerRef.current);
-        }
-        if (verificationTimerRef.current) {
-          clearInterval(verificationTimerRef.current);
-        }
-        if (fullscreenControlsTimeoutRef.current) {
-          clearTimeout(fullscreenControlsTimeoutRef.current);
-        }
-      };
-    }, [clearUpdateInterval, stopProgressTracking]);
-
     const togglePlay = () => {
       if (videoRef.current) {
         if (isPlayed) {
@@ -830,29 +953,23 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
     };
 
     // Handle video events
-    const handleLoadedMetadata = () => {
-      if (videoRef.current) {
-        setDuration(videoRef.current.duration);
-        setIsLoading(false);
-        // Set the custom video length in the store
-        const { setCurrentCustomVideoLength } = useMediaRefsStore.getState();
-        setCurrentCustomVideoLength(videoRef.current.duration);
-      }
-    };
-
     const handleTimeUpdate = () => {
       if (videoRef.current) {
-        setCurrentTime(videoRef.current.currentTime);
+        const newTime = videoRef.current.currentTime;
+        setCurrentTime(newTime);
         if (onTimeUpdate) {
-          onTimeUpdate(videoRef.current.currentTime);
+          onTimeUpdate(newTime);
         }
       }
     };
 
-    const handleVideoError = () => {
-      setError("Error loading video. Please try again.");
-      setIsLoading(false);
-    };
+    // Add effect to track percentage changes
+    useEffect(() => {
+      if (duration > 0) {
+        const percentage = calculatePercentageWatched(duration);
+        console.log('Video progress:', percentage + '%');
+      }
+    }, [currentTime, duration]);
 
     const handleVideoEnded = () => {
       setIsPlayed(false);
@@ -967,6 +1084,14 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
 
     return (
       <div className="w-full flex flex-col items-center gap-4">
+        {/* Video title and percentage */}
+        <div className="w-full flex justify-between items-center bg-gray-100 p-3 rounded-lg">
+          <span className="text-lg font-medium">Test Video 1</span>
+          {/* <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-600">Progress:</span>
+            <span className="text-lg font-semibold text-primary-500">{calculatePercentageWatched(duration)}%</span>
+          </div> */}
+        </div>
         {/* Non-fullscreen verification overlay - shown outside the player */}
         {showVerification && !isFullscreen && (
           <div className="w-full mb-2 animate-in fade-in slide-in-from-top duration-300">
@@ -1122,8 +1247,18 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
           {/* Error message */}
           {error && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-              <div className="bg-white p-4 rounded-lg shadow-lg">
-                <p className="text-red-500">{error}</p>
+              <div className="bg-white p-4 rounded-lg shadow-lg max-w-md">
+                <p className="text-red-500 mb-2">{error}</p>
+                <button
+                  onClick={() => {
+                    setError(null);
+                    setIsLoading(true);
+                    loadVideoUrl();
+                  }}
+                  className="text-primary-500 hover:text-primary-600"
+                >
+                  Try Again
+                </button>
               </div>
             </div>
           )}
@@ -1131,17 +1266,20 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
           {/* Video element */}
           {actualVideoUrl && (
             <video
+              key={actualVideoUrl}
               ref={videoRef}
               className="w-full h-full"
               onLoadedMetadata={handleLoadedMetadata}
+              onCanPlay={handleCanPlay}
               onTimeUpdate={handleTimeUpdate}
               onError={handleVideoError}
               onEnded={handleVideoEnded}
               onPlay={handleVideoPlay}
               onPause={handleVideoPause}
               playsInline
-              preload="metadata"
+              preload="auto"
               controlsList="nodownload"
+              crossOrigin="anonymous"
             >
               <source src={actualVideoUrl} type="video/mp4" />
               <source src={actualVideoUrl} type="video/webm" />

@@ -17,11 +17,15 @@ import AssignmentSlide from "./assignment-slide";
 import VideoQuestionOverlay from "./video-question-overlay";
 import { MyButton } from "@/components/design-system/button";
 import PresentationViewer from "./presentation-viewer";
-import { YouTubePlayer } from "./youtube-player-new";
 import { useMediaRefsStore } from "@/stores/mediaRefsStore";
 import { useRouter } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useSlides, Slide } from "@/hooks/study-library/use-slides";
+import { VideoPlayer } from "./video-player";
+import { v4 as uuidv4 } from "uuid";
+import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
+import { SUBMIT_SLIDE_ANSWERS } from "@/constants/urls";
+import { getUserId } from "@/constants/getUserId";
 
 interface VideoQuestion {
     timestamp: number;
@@ -175,154 +179,233 @@ export const SlideMaterial = () => {
         }
     };
 
-    const loadContent = async (generationId: number) => {
-        if (generationId !== loadGenerationRef.current) return;
-        setError(null);
-
-        if (!activeItem) {
-            if (generationId !== loadGenerationRef.current) return;
-            setContent(
-                <div className="flex h-[500px] flex-col items-center justify-center rounded-lg py-10">
-                    <EmptySlideMaterial />
-                    <p className="mt-4 text-neutral-500">
-                        No study material has been added yet
-                    </p>
-                </div>
-            );
-            return;
-        }
-
-        if (generationId !== loadGenerationRef.current) return;
-        setContent(<DashboardLoader />);
-
+    const loadContent = async () => {
         try {
-            switch (activeItem.source_type) {
-                case "VIDEO": {
-                    if (generationId !== loadGenerationRef.current) return;
-                    const videoSourceType = activeItem.video_slide?.source_type;
-                    const videoStatus = activeItem.status;
-                    const fileId =
-                        videoStatus === "PUBLISHED"
-                            ? activeItem.video_slide?.published_url
-                            : activeItem.video_slide?.url;
-
-                    switch (videoSourceType) {
-                        case "FILE_ID": {
-                            if (!fileId) throw new Error("Video file ID not available");
-                            const videoUrl = await getPublicUrl(fileId);
-                            if (!videoUrl) throw new Error("Failed to retrieve video URL");
-                            setContent(
-                                <div
-                                    key={`video-${activeItem.id}`}
-                                    className="h-full w-full overflow-hidden rounded-lg"
-                                >
-                                    <CustomVideoPlayer
-                                        videoUrl={videoUrl}
-                                        onTimeUpdate={handleTimeUpdate}
-                                        ref={videoRef}
-                                    />
-                                </div>
-                            );
-                            break;
-                        }
-                        default:
-                            setContent(
-                                <div key={`video-${activeItem.id}`} className="h-full w-full">
-                                    <YouTubePlayer
-                                        videoId={extractVideoId(
-                                            activeItem.video_slide?.published_url ||
-                                            activeItem.video_slide?.url ||
-                                            ""
-                                        )}
-                                    />
-                                </div>
-                            );
-                            break;
-                    }
-                    break;
-                }
-
-                case "QUESTION": {
-                    if (activeItem.question_slide) {
-                        setContent(
-                            <QuestionSlide
-                                questionData={activeItem.question_slide}
-                                onSubmit={handleQuestionSubmit}
-                            />
-                        );
-                    }
-                    break;
-                }
-
-                case "DOCUMENT":
-                    if (activeItem.document_slide?.type === "PDF") {
-                        const url = await getPublicUrl(
-                            activeItem.document_slide.published_data || ""
-                        );
-                        if (!url) throw new Error("Failed to retrieve PDF URL");
-                        setContent(<PDFViewer pdfUrl={url} />);
-                    } else if (activeItem.document_slide?.type === "DOC") {
-                        console.log("Document slide data:", activeItem.document_slide);
-                        // Check if the content is HTML
-                        if (activeItem.document_slide.published_data?.includes("<html")) {
-                            setContent(
-                                <div 
-                                    className="h-full w-full overflow-auto bg-white p-8"
-                                    dangerouslySetInnerHTML={{ 
-                                        __html: activeItem.document_slide.published_data 
-                                    }} 
-                                />
-                            );
-                        } else {
-                            const url = await getPublicUrl(
-                                activeItem.document_slide.published_data || ""
-                            );
-                            console.log("Generated DOC URL:", url);
-                            if (!url) throw new Error("Failed to retrieve DOC URL");
-                            setContent(<DocViewer docUrl={url} documentId={activeItem.id} />);
-                        }
-                    } else if (activeItem.document_slide?.type === "PRESENTATION") {
-                        const url = await getPublicUrl(
-                            activeItem.document_slide.published_data || ""
-                        );
-                        if (!url) throw new Error("Failed to retrieve presentation URL");
-                        setContent(
-                            <PresentationViewer
-                                presentationUrl={url}
-                                documentId={activeItem.id}
-                            />
-                        );
-                    }
-                    break;
-                case "ASSIGNMENT": {
-                    if (activeItem.assignment_slide) {
-                        setContent(
-                            <AssignmentSlide
-                                assignmentData={activeItem.assignment_slide}
-                                onUpload={handleAssignmentUpload}
-                                isUploading={isUploading}
-                            />
-                        );
-                    }
-                    break;
-                }
-
-                default:
-                    // Handle unknown source_type if needed
-                    break;
+            if (!activeItem) {
+                console.log('No active item found');
+                return;
             }
-        } catch (err) {
-            console.error("Error loading content:", err);
-            if (generationId === loadGenerationRef.current) {
-                setError(err instanceof Error ? err.message : "Failed to load content");
+
+            console.log('Active item source type:', activeItem.source_type);
+            console.log('Active item data:', JSON.stringify(activeItem, null, 2));
+
+            // Handle MCQ content with different possible source types
+            if ((activeItem.source_type === "MCQ" || 
+                 activeItem.source_type === "MCQS" || 
+                 activeItem.source_type === "mcq" || 
+                 activeItem.source_type === "mcqs") && 
+                activeItem.question_slide) {
+                console.log('Loading MCQ content');
+                console.log('Question slide data:', JSON.stringify(activeItem.question_slide, null, 2));
+                
+                // Ensure all required fields are present with default values
+                const questionData = {
+                    parent_rich_text: activeItem.question_slide.parent_rich_text || { content: '' },
+                    text_data: activeItem.question_slide.text_data || { content: '' },
+                    explanation_text_data: activeItem.question_slide.explanation_text_data || { content: '' },
+                    options: activeItem.question_slide.options || [],
+                    re_attempt_count: activeItem.question_slide.re_attempt_count || 1,
+                    auto_evaluation_json: activeItem.question_slide.auto_evaluation_json || '',
+                    question_type: activeItem.question_slide.question_type || 'MCQS'
+                };
+                
+                console.log('Processed question data:', JSON.stringify(questionData, null, 2));
+                
                 setContent(
-                    <div className="bg-blue-700 flex h-[300px] flex-col items-center justify-center">
-                        <p className="text-red-500">
-                            {error || "An error occurred while loading content"}
-                        </p>
+                    <QuestionSlide
+                        questionData={questionData}
+                        onSubmit={async (questionId, selectedOption) => {
+                            try {
+                                const userId = await getUserId();
+                                if (!questionId || !userId) {
+                                    throw new Error("Missing questionId or userId");
+                                }
+
+                                const payload = {
+                                    id: uuidv4(),
+                                    source_id: questionId,
+                                    source_type: "QUESTION",
+                                    user_id: userId,
+                                    slide_id: questionId,
+                                    start_time_in_millis: Date.now() - 60000,
+                                    end_time_in_millis: Date.now(),
+                                    percentage_watched: 100,
+                                    videos: [],
+                                    documents: [],
+                                    question_slides: [
+                                        {
+                                            id: questionId,
+                                            attempt_number: questionData.re_attempt_count || 1,
+                                            response_json: JSON.stringify({
+                                                selectedOption: selectedOption,
+                                            }),
+                                            response_status: "SUBMITTED",
+                                            marks: 0,
+                                        },
+                                    ],
+                                    assignment_slides: [],
+                                    video_slides_questions: [],
+                                    new_activity: true,
+                                    concentration_score: {
+                                        id: uuidv4(),
+                                        concentration_score: 100,
+                                        tab_switch_count: 0,
+                                        pause_count: 0,
+                                        answer_times_in_seconds: [],
+                                    },
+                                };
+
+                                await authenticatedAxiosInstance.post(SUBMIT_SLIDE_ANSWERS, payload, {
+                                    params: {
+                                        slideId: questionId,
+                                        userId,
+                                    },
+                                });
+
+                                return {
+                                    success: true,
+                                    isCorrect: true,
+                                    correctOption: typeof selectedOption === 'string' ? selectedOption : selectedOption[0],
+                                    explanation: "Answer submitted successfully",
+                                };
+                            } catch (error) {
+                                console.error("Error submitting answer:", error);
+                                return {
+                                    success: false,
+                                    error: error instanceof Error ? error.message : "Failed to submit answer",
+                                };
+                            }
+                        }}
+                    />
+                );
+                return;
+            } else {
+                console.log('Not an MCQ or missing question_slide data');
+                if (activeItem.question_slide) {
+                    console.log('Has question_slide but source_type is:', activeItem.source_type);
+                } else {
+                    console.log('No question_slide data found');
+                }
+            }
+
+            // Check if it's a document slide
+            if (activeItem.document_slide) {
+                console.log('Document slide type:', activeItem.document_slide.type);
+                console.log('Document slide content:', activeItem.document_slide.published_data);
+                console.log('Content type:', typeof activeItem.document_slide.published_data);
+                console.log('Content length:', activeItem.document_slide.published_data?.length);
+                console.log('Document slide title:', activeItem.document_slide.title);
+                console.log('Document slide cover file ID:', activeItem.document_slide.cover_file_id);
+                console.log('Document slide total pages:', activeItem.document_slide.total_pages);
+                console.log('Document slide published total pages:', activeItem.document_slide.published_document_total_pages);
+
+                if (activeItem.document_slide.type === "DOC") {
+                    // Check if content is HTML
+                    const isHtml = activeItem.document_slide.published_data && 
+                                  activeItem.document_slide.published_data.includes("<html");
+                    console.log('Is HTML content:', isHtml);
+                    console.log('HTML content preview:', activeItem.document_slide.published_data?.substring(0, 100));
+
+                    if (isHtml) {
+                        console.log('Rendering HTML content directly');
+                        setContent(
+                            <DocViewer
+                                docUrl={activeItem.document_slide.published_data}
+                                documentId={activeItem.id}
+                                isHtml={true}
+                            />
+                        );
+                    } else {
+                        // For non-HTML content, get public URL
+                        console.log('Getting public URL for DOC content');
+                        const url = await getPublicUrl(activeItem.document_slide.published_data);
+                        console.log('Generated URL:', url);
+                        setContent(
+                            <DocViewer
+                                docUrl={url}
+                                documentId={activeItem.id}
+                                isHtml={false}
+                            />
+                        );
+                    }
+                } else if (activeItem.document_slide.type === "PDF") {
+                    const url = await getPublicUrl(activeItem.document_slide.published_data);
+                    setContent(
+                        <PDFViewer
+                            pdfUrl={url}
+                            documentId={activeItem.id}
+                        />
+                    );
+                }
+            } else if (activeItem.video_slide) {
+                // Handle video content
+                const videoUrl = activeItem.video_slide.published_url || activeItem.video_slide.url;
+                console.log('Loading video:', videoUrl);
+                
+                if (!videoUrl) {
+                    console.error('No video URL found in video_slide:', activeItem.video_slide);
+                    setContent(
+                        <div className="flex h-[500px] items-center justify-center">
+                            <p className="text-red-500">Video URL not found</p>
+                        </div>
+                    );
+                    return;
+                }
+
+                // Check if it's a YouTube URL
+                const isYouTubeUrl = videoUrl.includes('youtube.com') || videoUrl.includes('youtu.be');
+                console.log('Is YouTube URL:', isYouTubeUrl);
+
+                if (isYouTubeUrl) {
+                    const videoId = extractVideoId(videoUrl);
+                    console.log('YouTube video ID:', videoId);
+                    
+                    if (!videoId) {
+                        console.error('Could not extract YouTube video ID from URL:', videoUrl);
+                        setContent(
+                            <div className="flex h-[500px] items-center justify-center">
+                                <p className="text-red-500">Invalid YouTube URL</p>
+                            </div>
+                        );
+                        return;
+                    }
+
+                    setContent(
+                        <YouTubePlayerWrapper
+                            videoId={videoId}
+                            onTimeUpdate={handleTimeUpdate}
+                        />
+                    );
+                } else {
+                    // Check if it's a file ID (UUID format)
+                    const isFileId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(videoUrl);
+                    console.log('Is File ID:', isFileId);
+                    
+                    // Handle regular video URL or file ID
+                    setContent(
+                        <CustomVideoPlayer
+                            videoUrl={videoUrl}
+                            sourceType={isFileId ? "FILE_ID" : "URL"}
+                            questions={activeItem.video_slide.questions}
+                            onTimeUpdate={handleTimeUpdate}
+                        />
+                    );
+                }
+            } else {
+                console.log('Unknown content type:', activeItem);
+                setContent(
+                    <div className="flex h-[500px] items-center justify-center">
+                        <p className="text-red-500">Unsupported content type</p>
                     </div>
                 );
             }
+        } catch (error) {
+            console.error('Error loading content:', error);
+            setContent(
+                <div className="flex h-[500px] items-center justify-center">
+                    <p className="text-red-500">Failed to load content: {error instanceof Error ? error.message : 'Unknown error'}</p>
+                </div>
+            );
         }
     };
 
@@ -331,7 +414,7 @@ export const SlideMaterial = () => {
         const currentGeneration = loadGenerationRef.current;
 
         if (activeItem) {
-            loadContent(currentGeneration);
+            loadContent();
         } else {
             if (currentGeneration === loadGenerationRef.current) {
                 setContent(
@@ -367,14 +450,14 @@ export const SlideMaterial = () => {
             )}
             {activeItem?.source_type === "video" && (
                 <div key={`video-${activeItem.id}`} className="h-full w-full">
-                    <YouTubePlayer
+                    <YouTubePlayerWrapper
                         videoId={extractVideoId(
                             activeItem.video_slide?.published_url ||
                             activeItem.video_slide?.url ||
                             ""
                         )}
-                        onNext={handleNextSlide}
-                        onPrevious={handlePreviousSlide}
+                        onTimeUpdate={handleTimeUpdate}
+                        questions={activeItem.video_slide?.questions}
                     />
                 </div>
             )}

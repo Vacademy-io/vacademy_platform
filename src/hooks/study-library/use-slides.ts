@@ -127,6 +127,7 @@ export const useSlides = (chapterId: string) => {
         queryKey: ["slides", chapterId],
         queryFn: async () => {
             const response = await authenticatedAxiosInstance.get(`${GET_SLIDES}?chapterId=${chapterId}`);
+            console.log("response use-slides",response.data);
             return response.data;
         },
         staleTime: 3600000,

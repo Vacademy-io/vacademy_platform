@@ -8,7 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 // import { MyButton } from "@/components/design-system/button";
 import { useMutation } from "@tanstack/react-query";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
-import { SUBMIT_SLIDE_ANSWERS } from "@/constants/urls";
+import { SUBMIT_QUESTION_SLIDE_ANSWERS } from "@/constants/urls";
 import { v4 as uuidv4 } from "uuid";
 import { getUserId } from "@/constants/getUserId";
 import { Textarea } from "@/components/ui/textarea";
@@ -138,7 +138,7 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
         },
       };
 
-      return authenticatedAxiosInstance.post(SUBMIT_SLIDE_ANSWERS, payload, {
+      return authenticatedAxiosInstance.post(SUBMIT_QUESTION_SLIDE_ANSWERS, payload, {
         params: {
           slideId,
           userId,

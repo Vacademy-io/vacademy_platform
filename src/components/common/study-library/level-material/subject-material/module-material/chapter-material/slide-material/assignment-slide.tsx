@@ -10,7 +10,7 @@ import {
 import { FileUploader } from "./file-uploader";
 import { useMutation } from "@tanstack/react-query";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
-import { SUBMIT_SLIDE_ANSWERS } from "@/constants/urls";
+import { SUBMIT_ASSIGNMENT_SLIDE_ANSWERS } from "@/constants/urls";
 import { v4 as uuidv4 } from "uuid";
 import { getUserId } from "@/constants/getUserId";
 import { MyInput } from "@/components/design-system/input";
@@ -249,7 +249,7 @@ const AssignmentSlide = ({
       const urlParams = new URLSearchParams(window.location.search);
       const slideId = urlParams.get("slideId") || "";
       const userId = await getUserId();
-      return authenticatedAxiosInstance.post(SUBMIT_SLIDE_ANSWERS, payload, {
+      return authenticatedAxiosInstance.post(SUBMIT_ASSIGNMENT_SLIDE_ANSWERS, payload, {
         params: {
           slideId,
           userId,

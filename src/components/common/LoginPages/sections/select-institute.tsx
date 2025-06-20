@@ -16,6 +16,8 @@ import { fetchAndStoreInstituteDetails } from "@/services/fetchAndStoreInstitute
 import { z } from "zod";
 import { fetchAndStoreStudentDetails } from "@/services/studentDetails";
 import { useSearch } from "@tanstack/react-router";
+import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
+import { INSTITUTE_DETAIL } from "@/constants/urls";
 
 const instituteSelectionSchema = z.object({
   instituteId: z.string().nonempty("Please select an institute"),
@@ -41,34 +43,61 @@ export function InstituteSelection() {
   useEffect(() => {
     const fetchInstitutes = async () => {
       try {
-        console.log("Fetching institutes...");
         const token = await getTokenFromStorage(TokenKey.accessToken);
         if (!token) {
-          console.error("No token found in storage.");
+          toast.error("No token found");
           return;
         }
-
+  
         const decodedData = await getTokenDecodedData(token);
         const authorities = decodedData?.authorities;
-        if (!authorities) {
-          toast.error("No authorities found in token.");
+        const userId = decodedData?.user;
+  
+        if (!authorities || !userId) {
+          toast.error("Invalid token data");
           return;
         }
-
-        const instituteList = Object.keys(authorities).map((key) => ({
-          label: key,
-          value: key,
-        }));
-
+  
+        const instituteIds = Object.keys(authorities);
+  
+        const instituteList = await Promise.all(
+          instituteIds.map(async (instituteId) => {
+            try {
+              const response = await authenticatedAxiosInstance({
+                method: "GET",
+                url: `${INSTITUTE_DETAIL}/${instituteId}`,
+                params: {
+                  instituteId,
+                  userId,
+                },
+              });
+  
+              const data = response.data;
+  
+              return {
+                label: data?.institute_name || instituteId, // Fallback if name is missing
+                value: instituteId,
+              };
+            } catch (err) {
+              console.error(`Error fetching details for ${instituteId}`, err);
+              return {
+                label: instituteId, // Fallback
+                value: instituteId,
+              };
+            }
+          })
+        );
+  
         setDropdownList(instituteList);
       } catch (error) {
         console.error("Error fetching institute list:", error);
-        toast.error("Failed to fetch institutes");
+        toast.error("Failed to fetch institute list");
       }
     };
-
+  
     fetchInstitutes();
   }, []);
+  
 
   const onSubmit = async (data: FormValues) => {
     console.log("Form submitted with data:", data);

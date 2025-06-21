@@ -16,6 +16,10 @@ import { fetchAndStoreInstituteDetails } from "@/services/fetchAndStoreInstitute
 import { z } from "zod";
 import { fetchAndStoreStudentDetails } from "@/services/studentDetails";
 import { useSearch } from "@tanstack/react-router";
+import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
+import { INSTITUTE_DETAIL } from "@/constants/urls";
+import { DashboardLoader } from "@/components/core/dashboard-loader";
+import { Loader2 } from "lucide-react";
 
 const instituteSelectionSchema = z.object({
   instituteId: z.string().nonempty("Please select an institute"),
@@ -37,38 +41,70 @@ export function InstituteSelection() {
   const [dropdownList, setDropdownList] = useState<
     { label: string; value: string }[]
   >([]);
+  const [isLoadingInstitutes, setIsLoadingInstitutes] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     const fetchInstitutes = async () => {
+      setIsLoadingInstitutes(true);
       try {
-        console.log("Fetching institutes...");
         const token = await getTokenFromStorage(TokenKey.accessToken);
         if (!token) {
-          console.error("No token found in storage.");
+          toast.error("No token found");
           return;
         }
-
+  
         const decodedData = await getTokenDecodedData(token);
         const authorities = decodedData?.authorities;
-        if (!authorities) {
-          toast.error("No authorities found in token.");
+        const userId = decodedData?.user;
+  
+        if (!authorities || !userId) {
+          toast.error("Invalid token data");
           return;
         }
-
-        const instituteList = Object.keys(authorities).map((key) => ({
-          label: key,
-          value: key,
-        }));
-
+  
+        const instituteIds = Object.keys(authorities);
+  
+        const instituteList = await Promise.all(
+          instituteIds.map(async (instituteId) => {
+            try {
+              const response = await authenticatedAxiosInstance({
+                method: "GET",
+                url: `${INSTITUTE_DETAIL}/${instituteId}`,
+                params: {
+                  instituteId,
+                  userId,
+                },
+              });
+  
+              const data = response.data;
+  
+              return {
+                label: data?.institute_name || instituteId, // Fallback if name is missing
+                value: instituteId,
+              };
+            } catch (err) {
+              console.error(`Error fetching details for ${instituteId}`, err);
+              return {
+                label: instituteId, // Fallback
+                value: instituteId,
+              };
+            }
+          })
+        );
+  
         setDropdownList(instituteList);
       } catch (error) {
         console.error("Error fetching institute list:", error);
-        toast.error("Failed to fetch institutes");
+        toast.error("Failed to fetch institute list");
+      } finally {
+        setIsLoadingInstitutes(false);
       }
     };
-
+  
     fetchInstitutes();
   }, []);
+  
 
   const onSubmit = async (data: FormValues) => {
     console.log("Form submitted with data:", data);
@@ -77,6 +113,7 @@ export function InstituteSelection() {
       return;
     }
 
+    setIsSubmitting(true);
     try {
       console.log("Storing selected institute in storage...");
       // await setTokenInStorage("selectedInstitute", data.instituteId);
@@ -115,8 +152,23 @@ export function InstituteSelection() {
     } catch (error) {
       console.error("Error processing institute selection:", error);
       toast.error("Failed to process institute selection");
+    } finally {
+      setIsSubmitting(false);
     }
   };
+
+  // Show loader while fetching institutes
+  if (isLoadingInstitutes) {
+    return (
+      <div className="flex w-full flex-col items-center justify-center gap-10 md:gap-8 lg:gap-6 px-4 md:px-8 lg:px-12">
+        <Heading
+          heading="Welcome, Student!"
+          subHeading="Loading your institutes..."
+        />
+        <DashboardLoader />
+      </div>
+    );
+  }
 
   return (
     <div className="flex w-full flex-col items-center justify-center gap-10 md:gap-8 lg:gap-6 px-4 md:px-8 lg:px-12">
@@ -166,8 +218,16 @@ export function InstituteSelection() {
                 scale="large"
                 buttonType="primary"
                 layoutVariant="default"
+                disabled={isSubmitting}
               >
-                Login to Institute
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Processing...
+                  </>
+                ) : (
+                  "Login to Institute"
+                )}
               </MyButton>
               <div className="flex flex-row font-regular items-center justify-center">
                 <div className="text-neutral-500 text-sm md:text-base lg:text-base text-center">
@@ -184,6 +244,7 @@ export function InstituteSelection() {
                         search: { redirect: redirect },
                       })
                     }
+                    disabled={isSubmitting}
                   >
                     Back to Login
                   </MyButton>

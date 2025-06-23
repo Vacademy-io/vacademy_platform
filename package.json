@@ -129,6 +129,7 @@
     "@tanstack/react-router": "^1.92.6",
     "@tanstack/router-devtools": "^1.92.3",
     "@tanstack/router-plugin": "^1.91.1",
+    "@types/crypto-js": "^4.2.2",
     "@types/i18next": "^13.0.0",
     "@types/node": "^22.10.2",
     "@types/react": "^18.3.18",

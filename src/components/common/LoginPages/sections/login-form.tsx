@@ -6,6 +6,7 @@ import { isNullOrEmptyOrUndefined } from "@/lib/utils";
 import {
   getTokenDecodedData,
   getTokenFromStorage,
+  handleSSOLogin,
   setTokenInStorage,
 } from "@/lib/auth/sessionUtility";
 import { EmailLogin } from "./EmailOtpForm";
@@ -18,6 +19,7 @@ import { toast } from "sonner";
 import { useTheme } from "@/providers/theme/theme-provider";
 import { fetchAndStoreInstituteDetails } from "@/services/fetchAndStoreInstituteDetails";
 import { fetchAndStoreStudentDetails } from "@/services/studentDetails";
+import ClipLoader from "react-spinners/ClipLoader";
 
 export const getFromStorage = async (key: string) => {
   const result = await Preferences.get({ key });
@@ -30,9 +32,10 @@ export const setToStorage = async (key: string, value: string) => {
 
 export function LoginForm() {
   const navigate = useNavigate();
-  const { setPrimaryColor } = useTheme();
+  const { setPrimaryColor, getPrimaryColorCode } = useTheme();
 
   const urlParams = new URLSearchParams(window.location.search);
+  const [isSSOLoading, setIsSSOLoading] = useState(false);
   const isPublic = urlParams.get("isPublicAssessment");
   const redirect = urlParams.get("redirect");
   const [isEmailLogin, setIsEmailLogin] = useState(
@@ -76,6 +79,32 @@ export function LoginForm() {
     handleOAuthCallback();
   }, []);
 
+  useEffect(() => {
+    // Handle SSO login from URL parameters
+    const ssoLoginSuccess = handleSSOLogin();
+
+    if (ssoLoginSuccess) {
+      setIsSSOLoading(true);
+      return;
+    }
+    const urlParams = new URLSearchParams(window.location.search);
+    const accessToken = urlParams.get("accessToken");
+    const refreshToken = urlParams.get("refreshToken");
+    if (
+      isNullOrEmptyOrUndefined(accessToken) ||
+      isNullOrEmptyOrUndefined(refreshToken)
+    ) {
+      return;
+    }
+
+    if (accessToken && refreshToken) {
+      console.log("accessToken", accessToken);
+      setTokenInStorage(TokenKey.accessToken, accessToken);
+      setTokenInStorage(TokenKey.refreshToken, refreshToken);
+      handleSuccessfulLogin(accessToken, redirect);
+    }
+  }, [navigate]);
+
   // Handle successful login logic
   const handleSuccessfulLogin = async (
     accessToken: string,
@@ -96,6 +125,7 @@ export function LoginForm() {
           to: "/institute-selection",
           search: { redirect: redirect || "/dashboard/" },
         });
+        setIsSSOLoading(false);
       } else {
         // Get the single institute ID
         const instituteId = authorities
@@ -182,6 +212,15 @@ export function LoginForm() {
       toast.error("Failed to initiate login. Please try again.");
     }
   };
+
+  if (isSSOLoading) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center w-full">
+        <ClipLoader size={40} color={getPrimaryColorCode()} />
+        <p className="mt-4 text-lg">Getting your details...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="w-screen bg-white gap-4 md:gap-8 lg:gap-10 pt-14 lg:pt-20">

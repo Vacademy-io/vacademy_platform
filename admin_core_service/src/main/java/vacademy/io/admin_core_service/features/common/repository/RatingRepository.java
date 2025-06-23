@@ -10,30 +10,13 @@ import vacademy.io.admin_core_service.features.common.dto.RatingSummaryProjectio
 import vacademy.io.admin_core_service.features.common.entity.Rating;
 
 import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+
 
 @Repository
 public interface RatingRepository extends JpaRepository<Rating, String> {
 
     List<Rating> findBySourceIdAndSourceTypeAndStatusIn(String sourceId, String sourceType, List<String>statusList);
-
-    @Query(value = """
-    SELECT r.* FROM rating r
-    LEFT JOIN package_session ps
-      ON ps.package_id = r.source_id
-      AND ps.status = ANY(:packageSessionStatuses)
-    WHERE r.source_type = :sourceType
-      AND r.source_id = :sourceId
-      AND r.status = ANY(:ratingStatuses)
-      AND ps.id IS NOT NULL
-    """, nativeQuery = true)
-    List<Rating> findValidRatingsWithActivePackageSessions(
-        @Param("sourceType") String sourceType,
-        @Param("sourceId") String sourceId,
-        @Param("ratingStatuses") List<String> ratingStatuses,
-        @Param("packageSessionStatuses") List<String> packageSessionStatuses
-    );
+    
     @Query(
         value = "SELECT DISTINCT r.* FROM rating r " +
             "LEFT JOIN package_session ps ON ps.id = r.source_id " +

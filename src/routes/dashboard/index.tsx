@@ -22,7 +22,7 @@ import { getIcon } from "@/components/common/study-library/level-material/subjec
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import { PastLearningInsights } from "./-components/PastLearningInsights";
 import { fetchAndStoreInstituteDetails } from "@/services/fetchAndStoreInstituteDetails";
-
+import { Slide } from "@/hooks/study-library/use-slides";
 export const Route = createFileRoute("/dashboard/")({
   beforeLoad: async () => {
     const instituteId = await getInstituteId();
@@ -157,7 +157,12 @@ export function DashboardComponent() {
           {data?.slides.map((slide) => (
             <div key={slide.slide_id} className="flex gap-2 justify-between">
               <div className="flex gap-2">
-                {getIcon(slide?.source_type)}
+                {
+                  getIcon({
+                  source_type: slide.source_type,
+                  title: slide.slide_title
+                  
+                } as Slide)}
                 <p>{slide?.slide_title}</p>
               </div>
               <MyButton

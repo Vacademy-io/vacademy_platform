@@ -3,7 +3,7 @@ import PDFViewer from "./pdf-viewer";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import { EmptySlideMaterial } from "@/assets/svgs";
 import YouTubePlayerWrapper from "./youtube-player";
-import { convertHtmlToPdf } from "@/utils/html-to-pdf";
+//import { convertHtmlToPdf } from "@/utils/html-to-pdf";
 import { useFileUpload } from "@/hooks/use-file-upload";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { extractVideoId } from "@/utils/study-library/tracking/extractVideoId";
@@ -16,7 +16,7 @@ import AssignmentSlide from "./assignment-slide";
 import VideoQuestionOverlay from "./video-question-overlay";
 import { MyButton } from "@/components/design-system/button";
 // import { useMediaRefsStore } from "@/stores/mediaRefsStore";
-
+import { DocViewer } from "./doc-viewer";
 import PresentationViewer from "./presentation-viewer";
 
 export const SlideMaterial = () => {
@@ -39,44 +39,44 @@ export const SlideMaterial = () => {
   //     console.log("currentPdfPage: ", currentPdfPage);
   //   }, [currentPdfPage]);
 
-  const handleConvertAndUpload = async (
-    htmlString: string | null
-  ): Promise<string | null> => {
-    if (htmlString == null) return null;
-    try {
-      setIsUploading(true);
-      setError(null);
+  // const handleConvertAndUpload = async (
+  //   htmlString: string | null
+  // ): Promise<string | null> => {
+  //   if (htmlString == null) return null;
+  //   try {
+  //     setIsUploading(true);
+  //     setError(null);
 
-      // Step 1: Convert HTML to PDF
-      const pdfBlob = await convertHtmlToPdf(htmlString);
+  //     // Step 1: Convert HTML to PDF
+  //     const pdfBlob = await convertHtmlToPdf(htmlString);
 
-      // Step 2: Convert Blob to File
-      const pdfFile = new File([pdfBlob], "document.pdf", {
-        type: "application/pdf",
-      });
+  //     // Step 2: Convert Blob to File
+  //     const pdfFile = new File([pdfBlob], "document.pdf", {
+  //       type: "application/pdf",
+  //     });
 
-      // Step 3: Upload the PDF file
-      const uploadedFileId = await uploadFile({
-        file: pdfFile,
-        setIsUploading,
-        userId: "your-user-id",
-        source: "PDF",
-        sourceId: "", // Optional
-        publicUrl: true, // Set to true to get a public URL
-      });
+  //     // Step 3: Upload the PDF file
+  //     const uploadedFileId = await uploadFile({
+  //       file: pdfFile,
+  //       setIsUploading,
+  //       userId: "your-user-id",
+  //       source: "PDF",
+  //       sourceId: "", // Optional
+  //       publicUrl: true, // Set to true to get a public URL
+  //     });
 
-      if (uploadedFileId) {
-        const publicUrl = await getPublicUrl(uploadedFileId);
-        return publicUrl; // Return the public URL as a string
-      }
-    } catch (error) {
-      console.error("Upload Failed:", error);
-      setError("Failed to convert or upload document. Please try again.");
-    } finally {
-      setIsUploading(false);
-    }
-    return null; // Return null if the upload fails
-  };
+  //     if (uploadedFileId) {
+  //       const publicUrl = await getPublicUrl(uploadedFileId);
+  //       return publicUrl; // Return the public URL as a string
+  //     }
+  //   } catch (error) {
+  //     console.error("Upload Failed:", error);
+  //     setError("Failed to convert or upload document. Please try again.");
+  //   } finally {
+  //     setIsUploading(false);
+  //   }
+  //   return null; // Return null if the upload fails
+  // };
 
   const handleVideoTimeUpdate = (currentTime: number) => {
     if (!activeItem?.video_slide?.questions?.length) return;
@@ -263,11 +263,35 @@ export const SlideMaterial = () => {
             if (!url) throw new Error("Failed to retrieve PDF URL");
             setContent(<PDFViewer pdfUrl={url} />);
           } else if (activeItem.document_slide?.type === "DOC") {
-            const url = await handleConvertAndUpload(
-              activeItem.document_slide.published_data
-            );
-            if (!url) throw new Error("Error generating PDF URL");
-            setContent(<PDFViewer pdfUrl={url} />);
+            // Check if content is HTML
+                    const isHtml = activeItem.document_slide.published_data && 
+                                  activeItem.document_slide.published_data.includes("<html");
+                    console.log('Is HTML content:', isHtml);
+                    console.log('HTML content preview:', activeItem.document_slide.published_data?.substring(0, 100));
+
+                    if (isHtml) {
+                        console.log('Rendering HTML content directly');
+                        setContent(
+                            <DocViewer
+                                docUrl={activeItem.document_slide.published_data}
+                                documentId={activeItem.id}
+                                isHtml={true}
+                            />
+                        );
+                    } else {
+                        // For non-HTML content, get public URL
+                        console.log('Getting public URL for DOC content');
+                        const url = await getPublicUrl(activeItem.document_slide.published_data);
+                        console.log('Generated URL:', url);
+                        setContent(
+                            <DocViewer
+                                docUrl={url}
+                                documentId={activeItem.id}
+                                isHtml={false}
+                            />
+                        );
+                    }
+                
           } else if (activeItem.document_slide?.type === "PRESENTATION") {
             const url = await getPublicUrl(
               activeItem.document_slide.published_data || ""

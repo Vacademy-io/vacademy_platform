@@ -85,9 +85,6 @@ const VideoQuestionOverlay = ({
         userOptions?: string[];
     } | null>(null);
 
-    console.log("selectedOptions", selectedOptions);
-    console.log("selectedOption", selectedOption);
-
     // Question type configuration
     const questionType = question.question_type || "MCQS";
     const isMultipleChoice = questionType === "MCQM";
@@ -303,9 +300,9 @@ const VideoQuestionOverlay = ({
                 video_slides_questions: [
                     {
                         id: question.id,
-                        question_name: questionName,
                         response_json: JSON.stringify({
                             selectedOptions,
+                            questionName,
                         }),
                         response_status: "SUBMITTED",
                     },

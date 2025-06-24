@@ -133,6 +133,7 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
                         question_name: questionName,
                         response_json: JSON.stringify({
                             selectedOptions,
+                            questionName
                         }),
                         response_status: "SUBMITTED",
                         marks: 0,

@@ -132,8 +132,8 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
                         attempt_number: maxAttempts,
                         question_name: questionName,
                         response_json: JSON.stringify({
+                            questionName,
                             selectedOptions,
-                            questionName
                         }),
                         response_status: "SUBMITTED",
                         marks: 0,

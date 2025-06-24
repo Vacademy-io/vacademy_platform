@@ -301,8 +301,8 @@ const VideoQuestionOverlay = ({
                     {
                         id: question.id,
                         response_json: JSON.stringify({
-                            selectedOptions,
                             questionName,
+                            selectedOptions,
                         }),
                         response_status: "SUBMITTED",
                     },

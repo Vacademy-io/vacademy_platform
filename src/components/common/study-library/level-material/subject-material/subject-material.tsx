@@ -379,7 +379,7 @@ export const SubjectMaterial = () => {
                                                   <span className="w-5 shrink-0 text-center font-mono text-gray-400">
                                                     S{sIdx + 1}
                                                   </span>
-                                                  {getIcon(slide.source_type, "3")}
+                                                  {getIcon(slide,"3")}
                                                   <span
                                                     className="truncate"
                                                     title={slide.title}

@@ -1,7 +1,9 @@
 package vacademy.io.admin_core_service.features.learner_tracking.entity;
 
 import jakarta.persistence.*;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.AssignmentSlideActivityLogDTO;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.VideoSlideQuestionActivityLogDTO;
 
@@ -10,6 +12,8 @@ import java.sql.Timestamp;
 @Entity
 @Table(name = "video_slide_question_tracked")
 @NoArgsConstructor
+@Getter
+@Setter
 public class VideoSlideQuestionTracked {
 
     @Id

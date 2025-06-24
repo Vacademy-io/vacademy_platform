@@ -7,7 +7,7 @@ import { useCatalogStore } from '../-store/catalogStore.ts';
 import { getPublicUrl } from "@/services/upload_file";
 
 interface CoursesPageProps {
-  searchTerm:string;
+  searchTerm: string;
   onSearchChange: (value: string) => void;
   sortOption: string;
   onSortChange: (value: string) => void;
@@ -42,10 +42,10 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
   const { courseData } = useCatalogStore();
   const [thumbnailUrls, setThumbnailUrls] = useState<string[]>([]);
   const [imagesLoading, setImagesLoading] = useState(false);
-  
+
   const fallbackInstructor = [
-    { id: "373jeue38", full_name: "Shyam" },
-    { id: "9ek393932", full_name: "Rajkumar" },
+    { id: "373jeue38", full_name: "shyam" },
+    { id: "9ek393932", full_name: "rajkumar" },
   ];
   const fallbackDescription = "build responsive scalable and human-like AI application";
   const fallbackTags = "LLMs,Reinforcement Learning";
@@ -193,6 +193,8 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                     thumbnailUrl={currentUrl}
                     instructors={course.instructors?.length ? course.instructors : fallbackInstructor}
                     rating={course.rating || 4}
+
+                    percentage_completed={course.percentage_completed||50}
                     description={course.course_html_description_html || fallbackDescription}
                     tags={
                       course.comma_separeted_tags

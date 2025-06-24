@@ -4,10 +4,10 @@ import InstructorCTASection from './InstructorCTASection.tsx';
 import SupportersSection from './SupportersSection.tsx';
 import CoursesPage from './CoursesPage.tsx';
 import Header from './Header.tsx';
-import HeroSectionCourseCatalog from './HeroSectionCourseCatalog.tsx';
 import { useCatalogStore } from '../-store/catalogStore.ts';
 import axios from 'axios';
-
+import HeroSection from './HeroSection.tsx';
+import Tab from './Tab.tsx';
 const urlInstituteDetails = 'https://backend-stage.vacademy.io/admin-core-service/public/institute/v1/details/94337b5b-7687-4a1e-993f-1b3529dd6f44';
 const urlCourseDetails = 'https://backend-stage.vacademy.io/admin-core-service/open/packages/v1/search';
 const urlInstructor = 'https://backend-stage.vacademy.io/auth-service/public/v1/users-of-status?instituteId=23103559-5632-42c9-b9ce-619d55fce3cb';
@@ -146,8 +146,8 @@ const CourseCatalougePage: React.FC = () => {
 
   return (
     <div>
-      <Header />
-      <HeroSectionCourseCatalog />
+      <HeroSection />
+        <Tab />
       <CoursesPage
         searchTerm={searchTerm}
         onSearchChange={setSearchTerm}
@@ -171,9 +171,9 @@ const CourseCatalougePage: React.FC = () => {
       />
 
 
-      <InstructorCTASection />
+      {/* <InstructorCTASection />
       <SupportersSection />
-      <Footer />
+      <Footer /> */}
     </div>
   );
 }

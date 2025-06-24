@@ -13,6 +13,7 @@ interface CourseCardProps {
   thumbnailUrl: string;
   instructors: Instructor[];
   rating: number;
+  percentage_completed: number;
   description: string;
   tags: string[];
   studentCount?: number;
@@ -27,13 +28,15 @@ const CourseCard: React.FC<CourseCardProps> = ({
   thumbnailUrl,
   instructors,
   rating,
+  percentage_completed,
   description,
   tags,
   studentCount,
 }) => {
   const [courseImageUrl, setCourseImageUrl] = useState(thumbnailUrl);
   const [loadingImage, setLoadingImage] = useState(true);
-
+  //percenteatg
+  console.log("complete_percentage", percentage_completed);
   const instructor = instructors[0];
   const instructorName = instructor?.full_name || 'Unknown Instructor';
   const instructorImage = instructor?.image_url || fallbackInstructorImage;
@@ -49,11 +52,11 @@ const CourseCard: React.FC<CourseCardProps> = ({
   const getLevelColor = () => {
     switch (level_name.toLowerCase()) {
       case 'beginner':
-        return 'bg-green-100 text-green-600';
+        return 'bg-green-100 text-green-700';
       case 'intermediate':
-        return 'bg-yellow-100 text-yellow-600';
+        return 'bg-yellow-100 text-yellow-700';
       case 'advanced':
-        return 'bg-red-100 text-red-600';
+        return 'bg-red-100 text-red-700';
       default:
         return 'bg-blue-100 text-blue-600';
     }
@@ -85,7 +88,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
           <h3 className="text-lg font-semibold text-gray-800 truncate" title={package_name}>
             {package_name}
           </h3>
-          <span className={`text-sm font-semibold px-2 py-1 rounded-sm ${getLevelColor()}`}>
+          <span className={`text-xs font-semibold px-2 py-1 rounded-sm ${getLevelColor()}`}>
             {level_name}
           </span>
         </div>
@@ -94,7 +97,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
           {description}
         </p>
 
-        <div className="flex items-center mb-3 text-gray-600">
+        <div className="flex items-center mb-3">
           <img
             src={instructorImage}
             alt={instructorName}
@@ -113,7 +116,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
             tags.slice(0, 3).map((tag) => (
               <span
                 key={tag}
-                className="text-xs bg-violet-200  z-50 text-violet-700 px-2 py-1 rounded-sm mr-1 mb-1 inline-block"
+                className="text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded-full mr-1 mb-1 inline-block"
               >
                 {tag}
               </span>
@@ -139,6 +142,19 @@ const CourseCard: React.FC<CourseCardProps> = ({
           {studentCount !== undefined && (
             <span className="ml-2 text-gray-500">({studentCount} students)</span>
           )}
+        </div>
+
+        <div className="mb-4">
+          <div className="flex justify-between items-center mb-1 text-sm text-gray-600">
+            <span>Course Progress</span>
+            <span>{percentage_completed}%</span>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-2">
+            <div
+              className="bg-blue-600 h-2 rounded-full"
+              style={{ width: `${percentage_completed}%` }}
+            ></div>
+          </div>
         </div>
 
         <button className="mt-auto w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors">

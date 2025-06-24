@@ -44,8 +44,8 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
   const [imagesLoading, setImagesLoading] = useState(false);
   
   const fallbackInstructor = [
-    { id: "373jeue38", full_name: "Shyam" },
-    { id: "9ek393932", full_name: "Rajkumar" },
+    { id: "373jeue38", full_name: "shyam" },
+    { id: "9ek393932", full_name: "rajkumar" },
   ];
   const fallbackDescription = "build responsive scalable and human-like AI application";
   const fallbackTags = "LLMs,Reinforcement Learning";
@@ -55,7 +55,7 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 4;
+  const itemsPerPage =4;
 
   const paginatedCourses = courseData.slice(
     (currentPage - 1) * itemsPerPage,

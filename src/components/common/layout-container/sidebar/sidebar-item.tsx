@@ -34,11 +34,11 @@ export const SidebarItem = ({ icon, title, to, subItems }: SidebarItemProps) => 
                     <button
                         onClick={() => setIsOpen(!isOpen)}
                         className={cn(
-                            "flex w-full cursor-pointer items-center justify-between gap-1 rounded-lg px-4 py-2",
+                            "flex w-full cursor-pointer items-center justify-between gap-4 rounded-lg px-4 py-2",
                             isActive ? "text-primary-500" : "text-neutral-600"
                         )}
                     >
-                        <div className="flex items-center">
+                        <div className="flex items-center gap-4">
                             {icon &&
                                 React.createElement(icon, {
                                     className: cn(
@@ -103,7 +103,7 @@ export const SidebarItem = ({ icon, title, to, subItems }: SidebarItemProps) => 
                         isActive ? "text-primary-500" : "text-neutral-600"
                     )}
                 >
-                    <div className="flex items-center">
+                    <div className="flex items-center gap-4">
                         {icon &&
                             React.createElement(icon, {
                                 className: cn(

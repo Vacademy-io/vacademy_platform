@@ -49,11 +49,11 @@ const CourseCard: React.FC<CourseCardProps> = ({
   const getLevelColor = () => {
     switch (level_name.toLowerCase()) {
       case 'beginner':
-        return 'bg-green-100 text-green-600';
+        return 'bg-green-100 text-green-700';
       case 'intermediate':
-        return 'bg-yellow-100 text-yellow-600';
+        return 'bg-yellow-100 text-yellow-700';
       case 'advanced':
-        return 'bg-red-100 text-red-600';
+        return 'bg-red-100 text-red-700';
       default:
         return 'bg-blue-100 text-blue-600';
     }
@@ -85,7 +85,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
           <h3 className="text-lg font-semibold text-gray-800 truncate" title={package_name}>
             {package_name}
           </h3>
-          <span className={`text-sm font-semibold px-2 py-1 rounded-sm ${getLevelColor()}`}>
+          <span className={`text-xs font-semibold px-2 py-1 rounded-sm ${getLevelColor()}`}>
             {level_name}
           </span>
         </div>
@@ -94,7 +94,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
           {description}
         </p>
 
-        <div className="flex items-center mb-3 text-gray-600">
+        <div className="flex items-center mb-3">
           <img
             src={instructorImage}
             alt={instructorName}
@@ -113,7 +113,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
             tags.slice(0, 3).map((tag) => (
               <span
                 key={tag}
-                className="text-xs bg-violet-200  z-50 text-violet-700 px-2 py-1 rounded-sm mr-1 mb-1 inline-block"
+                className="text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded-full mr-1 mb-1 inline-block"
               >
                 {tag}
               </span>

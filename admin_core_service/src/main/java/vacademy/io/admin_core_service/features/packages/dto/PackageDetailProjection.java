@@ -6,7 +6,7 @@ import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import java.util.List;
 
 @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
-public interface LearnerPackageDetailProjection {
+public interface PackageDetailProjection {
     String getId();
     String getPackageName();
     String getThumbnailFileId();

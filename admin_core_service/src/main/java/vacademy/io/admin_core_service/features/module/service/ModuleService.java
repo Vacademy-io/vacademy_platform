@@ -211,4 +211,35 @@ public class ModuleService {
         return moduleRepository.findModuleBySlideIdAndPackageSessionIdWithStatusFilters(slideId,packageSessionId,List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
                 List.of(ChapterStatus.ACTIVE.name()), List.of(ModuleStatusEnum.ACTIVE.name()));
     }
+
+    @Transactional
+    public String addRequestModule(String subjectId,String commaSeparatedPackageSessionIds, ModuleDTO moduleDTO, CustomUserDetails user) {
+        // Validate subject ID
+        if (subjectId == null) {
+            throw new VacademyException("Subject ID cannot be null");
+        }
+
+        if (subjectId.equalsIgnoreCase("DEFAULT")) {
+            subjectService.addDefaultSubject(commaSeparatedPackageSessionIds);
+        }
+
+
+        // Validate module details
+        validateModule(moduleDTO);
+
+        // Find subject by ID
+        Subject subject = findSubjectById(subjectId);
+
+        Module module = new Module();
+        createModule(moduleDTO, module);
+        module.setStatus(ModuleStatusEnum.PENDING_APPROVAL.name());
+         module =moduleRepository.save(module);
+        // Save mapping between subject and module
+        saveMapping(subject, module);
+
+        // Set ID in DTO and return
+        moduleDTO.setId(module.getId());
+        return moduleDTO.getId();
+    }
+
 }

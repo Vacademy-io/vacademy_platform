@@ -9,7 +9,7 @@ import axios from "axios";
 import { Form, FormControl, FormField, FormItem } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { MyInput } from "@/components/design-system/input";
-import { MyButton } from "@/components/design-system/button";
+
 import { TokenKey } from "@/constants/auth/tokens";
 import {
   getTokenDecodedData,
@@ -261,132 +261,169 @@ export function EmailLogin({
   };
 
   return (
-    <div>
+    <div className="w-full space-y-6">
       {!isOtpSent ? (
         <Form {...emailForm}>
           <form
             onSubmit={emailForm.handleSubmit(onEmailSubmit)}
-            className="w-full"
+            className="space-y-6"
           >
-            <div className="flex w-full flex-col items-center justify-center gap-4 px-4 md:px-8 lg:px-12">
+            <div className="space-y-2 animate-fade-in-up" style={{animationDelay: '0.1s'}}>
               <FormField
                 control={emailForm.control}
                 name="email"
                 render={({ field }) => (
                   <FormItem>
                     <FormControl>
-                      <MyInput
-                        inputType="email"
-                        inputPlaceholder="you@example.com"
-                        label="Email"
-                        required
-                        size="large"
-                        error={emailForm.formState.errors.email?.message}
-                        {...field}
-                        className="w-[300px] md:w-[348px] lg:w-[348px]"
-                        input={field.value} // Pass current value
-                        onChangeFunction={field.onChange} // Pass change handler
-                      />
+                      <div className="relative group">
+                        <MyInput
+                          inputType="email"
+                          inputPlaceholder="Enter your email address"
+                          label="Email Address"
+                          required
+                          size="large"
+                          error={emailForm.formState.errors.email?.message}
+                          {...field}
+                          className="w-full transition-all duration-300 border-gray-200/60 focus:border-orange-400 focus:ring-2 focus:ring-orange-100/50 rounded-2xl bg-gray-50/30 focus:bg-white font-light"
+                          input={field.value} // Pass current value
+                          onChangeFunction={field.onChange} // Pass change handler
+                        />
+                        {/* Subtle focus indicator */}
+                        <div className="absolute inset-0 rounded-2xl ring-1 ring-orange-400 opacity-0 group-focus-within:opacity-30 transition-all duration-300 pointer-events-none"></div>
+                      </div>
                     </FormControl>
                   </FormItem>
                 )}
               />
             </div>
-            <div className="mt-16 flex flex-col items-center gap-3">
-              <MyButton
+            
+            <div className="pt-4 animate-fade-in-up" style={{animationDelay: '0.2s'}}>
+              <button
                 type="submit"
-                scale="large"
-                buttonType="primary"
-                layoutVariant="default"
+                disabled={isLoading}
+                className="w-full bg-gradient-to-r from-orange-400 to-orange-500 hover:from-orange-500 hover:to-orange-600 text-white font-light py-4 px-6 rounded-2xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-[1.01] active:scale-[0.99] shadow-lg hover:shadow-xl text-base tracking-wide"
               >
-                {isLoading ? "Loading..." : "Send OTP"}
-              </MyButton>
+                {isLoading ? (
+                  <div className="flex items-center justify-center space-x-2">
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                    <span className="font-light">Sending OTP...</span>
+                  </div>
+                ) : (
+                  "Send OTP"
+                )}
+              </button>
             </div>
           </form>
         </Form>
       ) : (
-        <Form {...otpForm}>
-          <form onSubmit={otpForm.handleSubmit(onOtpSubmit)} className="w-full">
-            <div className="flex w-full flex-col items-center justify-center gap-4 px-4 md:px-8 lg:px-12">
-              <div className="flex gap-2">
-                {[0, 1, 2, 3, 4, 5].map((index) => (
-                  <FormField
-                    key={index}
-                    control={otpForm.control}
-                    name={`otp.${index}`}
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            ref={(el) => (otpInputRefs.current[index] = el)}
-                            type="text"
-                            inputMode="numeric"
-                            maxLength={1}
-                            className="h-12 w-12 text-center text-xl"
-                            onChange={(e) => handleOtpChange(e.target, index)}
-                            onKeyDown={(e) => handleOtpKeyDown(e, index)}
-                            onPaste={(e) => handleOtpPaste(e)}
-                          />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
-                ))}
-              </div>
-              {otpForm.formState.errors.otp && (
-                <div className="text-sm text-red-500">
-                  Please enter a valid 6-digit OTP
-                </div>
-              )}
+        <div className="space-y-6">
+          {/* OTP Header */}
+          <div className="text-center space-y-3 animate-fade-in-up">
+            <div className="w-16 h-16 bg-orange-100/70 rounded-2xl mx-auto flex items-center justify-center mb-4">
+              <svg className="w-8 h-8 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
             </div>
-            <div className="mt-16 flex flex-col items-center gap-3">
-              <MyButton
-                type="submit"
-                scale="large"
-                buttonType="primary"
-                layoutVariant="default"
-                disabled={
-                  !otpForm.getValues().otp.every((value) => value !== "")
-                }
-              >
-                {isLoading ? "Loading..." : "Login"}
-              </MyButton>
-              <div className="flex">
-                <MyButton
-                  type="button"
-                  scale="medium"
-                  buttonType="text"
-                  onClick={handleBackToEmail}
-                >
-                  Back
-                </MyButton>
+            <h3 className="text-2xl font-light text-gray-900 tracking-tight">Check your email</h3>
+            <p className="text-sm text-gray-500 font-light">
+              We've sent a 6-digit verification code to
+            </p>
+            <p className="text-sm font-normal text-orange-500">{email}</p>
+          </div>
 
-                <MyButton
-                  type="button"
-                  scale="medium"
-                  buttonType="text"
-                  className={timer > 0 ? "text-gray-500" : "text-primary-500"}
-                  onClick={() => timer === 0 && sendOtpMutation.mutate(email)}
-                  disabled={timer > 0}
-                >
-                  {timer > 0 ? `Resend OTP in ${timer}s` : "Resend OTP"}
-                </MyButton>
+          <Form {...otpForm}>
+            <form onSubmit={otpForm.handleSubmit(onOtpSubmit)} className="space-y-6">
+              <div className="space-y-4 animate-fade-in-up" style={{animationDelay: '0.1s'}}>
+                <div className="flex justify-center gap-3">
+                  {[0, 1, 2, 3, 4, 5].map((index) => (
+                    <FormField
+                      key={index}
+                      control={otpForm.control}
+                      name={`otp.${index}`}
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              ref={(el) => (otpInputRefs.current[index] = el)}
+                              type="text"
+                              inputMode="numeric"
+                              maxLength={1}
+                              className="h-14 w-14 text-center text-xl font-light border border-gray-200/60 rounded-2xl transition-all duration-300 focus:border-orange-400 focus:ring-2 focus:ring-orange-100/50 hover:border-gray-300/80 bg-gray-50/30 focus:bg-white tracking-wider"
+                              onChange={(e) => handleOtpChange(e.target, index)}
+                              onKeyDown={(e) => handleOtpKeyDown(e, index)}
+                              onPaste={(e) => handleOtpPaste(e)}
+                            />
+                          </FormControl>
+                        </FormItem>
+                      )}
+                    />
+                  ))}
+                </div>
+                {otpForm.formState.errors.otp && (
+                  <div className="text-sm text-red-500 text-center">
+                    Please enter a valid 6-digit OTP
+                  </div>
+                )}
               </div>
-            </div>
-          </form>
-        </Form>
+
+              <div className="space-y-4 animate-fade-in-up" style={{animationDelay: '0.2s'}}>
+                <button
+                  type="submit"
+                  disabled={
+                    !otpForm.getValues().otp.every((value) => value !== "") || isLoading
+                  }
+                  className="w-full bg-gradient-to-r from-orange-400 to-orange-500 hover:from-orange-500 hover:to-orange-600 text-white font-light py-4 px-6 rounded-2xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-[1.01] active:scale-[0.99] shadow-lg hover:shadow-xl text-base tracking-wide"
+                >
+                  {isLoading ? (
+                    <div className="flex items-center justify-center space-x-2">
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                      <span className="font-light">Verifying...</span>
+                    </div>
+                  ) : (
+                    "Verify & Sign In"
+                  )}
+                </button>
+
+                <div className="flex justify-center items-center space-x-4 text-sm">
+                  <button
+                    type="button"
+                    onClick={handleBackToEmail}
+                    className="text-gray-400 hover:text-gray-600 transition-colors duration-200 font-light"
+                  >
+                    ← Back to email
+                  </button>
+
+                  <div className="w-px h-4 bg-gray-200"></div>
+
+                  <button
+                    type="button"
+                    className={`transition-colors duration-200 font-light ${
+                      timer > 0 
+                        ? "text-gray-300 cursor-not-allowed" 
+                        : "text-orange-500 hover:text-orange-600"
+                    }`}
+                    onClick={() => timer === 0 && sendOtpMutation.mutate(email)}
+                    disabled={timer > 0}
+                  >
+                    {timer > 0 ? `Resend in ${timer}s` : "Resend OTP"}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </Form>
+        </div>
       )}
-      <div className="flex flex-col items-center">
-        <MyButton
+      
+      <div className="text-center pt-6 animate-fade-in-up" style={{animationDelay: '0.3s'}}>
+        <button
           type="button"
-          scale="medium"
-          buttonType="text"
-          className="text-primary-500"
+          className="text-sm text-gray-400 hover:text-orange-500 transition-colors duration-200 relative group font-light"
           onClick={onSwitchToUsername}
         >
-          Login with username
-        </MyButton>
+          Prefer username login?
+          <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-orange-500 transition-all duration-300 group-hover:w-full"></span>
+        </button>
       </div>
     </div>
   );

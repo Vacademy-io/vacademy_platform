@@ -17,45 +17,72 @@ export function NotificationList() {
     fetch();
   }, []);
   return (
-    <Tabs defaultValue="General" className="">
-      <TabsList className="inline-flex h-auto justify-start gap-4 rounded-none border-b !bg-transparent p-0 w-fit mb-2">
-        <TabsTrigger
-          className="flex gap-1.5 rounded-none px-12 py-2 !shadow-none text-body data-[state=active]:text-primary-500 data-[state=active]:rounded-t-sm data-[state=active]:border data-[state=active]:!border-b-0 data-[state=active]:border-primary-200 data-[state=active]:!bg-primary-50"
-          value="General"
-        >
-          General
-        </TabsTrigger>
-        <TabsTrigger
-          className="flex gap-1.5 rounded-none px-12 py-2 !shadow-none text-body data-[state=active]:text-primary-500 data-[state=active]:rounded-t-sm data-[state=active]:border data-[state=active]:!border-b-0 data-[state=active]:border-primary-200 data-[state=active]:!bg-primary-50"
-          value="Announcement"
-        >
-          Announcement
-        </TabsTrigger>
-      </TabsList>
-      <TabsContent className="flex flex-col gap-4" value="General">
-        <NotifcationCard
-          title="New Assessment Assigned!"
-          description="You have been assigned a new assessment: The Human Eye and The Colourful World. Check the details and stay prepared!"
-          date="Today, 11:06 AM"
-        />
-        <NotifcationCard
-          title="New Assessment Assigned!"
-          description="You have been assigned a new assessment: The Human Eye and The Colourful World. Check the details and stay prepared!"
-          date="Today, 11:06 AM"
-        />
-      </TabsContent>
-      <TabsContent className="flex flex-col gap-4" value="Announcement">
-        <NotifcationCard
-          title="New Assessment Assigned!"
-          description="You have been assigned a new assessment: The Human Eye and The Colourful World. Check the details and stay prepared!"
-          date="Today, 11:06 AM"
-        />
-        <NotifcationCard
-          title="New Assessment Assigned!"
-          description="You have been assigned a new assessment: The Human Eye and The Colourful World. Check the details and stay prepared!"
-          date="Today, 11:06 AM"
-        />
-      </TabsContent>
-    </Tabs>
+    <div className="min-h-screen bg-gradient-to-br from-gray-50/50 via-white to-orange-50/20 p-6">
+      <div className="max-w-4xl mx-auto">
+        <Tabs defaultValue="General" className="w-full">
+          {/* Modern Tab Header */}
+          <div className="mb-8">
+            <TabsList className="bg-gray-50/50 rounded-2xl p-1.5 w-fit">
+              <TabsTrigger
+                className="rounded-xl px-8 py-3 font-light text-gray-600 transition-all duration-300 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-lg data-[state=active]:font-medium"
+                value="General"
+              >
+                General Notifications
+              </TabsTrigger>
+              <TabsTrigger
+                className="rounded-xl px-8 py-3 font-light text-gray-600 transition-all duration-300 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-lg data-[state=active]:font-medium"
+                value="Announcement"
+              >
+                Announcements
+              </TabsTrigger>
+            </TabsList>
+          </div>
+
+          {/* General Notifications */}
+          <TabsContent 
+            className="grid gap-6 animate-fade-in-up opacity-0" 
+            value="General"
+            style={{animationDelay: '0.1s', animationFillMode: 'forwards'}}
+          >
+            <div className="space-y-4">
+              <NotifcationCard
+                title="New Assessment Assigned!"
+                description="You have been assigned a new assessment: The Human Eye and The Colourful World. Check the details and stay prepared!"
+                date="Today, 11:06 AM"
+                isNew={true}
+              />
+              <NotifcationCard
+                title="Study Material Updated"
+                description="New study materials have been added to your Physics course. Review the latest chapters on Optics and Light."
+                date="Yesterday, 3:45 PM"
+                isNew={false}
+              />
+            </div>
+          </TabsContent>
+
+          {/* Announcements */}
+          <TabsContent 
+            className="grid gap-6 animate-fade-in-up opacity-0" 
+            value="Announcement"
+            style={{animationDelay: '0.1s', animationFillMode: 'forwards'}}
+          >
+            <div className="space-y-4">
+              <NotifcationCard
+                title="School Holiday Notice"
+                description="Please note that the school will be closed on Monday, December 25th for Christmas holiday. All classes will resume on December 26th."
+                date="Dec 20, 2023, 9:00 AM"
+                isNew={true}
+              />
+              <NotifcationCard
+                title="Exam Schedule Released"
+                description="The final examination schedule for this semester has been published. Please check your student portal for detailed timings and venues."
+                date="Dec 18, 2023, 2:30 PM"
+                isNew={false}
+              />
+            </div>
+          </TabsContent>
+        </Tabs>
+      </div>
+    </div>
   );
 }

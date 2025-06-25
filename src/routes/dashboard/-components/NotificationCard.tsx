@@ -33,13 +33,33 @@ export function NotifcationCard({
 }: NotifcationCardProps) {
   return (
     <div
-      className={`${isNew ? "bg-primary-50 border-primary-500" : ""}  border p-6 flex flex-col gap-3 rounded-xl`}
+      className={`${
+        isNew 
+          ? "bg-orange-50/80 border-orange-200 shadow-lg" 
+          : "bg-white/80 border-gray-200/60"
+      } backdrop-blur-xl border rounded-2xl p-6 flex flex-col gap-4 transition-all duration-300 hover:shadow-xl hover:scale-[1.01] group cursor-pointer`}
     >
-      <div className="font-[600]">{title}</div>
-      <div className="text-caption">{description}</div>
-      <div className="flex flex-row gap-2 items-center">
-        <div className="size-[10px] bg-primary-500 rounded-full"></div>
-        <div className="text-caption">{date}</div>
+      {/* Title */}
+      <div className="text-lg font-light text-gray-900 tracking-tight group-hover:text-gray-700 transition-colors duration-300">
+        {title}
+      </div>
+      
+      {/* Description */}
+      <div className="text-gray-600 font-light leading-relaxed">
+        {description}
+      </div>
+      
+      {/* Date and Status */}
+      <div className="flex flex-row gap-3 items-center pt-2 border-t border-gray-100/50">
+        <div className={`size-2.5 ${isNew ? 'bg-orange-500' : 'bg-gray-400'} rounded-full transition-colors duration-300`}></div>
+        <div className="text-sm text-gray-500 font-light">{date}</div>
+        {isNew && (
+          <div className="ml-auto">
+            <span className="bg-orange-100 text-orange-600 px-2 py-1 rounded-lg text-xs font-medium">
+              New
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );

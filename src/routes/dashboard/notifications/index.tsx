@@ -14,8 +14,6 @@ function RouteComponent() {
       setNavHeading("Notifications");
     }, []);
   return (
-    <LayoutContainer>
-        <NotificationList/>
-    </LayoutContainer>
+    <NotificationList/>
   );
 }

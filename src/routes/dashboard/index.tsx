@@ -64,69 +64,71 @@ export function DashboardComponent() {
   }, []);
 
   return (
-    <div>
+    <div className="space-y-4">
       <Helmet>
         <title>Dashboard</title>
         <meta name="description" content="Dashboard page" />
       </Helmet>
-      <div className="text-h3">
+      
+      {/* Compact Header */}
+      <div className="flex items-center justify-between">
         <div>
-          Hello <span className="text-primary-500">{username}!</span>
+          <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">
+            Welcome back, <span className="text-orange-600">{username}</span>
+          </h1>
+          <p className="text-sm text-gray-600 mt-0.5">Dashboard Overview</p>
         </div>
-        <div className="text-body mt-2">
-          Excited to have you here! Let's dive into learning!
+        <div className="text-xs text-gray-500 bg-gray-50 px-3 py-1.5 rounded-lg">
+          {new Date().toLocaleDateString('en-US', { 
+            weekday: 'short', 
+            month: 'short', 
+            day: 'numeric' 
+          })}
         </div>
       </div>
-      <div className="my-6 w-fit mx-auto">
-        <DashboardImg />
-      </div>
-      <div className="flex flex-col gap-6">
+
+      {/* Compact Stats Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div
           onClick={() => {
             navigate({
               to: `/study-library/courses`,
             });
           }}
-          className="cursor-pointer"
+          className="cursor-pointer group"
         >
           <DashboardTabs
-            title={"My Subjects"}
-            count={studyLibraryData?.length}
+            title={"Subjects"}
+            count={studyLibraryData?.length || 0}
             button={false}
           />
         </div>
+        
         <div
           onClick={() => {
             navigate({
               to: `/homework/list`,
             });
           }}
-          className="cursor-pointer"
+          className="cursor-pointer group"
         >
           <DashboardTabs
-            title={"Home work assigned "}
+            title={"Homework"}
             count={homeworkAssignedCount}
             button={false}
           />
         </div>
-        {/* TODO: implemnet resume feature after api is changed */}
-        {/* <DashboardTabs
-            title="Begin your journey"
-            count={data?.slides.length}
-            button={true}
-            buttonText="Resume"
-            list={data?.slides}
-          /> */}
+        
         <div
           onClick={() => {
             navigate({
               to: `/assessment/examination`,
             });
           }}
-          className="cursor-pointer"
+          className="cursor-pointer group"
         >
           <DashboardTabs
-            title="Test Assigned"
+            title="Assessments"
             count={testAssignedCount}
             button={false}
           />

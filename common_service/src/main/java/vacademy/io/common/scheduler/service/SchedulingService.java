@@ -34,6 +34,7 @@ public class SchedulingService {
 
 
     public String generateCronProfileId(CronProfileTypeEnum frequency) {
+        log.info("Ran Now: {}", new Date());
         ZonedDateTime time = ZonedDateTime.now(ZoneOffset.UTC);
 
         ZonedDateTime normalizedTime = switch (frequency) {

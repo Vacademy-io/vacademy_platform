@@ -94,6 +94,9 @@ public class StudentAttemptService {
         attempt.setTotalTimeInSeconds(timeElapsedInSeconds);
         attempt.setResultMarks(totalMarks);
         attempt.setResultStatus(AssessmentAttemptResultEnum.COMPLETED.name());
+        if(!attempt.getStatus().equals(AssessmentAttemptEnum.ENDED.name())){
+            attempt.setStatus(AssessmentAttemptEnum.ENDED.name());
+        }
 
         return studentAttemptRepository.save(attempt);
     }
@@ -119,15 +122,7 @@ public class StudentAttemptService {
 
     @Transactional
     public Double calculateTotalMarksForAttemptAndUpdateQuestionWiseMarks(Optional<StudentAttempt> studentAttemptOptional) {
-        try {
-            if (studentAttemptOptional.isEmpty()) throw new VacademyException("Student Attempt Not Found");
-            if (Objects.isNull(studentAttemptOptional.get().getAttemptData()))
-                throw new VacademyException("Attempt Data Not Found");
-
-            return calculateTotalMarks(studentAttemptOptional);
-        } catch (Exception e) {
-            throw new VacademyException("Failed to calculate marks: " + e.getMessage());
-        }
+        return calculateTotalMarks(studentAttemptOptional);
     }
 
     /**
@@ -139,24 +134,29 @@ public class StudentAttemptService {
      * @return The total marks for the learner's attempt.
      * @throws Exception - If any error occurs during the calculation.
      */
-    public double calculateTotalMarks(Optional<StudentAttempt> studentAttemptOptional) throws Exception {
-        double totalMarks = 0.0;
+    public double calculateTotalMarks(Optional<StudentAttempt> studentAttemptOptional){
+        try{
+            double totalMarks = 0.0;
 
-        if (studentAttemptOptional.isEmpty()) {
+            if (studentAttemptOptional.isEmpty()) {
+                return 0.0;
+            }
+
+            StudentAttempt studentAttempt = studentAttemptOptional.get();
+            Assessment assessment = studentAttempt.getRegistration().getAssessment();
+            String attemptData = studentAttempt.getAttemptData();
+
+            List<String> sectionList = attemptDataParserService.extractSectionJsonStrings(attemptData);
+
+            for (String section : sectionList) {
+                totalMarks += calculateMarksForSection(section, attemptData, assessment, studentAttempt);
+            }
+
+            return totalMarks;
+        } catch (Exception e) {
+            log.error("Failed To Calculate Marks: " +e.getMessage());
             return 0.0;
         }
-
-        StudentAttempt studentAttempt = studentAttemptOptional.get();
-        Assessment assessment = studentAttempt.getRegistration().getAssessment();
-        String attemptData = studentAttempt.getAttemptData();
-
-        List<String> sectionList = attemptDataParserService.extractSectionJsonStrings(attemptData);
-
-        for (String section : sectionList) {
-            totalMarks += calculateMarksForSection(section, attemptData, assessment, studentAttempt);
-        }
-
-        return totalMarks;
     }
 
     private double calculateMarksForSection(String sectionJson, String attemptData, Assessment assessment, StudentAttempt studentAttempt) {

@@ -27,7 +27,7 @@ public class AssessmentAttemptEndTaskExecutor implements TaskExecutor {
     private SchedulingService schedulingService;
 
     @Autowired
-    StudentAttemptService studentAttemptService;
+    private StudentAttemptService studentAttemptService;
 
     @Autowired
     private TaskExecutionAuditRepository taskExecutionAuditRepository;
@@ -57,29 +57,13 @@ public class AssessmentAttemptEndTaskExecutor implements TaskExecutor {
         List<TaskExecutionAudit> allTasks =  new ArrayList<>();
 
         attempts.forEach(attempt->{
-            attempt.setStatus(AssessmentAttemptEnum.ENDED.name());
-            try{
-                log.info("Updated: " + attempt.getId());
-                studentAttemptService.updateStudentAttempt(attempt);
-                allTasks.add(TaskExecutionAudit.builder()
-                        .source(source)
-                        .sourceId(attempt.getId())
-                        .schedulerActivityLog(activityLog)
-                        .statusMessage("Completed Successfully")
-                        .status(SchedulerStatusEnum.FINISHED.name()).build());
-
-            } catch (Exception e) {
-                log.error("Failed To Update Attempt Status: " + e.getMessage());
-
-                activityLogStatus.set(SchedulerStatusEnum.FAILED.name());
-                allTasks.add(TaskExecutionAudit.builder()
-                        .source(source)
-                        .sourceId(attempt.getId())
-                        .schedulerActivityLog(activityLog)
-                        .statusMessage(e.getMessage())
-                        .status(SchedulerStatusEnum.FAILED.name()).build());
-
-            }
+            studentAttemptService.updateStudentAttemptResultAfterMarksCalculationAsync(Optional.of(attempt));
+            allTasks.add(TaskExecutionAudit.builder()
+                    .source(source)
+                    .sourceId(attempt.getId())
+                    .schedulerActivityLog(activityLog)
+                    .statusMessage("Completed Successfully")
+                    .status(SchedulerStatusEnum.FINISHED.name()).build());
         });
 
         taskExecutionAuditRepository.saveAll(allTasks);

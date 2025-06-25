@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.institute.manager;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.group.repository.PackageGroupMappingRepository;
@@ -18,6 +19,7 @@ import vacademy.io.common.institute.dto.*;
 import vacademy.io.common.institute.entity.Institute;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Stream;
 
@@ -116,5 +118,20 @@ public class InstituteInitManager {
         instituteInfoDTO.setPackageGroups(packageGroupMappingRepository.findAllByInstituteId(institute.get().getId()).stream().map((obj)->obj.mapToDTO()).toList());
         instituteInfoDTO.setTags(packageRepository.findAllDistinctTagsByInstituteId(institute.get().getId()));
         return instituteInfoDTO;
+    }
+
+    public ResponseEntity<String> getInstituteIdOrSubDomain(String instituteId, String subdomain) {
+        if(Objects.isNull(instituteId) && Objects.isNull(subdomain)) throw new VacademyException("Invalid Request");
+
+        if(Objects.isNull(instituteId)){
+            Optional<Institute> institute = instituteRepository.findBySubdomainLimit1(subdomain);
+            if(institute.isEmpty()) throw new VacademyException("No Institute Found with Subdomain: " + subdomain);
+            return ResponseEntity.ok(institute.get().getId());
+        }
+
+        Optional<Institute> institute = instituteRepository.findById(instituteId);
+        if(institute.isEmpty()) throw new VacademyException("No Institute Found with Id: " +instituteId);
+
+        return ResponseEntity.ok(institute.get().getSubdomain());
     }
 }

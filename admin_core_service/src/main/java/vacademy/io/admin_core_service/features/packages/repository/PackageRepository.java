@@ -413,12 +413,15 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
     LEFT JOIN faculty_subject_package_session_mapping fspm
         ON fspm.package_session_id = ps.id
         AND fspm.subject_id IS NULL
+        AND (
+            :#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true
+            OR fspm.status IN (:facultySubjectSessionStatus)
+        )
     WHERE
         (:instituteId IS NULL OR pi.institute_id = :instituteId)
         AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
         AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
         AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
-        AND (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true OR fspm.status IN (:facultySubjectSessionStatus))
         AND (
             :name IS NULL OR
             LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
@@ -446,12 +449,15 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
     LEFT JOIN faculty_subject_package_session_mapping fspm
         ON fspm.package_session_id = ps.id
         AND fspm.subject_id IS NULL
+        AND (
+            :#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true
+            OR fspm.status IN (:facultySubjectSessionStatus)
+        )
     WHERE
         (:instituteId IS NULL OR pi.institute_id = :instituteId)
         AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
         AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
         AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
-        AND (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true OR fspm.status IN (:facultySubjectSessionStatus))
         AND (
             :name IS NULL OR
             LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
@@ -497,7 +503,9 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
         ARRAY_REMOVE(
             ARRAY_AGG(DISTINCT
                 CASE
-                    WHEN fspm.status IN (:facultySubjectSessionStatus) AND fspm.subject_id IS NULL THEN fspm.user_id
+                    WHEN fspm.subject_id IS NULL AND
+                         (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true OR fspm.status IN (:facultySubjectSessionStatus))
+                    THEN fspm.user_id
                     ELSE NULL
                 END
             ), NULL
@@ -506,12 +514,31 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
     JOIN package_session ps ON ps.package_id = p.id
     JOIN level l ON l.id = ps.level_id
     JOIN package_institute pi ON pi.package_id = p.id
-    LEFT JOIN faculty_subject_package_session_mapping fspm ON fspm.package_session_id = ps.id
+    LEFT JOIN faculty_subject_package_session_mapping fspm
+        ON fspm.package_session_id = ps.id
+        AND fspm.subject_id IS NULL
+        AND (
+            :#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true
+            OR fspm.status IN (:facultySubjectSessionStatus)
+        )
     WHERE
         (:instituteId IS NULL OR pi.institute_id = :instituteId)
         AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
         AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
         AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
+        AND (
+            :#{#userIds == null || #userIds.isEmpty()} = true
+            OR EXISTS (
+                SELECT 1 FROM faculty_subject_package_session_mapping f
+                WHERE f.package_session_id = ps.id
+                AND f.subject_id IS NULL
+                AND f.user_id IN (:userIds)
+                AND (
+                    :#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true
+                    OR f.status IN (:facultySubjectSessionStatus)
+                )
+            )
+        )
         AND (
             :name IS NULL OR
             LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
@@ -521,17 +548,6 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 WHERE LOWER(tag) LIKE LOWER(CONCAT('%', :name, '%'))
             ) OR
             LOWER(fspm.name) LIKE LOWER(CONCAT('%', :name, '%'))
-        )
-        AND (
-            :#{#userIds == null || #userIds.isEmpty()} = true
-            OR EXISTS (
-                SELECT 1
-                FROM faculty_subject_package_session_mapping f
-                WHERE f.package_session_id = ps.id
-                AND f.subject_id IS NULL
-                AND f.user_id IN (:userIds)
-                AND f.status IN (:facultySubjectSessionStatus)
-            )
         )
     GROUP BY
         p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
@@ -547,12 +563,31 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
     JOIN package_session ps ON ps.package_id = p.id
     JOIN level l ON l.id = ps.level_id
     JOIN package_institute pi ON pi.package_id = p.id
-    LEFT JOIN faculty_subject_package_session_mapping fspm ON fspm.package_session_id = ps.id
+    LEFT JOIN faculty_subject_package_session_mapping fspm
+        ON fspm.package_session_id = ps.id
+        AND fspm.subject_id IS NULL
+        AND (
+            :#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true
+            OR fspm.status IN (:facultySubjectSessionStatus)
+        )
     WHERE
         (:instituteId IS NULL OR pi.institute_id = :instituteId)
         AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
         AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
         AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
+        AND (
+            :#{#userIds == null || #userIds.isEmpty()} = true
+            OR EXISTS (
+                SELECT 1 FROM faculty_subject_package_session_mapping f
+                WHERE f.package_session_id = ps.id
+                AND f.subject_id IS NULL
+                AND f.user_id IN (:userIds)
+                AND (
+                    :#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true
+                    OR f.status IN (:facultySubjectSessionStatus)
+                )
+            )
+        )
         AND (
             :name IS NULL OR
             LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
@@ -563,18 +598,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             ) OR
             LOWER(fspm.name) LIKE LOWER(CONCAT('%', :name, '%'))
         )
-        AND (
-            :#{#userIds == null || #userIds.isEmpty()} = true
-            OR EXISTS (
-                SELECT 1
-                FROM faculty_subject_package_session_mapping f
-                WHERE f.package_session_id = ps.id
-                AND f.subject_id IS NULL
-                AND f.user_id IN (:userIds)
-                AND f.status IN (:facultySubjectSessionStatus)
-            )
-        )
-    """,
+""",
         nativeQuery = true)
     Page<PackageDetailProjection> getCatalogPackageDetail(
         @Param("name") String name,
@@ -586,6 +610,8 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
         @Param("facultySubjectSessionStatus") List<String> facultySubjectSessionStatus,
         Pageable pageable
     );
+
+
 
     @Query(value = """
     SELECT
@@ -614,15 +640,31 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
     JOIN level l ON l.id = ps.level_id
     JOIN package_institute pi ON pi.package_id = p.id
     LEFT JOIN faculty_subject_package_session_mapping fspm
-        ON fspm.package_session_id = ps.id AND fspm.subject_id IS NULL
+        ON fspm.package_session_id = ps.id
+        AND fspm.subject_id IS NULL
+        AND (
+            :#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true
+            OR fspm.status IN (:facultyPackageSessionStatus)
+        )
     WHERE
         (:instituteId IS NULL OR pi.institute_id = :instituteId)
         AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR l.id IN (:levelIds))
         AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
         AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
         AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
-        AND (:#{#facultyIds == null || #facultyIds.isEmpty()} = true OR fspm.user_id IN (:facultyIds))
-        AND (:#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true OR fspm.status IN (:facultyPackageSessionStatus))
+        AND (
+            :#{#facultyIds == null || #facultyIds.isEmpty()} = true
+            OR EXISTS (
+                SELECT 1 FROM faculty_subject_package_session_mapping f
+                WHERE f.package_session_id = ps.id
+                AND f.subject_id IS NULL
+                AND f.user_id IN (:facultyIds)
+                AND (
+                    :#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true
+                    OR f.status IN (:facultyPackageSessionStatus)
+                )
+            )
+        )
         AND (
             :#{#tags == null || #tags.isEmpty()} = true OR
             EXISTS (
@@ -645,15 +687,31 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
     JOIN level l ON l.id = ps.level_id
     JOIN package_institute pi ON pi.package_id = p.id
     LEFT JOIN faculty_subject_package_session_mapping fspm
-        ON fspm.package_session_id = ps.id AND fspm.subject_id IS NULL
+        ON fspm.package_session_id = ps.id
+        AND fspm.subject_id IS NULL
+        AND (
+            :#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true
+            OR fspm.status IN (:facultyPackageSessionStatus)
+        )
     WHERE
         (:instituteId IS NULL OR pi.institute_id = :instituteId)
         AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR l.id IN (:levelIds))
         AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
         AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
         AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
-        AND (:#{#facultyIds == null || #facultyIds.isEmpty()} = true OR fspm.user_id IN (:facultyIds))
-        AND (:#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true OR fspm.status IN (:facultyPackageSessionStatus))
+        AND (
+            :#{#facultyIds == null || #facultyIds.isEmpty()} = true
+            OR EXISTS (
+                SELECT 1 FROM faculty_subject_package_session_mapping f
+                WHERE f.package_session_id = ps.id
+                AND f.subject_id IS NULL
+                AND f.user_id IN (:facultyIds)
+                AND (
+                    :#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true
+                    OR f.status IN (:facultyPackageSessionStatus)
+                )
+            )
+        )
         AND (
             :#{#tags == null || #tags.isEmpty()} = true OR
             EXISTS (
@@ -674,4 +732,6 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
         @Param("levelStatus") List<String> levelStatus,
         Pageable pageable
     );
+
+
 }

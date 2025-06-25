@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.chapter.repository.ChapterPackageSessionMappingRepository;
+import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.module.entity.SubjectModuleMapping;
 import vacademy.io.admin_core_service.features.module.enums.ModuleStatusEnum;
 import vacademy.io.admin_core_service.features.module.repository.ModuleChapterMappingRepository;
@@ -354,6 +355,38 @@ public class SubjectService {
             }
         }
         subjectPackageSessionRepository.saveAll(subjectPackageSessions);
+    }
+
+    @Transactional
+    public String addRequestSubject(SubjectDTO subjectDTO, String commaSeparatedPackageSessionIds, CustomUserDetails user) {
+        if (Objects.isNull(commaSeparatedPackageSessionIds)) {
+            throw new VacademyException("Package Session Id cannot be null");
+        }
+
+        validateSubject(subjectDTO); // Validate the subject DTO before proceeding.
+
+        Subject subject = new Subject();
+        createSubject(subjectDTO, subject); // Create a Subject entity from the DTO.
+        subject.setStatus(SubjectStatusEnum.PENDING_APPROVAL.name());
+        Subject savedSubject = subjectRepository.save(subject); // Save the subject to the database.
+        subjectDTO.setId(savedSubject.getId()); // Set the generated ID in the DTO.
+        // different package sessions where the subject will be available
+        String[] packageSessionIds = getPackageSessionIds(commaSeparatedPackageSessionIds);
+        for (String packageSessionId : packageSessionIds) {
+            try {
+                Optional<Subject> optionalSubject = getSubjectByNameAndPackageSessionId(subjectDTO.getSubjectName(), packageSessionId);
+                if (optionalSubject.isPresent()) {
+                    throw new VacademyException("Subject already exists");
+                }
+                PackageSession packageSession = packageSessionRepository.findById(packageSessionId)
+                    .orElseThrow(() -> new VacademyException("Package Session not found"));
+                subjectPackageSessionRepository.save(new SubjectPackageSession(savedSubject, packageSession, subjectDTO.getSubjectOrder()));
+                // Create and save the relationship between the subject and the package session.
+            } catch (Exception e) {
+                log.error("Error adding subject: {}", e.getMessage());
+            }
+        }
+        return subjectDTO.getId();
     }
 
 

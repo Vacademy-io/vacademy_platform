@@ -1,14 +1,14 @@
 package vacademy.io.admin_core_service.features.packages.service;
 
-import com.itextpdf.styledxmlparser.jsoup.internal.StringUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
+import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.learner_operation.enums.LearnerOperationEnum;
-import vacademy.io.admin_core_service.features.packages.dto.LearnerPackageDetailDTO;
-import vacademy.io.admin_core_service.features.packages.dto.LearnerPackageDetailProjection;
+import vacademy.io.admin_core_service.features.packages.dto.PackageDetailDTO;
+import vacademy.io.admin_core_service.features.packages.dto.PackageDetailProjection;
 import vacademy.io.admin_core_service.features.packages.dto.LearnerPackageFilterDTO;
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
 import vacademy.io.admin_core_service.features.packages.enums.PackageStatusEnum;
@@ -30,7 +30,7 @@ public class LearnerPackageService {
     @Autowired
     private AuthService authService;
 
-    public Page<LearnerPackageDetailDTO> getLearnerPackageDetail(
+    public Page<PackageDetailDTO> getLearnerPackageDetail(
             LearnerPackageFilterDTO learnerPackageFilterDTO,
             CustomUserDetails user,
             String instituteId,
@@ -40,7 +40,7 @@ public class LearnerPackageService {
         Sort thisSort = ListService.createSortObject(learnerPackageFilterDTO.getSortColumns());
         Pageable pageable = PageRequest.of(pageNo, pageSize, thisSort);
 
-        Page<LearnerPackageDetailProjection> learnerPackageDetail = null;
+        Page<PackageDetailProjection> learnerPackageDetail = null;
         if (StringUtils.hasText(learnerPackageFilterDTO.getSearchByName())){
             learnerPackageDetail= packageRepository.getLearnerPackageDetail(
                     user.getId(),
@@ -51,6 +51,7 @@ public class LearnerPackageService {
                     List.of(LearnerOperationEnum.PERCENTAGE_PACKAGE_SESSION_COMPLETED.name()),
                     learnerPackageFilterDTO.getMinPercentageCompleted(),
                     learnerPackageFilterDTO.getMaxPercentageCompleted(),
+                    List.of(StatusEnum.ACTIVE.name()),
                     pageable
             );
         }else{
@@ -64,6 +65,7 @@ public class LearnerPackageService {
                     learnerPackageFilterDTO.getMinPercentageCompleted(),
                     learnerPackageFilterDTO.getMaxPercentageCompleted(),
                     learnerPackageFilterDTO.getFacultyIds(),
+                    List.of(StatusEnum.ACTIVE.name()),
                     learnerPackageFilterDTO.getTag(),
                     pageable
             );
@@ -71,7 +73,7 @@ public class LearnerPackageService {
 
         // Get all instructor userIds
         List<String> instructorIds = learnerPackageDetail.getContent().stream()
-                .map(LearnerPackageDetailProjection::getFacultyUserIds)
+                .map(PackageDetailProjection::getFacultyUserIds)
                 .filter(Objects::nonNull)
                 .flatMap(List::stream)
                 .distinct()
@@ -82,14 +84,14 @@ public class LearnerPackageService {
         Map<String, UserDTO> userMap = userDTOS.stream().collect(Collectors.toMap(UserDTO::getId, Function.identity()));
 
         // Map projections to DTOs
-        List<LearnerPackageDetailDTO> dtos = learnerPackageDetail.getContent().stream().map(projection -> {
+        List<PackageDetailDTO> dtos = learnerPackageDetail.getContent().stream().map(projection -> {
             List<UserDTO> instructors = Optional.ofNullable(projection.getFacultyUserIds())
                     .orElse(List.of()).stream()
                     .map(userMap::get)
                     .filter(Objects::nonNull)
                     .collect(Collectors.toList());
 
-            return new LearnerPackageDetailDTO(
+            return new PackageDetailDTO(
                     projection.getId(),
                     projection.getPackageName(),
                     projection.getThumbnailFileId(),

@@ -13,7 +13,7 @@ import java.util.List;
 @AllArgsConstructor
 @NoArgsConstructor
 @Data
-public class LearnerPackageDetailDTO {
+public class PackageDetailDTO {
     private String id;
     private String packageName;
     private String thumbnailFileId;

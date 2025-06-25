@@ -309,4 +309,26 @@ public class ChapterService {
         copyChapter(newPackageSessionId, moduleId, chapterId, user);
         return "Chapter moved successfully.";
     }
+
+    @Transactional
+    public String addRequestChapter(ChapterDTO chapterDTO, String moduleId, String commaSeparatedPackageSessionIds, CustomUserDetails user) {
+        validateRequest(chapterDTO, moduleId, commaSeparatedPackageSessionIds);
+        chapterDTO.setStatus(ChapterStatus.PENDING_APPROVAL.name());
+        Chapter chapter = saveChapter(chapterDTO);
+        Optional<SubjectModuleMapping> subjectModuleMapping = subjectModuleMappingRepository.findByModuleId(moduleId);
+        List<Module> modules = null;
+        chapterDTO.setId(chapter.getId());
+        chapterDTO.setStatus(ChapterStatus.ACTIVE.name());
+        modules = new ArrayList<>();
+        modules.add(subjectModuleMapping.get().getModule());
+        String[] packageSessionIds = getPackageSessionIds(commaSeparatedPackageSessionIds);
+        for (String packageSessionId : packageSessionIds) {
+            PackageSession packageSession = fetchPackageSessionById(packageSessionId);
+            ChapterPackageSessionMapping chapterPackageSessionMapping = new ChapterPackageSessionMapping(chapter, packageSession, chapterDTO.getChapterOrder());
+            chapterPackageSessionMapping.setStatus(ChapterStatus.PENDING_APPROVAL.name());
+            chapterPackageSessionMappingRepository.save(chapterPackageSessionMapping);
+        }
+        processChapterModuleMapping(chapter, modules);
+        return chapter.getId();
+    }
 }

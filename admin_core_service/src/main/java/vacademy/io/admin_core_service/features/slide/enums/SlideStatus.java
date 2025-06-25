@@ -4,5 +4,6 @@ public enum SlideStatus {
     PUBLISHED,
     DRAFT,
     DELETED,
-    UNSYNC
+    UNSYNC,
+    PENDING_APPROVAL
 }

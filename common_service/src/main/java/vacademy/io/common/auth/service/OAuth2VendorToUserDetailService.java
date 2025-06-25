@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import vacademy.io.common.auth.entity.OAuth2VendorToUserDetail;
 import vacademy.io.common.auth.repository.OAuth2VendorToUserDetailRepository;
 
@@ -19,7 +20,9 @@ public class OAuth2VendorToUserDetailService {
     private OAuth2VendorToUserDetailRepository oauth2VendorToUserDetailRepository;
 
     public void saveOrUpdateOAuth2VendorToUserDetail(String vendorId, String emailId, String vendorToUserId) {
-        log.info("Saving or updating OAuth2 vendor-to-user detail: vendorId={}, subject={}, emailId={}", vendorId, vendorToUserId, emailId);
+        log.info("Saving or updating OAuth2 vendor-to-user detail: '" +
+                "'" +
+                "vendorId={}, subject={}, emailId={}", vendorId, vendorToUserId, emailId);
 
         Optional<OAuth2VendorToUserDetail> optionalOAuth2VendorToUserDetail =
                 oauth2VendorToUserDetailRepository.findByProviderIdAndSubject(vendorId, vendorToUserId);
@@ -54,4 +57,19 @@ public class OAuth2VendorToUserDetailService {
             return null;
         }
     }
+
+    public void verifyEmail(String subjectId,String vendorId,String emailId) {
+        if (StringUtils.hasText(subjectId) && StringUtils.hasText(vendorId) && StringUtils.hasText(emailId)) {
+            Optional<OAuth2VendorToUserDetail> optionalOAuth2VendorToUserDetail =
+                    oauth2VendorToUserDetailRepository.findByProviderIdAndSubject(vendorId, subjectId);
+
+            if (optionalOAuth2VendorToUserDetail.isPresent()) {
+                OAuth2VendorToUserDetail oAuth2VendorToUserDetail = optionalOAuth2VendorToUserDetail.get();
+                oAuth2VendorToUserDetail.setEmailId(emailId);
+                oauth2VendorToUserDetailRepository.save(oAuth2VendorToUserDetail);
+            }
+        }
+    }
 }
+
+

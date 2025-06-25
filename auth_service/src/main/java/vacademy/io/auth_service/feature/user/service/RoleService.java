@@ -28,12 +28,14 @@ public class RoleService {
     private final UserRepository userRepository;
     private final UserRoleRepository userRoleRepository;
     private final UserService userService;
+    private final UserOperationService userOperationService;
 
-    public RoleService(RoleRepository roleRepository, UserRepository userRepository, UserRoleRepository userRoleRepository, UserService userService) {
+    public RoleService(RoleRepository roleRepository, UserRepository userRepository, UserRoleRepository userRoleRepository, UserService userService,UserOperationService userOperationService) {
         this.roleRepository = roleRepository;
         this.userRepository = userRepository;
         this.userRoleRepository = userRoleRepository;
         this.userService = userService;
+        this.userOperationService = userOperationService;
     }
 
     @Transactional
@@ -51,6 +53,7 @@ public class RoleService {
         }
 
         userRoleRepository.saveAll(userRoles);
+        userService.updateLastTokenUpdatedTime(List.of(addRolesToUserDTO.getUserId()));
         return "Roles added successfully";
     }
 

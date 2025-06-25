@@ -32,6 +32,21 @@ public class LIveSessionAttendanceService {
 
         liveSessionLogRepository.save(log);
     }
+    public void markGuestAttendance(MarkAttendanceRequestDTO request ) {
+        LiveSessionLogs log = LiveSessionLogs.builder()
+                .sessionId(request.getSessionId())
+                .scheduleId(request.getScheduleId())
+                .userSourceType(request.getUserSourceType())
+                .userSourceId(request.getUserSourceId())
+                .logType(SessionLog.ATTENDANCE_RECORDED.name())
+                .status("PRESENT")
+                .details(request.getDetails())
+                .createdAt(new Timestamp(System.currentTimeMillis()))
+                .updatedAt(new Timestamp(System.currentTimeMillis()))
+                .build();
+
+        liveSessionLogRepository.save(log);
+    }
     public void markAttendanceForGuest(MarkAttendanceRequestDTO request ) {
         LiveSessionLogs log = LiveSessionLogs.builder()
                 .sessionId(request.getSessionId())

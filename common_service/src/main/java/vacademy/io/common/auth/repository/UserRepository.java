@@ -105,4 +105,9 @@ public interface UserRepository extends CrudRepository<User, String> {
 
     @Query("SELECT DISTINCT ur.user FROM UserRole ur WHERE ur.status IN :statuses AND ur.role.name IN :roles AND ur.instituteId = :instituteId")
     List<User> findUsersByStatusAndInstitute(@Param("statuses") List<String> statuses, @Param("roles") List<String> roles, @Param("instituteId") String instituteId);
+
+    @Modifying
+    @Transactional
+    @Query("UPDATE User u SET u.lastTokenUpdateTime = CURRENT_TIMESTAMP WHERE u.id IN :userIds")
+    void updateLastTokenUpdateTime(@Param("userIds") List<String> userIds);
 }

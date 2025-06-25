@@ -15,6 +15,8 @@ public class CreateSessionDto {
     private Boolean canJoinInBetween = true;
     private Boolean showResultsAtLastSlide = true;
     private Boolean allowLearnerHandRaise = true;
+    private Boolean isSessionRecorded = true;
+    private Boolean allowChat = true;
     private Integer defaultSecondsForQuestion = 60;
     private Integer studentAttempts = 1;
 }

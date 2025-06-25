@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.chapter.service;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.chapter.dto.ChapterDTO;
 import vacademy.io.admin_core_service.features.chapter.dto.UpdateChapterOrderDTO;
 import vacademy.io.admin_core_service.features.chapter.entity.Chapter;
@@ -42,10 +43,17 @@ public class ChapterService {
         validateRequest(chapterDTO, moduleId, commaSeparatedPackageSessionIds);
         Chapter chapter = saveChapter(chapterDTO);
         Optional<SubjectModuleMapping> subjectModuleMapping = subjectModuleMappingRepository.findByModuleId(moduleId);
+        List<Module> modules = null;
         chapterDTO.setId(chapter.getId());
         chapterDTO.setStatus(ChapterStatus.ACTIVE.name());
-        List<Module> modules = subjectService.processSubjectsAndModules(Arrays.stream(getPackageSessionIds(commaSeparatedPackageSessionIds)).toList(), subjectModuleMapping.get().getSubject(), subjectModuleMapping.get().getModule());
-        processPackageSessionMappings(chapter, commaSeparatedPackageSessionIds, chapterDTO.getChapterOrder());
+        if(!moduleId.trim().equalsIgnoreCase("DEFAULT")){
+            modules = subjectService.processSubjectsAndModules(Arrays.stream(getPackageSessionIds(commaSeparatedPackageSessionIds)).toList(), subjectModuleMapping.get().getSubject(), subjectModuleMapping.get().getModule());
+            processPackageSessionMappings(chapter, commaSeparatedPackageSessionIds, chapterDTO.getChapterOrder());
+        }else{
+            modules = new ArrayList<>();
+            modules.add(subjectModuleMapping.get().getModule());
+            processPackageSessionMappings(chapter, commaSeparatedPackageSessionIds, chapterDTO.getChapterOrder());
+        }
         processChapterModuleMapping(chapter, modules);
         return chapterDTO;
     }
@@ -300,5 +308,27 @@ public class ChapterService {
         deleteChapter(List.of(chapterId), existingPackageSessionId, user);
         copyChapter(newPackageSessionId, moduleId, chapterId, user);
         return "Chapter moved successfully.";
+    }
+
+    @Transactional
+    public String addRequestChapter(ChapterDTO chapterDTO, String moduleId, String commaSeparatedPackageSessionIds, CustomUserDetails user) {
+        validateRequest(chapterDTO, moduleId, commaSeparatedPackageSessionIds);
+        chapterDTO.setStatus(ChapterStatus.PENDING_APPROVAL.name());
+        Chapter chapter = saveChapter(chapterDTO);
+        Optional<SubjectModuleMapping> subjectModuleMapping = subjectModuleMappingRepository.findByModuleId(moduleId);
+        List<Module> modules = null;
+        chapterDTO.setId(chapter.getId());
+        chapterDTO.setStatus(ChapterStatus.ACTIVE.name());
+        modules = new ArrayList<>();
+        modules.add(subjectModuleMapping.get().getModule());
+        String[] packageSessionIds = getPackageSessionIds(commaSeparatedPackageSessionIds);
+        for (String packageSessionId : packageSessionIds) {
+            PackageSession packageSession = fetchPackageSessionById(packageSessionId);
+            ChapterPackageSessionMapping chapterPackageSessionMapping = new ChapterPackageSessionMapping(chapter, packageSession, chapterDTO.getChapterOrder());
+            chapterPackageSessionMapping.setStatus(ChapterStatus.PENDING_APPROVAL.name());
+            chapterPackageSessionMappingRepository.save(chapterPackageSessionMapping);
+        }
+        processChapterModuleMapping(chapter, modules);
+        return chapter.getId();
     }
 }

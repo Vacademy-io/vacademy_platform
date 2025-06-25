@@ -13,6 +13,7 @@ import vacademy.io.admin_core_service.features.learner_tracking.repository.Activ
 import vacademy.io.admin_core_service.features.learner_tracking.repository.ConcentrationScoreRepository;
 import vacademy.io.admin_core_service.features.module.enums.ModuleStatusEnum;
 import vacademy.io.admin_core_service.features.slide.enums.SlideStatus;
+import vacademy.io.admin_core_service.features.slide.enums.SlideTypeEnum;
 import vacademy.io.admin_core_service.features.subject.enums.SubjectStatusEnum;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
@@ -30,6 +31,7 @@ public class LearnerReportService {
     private static final List<String> ACTIVE_MODULES = List.of(ModuleStatusEnum.ACTIVE.name());
     private static final List<String> ACTIVE_CHAPTERS = List.of(ChapterStatus.ACTIVE.name());
     private static final List<String> VALID_SLIDE_STATUSES = List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name());
+    private static final List<String> SLIDE_TYPES = List.of(SlideTypeEnum.VIDEO.name(),SlideTypeEnum.DOCUMENT.name());
     private final ObjectMapper objectMapper = new ObjectMapper();
     @Autowired
     private ActivityLogRepository activityLogRepository;
@@ -58,10 +60,17 @@ public class LearnerReportService {
     }
 
     private Double getAverageTimeSpent(ReportFilterDTO filter) {
-        return activityLogRepository.findTimeSpentByLearner(
+        return activityLogRepository.findTimeSpentByLearnerWithFilters(
                 filter.getStartDate(),
                 filter.getEndDate(),
-                filter.getUserId()
+                filter.getUserId(),
+                filter.getPackageSessionId(),
+                ACTIVE_SUBJECTS,
+                ACTIVE_MODULES,
+                ACTIVE_CHAPTERS,
+                VALID_SLIDE_STATUSES,
+                ACTIVE_CHAPTERS,
+                SLIDE_TYPES
         );
     }
 
@@ -74,7 +83,9 @@ public class LearnerReportService {
                 ACTIVE_SUBJECTS,
                 ACTIVE_MODULES,
                 ACTIVE_CHAPTERS,
-                VALID_SLIDE_STATUSES
+                VALID_SLIDE_STATUSES,
+                SLIDE_TYPES,
+                ACTIVE_CHAPTERS
         );
     }
 

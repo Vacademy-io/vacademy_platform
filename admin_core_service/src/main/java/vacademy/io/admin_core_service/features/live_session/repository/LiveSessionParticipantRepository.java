@@ -24,23 +24,37 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
     @Transactional
     List<LiveSessionParticipants> findBySessionId(String sessionId);
 
-    @Query(value = """
-        SELECT
-            ssgm.user_id AS userId,
-            ssgm.status AS enrollmentStatus,
+        @Query(value = """
+        SELECT 
+            s.user_id AS studentId,
+            s.full_name AS fullName,
+            s.email AS email,
+            s.mobile_number AS mobileNumber,
+            s.gender AS gender,
+            s.date_of_birth AS dateOfBirth,
+            m.institute_enrollment_number AS instituteEnrollmentNumber,
+            m.status AS enrollmentStatus,
             lsl.status AS attendanceStatus,
             lsl.details AS attendanceDetails,
-            lsl.created_at AS attendanceLoggedAt
+            lsl.created_at AS attendanceTimestamp
         FROM live_session_participants lsp
-        JOIN student_session_institute_group_mapping ssgm
-            ON ssgm.package_session_id = lsp.source_id
+        JOIN student_session_institute_group_mapping m
+            ON m.package_session_id = lsp.source_id AND lsp.source_type = 'BATCH' AND m.status = 'ACTIVE'
+        JOIN student s
+            ON s.user_id = m.user_id
         LEFT JOIN live_session_logs lsl
-            ON lsl.session_id = lsp.session_id
+            ON lsl.user_source_id = s.user_id
             AND lsl.user_source_type = 'USER'
-            AND lsl.user_source_id = ssgm.user_id
+            AND lsl.session_id = :sessionId
+            AND lsl.schedule_id = :scheduleId
             AND lsl.log_type = 'ATTENDANCE_RECORDED'
-        WHERE lsp.session_id IN (:sessionIds)
-          AND lsp.source_type = 'BATCH'
-        """, nativeQuery = true)
-    List<AttendanceReportDTO> getAttendanceReportBySessionIds(@Param("sessionIds") List<String> sessionIds);
+        WHERE lsp.session_id = :sessionId
+    """, nativeQuery = true)
+        List<AttendanceReportDTO> getAttendanceReportBySessionIds(
+                @Param("sessionId") String sessionId,
+                @Param("scheduleId") String scheduleId
+        );
+
+
+
 }

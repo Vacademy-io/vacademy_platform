@@ -51,6 +51,12 @@ public class VideoSlideService {
         return updateVideoSlide(slideDTO, chapterId);
     }
 
+    @Transactional
+    public String addOrUpdateVideoSlideRequeest(SlideDTO slideDTO, String chapterId, CustomUserDetails userDetails) {
+        slideDTO.setStatus(SlideStatus.PENDING_APPROVAL.name());
+       return addVideoSlide(slideDTO, chapterId);
+    }
+
     public String addVideoSlide(SlideDTO slideDTO, String chapterId) {
         VideoSlideDTO videoSlideDTO = slideDTO.getVideoSlide();
         if (videoSlideDTO == null) {
@@ -66,7 +72,7 @@ public class VideoSlideService {
             saveVideoSlideQuestionAndOptions(videoSlideDTO.getQuestions(), videoSlide);
         }
 
-        slideService.saveSlide(
+       Slide slide = slideService.saveSlide(
                 slideDTO.getId(),
                 videoSlide.getId(),
                 SlideTypeEnum.VIDEO.name(),
@@ -78,7 +84,7 @@ public class VideoSlideService {
                 chapterId
         );
 
-        return "success";
+        return slide.getId();
     }
 
     public String updateVideoSlide(SlideDTO slideDTO, String chapterId) {

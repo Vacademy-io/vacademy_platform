@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.common.institute.entity.Institute;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface InstituteRepository extends CrudRepository<Institute, String> {
@@ -52,6 +53,12 @@ public interface InstituteRepository extends CrudRepository<Institute, String> {
                 id = :instituteId
             """, nativeQuery = true)
     public Integer findCountForNullOrEmptyFields(@Param("instituteId") String instituteId);
+
+    @Query(value = """
+            SELECT * from institutes where subdomain = :subdomain
+            ORDER BY created_at DESC LIMIT 1
+            """,nativeQuery = true)
+    Optional<Institute> findBySubdomainLimit1(@Param("subdomain") String subdomain);
 
 
 }

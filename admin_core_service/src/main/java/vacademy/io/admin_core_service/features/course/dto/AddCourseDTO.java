@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.Getter;
 import lombok.Setter;
 import vacademy.io.admin_core_service.features.session.dto.AddNewSessionDTO;
+import vacademy.io.common.auth.dto.UserDTO;
 
 import java.util.List;
 
@@ -28,4 +29,5 @@ public class AddCourseDTO {
     private List<String> tags;
     private Integer courseDepth;
     private String courseHtmlDescription;
+    List<AddFacultyToCourseDTO>addFacultyToCourse;
 }

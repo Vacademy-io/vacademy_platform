@@ -77,7 +77,7 @@ public class LevelService {
         if (addLevelWithCourseDTO.getGroup() != null) {
             group = groupService.addGroup(addLevelWithCourseDTO.getGroup());
         }
-        packageSessionService.createPackageSession(level, optionalSession.get(), optionalPackageEntity.get(),group, getStartDatePackageSessionDate(packageId, sessionId),instituteId,user);
+        packageSessionService.createPackageSession(level, optionalSession.get(), optionalPackageEntity.get(),group, getStartDatePackageSessionDate(packageId, sessionId),instituteId,user,addLevelWithCourseDTO.getAddFacultyToCourse());
         return level.getId();
     }
 

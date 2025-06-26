@@ -5,6 +5,8 @@ import lombok.AllArgsConstructor;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.security.core.parameters.P;
 import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.course.dto.AddFacultyToCourseDTO;
+import vacademy.io.admin_core_service.features.faculty.service.FacultyService;
 import vacademy.io.admin_core_service.features.group.service.GroupService;
 import vacademy.io.admin_core_service.features.learner_invitation.dto.AddLearnerInvitationDTO;
 import vacademy.io.admin_core_service.features.learner_invitation.enums.LearnerInvitationSourceTypeEnum;
@@ -46,6 +48,9 @@ public class SessionService {
     private final SubjectService subjectService;
     private final LearnerInvitationService learnerInvitationService;
     private final GroupService groupService;
+
+    private final FacultyService facultyService;
+
     public Session createOrGetSession(AddSessionDTO sessionDTO) {
         Session session = null;
         if (sessionDTO.getNewSession() == false) {
@@ -130,7 +135,7 @@ public class SessionService {
     }
 
     @Transactional
-    public String addNewSession(AddNewSessionDTO addNewSessionDTO,String instituteId, CustomUserDetails user) {
+    public String addNewSession(AddNewSessionDTO addNewSessionDTO, String instituteId, CustomUserDetails user) {
 
         if (addNewSessionDTO.getLevels() == null || addNewSessionDTO.getLevels().isEmpty()) {
             throw new VacademyException("To add a new session, you must provide at least one level.");
@@ -153,6 +158,39 @@ public class SessionService {
 
         packageSessionRepository.saveAll(packageSessions);
         this.createLearnerInvitationForm(packageSessions, instituteId, user);
+        for (PackageSession packageSession:packageSessions){
+            facultyService.addFacultyToBatch(addNewSessionDTO.getAddFacultyToCourseDTOS(),packageSession.getId(),instituteId);
+        }
+        return String.valueOf(session.getId()); // Ensure return type is String
+    }
+
+    @Transactional
+    public String addNewSession(AddNewSessionDTO addNewSessionDTO,List<AddFacultyToCourseDTO>addFacultyToCourseDTOS, String instituteId, CustomUserDetails user) {
+
+        if (addNewSessionDTO.getLevels() == null || addNewSessionDTO.getLevels().isEmpty()) {
+            throw new VacademyException("To add a new session, you must provide at least one level.");
+        }
+
+        Session session;
+
+        if (addNewSessionDTO.isNewSession()) {
+            session = sessionRepository.save(new Session(null, addNewSessionDTO.getSessionName(), addNewSessionDTO.getStatus(),addNewSessionDTO.getStartDate()));
+        } else {
+            session = sessionRepository.findById(addNewSessionDTO.getId())
+                .orElseThrow(() -> new VacademyException("Session not found for id " + addNewSessionDTO.getId()));
+        }
+
+        List<PackageSession> packageSessions = new ArrayList<>();
+        for (AddLevelWithSessionDTO levelDTO : addNewSessionDTO.getLevels()) {
+            PackageSession packageSession = createPackageSession(levelDTO, session, addNewSessionDTO.getStartDate());
+            packageSessions.add(packageSession);
+        }
+
+        packageSessionRepository.saveAll(packageSessions);
+        this.createLearnerInvitationForm(packageSessions, instituteId, user);
+        for (PackageSession packageSession:packageSessions){
+            facultyService.addFacultyToBatch(addFacultyToCourseDTOS,packageSession.getId(),instituteId);
+        }
         return String.valueOf(session.getId()); // Ensure return type is String
     }
 

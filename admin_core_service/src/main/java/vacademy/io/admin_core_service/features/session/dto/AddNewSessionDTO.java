@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.session.dto;
 import com.fasterxml.jackson.databind.PropertyNamingStrategy;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.Data;
+import vacademy.io.admin_core_service.features.course.dto.AddFacultyToCourseDTO;
 import vacademy.io.admin_core_service.features.level.dto.AddLevelWithSessionDTO;
 
 import java.util.Date;
@@ -17,4 +18,5 @@ public class AddNewSessionDTO {
     private Date startDate;
     private boolean newSession;
     private List<AddLevelWithSessionDTO> levels;
+    private List<AddFacultyToCourseDTO>addFacultyToCourseDTOS;
 }

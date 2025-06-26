@@ -79,11 +79,11 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
     void updateStatusBySessionIds(@Param("sessionIds") List<String> sessionIds, @Param("status") String status);
 
     @Query("""
-    SELECT pi.packageEntity 
-    FROM PackageInstitute pi 
+    SELECT pi.packageEntity
+    FROM PackageInstitute pi
     JOIN pi.packageEntity p
     JOIN PackageSession ps ON ps.packageEntity.id = pi.packageEntity.id
-    WHERE ps.session.id = :sessionId 
+    WHERE ps.session.id = :sessionId
       AND pi.instituteEntity.id = :instituteId
       AND ps.status IN :statuses
     """)
@@ -94,7 +94,7 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
     );
 
     @Query(value = """
-    SELECT 
+    SELECT
         ps.id AS packageSessionId,
         CONCAT(l.level_name, ' ', p.package_name) AS batchName,
         ps.status AS batchStatus,
@@ -104,14 +104,14 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
     FROM package_session ps
     JOIN level l ON l.id = ps.level_id
     JOIN package p ON p.id = ps.package_id
-    LEFT JOIN student_session_institute_group_mapping ssigm 
-        ON ssigm.package_session_id = ps.id 
+    LEFT JOIN student_session_institute_group_mapping ssigm
+        ON ssigm.package_session_id = ps.id
         AND ssigm.status IN (:studentSessionStatuses)
-    LEFT JOIN learner_invitation li 
+    LEFT JOIN learner_invitation li
         ON li.id = (
-            SELECT li_inner.id 
+            SELECT li_inner.id
             FROM learner_invitation li_inner
-            WHERE li_inner.source_id = ps.id 
+            WHERE li_inner.source_id = ps.id
               AND li_inner.source = 'PACKAGE_SESSION'
               AND li_inner.status NOT IN (:excludedInvitationStatuses)
             ORDER BY li_inner.created_at DESC
@@ -132,7 +132,7 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
 
 
     @Query("""
-    SELECT 
+    SELECT
         CONCAT(l.levelName, ' ', p.packageName) AS batchName,
         i.instituteName AS instituteName
     FROM PackageSession ps
@@ -168,4 +168,6 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
             @Param("packageEntityId") String packageEntityId,
             @Param("statuses") List<String> statuses
     );
+
+    Optional<PackageSession> findByPackageEntityIdAndSessionIdAndLevelId(String packageId, String sessionId, String levelId);
 }

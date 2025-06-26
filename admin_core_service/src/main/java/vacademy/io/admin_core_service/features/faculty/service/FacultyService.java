@@ -9,6 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
+import vacademy.io.admin_core_service.features.course.dto.AddFacultyToCourseDTO;
 import vacademy.io.admin_core_service.features.faculty.dto.*;
 import vacademy.io.admin_core_service.features.faculty.entity.FacultySubjectPackageSessionMapping;
 import vacademy.io.admin_core_service.features.faculty.enums.FacultyStatusEnum;
@@ -187,5 +188,28 @@ public class FacultyService {
 
         dto.setBatchSubjectAssignments(assignments);
         return dto;
+    }
+
+    public void addFacultyToBatch(List<AddFacultyToCourseDTO>addFacultyToCourseDTOS,String batchId,String instituteId){
+        if (addFacultyToCourseDTOS == null || addFacultyToCourseDTOS.isEmpty()) {
+            return;
+        }
+        List<FacultySubjectPackageSessionMapping> mappings = new ArrayList<>();
+        for (AddFacultyToCourseDTO addFacultyToCourseDTO : addFacultyToCourseDTOS) {
+            UserDTO teacher = addFacultyToCourseDTO.getUser();
+            if (addFacultyToCourseDTO.isNewUser()){
+
+                teacher = inviteUser(teacher, instituteId);
+            }
+            FacultySubjectPackageSessionMapping mapping = new FacultySubjectPackageSessionMapping(
+                    teacher.getId(),
+                    batchId,
+                    null,
+                    addFacultyToCourseDTO.getUser().getFullName(),
+                    FacultyStatusEnum.ACTIVE.name()
+            );
+            mappings.add(mapping);
+        }
+        facultyRepository.saveAll(mappings);
     }
 }

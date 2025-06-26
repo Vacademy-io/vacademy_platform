@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { StarIcon } from 'lucide-react';
-
+import { useRouter } from '@tanstack/react-router';
 interface Instructor {
   id: string;
   full_name: string;
@@ -8,6 +8,8 @@ interface Instructor {
 }
 
 interface CourseCardProps {
+  
+ package_session_id:string;
   package_name: string;
   level_name: string;
   thumbnailUrl: string;
@@ -22,6 +24,8 @@ const fallbackImage = '/images/placeholder-course.jpg';
 const fallbackInstructorImage = 'https://api.dicebear.com/7.x/thumbs/svg?seed=anon';
 
 const CourseCard: React.FC<CourseCardProps> = ({
+  
+package_session_id,
   package_name,
   level_name,
   thumbnailUrl,
@@ -39,6 +43,13 @@ const CourseCard: React.FC<CourseCardProps> = ({
   const instructorImage = instructor?.image_url || fallbackInstructorImage;
 
   const ratingValue = rating || 0;
+
+   const router=useRouter();
+    const handleViewCoureseDetails=(id)=>{
+          // console.log("course-detailsIdis",id);
+          router.navigate({to:'/courses/course-details/$id',params: { id }})
+
+    }
 
   // Simulate image loading state
   useEffect(() => {
@@ -141,8 +152,9 @@ const CourseCard: React.FC<CourseCardProps> = ({
           )}
         </div>
 
-        <button className="mt-auto w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors">
-          View Course
+        <button className="mt-auto w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors"
+        onClick={()=>handleViewCoureseDetails(package_session_id)}    >
+          View Course   
         </button>
       </div>
     </div>

@@ -194,7 +194,7 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                     instructors={course.instructors?.length ? course.instructors : fallbackInstructor}
                     rating={course.rating || 4}
 
-                    percentage_completed={course.percentage_completed||100}
+                    percentage_completed={course?.percentage_completed??50}
                     description={course.course_html_description_html || fallbackDescription}
                     tags={
                       course.comma_separeted_tags

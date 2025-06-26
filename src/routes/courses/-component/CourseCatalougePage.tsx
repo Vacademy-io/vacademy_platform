@@ -7,10 +7,12 @@ import Header from './Header.tsx';
 import HeroSectionCourseCatalog from './HeroSectionCourseCatalog.tsx';
 import { useCatalogStore } from '../-store/catalogStore.ts';
 import axios from 'axios';
-
-const urlInstituteDetails = 'https://backend-stage.vacademy.io/admin-core-service/public/institute/v1/details/94337b5b-7687-4a1e-993f-1b3529dd6f44';
-const urlCourseDetails = 'https://backend-stage.vacademy.io/admin-core-service/open/packages/v1/search';
-const urlInstructor = 'https://backend-stage.vacademy.io/auth-service/public/v1/users-of-status?instituteId=23103559-5632-42c9-b9ce-619d55fce3cb';
+import { useSearch } from '@tanstack/react-router';
+import { urlInstituteDetails,urlCourseDetails,urlInstructor } from '@/constants/urls.ts';
+// import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
+// const urlInstituteDetails = 'https://backend-stage.vacademy.io/admin-core-service/public/institute/v1/details/94337b5b-7687-4a1e-993f-1b3529dd6f44';
+// const urlCourseDetails = 'https://backend-stage.vacademy.io/admin-core-service/open/packages/v1/search';
+//const urlInstructor = 'https://backend-stage.vacademy.io/auth-service/public/v1/users-of-status?instituteId=23103559-5632-42c9-b9ce-619d55fce3cb';
 
 
 
@@ -25,9 +27,19 @@ const CourseCatalougePage: React.FC = () => {
   const [selectedLevels, setSelectedLevels] = useState<string[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [selectedInstructors, setSelectedInstructors] = useState<string[]>([]);
+
+
+
+  const { instituteId} = useSearch({ from: '/courses/' });
+
+useEffect(() => {
+  console.log('Extracted instituteId:', instituteId);
+}, [instituteId]);
+
+
   //api call to store the courses details
 
-  const fetchPackages = async (search = "", sort = "Newest") => {
+  const fetchPackages = async (search = "") => {
     try {
       const response = await axios.post(
         urlCourseDetails,
@@ -42,12 +54,10 @@ const CourseCatalougePage: React.FC = () => {
         },
         {
           params: {
-            instituteId: '94337b5b-7687-4a1e-993f-1b3529dd6f44',
+            instituteId:instituteId,
             page: 0,
             size: 95,
-            sortBy: sort === "Newest" ? "created_at,desc" :
-              sort === "Oldest" ? "created_at,asc" :
-                sort === "Rating" ? "rating,desc" : "created_at,desc"
+            
           },
           headers: {
             'accept': '*/*',
@@ -83,7 +93,7 @@ const CourseCatalougePage: React.FC = () => {
         },
         {
           params: {
-            instituteId: '94337b5b-7687-4a1e-993f-1b3529dd6f44',
+            instituteId: instituteId,
             page: 0,
             size: 95,
           },
@@ -106,7 +116,7 @@ const CourseCatalougePage: React.FC = () => {
   useEffect(() => {
     const FetchInstituteDetails = async () => {
       try {
-        const response = await axios.get(urlInstituteDetails);
+        const response = await axios.get(`${urlInstituteDetails}/${instituteId}`);
         console.log("Institute details", response.data);
         setInstituteData(response.data);
         setLoading(false);
@@ -116,31 +126,38 @@ const CourseCatalougePage: React.FC = () => {
     };
 
     FetchInstituteDetails();
-  }, []);
+  }, [instituteId]);
 
 
   // ✅ Fetch instructor
-  useEffect(() => {
-    const fetchInstructor = async () => {
-      try {
-        const response = await axios.post(urlInstructor, {
+ useEffect(() => {
+  if (!instituteId) return; // 🚫 Prevent calling API with undefined ID
+
+  const fetchInstructor = async () => {
+    try {
+      const response = await axios.post(
+        `${urlInstructor}${instituteId}`, 
+        {
           roles: ["TEACHER"],
           status: ["ACTIVE"]
-        }, {
+        },
+        {
           headers: {
             'Accept': '*/*',
             'Content-Type': 'application/json'
           }
-        });
-        console.log('Instructor response9999:', response.data);
-        setInstructors(response.data);
-      } catch (error) {
-        setError("Something went wrong while fetching the instructors.");
-      }
-    };
+        }
+      );
+      console.log('Instructor response:', response.data);
+      setInstructors(response.data);
+    } catch (error) {
+      setError("Something went wrong while fetching the instructors.");
+    }
+  };
 
-    fetchInstructor();
-  }, []);
+  fetchInstructor();
+}, [instituteId]); // ✅ Add dependency
+
 
 
 

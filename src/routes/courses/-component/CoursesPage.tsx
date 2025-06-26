@@ -4,7 +4,7 @@ import SearchAndSortBar from './SearchAndSortBar.tsx';
 import CourseCard from './CourseCards.tsx';
 import Pagination from './Pagination.tsx';
 import { useCatalogStore } from '../-store/catalogStore.ts';
-import { getPublicUrl } from "@/services/upload_file";
+import {getPublicUrlWithoutLogin } from "@/services/upload_file";
 
 interface CoursesPageProps {
   searchTerm:string;
@@ -116,7 +116,7 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
       const imageUrlPromises = validFileIds.map(async (item) => {
         try {
           console.log(`Loading image for fileId: ${item.fileId}`);
-          const url = await getPublicUrl(item.fileId);
+          const url = await getPublicUrlWithoutLogin(item.fileId);
           if (url && typeof url === 'string' && url.trim() !== '' && url !== 'null' && url !== 'undefined') {
             console.log(`Individual load success for index ${item.index}: ${url}`);
             return { index: item.index, url };
@@ -187,6 +187,8 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
 
                 return (
                   <CourseCard
+                    
+                    package_session_id={course.package_session_id}
                     key={index}
                     package_name={course.package_name || 'Untitled Package'}
                     level_name={course.level_name || 'Beginner'}

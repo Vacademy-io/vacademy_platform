@@ -6,6 +6,14 @@ import CourseCatalougePage from './-component/CourseCatalougePage'
 export const Route = createFileRoute('/courses/')({
   // This route simply renders the CoursesContainerComponent
   component: CoursesContainerComponent,
+
+validateSearch: (search) => {
+    return {
+      instituteId: search.instituteId as string ?? '', // fallback to empty string
+    }
+  },
+
+
 })
 
 // This component will be rendered for the /courses/ path

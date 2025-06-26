@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { StarIcon } from 'lucide-react';
-import { useRouter } from '@tanstack/react-router';
+
 interface Instructor {
   id: string;
   full_name: string;
@@ -8,12 +8,12 @@ interface Instructor {
 }
 
 interface CourseCardProps {
-  package_session_id:string;
   package_name: string;
   level_name: string;
   thumbnailUrl: string;
   instructors: Instructor[];
   rating: number;
+  percentage_completed: number;
   description: string;
   tags: string[];
   studentCount?: number;
@@ -23,34 +23,25 @@ const fallbackImage = '/images/placeholder-course.jpg';
 const fallbackInstructorImage = 'https://api.dicebear.com/7.x/thumbs/svg?seed=anon';
 
 const CourseCard: React.FC<CourseCardProps> = ({
-  package_session_id,
   package_name,
   level_name,
   thumbnailUrl,
   instructors,
   rating,
+  percentage_completed,
   description,
   tags,
   studentCount,
 }) => {
   const [courseImageUrl, setCourseImageUrl] = useState(thumbnailUrl);
   const [loadingImage, setLoadingImage] = useState(true);
-
+  //percenteatg
+  console.log("complete_percentage", percentage_completed);
   const instructor = instructors[0];
   const instructorName = instructor?.full_name || 'Unknown Instructor';
   const instructorImage = instructor?.image_url || fallbackInstructorImage;
 
   const ratingValue = rating || 0;
-
-
-  const router=useRouter();
-      const handleViewCoureseDetails=(id)=>{
-            // console.log("course-detailsIdis",id);
-            router.navigate({to:'/study-library/course-details/$id',params: { id }})
-  
-      }
-
-
 
   // Simulate image loading state
   useEffect(() => {
@@ -153,9 +144,21 @@ const CourseCard: React.FC<CourseCardProps> = ({
           )}
         </div>
 
-        <button className="mt-auto w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors"
-        onClick={()=>handleViewCoureseDetails(package_session_id)}    >
-          View Course   
+        <div className="mb-4">
+          <div className="flex justify-between items-center mb-1 text-sm text-gray-600">
+            <span>Course Progress</span>
+            <span>{percentage_completed}%</span>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-2">
+            <div
+              className="bg-blue-600 h-2 rounded-full"
+              style={{ width: `${percentage_completed}%` }}
+            ></div>
+          </div>
+        </div>
+
+        <button className="mt-auto w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors">
+          View Course
         </button>
       </div>
     </div>

@@ -1,4 +1,4 @@
-import { GET_SIGNED_URL, ACKNOWLEDGE, GET_PUBLIC_URL, GET_DETAILS } from "@/constants/urls";
+import { GET_SIGNED_URL, ACKNOWLEDGE, GET_PUBLIC_URL, GET_DETAILS, GET_PUBLIC_URL_PUBLIC } from "@/constants/urls";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import axios from "axios";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
@@ -91,6 +91,13 @@ const acknowledgeUpload = async (file_id: string, user_id: string): Promise<bool
 
 export const getPublicUrl = async (fileId: string | undefined | null): Promise<string> => {
     const response = await authenticatedAxiosInstance.get(GET_PUBLIC_URL, {
+        params: { fileId, expiryDays: 1 },
+    });
+    return response?.data;
+};
+
+export const getPublicUrlWithoutLogin = async (fileId: string | undefined | null): Promise<string> => {
+    const response = await axios.get(GET_PUBLIC_URL_PUBLIC, {
         params: { fileId, expiryDays: 1 },
     });
     return response?.data;

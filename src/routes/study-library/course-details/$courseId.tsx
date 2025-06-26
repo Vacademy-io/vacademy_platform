@@ -1,0 +1,12 @@
+import { createFileRoute } from '@tanstack/react-router'
+import viewCourseDetails from './-component/ViewCourseDetails/ViewCourseDetails'
+
+export const Route = createFileRoute('/study-library/course-details/$courseId')(
+  {
+    component: viewCourseDetails,
+  },
+)
+
+// function RouteComponent() {
+//   return <div>Hello "/courses/course-details/$courseId"!</div>
+// }

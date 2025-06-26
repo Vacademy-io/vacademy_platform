@@ -1,21 +1,16 @@
 import React, { useState, useEffect } from 'react';
-// import Footer from './Footer.tsx';
-// import InstructorCTASection from './InstructorCTASection.tsx';
-// import SupportersSection from './SupportersSection.tsx';
+import Footer from './Footer.tsx';
+import InstructorCTASection from './InstructorCTASection.tsx';
+import SupportersSection from './SupportersSection.tsx';
 import CoursesPage from './CoursesPage.tsx';
-// import Header from './Header.tsx';
+import Header from './Header.tsx';
 import { useCatalogStore } from '../-store/catalogStore.ts';
 import axios from 'axios';
-import HeroSection from '../-component1/HeroSection.tsx';
-import Tab from '../-component1/Tab.tsx';
-import { getInstituteId } from "@/constants/helper";
-import authenticatedAxiosInstance from '@/lib/auth/axiosInstance.ts';
-
-//import { urlInstituteDetails,urlCourseDetails,urlInstructor } from '@/constants/urls.ts';
+import HeroSection from './HeroSection.tsx';
+import Tab from './Tab.tsx';
 const urlInstituteDetails = 'https://backend-stage.vacademy.io/admin-core-service/public/institute/v1/details/94337b5b-7687-4a1e-993f-1b3529dd6f44';
 const urlCourseDetails = 'https://backend-stage.vacademy.io/admin-core-service/open/packages/v1/search';
 const urlInstructor = 'https://backend-stage.vacademy.io/auth-service/public/v1/users-of-status?instituteId=23103559-5632-42c9-b9ce-619d55fce3cb';
-
 
 
 
@@ -32,10 +27,9 @@ const CourseCatalougePage: React.FC = () => {
   const [selectedInstructors, setSelectedInstructors] = useState<string[]>([]);
   //api call to store the courses details
 
-  console.log("getInsutteId from the helper function",getInstituteId);
   const fetchPackages = async (search = "", sort = "Newest") => {
     try {
-      const response = await authenticatedAxiosInstance.post(
+      const response = await axios.post(
         urlCourseDetails,
         {
           status: [],
@@ -76,7 +70,7 @@ const CourseCatalougePage: React.FC = () => {
 
   const handleApplyFilters = async () => {
     try {
-      const response = await authenticatedAxiosInstance.post(
+      const response = await axios.post(
         urlCourseDetails,
         {
           status: [],

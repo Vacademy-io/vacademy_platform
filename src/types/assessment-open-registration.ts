@@ -28,6 +28,7 @@ export interface AssessmentCustomFieldOpenRegistration {
   id: string;
   field_name: string;
   field_key: string;
+  field_order: number;
   comma_separated_options: string;
   status: string;
   is_mandatory: boolean;

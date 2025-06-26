@@ -3,6 +3,7 @@ export const BASE_URL = "https://backend-stage.vacademy.io";
 export const INSTITUTE_ID = "c70f40a5-e4d3-4b6c-a498-e612d0d4b133";
 
 export const LOGIN_URL = `${BASE_URL}/auth-service/learner/v1/login`;
+export const LOGIN_URL_GOOGLE_GITHUB = `${BASE_URL}/auth-service/oauth2/authorization`;
 export const REQUEST_OTP = `${BASE_URL}/auth-service/learner/v1/request-otp`;
 export const LOGIN_OTP = `${BASE_URL}/auth-service/learner/v1/login-otp`;
 export const REFRESH_TOKEN_URL = `${BASE_URL}/auth-service/learner/v1/refresh-token`;
@@ -30,7 +31,9 @@ export const ASSESSMENT_SUBMIT_MANUAL = `${BASE_URL}/assessment-service/assessme
 
 export const ADD_UPDATE_VIDEO_ACTIVITY = `${BASE_URL}/admin-core-service/learner-tracking/v1/add-or-update-video-activity`;
 export const ADD_UPDATE_DOCUMENT_ACTIVITY = `${BASE_URL}/admin-core-service/learner-tracking/v1/add-or-update-document-activity`;
-
+export const SUBMIT_SLIDE_ANSWERS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/video-question-slide/add-or-update`;
+export const SUBMIT_ASSIGNMENT_SLIDE_ANSWERS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/assignment-slide/add-or-update-assignment-slide-activity-log`;
+export const SUBMIT_QUESTION_SLIDE_ANSWERS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/question-slide/add-or-update-question-slide-activity-log`;
 export const INIT_STUDY_LIBRARY = `${BASE_URL}/admin-core-service/v1/learner-study-library/init-details`;
 export const MODULES_WITH_CHAPTERS = `${BASE_URL}/admin-core-service/v1/learner-study-library/modules-with-chapters`;
 export const GET_SLIDES = `${BASE_URL}/admin-core-service/v1/learner-study-library/slides`;
@@ -51,3 +54,20 @@ export const GET_OPEN_REGISTRATION_DETAILS = `${BASE_URL}/assessment-service/ope
 export const GET_PARTICIPANTS_STATUS = `${BASE_URL}/assessment-service/open-registrations/v1/participant-status`;
 export const REGISTER_PARTICIPANT_URL = `${BASE_URL}/assessment-service/open-registrations/register/v1/`;
 export const GET_USERID_URL = `${BASE_URL}/admin-core-service/institute/open_learner/v1/add-institute_learner`;
+export const GET_LAST_7_DAYS_PROGRESS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/learner/v1/daily-time-spent`;
+
+// Live session
+export const LIVE_SESSION_REQUEST_OTP = `${BASE_URL}/notification-service/v1/send-email-otp`;
+export const LIVE_SESSION_VERIFY_OTP = `${BASE_URL}/notification-service/v1/verify-email-otp`;
+export const LIVE_SESSION_GET_REGISTRATION_DATA = `${BASE_URL}/admin-core-service/live-session/get-registration-data`;
+export const LIVE_SESSION_GET_LIVE_AND_UPCOMING = `${BASE_URL}/admin-core-service/get-sessions/learner/live-and-upcoming`;
+export const LIVE_SESSION_GET_SESSION_BY_SCHEDULE_ID = `${BASE_URL}/admin-core-service/get-sessions/by-schedule-id`;
+export const LIVE_SESSION_GET_SESSION_BY_SCHEDULE_ID_FOR_GUEST = `${BASE_URL}/admin-core-service/live-session/guest/get-session-by-schedule-id`;
+export const LIVE_SESSION_CHECK_EMAIL_REGISTRATION = `${BASE_URL}/admin-core-service/live-session/check-email-registration`;
+export const LIVE_SESSION_REGISTER_GUEST_USER = `${BASE_URL}/admin-core-service/live-session/register-guest-user`;
+export const LIVE_SESSION_MARK_ATTENDANCE = `${BASE_URL}/admin-core-service/live-session/mark-attendance`;
+export const LIVE_SESSION_MARK_ATTENDANCE_FOR_GUEST = `${BASE_URL}/admin-core-service/live-session/mark-guest-attendance`;
+export const LIVE_SESSION_GET_EARLIEST_SCHEDULE_ID = `${BASE_URL}/admin-core-service/live-session/get-earliest-schedule-id`;
+export const ADD_DOUBT = `${BASE_URL}/admin-core-service/institute/v1/doubts/create`;
+export const GET_DOUBTS = `${BASE_URL}/admin-core-service/institute/v1/doubts/get-all`;
+export const GET_USER_BASIC_DETAILS = `${BASE_URL}/auth-service/v1/user-details/get-basic-details`;

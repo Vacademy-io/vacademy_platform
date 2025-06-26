@@ -2,6 +2,7 @@ import { useNavigate, useRouter } from "@tanstack/react-router";
 import { BookOpenText, PlayCircle  } from "@phosphor-icons/react";
 import { CheckCircle } from "phosphor-react";
 import { Chapter } from "@/stores/study-library/use-modules-with-chapters-store";
+import { CompletionStatusComponent } from "@/components/common/completion-status-component";
 
 export const ChapterCard = ({ chapter }: {chapter: Chapter}) => {
     const router = useRouter();
@@ -38,7 +39,10 @@ export const ChapterCard = ({ chapter }: {chapter: Chapter}) => {
                     <div className="flex items-center justify-between text-body font-semibold">
                         <div>{chapter.chapter_name}</div>
                     </div>
-                    <p className="text-neutral-500 text-body">{chapter.percentage_completed}% completed</p>
+                    <div className="flex items-center gap-2">
+                        <CompletionStatusComponent completionPercentage={chapter.percentage_completed} />
+                        <p className="text-body text-neutral-500">({chapter.percentage_completed.toFixed(2)}% completed)</p>
+                    </div>
                 </div>
                 <div className="flex items-center justify-between">
                     <div className="flex gap-4 text-body font-semibold">

@@ -13,6 +13,7 @@ import EmptySlideMaterial from "./empty-slide-material.svg";
 import DashboardImg from "./dashboardImg.svg";
 import PlayCircle from "./PlayCircle.svg";
 import ModuleDefaultImage from "./module-default-image.svg";
+import SmallDummyProfile from "./small-dummy-profile.svg";
 
 export {
   SSDC_Logo,
@@ -29,5 +30,6 @@ export {
   EmptySlideMaterial,
   DashboardImg,
   PlayCircle,
-  ModuleDefaultImage
+  ModuleDefaultImage,
+  SmallDummyProfile
 };

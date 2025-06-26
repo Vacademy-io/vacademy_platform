@@ -9,6 +9,7 @@ import { GET_ASSESSMENT_DETAILS } from "@/constants/urls";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { useSuspenseQuery } from "@tanstack/react-query";
+import { ParsedHistoryState } from "@/types/assessments/assessment-data-type";
 
 const studentReportParamsSchema = z.object({
   assessmentId: z.string(),
@@ -38,7 +39,7 @@ export const getAssessmentDetailsData = async ({
       type,
     },
   });
-  return response?.data ;
+  return response?.data;
 };
 
 export const getAssessmentDetails = ({
@@ -69,7 +70,8 @@ async function fetchInstituteDetails() {
 function RouteComponent() {
   const route = useRouter();
   const { assessmentId, attemptId } = route.state.location.search;
-  
+  const evaluationType = (route.state.location.state as ParsedHistoryState)?.evaluationType;
+
   const [studentReportData, setStudentReportData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [instituteId, setInstituteId] = useState<string | undefined>(undefined);
@@ -89,19 +91,20 @@ function RouteComponent() {
   }, []);
 
   // Use the query with enabled condition based on instituteId
-  const { data: assessmentDetails, isLoading: isAssessmentLoading } = useSuspenseQuery(
-    getAssessmentDetails({
-      assessmentId,
-      instituteId,
-      type: "EXAM",
-    })
-  );
+  const { data: assessmentDetails, isLoading: isAssessmentLoading } =
+    useSuspenseQuery(
+      getAssessmentDetails({
+        assessmentId,
+        instituteId,
+        type: "EXAM",
+      })
+    );
 
   // Fetch student report after institute ID is available
   useEffect(() => {
     async function fetchStudentReport() {
       if (!instituteId) return;
-      
+
       try {
         const data = await viewStudentReport(
           assessmentId || "",
@@ -109,6 +112,7 @@ function RouteComponent() {
           instituteId
         );
         setStudentReportData(data);
+        console.log("Student Report Data:", data);
       } catch (error) {
         console.error("Error fetching student report:", error);
       } finally {
@@ -135,6 +139,7 @@ function RouteComponent() {
           testReport={studentReportData}
           examType={"EXAM"}
           assessmentDetails={assessmentDetails}
+          evaluationType={evaluationType ?? ""}
         />
       </LayoutContainer>
     </>

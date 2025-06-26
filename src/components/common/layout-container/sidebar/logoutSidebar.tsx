@@ -21,33 +21,41 @@ export const LogoutSidebar = ({
     <Sheet open={sideBarOpen} onOpenChange={setSidebarOpen}>
       <SheetContent
         side="right"
-        className={`sidebar-content flex flex-col gap-5 border-r-2 border-r-neutral-300 bg-sidebar-primary-foreground py-10`}
+        className="sidebar-content flex flex-col bg-white border-l border-gray-200 p-0 w-72 transition-all duration-300 ease-in-out"
       >
-        <SheetHeader className="">
-          <div className={`flex items-center justify-center gap-4`}>
-            <div className="size-14">
+        <SheetHeader className="px-4 py-4 border-b border-gray-100">
+          <div className="flex items-center gap-2">
+            <div className="relative">
               {!isNullOrEmptyOrUndefined(instituteLogoFileUrl) ? (
-                 <img
-                 className="size-14 rounded-full"
-                 src={instituteLogoFileUrl}
-                 alt="Logo"
-               />
+                <img
+                  className="w-8 h-8 rounded-md object-cover shadow-sm border border-gray-200"
+                  src={instituteLogoFileUrl}
+                  alt="Logo"
+                />
               ) : (
-                <div className="size-12 border border-primary-500 rounded-full"></div>
+                <div className="w-8 h-8 bg-primary-50 border border-primary-200 rounded-md flex items-center justify-center">
+                  <div className="w-4 h-4 bg-primary-500 rounded-sm"></div>
+                </div>
               )}
             </div>
-            <SheetDescription className="text-[18px] font-semibold text-primary-500 group-data-[collapsible=icon]:hidden">
-              {instituteName}
-            </SheetDescription>
+            <div className="flex-1 min-w-0">
+              <SheetDescription className="text-sm font-semibold text-gray-900 truncate">
+                {instituteName}
+              </SheetDescription>
+              <p className="text-xs text-gray-500">Menu</p>
+            </div>
           </div>
         </SheetHeader>
-        <SheetDescription
-          className={`flex  flex-col justify-center gap-6 py-4`}
-        >
+        
+        <div className="flex-1 px-2 py-3 space-y-1 overflow-y-auto">
           {sidebarComponent
             ? sidebarComponent
             : HamBurgerSidebarItemsData.map((obj, key) => (
-                <div key={key}>
+                <div 
+                  key={key}
+                  className="animate-slide-in-right"
+                  style={{ animationDelay: `${key * 30}ms` }}
+                >
                   <SidebarItem
                     icon={obj.icon}
                     subItems={obj.subItems}
@@ -56,7 +64,7 @@ export const LogoutSidebar = ({
                   />
                 </div>
               ))}
-        </SheetDescription>
+        </div>
       </SheetContent>
     </Sheet>
   );

@@ -28,7 +28,7 @@ const ConcentrationScoreSchema = z.object({
 export const ActivitySchema = z.object({
   slide_id: z.string(),
   activity_id: z.string(),
-  source: z.enum(["DOCUMENT", "VIDEO"]),
+  source: z.enum(["DOCUMENT", "VIDEO", "PRESENTATION"]),
   source_id: z.string(),
   start_time: z.string(),
   end_time: z.string(),

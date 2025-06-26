@@ -105,14 +105,21 @@ export interface Slide {
     image_file_id: string;
     description: string;
     status: string;
-    slide_order: number;
+    slide_order: number ;
     video_slide?: VideoSlide;
     document_slide?: DocumentSlide;
     question_slide?: QuestionSlide;
     assignment_slide?: AssignmentSlide;
     is_loaded: boolean;
     new_slide: boolean;
+    percentage_completed: number;
+    progress_marker: number;
 }
+
+export const fetchSlidesByChapterId = async (chapterId: string): Promise<Slide[]> => {
+  const response = await authenticatedAxiosInstance.get(`${GET_SLIDES}?chapterId=${chapterId}`);
+  return response.data;
+};
 
 export const useSlides = (chapterId: string) => {
 

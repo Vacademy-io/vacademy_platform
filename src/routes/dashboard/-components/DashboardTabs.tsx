@@ -38,7 +38,7 @@ const getIcon = (title: string) => {
 
 export function DashboardTabs({
   title,
-  count,
+  count = 0,
   button,
   buttonText,
   list = [],
@@ -47,58 +47,56 @@ export function DashboardTabs({
   const displayIcon = icon || getIcon(title);
   
   return (
-    <div className="relative bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md p-4 transition-all duration-200 hover:border-orange-300 group">
-      {/* Compact Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="text-gray-400 group-hover:text-orange-500 transition-colors duration-200 w-5 h-5">
+    <div className="bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 p-5 cursor-pointer">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-primary-50 rounded-lg text-primary-600">
             {displayIcon}
           </div>
-          <div className="text-sm font-medium text-gray-900 group-hover:text-gray-700 transition-colors duration-200">
+          <div className="text-base font-semibold text-gray-900">
             {title}
           </div>
         </div>
-        <div className="bg-gray-100 group-hover:bg-orange-50 text-gray-700 group-hover:text-orange-600 px-2 py-1 rounded text-xs font-semibold min-w-[1.5rem] text-center transition-all duration-200">
+        <div className="px-3 py-1 bg-gray-100 rounded-full text-sm font-medium text-gray-700">
           {count}
         </div>
       </div>
 
-      {/* Professional Status Indicator */}
-      <div className="mt-2 text-xs text-gray-500">
-        {count === 0 ? 'No items' : `${count} ${count === 1 ? 'item' : 'items'} available`}
+      {/* Status */}
+      <div className="text-sm text-gray-500 mb-3">
+        <span className="inline-flex items-center gap-2">
+          <div className={`w-2 h-2 rounded-full ${count === 0 ? 'bg-gray-300' : 'bg-green-500'}`}></div>
+          {count === 0 ? 'No items available' : `${count} ${count === 1 ? 'item' : 'items'} ready`}
+        </span>
       </div>
 
-      {/* List Items - Compact */}
+      {/* List Items */}
       {list?.length > 0 && (
-        <div className="mt-3 space-y-1">
+        <div className="space-y-2 mb-4">
           {list?.slice(0, 3).map((item, idx) => (
             <div 
               key={idx} 
-              className="flex items-center gap-2 py-1 text-xs text-gray-600 hover:text-gray-800 transition-colors duration-200"
+              className="flex items-center gap-3 py-2 px-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors duration-150"
             >
-              <div className="w-1 h-1 bg-orange-400 rounded-full"></div>
-              <div className="truncate">{item.slide_title}</div>
+              <div className="w-2 h-2 bg-primary-500 rounded-full flex-shrink-0"></div>
+              <div className="truncate text-sm font-medium text-gray-700">{item.slide_title}</div>
             </div>
           ))}
           {list.length > 3 && (
-            <div className="text-xs text-gray-400 pl-3">
-              +{list.length - 3} more
+            <div className="text-sm text-gray-400 pl-5">
+              +{list.length - 3} more items
             </div>
           )}
         </div>
       )}
 
-      {/* Compact Action Button */}
+      {/* Action Button */}
       {button && (
-        <div className="mt-3">
-          <button className="w-full bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium py-2 px-3 rounded transition-colors duration-200">
-            {buttonText}
-          </button>
-        </div>
+        <button className="w-full bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium py-2.5 px-4 rounded-lg transition-colors duration-200 shadow-sm border border-primary-600">
+          {buttonText}
+        </button>
       )}
-
-      {/* Subtle Hover Indicator */}
-      <div className="absolute inset-0 rounded-lg ring-1 ring-orange-200 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none"></div>
     </div>
   );
 }

@@ -2,19 +2,6 @@ import { Preferences } from "@capacitor/preferences";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { STUDENT_DETAIL } from "@/constants/urls";
 import { Batch, Institute, Student } from "@/types/user/user-detail";
-// import { useQuery } from "@tanstack/react-query";
-
-// export const useStudentDetails = (instituteId: string, userId: string) => {
-//   console.log("Fetching student details for:", { instituteId, userId });
-//   return useQuery({
-//     queryKey: ["studentDetails", instituteId, userId],
-//     queryFn: () => fetchStudentDetails(instituteId, userId),
-//     staleTime: 1000 , // 5 minutes stale time
-//     cacheTime: 1000 , // Keep in cache for 10 minutes
-//     refetchInterval: 1000, // Auto-refetch every 1 minute
-//     refetchOnWindowFocus: false, // Don't refetch when user switches back to app
-//   });
-// };
 
 export const fetchStudentDetails = async (instituteId: string, userId: string) => {
   const response = await authenticatedAxiosInstance({
@@ -24,20 +11,6 @@ export const fetchStudentDetails = async (instituteId: string, userId: string) =
   });
   return response;
 };
-
-// export const getStudentDetails = (instituteId: string | undefined, userId: string | undefined) => {
-//   return {
-//       queryKey: ["STUDENT_DETAILS", instituteId, userId],
-//       queryFn: async () => {
-//           if (!instituteId || !userId) {
-//               throw new Error("Institute ID and User ID are required");
-//           }
-//           const data = await fetchStudentDetails(instituteId, userId);
-//           return data;
-//       },
-//       staleTime: 1000,
-//   };
-// };
 
 export const getStudentDetails = (instituteId: string | undefined, userId: string | undefined) => {
   return {
@@ -84,13 +57,11 @@ export const fetchAndStoreStudentDetails = async (
       const packageSessionIds = students.map(
         (student) => student.package_session_id
       );
-      console.log("Extracted package_session_id list:", packageSessionIds);
 
       const matchedSessions = institute.batches_for_sessions.filter(
         (batch: Batch) => packageSessionIds.includes(batch.id)
       );
 
-      console.log("Mapped Sessions:", matchedSessions);
 
       await Preferences.set({
         key: "sessionList",
@@ -121,18 +92,15 @@ const storeMappedSessions = async () => {
     const students: Student[] = studentData.value
       ? JSON.parse(studentData.value)
       : [];
-    console.log("Student Details:", students);
 
     // Get Institute Details
     const instituteData = await Preferences.get({ key: "InstituteDetails" });
     if (!instituteData.value) throw new Error("No institute data found!");
 
     const institute: Institute = JSON.parse(instituteData.value);
-    console.log("Institute Details:", institute);
 
     // Extract package_session_id from students
     const sessionIds = students.map((s: Student) => s.package_session_id);
-    console.log("Extracted package_session_id list:", sessionIds);
 
     // Filter batches that match package_session_id
     institute.batches_for_sessions.filter(
@@ -149,9 +117,7 @@ storeMappedSessions();
 
 export const getStoredStudentDetails = async (): Promise<Student[] | null> => {
   try {
-    console.log("Retrieving stored student details...");
     const { value } = await Preferences.get({ key: "students" });
-    console.log("Stored student details retrieved:", value);
     return value ? (JSON.parse(value) as Student[]) : null;
   } catch (error) {
     console.error("Error parsing stored student details:", error);
@@ -203,7 +169,6 @@ export const getMappedSessions = async (): Promise<Batch[] | null> => {
       return null;
     }
 
-    console.log("Mapped Sessions:", matchedSessions);
     return matchedSessions;
   } catch (error) {
     console.error("Error mapping sessions:", error);

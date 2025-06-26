@@ -35,6 +35,7 @@ export function QuestionDisplay() {
   } = useAssessmentStore();
 
   const [playMode, setPlayMode] = useState<string | null>(null);
+  const [isParagraph, setIsParagraph] = useState(false);
   const [isManualTest, setIsManualTest] = useState(false);
 
   useEffect(() => {
@@ -44,6 +45,9 @@ export function QuestionDisplay() {
       });
       if (storedMode.value) {
         const parsedData = JSON.parse(storedMode.value);
+        if (parsedData.about_id) {
+          setIsParagraph(true);
+        }
         setPlayMode(parsedData.play_mode);
         setIsManualTest(parsedData.evaluation_type === "MANUAL");
       }
@@ -173,7 +177,11 @@ export function QuestionDisplay() {
                 }{" "}
                 Marks |{" "}
               </span>
-              <span>{currentQuestion.question_type}</span>
+              {isParagraph ? (
+                <span>Comprehension Type:</span>
+              ) : (
+                <span>{currentQuestion.question_type}</span>
+              )}
             </div>
           </div>
           {<ExpandableParagraph />}
@@ -290,9 +298,7 @@ export function QuestionDisplay() {
               </div>
             );
           default:
-            return (
-              <div className="">other question type was found</div>
-            );
+            return <div className="">other question type was found</div>;
         }
       })()}
     </div>

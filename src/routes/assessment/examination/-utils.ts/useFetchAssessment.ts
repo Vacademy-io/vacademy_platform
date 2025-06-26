@@ -14,7 +14,7 @@ import {
 } from "@/types/assessment";
 import { Storage } from "@capacitor/storage";
 
-const getStoredDetails = async () => {
+export const getStoredDetails = async () => {
   const studentData = await Preferences.get({ key: "StudentDetails" });
   const instituteData = await Preferences.get({ key: "InstituteDetails" });
 

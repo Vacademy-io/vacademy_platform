@@ -11,12 +11,14 @@ export const Route = createFileRoute("/assessment/examination/")({
     const token = await getTokenFromStorage(TokenKey.accessToken);
     const studentDetails = await getFromStorage("StudentDetails");
     const instituteDetails = await getFromStorage("InstituteDetails");
-
+    const isPublicAssessment = location.search
+      ? new URLSearchParams(location.search).get("isPublicAssessment")
+      : undefined;
     // If any of the required details are missing, redirect to login
     if (!token || !studentDetails || !instituteDetails) {
       throw redirect({
         to: "/login",
-        search: { redirect: location.pathname },
+        search: { redirect: location.pathname, isPublicAssessment },
       });
     }
   },

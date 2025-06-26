@@ -1,14 +1,13 @@
 // utils/study-library/getModuleName.ts
-import { useModulesWithChaptersStore } from "@/stores/study-library/use-modules-with-chapters-store";
+import { ModulesWithChapters } from "@/stores/study-library/use-modules-with-chapters-store";
 
-export const getModuleName = (moduleId: string): string => {
-    const modulesData = useModulesWithChaptersStore.getState().modulesWithChaptersData;
+export const getModuleName = (moduleId: string, modulesWithChaptersData: ModulesWithChapters[] | null): string => {
 
-    if (!modulesData) {
+    if (!modulesWithChaptersData) {
         return "";
     }
 
-    const moduleData = modulesData.find(
+    const moduleData = modulesWithChaptersData.find(
         (moduleWithChapters) => moduleWithChapters.module.id === moduleId,
     );
 

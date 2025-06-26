@@ -12,9 +12,9 @@ interface AssessmentInstructionsProps {
 
 const getAttemptLabel = (assessmentInfo: Assessment) => {
   const max_posible_attempts =
-    assessmentInfo.user_attempts !== 0
-      ? assessmentInfo.user_attempts
-      : assessmentInfo.assessment_attempts || 1;
+    (assessmentInfo.user_attempts ?? 0) !== 0
+      ? (assessmentInfo.user_attempts ?? 1)
+      : (assessmentInfo.assessment_attempts ?? 1);
   const total_given_attempts = assessmentInfo.created_attempts ?? 0;
 
   // Display the current attempt status
@@ -31,9 +31,12 @@ export const AssessmentInstructions = ({
   const attempt = getAttemptLabel(assessmentInfo);
   return (
     <div className="w-full sm:w-screen">
-      <div className="flex justify-start text-primary-500 text-sm font-normal mb-2">
-        Attempts: <span className="font-bold">{attempt}</span>
-      </div>
+      {assessmentInfo.play_mode !== "PRACTICE" &&
+        assessmentInfo.play_mode !== "MOCK" && (
+          <div className="flex justify-start text-primary-500 text-sm font-normal mb-2">
+            Attempt no: <span className="font-bold">{attempt}</span>
+          </div>
+        )}
 
       <div className="font-bold text-lg mb-2">Assessment Instructions</div>
       <div

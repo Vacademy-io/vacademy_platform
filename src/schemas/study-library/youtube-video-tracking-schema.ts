@@ -10,7 +10,7 @@ export const TimestampSchema = z.object({
 });
 
 export const ActivitySchema = z.object({
-    slide_id: z.string(),
+    id: z.string(),
     activity_id: z.string(),
     source: z.enum(["DOCUMENT", "VIDEO"]),
     source_id: z.string(),

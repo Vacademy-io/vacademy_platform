@@ -91,7 +91,10 @@ const AssessmentReportList = ({
         assessmentId: report.assessment_id,
         attemptId: report.attempt_id,
       },
-      state: { report } as any,
+      state: {
+        report,
+        evaluationType: report.evaluation_type,
+      } as any,
     });
   };
 
@@ -117,7 +120,7 @@ const AssessmentReportList = ({
         {
           name: "",
           status: ["ENDED"],
-          // release_result_status: ["RELEASED"],
+          release_result_status: ["RELEASED"],
           assessment_type: [assessment_types],
           sort_columns: {},
         },

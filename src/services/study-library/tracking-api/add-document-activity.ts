@@ -9,16 +9,22 @@ export const useAddDocumentActivity = () => {
         mutationFn: async ({
             slideId,
             chapterId,
+            packageSessionId,
+            moduleId,
+            subjectId,
             requestPayload
         }: {
             slideId: string;
             chapterId: string;
+            packageSessionId: string;
+            moduleId: string;
+            subjectId: string;
             requestPayload: TrackingDataType;
         }) => {
             const payload = requestPayload
 
             return authenticatedAxiosInstance.post(
-                `${ADD_UPDATE_DOCUMENT_ACTIVITY}?slideId=${slideId}&chapterId=${chapterId}`,
+                `${ADD_UPDATE_DOCUMENT_ACTIVITY}?slideId=${slideId}&chapterId=${chapterId}&packageSessionId=${packageSessionId}&moduleId=${moduleId}&subjectId=${subjectId}`,
                 payload,
             );
         }

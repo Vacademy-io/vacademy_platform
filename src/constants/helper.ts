@@ -6,21 +6,25 @@ import { TokenKey } from "./auth/tokens";
 // import { PrivacyScreen } from "@capacitor-community/privacy-screen";
 
 export function convertToLocalDateTime(utcDate: string): string {
-  const date = new Date(utcDate);
+  if (!utcDate) return '';
 
-  const options: Intl.DateTimeFormatOptions = {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
-  };
+    const date = new Date(utcDate);
 
-  const formattedDate = date.toLocaleString("en-GB", options);
-  return formattedDate
-    .replace(",", "")
-    .replace(/\s(am|pm)/i, (match) => match.toUpperCase());
+    const options: Intl.DateTimeFormatOptions = {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true,
+        timeZone: 'UTC', // ← Force UTC output
+    };
+
+    // Use en-GB for day-month-year ordering
+    const formatted = new Intl.DateTimeFormat('en-GB', options).format(date);
+
+    return formatted.replace(',', '').replace(/\s(am|pm)/i, (match) => match.toUpperCase());
 }
 export function extractDateTime(utcDate: string) {
   const [date, time] = [

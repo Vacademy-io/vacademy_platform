@@ -1,8 +1,8 @@
 import { LayoutContainer } from '@/components/common/layout-container/layout-container'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ChevronRightIcon } from '@radix-ui/react-icons'
-import {  useSidebar } from '@/components/ui/sidebar'
-import { useEffect } from 'react'
+import {  SidebarProvider, useSidebar } from '@/components/ui/sidebar'
+import { useEffect, useState } from 'react'
 import { truncateString } from '@/lib/reusable/truncateString'
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore'
 import { CaretLeft } from 'phosphor-react'
@@ -15,6 +15,8 @@ import { useContentStore } from '@/stores/study-library/chapter-sidebar-store'
 import { InitStudyLibraryProvider } from '@/providers/study-library/init-study-library-provider'
 import { ModulesWithChaptersProvider } from '@/providers/study-library/modules-with-chapters-provider'
 import { useSlides, Slide } from '@/hooks/study-library/use-slides'
+import { useStudyLibraryStore } from '@/stores/study-library/use-study-library-store'
+import { useModulesWithChaptersStore } from '@/stores/study-library/use-modules-with-chapters-store'
 
 interface ChapterSearchParams {
   subjectId: string
@@ -43,6 +45,8 @@ function Slides() {
   const navigate = useNavigate();
   const { setItems, activeItem, setActiveItem } = useContentStore();
   const { slides } = useSlides(chapterId || "");
+  const {studyLibraryData} = useStudyLibraryStore();
+  const {modulesWithChaptersData} = useModulesWithChaptersStore();
 
   useEffect(() => {
     if (slides?.length) {
@@ -87,37 +91,47 @@ function Slides() {
       });
   };
 
- 
+ const [moduleName, setModuleName] = useState("");
+ const [chapterName, setChapterName] = useState("");
+ const [subjectName, setSubjectName] = useState("");
 
-  const subjectName = getSubjectName(subjectId);
-  const moduleName = getModuleName(moduleId);
-  const chapterName = getChapterName(chapterId);
   const trucatedChapterName = truncateString(chapterName || "", 9);
+
+  useEffect(()=>{
+    setModuleName(getModuleName(moduleId, modulesWithChaptersData));
+    setChapterName(getChapterName(chapterId, modulesWithChaptersData) || "");
+    setSubjectName(getSubjectName(subjectId, studyLibraryData) || "");
+  }, [modulesWithChaptersData, studyLibraryData])
 
 
   const SidebarComponent = (
-      <div className="flex w-full flex-col items-center">
-          <div className={`flex w-full flex-col gap-6 ${open ? "px-6" : "px-6"} -mt-10`}>
-              <div className="flex flex-wrap items-center gap-1 text-neutral-500">
-                  <p
-                      className={`cursor-pointer ${open ? "visible" : "hidden"}`}
-                      onClick={handleSubjectRoute}
-                  >
-                      {subjectName}
-                  </p>
-                  <ChevronRightIcon className={`size-4 ${open ? "visible" : "hidden"}`} />
-                  <p
-                      className={`cursor-pointer ${open ? "visible" : "hidden"}`}
-                      onClick={handleModuleRoute}
-                  >
-                      {moduleName}
-                  </p>
-                  <ChevronRightIcon className={`size-4 ${open ? "visible" : "hidden"}`} />
-                  <p className="cursor-pointer text-primary-500">
-                      {open ? chapterName : trucatedChapterName}
-                  </p>
+      <div className="flex w-full flex-col">
+          <div className="flex w-full flex-col gap-3 px-2">
+              {/* Enhanced Breadcrumb Navigation */}
+              <div className="pt-4 pb-2 border-b border-gray-100">
+                  <div className="flex flex-wrap items-center gap-1 text-gray-500 animate-fade-in">
+                      <button
+                          className={`text-xs font-medium hover:text-primary-600 transition-colors duration-200 truncate ${open ? "visible" : "hidden"}`}
+                          onClick={handleSubjectRoute}
+                      >
+                          {subjectName}
+                      </button>
+                      <ChevronRightIcon className={`w-3 h-3 text-gray-400 ${open ? "visible" : "hidden"}`} />
+                      <button
+                          className={`text-xs font-medium hover:text-primary-600 transition-colors duration-200 truncate ${open ? "visible" : "hidden"}`}
+                          onClick={handleModuleRoute}
+                      >
+                          {moduleName}
+                      </button>
+                      <ChevronRightIcon className={`w-3 h-3 text-gray-400 ${open ? "visible" : "hidden"}`} />
+                      <span className="text-xs font-medium text-primary-600 truncate">
+                          {open ? chapterName : trucatedChapterName}
+                      </span>
+                  </div>
               </div>
-              <div className="flex w-full flex-col items-center gap-6">
+              
+              {/* Slides Container */}
+              <div className="flex w-full flex-col py-1">
                   <ChapterSidebarSlides />
               </div>
           </div>
@@ -159,13 +173,15 @@ function Slides() {
 
   useEffect(() => {
       setNavHeading(heading);
-  }, []);
+  }, [subjectName]);
 
   return (
-    <LayoutContainer sidebarComponent={SidebarComponent}>
+    <LayoutContainer sidebarComponent={SidebarComponent} className='md:my-0 md:mx-6'>
         <InitStudyLibraryProvider>
             <ModulesWithChaptersProvider subjectId={subjectId}>
-                <SlideMaterial />
+                <SidebarProvider defaultOpen={false}>
+                    <SlideMaterial />
+                </SidebarProvider>
             </ModulesWithChaptersProvider>
       </InitStudyLibraryProvider>
     </LayoutContainer>

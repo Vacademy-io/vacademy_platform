@@ -2,25 +2,23 @@
 
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { MyDropdown } from "@/components/design-system/dropdown";
+import { MyInput } from "@/components/design-system/input";
+import { Form } from "@/components/ui/form";
 import { Label } from "@/components/ui/label";
-import { Loader2 } from "lucide-react";
-import { z } from "zod";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
 import { ENROLL_DETAILS_RESPONSE, GET_ENROLL_DETAILS } from "@/constants/urls";
 import { toast } from "sonner";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { MyButton } from "@/components/design-system/button";
 import { getPublicUrl } from "@/services/upload_file";
+import PhoneInputField from "@/components/design-system/phone-input-field";
 import axios from "axios";
 import { Route } from "@/routes/learner-invitation-response";
+import { Loader2 } from "lucide-react";
 
 interface CustomField {
   id: string;
@@ -97,8 +95,38 @@ interface LevelWithContext {
 const emailSchema = z.string().email("Please enter a valid email address");
 const phoneSchema = z
   .string()
-  .regex(/^\d{10}$/, "Phone number must be exactly 10 digits")
+  .regex(
+    /^\+\d{1,4}\d{10}$/,
+    "Please enter a valid phone number with country code"
+  )
   .transform((val) => val.trim());
+
+// Create a form schema for the custom fields
+const createCustomFieldsSchema = (customFields: CustomField[]) => {
+  const schemaObject: Record<string, z.ZodType> = {};
+  customFields.forEach((field) => {
+    if (field.field_name.toLowerCase().includes("email")) {
+      schemaObject[field.id] = z
+        .string()
+        .email("Please enter a valid email address");
+    } else if (
+      field.field_name.toLowerCase().includes("phone") ||
+      field.field_name.toLowerCase().includes("mobile")
+    ) {
+      schemaObject[field.id] = z
+        .string()
+        .regex(
+          /^\+\d{1,4}\d{10}$/,
+          "Please enter a valid phone number with country code"
+        );
+    } else {
+      schemaObject[field.id] = field.is_mandatory
+        ? z.string().min(1, "This field is required")
+        : z.string().optional();
+    }
+  });
+  return z.object(schemaObject);
+};
 
 const EnrollByInvite = () => {
   const { instituteId, inviteCode } = Route.useSearch();
@@ -147,6 +175,23 @@ const EnrollByInvite = () => {
     mobile: "",
     customFields: {} as Record<string, string>,
   });
+
+  // Initialize form with dynamic schema
+  const form = useForm({
+    mode: "onChange",
+    defaultValues: customFieldValues,
+    resolver: zodResolver(
+      createCustomFieldsSchema(inviteData?.custom_fields || [])
+    ),
+  });
+
+  // Update form validation schema when custom fields change
+  useEffect(() => {
+    if (inviteData?.custom_fields) {
+      form.clearErrors();
+      form.reset(customFieldValues);
+    }
+  }, [inviteData?.custom_fields]);
 
   // Fetch invite data on component mount
   useEffect(() => {
@@ -519,7 +564,7 @@ const EnrollByInvite = () => {
         }
 
         // Add validation for Email field
-        if (field.field_name === "Email") {
+        if (field.field_name.toLowerCase() === "email") {
           try {
             emailSchema.parse(customFieldValues[field.id]);
           } catch (error) {
@@ -534,7 +579,10 @@ const EnrollByInvite = () => {
         }
 
         // Add validation for Phone Number field
-        if (field.field_name === "Phone Number") {
+        if (
+          field.field_name.toLowerCase().includes("phone") ||
+          field.field_name.toLowerCase().includes("mobile")
+        ) {
           try {
             phoneSchema.parse(customFieldValues[field.id]);
           } catch (error) {
@@ -560,12 +608,18 @@ const EnrollByInvite = () => {
     let phoneValue = personalInfo.mobile;
 
     if (inviteData && inviteData.custom_fields) {
+      // const emailField = inviteData.custom_fields.find(
+      //   (field) => field.field_name === "Email"
+      // );
       const emailField = inviteData.custom_fields.find(
-        (field) => field.field_name === "Email"
+        (field) => field.field_name.toLowerCase() === "email"
       );
       const phoneField = inviteData.custom_fields.find(
-        (field) => field.field_name === "Phone Number"
+        (field) =>
+          field.field_name.toLowerCase().includes("phone") ||
+          field.field_name.toLowerCase().includes("mobile")
       );
+
       const fullNameField = inviteData.custom_fields.find(
         (field) => field.field_name === "Full Name"
       );
@@ -690,6 +744,7 @@ const EnrollByInvite = () => {
       );
       console.log("Enrollment response:", response.data);
       setSuccess(true);
+      setStep(3); // Move to step 3 on success
       toast.success("Enrollment submitted successfully!");
     } catch (error) {
       console.error("Error submitting enrollment:", error);
@@ -702,50 +757,123 @@ const EnrollByInvite = () => {
 
   // Function to render custom fields based on their type
   const renderCustomField = (field: CustomField) => {
+    const commonInputClasses = "w-full max-w-md"; // Common width for all inputs
+
     switch (field.field_type) {
       case "TEXT":
+        // Special handling for phone number fields
+        if (
+          field.field_name.toLowerCase().includes("phone") ||
+          field.field_name.toLowerCase().includes("mobile")
+        ) {
+          return (
+            <Form {...form}>
+              <div className={commonInputClasses}>
+                <PhoneInputField
+                  label={field.field_name}
+                  name={field.id}
+                  placeholder={field.description || `Enter ${field.field_name}`}
+                  control={form.control}
+                  value={customFieldValues[field.id] || ""}
+                  onChange={(value) => updateCustomField(field.id, value)}
+                  required={field.is_mandatory}
+                  country="in"
+                />
+              </div>
+            </Form>
+          );
+        }
+        // For email fields
+        if (field.field_name.toLowerCase().includes("email")) {
+          return (
+            <div className={commonInputClasses}>
+              <MyInput
+                inputType="email"
+                label={field.field_name}
+                required={field.is_mandatory}
+                inputPlaceholder={
+                  field.description || `Enter ${field.field_name}`
+                }
+                input={customFieldValues[field.id] || ""}
+                onChangeFunction={(e) =>
+                  updateCustomField(field.id, e.target.value)
+                }
+                error={errors.customFields[field.id]}
+                size="large"
+                className="w-full"
+              />
+            </div>
+          );
+        }
+        // For all other text fields
         return (
-          <Input
-            id={field.id}
-            placeholder={field.description || `Enter ${field.field_name}`}
-            value={customFieldValues[field.id] || ""}
-            onChange={(e) => updateCustomField(field.id, e.target.value)}
-            className={errors.customFields[field.id] ? "border-red-500" : ""}
-          />
+          <div className={commonInputClasses}>
+            <MyInput
+              inputType="text"
+              label={field.field_name}
+              required={field.is_mandatory}
+              inputPlaceholder={
+                field.description || `Enter ${field.field_name}`
+              }
+              input={customFieldValues[field.id] || ""}
+              onChangeFunction={(e) =>
+                updateCustomField(field.id, e.target.value)
+              }
+              error={errors.customFields[field.id]}
+              size="large"
+              className="w-full"
+            />
+          </div>
         );
       case "DROPDOWN": {
         const options = field.comma_separated_options
           ? field.comma_separated_options.split(",")
           : [];
         return (
-          <Select
-            onValueChange={(value) => updateCustomField(field.id, value)}
-            value={customFieldValues[field.id] || ""}
-          >
-            <SelectTrigger
-              className={errors.customFields[field.id] ? "border-red-500" : ""}
-            >
-              <SelectValue placeholder={`Select ${field.field_name}`} />
-            </SelectTrigger>
-            <SelectContent>
-              {options.map((option, index) => (
-                <SelectItem key={index} value={option.trim()}>
-                  {option.trim()}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className={commonInputClasses}>
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">
+                {field.field_name}
+                {field.is_mandatory && (
+                  <span className="text-red-500 ml-1">*</span>
+                )}
+              </Label>
+              <MyDropdown
+                currentValue={customFieldValues[field.id] || ""}
+                handleChange={(value) => updateCustomField(field.id, value)}
+                dropdownList={options}
+                placeholder={`Select ${field.field_name}`}
+                error={errors.customFields[field.id]}
+                // className="w-10"
+              />
+              {errors.customFields[field.id] && (
+                <p className="text-sm text-red-500">
+                  {errors.customFields[field.id]}
+                </p>
+              )}
+            </div>
+          </div>
         );
       }
       default:
         return (
-          <Input
-            id={field.id}
-            placeholder={field.description || `Enter ${field.field_name}`}
-            value={customFieldValues[field.id] || ""}
-            onChange={(e) => updateCustomField(field.id, e.target.value)}
-            className={errors.customFields[field.id] ? "border-red-500" : ""}
-          />
+          <div className={commonInputClasses}>
+            <MyInput
+              inputType="text"
+              label={field.field_name}
+              required={field.is_mandatory}
+              inputPlaceholder={
+                field.description || `Enter ${field.field_name}`
+              }
+              input={customFieldValues[field.id] || ""}
+              onChangeFunction={(e) =>
+                updateCustomField(field.id, e.target.value)
+              }
+              error={errors.customFields[field.id]}
+              size="large"
+              className="w-full"
+            />
+          </div>
         );
     }
   };
@@ -798,13 +926,17 @@ const EnrollByInvite = () => {
             // Step 1: Level Selection with Package and Session context
             <div className="space-y-6">
               <div className="border-t pt-4">
-                <h3 className="font-medium mb-2">Select Levels</h3>
-                <p className="text-xs text-gray-500 mb-2">
-                  Pre-selected levels are not selectable
-                </p>
-                <p className="text-xs text-gray-500 mb-4">
-                  Select the levels you want to enroll in
-                </p>
+                <h3 className="font-medium mb-2">Select Course</h3>
+                {batchOptions?.max_selectable_packages !== 0 && (
+                  <p className="text-xs text-gray-500 mb-2">
+                    Pre-selected levels are not selectable
+                  </p>
+                )}
+                {batchOptions?.max_selectable_packages !== 0 && (
+                  <p className="text-xs text-gray-500 mb-4">
+                    Select the levels you want to enroll in
+                  </p>
+                )}
                 <p className="text-xs text-gray-500 mb-2">{}</p>
               </div>
 
@@ -876,71 +1008,93 @@ const EnrollByInvite = () => {
                 </MyButton>
               </div>
             </div>
-          ) : (
+          ) : step === 2 ? (
             // Step 2: Personal Information
-            <div className="space-y-6">
-              <div className="border-t pt-4">
-                <h3 className="font-medium mb-4">Additional Information</h3>
-              </div>
+            <Form {...form}>
+              <div className="space-y-6">
+                <div className="border-t pt-4">
+                  <h3 className="font-medium mb-4">Additional Information</h3>
+                </div>
 
-              {/* Custom Fields */}
-              {inviteData &&
-                inviteData.custom_fields &&
-                inviteData.custom_fields.length > 0 && (
-                  <div className="space-y-4">
-                    {inviteData.custom_fields.map((field) => (
-                      <div key={field.id} className="space-y-2">
-                        <Label htmlFor={field.id}>
-                          {field.field_name}
-                          {field.is_mandatory && (
-                            <span className="text-red-500">*</span>
+                {/* Custom Fields */}
+                {inviteData &&
+                  inviteData.custom_fields &&
+                  inviteData.custom_fields.length > 0 && (
+                    <div className="space-y-4">
+                      {inviteData.custom_fields.map((field) => (
+                        <div key={field.id} className="space-y-2">
+                          {renderCustomField(field)}
+                          {errors.customFields[field.id] && (
+                            <p className="text-red-500 text-sm">
+                              {errors.customFields[field.id]}
+                            </p>
                           )}
-                        </Label>
-                        {renderCustomField(field)}
-                        {errors.customFields[field.id] && (
-                          <p className="text-red-500 text-sm">
-                            {errors.customFields[field.id]}
-                          </p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              {success ? (
-                <p className="text-green-500 text-sm">
-                  Your data has been sent successfully!
-                </p>
-              ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                {success ? (
+                  <p className="text-green-500 text-sm">
+                    Your data has been sent successfully!
+                  </p>
+                ) : null}
 
-              <div className="pt-4 flex justify-between">
-                <MyButton
-                  type="submit"
-                  scale="medium"
-                  buttonType="secondary"
-                  layoutVariant="default"
-                  onClick={handleBack}
-                >
-                  Back
-                </MyButton>
-                <MyButton
-                  type="submit"
-                  scale="medium"
-                  buttonType="primary"
-                  layoutVariant="default"
-                  onClick={handleConfirm}
-                  className="test-sm"
-                  disabled={submitLoading}
-                >
-                  {submitLoading ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      Processing...
-                    </>
-                  ) : (
-                    "Confirm Enrollment"
-                  )}{" "}
-                </MyButton>
+                <div className="pt-4 flex justify-between">
+                  <MyButton
+                    type="button"
+                    scale="medium"
+                    buttonType="secondary"
+                    layoutVariant="default"
+                    onClick={handleBack}
+                  >
+                    Back
+                  </MyButton>
+                  <MyButton
+                    type="button"
+                    scale="medium"
+                    buttonType="primary"
+                    layoutVariant="default"
+                    onClick={handleConfirm}
+                    disabled={submitLoading}
+                  >
+                    {submitLoading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                        Processing...
+                      </>
+                    ) : (
+                      "Confirm Enrollment"
+                    )}
+                  </MyButton>
+                </div>
               </div>
+            </Form>
+          ) : (
+            // Step 3: Success Confirmation
+            <div className="flex flex-col items-center justify-center space-y-6 py-8">
+              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
+                <svg
+                  className="w-8 h-8 text-green-500"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M5 13l4 4L19 7"
+                  />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900">
+                Enrollment Successful!
+              </h3>
+              <p className="text-center text-gray-600">
+                Thank you for enrolling. You will receive further instructions
+                via email.
+              </p>
             </div>
           )}
         </CardContent>

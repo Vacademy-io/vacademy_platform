@@ -80,7 +80,7 @@ export function UsernameLogin({ onSwitchToEmail }: UsernameLoginProps) {
                   userId
                 );
                 console.log("Institute color:", details?.institute_theme_code);
-                setPrimaryColor(details?.institute_theme_code ?? "#E67E22");
+                setPrimaryColor(details?.institute_theme_code ?? "primary");
               } catch (error) {
                 console.error("Error fetching institute details:", error);
               }

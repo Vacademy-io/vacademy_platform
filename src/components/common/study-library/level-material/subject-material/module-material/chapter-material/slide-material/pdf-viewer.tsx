@@ -14,9 +14,11 @@ import "@react-pdf-viewer/default-layout/lib/styles/index.css";
 import { getISTTime } from "./utils";
 import { usePDFSync } from "@/hooks/study-library/usePdfSync";
 import { getEpochTimeInMillis } from "./utils";
-import { PdfViewerComponent } from "./pdf-viewer-component";
+import { PdfViewerComponent, PdfViewerComponentRef } from "./pdf-viewer-component";
 import { Preferences } from "@capacitor/preferences";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
+import { useMediaRefsStore } from "@/stores/mediaRefsStore";
+// import { useMediaRefs } from "@/stores/mediaRefsStore";
 
 interface PDFViewerProps {
   documentId?: string;
@@ -50,7 +52,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ documentId, pdfUrl }) => {
   const updateIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const { activeItem } = useContentStore();
-
+  // const { pdfRef } = useMediaRefs();
   // Verification state
   const [showVerification, setShowVerification] = useState(false);
   const [verificationCountdown, setVerificationCountdown] = useState(59);
@@ -71,6 +73,10 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ documentId, pdfUrl }) => {
   // Track user activity
   const verificationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const inactivityThreshold = 60000;
+  const {setCurrentPdfPage, navigationTrigger} = useMediaRefsStore();
+
+  // Add ref for PDF viewer component
+  const pdfViewerRef = useRef<PdfViewerComponentRef>(null);
 
   // Load saved verification time from Capacitor preferences
   useEffect(() => {
@@ -436,6 +442,10 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ documentId, pdfUrl }) => {
     pageStartTime.current = new Date();
     startTimeInMillis.current = now;
 
+    // Set the PDF length in the store
+    const { setCurrentPdfLength } = useMediaRefsStore.getState();
+    setCurrentPdfLength(e.doc.numPages);
+
     if (isFirstView) {
       console.log("integrate add document activity api now");
       syncPDFTrackingData();
@@ -445,7 +455,6 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ documentId, pdfUrl }) => {
       if (!updateIntervalRef.current) {
         updateIntervalRef.current = setInterval(
           () => {
-            console.log("integrate update document activity api now");
             syncPDFTrackingData();
           },
           2 * 60 * 1000
@@ -453,6 +462,10 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ documentId, pdfUrl }) => {
       }
     }
   };
+
+  useEffect(() => {
+    setCurrentPage(activeItem?.progress_marker || 0);
+  }, [activeItem?.progress_marker]);
 
   const handlePageChange = (e: PageChangeEvent) => {
     const now = getEpochTimeInMillis();
@@ -469,8 +482,10 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ documentId, pdfUrl }) => {
         end_time_in_millis: now,
       });
     }
-
+    // console.log("e.currentPage: ", e.currentPage);
+    // pdfRef.current = e.currentPage;
     setCurrentPage(e.currentPage);
+    setCurrentPdfPage(e.currentPage);
     pageStartTime.current = new Date();
 
     // Changing page counts as user activity
@@ -495,6 +510,15 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ documentId, pdfUrl }) => {
       }
     };
   }, []);
+
+  // Listen for navigation triggers from global store
+  useEffect(() => {
+    if (navigationTrigger > 0 && pdfViewerRef.current) {
+      // The currentPdfPage from the store will be updated by navigateToPdfPage
+      const { currentPdfPage } = useMediaRefsStore.getState();
+      pdfViewerRef.current.jumpToPage(currentPdfPage);
+    }
+  }, [navigationTrigger]);
 
   // Update the return JSX to include a more informative pause dialog
   return (
@@ -584,9 +608,11 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ documentId, pdfUrl }) => {
       )}
 
       <PdfViewerComponent
+        ref={pdfViewerRef}
         pdfUrl={pdfUrl}
         handlePageChange={handlePageChange}
         handleDocumentLoad={handleDocumentLoad}
+        initialPage={activeItem?.progress_marker}
       />
     </div>
   );

@@ -1,4 +1,3 @@
-"use client";
 import { useEffect, useState } from "react";
 // import { SplashScreen } from "@/components/common/LoginPages/layout/splash-container";
 // import { useAnimationStore } from "@/stores/login/animationStore";
@@ -6,49 +5,178 @@ import { useEffect, useState } from "react";
 // import { MyButton } from "@/components/design-system/button";
 // import { loginSchema } from "@/schemas/login/login";
 // import { z } from "zod";
+import { Heading } from "@/components/common/LoginPages/ui/heading";
 import { TokenKey } from "@/constants/auth/tokens";
 import { useNavigate } from "@tanstack/react-router";
-// import HeaderLogo from "../ui/header_logo";
-
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
-import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
+import {
+  getTokenDecodedData,
+  getTokenFromStorage,
+  handleSSOLogin,
+  setTokenInStorage,
+} from "@/lib/auth/sessionUtility";
 import { EmailLogin } from "./EmailOtpForm";
 import { UsernameLogin } from "./UsernamePasswordForm";
 import { Preferences } from "@capacitor/preferences";
-// type FormValues = z.infer<typeof loginSchema>;
+import { FcGoogle } from "react-icons/fc";
+import { GitHubLogoIcon } from "@radix-ui/react-icons";
+import { LOGIN_URL_GOOGLE_GITHUB } from "@/constants/urls";
+import { toast } from "sonner";
+import { useTheme } from "@/providers/theme/theme-provider";
+import { fetchAndStoreInstituteDetails } from "@/services/fetchAndStoreInstituteDetails";
+import { fetchAndStoreStudentDetails } from "@/services/studentDetails";
+import ClipLoader from "react-spinners/ClipLoader";
 
 export const getFromStorage = async (key: string) => {
   const result = await Preferences.get({ key });
   return result.value;
 };
 
+export const setToStorage = async (key: string, value: string) => {
+  await Preferences.set({ key, value });
+};
+
 export function LoginForm() {
-  // const { hasSeenAnimation, setHasSeenAnimation } = useAnimationStore();
-  // const [showSplash, setShowSplash] = useState(!hasSeenAnimation);
   const navigate = useNavigate();
-  const [isEmailLogin, setIsEmailLogin] = useState(false);
+  const { setPrimaryColor, getPrimaryColorCode } = useTheme();
 
-  // Handle splash screen timing
-  // useEffect(() => {
-  //   if (!hasSeenAnimation) {
-  //     const timer = setTimeout(() => {
-  //       setHasSeenAnimation();
-  //       setShowSplash(false);
-  //     }, 2000); // Splash screen duration
-  //     return () => clearTimeout(timer); // Cleanup on unmount
-  //   }
-  // }, [hasSeenAnimation, setHasSeenAnimation]);
+  const urlParams = new URLSearchParams(window.location.search);
+  const [isSSOLoading, setIsSSOLoading] = useState(false);
+  const isPublic = urlParams.get("isPublicAssessment");
+  const redirect = urlParams.get("redirect");
+  const [isEmailLogin, setIsEmailLogin] = useState(
+    isPublic === "true" ? true : false
+  );
 
-  // useEffect(() => {
-  //   const redirect = async () => {
-  //     const token = await getTokenFromStorage(TokenKey.accessToken);
-  //       if (!isNullOrEmptyOrUndefined(token)) {
-  //         navigate({ to: "/dashboard" });
-  //       }
-  //     };
-  //     redirect();
-  //   }, []);
+  // Handle OAuth callback
+  useEffect(() => {
+    const handleOAuthCallback = async () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const accessToken = urlParams.get("accessToken");
+      const refreshToken = urlParams.get("refreshToken");
+      const error = urlParams.get("error");
 
+      if (error) {
+        console.error("OAuth error:", error);
+        toast.error("Authentication failed. Please try again.");
+        return;
+      }
+      if (accessToken && refreshToken) {
+        try {
+          // Store tokens in Capacitor Preferences with specific keys
+          await setToStorage("accessToken", accessToken);
+          await setToStorage("refreshToken", refreshToken);
+
+          // Also store in the regular token storage for compatibility
+          await setTokenInStorage(TokenKey.accessToken, accessToken);
+          await setTokenInStorage(TokenKey.refreshToken, refreshToken);
+
+          console.log("Tokens stored successfully");
+
+          // Execute the onSuccess logic
+          await handleSuccessfulLogin(accessToken, redirect);
+        } catch (error) {
+          console.error("Error storing tokens:", error);
+          toast.error("Failed to store authentication tokens");
+        }
+      }
+    };
+
+    handleOAuthCallback();
+  }, []);
+
+  useEffect(() => {
+    // Handle SSO login from URL parameters
+    const ssoLoginSuccess = handleSSOLogin();
+
+    if (ssoLoginSuccess) {
+      setIsSSOLoading(true);
+      return;
+    }
+    const urlParams = new URLSearchParams(window.location.search);
+    const accessToken = urlParams.get("accessToken");
+    const refreshToken = urlParams.get("refreshToken");
+    if (
+      isNullOrEmptyOrUndefined(accessToken) ||
+      isNullOrEmptyOrUndefined(refreshToken)
+    ) {
+      return;
+    }
+
+    if (accessToken && refreshToken) {
+      console.log("accessToken", accessToken);
+      setTokenInStorage(TokenKey.accessToken, accessToken);
+      setTokenInStorage(TokenKey.refreshToken, refreshToken);
+      handleSuccessfulLogin(accessToken, redirect);
+    }
+  }, [navigate]);
+
+  // Handle successful login logic
+  const handleSuccessfulLogin = async (
+    accessToken: string,
+    redirect?: string | null
+  ) => {
+    try {
+      // Decode token to get user data
+      const decodedData = await getTokenDecodedData(accessToken);
+
+      // Check authorities in decoded data
+      const authorities = decodedData?.authorities;
+      const userId = decodedData?.user;
+      const authorityKeys = authorities ? Object.keys(authorities) : [];
+
+      if (authorityKeys.length > 1) {
+        // Redirect to InstituteSelection if multiple authorities are found
+        navigate({
+          to: "/institute-selection",
+          search: { redirect: redirect || "/dashboard/" },
+        });
+        setIsSSOLoading(false);
+      } else {
+        // Get the single institute ID
+        const instituteId = authorities
+          ? Object.keys(authorities)[0]
+          : undefined;
+
+        if (instituteId && userId) {
+          try {
+            // Fetch and store institute details
+            const details = await fetchAndStoreInstituteDetails(
+              instituteId,
+              userId
+            );
+            console.log("Institute color:", details?.institute_theme_code);
+            setPrimaryColor(details?.institute_theme_code ?? "#E67E22");
+          } catch (error) {
+            console.error("Error fetching institute details:", error);
+            toast.error("Failed to fetch institute details");
+          }
+
+          try {
+            // Fetch and store student details
+            await fetchAndStoreStudentDetails(instituteId, userId);
+          } catch (error) {
+            console.error("Error fetching student details:", error);
+            toast.error("Failed to fetch student details");
+          }
+        } else {
+          console.error("Institute ID or User ID is undefined");
+          toast.error("Invalid user data received");
+        }
+
+        // Redirect to SessionSelectionPage
+        navigate({
+          to: "/SessionSelectionPage",
+          search: { redirect: redirect || "/dashboard" },
+        });
+      }
+    } catch (error) {
+      console.error("Error processing decoded data:", error);
+      toast.error("Failed to process user data");
+    }
+  };
+
+  // Check for existing authentication
   useEffect(() => {
     const redirect = async () => {
       const token = await getTokenFromStorage(TokenKey.accessToken);
@@ -65,94 +193,97 @@ export function LoginForm() {
     };
 
     redirect();
-  }, []);
+  }, [navigate]);
 
-  // Conditionally render the splash screen
-  // if (showSplash) {
-  //   return <SplashScreen isAnimationEnabled />;
-  // }
-  // Login form content
+  // OAuth login handler
+  const handleOAuthLogin = (provider: "google" | "github") => {
+    try {
+      // Create state object with redirect information
+      const stateObj = {
+        // from: "http://localhost:8100/login",
+        from: "https://learner.vacademy.io/login",
+        account_type: "",
+      };
+
+      // Encode state as base64
+      const base64State = btoa(JSON.stringify(stateObj));
+
+      // Construct OAuth URL
+      const loginUrl = `${LOGIN_URL_GOOGLE_GITHUB}/${provider}?state=${encodeURIComponent(base64State)}`;
+
+      // Redirect to OAuth provider
+      window.location.href = loginUrl;
+    } catch (error) {
+      console.error("Error initiating OAuth login:", error);
+      toast.error("Failed to initiate login. Please try again.");
+    }
+  };
+
+  if (isSSOLoading) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center w-full">
+        <ClipLoader size={40} color={getPrimaryColorCode()} />
+        <p className="mt-4 text-lg">Getting your details...</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-orange-50/30 w-full">
-      <div className="min-h-screen flex items-center justify-center px-6 py-12">
-        {/* Centered Login Form Container */}
-        <div className="w-full max-w-md sm:max-w-lg md:max-w-xl lg:max-w-2xl space-y-8">
+    <div className="fixed inset-0 bg-gradient-to-br from-slate-50 to-white flex items-center justify-center p-4 z-50">
+      <div className="w-full max-w-sm mx-auto">
         {/* Login Card */}
-        <div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 p-10 animate-slide-in-right">
+        <div className="bg-white rounded-xl shadow-lg border border-slate-200/60 p-8">
           {/* Header */}
-          <div className="text-center space-y-3 mb-10">
-            <h1 className="text-4xl font-light text-gray-900 tracking-tight">Welcome</h1>
-            <p className="text-gray-500 font-light">Sign in to your account</p>
+          <div className="text-center mb-8">
+            <h1 className="text-2xl font-semibold text-slate-900 mb-2">Welcome back</h1>
+            <p className="text-slate-600 text-sm">Sign in to continue your learning journey</p>
           </div>
 
-          {/* Login Method Tabs */}
-          <div className="relative bg-gray-50/50 rounded-2xl p-1.5 mb-10">
-            <div 
-              className={`absolute top-1.5 bottom-1.5 w-1/2 bg-white rounded-xl shadow-lg transition-transform duration-500 ease-out ${
-                isEmailLogin ? 'translate-x-full' : 'translate-x-0'
-              }`}
-            ></div>
-            <div className="relative grid grid-cols-2 gap-1.5">
-              <button
-                onClick={() => setIsEmailLogin(false)}
-                className={`relative py-4 px-6 text-sm font-light rounded-xl transition-all duration-300 ${
-                  !isEmailLogin
-                    ? 'text-orange-600 font-medium'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                Username
-              </button>
-              <button
-                onClick={() => setIsEmailLogin(true)}
-                className={`relative py-4 px-6 text-sm font-light rounded-xl transition-all duration-300 ${
-                  isEmailLogin
-                    ? 'text-orange-600 font-medium'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                Email & OTP
-              </button>
-            </div>
-          </div>
-
-          {/* Form Content */}
-          <div className="relative overflow-hidden">
-            <div 
-              className={`transition-all duration-500 ease-in-out ${
-                isEmailLogin 
-                  ? 'transform translate-x-0 opacity-100' 
-                  : 'transform -translate-x-full opacity-0 absolute inset-0'
-              }`}
+          {/* OAuth Login Buttons */}
+          <div className="space-y-3 mb-6">
+            <button
+              className="w-full flex items-center justify-center gap-3 px-4 py-3 border border-slate-200 rounded-lg bg-white text-slate-700 text-sm font-medium hover:bg-slate-50 hover:border-slate-300 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+              onClick={() => handleOAuthLogin("google")}
+              type="button"
             >
-              {isEmailLogin && <EmailLogin onSwitchToUsername={() => setIsEmailLogin(false)} />}
-            </div>
-            <div 
-              className={`transition-all duration-500 ease-in-out ${
-                !isEmailLogin 
-                  ? 'transform translate-x-0 opacity-100' 
-                  : 'transform translate-x-full opacity-0 absolute inset-0'
-              }`}
+              <FcGoogle className="size-5" />
+              Continue with Google
+            </button>
+            <button
+              className="w-full flex items-center justify-center gap-3 px-4 py-3 border border-slate-200 rounded-lg bg-white text-slate-700 text-sm font-medium hover:bg-slate-50 hover:border-slate-300 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+              onClick={() => handleOAuthLogin("github")}
+              type="button"
             >
-              {!isEmailLogin && <UsernameLogin onSwitchToEmail={() => setIsEmailLogin(true)} />}
+              <GitHubLogoIcon className="size-5" />
+              Continue with GitHub
+            </button>
+          </div>
+
+          {/* Divider */}
+          <div className="relative my-6">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-slate-200" />
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="bg-white px-3 text-slate-500 font-medium">or</span>
             </div>
           </div>
 
-          {/* Footer */}
-          <div className="mt-10 pt-8 border-t border-gray-100/50 text-center">
-            <p className="text-xs text-gray-400 font-light flex items-center justify-center space-x-2">
-              <svg className="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-              </svg>
-              <span>Secured with enterprise-grade encryption</span>
-            </p>
+          {/* Login Forms */}
+          <div className="space-y-4">
+            {isEmailLogin ? (
+              <EmailLogin onSwitchToUsername={() => setIsEmailLogin(false)} />
+            ) : (
+              <UsernameLogin onSwitchToEmail={() => setIsEmailLogin(true)} />
+            )}
           </div>
         </div>
 
-        {/* Additional Info */}
-        <div className="text-center text-sm text-gray-400 animate-fade-in-up font-light">
-          <p>Need assistance? <a href="#" className="text-orange-500 hover:text-orange-600 font-normal transition-colors duration-200">Contact Support</a></p>
-        </div>
+        {/* Footer */}
+        <div className="text-center mt-6">
+          <p className="text-xs text-slate-500">
+            Secure login powered by modern encryption
+          </p>
         </div>
       </div>
     </div>

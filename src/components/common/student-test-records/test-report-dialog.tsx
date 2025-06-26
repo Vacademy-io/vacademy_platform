@@ -1,5 +1,3 @@
-"use client";
-
 import { DotOutline, Export } from "@phosphor-icons/react";
 import { MyButton } from "@/components/design-system/button";
 import { Separator } from "@radix-ui/react-separator";
@@ -9,11 +7,7 @@ import {
   formatDuration,
   getSubjectNameById,
 } from "@/constants/helper";
-import {
-  renderCorrectAnswer,
-  renderStudentResponse,
-  ResponseBreakdownComponent,
-} from "./response-breakdown-component";
+import { ResponseBreakdownComponent } from "./response-breakdown-component";
 import { MarksBreakdownComponent } from "./marks-breakdown-component";
 import { Crown } from "@/svgs";
 import { useEffect, useState } from "react";
@@ -35,24 +29,93 @@ import {
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
 import { MarksStatusIndicator } from "./marks-chip";
+import { FileText } from "lucide-react";
+import type {
+  DocumentLoadEvent,
+  PageChangeEvent,
+} from "@react-pdf-viewer/core";
+import { PdfViewerComponent } from "../study-library/level-material/subject-material/module-material/chapter-material/slide-material/pdf-viewer-component";
+import { getPublicUrl } from "@/services/upload_file";
+import {
+  renderStudentResponse,
+  renderCorrectAnswer,
+  SectionQuestions,
+} from "./question-response-renderer";
+
 type TestMarks = {
   total_achievable_marks: number;
   section_wise_achievable_marks: Record<string, number>;
 };
+
+// Function to fetch questions data
+const fetchQuestionsData = async (
+  assessmentId: string,
+  sectionIds: string[]
+) => {
+  try {
+    const response = await authenticatedAxiosInstance.get(
+      "https://backend-stage.vacademy.io/assessment-service/assessment/add-questions/create/v1/questions-of-sections",
+      {
+        params: {
+          assessmentId,
+          sectionIds: sectionIds.join(","),
+        },
+      }
+    );
+    return response.data as SectionQuestions;
+  } catch (error) {
+    console.error("Error fetching questions data:", error);
+    return null;
+  }
+};
+
+interface InstituteDetails {
+  id: string;
+  name: string;
+  subjects: Array<{
+    id: string;
+    subject_name: string;
+  }>;
+}
+
 export const TestReportDialog = ({
   testReport,
   examType,
   assessmentDetails,
+  evaluationType,
 }: TestReportDialogProps) => {
   const report = useRouter();
-  const [instituteDetails, setInstituteDetails] = useState<any>(null);
+  const [instituteDetails, setInstituteDetails] =
+    useState<InstituteDetails | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [questionsData, setQuestionsData] = useState<SectionQuestions | null>(
+    null
+  );
   const { setNavHeading } = useNavHeadingStore();
+  type PdfFileType = {
+    fileId: string;
+    fileName: string;
+    fileUrl: string;
+    size: number;
+    file: File | null;
+  };
+
+  // Somewhere at the top of your component
+  const [pdfFile, setPdfFile] = useState<PdfFileType | null>(null);
+
+  // const { pdfFile } = useAssessmentStore();
+  // setPdfFile: (file) => set({ pdfFile: file }),
+  const [showPdfPreview, setShowPdfPreview] = useState(false);
+  const [pdfDocumentInfo, setPdfDocumentInfo] = useState({
+    numPages: 0,
+    currentPage: 0,
+  });
+  console.log("pdfDocumentInfo", pdfDocumentInfo);
 
   // const { state } = report.__store.state.location.state as ParsedHistoryState;
   // const studentReport: Report = state?.report || {};
   const locationState = report.__store.state.location
-    .state as ParsedHistoryState;
+    .state as unknown as ParsedHistoryState;
   const defaultReport: Report = {
     assessment_id: "",
     attempt_id: "",
@@ -66,6 +129,7 @@ export const TestReportDialog = ({
     sections: {},
     attempt_date: "",
     play_mode: "",
+    evaluation_type: "",
   };
 
   const studentReport: Report = locationState?.report || defaultReport;
@@ -81,7 +145,6 @@ export const TestReportDialog = ({
             assessmentId,
           },
         });
-        console.log("testMarks", response);
         const data = response?.data;
         setTestMarks(data);
       } catch (error) {
@@ -91,6 +154,22 @@ export const TestReportDialog = ({
 
     fetchTestMarks();
   }, []);
+
+  useEffect(() => {
+    const loadQuestionsData = async () => {
+      if (testReport && studentReport?.assessment_id) {
+        // Get all unique section IDs from the test report
+        const sectionIds = Object.keys(testReport.all_sections);
+        const data = await fetchQuestionsData(
+          studentReport.assessment_id,
+          sectionIds
+        );
+        setQuestionsData(data);
+      }
+    };
+
+    loadQuestionsData();
+  }, [testReport, studentReport?.assessment_id]);
 
   const handleBackClick = () => {
     report.navigate({
@@ -112,7 +191,6 @@ export const TestReportDialog = ({
   useEffect(() => {
     const fetchInstituteDetails = async () => {
       const response = await Preferences.get({ key: "InstituteDetails" });
-      console.log("response InstituteDetails", response);
       setInstituteDetails(response?.value ? JSON.parse(response.value) : null);
     };
 
@@ -126,6 +204,8 @@ export const TestReportDialog = ({
   );
 
   const handleExport = async () => {
+    if (!instituteDetails) return;
+
     const assessmentId = studentReport.assessment_id;
     const attemptId = studentReport.attempt_id;
     const instituteId = instituteDetails.id;
@@ -170,10 +250,52 @@ export const TestReportDialog = ({
   const [selectedSection, setSelectedSection] = useState(
     sectionsInfo?.length ? sectionsInfo[0]?.id : undefined
   );
+  const evaluation_type = evaluationType;
 
-  console.log("testReport", testReport, "selectedSection", selectedSection);
+  const evaluated_file_id = testReport?.evaluated_file_id;
   const currentSectionAllQuestions = testReport?.all_sections[selectedSection!];
-  console.log("currentSectionAllQuestions", currentSectionAllQuestions);
+
+  useEffect(() => {
+    if (evaluated_file_id) {
+      const fetchAndSetFile = async () => {
+        try {
+          const publicUrl = await getPublicUrl(evaluated_file_id);
+
+          // Assuming you have file details somewhere (like file.name, file.size)
+          setPdfFile({
+            fileId: evaluated_file_id,
+            fileName: "Evaluated File.pdf", // replace this if you have actual name
+            fileUrl: publicUrl,
+            size: 0, // replace this if you have actual file size
+            file: null, // or blob/file object if you have it
+          });
+        } catch (error) {
+          console.error("Error fetching public URL:", error);
+        }
+      };
+
+      fetchAndSetFile();
+    }
+  }, [evaluated_file_id]);
+  const handleDocumentLoad = (e: DocumentLoadEvent) => {
+    setPdfDocumentInfo((prev) => ({
+      ...prev,
+      numPages: e.doc.numPages,
+    }));
+  };
+
+  const handlePageChange = (e: PageChangeEvent) => {
+    setPdfDocumentInfo((prev) => ({
+      ...prev,
+      currentPage: e.currentPage,
+    }));
+  };
+
+  const handlePreviewPdf = () => {
+    if (pdfFile) {
+      setShowPdfPreview(true);
+    }
+  };
 
   if (testReport === null || studentReport === null || examType === undefined) {
     return;
@@ -265,7 +387,7 @@ export const TestReportDialog = ({
         <div className="p-6 text-h3 font-semibold text-primary-500">
           Score Report
         </div>
-        <div className="flex flex-col md:flex-col lg:flex-row items-center gap-10 lg:gap-20 p-6">
+        <div className="flex flex-col md:flex-col lg:flex-row gap-10 lg:gap-20 p-6">
           <div className=" flex sm:flex-row lg:flex-col items-center gap-20 p-6">
             <div className="flex flex-col">
               <h1>Rank</h1>
@@ -567,7 +689,23 @@ export const TestReportDialog = ({
                                   : "bg-neutral-50"
                             }`}
                           >
-                            {renderStudentResponse(review)}
+                            {/* <div>
+                              {review.student_response_options &&
+                              review.student_response_options.length > 0 ? (
+                                review.student_response_options.map(
+                                  (option, idx) => {
+                                    return (
+                                      <p key={idx}>
+                                        {parseHtmlToString(option.option_name)}
+                                      </p>
+                                    );
+                                  }
+                                )
+                              ) : (
+                                <p>No response</p>
+                              )}
+                            </div> */}
+                            {renderStudentResponse(review, questionsData)}
                           </div>
                         </div>
                       </div>
@@ -591,7 +729,7 @@ export const TestReportDialog = ({
                             <div
                               className={`flex w-full rounded-lg bg-success-50 p-4`}
                             >
-                              {renderCorrectAnswer(review)}
+                              {renderCorrectAnswer(review, questionsData)}
                             </div>
                           </div>
                         </div>
@@ -619,7 +757,25 @@ export const TestReportDialog = ({
             )}
           </div>
         </div>
-        <div className="fixed bottom-0 left-0 right-0 p-4 bg-white shadow-md md:hidden lg:hidden">
+        {evaluation_type === "MANUAL" && pdfFile && (
+          <div className="sticky bottom-0 left-0 right-0 p-4 bg-white shadow-md">
+            <div className="flex justify-center">
+              <MyButton
+                buttonType="primary"
+                scale="large"
+                layoutVariant="default"
+                onClick={handlePreviewPdf}
+                className="flex items-center gap-2"
+              >
+                <FileText className="h-4 w-4" />
+                View PDF
+              </MyButton>
+            </div>
+          </div>
+        )}
+        <div
+          className={`fixed bottom-0 left-0 right-0 p-4 bg-white shadow-md md:hidden lg:hidden ${evaluation_type === "MANUAL" && pdfFile ? "mb-16" : ""}`}
+        >
           <div className="flex justify-center">
             <MyButton
               buttonType="secondary"
@@ -636,6 +792,35 @@ export const TestReportDialog = ({
             </MyButton>
           </div>
         </div>
+        {showPdfPreview && pdfFile ? (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-opacity-50 p-4">
+            <div className="bg-white rounded-lg w-full max-w-5xl h-[90vh] flex flex-col">
+              {/* <div className="flex justify-between items-center p-4 border-b">
+                <Button
+                  variant="ghost"
+                  onClick={() => setShowPdfPreview(false)}
+                >
+                  <span className="sr-only">Back</span>← Back
+                </Button>
+              </div> */}
+              <div className="flex-1 overflow-auto">
+                <PdfViewerComponent
+                  pdfUrl={pdfFile.fileUrl}
+                  handleDocumentLoad={handleDocumentLoad}
+                  handlePageChange={handlePageChange}
+                />
+              </div>
+              <div className="p-4 border-t">
+                <MyButton
+                  buttonType="secondary"
+                  onClick={() => setShowPdfPreview(false)}
+                >
+                  Close
+                </MyButton>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     </>
   );

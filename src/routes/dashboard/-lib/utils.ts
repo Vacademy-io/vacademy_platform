@@ -5,7 +5,10 @@ import {
   GET_NOTIFCATIONS,
   GET_ANNOUNCEMENTS,
   GET_ASSESSMENT_COUNT,
+  GET_LAST_7_DAYS_PROGRESS
 } from "@/constants/urls";
+import { DashbaordResponse, UserActivityArray } from "../-types/dashboard-data-types";
+import { getStoredDetails } from "@/routes/assessment/examination/-utils.ts/useFetchAssessment";
 
 export const fetchUserData = async () => {
   const studentData = await Preferences.get({ key: "StudentDetails" });
@@ -16,9 +19,10 @@ export const fetchUserData = async () => {
 
 export const fetchStaticData = async (
   setUsername: (username: string | null) => void,
+  // setAssessmentCount: (count: number) => void,
   setTestAssigned: (count: number) => void,
   setHomeworkAssigned: (count: number) => void,
-  setData?: (data: any) => void
+  setData?: (data: DashbaordResponse) => void,
 ) => {
   const userData = await fetchUserData();
   const first_name = userData.full_name.split(" ")[0];
@@ -81,3 +85,29 @@ export const fetchAnnouncements = async () => {
     console.error("Error fetching assessments:", error);
   }
 };
+
+
+  export const fetchLast7DaysProgress = async ({user_id, start_date, end_date}:{
+    user_id: string,
+    start_date: string,
+    end_date: string
+  }) : Promise<UserActivityArray> => {
+    try{
+      const url = GET_LAST_7_DAYS_PROGRESS;
+      const {student} = await getStoredDetails();
+      const response = await authenticatedAxiosInstance({
+        method: 'POST',
+        url: url,
+        data: {
+          user_id: user_id,
+          package_session_id: student.package_session_id,
+          start_date: start_date,
+          end_date: end_date
+        }
+      })
+      return response.data;
+    } catch (error) {
+      console.error("Error fetching last 7 days progress:", error);
+      return [];
+    }
+  }

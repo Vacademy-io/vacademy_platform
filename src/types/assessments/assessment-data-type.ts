@@ -165,6 +165,7 @@ export interface Report {
   subject_id: string;
   duration_in_seconds: number;
   total_marks: number;
+  evaluation_type: string;
   start_time: string;
   end_time: string;
   sections: AllSections;
@@ -172,15 +173,18 @@ export interface Report {
 }
 export interface ParsedHistoryState {
   report?: Report;
+  evaluationType?: string;
 }
 export interface AssessmentTestReport {
   all_sections: AllSections;
+  evaluated_file_id: string;
   question_overall_detail_dto: QuestionOverallDetailDTO;
 }
 export interface TestReportDialogProps {
   testReport: AssessmentTestReport | null;
   examType: string | undefined;
   assessmentDetails: StepData[];
+  evaluationType: string;
 }
 
 export interface ConvertedCustomField {

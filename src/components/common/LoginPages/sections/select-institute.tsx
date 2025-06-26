@@ -16,6 +16,10 @@ import { fetchAndStoreInstituteDetails } from "@/services/fetchAndStoreInstitute
 import { z } from "zod";
 import { fetchAndStoreStudentDetails } from "@/services/studentDetails";
 import { useSearch } from "@tanstack/react-router";
+import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
+import { INSTITUTE_DETAIL } from "@/constants/urls";
+import { DashboardLoader } from "@/components/core/dashboard-loader";
+import { Loader2 } from "lucide-react";
 
 const instituteSelectionSchema = z.object({
   instituteId: z.string().nonempty("Please select an institute"),
@@ -37,39 +41,70 @@ export function InstituteSelection() {
   const [dropdownList, setDropdownList] = useState<
     { label: string; value: string }[]
   >([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingInstitutes, setIsLoadingInstitutes] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     const fetchInstitutes = async () => {
+      setIsLoadingInstitutes(true);
       try {
-        console.log("Fetching institutes...");
         const token = await getTokenFromStorage(TokenKey.accessToken);
         if (!token) {
-          console.error("No token found in storage.");
+          toast.error("No token found");
           return;
         }
-
+  
         const decodedData = await getTokenDecodedData(token);
         const authorities = decodedData?.authorities;
-        if (!authorities) {
-          toast.error("No authorities found in token.");
+        const userId = decodedData?.user;
+  
+        if (!authorities || !userId) {
+          toast.error("Invalid token data");
           return;
         }
-
-        const instituteList = Object.keys(authorities).map((key) => ({
-          label: key,
-          value: key,
-        }));
-
+  
+        const instituteIds = Object.keys(authorities);
+  
+        const instituteList = await Promise.all(
+          instituteIds.map(async (instituteId) => {
+            try {
+              const response = await authenticatedAxiosInstance({
+                method: "GET",
+                url: `${INSTITUTE_DETAIL}/${instituteId}`,
+                params: {
+                  instituteId,
+                  userId,
+                },
+              });
+  
+              const data = response.data;
+  
+              return {
+                label: data?.institute_name || instituteId, // Fallback if name is missing
+                value: instituteId,
+              };
+            } catch (err) {
+              console.error(`Error fetching details for ${instituteId}`, err);
+              return {
+                label: instituteId, // Fallback
+                value: instituteId,
+              };
+            }
+          })
+        );
+  
         setDropdownList(instituteList);
       } catch (error) {
         console.error("Error fetching institute list:", error);
-        toast.error("Failed to fetch institutes");
+        toast.error("Failed to fetch institute list");
+      } finally {
+        setIsLoadingInstitutes(false);
       }
     };
-
+  
     fetchInstitutes();
   }, []);
+  
 
   const onSubmit = async (data: FormValues) => {
     console.log("Form submitted with data:", data);
@@ -78,8 +113,8 @@ export function InstituteSelection() {
       return;
     }
 
+    setIsSubmitting(true);
     try {
-      setIsLoading(true);
       console.log("Storing selected institute in storage...");
       // await setTokenInStorage("selectedInstitute", data.instituteId);
 
@@ -118,9 +153,22 @@ export function InstituteSelection() {
       console.error("Error processing institute selection:", error);
       toast.error("Failed to process institute selection");
     } finally {
-      setIsLoading(false);
+      setIsSubmitting(false);
     }
   };
+
+  // Show loader while fetching institutes
+  if (isLoadingInstitutes) {
+    return (
+      <div className="flex w-full flex-col items-center justify-center gap-10 md:gap-8 lg:gap-6 px-4 md:px-8 lg:px-12">
+        <Heading
+          heading="Welcome, Student!"
+          subHeading="Loading your institutes..."
+        />
+        <DashboardLoader />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50 flex items-center justify-center p-4">
@@ -140,99 +188,63 @@ export function InstituteSelection() {
             />
           </div>
 
+          {/* Form */}
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-              {/* Institute Dropdown */}
-              <div className="space-y-4 animate-fade-in-up opacity-0 [animation-delay:0.6s] [animation-fill-mode:forwards]">
-                <FormField
-                  control={form.control}
-                  name="instituteId"
-                  render={() => (
-                    <FormItem>
-                      <FormControl>
-                        <div className="relative group">
-                          <div className="transform transition-all duration-300 hover:scale-[1.02]">
-                            <MyDropdown
-                              dropdownList={
-                                dropdownList.length > 0
-                                  ? dropdownList.map((item) => item.label)
-                                  : []
-                              }
-                              placeholder="Choose your institute..."
-                              handleChange={(selectedLabel) => {
-                                const selectedInstitute = dropdownList.find(
-                                  (item) => item.label === selectedLabel
-                                );
-                                form.setValue(
-                                  "instituteId",
-                                  selectedInstitute?.value || ""
-                                );
-                              }}
-                              currentValue={
-                                dropdownList.find(
-                                  (item) => item.value === form.watch("instituteId")
-                                )?.label || ""
-                              }
-                            />
-                          </div>
-                          {/* Animated underline */}
-                          <div className="absolute bottom-0 left-0 w-0 h-0.5 bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-300 group-focus-within:w-full" />
-                        </div>
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
-                
-                {form.formState.errors.instituteId && (
-                  <div className="text-sm text-red-500 text-center animate-fade-in-up">
-                    {form.formState.errors.instituteId.message}
-                  </div>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 animate-fade-in-up opacity-0 [animation-delay:0.6s] [animation-fill-mode:forwards]">
+              <FormField
+                control={form.control}
+                name="instituteId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormControl>
+                      <MyDropdown
+                        {...field}
+                        options={dropdownList}
+                        placeholder="Select your institute"
+                        className="w-full"
+                      />
+                    </FormControl>
+                  </FormItem>
                 )}
-              </div>
+              />
 
-              {/* Buttons */}
-              <div className="space-y-4 animate-fade-in-up opacity-0 [animation-delay:0.8s] [animation-fill-mode:forwards]">
+              <div className="flex flex-col items-center gap-4 md:gap-6 lg:gap-8 justify-center">
                 <MyButton
                   type="submit"
                   scale="large"
                   buttonType="primary"
                   layoutVariant="default"
-                  disabled={isLoading}
-                  className="w-full relative overflow-hidden transition-all duration-300 hover:shadow-lg hover:shadow-purple-500/30 active:scale-[0.98] disabled:scale-100"
+                  disabled={isSubmitting}
                 >
-                  <span className={`transition-opacity duration-200 ${isLoading ? 'opacity-0' : 'opacity-100'}`}>
-                    Continue to Dashboard
-                  </span>
-                  {isLoading && (
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="flex space-x-1">
-                        <div className="w-2 h-2 bg-white rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-                        <div className="w-2 h-2 bg-white rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-                        <div className="w-2 h-2 bg-white rounded-full animate-bounce"></div>
-                      </div>
-                    </div>
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      Processing...
+                    </>
+                  ) : (
+                    "Login to Institute"
                   )}
                 </MyButton>
-
-                <div className="text-center">
-                  <p className="text-sm text-gray-600 mb-2">
-                    Want to login with another account?
-                  </p>
-                  <MyButton
-                    type="button"
-                    scale="medium"
-                    buttonType="text"
-                    layoutVariant="default"
-                    className="text-purple-600 hover:text-purple-700 transition-all duration-200 hover:scale-105"
-                    onClick={() =>
-                      navigate({
-                        to: "/login",
-                        search: { redirect: redirect },
-                      })
-                    }
-                  >
-                    Back to Login
-                  </MyButton>
+                <div className="flex flex-row font-regular items-center justify-center">
+                  <div className="text-neutral-500 text-sm md:text-base lg:text-base text-center">
+                    Want to Login with another account?
+                    <MyButton
+                      type="button"
+                      scale="medium"
+                      buttonType="text"
+                      layoutVariant="default"
+                      className="text-purple-600 hover:text-purple-700 transition-all duration-200 hover:scale-105"
+                      onClick={() =>
+                        navigate({
+                          to: "/login",
+                          search: { redirect: redirect },
+                        })
+                      }
+                      disabled={isSubmitting}
+                    >
+                      Back to Login
+                    </MyButton>
+                  </div>
                 </div>
               </div>
             </form>

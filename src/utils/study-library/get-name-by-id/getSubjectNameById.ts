@@ -1,8 +1,8 @@
 // utils/subject.ts
-import { useStudyLibraryStore } from "@/stores/study-library/use-study-library-store";
 
-export const getSubjectName = (subjectId: string): string | null => {
-    const { studyLibraryData } = useStudyLibraryStore();
+import { SubjectType } from "@/stores/study-library/use-study-library-store";
+
+export const getSubjectName = (subjectId: string, studyLibraryData: SubjectType[] | null): string | null => {
     if(studyLibraryData==null) return null;
 
     const subject = studyLibraryData.find((subject)=>(subject.id==subjectId));

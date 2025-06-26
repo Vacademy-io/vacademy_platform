@@ -26,7 +26,14 @@ module.exports = {
   		},
   		fontFamily: {
   			sans: [
-  				'Open Sans',
+  				'Inter',
+  				'system-ui',
+  				'-apple-system',
+  				'BlinkMacSystemFont',
+  				'Segoe UI',
+  				'Roboto',
+  				'Helvetica Neue',
+  				'Arial',
   				'sans-serif'
   			]
   		},
@@ -35,28 +42,28 @@ module.exports = {
   				'30px',
   				{
   					lineHeight: '38px',
-  					fontWeight: '400'
+  					fontWeight: '600'
   				}
   			],
   			h2: [
   				'24px',
   				{
   					lineHeight: '32px',
-  					fontWeight: '400'
+  					fontWeight: '600'
   				}
   			],
   			h3: [
   				'20px',
   				{
   					lineHeight: '28px',
-  					fontWeight: '400'
+  					fontWeight: '500'
   				}
   			],
   			title: [
   				'18px',
   				{
   					lineHeight: '26px',
-  					fontWeight: '400'
+  					fontWeight: '500'
   				}
   			],
   			subtitle: [
@@ -103,8 +110,11 @@ module.exports = {
   			]
   		},
   		fontWeight: {
-  			regular: '400',
-  			semibold: '500'
+  			light: '300',
+  			normal: '400',
+  			medium: '500',
+  			semibold: '600',
+  			bold: '700'
   		},
   		colors: {
   			border: 'hsl(var(--border))',

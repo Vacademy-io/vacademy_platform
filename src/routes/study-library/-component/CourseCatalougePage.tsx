@@ -8,7 +8,7 @@ import { useCatalogStore } from '../-store/catalogStore.ts';
 import axios from 'axios';
 import HeroSection from '../-component1/HeroSection.tsx';
 import Tab from '../-component1/Tab.tsx';
-import { getInstituteId } from "@/constants/helper";
+//import { getInstituteId } from "@/constants/helper";
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance.ts';
 
 //import { urlInstituteDetails,urlCourseDetails,urlInstructor } from '@/constants/urls.ts';
@@ -32,10 +32,10 @@ const CourseCatalougePage: React.FC = () => {
   const [selectedInstructors, setSelectedInstructors] = useState<string[]>([]);
   //api call to store the courses details
 
-  console.log("getInsutteId from the helper function",getInstituteId);
+  //console.log("getInsutteId from the helper function",getInstituteId);
   const fetchPackages = async (search = "", sort = "Newest") => {
     try {
-      const response = await authenticatedAxiosInstance.post(
+      const response = await axios.post(
         urlCourseDetails,
         {
           status: [],
@@ -76,7 +76,7 @@ const CourseCatalougePage: React.FC = () => {
 
   const handleApplyFilters = async () => {
     try {
-      const response = await authenticatedAxiosInstance.post(
+      const response = await axios.post(
         urlCourseDetails,
         {
           status: [],

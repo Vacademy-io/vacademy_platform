@@ -24,11 +24,16 @@ export const getFromStorage = async (key: string) => {
   return result.value;
 };
 
+interface LoginFormProps {
+  variant?: 'page' | 'dialog' | 'compact';
+  className?: string;
+}
+
 export const setToStorage = async (key: string, value: string) => {
   await Preferences.set({ key, value });
 };
 
-export function LoginForm() {
+export function LoginForm({ variant = 'page', className = '' }: LoginFormProps) {
   const navigate = useNavigate();
   const { setPrimaryColor } = useTheme();
 
@@ -38,7 +43,10 @@ export function LoginForm() {
   const [isEmailLogin, setIsEmailLogin] = useState(
     isPublic === "true" ? true : false
   );
-
+ const baseClass =
+  variant === 'dialog'
+      ? 'fit'
+      :'w-screen';
   // Handle OAuth callback
   useEffect(() => {
     const handleOAuthCallback = async () => {
@@ -186,9 +194,9 @@ export function LoginForm() {
   console.log("isEmailLogin", isEmailLogin)
 
   return (
-    <div className="w-screen bg-white gap-4 md:gap-8 lg:gap-10 pt-14 lg:pt-20">
+    <div className={`${variant==='dialog'? "w-fit":"w-screen"} gap-4 md:gap-8 lg:gap-10 pt-14 lg:pt-20`}>
       {/* Login Form Section */}
-      <div className="flex w-full flex-col items-center justify-center gap-4 md:gap-8 lg:gap-12 px-4 md:px-8 lg:px-12">
+      <div className={`flex  w-full flex-col items-center justify-center gap-4 md:gap-8 lg:gap-12 px-4 md:px-8 lg:px-12`}>
         <Heading
           heading="Hello, Student!"
           subHeading="Ready to learn something new? Log in and continue your academic adventure!"

@@ -92,7 +92,7 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
   // Convert thumbnail_file_id to URLs with individual loading (more reliable)
   useEffect(() => {
     const convertThumbnailsToUrls = async () => {
-      console.log(`Starting image conversion for ${courseData.length} courses`);
+    //  console.log(`Starting image conversion for ${courseData.length} courses`);
 
       // Initialize with fallback images to show immediately
       const initialUrls = new Array(courseData.length).fill(fallbackImageUrl);

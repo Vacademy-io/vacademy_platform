@@ -62,9 +62,9 @@ const CourseCatalougePage: React.FC = () => {
         }
       );
       setCourseData(response.data.content);
-      console.log('Response courses:', response.data);
+      //console.log('Response courses:', response.data);
     } catch (error) {
-      console.error('Error fetching packages:', error);
+     // console.error('Error fetching packages:', error);
     }
   };
 
@@ -113,7 +113,7 @@ const CourseCatalougePage: React.FC = () => {
     const FetchInstituteDetails = async () => {
       try {
         const response = await axios.get(urlInstituteDetails);
-        console.log("Institute details", response.data);
+       // console.log("Institute details", response.data);
         setInstituteData(response.data);
         setLoading(false);
       } catch (error) {
@@ -138,7 +138,7 @@ const CourseCatalougePage: React.FC = () => {
             'Content-Type': 'application/json'
           }
         });
-        console.log('Instructor response9999:', response.data);
+       // console.log('Instructor response9999:', response.data);
         setInstructors(response.data);
       } catch (error) {
         setError("Something went wrong while fetching the instructors.");

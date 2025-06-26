@@ -10,7 +10,7 @@ import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { loginUser } from "@/hooks/login/login-button";
 import { TokenKey } from "@/constants/auth/tokens";
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useNavigate, useRouterState } from "@tanstack/react-router";
 
 import {
   getTokenDecodedData,
@@ -28,7 +28,10 @@ export function UsernameLogin({ onSwitchToEmail }: UsernameLoginProps) {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   /* eslint-disable-next-line */
-  const { redirect } = useSearch<any>({ from: "/login/" });
+
+  const redirect = useRouterState({
+    select: (s) => (s.location.search as Record<string, any>).redirect ?? "/login/",
+  });
   const { setPrimaryColor } = useTheme();
 
   const form = useForm<FormValues>({

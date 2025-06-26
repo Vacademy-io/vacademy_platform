@@ -183,6 +183,8 @@ export function LoginForm() {
     }
   };
 
+  console.log("isEmailLogin", isEmailLogin)
+
   return (
     <div className="w-screen bg-white gap-4 md:gap-8 lg:gap-10 pt-14 lg:pt-20">
       {/* Login Form Section */}

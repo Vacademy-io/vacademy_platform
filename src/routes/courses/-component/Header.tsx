@@ -3,6 +3,15 @@ import { useCatalogStore } from '../-store/catalogStore';
 import { getPublicUrl } from '@/services/upload_file';
 import { LoginModel } from '@/components/common/LoginModel/LoginModel';
 import { SignUpModel } from '@/components/common/SignUpModel/SignUpModel';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { LoginForm } from '@/components/common/LoginPages/sections/login-form';
 
 const Header: React.FC = () => {
   const defaultLogoUrl = '/images/logo-placeholder.png';
@@ -83,32 +92,15 @@ const Header: React.FC = () => {
           <li><a href="#contact" className="hover:text-blue-600 transition">Contact</a></li>
         </ul>
         <div className='flex gap-3'>
-
-          <button className='px-3 py-2 border border-1 border-gray-300 bg-white text-black rounded-md hover:bg-gray-100 transition'
-            onClick={() => setShowLogin(true)}
-          >
-            Login
-          </button>
-
-          {showLogin && (
-            <LoginModel
-              onClose={() => setShowLogin(false)}
-              switchToSignUp={() => {
-                setShowLogin(false);
-                setShowSignUp(true);
-              }}
-            />
-          )}
-
-          {showSignUp && (
-            <SignUpModel
-              onClose={() => setShowSignUp(false)}
-              switchToLogin={() => {
-                setShowSignUp(false);
-                setShowLogin(true);
-              }}
-            />
-          )}
+          <Dialog>
+            <DialogTrigger><button className='px-3 py-2 border border-1 border-gray-300 bg-white text-black rounded-md hover:bg-gray-100 transition'
+            >
+              Login
+            </button></DialogTrigger>
+            <DialogContent>
+              <LoginForm/>
+            </DialogContent>
+          </Dialog>
           <button className='px-3 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition'>Donate</button>
         </div>
       </div>

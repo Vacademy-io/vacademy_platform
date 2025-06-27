@@ -23,6 +23,7 @@ public class VideoSlideQuestionTrackingService {
     private final ActivityLogRepository activityLogRepository;
     private final ActivityLogService activityLogService;
 
+
     public void saveVideoSlideQuestionLogs(ActivityLog activityLog, List<VideoSlideQuestionActivityLogDTO> questionDTOs) {
         // Remove existing logs for this activity
         videoSlideQuestionTrackedRepository.deleteByActivityId(activityLog.getId());

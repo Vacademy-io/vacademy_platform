@@ -17,9 +17,12 @@ public class QuestionSlideController {
     public String addQuestionSlide(@RequestBody SlideDTO slideDTO,
                                    @RequestParam String chapterId,
                                    @RequestParam String instituteId,
+                                   @RequestParam String packageSessionId,
+                                   @RequestParam String moduleId,
+                                   @RequestParam String subjectId,
                                    @RequestAttribute("user") CustomUserDetails userDetails) {
 
-        return questionSlideService.addOrUpdateQuestionSlide(slideDTO, chapterId, userDetails);
+        return questionSlideService.addOrUpdateQuestionSlide(slideDTO, chapterId,moduleId,subjectId,packageSessionId, userDetails);
     }
 
 }

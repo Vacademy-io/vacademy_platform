@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.chapter.enums.ChapterStatus;
 import vacademy.io.admin_core_service.features.chapter.repository.ChapterPackageSessionMappingRepository;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
+import vacademy.io.admin_core_service.features.learner_tracking.service.LearnerTrackingAsyncService;
 import vacademy.io.admin_core_service.features.module.dto.ModuleDTO;
 import vacademy.io.admin_core_service.features.module.dto.UpdateModuleOrderDTO;
 import vacademy.io.admin_core_service.features.module.entity.SubjectModuleMapping;
@@ -40,10 +41,11 @@ public class ModuleService {
     private final PackageSessionRepository packageSessionRepository;
     private final SubjectModuleMappingRepository subjectModuleMappingRepository;
     private final ChapterPackageSessionMappingRepository chapterPackageSessionMappingRepository;
-    private final SubjectService subjectService;
+    private final LearnerTrackingAsyncService learnerTrackingAsyncService;
+
     // Add module to subject
     @Transactional
-    public ModuleDTO addModule(String subjectId,String commaSeparatedPackageSessionIds, ModuleDTO moduleDTO, CustomUserDetails user) {
+    public ModuleDTO addModule(String subjectId,String packageSessionId, ModuleDTO moduleDTO, CustomUserDetails user) {
         // Validate subject ID
         if (subjectId == null) {
             throw new VacademyException("Subject ID cannot be null");
@@ -68,6 +70,7 @@ public class ModuleService {
 
         // Set ID in DTO and return
         moduleDTO.setId(module.getId());
+        learnerTrackingAsyncService.updateLearnerOperationsForBatch("MODULE",null,null,null,module.getId(),subjectId,packageSessionId);
         return moduleDTO;
     }
 
@@ -124,8 +127,7 @@ public class ModuleService {
         return moduleDTO;
     }
 
-    @Transactional
-    public String deleteModule(List<String> moduleIds, CustomUserDetails user) {
+    public String deleteModule(List<String> moduleIds,String subjectId,String packageSessionId, CustomUserDetails user) {
         if (moduleIds == null || moduleIds.isEmpty()) {
             throw new VacademyException("Module IDs cannot be null or empty");
         }
@@ -139,6 +141,9 @@ public class ModuleService {
         modules.forEach(module -> module.setStatus(ModuleStatusEnum.DELETED.name()));
         moduleRepository.saveAll(modules);
         chapterPackageSessionMappingRepository.softDeleteChapterMappingsWithoutActiveModules(moduleIds);
+        for (String moduleId:moduleIds){
+            learnerTrackingAsyncService.updateLearnerOperationsForBatch("MODULE",null,null,null,moduleId,subjectId,packageSessionId);
+        }
         return "Modules deleted successfully";
     }
 

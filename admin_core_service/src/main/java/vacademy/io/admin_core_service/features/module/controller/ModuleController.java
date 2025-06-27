@@ -17,13 +17,23 @@ public class ModuleController {
     private final ModuleService moduleService;
 
     @PostMapping("/add-module")
-    public ResponseEntity<ModuleDTO> addModule(@RequestParam String subjectId,@RequestParam String commaSeparatedPackageSessionIds, @RequestBody ModuleDTO moduleDTO, @RequestAttribute("user") CustomUserDetails user) {
-        return ResponseEntity.ok(moduleService.addModule(subjectId,commaSeparatedPackageSessionIds, moduleDTO, user));
+    public ResponseEntity<ModuleDTO> addModule(@RequestParam String subjectId,
+                                               @RequestParam String packageSessionId,
+                                               @RequestBody ModuleDTO moduleDTO,
+                                               @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(
+                moduleService.addModule(subjectId,
+                packageSessionId,
+                moduleDTO, user));
     }
 
+
     @PostMapping("/delete-module")
-    public ResponseEntity<String> addModule(@RequestBody List<String> moduleIds, @RequestAttribute("user") CustomUserDetails user) {
-        return ResponseEntity.ok(moduleService.deleteModule(moduleIds, user));
+    public ResponseEntity<String> addModule(@RequestBody List<String> moduleIds,
+                                            String subjectId,
+                                            String packageSessionId,
+                                            @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(moduleService.deleteModule(moduleIds,subjectId,packageSessionId, user));
     }
 
     @PutMapping("/update-module")

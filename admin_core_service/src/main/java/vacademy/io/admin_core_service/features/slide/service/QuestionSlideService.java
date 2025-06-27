@@ -38,11 +38,11 @@ public class QuestionSlideService {
     @Autowired
     private OptionRepository optionRepository;
 
-    public String addOrUpdateQuestionSlide(SlideDTO slideDTO, String chapterId, CustomUserDetails userDetails) {
+    public String addOrUpdateQuestionSlide(SlideDTO slideDTO, String chapterId,String moduleId,String subjectId,String packageSessionId, CustomUserDetails userDetails) {
         if (slideDTO.isNewSlide()) {
             return addQuestionSlide(slideDTO, chapterId);
         }
-        return updateQuestionSlide(slideDTO, chapterId);
+        return updateQuestionSlide(slideDTO, chapterId,moduleId,subjectId,packageSessionId);
     }
 
     public String addOrUpdateQuestionSlideRequest(SlideDTO slideDTO, String chapterId, CustomUserDetails userDetails) {
@@ -59,7 +59,7 @@ public class QuestionSlideService {
         return slide.getId();
     }
 
-    public String updateQuestionSlide(SlideDTO slideDTO, String chapterId) {
+    public String updateQuestionSlide(SlideDTO slideDTO, String chapterId,String moduleId,String subjectId,String packageSessionId) {
         QuestionSlideDTO questionSlideDTO = slideDTO.getQuestionSlide();
         QuestionSlide questionSlide = questionSlideRepository.findById(questionSlideDTO.getId())
                 .orElseThrow(() -> new VacademyException("Question slide not found"));
@@ -68,7 +68,7 @@ public class QuestionSlideService {
 
         questionSlideRepository.save(questionSlide);
         slideService.updateSlide(slideDTO.getId(), slideDTO.getStatus(), slideDTO.getTitle(),
-                slideDTO.getDescription(), slideDTO.getImageFileId(), slideDTO.getSlideOrder(), chapterId);
+                slideDTO.getDescription(), slideDTO.getImageFileId(), slideDTO.getSlideOrder(), chapterId,packageSessionId,moduleId,subjectId);
 
         return "success";
     }

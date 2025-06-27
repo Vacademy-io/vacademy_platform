@@ -42,6 +42,7 @@ public class ModuleService {
     private final SubjectModuleMappingRepository subjectModuleMappingRepository;
     private final ChapterPackageSessionMappingRepository chapterPackageSessionMappingRepository;
     private final LearnerTrackingAsyncService learnerTrackingAsyncService;
+    private final SubjectService subjectService;
 
     // Add module to subject
     @Transactional
@@ -49,10 +50,6 @@ public class ModuleService {
         // Validate subject ID
         if (subjectId == null) {
             throw new VacademyException("Subject ID cannot be null");
-        }
-
-        if (subjectId.equalsIgnoreCase("DEFAULT")) {
-            subjectService.addDefaultSubject(commaSeparatedPackageSessionIds);
         }
 
 

@@ -302,6 +302,8 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                     'url', v.url,
                                     'title', v.title,
                                     'description', v.description,
+                                    'embedded_type', v.embedded_type,
+                                    'embedded_data', v.embedded_data,
                                     'source_type', v.source_type,
                                     'published_url', v.published_url,
                                     'video_length_in_millis', v.video_length,
@@ -553,6 +555,8 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                     'url', v.url,
                     'title', v.title,
                     'description', v.description,
+                    'embedded_type', v.embedded_type,
+                    'embedded_data', v.embedded_data,
                     'source_type', v.source_type,
                     'published_url', v.published_url,
                     'video_length_in_millis', v.video_length,
@@ -892,6 +896,8 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                     'published_url', v.published_url,
                     'video_length_in_millis', v.video_length,
                     'published_video_length_in_millis', v.published_video_length,
+                    'embedded_type', v.embedded_type,
+                    'embedded_data', v.embedded_data,
                     'questions', COALESCE((
                         SELECT json_agg(
                             json_build_object(

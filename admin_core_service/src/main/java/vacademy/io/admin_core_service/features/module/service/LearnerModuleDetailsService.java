@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.chapter.dto.ChapterDetailsProjection;
 import vacademy.io.admin_core_service.features.chapter.enums.ChapterStatus;
+import vacademy.io.admin_core_service.features.learner_operation.enums.LearnerOperationEnum;
 import vacademy.io.admin_core_service.features.learner_study_library.dto.LearnerModuleDTOWithDetails;
 import vacademy.io.admin_core_service.features.module.dto.ModuleDTO;
 import vacademy.io.admin_core_service.features.module.enums.ModuleStatusEnum;
@@ -28,13 +29,15 @@ public class LearnerModuleDetailsService {
 
     public List<LearnerModuleDTOWithDetails> getModulesDetailsWithChapters(String subjectId, String packageSessionId, String userId, CustomUserDetails user) {
         String rawResponse = moduleChapterMappingRepository.getModuleChapterProgress(
-                subjectId,
-                packageSessionId,
-                userId,
-                List.of(SlideStatus.PUBLISHED.name(),SlideStatus.UNSYNC.name()),
-                List.of(SlideStatus.PUBLISHED.name(),SlideStatus.UNSYNC.name()),
-                List.of(ChapterStatus.ACTIVE.name()),
-                List.of(ModuleStatusEnum.ACTIVE.name())
+            subjectId,
+            packageSessionId,
+            user.getUserId(),
+            LearnerOperationEnum.PERCENTAGE_MODULE_COMPLETED.name(),
+            LearnerOperationEnum.PERCENTAGE_CHAPTER_COMPLETED.name(),
+            List.of(SlideStatus.PUBLISHED.name(),SlideStatus.UNSYNC.name()),
+            List.of(SlideStatus.PUBLISHED.name(),SlideStatus.UNSYNC.name()),
+            List.of(ChapterStatus.ACTIVE.name()),
+            List.of(ModuleStatusEnum.ACTIVE.name())
         );
         return mapToLearnerModuleDTOWithDetails(rawResponse);
     }

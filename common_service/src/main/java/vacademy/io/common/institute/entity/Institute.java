@@ -75,6 +75,9 @@ public class Institute {
     @Column(name = "letterhead_file_id")
     private String letterHeadFileId;
 
+    @Column(name = "subdomain")
+    private String subdomain;
+
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Date updatedAt;
 

@@ -54,6 +54,7 @@ public class DoubtsManager {
                 .parentId(request.getParentId())
                 .contentPosition(request.getContentPosition())
                 .contentType(request.getContentType())
+                .packageSessionId(request.getBatchId())
                 .build();
 
         Doubts savedDoubt = doubtService.updateOrCreateDoubt(doubts);

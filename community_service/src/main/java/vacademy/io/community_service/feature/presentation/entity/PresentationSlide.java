@@ -16,7 +16,7 @@ public class PresentationSlide {
     @Column(name = "id")
     private String id;
 
-    @Column(name = "title", length = 255)
+    @Column(name = "title")
     private String title;
 
     @Column(name = "status", length = 255)

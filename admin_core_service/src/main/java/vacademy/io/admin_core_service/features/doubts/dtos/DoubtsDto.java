@@ -21,6 +21,11 @@ public class DoubtsDto {
     private String userId;
     private String source;
     private String sourceId;
+    private String subjectId;
+    private String batchId;
+    private String chapterId;
+    private String moduleId;
+    private String sourceName;
     private Date raisedTime;
     private Date resolvedTime;
     private String contentPosition;

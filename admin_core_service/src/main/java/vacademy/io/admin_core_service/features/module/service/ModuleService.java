@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.module.service;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.chapter.enums.ChapterStatus;
 import vacademy.io.admin_core_service.features.chapter.repository.ChapterPackageSessionMappingRepository;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.learner_tracking.service.LearnerTrackingAsyncService;
@@ -13,8 +14,10 @@ import vacademy.io.admin_core_service.features.module.enums.ModuleStatusEnum;
 import vacademy.io.admin_core_service.features.module.repository.ModuleRepository;
 import vacademy.io.admin_core_service.features.module.repository.SubjectModuleMappingRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
+import vacademy.io.admin_core_service.features.slide.enums.SlideStatus;
 import vacademy.io.admin_core_service.features.subject.repository.SubjectChapterModuleAndPackageSessionMappingRepository;
 import vacademy.io.admin_core_service.features.subject.repository.SubjectRepository;
+import vacademy.io.admin_core_service.features.subject.service.SubjectService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
@@ -24,6 +27,7 @@ import vacademy.io.common.institute.entity.student.Subject;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -46,6 +50,11 @@ public class ModuleService {
         if (subjectId == null) {
             throw new VacademyException("Subject ID cannot be null");
         }
+
+        if (subjectId.equalsIgnoreCase("DEFAULT")) {
+            subjectService.addDefaultSubject(commaSeparatedPackageSessionIds);
+        }
+
 
         // Validate module details
         validateModule(moduleDTO);
@@ -202,4 +211,40 @@ public class ModuleService {
 
         return "Module order updated successfully.";
     }
+
+    public Optional<Module> getModuleBySlideIdAndPackageSessionIdWithStatusFilters(String slideId, String packageSessionId){
+        return moduleRepository.findModuleBySlideIdAndPackageSessionIdWithStatusFilters(slideId,packageSessionId,List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
+                List.of(ChapterStatus.ACTIVE.name()), List.of(ModuleStatusEnum.ACTIVE.name()));
+    }
+
+    @Transactional
+    public String addRequestModule(String subjectId,String commaSeparatedPackageSessionIds, ModuleDTO moduleDTO, CustomUserDetails user) {
+        // Validate subject ID
+        if (subjectId == null) {
+            throw new VacademyException("Subject ID cannot be null");
+        }
+
+        if (subjectId.equalsIgnoreCase("DEFAULT")) {
+            subjectService.addDefaultSubject(commaSeparatedPackageSessionIds);
+        }
+
+
+        // Validate module details
+        validateModule(moduleDTO);
+
+        // Find subject by ID
+        Subject subject = findSubjectById(subjectId);
+
+        Module module = new Module();
+        createModule(moduleDTO, module);
+        module.setStatus(ModuleStatusEnum.PENDING_APPROVAL.name());
+         module =moduleRepository.save(module);
+        // Save mapping between subject and module
+        saveMapping(subject, module);
+
+        // Set ID in DTO and return
+        moduleDTO.setId(module.getId());
+        return moduleDTO.getId();
+    }
+
 }

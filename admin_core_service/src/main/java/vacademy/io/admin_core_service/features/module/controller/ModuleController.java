@@ -27,6 +27,7 @@ public class ModuleController {
                 moduleDTO, user));
     }
 
+
     @PostMapping("/delete-module")
     public ResponseEntity<String> addModule(@RequestBody List<String> moduleIds,
                                             String subjectId,

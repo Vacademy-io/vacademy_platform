@@ -15,6 +15,8 @@ import org.springframework.stereotype.Component;
 import vacademy.io.auth_service.feature.auth.dto.JwtResponseDto;
 import vacademy.io.auth_service.feature.auth.manager.AdminOAuth2Manager;
 import vacademy.io.auth_service.feature.auth.manager.LearnerOAuth2Manager;
+import vacademy.io.common.auth.entity.OAuth2VendorToUserDetail;
+import vacademy.io.common.auth.service.OAuth2VendorToUserDetailService;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.io.IOException;
@@ -32,6 +34,9 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
 
     @Autowired
     private AdminOAuth2Manager adminOAuth2Manager;
+
+    @Autowired
+    private OAuth2VendorToUserDetailService oAuth2VendorToUserDetailService;
 
     @Override
     public void onAuthenticationSuccess(HttpServletRequest request,
@@ -82,30 +87,51 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
             // Handle sign-up logic differently
             if (redirectUrl.contains("signup")) {
                 log.info("Signup flow detected. Skipping user creation. Sending profile data to frontend.");
+                String email = userInfo.email;
+                if (email == null){
+                    email = oAuth2VendorToUserDetailService.getEmailByProviderIdAndSubject(userInfo.providerId, userInfo.sub);
+                }
+                boolean isEmailVerified = (email!= null);
+                String userJson = null;
+                if (isEmailVerified){
+                    userJson =String.format(
+                            "{\"name\":\"%s\", \"email\":\"%s\", \"profile\":\"%s\", \"sub\":\"%s\", \"provider\":\"%s\"}",
+                            userInfo.name, email, userInfo.picture,userInfo.sub,userInfo.providerId);
+                }else{
+                    userJson =String.format(
+                            "{\"name\":\"%s\", \"profile\":\"%s\", \"sub\":\"%s\", \"provider\":\"%s\"}",
+                            userInfo.name, userInfo.picture,userInfo.sub,userInfo.providerId);
+                }
+                String encodedUserInfo = Base64.getUrlEncoder()
+                        .withoutPadding()
+                        .encodeToString(userJson.getBytes(StandardCharsets.UTF_8));
 
-                String userJson = String.format(
-                        "{\"name\":\"%s\", \"email\":\"%s\", \"profile\":\"%s\"}",
-                        userInfo.name, userInfo.email, userInfo.picture
-                );
-                String encodedUserInfo = Base64.getUrlEncoder().encodeToString(userJson.getBytes(StandardCharsets.UTF_8));
-
+                String separator = redirectUrl.contains("?") ? "&" : "?";
                 String redirectWithParams = String.format(
-                        "%s?signupData=%s&state=%s",
+                        "%s%ssignupData=%s&state=%s&emailVerified=%s",
                         redirectUrl,
+                        separator,
                         URLEncoder.encode(encodedUserInfo, StandardCharsets.UTF_8),
-                        URLEncoder.encode(encodedState != null ? encodedState : "", StandardCharsets.UTF_8)
+                        URLEncoder.encode(encodedState != null ? encodedState : "", StandardCharsets.UTF_8),
+                        URLEncoder.encode(String.valueOf(isEmailVerified), StandardCharsets.UTF_8)
                 );
-
                 response.sendRedirect(redirectWithParams);
+                oAuth2VendorToUserDetailService.saveOrUpdateOAuth2VendorToUserDetail(userInfo.providerId, email, userInfo.sub);
                 return;
             }
-
+            String email = userInfo.email;
+            if (email == null) {
+                email = oAuth2VendorToUserDetailService.getEmailByProviderIdAndSubject(userInfo.providerId, userInfo.sub);
+                if (email == null) {
+                    throw new VacademyException("Your email ID is not public. Please verify your email with our app before using this feature.");
+                }
+            }
             // Else login as usual
-            JwtResponseDto jwtResponseDto = getTokenByClientUrlAndUserEmail(redirectUrl, userInfo.name, userInfo.email);
+            JwtResponseDto jwtResponseDto = getTokenByClientUrlAndUserEmail(redirectUrl, userInfo.name, email);
             if (jwtResponseDto != null) {
                 redirectWithTokens(response, redirectUrl, jwtResponseDto);
             } else {
-                log.error("JWT generation failed for email: {}", userInfo.email);
+                log.error("JWT generation failed for email: {}", email);
                 throw new VacademyException("Error occurred during JWT generation");
             }
         } catch (Exception e) {
@@ -114,55 +140,60 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
         }
     }
 
-    private record UserInfo(String email, String name, String picture) {}
 
     private UserInfo extractUserInfo(Map<String, Object> attributes, String provider, HttpServletResponse response, String redirectUrl) throws IOException {
         String email = null;
         String name = null;
         String picture = null;
+        String sub = null;           // unique user ID
+        String providerId = provider; // provider name: "google", "github", etc.
 
         if ("google".equals(provider)) {
             email = (String) attributes.get("email");
             name = (String) attributes.get("name");
             picture = (String) attributes.get("picture");
+            sub = (String) attributes.get("sub"); // Google's unique user ID
+
             log.info("Google user logged in: {} ({})", name, email);
         } else if ("github".equals(provider)) {
             email = (String) attributes.get("email");
-            if (email == null) {
-                throw new VacademyException("Your GitHub account does not have any public email address.");
-            }
             name = (String) attributes.get("name");
             if (name == null) {
                 name = (String) attributes.get("login");
             }
             picture = (String) attributes.get("avatar_url");
+            sub = String.valueOf(attributes.get("id")); // GitHub's unique user ID
+
             log.info("GitHub user logged in: {} ({})", name, email);
         } else {
             log.warn("Unsupported OAuth2 provider: {}", provider);
             sendErrorRedirect(response, redirectUrl, "unsupported_provider");
             return null;
         }
-
-        if (email == null) {
-            log.error("Could not retrieve email for user from provider: {}", provider);
-            sendErrorRedirect(response, redirectUrl, "email_not_found");
-            return null;
-        }
-
-        return new UserInfo(email, name, picture);
+        return new UserInfo(email, name, picture, providerId, sub);
     }
 
+    private record UserInfo(String email, String name, String picture, String providerId, String sub) {}
+
+
     private void redirectWithTokens(HttpServletResponse response, String redirectUrl, JwtResponseDto jwtResponseDto) throws IOException {
+        String separator = redirectUrl.contains("?") ? "&" : "?";
         String tokenizedRedirectUrl = String.format(
-                "%s?accessToken=%s&refreshToken=%s",
+                "%s%saccessToken=%s&refreshToken=%s",
                 redirectUrl,
+                separator,
                 URLEncoder.encode(jwtResponseDto.getAccessToken(), StandardCharsets.UTF_8),
                 URLEncoder.encode(jwtResponseDto.getRefreshToken(), StandardCharsets.UTF_8)
         );
         response.sendRedirect(tokenizedRedirectUrl);
     }
 
+
     private void sendErrorRedirect(HttpServletResponse response, String baseUrl, String errorMessage) throws IOException {
+        if (response.isCommitted()) {
+            log.warn("Cannot redirect because response is already committed. Error: {}", errorMessage);
+            return;
+        }
         String redirectUrl = baseUrl;
         if (!redirectUrl.contains("error=true")) {
             redirectUrl += redirectUrl.contains("?") ? "&error=true" : "?error=true";
@@ -170,6 +201,7 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
         redirectUrl += "&message=" + URLEncoder.encode(errorMessage, StandardCharsets.UTF_8);
         response.sendRedirect(redirectUrl);
     }
+
 
     private JwtResponseDto getTokenByClientUrlAndUserEmail(String clientUrl, String fullName, String email) {
         try {

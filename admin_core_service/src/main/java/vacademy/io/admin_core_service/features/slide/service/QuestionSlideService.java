@@ -9,6 +9,8 @@ import vacademy.io.admin_core_service.features.slide.dto.QuestionSlideDTO;
 import vacademy.io.admin_core_service.features.slide.dto.SlideDTO;
 import vacademy.io.admin_core_service.features.slide.entity.Option;
 import vacademy.io.admin_core_service.features.slide.entity.QuestionSlide;
+import vacademy.io.admin_core_service.features.slide.entity.Slide;
+import vacademy.io.admin_core_service.features.slide.enums.SlideStatus;
 import vacademy.io.admin_core_service.features.slide.enums.SlideTypeEnum;
 import vacademy.io.admin_core_service.features.slide.repository.OptionRepository;
 import vacademy.io.admin_core_service.features.slide.repository.QuestionSlideRepository;
@@ -43,13 +45,18 @@ public class QuestionSlideService {
         return updateQuestionSlide(slideDTO, chapterId,moduleId,subjectId,packageSessionId);
     }
 
+    public String addOrUpdateQuestionSlideRequest(SlideDTO slideDTO, String chapterId, CustomUserDetails userDetails) {
+        slideDTO.setStatus(SlideStatus.PENDING_APPROVAL.name());
+        return addQuestionSlide(slideDTO, chapterId);
+    }
+
     public String addQuestionSlide(SlideDTO slideDTO, String chapterId) {
         QuestionSlide questionSlide = new QuestionSlide(slideDTO.getQuestionSlide());
         QuestionSlide savedQuestionSlide = questionSlideRepository.save(questionSlide);
-        slideService.saveSlide(slideDTO.getId(), savedQuestionSlide.getId(), SlideTypeEnum.QUESTION.name(),
+        Slide slide = slideService.saveSlide(slideDTO.getId(), savedQuestionSlide.getId(), SlideTypeEnum.QUESTION.name(),
                 slideDTO.getStatus(), slideDTO.getTitle(), slideDTO.getDescription(),
                 slideDTO.getImageFileId(), slideDTO.getSlideOrder(), chapterId);
-        return "success";
+        return slide.getId();
     }
 
     public String updateQuestionSlide(SlideDTO slideDTO, String chapterId,String moduleId,String subjectId,String packageSessionId) {

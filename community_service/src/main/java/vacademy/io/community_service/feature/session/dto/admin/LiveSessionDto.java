@@ -21,6 +21,8 @@ public class LiveSessionDto {
     private Boolean canJoinInBetween = true;
     private Boolean showResultsAtLastSlide = true;
     private Boolean allowLearnerHandRaise = true;
+    private Boolean allowChat = true;
+    private Boolean isSessionRecorded = false;
     private Integer defaultSecondsForQuestion = 60;
     private Integer studentAttempts = 1;
     private String excalidrawData;

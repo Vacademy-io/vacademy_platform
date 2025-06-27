@@ -4,12 +4,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.live_session.dto.GroupedSessionsByDateDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.LiveSessionListDTO;
-import vacademy.io.admin_core_service.features.live_session.dto.ScheduledSessionDTO;
 import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
-import java.util.List;
-import java.util.TreeMap;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -24,6 +22,10 @@ public class GetLiveSessionService {
 
         return projections.stream().map(p -> new LiveSessionListDTO(
                 p.getSessionId(),
+                p.getWaitingRoomTime(),
+                p.getThumbnailFileId(),
+                p.getBackgroundScoreFileId(),
+                p.getSessionStreamingServiceType(),
                 p.getScheduleId(),
                 p.getMeetingDate(),
                 p.getStartTime(),
@@ -32,7 +34,8 @@ public class GetLiveSessionService {
                 p.getAccessLevel(),
                 p.getTitle(),
                 p.getSubject(),
-                p.getMeetingLink()
+                p.getMeetingLink(),
+                p.getRegistrationFormLinkForPublicSessions()
         )).toList();
     }
 
@@ -42,6 +45,10 @@ public class GetLiveSessionService {
 
         List<LiveSessionListDTO> flatList = projections.stream().map(p -> new LiveSessionListDTO(
                 p.getSessionId(),
+                p.getWaitingRoomTime(),
+                p.getThumbnailFileId(),
+                p.getBackgroundScoreFileId(),
+                p.getSessionStreamingServiceType(),
                 p.getScheduleId(),
                 p.getMeetingDate(),
                 p.getStartTime(),
@@ -50,7 +57,8 @@ public class GetLiveSessionService {
                 p.getAccessLevel(),
                 p.getTitle(),
                 p.getSubject(),
-                p.getMeetingLink()
+                p.getMeetingLink(),
+                p.getRegistrationFormLinkForPublicSessions()
         )).toList();
 
         // Group by date
@@ -72,6 +80,10 @@ public class GetLiveSessionService {
 
         List<LiveSessionListDTO> flatList = projections.stream().map(p -> new LiveSessionListDTO(
                 p.getSessionId(),
+                p.getWaitingRoomTime(),
+                p.getThumbnailFileId(),
+                p.getBackgroundScoreFileId(),
+                p.getSessionStreamingServiceType(),
                 p.getScheduleId(),
                 p.getMeetingDate(),
                 p.getStartTime(),
@@ -80,7 +92,8 @@ public class GetLiveSessionService {
                 p.getAccessLevel(),
                 p.getTitle(),
                 p.getSubject(),
-                p.getMeetingLink()
+                p.getMeetingLink(),
+                p.getRegistrationFormLinkForPublicSessions()
         )).toList();
 
         // Group by date
@@ -95,6 +108,76 @@ public class GetLiveSessionService {
                 .map(entry -> new GroupedSessionsByDateDTO(entry.getKey(), entry.getValue()))
                 .toList();
     }
+
+//    public List<GroupedSessionsByDateDTO> getDraftedSession(String instituteId, CustomUserDetails user) {
+//        List<LiveSessionRepository.LiveSessionListProjection> projections =
+//                sessionRepository.findDraftedSessions(instituteId);
+//
+//        List<LiveSessionListDTO> flatList = projections.stream().map(p -> new LiveSessionListDTO(
+//                p.getSessionId(),
+//                p.getWaitingRoomTime(),
+//                p.getThumbnailFileId(),
+//                p.getBackgroundScoreFileId(),
+//                p.getSessionStreamingServiceType(),
+//                p.getScheduleId(),
+//                p.getMeetingDate(),
+//                p.getStartTime(),
+//                p.getLastEntryTime(),
+//                p.getRecurrenceType(),
+//                p.getAccessLevel(),
+//                p.getTitle(),
+//                p.getSubject(),
+//                p.getMeetingLink(),
+//                p.getRegistrationFormLinkForPublicSessions()
+//        )).toList();
+//
+//        // Group by date
+//        return flatList.stream()
+//                .collect(Collectors.groupingBy(
+//                        LiveSessionListDTO::getMeetingDate,
+//                        TreeMap::new, // to keep dates sorted
+//                        Collectors.toList()
+//                ))
+//                .entrySet()
+//                .stream()
+//                .map(entry -> new GroupedSessionsByDateDTO(entry.getKey(), entry.getValue()))
+//                .toList();
+//    }
+
+    public List<LiveSessionListDTO> getDraftedSession(String instituteId, CustomUserDetails user) {
+        List<LiveSessionRepository.LiveSessionListProjection> projections =
+                sessionRepository.findDraftedSessions(instituteId);
+
+        // Deduplicate by sessionId using LinkedHashMap to preserve insertion order
+        Map<String, LiveSessionListDTO> uniqueSessions = new LinkedHashMap<>();
+
+        for (LiveSessionRepository.LiveSessionListProjection p : projections) {
+            String sessionId = p.getSessionId();
+            if (!uniqueSessions.containsKey(sessionId)) {
+                LiveSessionListDTO dto = new LiveSessionListDTO(
+                        sessionId,
+                        p.getWaitingRoomTime(),
+                        p.getThumbnailFileId(),
+                        p.getBackgroundScoreFileId(),
+                        p.getSessionStreamingServiceType(),
+                        null,               // scheduleId removed
+                        null,               // meetingDate removed
+                        null,               // startTime removed
+                        null,               // lastEntryTime removed
+                        p.getRecurrenceType(),
+                        p.getAccessLevel(),
+                        p.getTitle(),
+                        p.getSubject(),
+                        p.getMeetingLink(),
+                        p.getRegistrationFormLinkForPublicSessions()
+                );
+                uniqueSessions.put(sessionId, dto);
+            }
+        }
+
+        return new ArrayList<>(uniqueSessions.values());
+    }
+
 
     public List<GroupedSessionsByDateDTO> getLiveAndUpcomingSession(String instituteId, CustomUserDetails user) {
         List<LiveSessionRepository.LiveSessionListProjection> projections =
@@ -102,6 +185,10 @@ public class GetLiveSessionService {
 
         List<LiveSessionListDTO> flatList = projections.stream().map(p -> new LiveSessionListDTO(
                 p.getSessionId(),
+                p.getWaitingRoomTime(),
+                p.getThumbnailFileId(),
+                p.getBackgroundScoreFileId(),
+                p.getSessionStreamingServiceType(),
                 p.getScheduleId(),
                 p.getMeetingDate(),
                 p.getStartTime(),
@@ -110,7 +197,8 @@ public class GetLiveSessionService {
                 p.getAccessLevel(),
                 p.getTitle(),
                 p.getSubject(),
-                p.getMeetingLink()
+                p.getMeetingLink(),
+                p.getRegistrationFormLinkForPublicSessions()
         )).toList();
 
         // Group by date
@@ -126,6 +214,8 @@ public class GetLiveSessionService {
                 .toList();
     }
 
-
+    public void deleteLiveSession(String sessionId){
+        sessionRepository.softDeleteLiveSessionById(sessionId);
+    }
 
 }

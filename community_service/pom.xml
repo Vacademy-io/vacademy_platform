@@ -74,6 +74,12 @@
             <version>1.18.30</version>
             <scope>compile</scope>
         </dependency>
+        <dependency>
+            <groupId>com.mikesamuel</groupId>
+            <artifactId>json-sanitizer</artifactId>
+            <version>1.2.3</version>
+            <scope>compile</scope>
+        </dependency>
 
     </dependencies>
 

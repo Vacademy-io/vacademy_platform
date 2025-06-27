@@ -23,15 +23,26 @@ public class GetRegistrationData {
     @Autowired
     RegistrationService registrationService;
 
-    @GetMapping("/get-registration-data")
-    ResponseEntity<RegistrationFromResponseDTO> getRegistrationData(@RequestParam("sessionId") String SessionId, @RequestAttribute("user") CustomUserDetails user) {
-        return ResponseEntity.ok( getRegistrationFromResponseDTO.getRegistrationData(SessionId , user));
+    @Autowired
+    GetSessionByIdService getSessionByIdService;
 
+    @GetMapping("/get-registration-data")
+    ResponseEntity<RegistrationFromResponseDTO> getRegistrationData(@RequestParam("sessionId") String SessionId) {
+        return ResponseEntity.ok( getRegistrationFromResponseDTO.getRegistrationData(SessionId));
     }
 
     @PostMapping("/register-guest-user")
-    ResponseEntity<Boolean> registerGuestUser(@RequestBody GuestRegistrationRequestDTO requestDTO , @RequestAttribute("user") CustomUserDetails user){
-        registrationService.saveGuestUserDetails(requestDTO , user.getUserId());
-        return ResponseEntity.ok(true);
+    ResponseEntity<String> registerGuestUser(@RequestBody GuestRegistrationRequestDTO requestDTO){
+        return ResponseEntity.ok(registrationService.saveGuestUserDetails(requestDTO));
+    }
+
+    @GetMapping("/check-email-registration")
+    ResponseEntity<Boolean> checkEmailRegistration(@RequestParam("email") String email , @RequestParam("sessionId") String sessionId){
+        return ResponseEntity.ok(getRegistrationFromResponseDTO.checkEmailRegistration(email , sessionId));
+    }
+
+    @GetMapping("/get-earliest-schedule-id")
+    ResponseEntity<String> getEarliestScheduleId(@RequestParam("sessionId") String sessionId){
+        return ResponseEntity.ok(getSessionByIdService.findEarliestSchedule(sessionId));
     }
 }

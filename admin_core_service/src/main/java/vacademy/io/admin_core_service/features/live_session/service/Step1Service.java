@@ -11,8 +11,12 @@ import vacademy.io.admin_core_service.features.live_session.repository.LiveSessi
 import vacademy.io.admin_core_service.features.live_session.repository.SessionScheduleRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
+import java.sql.Date;
 import java.sql.Time;
+import java.sql.Timestamp;
 import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 
 @Service
@@ -59,7 +63,14 @@ public class Step1Service {
         if (request.getStartTime() != null) session.setStartTime(request.getStartTime());
         if (request.getLastEntryTime() != null) session.setLastEntryTime(request.getLastEntryTime());
         if(request.getInstituteId() != null) session.setInstituteId(request.getInstituteId());
-
+        if(request.getBackgroundScoreFileId() != null) session.setBackgroundScoreFileId(request.getBackgroundScoreFileId());
+        if(request.getThumbnailFileId() != null) session.setThumbnailFileId(request.getThumbnailFileId());
+        if(request.getWaitingRoomTime() != null) session.setWaitingRoomTime(request.getWaitingRoomTime());
+        if(request.getLinkType() != null) session.setLinkType(request.getLinkType());
+        if(request.getAllowRewind() != null) session.setAllowRewind(request.getAllowRewind());
+        if(request.getSessionStreamingServiceType() != null) session.setSessionStreamingServiceType(request.getSessionStreamingServiceType());
+        if(request.getJoinLink() != null) session.setRegistrationFormLinkForPublicSessions(request.getJoinLink());
+        if(request.getCoverFileId() != null) session.setCoverFileId(request.getCoverFileId());
         session.setCreatedByUserId(user.getUserId());
     }
 
@@ -72,8 +83,11 @@ public class Step1Service {
     }
 
     private void handleAddedSchedules(LiveSessionStep1RequestDTO request, LiveSession session) {
-        if (request.getAddedSchedules() != null) {
-            LocalDate startDate = request.getStartTime().toLocalDateTime().toLocalDate(); // first possible date
+        if (request.getAddedSchedules() != null && !request.getAddedSchedules().isEmpty()) {
+            LocalDate startDate = request.getStartTime()
+                    .toInstant()
+                    .atZone(ZoneOffset.UTC)
+                    .toLocalDate();
             LocalDate endDate = LocalDate.parse(request.getSessionEndDate(), DateTimeFormatter.ISO_DATE);
 
             for (LiveSessionStep1RequestDTO.ScheduleDTO dto : request.getAddedSchedules()) {
@@ -89,7 +103,7 @@ public class Step1Service {
                     schedule.setMeetingDate(java.sql.Date.valueOf(current));
                     schedule.setStartTime(Time.valueOf(dto.getStartTime()));
                     java.time.LocalTime parsedStartTime = java.time.LocalTime.parse(dto.getStartTime());
-                    java.time.LocalTime computedLastEntryTime = parsedStartTime.plusHours(Long.parseLong(dto.getDuration()));
+                    java.time.LocalTime computedLastEntryTime = parsedStartTime.plusMinutes(Long.parseLong(dto.getDuration()));
 
                     schedule.setLastEntryTime(Time.valueOf(computedLastEntryTime));
 
@@ -105,6 +119,24 @@ public class Step1Service {
                 }
             }
         }
+        else {
+            LocalDate meetingLocalDate = request.getStartTime().toLocalDateTime().toLocalDate();
+            LocalTime startLocalTime = request.getStartTime().toLocalDateTime().toLocalTime();
+            LocalTime lastEntryLocalTime = request.getLastEntryTime().toLocalDateTime().toLocalTime();
+
+            SessionSchedule schedule = new SessionSchedule();
+            schedule.setSessionId(session.getId());
+            schedule.setRecurrenceType(request.getRecurrenceType());
+            schedule.setMeetingDate(Date.valueOf(meetingLocalDate));
+            schedule.setStartTime(Time.valueOf(startLocalTime));
+            schedule.setLastEntryTime(Time.valueOf(lastEntryLocalTime));
+            schedule.setCustomMeetingLink(request.getDefaultMeetLink());
+            schedule.setLinkType(getLinkTypeFromUrl(request.getDefaultMeetLink()));
+            schedule.setCustomWaitingRoomMediaId(null);
+
+            scheduleRepository.save(schedule);
+        }
+
     }
 
     private void handleUpdatedSchedules(LiveSessionStep1RequestDTO request) {

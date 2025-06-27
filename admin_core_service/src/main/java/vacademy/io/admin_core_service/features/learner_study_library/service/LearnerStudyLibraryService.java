@@ -8,6 +8,7 @@ import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.chapter.dto.ChapterDetailsProjection;
 import vacademy.io.admin_core_service.features.chapter.enums.ChapterStatus;
 import vacademy.io.admin_core_service.features.course.dto.CourseDTOWithDetails;
+import vacademy.io.admin_core_service.features.learner_operation.enums.LearnerOperationEnum;
 import vacademy.io.admin_core_service.features.learner_study_library.dto.LearnerModuleDTOWithDetails;
 import vacademy.io.admin_core_service.features.learner_study_library.dto.LearnerSlidesDetailDTO;
 import vacademy.io.admin_core_service.features.learner_study_library.dto.LearnerSubjectProjection;
@@ -70,6 +71,8 @@ public class LearnerStudyLibraryService {
                 subjectId,
                 packageSessionId,
                 user.getUserId(),
+                LearnerOperationEnum.PERCENTAGE_MODULE_COMPLETED.name(),
+                LearnerOperationEnum.PERCENTAGE_CHAPTER_COMPLETED.name(),
                 List.of(SlideStatus.PUBLISHED.name(),SlideStatus.UNSYNC.name()),
                 List.of(SlideStatus.PUBLISHED.name(),SlideStatus.UNSYNC.name()),
                 List.of(ChapterStatus.ACTIVE.name()),
@@ -99,13 +102,12 @@ public class LearnerStudyLibraryService {
         if (Objects.isNull(packageSessionId)) {
             throw new VacademyException("Please provide packageSessionId");
         }
-        return subjectPackageSessionRepository.findLearnerSubjectsWithFilters(
+        return subjectPackageSessionRepository.findLearnerSubjectsWithOperationValue(
                 packageSessionId,
                 user.getUserId(),
-                List.of(SubjectStatusEnum.ACTIVE.name()),
-                List.of(ModuleStatusEnum.ACTIVE.name()),
-                        List.of(ChapterStatus.ACTIVE.name()),
-                List.of(ChapterStatus.ACTIVE.name()));
+            LearnerOperationEnum.PERCENTAGE_SUBJECT_COMPLETED.name(),
+                List.of(SubjectStatusEnum.ACTIVE.name())
+        );
     }
 
     public List<LearnerSlidesDetailDTO> getLearnerSlides(String chapterId, CustomUserDetails user) {

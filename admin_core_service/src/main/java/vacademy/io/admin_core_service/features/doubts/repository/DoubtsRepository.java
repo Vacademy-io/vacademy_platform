@@ -16,8 +16,6 @@ public interface DoubtsRepository extends JpaRepository<Doubts, String> {
 
     @Query(value = """
         SELECT d.* FROM doubts d
-        LEFT JOIN chapter_to_slides cts ON d.source_id = cts.slide_id AND d.source = 'SLIDE'
-        LEFT JOIN chapter_package_session_mapping cpsm ON cts.chapter_id = cpsm.chapter_id
         WHERE (:contentPositions IS NULL OR d.content_position IN :contentPositions)
           AND (:contentTypes IS NULL OR d.content_type IN :contentTypes)
           AND (:sources IS NULL OR d.source IN :sources)
@@ -26,12 +24,10 @@ public interface DoubtsRepository extends JpaRepository<Doubts, String> {
           AND (:status IS NULL OR d.status IN :status)
           AND (d.raised_time BETWEEN :startDate AND :endDate)
           AND d.parent_id IS NULL
-          AND (:batchIds IS NULL OR cpsm.package_session_id IN :batchIds)
+          AND (:batchIds IS NULL OR d.package_session_id IN :batchIds)
         """,
             countQuery = """
         SELECT COUNT(d.*) FROM doubts d
-        LEFT JOIN chapter_to_slides cts ON d.source_id = cts.slide_id AND d.source = 'SLIDE'
-        LEFT JOIN chapter_package_session_mapping cpsm ON cts.chapter_id = cpsm.chapter_id
         WHERE (:contentPositions IS NULL OR d.content_position IN :contentPositions)
           AND (:contentTypes IS NULL OR d.content_type IN :contentTypes)
           AND (:sources IS NULL OR d.source IN :sources)
@@ -40,7 +36,7 @@ public interface DoubtsRepository extends JpaRepository<Doubts, String> {
           AND (:status IS NULL OR d.status IN :status)
           AND (d.raised_time BETWEEN :startDate AND :endDate)
           AND d.parent_id IS NULL
-          AND (:batchIds IS NULL OR cpsm.package_session_id IN :batchIds)
+          AND (:batchIds IS NULL OR d.package_session_id IN :batchIds)
         """,nativeQuery = true)
     Page<Doubts> findDoubtsWithFilter(@Param("contentPositions") List<String> contentPositions,
                                       @Param("contentTypes") List<String> contentTypes,

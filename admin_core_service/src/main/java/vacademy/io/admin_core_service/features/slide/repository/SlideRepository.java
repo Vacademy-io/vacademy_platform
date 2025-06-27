@@ -27,23 +27,23 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
     SlideCountProjection countSlidesByChapterId(@Param("chapterId") String chapterId);
 
     @Query(value = """
-            SELECT s.id AS slideId, 
-                   s.title AS slideTitle, 
-                   s.description AS slideDescription, 
-                   s.source_type AS sourceType, 
-                   s.status AS status, 
-                   s.image_file_id AS imageFileId, 
+            SELECT s.id AS slideId,
+                   s.title AS slideTitle,
+                   s.description AS slideDescription,
+                   s.source_type AS sourceType,
+                   s.status AS status,
+                   s.image_file_id AS imageFileId,
                    s.last_sync_date AS lastSyncDate,
-                   ds.id AS documentId, 
-                   ds.title AS documentTitle, 
-                   ds.cover_file_id AS documentCoverFileId, 
-                   ds.type AS documentType, 
-                   ds.data AS documentData, 
-                   vs.id AS videoId, 
-                   vs.title AS videoTitle, 
-                   vs.url AS videoUrl, 
+                   ds.id AS documentId,
+                   ds.title AS documentTitle,
+                   ds.cover_file_id AS documentCoverFileId,
+                   ds.type AS documentType,
+                   ds.data AS documentData,
+                   vs.id AS videoId,
+                   vs.title AS videoTitle,
+                   vs.url AS videoUrl,
                    vs.source_type AS videoSourceType,
-                   vs.description AS videoDescription, 
+                   vs.description AS videoDescription,
                    COALESCE(cts.slide_order, 9999) AS slideOrder,
                    vs.published_url AS publishedUrl,
                    ds.published_data AS publishedData
@@ -55,9 +55,9 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
             WHERE ch.id = :chapterId
               AND s.status IN :status
               AND cts.status != 'DELETED'
-            ORDER BY 
-                cts.slide_order IS NOT NULL, 
-                cts.slide_order ASC, 
+            ORDER BY
+                cts.slide_order IS NOT NULL,
+                cts.slide_order ASC,
                 s.created_at DESC
             """, nativeQuery = true)
     List<SlideDetailProjection> findSlideDetailsByChapterId(
@@ -66,47 +66,47 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
     );
 
     @Query(value = """
-                SELECT 
-                    s.id AS slideId, 
-                    s.title AS slideTitle, 
-                    s.description AS slideDescription, 
-                    s.source_type AS sourceType, 
-                    s.status AS status, 
-                    s.image_file_id AS imageFileId, 
-                    
-                    ds.id AS documentId, 
-                    ds.title AS documentTitle, 
-                    ds.cover_file_id AS documentCoverFileId, 
-                    ds.type AS documentType, 
-                  
-                    
-                    vs.id AS videoId, 
-                    vs.title AS videoTitle, 
-                    vs.description AS videoDescription, 
+                SELECT
+                    s.id AS slideId,
+                    s.title AS slideTitle,
+                    s.description AS slideDescription,
+                    s.source_type AS sourceType,
+                    s.status AS status,
+                    s.image_file_id AS imageFileId,
+
+                    ds.id AS documentId,
+                    ds.title AS documentTitle,
+                    ds.cover_file_id AS documentCoverFileId,
+                    ds.type AS documentType,
+
+
+                    vs.id AS videoId,
+                    vs.title AS videoTitle,
+                    vs.description AS videoDescription,
                     vs.published_url AS publishedUrl,
                     vs.source_type AS videoSourceType,
                     ds.published_data AS publishedData,
-                    cts.slide_order AS slideOrder 
-                    
-                FROM slide s 
-                JOIN activity_log al ON al.slide_id = s.id 
-                JOIN chapter_to_slides cts ON s.id = cts.slide_id 
-                JOIN chapter ch ON cts.chapter_id = ch.id 
-                
-                LEFT JOIN document_slide ds ON ds.id = s.source_id AND s.source_type = 'DOCUMENT' 
-                LEFT JOIN video vs ON vs.id = s.source_id AND s.source_type = 'VIDEO' 
-                
-                WHERE al.user_id = :userId 
-                AND s.status IN :status 
-                AND (al.percentage_watched IS NULL OR al.percentage_watched != 100) 
-                AND cts.status != 'DELETED' 
-                
-                ORDER BY 
-                    CASE WHEN cts.slide_order IS NULL THEN 0 ELSE 1 END, 
-                    cts.slide_order ASC, 
-                    al.updated_at DESC, 
-                    s.id 
-                    
+                    cts.slide_order AS slideOrder
+
+                FROM slide s
+                JOIN activity_log al ON al.slide_id = s.id
+                JOIN chapter_to_slides cts ON s.id = cts.slide_id
+                JOIN chapter ch ON cts.chapter_id = ch.id
+
+                LEFT JOIN document_slide ds ON ds.id = s.source_id AND s.source_type = 'DOCUMENT'
+                LEFT JOIN video vs ON vs.id = s.source_id AND s.source_type = 'VIDEO'
+
+                WHERE al.user_id = :userId
+                AND s.status IN :status
+                AND (al.percentage_watched IS NULL OR al.percentage_watched != 100)
+                AND cts.status != 'DELETED'
+
+                ORDER BY
+                    CASE WHEN cts.slide_order IS NULL THEN 0 ELSE 1 END,
+                    cts.slide_order ASC,
+                    al.updated_at DESC,
+                    s.id
+
                 LIMIT 5
             """, nativeQuery = true)
     List<SlideDetailProjection> findRecentIncompleteSlidesByUserId(
@@ -128,7 +128,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                     ds.cover_file_id AS documentCoverFileId,
                     ds.type AS documentType,
                     ds.published_data AS publishedData,
-                    
+
                     vs.id AS videoId,
                     vs.title AS videoTitle,
                     vs.description AS videoDescription,
@@ -176,12 +176,12 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                     AND vid_last.user_id = :userId
 
                 WHERE ch.id = :chapterId
-                AND s.status IN (:status) 
+                AND s.status IN (:status)
                 AND cts.status != 'DELETED'
-                ORDER BY 
-                    CASE 
-                        WHEN cts.slide_order IS NULL THEN 0 
-                        ELSE 1 
+                ORDER BY
+                    CASE
+                        WHEN cts.slide_order IS NULL THEN 0
+                        ELSE 1
                     END,
                     cts.slide_order ASC
             """, nativeQuery = true)
@@ -192,20 +192,20 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
     );
 
     @Query(value = """
-            SELECT s.id AS slideId, 
-                   s.title AS slideTitle, 
-                   s.description AS slideDescription, 
-                   s.source_type AS sourceType, 
-                   s.status AS status, 
-                   s.image_file_id AS imageFileId, 
-                   ds.id AS documentId, 
-                   ds.title AS documentTitle, 
-                   ds.cover_file_id AS documentCoverFileId, 
-                   ds.type AS documentType, 
-                   vs.id AS videoId, 
+            SELECT s.id AS slideId,
+                   s.title AS slideTitle,
+                   s.description AS slideDescription,
+                   s.source_type AS sourceType,
+                   s.status AS status,
+                   s.image_file_id AS imageFileId,
+                   ds.id AS documentId,
+                   ds.title AS documentTitle,
+                   ds.cover_file_id AS documentCoverFileId,
+                   ds.type AS documentType,
+                   vs.id AS videoId,
                    vs.source_type AS videoSourceType,
-                   vs.title AS videoTitle, 
-                   vs.description AS videoDescription, 
+                   vs.title AS videoTitle,
+                   vs.description AS videoDescription,
                    COALESCE(cts.slide_order, 9999) AS slideOrder,
                    vs.published_url AS publishedUrl,
                    ds.published_data AS publishedData
@@ -217,9 +217,9 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
             WHERE ch.id = :chapterId
               AND s.status IN :status
               AND cts.status != 'DELETED'
-            ORDER BY 
-                cts.slide_order IS NOT NULL, 
-                cts.slide_order ASC, 
+            ORDER BY
+                cts.slide_order IS NOT NULL,
+                cts.slide_order ASC,
                 s.created_at DESC
             """, nativeQuery = true)
     List<SlideDetailProjection> findLearnerSlideDetailsByChapterId(
@@ -235,19 +235,19 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                     s.source_type AS sourceType,\s
                     s.status AS status,\s
                     s.image_file_id AS imageFileId,
-                
+
                     -- Merge both operations into one progressMarker field
                     COALESCE(
                         CASE WHEN lo.operation = 'VIDEO_LAST_TIMESTAMP' THEN CAST(lo.value AS BIGINT) END,
                         CASE WHEN lo.operation = 'DOCUMENT_LAST_PAGE' THEN CAST(lo.value AS BIGINT) END
                     ) AS progressMarker,
-                
+
                     ps.package_id AS packageId,\s
                     ps.level_id AS levelId,
                     ch.id AS chapterId,
                     m.id AS moduleId,
                     sub.id AS subjectId
-                
+
                 FROM slide s\s
                 JOIN activity_log al ON al.slide_id = s.id\s
                 JOIN chapter_to_slides cts ON s.id = cts.slide_id AND cts.status IN :chapterSlideStatus \s
@@ -257,13 +257,13 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                 JOIN modules m ON mtc.module_id = m.id AND m.status IN :moduleStatus\s
                 JOIN subject_module_mapping smm ON smm.module_id = m.id \s
                 JOIN subject sub ON smm.subject_id = sub.id AND sub.status IN :subjectStatus \s
-                
+
                 LEFT JOIN document_slide ds ON ds.id = s.source_id AND s.source_type = 'DOCUMENT'\s
                 LEFT JOIN video vs ON vs.id = s.source_id AND s.source_type = 'VIDEO'\s
                 LEFT JOIN learner_operation lo ON lo.user_id = :userId\s
                                                   AND lo.source = 'SLIDE'\s
                                                   AND lo.source_id = s.id \s
-                
+
                 WHERE al.user_id = :userId\s
                 AND s.status IN :slideStatus \s
                 AND (al.percentage_watched IS NULL OR al.percentage_watched != 100)\s
@@ -302,6 +302,8 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                     'url', v.url,
                                     'title', v.title,
                                     'description', v.description,
+                                    'embedded_type', v.embedded_type,
+                                    'embedded_data', v.embedded_data,
                                     'source_type', v.source_type,
                                     'published_url', v.published_url,
                                     'video_length_in_millis', v.video_length,
@@ -355,9 +357,9 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                         WHERE s.source_type = 'VIDEO' AND c.id = :chapterId
                         AND s.status IN (:slideStatus)
                         AND cs.status IN (:chapterToSlidesStatus)
-                        
+
                         UNION ALL
-                        
+
                         -- DOCUMENT SLIDES
                         SELECT\s
                             s.created_at,
@@ -390,9 +392,9 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                         WHERE s.source_type = 'DOCUMENT' AND c.id = :chapterId
                         AND s.status IN (:slideStatus)
                         AND cs.status IN (:chapterToSlidesStatus)
-                        
+
                         UNION ALL
-                        
+
                         -- QUESTION SLIDES
                         SELECT\s
                             s.created_at,
@@ -447,9 +449,9 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                         WHERE s.source_type = 'QUESTION' AND c.id = :chapterId
                         AND s.status IN (:slideStatus)
                         AND cs.status IN (:chapterToSlidesStatus)
-                        
+
                         UNION ALL
-                        
+
                         -- ASSIGNMENT SLIDES
                          SELECT
                             s.created_at,
@@ -544,15 +546,17 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                 'slide_order', cs.slide_order,
                 'source_type', s.source_type,
                 'progress_marker', COALESCE(CAST(lo_video_marker.value AS bigint), NULL),
-                'percentage_completed', CASE 
-                    WHEN lo_video_percent.value IS NULL OR lo_video_percent.value = 'null' THEN NULL 
-                    ELSE CAST(lo_video_percent.value AS double precision) 
+                'percentage_completed', CASE
+                    WHEN lo_video_percent.value IS NULL OR lo_video_percent.value = 'null' THEN NULL
+                    ELSE CAST(lo_video_percent.value AS double precision)
                 END,
                 'video_slide', json_build_object(
                     'id', v.id,
                     'url', v.url,
                     'title', v.title,
                     'description', v.description,
+                    'embedded_type', v.embedded_type,
+                    'embedded_data', v.embedded_data,
                     'source_type', v.source_type,
                     'published_url', v.published_url,
                     'video_length_in_millis', v.video_length,
@@ -625,9 +629,9 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                 'slide_order', cs.slide_order,
                 'source_type', s.source_type,
                 'progress_marker', COALESCE(CAST(lo_doc_marker.value AS bigint), NULL),
-                'percentage_completed', CASE 
-                    WHEN lo_doc_percent.value IS NULL OR lo_doc_percent.value = 'null' THEN NULL 
-                    ELSE CAST(lo_doc_percent.value AS double precision) 
+                'percentage_completed', CASE
+                    WHEN lo_doc_percent.value IS NULL OR lo_doc_percent.value = 'null' THEN NULL
+                    ELSE CAST(lo_doc_percent.value AS double precision)
                 END,
                 'document_slide', json_build_object(
                     'id', d.id,
@@ -665,9 +669,9 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                 'slide_order', cs.slide_order,
                 'source_type', s.source_type,
                 'progress_marker', NULL,
-                'percentage_completed', CASE 
-                    WHEN lo_ques_percent.value IS NULL OR lo_ques_percent.value = 'null' THEN NULL 
-                    ELSE CAST(lo_ques_percent.value AS double precision) 
+                'percentage_completed', CASE
+                    WHEN lo_ques_percent.value IS NULL OR lo_ques_percent.value = 'null' THEN NULL
+                    ELSE CAST(lo_ques_percent.value AS double precision)
                 END,
                 'question_slide', json_build_object(
                     'id', q.id,
@@ -798,7 +802,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
 
 
     @Query(value = """
-    SELECT 
+    SELECT
         cpsm.created_at AS createdAt,
         c.id AS topChapterId,
         cpsm.package_session_id AS packageSessionId,
@@ -812,7 +816,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
     JOIN subject_module_mapping smm ON smm.module_id = m.id
     JOIN subject sub ON sub.id = smm.subject_id
     JOIN subject_session sps ON sps.subject_id = sub.id
-    WHERE 
+    WHERE
         s.id = :slideId
         AND sub.status IN :subjectStatusList
         AND m.status IN :moduleStatusList
@@ -829,6 +833,128 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
             @Param("chapterStatusList") List<String> chapterStatusList,
             @Param("chapterToSessionStatusList") List<String> chapterToSessionStatusList,
             @Param("slideStatusList") List<String> slideStatusList
+    );
+
+    @Query(value = """
+    SELECT
+        s.source_type AS sourceType,
+        COUNT(DISTINCT s.id) AS slideCount
+    FROM slide s
+    JOIN chapter_to_slides cs ON cs.slide_id = s.id
+    JOIN chapter c ON c.id = cs.chapter_id
+    JOIN module_chapter_mapping mcm ON mcm.chapter_id = c.id
+    JOIN modules m ON m.id = mcm.module_id
+    JOIN subject_module_mapping smm ON smm.module_id = m.id
+    JOIN subject sub ON sub.id = smm.subject_id
+    JOIN subject_session ss ON ss.subject_id = sub.id
+    JOIN chapter_package_session_mapping cpsm ON cpsm.chapter_id = c.id
+    WHERE
+        ss.session_id = :sessionId
+        AND cpsm.package_session_id = :sessionId
+        AND sub.status IN :subjectStatusList
+        AND m.status IN :moduleStatusList
+        AND c.status IN :chapterStatusList
+        AND cs.status IN :slideStatusList
+        AND s.status IN :slideStatusList
+        AND cpsm.status IN :chapterPackageStatusList
+    GROUP BY s.source_type
+""", nativeQuery = true)
+    List<SlideTypeCountProjection> getSlideCountsBySourceType(
+            @Param("sessionId") String sessionId,
+            @Param("subjectStatusList") List<String> subjectStatusList,
+            @Param("moduleStatusList") List<String> moduleStatusList,
+            @Param("chapterStatusList") List<String> chapterStatusList,
+            @Param("slideStatusList") List<String> slideStatusList,
+            @Param("chapterPackageStatusList") List<String> chapterPackageStatusList
+    );
+
+    @Query(value = """
+    SELECT json_agg(slide_data ORDER BY slide_order IS NOT NULL, slide_order, created_at DESC) AS slides
+    FROM (
+        -- VIDEO SLIDES
+        SELECT DISTINCT ON (s.id)
+            s.created_at,
+            cs.slide_order,
+            json_build_object(
+                'id', s.id,
+                'title', s.title,
+                'status', s.status,
+                'is_loaded', true,
+                'new_slide', true,
+                'source_id', s.source_id,
+                'description', s.description,
+                'slide_order', cs.slide_order,
+                'source_type', s.source_type,
+                'progress_marker', NULL,
+                'percentage_completed', NULL,
+                'video_slide', json_build_object(
+                    'id', v.id,
+                    'url', v.url,
+                    'title', v.title,
+                    'description', v.description,
+                    'source_type', v.source_type,
+                    'published_url', v.published_url,
+                    'video_length_in_millis', v.video_length,
+                    'published_video_length_in_millis', v.published_video_length,
+                    'embedded_type', v.embedded_type,
+                    'embedded_data', v.embedded_data,
+                    'questions', COALESCE((
+                        SELECT json_agg(
+                            json_build_object(
+                                'id', q.id,
+                                'can_skip', q.can_skip,
+                                'question_response_type', q.question_response_type,
+                                'question_type', q.question_type,
+                                'access_level', q.access_level,
+                                'question_order', q.question_order,
+                                'question_time_in_millis', q.question_time_in_millis,
+                                'media_id', q.media_id,
+                                'auto_evaluation_json', q.auto_evaluation_json,
+                                'evaluation_type', q.evaluation_type,
+                                'text_data', json_build_object('id', rt_text.id, 'type', 'RICH_TEXT', 'content', rt_text.content),
+                                'parent_rich_text', CASE WHEN q.parent_rich_text_id IS NOT NULL THEN json_build_object('id', rt_parent.id, 'type', 'RICH_TEXT', 'content', rt_parent.content) ELSE NULL END,
+                                'explanation_text_data', CASE WHEN q.explanation_text_id IS NOT NULL THEN json_build_object('id', rt_exp.id, 'type', 'RICH_TEXT', 'content', rt_exp.content) ELSE NULL END,
+                                'options', COALESCE((
+                                    SELECT json_agg(
+                                        json_build_object(
+                                            'id', o.id,
+                                            'media_id', o.media_id,
+                                            'text', CASE WHEN o.text_id IS NOT NULL THEN json_build_object('id', rt_opt.id, 'type', 'RICH_TEXT', 'content', rt_opt.content) ELSE NULL END,
+                                            'explanation_text_data', CASE WHEN o.explanation_text_id IS NOT NULL THEN json_build_object('id', rt_opt_exp.id, 'type', 'RICH_TEXT', 'content', rt_opt_exp.content) ELSE NULL END
+                                        )
+                                    )
+                                    FROM video_slide_question_options o
+                                    LEFT JOIN rich_text_data rt_opt ON rt_opt.id = o.text_id
+                                    LEFT JOIN rich_text_data rt_opt_exp ON rt_opt_exp.id = o.explanation_text_id
+                                    WHERE o.video_slide_question_id = q.id
+                                ), CAST('[]' AS json))
+                            )
+                            ORDER BY q.question_order
+                        )
+                        FROM video_slide_question q
+                        LEFT JOIN rich_text_data rt_text ON rt_text.id = q.text_id
+                        LEFT JOIN rich_text_data rt_parent ON rt_parent.id = q.parent_rich_text_id
+                        LEFT JOIN rich_text_data rt_exp ON rt_exp.id = q.explanation_text_id
+                        WHERE q.video_slide_id = v.id AND q.status IN (:videoSlideQuestionStatus)
+                    ), CAST('[]' AS json))
+                )
+            ) AS slide_data
+        FROM slide s
+        JOIN chapter_to_slides cs ON cs.slide_id = s.id
+        JOIN chapter c ON c.id = cs.chapter_id
+        JOIN video v ON v.id = s.source_id
+        WHERE s.source_type = 'VIDEO' AND c.id = :chapterId
+        AND s.status IN (:slideStatus)
+        AND cs.status IN (:chapterToSlidesStatus)
+
+        -- Additional slide types (document, question, assignment) can be appended similarly
+    ) AS slide_data
+""", nativeQuery = true)
+    String getSlidesByChapterIdOpen(
+        @Param("chapterId") String chapterId,
+        @Param("slideStatus") List<String> slideStatus,
+        @Param("chapterToSlidesStatus") List<String> chapterToSlidesStatus,
+        @Param("videoSlideQuestionStatus") List<String> videoSlideQuestionStatus
     );
 
 }

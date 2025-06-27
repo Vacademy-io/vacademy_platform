@@ -7,6 +7,7 @@ import vacademy.io.admin_core_service.features.live_session.dto.LiveSessionReque
 import vacademy.io.admin_core_service.features.live_session.dto.LiveSessionStep1RequestDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.LiveSessionStep2RequestDTO;
 import vacademy.io.admin_core_service.features.live_session.entity.LiveSession;
+import vacademy.io.admin_core_service.features.live_session.service.GetLiveSessionService;
 import vacademy.io.admin_core_service.features.live_session.service.Step1Service;
 import vacademy.io.admin_core_service.features.live_session.service.Step2Service;
 import vacademy.io.admin_core_service.features.session.dto.SessionDTOWithDetails;
@@ -21,25 +22,24 @@ public class LiveSessionController {
 
     private final Step1Service step1Service;
     private final Step2Service step2Service;
-    @GetMapping("/test")
-    Boolean testApi(@RequestAttribute("user") CustomUserDetails user){
-        return true;
-    }
+    private final GetLiveSessionService getLiveSessionService;
+
     @PostMapping("create/step1")
     ResponseEntity< LiveSession> addLiveSessionStep1(@RequestBody LiveSessionStep1RequestDTO SessionRequest,
                                     @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok(step1Service.step1AddService(SessionRequest , user));
 
     }
+
     @PostMapping("create/step2")
     ResponseEntity<Boolean> addLiveSessionStep2(@RequestBody LiveSessionStep2RequestDTO SessionRequest,
                                     @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok(step2Service.step2AddService(SessionRequest , user));
     }
-    @PostMapping("/add")
-    public Boolean getSessionsByInstituteId(
-            @RequestBody LiveSessionRequestDTO SessionRequest,
-            @RequestAttribute("user") CustomUserDetails user) {
-            return true;
+
+    @GetMapping("/delete")
+    public void deleteLiveSession(@RequestParam("sessionId") String sessionId,
+                                  @RequestAttribute("user") CustomUserDetails user){
+        getLiveSessionService.deleteLiveSession(sessionId);
     }
 }

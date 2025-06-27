@@ -177,6 +177,7 @@ public class StudyLibraryService {
         return sessionDTOWithDetails;
     }
 
+    @Transactional
     public List<ModuleDTOWithDetails> getModulesDetailsWithChapters(String subjectId, String packageSessionId, CustomUserDetails user) {
         if (Objects.isNull(subjectId)) {
             throw new VacademyException("Please provide subjectId");

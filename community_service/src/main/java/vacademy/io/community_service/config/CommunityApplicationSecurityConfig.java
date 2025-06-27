@@ -27,7 +27,7 @@ public class CommunityApplicationSecurityConfig {
 
     private static final String[] INTERNAL_PATHS = {};
 
-    private static final String[] ALLOWED_PATHS = {"/community-service/engage/**","/community-service/subject/**", "/community-service/chapter/**", "/community-service/actuator/**", "/community-service/swagger-ui.html", "/community-service/presentation/**", "/community-service/v1/report/alert/**", "/community-service/v3/api-docs/**", "/community-service/swagger-ui/**", "/community-service/webjars/swagger-ui/**", "/community-service/api-docs/**"};
+    private static final String[] ALLOWED_PATHS = {"community-service/engage/learner/**","/community-service/engage/**","/community-service/subject/**", "/community-service/chapter/**", "/community-service/actuator/**", "/community-service/swagger-ui.html", "/community-service/presentation/**", "/community-service/v1/report/alert/**", "/community-service/v3/api-docs/**", "/community-service/swagger-ui/**", "/community-service/webjars/swagger-ui/**", "/community-service/api-docs/**"};
 
     @Autowired
     JwtAuthFilter jwtAuthFilter;
@@ -59,12 +59,6 @@ public class CommunityApplicationSecurityConfig {
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
-
-    @Bean
-    public RestTemplate restTemplate() {
-        return new RestTemplate();
-    }
-
 
     @Bean
     public PasswordEncoder passwordEncoder() {

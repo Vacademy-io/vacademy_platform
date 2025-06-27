@@ -135,7 +135,7 @@ public class AdminManualEvaluationManager {
                 if (questionOptional.isEmpty()) throw new VacademyException("Question Not Found");
 
                 Optional<QuestionWiseMarks> existingEntry = questionWiseMarksService.getQuestionWiseMarkForAssessmentIdAndSectionIdAndQuestionIdAndAttemptId(
-                        assessment.getId(), attempt.getId(), questionOptional.get().getId(), section.get().getId()
+                        assessment.getId(), attempt.getId(), section.get().getId(), questionOptional.get().getId()
                 );
 
                 if (existingEntry.isPresent()) {

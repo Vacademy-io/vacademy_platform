@@ -62,6 +62,9 @@ public class User {
     @Column(name = "is_root_user")
     private boolean isRootUser;
 
+    @Column(name = "last_token_update_time")
+    @Temporal(TemporalType.TIMESTAMP)
+    private Date lastTokenUpdateTime;
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private Timestamp createdAt;

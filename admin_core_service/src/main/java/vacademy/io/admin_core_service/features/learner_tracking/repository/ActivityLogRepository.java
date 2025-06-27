@@ -5,6 +5,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.security.core.parameters.P;
 import vacademy.io.admin_core_service.features.learner_reports.dto.ChapterSlideProgressProjection;
 import vacademy.io.admin_core_service.features.learner_reports.dto.LearnerActivityDataProjection;
 import vacademy.io.admin_core_service.features.learner_reports.dto.SubjectProgressProjection;
@@ -196,13 +197,17 @@ LEFT JOIN (
                                                          Pageable pageable);
 
     @Query("""
-            SELECT DISTINCT al FROM ActivityLog al
-            LEFT JOIN FETCH al.videoSlideQuestionTracked vt
-            WHERE al.userId = :userId AND al.slideId = :slideId
-            """)
-    Page<ActivityLog> findActivityLogsWithVideoSlideQuestions(@Param("userId") String userId,
-                                                          @Param("slideId") String slideId,
-                                                          Pageable pageable);
+    SELECT DISTINCT al FROM ActivityLog al
+    LEFT JOIN FETCH al.videoSlideQuestionTracked vt
+    WHERE al.userId = :userId AND al.slideId = :slideId AND al.sourceType = :sourceType
+    """)
+    Page<ActivityLog> findActivityLogsWithVideoSlideQuestions(
+            @Param("userId") String userId,
+            @Param("slideId") String slideId,
+            @Param("sourceType") String sourceType,
+            Pageable pageable
+    );
+
 
 
     @Query("""
@@ -231,6 +236,7 @@ LEFT JOIN (
     WITH individual_slide_progress AS (
         SELECT 
             s.id AS slide_id,
+            al.user_id,
             CASE 
                 WHEN s.source_type = 'VIDEO' THEN 
                     LEAST(
@@ -260,6 +266,8 @@ LEFT JOIN (
         JOIN subject sub ON sub.id = smm.subject_id
         JOIN subject_session sps ON sps.subject_id = sub.id
         JOIN chapter_package_session_mapping cpsm ON cpsm.chapter_id = c.id AND cpsm.package_session_id = :sessionId
+        JOIN student_session_institute_group_mapping ssigm ON ssigm.package_session_id = sps.session_id AND ssigm.user_id = al.user_id
+       
         WHERE 
             al.created_at BETWEEN :startDate AND :endDate
             AND sps.session_id = :sessionId
@@ -270,11 +278,17 @@ LEFT JOIN (
             AND s.status IN :slideStatusList
             AND cs.status IN :slideStatusList
             AND s.source_type IN :slideTypeList
-        GROUP BY s.id, s.source_type, v.published_video_length, ds.published_document_total_pages
+            AND ssigm.status IN :ssigmStatusList
+        GROUP BY s.id, s.source_type, v.published_video_length, ds.published_document_total_pages, al.user_id
+    ),
+    user_wise_progress AS (
+        SELECT user_id, AVG(slide_completion) AS user_avg_completion
+        FROM individual_slide_progress
+        GROUP BY user_id
     )
-    SELECT AVG(slide_completion) FROM individual_slide_progress
+    SELECT COALESCE(AVG(user_avg_completion), 0) FROM user_wise_progress
     """, nativeQuery = true)
-    Double getBatchCourseCompletionPercentage(
+    Double getBatchCourseCompletionPercentagePerLearner(
             @Param("sessionId") String sessionId,
             @Param("startDate") Date startDate,
             @Param("endDate") Date endDate,
@@ -283,7 +297,8 @@ LEFT JOIN (
             @Param("chapterStatusList") List<String> chapterStatusList,
             @Param("chapterToSessionStatusList") List<String> chapterToSessionStatusList,
             @Param("slideStatusList") List<String> slideStatusList,
-            @Param("slideTypeList") List<String> slideTypeList
+            @Param("slideTypeList") List<String> slideTypeList,
+            @Param("ssigmStatusList") List<String> ssigmStatusList
     );
 
     @Query(value = """ 
@@ -722,71 +737,72 @@ LEFT JOIN (
 
 
     @Query(value = """
-                WITH video_progress AS (
-                    SELECT 
-                        s.id AS slide_id,
-                        LEAST(
-                            COALESCE(
-                                (SUM(EXTRACT(EPOCH FROM (vt.end_time - vt.start_time))) * 1000 
-                                / NULLIF(COALESCE(v.published_video_length, 1), 0)) * 100, 
-                            0), 
-                        100) AS video_completion
-                    FROM slide s
-                    LEFT JOIN video v ON s.source_id = v.id AND s.source_type = 'VIDEO'
-                    LEFT JOIN activity_log al ON al.slide_id = s.id AND al.user_id = :userId
-                    LEFT JOIN video_tracked vt ON vt.activity_id = al.id
-                    WHERE 
-                        al.created_at BETWEEN :startDate AND :endDate
-                    GROUP BY s.id, v.published_video_length
-                ),
-                document_progress AS (
-                    SELECT 
-                        s.id AS slide_id,
-                        LEAST(
-                            COALESCE(
-                                (COUNT(DISTINCT dt.page_number) * 100.0 / NULLIF(COALESCE(ds.published_document_total_pages, 1), 0)), 
-                            0), 100) AS document_completion
-                    FROM slide s
-                    LEFT JOIN document_slide ds ON s.source_id = ds.id AND s.source_type IN ('DOCUMENT', 'PDF')
-                    LEFT JOIN activity_log al ON al.slide_id = s.id AND al.user_id = :userId
-                    LEFT JOIN document_tracked dt ON dt.activity_id = al.id
-                    WHERE 
-                        al.created_at BETWEEN :startDate AND :endDate
-                    GROUP BY s.id, ds.published_document_total_pages
-                ),
-                slide_completion AS (
-                    SELECT DISTINCT ON (s.id) 
-                        s.id AS slide_id,
-                        COALESCE(
-                            CASE 
-                                WHEN vp.video_completion IS NOT NULL AND dp.document_completion IS NOT NULL 
-                                    THEN (vp.video_completion + dp.document_completion) / 2
-                                WHEN vp.video_completion IS NOT NULL THEN vp.video_completion
-                                WHEN dp.document_completion IS NOT NULL THEN dp.document_completion
-                                ELSE 0
-                            END, 0) AS slide_completion_percentage
-                    FROM 
-                        subject_session sps
-                    JOIN subject_module_mapping smm ON smm.subject_id = sps.subject_id
-                    JOIN subject sub ON sub.id = smm.subject_id
-                    JOIN modules m ON m.id = smm.module_id
-                    JOIN module_chapter_mapping mcm ON mcm.module_id = m.id
-                    JOIN chapter c ON c.id = mcm.chapter_id
-                    JOIN chapter_to_slides cs ON cs.chapter_id = c.id
-                    JOIN slide s ON s.id = cs.slide_id
-                    LEFT JOIN video_progress vp ON vp.slide_id = s.id
-                    LEFT JOIN document_progress dp ON dp.slide_id = s.id
-                    WHERE 
-                        sps.session_id = :sessionId
-                        AND sub.status IN :subjectStatusList
-                        AND m.status IN :moduleStatusList
-                        AND c.status IN :chapterStatusList
-                        AND cs.status IN :slideStatusList
-                        AND s.status IN :slideStatusList
-                )
-                SELECT COALESCE(AVG(slide_completion_percentage), 0) 
-                FROM slide_completion;
-            """, nativeQuery = true)
+    WITH video_progress AS (
+        SELECT 
+            s.id AS slide_id,
+            LEAST(
+                COALESCE(
+                    (
+                        EXTRACT(EPOCH FROM (MAX(vt.end_time) - MIN(vt.start_time))) * 1000 
+                        / NULLIF(COALESCE(v.published_video_length, 1), 0)
+                    ) * 100, 
+                0), 
+            100) AS video_completion
+        FROM slide s
+        LEFT JOIN video v ON s.source_id = v.id AND s.source_type = 'VIDEO'
+        LEFT JOIN activity_log al ON al.slide_id = s.id AND al.user_id = :userId
+        LEFT JOIN video_tracked vt ON vt.activity_id = al.id
+        WHERE 
+            al.created_at BETWEEN :startDate AND :endDate
+            AND s.source_type IN :sourceTypeList
+        GROUP BY s.id, v.published_video_length
+    ),
+    document_progress AS (
+        SELECT 
+            s.id AS slide_id,
+            LEAST(
+                COALESCE(
+                    (COUNT(DISTINCT dt.page_number) * 100.0 / NULLIF(COALESCE(ds.published_document_total_pages, 1), 0)), 
+                0), 100) AS document_completion
+        FROM slide s
+        LEFT JOIN document_slide ds ON s.source_id = ds.id AND s.source_type IN :sourceTypeList
+        LEFT JOIN activity_log al ON al.slide_id = s.id AND al.user_id = :userId
+        LEFT JOIN document_tracked dt ON dt.activity_id = al.id
+        WHERE 
+            al.created_at BETWEEN :startDate AND :endDate
+            AND s.source_type IN :sourceTypeList
+        GROUP BY s.id, ds.published_document_total_pages
+    ),
+    slide_completion AS (
+        SELECT 
+            s.id AS slide_id,
+            COALESCE(vp.video_completion, dp.document_completion, 0) AS slide_completion_percentage
+        FROM 
+            subject_session sps
+        JOIN subject_module_mapping smm ON smm.subject_id = sps.subject_id
+        JOIN subject sub ON sub.id = smm.subject_id
+        JOIN modules m ON m.id = smm.module_id
+        JOIN module_chapter_mapping mcm ON mcm.module_id = m.id
+        JOIN chapter c ON c.id = mcm.chapter_id
+        JOIN chapter_package_session_mapping cpsm ON cpsm.chapter_id = c.id
+        JOIN chapter_to_slides cs ON cs.chapter_id = c.id
+        JOIN slide s ON s.id = cs.slide_id
+        LEFT JOIN video_progress vp ON vp.slide_id = s.id
+        LEFT JOIN document_progress dp ON dp.slide_id = s.id
+        WHERE 
+            sps.session_id = :sessionId
+            AND cpsm.package_session_id = :sessionId
+            AND cpsm.status IN :chapterPackageStatusList
+            AND sub.status IN :subjectStatusList
+            AND m.status IN :moduleStatusList
+            AND c.status IN :chapterStatusList
+            AND cs.status IN :slideStatusList
+            AND s.status IN :slideStatusList
+            AND s.source_type IN :sourceTypeList
+    )
+    SELECT COALESCE(AVG(slide_completion_percentage), 0) 
+    FROM slide_completion;
+""", nativeQuery = true)
     Double getLearnerCourseCompletionPercentage(
             @Param("sessionId") String sessionId,
             @Param("userId") String userId,
@@ -795,22 +811,51 @@ LEFT JOIN (
             @Param("subjectStatusList") List<String> subjectStatusList,
             @Param("moduleStatusList") List<String> moduleStatusList,
             @Param("chapterStatusList") List<String> chapterStatusList,
-            @Param("slideStatusList") List<String> slideStatusList
+            @Param("slideStatusList") List<String> slideStatusList,
+            @Param("sourceTypeList") List<String> sourceTypeList,
+            @Param("chapterPackageStatusList") List<String> chapterPackageStatusList
     );
 
-    @Query(value = """ 
-                SELECT 
-                    COALESCE(SUM(EXTRACT(EPOCH FROM (al.end_time - al.start_time))) / 60, 0) AS total_time_spent_minutes
-                FROM activity_log al
-                WHERE 
-                    al.created_at BETWEEN :startDate AND :endDate
-                    AND al.user_id = :userId
-            """, nativeQuery = true)
-    Double findTimeSpentByLearner(
+
+    @Query(value = """
+    SELECT 
+        COALESCE(SUM(EXTRACT(EPOCH FROM (al.end_time - al.start_time))) / 60, 0) AS total_time_spent_minutes
+    FROM activity_log al
+    JOIN slide s ON s.id = al.slide_id
+    JOIN chapter_to_slides cs ON cs.slide_id = s.id
+    JOIN chapter c ON c.id = cs.chapter_id
+    JOIN module_chapter_mapping mcm ON mcm.chapter_id = c.id
+    JOIN modules m ON m.id = mcm.module_id
+    JOIN subject_module_mapping smm ON smm.module_id = m.id
+    JOIN subject sub ON sub.id = smm.subject_id
+    JOIN subject_session ss ON ss.subject_id = sub.id
+    JOIN chapter_package_session_mapping cpsm ON cpsm.chapter_id = c.id
+    WHERE 
+        al.created_at BETWEEN :startDate AND :endDate
+        AND al.user_id = :userId
+        AND ss.session_id = :sessionId
+        AND cpsm.package_session_id = :sessionId
+        AND sub.status IN :subjectStatusList
+        AND m.status IN :moduleStatusList
+        AND c.status IN :chapterStatusList
+        AND cs.status IN :slideStatusList
+        AND s.status IN :slideStatusList
+        AND cpsm.status IN :chapterPackageStatusList
+        AND s.source_type IN :sourceTypeList
+""", nativeQuery = true)
+    Double findTimeSpentByLearnerWithFilters(
             @Param("startDate") Date startDate,
             @Param("endDate") Date endDate,
-            @Param("userId") String userId
+            @Param("userId") String userId,
+            @Param("sessionId") String sessionId,
+            @Param("subjectStatusList") List<String> subjectStatusList,
+            @Param("moduleStatusList") List<String> moduleStatusList,
+            @Param("chapterStatusList") List<String> chapterStatusList,
+            @Param("slideStatusList") List<String> slideStatusList,
+            @Param("chapterPackageStatusList") List<String> chapterPackageStatusList,
+            @Param("sourceTypeList") List<String> sourceTypeList
     );
+
 
     @Query(value = """
                 WITH date_series AS (

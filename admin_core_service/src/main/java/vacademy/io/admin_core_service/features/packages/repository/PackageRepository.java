@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import vacademy.io.admin_core_service.features.packages.dto.PackageDetailProjection;
 import vacademy.io.common.institute.entity.LevelProjection;
 import vacademy.io.common.institute.entity.PackageEntity;
 import vacademy.io.common.institute.entity.session.PackageSession;
@@ -61,12 +62,12 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
 
 
     @Query(value = """
-                SELECT DISTINCT s.* 
+                SELECT DISTINCT s.*
                 FROM session s
                 INNER JOIN package_session ps ON s.id = ps.session_id
                 INNER JOIN package p ON ps.package_id = p.id
-                WHERE ps.package_id = :packageId 
-                  AND s.status != 'DELETED' 
+                WHERE ps.package_id = :packageId
+                  AND s.status != 'DELETED'
                   AND ps.status != 'DELETED'
             """, nativeQuery = true)
     List<SessionProjection> findDistinctSessionsByPackageId(@Param("packageId") String packageId);
@@ -164,4 +165,573 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("searchByName") String searchByName,
             Pageable pageable
     );
+
+    @Query(value = """
+    SELECT
+        p.id AS id,
+        p.package_name AS packageName,
+        p.thumbnail_file_id AS thumbnailFileId,
+        p.is_course_published_to_catalaouge AS isCoursePublishedToCatalaouge,
+        p.course_preview_image_media_id AS coursePreviewImageMediaId,
+        p.course_banner_media_id AS courseBannerMediaId,
+        p.course_media_id AS courseMediaId,
+        p.why_learn AS whyLearnHtml,
+        p.who_should_learn AS whoShouldLearnHtml,
+        p.about_the_course AS aboutTheCourseHtml,
+        p.comma_separated_tags AS commaSeparetedTags,
+        p.course_depth AS courseDepth,
+        p.course_html_description AS courseHtmlDescriptionHtml,
+        p.created_at AS createdAt,
+        COALESCE(SUM(CAST(lo.value AS DOUBLE PRECISION)), 0) AS percentageCompleted,
+        5.0 AS rating,
+        ps.id AS packageSessionId,
+        l.id AS levelId,
+        l.level_name AS levelName,
+        ARRAY_REMOVE(ARRAY_AGG(DISTINCT fspm.user_id), NULL) AS facultyUserIds
+    FROM package p
+    JOIN package_session ps ON ps.package_id = p.id
+    JOIN level l ON l.id = ps.level_id
+    JOIN package_institute pi ON pi.package_id = p.id
+    LEFT JOIN learner_operation lo
+        ON lo.source = 'PACKAGE_SESSION'
+        AND lo.source_id = ps.id
+        AND (:userId IS NULL OR lo.user_id = :userId)
+        AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR lo.operation IN (:learnerOperations))
+    LEFT JOIN faculty_subject_package_session_mapping fspm
+        ON fspm.package_session_id = ps.id
+        AND fspm.subject_id IS NULL
+    WHERE
+        (:userId IS NULL OR lo.user_id = :userId)
+        AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
+        AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR l.id IN (:levelIds))
+        AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+        AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
+        AND (:#{#facultyIds == null || #facultyIds.isEmpty()} = true OR fspm.user_id IN (:facultyIds))
+        AND (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true OR fspm.status IN (:facultySubjectSessionStatus))
+        AND (
+            :#{#tags == null || #tags.isEmpty()} = true
+            OR EXISTS (
+                SELECT 1 FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
+                WHERE tag ILIKE ANY (array[:#{#tags}])
+            )
+        )
+    GROUP BY
+        p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
+        p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
+        p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
+        p.course_depth, p.course_html_description, p.created_at,
+        ps.id, l.id, l.level_name
+    HAVING
+        COALESCE(SUM(CAST(lo.value AS DOUBLE PRECISION)), 0) BETWEEN :minPercentage AND :maxPercentage
+    """,
+        countQuery = """
+    SELECT COUNT(DISTINCT p.id)
+    FROM package p
+    JOIN package_session ps ON ps.package_id = p.id
+    JOIN level l ON l.id = ps.level_id
+    JOIN package_institute pi ON pi.package_id = p.id
+    LEFT JOIN learner_operation lo
+        ON lo.source = 'PACKAGE_SESSION'
+        AND lo.source_id = ps.id
+        AND (:userId IS NULL OR lo.user_id = :userId)
+        AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR lo.operation IN (:learnerOperations))
+    LEFT JOIN faculty_subject_package_session_mapping fspm
+        ON fspm.package_session_id = ps.id
+        AND fspm.subject_id IS NULL
+    WHERE
+        (:userId IS NULL OR lo.user_id = :userId)
+        AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
+        AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR l.id IN (:levelIds))
+        AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+        AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
+        AND (:#{#facultyIds == null || #facultyIds.isEmpty()} = true OR fspm.user_id IN (:facultyIds))
+        AND (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true OR fspm.status IN (:facultySubjectSessionStatus))
+        AND (
+            :#{#tags == null || #tags.isEmpty()} = true
+            OR EXISTS (
+                SELECT 1 FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
+                WHERE tag ILIKE ANY (array[:#{#tags}])
+            )
+        )
+    GROUP BY p.id
+    HAVING COALESCE(SUM(CAST(lo.value AS DOUBLE PRECISION)), 0) BETWEEN :minPercentage AND :maxPercentage
+    """,
+        nativeQuery = true)
+    Page<PackageDetailProjection> getLearnerPackageDetail(
+        @Param("userId") String userId,
+        @Param("instituteId") String instituteId,
+        @Param("levelIds") List<String> levelIds,
+        @Param("packageStatus") List<String> packageStatus,
+        @Param("packageSessionStatus") List<String> packageSessionStatus,
+        @Param("learnerOperations") List<String> learnerOperations,
+        @Param("minPercentage") double minPercentage,
+        @Param("maxPercentage") double maxPercentage,
+        @Param("facultyIds") List<String> facultyIds,
+        @Param("facultySubjectSessionStatus") List<String> facultySubjectSessionStatus,
+        @Param("tags") List<String> tags,
+        Pageable pageable
+    );
+
+
+    // to do: here I have hard coded the rating of course
+
+    @Query(value = """
+    SELECT
+        p.id AS id,
+        p.package_name AS packageName,
+        p.thumbnail_file_id AS thumbnailFileId,
+        p.is_course_published_to_catalaouge AS isCoursePublishedToCatalaouge,
+        p.course_preview_image_media_id AS coursePreviewImageMediaId,
+        p.course_banner_media_id AS courseBannerMediaId,
+        p.course_media_id AS courseMediaId,
+        p.why_learn AS whyLearnHtml,
+        p.who_should_learn AS whoShouldLearnHtml,
+        p.about_the_course AS aboutTheCourseHtml,
+        p.comma_separated_tags AS commaSeparetedTags,
+        p.course_depth AS courseDepth,
+        p.course_html_description AS courseHtmlDescriptionHtml,
+        p.created_at AS createdAt,
+        COALESCE(SUM(CAST(lo.value AS DOUBLE PRECISION)), 0) AS percentageCompleted,
+        5.0 AS rating,
+        ps.id AS packageSessionId,
+        l.id AS levelId,
+        l.level_name AS levelName,
+        ARRAY_REMOVE(ARRAY_AGG(DISTINCT fspm.user_id), NULL) AS facultyUserIds
+    FROM package p
+    JOIN package_session ps ON ps.package_id = p.id
+    JOIN level l ON l.id = ps.level_id
+    JOIN package_institute pi ON pi.package_id = p.id
+    LEFT JOIN learner_operation lo
+        ON lo.source = 'PACKAGE_SESSION'
+        AND lo.source_id = ps.id
+        AND (:userId IS NULL OR lo.user_id = :userId)
+        AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR lo.operation IN (:learnerOperations))
+    LEFT JOIN faculty_subject_package_session_mapping fspm
+        ON fspm.package_session_id = ps.id
+        AND fspm.subject_id IS NULL
+    WHERE
+        (:userId IS NULL OR lo.user_id = :userId)
+        AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
+        AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+        AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
+        AND (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true OR fspm.status IN (:facultySubjectSessionStatus))
+        AND (
+            :name IS NULL OR
+            LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
+            LOWER(l.level_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
+            EXISTS (
+                SELECT 1 FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
+                WHERE LOWER(tag) LIKE LOWER(CONCAT('%', :name, '%'))
+            ) OR
+            LOWER(fspm.name) LIKE LOWER(CONCAT('%', :name, '%'))
+        )
+    GROUP BY
+        p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
+        p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
+        p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
+        p.course_depth, p.course_html_description, p.created_at,
+        ps.id, l.id, l.level_name
+    HAVING
+        COALESCE(SUM(CAST(lo.value AS DOUBLE PRECISION)), 0) BETWEEN :minPercentage AND :maxPercentage
+    """,
+
+        countQuery = """
+    SELECT COUNT(DISTINCT p.id)
+    FROM package p
+    JOIN package_session ps ON ps.package_id = p.id
+    JOIN level l ON l.id = ps.level_id
+    JOIN package_institute pi ON pi.package_id = p.id
+    LEFT JOIN learner_operation lo
+        ON lo.source = 'PACKAGE_SESSION'
+        AND lo.source_id = ps.id
+        AND (:userId IS NULL OR lo.user_id = :userId)
+        AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR lo.operation IN (:learnerOperations))
+    LEFT JOIN faculty_subject_package_session_mapping fspm
+        ON fspm.package_session_id = ps.id
+        AND fspm.subject_id IS NULL
+    WHERE
+        (:userId IS NULL OR lo.user_id = :userId)
+        AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
+        AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+        AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
+        AND (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true OR fspm.status IN (:facultySubjectSessionStatus))
+        AND (
+            :name IS NULL OR
+            LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
+            LOWER(l.level_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
+            EXISTS (
+                SELECT 1 FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
+                WHERE LOWER(tag) LIKE LOWER(CONCAT('%', :name, '%'))
+            ) OR
+            LOWER(fspm.name) LIKE LOWER(CONCAT('%', :name, '%'))
+        )
+    GROUP BY p.id
+    HAVING COALESCE(SUM(CAST(lo.value AS DOUBLE PRECISION)), 0) BETWEEN :minPercentage AND :maxPercentage
+    """,
+        nativeQuery = true)
+    Page<PackageDetailProjection> getLearnerPackageDetail(
+        @Param("userId") String userId,
+        @Param("name") String name,
+        @Param("instituteId") String instituteId,
+        @Param("packageStatus") List<String> packageStatus,
+        @Param("packageSessionStatus") List<String> packageSessionStatus,
+        @Param("learnerOperations") List<String> learnerOperations,
+        @Param("minPercentage") double minPercentage,
+        @Param("maxPercentage") double maxPercentage,
+        @Param("facultySubjectSessionStatus") List<String> facultySubjectSessionStatus,
+        Pageable pageable
+    );
+
+
+    // to do: here I have hard coded the rating of course
+
+    @Query(value = """
+    SELECT
+        p.id AS id,
+        p.package_name AS packageName,
+        p.thumbnail_file_id AS thumbnailFileId,
+        p.is_course_published_to_catalaouge AS isCoursePublishedToCatalaouge,
+        p.course_preview_image_media_id AS coursePreviewImageMediaId,
+        p.course_banner_media_id AS courseBannerMediaId,
+        p.course_media_id AS courseMediaId,
+        p.why_learn AS whyLearnHtml,
+        p.who_should_learn AS whoShouldLearnHtml,
+        p.about_the_course AS aboutTheCourseHtml,
+        p.comma_separated_tags AS commaSeparetedTags,
+        p.course_depth AS courseDepth,
+        p.course_html_description AS courseHtmlDescriptionHtml,
+        p.created_at AS createdAt,
+        5.0 AS rating,
+        ps.id AS packageSessionId,
+        l.id AS levelId,
+        l.level_name AS levelName,
+        ARRAY_REMOVE(ARRAY_AGG(DISTINCT fspm.user_id), NULL) AS facultyUserIds
+    FROM package p
+    JOIN package_session ps ON ps.package_id = p.id
+    JOIN level l ON l.id = ps.level_id
+    JOIN package_institute pi ON pi.package_id = p.id
+    LEFT JOIN faculty_subject_package_session_mapping fspm
+        ON fspm.package_session_id = ps.id
+        AND fspm.subject_id IS NULL
+        AND (
+            :#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true
+            OR fspm.status IN (:facultySubjectSessionStatus)
+        )
+    WHERE
+        (:instituteId IS NULL OR pi.institute_id = :instituteId)
+        AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+        AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
+        AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
+        AND (
+            :name IS NULL OR
+            LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
+            LOWER(l.level_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
+            EXISTS (
+                SELECT 1 FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
+                WHERE LOWER(tag) LIKE LOWER(CONCAT('%', :name, '%'))
+            ) OR
+            LOWER(fspm.name) LIKE LOWER(CONCAT('%', :name, '%'))
+        )
+    GROUP BY
+        p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
+        p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
+        p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
+        p.course_depth, p.course_html_description, p.created_at,
+        ps.id, l.id, l.level_name
+    """,
+
+        countQuery = """
+    SELECT COUNT(DISTINCT p.id)
+    FROM package p
+    JOIN package_session ps ON ps.package_id = p.id
+    JOIN level l ON l.id = ps.level_id
+    JOIN package_institute pi ON pi.package_id = p.id
+    LEFT JOIN faculty_subject_package_session_mapping fspm
+        ON fspm.package_session_id = ps.id
+        AND fspm.subject_id IS NULL
+        AND (
+            :#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true
+            OR fspm.status IN (:facultySubjectSessionStatus)
+        )
+    WHERE
+        (:instituteId IS NULL OR pi.institute_id = :instituteId)
+        AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+        AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
+        AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
+        AND (
+            :name IS NULL OR
+            LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
+            LOWER(l.level_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
+            EXISTS (
+                SELECT 1 FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
+                WHERE LOWER(tag) LIKE LOWER(CONCAT('%', :name, '%'))
+            ) OR
+            LOWER(fspm.name) LIKE LOWER(CONCAT('%', :name, '%'))
+        )
+    """,
+        nativeQuery = true)
+    Page<PackageDetailProjection> getCatalogPackageDetail(
+        @Param("name") String name,
+        @Param("instituteId") String instituteId,
+        @Param("packageStatus") List<String> packageStatus,
+        @Param("packageSessionStatus") List<String> packageSessionStatus,
+        @Param("levelStatus") List<String> levelStatus,
+        @Param("facultySubjectSessionStatus") List<String> facultySubjectSessionStatus,
+        Pageable pageable
+    );
+
+    @Query(value = """
+    SELECT
+        p.id AS id,
+        p.package_name AS packageName,
+        p.thumbnail_file_id AS thumbnailFileId,
+        p.is_course_published_to_catalaouge AS isCoursePublishedToCatalaouge,
+        p.course_preview_image_media_id AS coursePreviewImageMediaId,
+        p.course_banner_media_id AS courseBannerMediaId,
+        p.course_media_id AS courseMediaId,
+        p.why_learn AS whyLearnHtml,
+        p.who_should_learn AS whoShouldLearnHtml,
+        p.about_the_course AS aboutTheCourseHtml,
+        p.comma_separated_tags AS commaSeparetedTags,
+        p.course_depth AS courseDepth,
+        p.course_html_description AS courseHtmlDescriptionHtml,
+        p.created_at AS createdAt,
+        5.0 AS rating,
+        ps.id AS packageSessionId,
+        l.id AS levelId,
+        l.level_name AS levelName,
+        ARRAY_REMOVE(
+            ARRAY_AGG(DISTINCT
+                CASE
+                    WHEN fspm.subject_id IS NULL AND
+                         (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true OR fspm.status IN (:facultySubjectSessionStatus))
+                    THEN fspm.user_id
+                    ELSE NULL
+                END
+            ), NULL
+        ) AS facultyUserIds
+    FROM package p
+    JOIN package_session ps ON ps.package_id = p.id
+    JOIN level l ON l.id = ps.level_id
+    JOIN package_institute pi ON pi.package_id = p.id
+    LEFT JOIN faculty_subject_package_session_mapping fspm
+        ON fspm.package_session_id = ps.id
+        AND fspm.subject_id IS NULL
+        AND (
+            :#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true
+            OR fspm.status IN (:facultySubjectSessionStatus)
+        )
+    WHERE
+        (:instituteId IS NULL OR pi.institute_id = :instituteId)
+        AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+        AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
+        AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
+        AND (
+            :#{#userIds == null || #userIds.isEmpty()} = true
+            OR EXISTS (
+                SELECT 1 FROM faculty_subject_package_session_mapping f
+                WHERE f.package_session_id = ps.id
+                AND f.subject_id IS NULL
+                AND f.user_id IN (:userIds)
+                AND (
+                    :#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true
+                    OR f.status IN (:facultySubjectSessionStatus)
+                )
+            )
+        )
+        AND (
+            :name IS NULL OR
+            LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
+            LOWER(l.level_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
+            EXISTS (
+                SELECT 1 FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
+                WHERE LOWER(tag) LIKE LOWER(CONCAT('%', :name, '%'))
+            ) OR
+            LOWER(fspm.name) LIKE LOWER(CONCAT('%', :name, '%'))
+        )
+    GROUP BY
+        p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
+        p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
+        p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
+        p.course_depth, p.course_html_description, p.created_at,
+        ps.id, l.id, l.level_name
+    """,
+
+        countQuery = """
+    SELECT COUNT(DISTINCT p.id)
+    FROM package p
+    JOIN package_session ps ON ps.package_id = p.id
+    JOIN level l ON l.id = ps.level_id
+    JOIN package_institute pi ON pi.package_id = p.id
+    LEFT JOIN faculty_subject_package_session_mapping fspm
+        ON fspm.package_session_id = ps.id
+        AND fspm.subject_id IS NULL
+        AND (
+            :#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true
+            OR fspm.status IN (:facultySubjectSessionStatus)
+        )
+    WHERE
+        (:instituteId IS NULL OR pi.institute_id = :instituteId)
+        AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+        AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
+        AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
+        AND (
+            :#{#userIds == null || #userIds.isEmpty()} = true
+            OR EXISTS (
+                SELECT 1 FROM faculty_subject_package_session_mapping f
+                WHERE f.package_session_id = ps.id
+                AND f.subject_id IS NULL
+                AND f.user_id IN (:userIds)
+                AND (
+                    :#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true
+                    OR f.status IN (:facultySubjectSessionStatus)
+                )
+            )
+        )
+        AND (
+            :name IS NULL OR
+            LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
+            LOWER(l.level_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
+            EXISTS (
+                SELECT 1 FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
+                WHERE LOWER(tag) LIKE LOWER(CONCAT('%', :name, '%'))
+            ) OR
+            LOWER(fspm.name) LIKE LOWER(CONCAT('%', :name, '%'))
+        )
+""",
+        nativeQuery = true)
+    Page<PackageDetailProjection> getCatalogPackageDetail(
+        @Param("name") String name,
+        @Param("userIds") List<String> userIds,
+        @Param("instituteId") String instituteId,
+        @Param("packageStatus") List<String> packageStatus,
+        @Param("packageSessionStatus") List<String> packageSessionStatus,
+        @Param("levelStatus") List<String> levelStatus,
+        @Param("facultySubjectSessionStatus") List<String> facultySubjectSessionStatus,
+        Pageable pageable
+    );
+
+
+
+    @Query(value = """
+    SELECT
+        p.id AS id,
+        p.package_name AS packageName,
+        p.thumbnail_file_id AS thumbnailFileId,
+        p.is_course_published_to_catalaouge AS isCoursePublishedToCatalaouge,
+        p.course_preview_image_media_id AS coursePreviewImageMediaId,
+        p.course_banner_media_id AS courseBannerMediaId,
+        p.course_media_id AS courseMediaId,
+        p.why_learn AS whyLearnHtml,
+        p.who_should_learn AS whoShouldLearnHtml,
+        p.about_the_course AS aboutTheCourseHtml,
+        p.comma_separated_tags AS commaSeparetedTags,
+        p.course_depth AS courseDepth,
+        p.course_html_description AS courseHtmlDescriptionHtml,
+        p.created_at AS createdAt,
+        0.0 AS percentageCompleted,
+        5.0 AS rating,
+        ps.id AS packageSessionId,
+        l.id AS levelId,
+        l.level_name AS levelName,
+        ARRAY_REMOVE(ARRAY_AGG(DISTINCT fspm.user_id), NULL) AS facultyUserIds
+    FROM package p
+    JOIN package_session ps ON ps.package_id = p.id
+    JOIN level l ON l.id = ps.level_id
+    JOIN package_institute pi ON pi.package_id = p.id
+    LEFT JOIN faculty_subject_package_session_mapping fspm
+        ON fspm.package_session_id = ps.id
+        AND fspm.subject_id IS NULL
+        AND (
+            :#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true
+            OR fspm.status IN (:facultyPackageSessionStatus)
+        )
+    WHERE
+        (:instituteId IS NULL OR pi.institute_id = :instituteId)
+        AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR l.id IN (:levelIds))
+        AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
+        AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+        AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
+        AND (
+            :#{#facultyIds == null || #facultyIds.isEmpty()} = true
+            OR EXISTS (
+                SELECT 1 FROM faculty_subject_package_session_mapping f
+                WHERE f.package_session_id = ps.id
+                AND f.subject_id IS NULL
+                AND f.user_id IN (:facultyIds)
+                AND (
+                    :#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true
+                    OR f.status IN (:facultyPackageSessionStatus)
+                )
+            )
+        )
+        AND (
+            :#{#tags == null || #tags.isEmpty()} = true OR
+            EXISTS (
+                SELECT 1 FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
+                WHERE tag ILIKE ANY (array[:#{#tags}])
+            )
+        )
+    GROUP BY
+        p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
+        p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
+        p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
+        p.course_depth, p.course_html_description, p.created_at,
+        ps.id, l.id, l.level_name
+    """,
+
+        countQuery = """
+    SELECT COUNT(DISTINCT p.id)
+    FROM package p
+    JOIN package_session ps ON ps.package_id = p.id
+    JOIN level l ON l.id = ps.level_id
+    JOIN package_institute pi ON pi.package_id = p.id
+    LEFT JOIN faculty_subject_package_session_mapping fspm
+        ON fspm.package_session_id = ps.id
+        AND fspm.subject_id IS NULL
+        AND (
+            :#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true
+            OR fspm.status IN (:facultyPackageSessionStatus)
+        )
+    WHERE
+        (:instituteId IS NULL OR pi.institute_id = :instituteId)
+        AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR l.id IN (:levelIds))
+        AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
+        AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+        AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
+        AND (
+            :#{#facultyIds == null || #facultyIds.isEmpty()} = true
+            OR EXISTS (
+                SELECT 1 FROM faculty_subject_package_session_mapping f
+                WHERE f.package_session_id = ps.id
+                AND f.subject_id IS NULL
+                AND f.user_id IN (:facultyIds)
+                AND (
+                    :#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true
+                    OR f.status IN (:facultyPackageSessionStatus)
+                )
+            )
+        )
+        AND (
+            :#{#tags == null || #tags.isEmpty()} = true OR
+            EXISTS (
+                SELECT 1 FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
+                WHERE tag ILIKE ANY (array[:#{#tags}])
+            )
+        )
+    """,
+        nativeQuery = true)
+    Page<PackageDetailProjection> getCatalogPackageDetail(
+        @Param("instituteId") String instituteId,
+        @Param("levelIds") List<String> levelIds,
+        @Param("packageStatus") List<String> packageStatus,
+        @Param("packageSessionStatus") List<String> packageSessionStatus,
+        @Param("facultyIds") List<String> facultyIds,
+        @Param("facultyPackageSessionStatus") List<String> facultyPackageSessionStatus,
+        @Param("tags") List<String> tags,
+        @Param("levelStatus") List<String> levelStatus,
+        Pageable pageable
+    );
+
+
 }

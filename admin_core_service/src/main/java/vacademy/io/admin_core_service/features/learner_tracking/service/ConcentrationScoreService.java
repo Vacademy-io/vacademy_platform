@@ -14,7 +14,7 @@ public class ConcentrationScoreService {
     private final ConcentrationScoreRepository concentrationScoreRepository;
 
     public void addConcentrationScore(ConcentrationScoreDTO concentrationScoreDTO, ActivityLog activityLog) {
-        concentrationScoreRepository.deleteById(concentrationScoreDTO.getId());
+        concentrationScoreRepository.deleteByActivityId(activityLog.getId());
         long activityDuration = activityLog.getEndTime().getTime() - activityLog.getStartTime().getTime();
         if (activityDuration <= 0) {
             throw new IllegalArgumentException("Invalid activity duration");

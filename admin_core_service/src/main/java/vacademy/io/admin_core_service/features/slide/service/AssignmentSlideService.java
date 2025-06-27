@@ -7,6 +7,7 @@ import vacademy.io.admin_core_service.features.common.service.RichTextDataServic
 import vacademy.io.admin_core_service.features.slide.dto.AssignmentSlideDTO;
 import vacademy.io.admin_core_service.features.slide.dto.SlideDTO;
 import vacademy.io.admin_core_service.features.slide.entity.AssignmentSlide;
+import vacademy.io.admin_core_service.features.slide.entity.Slide;
 import vacademy.io.admin_core_service.features.slide.enums.SlideTypeEnum;
 import vacademy.io.admin_core_service.features.slide.repository.AssignmentSlideRepository;
 import vacademy.io.common.ai.dto.RichTextDataDTO;
@@ -35,10 +36,15 @@ public class AssignmentSlideService {
         return updateAssignmentSlide(slideDTO, chapterId,packageSessionId,moduleId,subjectId);
     }
 
+    public String addOrUpdateAssignmentSlideRequest(SlideDTO slideDTO, String chapterId, CustomUserDetails userDetails) {
+       return addAssignmentSlide(slideDTO, chapterId);
+    }
+
+
     public String addAssignmentSlide(SlideDTO slideDTO, String chapterId) {
         AssignmentSlide assignmentSlide = new AssignmentSlide(slideDTO.getAssignmentSlide());
         AssignmentSlide savedAssignmentSlide = assignmentSlideRepository.save(assignmentSlide);
-        slideService.saveSlide(
+        Slide slide = slideService.saveSlide(
                 slideDTO.getId(),
                 savedAssignmentSlide.getId(),
                 SlideTypeEnum.ASSIGNMENT.name(),
@@ -49,7 +55,7 @@ public class AssignmentSlideService {
                 slideDTO.getSlideOrder(),
                 chapterId
         );
-        return "success";
+        return slide.getId();
     }
 
     public String updateAssignmentSlide(SlideDTO slideDTO, String chapterId,String packageSessionId,String moduleId,String subjectId) {

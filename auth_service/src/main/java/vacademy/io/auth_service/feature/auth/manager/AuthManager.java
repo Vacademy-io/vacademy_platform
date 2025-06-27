@@ -30,6 +30,7 @@ import vacademy.io.common.auth.repository.UserPermissionRepository;
 import vacademy.io.common.auth.repository.UserRepository;
 import vacademy.io.common.auth.repository.UserRoleRepository;
 import vacademy.io.common.auth.service.JwtService;
+import vacademy.io.common.auth.service.OAuth2VendorToUserDetailService;
 import vacademy.io.common.auth.service.RefreshTokenService;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
 import vacademy.io.common.exceptions.ExpiredTokenException;
@@ -82,6 +83,9 @@ public class AuthManager {
     @Autowired
     private UserPermissionRepository userPermissionRepository;
 
+    @Autowired
+    private OAuth2VendorToUserDetailService oAuth2VendorToUserDetailService;
+
     public JwtResponseDto registerRootUser(RegisterRequest registerRequest) {
         if (Objects.isNull(registerRequest)) throw new VacademyException("Invalid Request");
 
@@ -117,6 +121,8 @@ public class AuthManager {
         });
 
         User newUser = authService.createUser(registerRequest, userRoleSet);
+
+        oAuth2VendorToUserDetailService.verifyEmail(registerRequest.getSubjectId(),registerRequest.getVendorId(),registerRequest.getEmail());
 
         // Generate a refresh token
         RefreshToken refreshToken = refreshTokenService.createRefreshToken(userName, "VACADEMY-WEB");

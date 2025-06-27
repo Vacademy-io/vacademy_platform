@@ -22,7 +22,7 @@ import vacademy.io.common.auth.provider.ServiceAuthProvider;
 @Configuration
 public class WebSecurityConfig {
 
-    private static final String[] ALLOWED_PATHS = {"/auth/**", "/notification-service/actuator/**", "/notification-service/internal/**","/notification-service/v1/send-email-to-users-public", "/internal/**", "/verify/id", "/notification-service/swagger-ui.html", "/notification-service/api-docs/**", "/swagger-ui.html", "/notification-service/swagger-ui/index.html", "/notification-service/v3/api-docs/**", "/notification-service/swagger-ui/**", "/notification-service/webjars/swagger-ui/**", "notification-service/v1/**"};
+    private static final String[] ALLOWED_PATHS = {"/notification-service/whatsapp/v1/send-template-whatsapp","/auth/**", "/notification-service/v1/send-email","/notification-service/actuator/**", "/notification-service/internal/**","/notification-service/v1/send-email-to-users-public", "/internal/**", "/verify/id", "/notification-service/swagger-ui.html", "/notification-service/api-docs/**", "/swagger-ui.html", "/notification-service/swagger-ui/index.html", "/notification-service/v3/api-docs/**", "/notification-service/swagger-ui/**", "/notification-service/webjars/swagger-ui/**", "notification-service/v1/**"};
 
     @Autowired
     private JwtAuthFilter jwtAuthFilter; // Inject JwtAuthFilter dependency

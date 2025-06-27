@@ -1,5 +1,8 @@
 package vacademy.io.admin_core_service.features.live_session.repository;
 
+import jakarta.transaction.Transactional;
+import lombok.Getter;
+import lombok.Setter;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -21,6 +24,7 @@ public interface CustomFieldRepository extends JpaRepository<CustomFields, Strin
         String getFieldType();
         String getDefaultValue();
         String getConfig();
+        String getSubject();
         int getFormOrder();
         boolean getIsMandatory();
         boolean getIsFilter();
@@ -31,6 +35,7 @@ public interface CustomFieldRepository extends JpaRepository<CustomFields, Strin
         LocalDateTime getStartTime();
         LocalDateTime getLastEntryTime();
         String getAccessLevel();
+        String getCoverFileId();
     }
 
     @Query(value = """
@@ -52,7 +57,8 @@ public interface CustomFieldRepository extends JpaRepository<CustomFields, Strin
       s.start_time        AS startTime,
       s.last_entry_time   AS lastEntryTime,
       s.access_level      AS accessLevel,
-      s.subject           AS subject
+      s.subject           AS subject,
+      s.cover_file_id     AS coverFileId
     FROM live_session s
     LEFT JOIN institute_custom_fields icf
            ON icf.type     = 'SESSION'

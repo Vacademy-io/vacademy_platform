@@ -269,7 +269,7 @@ public class UserService {
     public List<UserCredentials> getUsersCredentials(List<String> userIds) {
         Iterable<User> userEntities = userRepository.findAllById(userIds);
         return StreamSupport.stream(userEntities.spliterator(), false)
-                .map(user -> new UserCredentials(user.getUsername(), user.getPassword(), user.getId()))
+                .map(user -> new UserCredentials(user.getUsername(), user.getPassword(), user.getId(),user.getProfilePicFileId()))
                 .collect(Collectors.toList());
     }
 
@@ -415,5 +415,22 @@ public class UserService {
         userTopLevelDto.setRoles(filteredRoles);
 
         return userTopLevelDto;
+    }
+
+
+    public UserJwtUpdateDetail getUserJwtUpdateDetail(CustomUserDetails userDetails,String userId) {
+        UserJwtUpdateDetail userJwtUpdateDetail = new UserJwtUpdateDetail();
+        Optional<User> user = userRepository.findById(userId);
+        if (user.isPresent()) {
+            userJwtUpdateDetail.setUpdatedAt(user.get().getLastTokenUpdateTime());
+        }
+        return userJwtUpdateDetail;
+    }
+
+    public void updateLastTokenUpdatedTime(List<String> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return;
+        }
+        userRepository.updateLastTokenUpdateTime(userIds);
     }
 }

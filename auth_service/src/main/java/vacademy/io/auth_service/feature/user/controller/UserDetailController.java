@@ -5,7 +5,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.auth_service.feature.user.dto.UserBasicDetailsDto;
+import vacademy.io.common.auth.dto.UserJwtUpdateDetail;
 import vacademy.io.auth_service.feature.user.service.UserDetailService;
+import vacademy.io.auth_service.feature.user.service.UserOperationService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.UserTopLevelDto;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -22,6 +24,9 @@ public class UserDetailController {
 
     @Autowired
     private UserDetailService userDetailService;
+
+    @Autowired
+    private UserOperationService userOperationService;
 
     @GetMapping("/by-user-id")
     public ResponseEntity<UserDTO> getUserDetailByUserId(String userId, @RequestAttribute("user") CustomUserDetails customUserDetails) {
@@ -46,5 +51,10 @@ public class UserDetailController {
     public ResponseEntity<List<UserBasicDetailsDto>> getUserBasicDetails(@RequestAttribute("user") CustomUserDetails userDetails,
                                                                          @RequestBody List<String> userIds) {
         return ResponseEntity.ok(userDetailService.getUserBasicDetails(userDetails,userIds));
+    }
+
+    @GetMapping("/jwt-update-time")
+    public ResponseEntity<UserJwtUpdateDetail> getUserJwtUpdateTime(@RequestAttribute("user") CustomUserDetails userDetails,@RequestParam("userId") String userId) {
+        return ResponseEntity.ok(userService.getUserJwtUpdateDetail(userDetails,userId));
     }
 }

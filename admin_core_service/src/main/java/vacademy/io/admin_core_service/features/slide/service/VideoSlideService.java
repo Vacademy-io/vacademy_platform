@@ -62,6 +62,12 @@ public class VideoSlideService {
         return "success";
     }
 
+    @Transactional
+    public String addOrUpdateVideoSlideRequeest(SlideDTO slideDTO, String chapterId, CustomUserDetails userDetails) {
+        slideDTO.setStatus(SlideStatus.PENDING_APPROVAL.name());
+       return addVideoSlide(slideDTO, chapterId);
+    }
+
     public String addVideoSlide(SlideDTO slideDTO, String chapterId) {
         VideoSlideDTO videoSlideDTO = slideDTO.getVideoSlide();
         if (videoSlideDTO == null) {
@@ -77,7 +83,7 @@ public class VideoSlideService {
             saveVideoSlideQuestionAndOptions(videoSlideDTO.getQuestions(), videoSlide);
         }
 
-        slideService.saveSlide(
+       Slide slide = slideService.saveSlide(
                 slideDTO.getId(),
                 videoSlide.getId(),
                 SlideTypeEnum.VIDEO.name(),
@@ -89,7 +95,7 @@ public class VideoSlideService {
                 chapterId
         );
 
-        return "success";
+        return slide.getId();
     }
 
     public String updateVideoSlide(SlideDTO slideDTO, String chapterId,String moduleId,String subjectId,String packageSessionId) {
@@ -379,6 +385,12 @@ public class VideoSlideService {
             videoSlide.setSourceType(dto.getSourceType());
         }
 
+        if (StringUtils.hasText(dto.getEmbeddedData())){
+            videoSlide.setEmbeddedData(dto.getEmbeddedData());
+        }
+        if (StringUtils.hasText(dto.getEmbeddedType())){
+            videoSlide.setEmbeddedType(dto.getEmbeddedType());
+        }
         SlideStatus slideStatus = SlideStatus.valueOf(status.toUpperCase());
 
         switch (slideStatus) {

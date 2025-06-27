@@ -79,7 +79,7 @@ export interface PresentationSlides {
 export interface SessionDetailsResponse {
     session_id: string;
     invite_code: string;
-    session_status: 'INIT' | 'STARTED' | 'PAUSED' | 'ENDED' | 'CANCELLED';
+    session_status: 'INIT' | 'STARTED' | 'PAUSED' | 'ENDED' | 'CANCELLED' | 'LIVE';
     can_join_in_between: boolean;
     show_results_at_last_slide: boolean;
     allow_learner_hand_raise: boolean;
@@ -102,7 +102,7 @@ export interface JoinSessionPayload {
 // ----- SSE Event Types -----
 export interface SseEventData {
     message?: string;
-    status?: SessionDetailsResponse['session_status']; // e.g., 'INIT', 'STARTED', 'SLIDE_CHANGE', 'ENDED'
+    status?: SessionDetailsResponse['session_status']; // e.g., 'INIT', 'STARTED', 'SLIDE_CHANGE', 'ENDED', 'LIVE'
     type: 'SESSION_STATUS' | 'SLIDE_UPDATE' | 'SESSION_END' | 'ERROR' | string; // Backend specific event types
     currentSlideIndex?: number;
     totalSlides?: number;

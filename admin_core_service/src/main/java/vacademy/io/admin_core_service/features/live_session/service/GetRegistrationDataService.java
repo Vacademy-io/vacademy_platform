@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.live_session.dto.RegistrationFromResponseDTO;
 import vacademy.io.admin_core_service.features.live_session.repository.CustomFieldRepository;
+import vacademy.io.admin_core_service.features.live_session.repository.SessionGuestRegistrationRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 import java.util.List;
@@ -14,8 +15,9 @@ import java.util.stream.Collectors;
 public class GetRegistrationDataService {
 
     private final CustomFieldRepository customFieldRepository;
+    private final SessionGuestRegistrationRepository sessionGuestRegistrationRepository;
 
-    public RegistrationFromResponseDTO getRegistrationData(String sessionId, CustomUserDetails user) {
+    public RegistrationFromResponseDTO getRegistrationData(String sessionId) {
         List<CustomFieldRepository.FlatFieldProjection> flatList =
                 customFieldRepository.getSessionCustomFieldsBySessionId(sessionId);
 
@@ -46,7 +48,13 @@ public class GetRegistrationDataService {
                 first.getLastEntryTime(),
                 first.getAccessLevel(),
                 first.getInstituteId(),
+                first.getSubject(),
+                first.getCoverFileId(),
                 customFields
         );
+    }
+
+    public Boolean checkEmailRegistration(String email , String sessionId){
+        return sessionGuestRegistrationRepository.existsBySessionIdAndEmail(sessionId, email);
     }
 }

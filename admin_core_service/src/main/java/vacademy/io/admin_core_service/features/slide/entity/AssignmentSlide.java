@@ -59,7 +59,7 @@ public class AssignmentSlide {
             this.parentRichText = new RichTextData(dto.getParentRichText());
         }
         if (dto.getTextData() != null) {
-            this.textData = new RichTextData(dto.getParentRichText());
+            this.textData = new RichTextData(dto.getTextData());
         }
         this.liveDate = dto.getLiveDate();
         this.endDate = dto.getEndDate();

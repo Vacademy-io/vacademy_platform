@@ -64,7 +64,7 @@ export const JoinSessionForm: React.FC<JoinSessionFormProps> = ({ onJoin, isJoin
                       placeholder="e.g., A1B2C"
                       {...field}
                       className="text-base h-10 tracking-wider uppercase focus:ring-2 focus:ring-blue-500 transition-shadow duration-200 ease-in-out"
-                      disabled={isJoining}
+                      disabled={isJoining || !!initialInviteCode}
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => field.onChange(e.target.value.toUpperCase())}
                     />
                   </FormControl>
@@ -87,6 +87,9 @@ export const JoinSessionForm: React.FC<JoinSessionFormProps> = ({ onJoin, isJoin
                     />
                   </FormControl>
                   <FormMessage />
+                  <p className="text-xs text-slate-500 pt-1">
+                    Keep your username as your email to get the session action points, recording and presentation details.
+                  </p>
                 </FormItem>
               )}
             />

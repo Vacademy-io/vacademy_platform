@@ -10,6 +10,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import vacademy.io.community_service.feature.presentation.entity.Presentation;
 
+import java.util.Date;
 import java.util.List;
 
 @NoArgsConstructor
@@ -28,6 +29,11 @@ public class AddPresentationDto {
 
     private String coverFileId;
 
+    private String status;
+
+    private Date createdAt;
+    private Date updatedAt;
+
     private Integer addedSlidesCount;
 
     private List<PresentationSlideDto> addedSlides;
@@ -38,5 +44,7 @@ public class AddPresentationDto {
         this.title = presentation.getTitle();
         this.description = presentation.getDescription();
         this.coverFileId = presentation.getCoverFileId();
+        this.status = presentation.getStatus();
+        this.createdAt = presentation.getUpdatedAt();
     }
 }

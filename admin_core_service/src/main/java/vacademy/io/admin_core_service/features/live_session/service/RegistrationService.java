@@ -24,7 +24,7 @@ public class RegistrationService {
     CustomFieldValuesRepository customFieldValuesRepository;
 
 
-    public void registerGuest(String email, String sessionId) {
+    public String registerGuest(String email, String sessionId) {
         // Prevent duplicate
         boolean alreadyRegistered = sessionGuestRegistration.existsBySessionIdAndEmail(sessionId, email);
         if (alreadyRegistered) {
@@ -39,11 +39,14 @@ public class RegistrationService {
                 .build();
 
         sessionGuestRegistration.save(registration);
+        return registration.getId();
     }
 
 
     @Transactional
-    public void saveGuestUserDetails(GuestRegistrationRequestDTO requestDto, String guestUserId) {
+    public String saveGuestUserDetails(GuestRegistrationRequestDTO requestDto) {
+        String guestUserId = registerGuest(requestDto.getEmail() , requestDto.getSessionId());
+
         for (GuestRegistrationRequestDTO.CustomFieldValueDTO fieldDto : requestDto.getCustomFields()) {
             CustomFieldValues value = CustomFieldValues.builder()
                     .id(UUID.randomUUID().toString())
@@ -57,5 +60,6 @@ public class RegistrationService {
 
             customFieldValuesRepository.save(value);
         }
+        return guestUserId;
     }
 }

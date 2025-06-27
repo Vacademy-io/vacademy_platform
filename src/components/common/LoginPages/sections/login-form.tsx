@@ -1,5 +1,11 @@
 import { useEffect, useState } from "react";
-import { Heading } from "@/components/common/LoginPages/ui/heading";
+// import { SplashScreen } from "@/components/common/LoginPages/layout/splash-container";
+// import { useAnimationStore } from "@/stores/login/animationStore";
+
+// import { MyButton } from "@/components/design-system/button";
+// import { loginSchema } from "@/schemas/login/login";
+// import { z } from "zod";
+
 import { TokenKey } from "@/constants/auth/tokens";
 import { useNavigate } from "@tanstack/react-router";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
@@ -223,48 +229,61 @@ export function LoginForm() {
   }
 
   return (
-    <div className="w-screen bg-white gap-4 md:gap-8 lg:gap-10 pt-14 lg:pt-20">
-      {/* Login Form Section */}
-      <div className="flex w-full flex-col items-center justify-center gap-4 md:gap-8 lg:gap-12 px-4 md:px-8 lg:px-12">
-        <Heading
-          heading="Hello, Student!"
-          subHeading="Ready to learn something new? Log in and continue your academic adventure!"
-        />
-        {/* OAuth Login Buttons */}
-        <div className="flex w-full flex-col items-center justify-center gap-4 px-4 md:px-8 lg:px-12">
-          <button
-            className="flex w-[300px] items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium text-neutral-700 shadow-sm transition-colors hover:bg-neutral-50"
-            onClick={() => handleOAuthLogin("google")}
-            type="button"
-          >
-            <FcGoogle className="size-5" />
-            Continue with Google
-          </button>
-          <button
-            className="flex w-[300px] items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium text-neutral-700 shadow-sm transition-colors hover:bg-neutral-50"
-            onClick={() => handleOAuthLogin("github")}
-            type="button"
-          >
-            <GitHubLogoIcon className="size-5" />
-            Continue with GitHub
-          </button>
+    <div className="fixed inset-0 bg-gradient-to-br from-slate-50 to-white flex items-center justify-center p-4 z-50">
+      <div className="w-full max-w-sm mx-auto">
+        {/* Login Card */}
+        <div className="bg-white rounded-xl shadow-lg border border-slate-200/60 p-8">
+          {/* Header */}
+          <div className="text-center mb-8">
+            <h1 className="text-2xl font-semibold text-slate-900 mb-2">Welcome back</h1>
+            <p className="text-slate-600 text-sm">Sign in to continue your learning journey</p>
+          </div>
 
-          <div className="relative flex items-center justify-center">
+          {/* OAuth Login Buttons */}
+          <div className="space-y-3 mb-6">
+            <button
+              className="w-full flex items-center justify-center gap-3 px-4 py-3 border border-slate-200 rounded-lg bg-white text-slate-700 text-sm font-medium hover:bg-slate-50 hover:border-slate-300 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+              onClick={() => handleOAuthLogin("google")}
+              type="button"
+            >
+              <FcGoogle className="size-5" />
+              Continue with Google
+            </button>
+            <button
+              className="w-full flex items-center justify-center gap-3 px-4 py-3 border border-slate-200 rounded-lg bg-white text-slate-700 text-sm font-medium hover:bg-slate-50 hover:border-slate-300 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+              onClick={() => handleOAuthLogin("github")}
+              type="button"
+            >
+              <GitHubLogoIcon className="size-5" />
+              Continue with GitHub
+            </button>
+          </div>
+
+          {/* Divider */}
+          <div className="relative my-6">
             <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t" />
+              <div className="w-full border-t border-slate-200" />
             </div>
-            <div className="relative bg-white px-4 text-sm text-neutral-500">
-              or continue with
+            <div className="relative flex justify-center text-sm">
+              <span className="bg-white px-3 text-slate-500 font-medium">or</span>
             </div>
           </div>
+
+          {/* Login Forms */}
+          <div className="space-y-4">
+            {isEmailLogin ? (
+              <EmailLogin onSwitchToUsername={() => setIsEmailLogin(false)} />
+            ) : (
+              <UsernameLogin onSwitchToEmail={() => setIsEmailLogin(true)} />
+            )}
+          </div>
         </div>
-        {/* Toggle Content */}
-        <div className="w-full max-w-md">
-          {isEmailLogin ? (
-            <EmailLogin onSwitchToUsername={() => setIsEmailLogin(false)} />
-          ) : (
-            <UsernameLogin onSwitchToEmail={() => setIsEmailLogin(true)} />
-          )}
+
+        {/* Footer */}
+        <div className="text-center mt-6">
+          <p className="text-xs text-slate-500">
+            Secure login powered by modern encryption
+          </p>
         </div>
       </div>
     </div>

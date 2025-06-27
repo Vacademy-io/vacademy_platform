@@ -22,76 +22,74 @@ export const MySidebar = ({
   sidebarComponent?: React.ReactNode;
 }) => {
   const { state }: SidebarStateType = useSidebar();
-  const { sideBarState, instituteName, instituteLogoFileUrl } =
-    useStore();
+  const { sideBarState, instituteName, instituteLogoFileUrl } = useStore();
+  
+  const isExpanded = state === "expanded";
+  
   return (
     <Sidebar side="left" collapsible="icon">
       <SidebarContent
-        className={`sidebar-content flex flex-col gap-5 border-r-2 border-r-neutral-300 ${sideBarState === sideBarStateType.DEFAULT ? " bg-primary-50 " : " bg-sidebar-primary-foreground "}  py-10 ${
-          state == "expanded" ? "w-[307px]" : "w-28"
-        }`}
+        className="sidebar-content flex flex-col bg-white border-r border-gray-200 py-4 transition-all duration-300 ease-in-out"
       >
-        <SidebarHeader className={`flex items-center flex-row gap-4  ${
-              state == "expanded" ? "pl-4 justify-start" : "pl-0 justify-center"
-            }`}>
-            <div className="size-14">
-              {!isNullOrEmptyOrUndefined(instituteLogoFileUrl) ? (
-                <img
-                  className="size-14 rounded-full"
-                  src={instituteLogoFileUrl}
-                  alt="Logo"
-                />
-              ) : (
-                <div className="size-20 border border-primary-500 rounded-full"></div>
-              )}
-            </div>
-            <div className="text-[18px] font-semibold text-primary-500 group-data-[collapsible=icon]:hidden">
-              {instituteName}
-            </div>
-        </SidebarHeader>
-        <SidebarMenu
-          className={`flex  flex-col justify-center gap-6 py-4 ${
-            state == "expanded" ? "items-stretch" : "items-center"
+        <SidebarHeader 
+          className={`flex items-center px-3 pb-4 mb-4 border-b border-gray-100 transition-all duration-300 ${
+            isExpanded ? "flex-row gap-2 justify-start" : "flex-col gap-1 justify-center"
           }`}
         >
+          <div className="relative">
+            {!isNullOrEmptyOrUndefined(instituteLogoFileUrl) ? (
+              <img
+                className={`object-cover shadow-sm border border-gray-200 transition-all duration-300 ${
+                  isExpanded ? "w-8 h-8 rounded-md" : "w-7 h-7 rounded-md"
+                }`}
+                src={instituteLogoFileUrl}
+                alt="Logo"
+              />
+            ) : (
+              <div 
+                className={`bg-primary-50 border border-primary-200 rounded-md flex items-center justify-center transition-all duration-300 ${
+                  isExpanded ? "w-8 h-8" : "w-7 h-7"
+                }`}
+              >
+                <div className={`bg-primary-500 rounded-sm ${isExpanded ? "w-4 h-4" : "w-3 h-3"}`}></div>
+              </div>
+            )}
+          </div>
+          
+          {isExpanded && (
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-semibold text-gray-900 truncate">
+                {instituteName}
+              </div>
+              <p className="text-xs text-gray-500 truncate">Dashboard</p>
+            </div>
+          )}
+        </SidebarHeader>
+        
+        <SidebarMenu className={`flex flex-col px-2 space-y-1 flex-1 transition-all duration-300 ${
+          isExpanded ? "items-stretch" : "items-center"
+        }`}>
           {sidebarComponent
             ? sidebarComponent
             : (() => {
-                switch (sideBarState) {
-                  case sideBarStateType.DEFAULT:
-                    return SidebarItemsData.map((obj, key) => (
-                      <SidebarMenuItem key={key}>
-                        <SidebarItem
-                          icon={obj.icon}
-                          subItems={obj.subItems}
-                          title={obj.title}
-                          to={obj.to}
-                        />
-                      </SidebarMenuItem>
-                    ));
-                  case sideBarStateType.HAMBURGER:
-                    return HamBurgerSidebarItemsData.map((obj, key) => (
-                      <SidebarMenuItem key={key}>
-                        <SidebarItem
-                          icon={obj.icon}
-                          subItems={obj.subItems}
-                          title={obj.title}
-                          to={obj.to}
-                        />
-                      </SidebarMenuItem>
-                    ));
-                  default:
-                    return SidebarItemsData.map((obj, key) => (
-                      <SidebarMenuItem key={key}>
-                        <SidebarItem
-                          icon={obj.icon}
-                          subItems={obj.subItems}
-                          title={obj.title}
-                          to={obj.to}
-                        />
-                      </SidebarMenuItem>
-                    ));
-                }
+                const items = sideBarState === sideBarStateType.HAMBURGER 
+                  ? HamBurgerSidebarItemsData 
+                  : SidebarItemsData;
+                
+                return items.map((obj, key) => (
+                  <SidebarMenuItem 
+                    key={key}
+                    className="animate-slide-in-left"
+                    style={{ animationDelay: `${key * 30}ms` }}
+                  >
+                    <SidebarItem
+                      icon={obj.icon}
+                      subItems={obj.subItems}
+                      title={obj.title}
+                      to={obj.to}
+                    />
+                  </SidebarMenuItem>
+                ));
               })()}
         </SidebarMenu>
       </SidebarContent>

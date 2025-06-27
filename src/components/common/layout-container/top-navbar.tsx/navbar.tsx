@@ -50,19 +50,19 @@ export function Navbar() {
   // };
 
   return (
-    <div className="sticky top-0 z-10 border-b  flex h-[72px] items-center justify-between bg-neutral-50 max-sm:px-2 px-8 py-4 ">
+    <div className="sticky top-0 z-10 border-b flex h-16 items-center justify-between bg-white px-4 py-3 shadow-sm">
       <LogoutSidebar />
       <div className="flex items-center gap-3">
         <SidebarTrigger>
           <div onClick={() => {}}>
-            <FiSidebar className="text-neutral-600" />
+            <FiSidebar className="text-gray-600 hover:text-gray-900 transition-colors duration-200" />
           </div>
         </SidebarTrigger>
-        <div className="border-l border-neutral-500 px-3 sm max-sm:text-h3 text-subtitle font-body text-neutral-600">
+        <div className="border-l border-gray-300 px-3 text-base font-medium text-gray-700">
           {navHeading}
         </div>
       </div>
-      <div className="flex gap-3 text-neutral-600">
+      <div className="flex gap-3 text-gray-600">
         {/* <MagnifyingGlass className="size-5" /> */}
         {/* <div className="relative" onClick={navigateToNotificationsTab}>
           <Bell className="size-5" />
@@ -71,7 +71,7 @@ export function Navbar() {
           )}
         </div> */}
         <div
-          className="size-5 cursor-pointer"
+          className="size-5 cursor-pointer hover:text-gray-900 transition-colors duration-200"
           onClick={() => {
             setSidebarOpen();
           }}

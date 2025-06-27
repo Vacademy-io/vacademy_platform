@@ -1,23 +1,19 @@
 import type React from "react";
 import { useEffect, useState, useRef } from "react";
-import { Excalidraw, THEME } from "@excalidraw/excalidraw";
 import { v4 as uuidv4 } from "uuid";
 import { useTrackingStore } from "@/stores/study-library/pdf-tracking-store";
 import { getISTTime, getEpochTimeInMillis } from "./utils";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
+import { FileX } from "@phosphor-icons/react";
+import { ExcalidrawViewer } from "./ExcalidrawViewer";
 
 interface PresentationViewerProps {
-  presentationUrl: string;
-  documentId?: string;
+  slideTitle?: string;
 }
 
 const PresentationViewer: React.FC<PresentationViewerProps> = ({
-  presentationUrl,
-  documentId,
+  slideTitle,
 }) => {
-  const [presentationData, setPresentationData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [elapsedTime, setElapsedTime] = useState(0);
 
   const { addActivity } = useTrackingStore();
@@ -29,85 +25,22 @@ const PresentationViewer: React.FC<PresentationViewerProps> = ({
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const viewStartTime = useRef<Date>(new Date());
 
-  const extractExcalidrawData = (htmlContent: string): any[] => {
-    try {
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(htmlContent, "text/html");
+  // Get fileId from activeItem.document_slide.published_data
+  const fileId = activeItem?.document_slide?.published_data;
 
-      // Try <script type="application/json">
-      const jsonScript = doc.querySelector('script[type="application/json"]');
-      if (jsonScript) {
-        const data = JSON.parse(jsonScript.textContent || "{}");
-        if (data.isExcalidraw && Array.isArray(data.elements)) {
-          return data.elements;
-        }
-      }
-
-      // Try inline <script> containing 'const excalidrawData ='
-      const scripts = doc.querySelectorAll("script");
-      for (const script of scripts) {
-        const content = script.textContent || "";
-        const match = content.match(
-          /const\s+excalidrawData\s*=\s*(\{[\s\S]*?\});/
-        );
-        if (match && match[1]) {
-          const data = JSON.parse(match[1]);
-          if (data.isExcalidraw && Array.isArray(data.elements)) {
-            return data.elements;
-          }
-        }
-      }
-
-      // Try a div with data-excalidraw attribute
-      const dataDiv = doc.querySelector("[data-excalidraw]");
-      if (dataDiv) {
-        const data = JSON.parse(
-          dataDiv.getAttribute("data-excalidraw") || "{}"
-        );
-        if (data.isExcalidraw && Array.isArray(data.elements)) {
-          return data.elements;
-        }
-      }
-
-      console.warn("No valid Excalidraw data found.");
-      return [];
-    } catch (err) {
-      console.error("Error extracting Excalidraw data:", err);
-      return [];
-    }
-  };
-
-  // Fetch presentation data from the URL
+  // Debug logging
   useEffect(() => {
-    const fetchPresentationData = async () => {
-      try {
-        setLoading(true);
-        const response = await fetch(presentationUrl);
-
-        if (!response.ok) {
-          throw new Error(
-            `Failed to fetch presentation: ${response.statusText}`
-          );
-        }
-
-        const htmlContent = await response.text();
-        const data = extractExcalidrawData(htmlContent);
-        setPresentationData(data);
-        setError(null);
-      } catch (err) {
-        console.error("Error fetching presentation:", err);
-        setError(
-          err instanceof Error ? err.message : "Failed to load presentation"
-        );
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (presentationUrl) {
-      fetchPresentationData();
-    }
-  }, [presentationUrl]);
+    console.log("[PresentationViewer] Props and activeItem:", {
+      fileId,
+      slideTitle,
+      activeItem: activeItem ? {
+        id: activeItem.id,
+        source_id: activeItem.source_id,
+        source_type: activeItem.source_type,
+        title: activeItem.title
+      } : null
+    });
+  }, [fileId, slideTitle, activeItem]);
 
   // Timer functionality
   const startTimer = () => {
@@ -133,12 +66,13 @@ const PresentationViewer: React.FC<PresentationViewerProps> = ({
 
   // Track activity
   useEffect(() => {
-    if (!loading && !error) {
+    if (fileId) {
+      console.log("[PresentationViewer] Adding activity with fileId:", fileId);
       addActivity({
         slide_id: activeItem?.id || "",
         activity_id: activityId.current,
         source: "PRESENTATION" as const,
-        source_id: documentId || "",
+        source_id: fileId,
         start_time: startTime.current,
         end_time: getISTTime(),
         start_time_in_millis: startTimeInMillis.current,
@@ -169,43 +103,40 @@ const PresentationViewer: React.FC<PresentationViewerProps> = ({
           answer_times_in_seconds: [],
         },
       });
+    } else {
+              console.warn("[PresentationViewer] No fileId available from activeItem.document_slide.published_data");
     }
-  }, [elapsedTime, documentId, loading, error, activeItem?.id, addActivity]);
+  }, [elapsedTime, fileId, activeItem?.id, addActivity]);
 
-  if (loading) {
+  // If fileId is undefined, show error state
+  if (!fileId) {
+    console.error("[PresentationViewer] fileId not available from activeItem.document_slide.published_data:", { activeItem });
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-500 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading presentation...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-center">
-          <div className="text-red-500 mb-4">
-            <svg
-              className="w-12 h-12 mx-auto"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
+      <div className="flex items-center justify-center h-full min-h-[60vh] bg-gradient-to-br from-red-50 to-orange-50">
+        <div className="text-center space-y-6 p-8 max-w-md mx-auto">
+          <div className="relative">
+            <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-red-200">
+              <FileX size={40} weight="duotone" className="text-red-500" />
+            </div>
           </div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">
-            Failed to Load Presentation
-          </h3>
-          <p className="text-gray-600">{error}</p>
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                Missing Presentation File
+              </h3>
+              <p className="text-gray-600 leading-relaxed">
+                No presentation file ID found in the current slide data.
+              </p>
+            </div>
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <p className="text-sm text-red-700 font-medium">Debug Info:</p>
+              <p className="text-sm text-red-600 mt-1">
+                                  activeItem.document_slide.published_data: {JSON.stringify(activeItem?.document_slide?.published_data)}<br/>
+                  activeItem.source_type: {JSON.stringify(activeItem?.source_type)}<br/>
+                slideTitle: {JSON.stringify(slideTitle)}
+              </p>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -213,30 +144,9 @@ const PresentationViewer: React.FC<PresentationViewerProps> = ({
 
   return (
     <div className="w-full h-full">
-      <Excalidraw
-        initialData={{
-          elements: presentationData,
-          appState: {
-            viewModeEnabled: true,
-            gridModeEnabled: false,
-            theme: THEME.LIGHT,
-          },
-        }}
-        viewModeEnabled={true}
-        UIOptions={{
-          canvasActions: {
-            loadScene: false,
-            saveToActiveFile: false,
-            export: false,
-            saveAsImage: false,
-          },
-          tools: {
-            image: false,
-          },
-        }}
-        renderTopRightUI={() => null}
-        detectScroll={false}
-        handleKeyboardGlobally={false}
+      <ExcalidrawViewer 
+        fileId={fileId} 
+        slideTitle={slideTitle || activeItem?.title} 
       />
     </div>
   );

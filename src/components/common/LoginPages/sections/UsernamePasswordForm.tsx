@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { MyInput } from "@/components/design-system/input";
-import { MyButton } from "@/components/design-system/button";
+
 import { loginSchema } from "@/schemas/login/login";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
@@ -124,17 +124,18 @@ export function UsernameLogin({ onSwitchToEmail }: UsernameLoginProps) {
   }
 
   return (
-    <div>
+    <div className="w-full space-y-6">
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="w-full ">
-          <div className="flex w-full flex-col items-center justify-center gap-4 md:gap-8 px-4 md:px-8 lg:px-12">
-            <div className="flex flex-col ">
-              <FormField
-                control={form.control}
-                name="username"
-                render={({ field: { onChange, value, ...field } }) => (
-                  <FormItem>
-                    <FormControl>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          {/* Username Field */}
+          <div className="space-y-2 animate-fade-in-up" style={{animationDelay: '0.1s'}}>
+            <FormField
+              control={form.control}
+              name="username"
+              render={({ field: { onChange, value, ...field } }) => (
+                <FormItem>
+                  <FormControl>
+                    <div className="relative group">
                       <MyInput
                         inputType="text"
                         inputPlaceholder="Enter your username"
@@ -145,35 +146,38 @@ export function UsernameLogin({ onSwitchToEmail }: UsernameLoginProps) {
                         size="large"
                         label="Username"
                         {...field}
-                        className="w-[300px] md:w-[348px] lg:w-[348px] "
+                        className="w-full transition-all duration-300 border-gray-200/60 focus:border-orange-400 focus:ring-2 focus:ring-orange-100/50 rounded-2xl bg-gray-50/30 focus:bg-white font-light"
                       />
-                    </FormControl>
-                  </FormItem>
-                )}
-              />
-              <span>
-                <MyButton
-                  type="button"
-                  scale="medium"
-                  buttonType="text"
-                  layoutVariant="default"
-                  className="text-primary-500"
-                  onClick={() => navigate({ to: "/login/forgot-password" })}
-                >
-                  Forgot Username?
-                </MyButton>
-              </span>
+                      {/* Subtle focus indicator */}
+                      <div className="absolute inset-0 rounded-2xl ring-1 ring-orange-400 opacity-0 group-focus-within:opacity-30 transition-all duration-300 pointer-events-none"></div>
+                    </div>
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+            <div className="flex justify-end">
+              <button
+                type="button"
+                className="text-xs text-gray-400 hover:text-orange-500 transition-colors duration-200 font-light"
+                onClick={() => navigate({ to: "/login/forgot-password" })}
+              >
+                Forgot username?
+              </button>
             </div>
-            <div className="flex flex-col ">
-              <FormField
-                control={form.control}
-                name="password"
-                render={({ field: { onChange, value, ...field } }) => (
-                  <FormItem>
-                    <FormControl>
+          </div>
+
+          {/* Password Field */}
+          <div className="space-y-2 animate-fade-in-up" style={{animationDelay: '0.2s'}}>
+            <FormField
+              control={form.control}
+              name="password"
+              render={({ field: { onChange, value, ...field } }) => (
+                <FormItem>
+                  <FormControl>
+                    <div className="relative group">
                       <MyInput
                         inputType="password"
-                        inputPlaceholder="••••••••"
+                        inputPlaceholder="Enter your password"
                         input={value}
                         onChangeFunction={onChange}
                         error={form.formState.errors.password?.message}
@@ -181,49 +185,56 @@ export function UsernameLogin({ onSwitchToEmail }: UsernameLoginProps) {
                         size="large"
                         label="Password"
                         {...field}
+                        className="w-full transition-all duration-300 border-gray-200/60 focus:border-orange-400 focus:ring-2 focus:ring-orange-100/50 rounded-2xl bg-gray-50/30 focus:bg-white font-light"
                       />
-                    </FormControl>
-                  </FormItem>
-                )}
-              />
-              <span>
-                <MyButton
-                  type="button"
-                  scale="medium"
-                  buttonType="text"
-                  layoutVariant="default"
-                  className="text-primary-500"
-                  onClick={() => navigate({ to: "/login/forgot-password" })}
-                >
-                  Forgot Password?
-                </MyButton>
-              </span>
+                      {/* Subtle focus indicator */}
+                      <div className="absolute inset-0 rounded-2xl ring-1 ring-orange-400 opacity-0 group-focus-within:opacity-30 transition-all duration-300 pointer-events-none"></div>
+                    </div>
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+            <div className="flex justify-end">
+              <button
+                type="button"
+                className="text-xs text-gray-400 hover:text-orange-500 transition-colors duration-200 font-light"
+                onClick={() => navigate({ to: "/login/forgot-password" })}
+              >
+                Forgot password?
+              </button>
             </div>
           </div>
-          <div className="mt-14 md:mt-16 lg:mt-18 flex flex-col items-center gap-2 md:gap-3 lg:gap-4">
-            <MyButton
+
+          {/* Login Button */}
+          <div className="pt-4 animate-fade-in-up" style={{animationDelay: '0.3s'}}>
+            <button
               type="submit"
-              scale="large"
-              buttonType="primary"
-              layoutVariant="default"
               disabled={isLoading}
+              className="w-full bg-gradient-to-r from-orange-400 to-orange-500 hover:from-orange-500 hover:to-orange-600 text-white font-light py-4 px-6 rounded-2xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-[1.01] active:scale-[0.99] shadow-lg hover:shadow-xl text-base tracking-wide"
             >
-              {isLoading ? "Loading..." : "Login"}
-            </MyButton>
+              {isLoading ? (
+                <div className="flex items-center justify-center space-x-2">
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                  <span className="font-light">Signing in...</span>
+                </div>
+              ) : (
+                "Sign In"
+              )}
+            </button>
           </div>
         </form>
       </Form>
 
-      <div className="flex flex-col items-center ">
-        <MyButton
+      {/* Switch to Email Login */}
+      <div className="text-center pt-6 animate-fade-in-up" style={{animationDelay: '0.4s'}}>
+        <button
           type="button"
-          scale="medium"
-          buttonType="text"
-          className="text-primary-500"
+          className="text-sm text-gray-400 hover:text-orange-500 transition-colors duration-200 relative group font-light"
           onClick={onSwitchToEmail}
         >
-          Login with email
-        </MyButton>
+          Prefer email login?
+          <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-orange-500 transition-all duration-300 group-hover:w-full"></span>
+        </button>
       </div>
     </div>
   );

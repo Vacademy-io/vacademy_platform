@@ -8,7 +8,7 @@ export const SidebarItem = ({ icon, title, to, subItems }: SidebarItemProps) => 
     const { state } = useSidebar();
 
     return (
-        <SidebarMenuItem className={`${state == "expanded" ? "w-full px-3" : "w-fit"}`}>
+        <SidebarMenuItem className={`transition-all duration-200 ${state === "expanded" ? "w-full" : "w-fit"}`}>
             {subItems ? (
                 <CollapsibleItem icon={icon} title={title} to={to} subItems={subItems} />
             ) : (

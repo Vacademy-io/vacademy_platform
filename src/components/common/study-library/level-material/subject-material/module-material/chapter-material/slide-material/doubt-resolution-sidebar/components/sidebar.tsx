@@ -137,7 +137,7 @@ export const DoubtResolutionSidebar = () => {
 
    return(
       <>
-        <Sidebar ref={sidebarRef} side="right" className={`${open? "w-[35vw]" : "w-0"} bg-white p-4 flex flex-col gap-6 overflow-y-hidden`} >
+        <Sidebar ref={sidebarRef} side="right" className={`${open? "w-[35vw]" : "w-0"} bg-white p-4 flex flex-col gap-6 overflow-y-hidden z-[10000]`} >
           <SidebarHeader className="flex items-center justify-between w-full bg-white overflow-y-hidden">
               <div className="flex items-center justify-between bg-white w-full">
                   <h1 className="sm:text-2xl text-lg font-semibold text-primary-500">Doubt Resolution</h1>

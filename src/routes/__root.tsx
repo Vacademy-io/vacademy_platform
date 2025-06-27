@@ -4,27 +4,18 @@ import {
   Outlet,
   redirect,
 } from "@tanstack/react-router";
-import React, { Suspense, useEffect } from "react";
+import { useEffect } from "react";
 import {
   AppUpdate,
   AppUpdateAvailability,
 } from "@capawesome/capacitor-app-update";
-import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
+
 import { toast } from "sonner";
 import { useUpdate } from "@/stores/useUpdate";
 import Favicon from "react-favicon";
 import useStore from "@/components/common/layout-container/sidebar/useSidebar";
 import { Preferences } from "@capacitor/preferences";
 import { useTheme } from "@/providers/theme/theme-provider";
-
-const TanStackRouterDevtools =
-  process.env.NODE_ENV === "production"
-    ? () => null
-    : React.lazy(() =>
-        import("@tanstack/router-devtools").then((res) => ({
-          default: res.TanStackRouterDevtools,
-        }))
-      );
 
 const RootComponent = () => {
   const { setUpdateAvailable } = useUpdate();
@@ -64,12 +55,7 @@ const RootComponent = () => {
   return (
     <>
       <Outlet />
-      {/* Development tools */}
-      <Suspense>
-        <TanStackRouterDevtools />
-      </Suspense>
       <Favicon url={getFallbackLogoUrl(instituteLogoFileUrl)} />
-      <ReactQueryDevtools initialIsOpen={false} />
     </>
   );
 };

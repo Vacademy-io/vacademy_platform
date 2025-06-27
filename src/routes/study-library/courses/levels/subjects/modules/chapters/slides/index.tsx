@@ -105,28 +105,33 @@ function Slides() {
 
 
   const SidebarComponent = (
-      <div className="flex w-full flex-col items-center">
-          <div className={`flex w-full flex-col gap-6 ${open ? "px-6" : "px-6"} -mt-10`}>
-              <div className="flex flex-wrap items-center gap-1 text-neutral-500">
-                  <p
-                      className={`cursor-pointer ${open ? "visible" : "hidden"}`}
-                      onClick={handleSubjectRoute}
-                  >
-                      {subjectName}
-                  </p>
-                  <ChevronRightIcon className={`size-4 ${open ? "visible" : "hidden"}`} />
-                  <p
-                      className={`cursor-pointer ${open ? "visible" : "hidden"}`}
-                      onClick={handleModuleRoute}
-                  >
-                      {moduleName}
-                  </p>
-                  <ChevronRightIcon className={`size-4 ${open ? "visible" : "hidden"}`} />
-                  <p className="cursor-pointer text-primary-500">
-                      {open ? chapterName : trucatedChapterName}
-                  </p>
+      <div className="flex w-full flex-col">
+          <div className="flex w-full flex-col gap-3 px-2">
+              {/* Enhanced Breadcrumb Navigation */}
+              <div className="pt-4 pb-2 border-b border-gray-100">
+                  <div className="flex flex-wrap items-center gap-1 text-gray-500 animate-fade-in">
+                      <button
+                          className={`text-xs font-medium hover:text-primary-600 transition-colors duration-200 truncate ${open ? "visible" : "hidden"}`}
+                          onClick={handleSubjectRoute}
+                      >
+                          {subjectName}
+                      </button>
+                      <ChevronRightIcon className={`w-3 h-3 text-gray-400 ${open ? "visible" : "hidden"}`} />
+                      <button
+                          className={`text-xs font-medium hover:text-primary-600 transition-colors duration-200 truncate ${open ? "visible" : "hidden"}`}
+                          onClick={handleModuleRoute}
+                      >
+                          {moduleName}
+                      </button>
+                      <ChevronRightIcon className={`w-3 h-3 text-gray-400 ${open ? "visible" : "hidden"}`} />
+                      <span className="text-xs font-medium text-primary-600 truncate">
+                          {open ? chapterName : trucatedChapterName}
+                      </span>
+                  </div>
               </div>
-              <div className="flex w-full flex-col items-center gap-6">
+              
+              {/* Slides Container */}
+              <div className="flex w-full flex-col py-1">
                   <ChapterSidebarSlides />
               </div>
           </div>

@@ -97,12 +97,40 @@ const VideoQuestionOverlay = ({
     const [isDecimal, setIsDecimal] = useState(false);
     const [maxDecimals, setMaxDecimals] = useState(0);
 
-    // Pause video when dialog opens
+    // Pause video when dialog opens - Enhanced with immediate execution
     useEffect(() => {
+        // Immediate pause call
+        console.log("VideoQuestionOverlay: useEffect triggered, onPause available:", !!onPause);
+        if (onPause) {
+            console.log("VideoQuestionOverlay: Pausing video immediately");
+            onPause();
+        } else {
+            console.warn("VideoQuestionOverlay: onPause function not provided!");
+        }
+        
+        // Additional pause call after a short delay to ensure it takes effect
+        const pauseTimeout = setTimeout(() => {
+            if (onPause) {
+                console.log("VideoQuestionOverlay: Ensuring video is paused (timeout)");
+                onPause();
+            }
+        }, 100);
+
+        // Cleanup timeout on unmount
+        return () => {
+            clearTimeout(pauseTimeout);
+        };
+    }, [onPause]);
+
+    // Also pause when the component first mounts (immediate effect)
+    useEffect(() => {
+        console.log("VideoQuestionOverlay: Component mounted, forcing video pause, onPause available:", !!onPause);
         if (onPause) {
             onPause();
+        } else {
+            console.error("VideoQuestionOverlay: onPause function not available on mount!");
         }
-    }, [onPause]);
+    }, []); // Empty dependency array means this runs only once on mount
 
     // Parse numeric options
     useEffect(() => {
@@ -514,9 +542,14 @@ const VideoQuestionOverlay = ({
                             >
                                 <div className="flex-1">
                                     <span className="text-sm sm:text-base text-gray-700">
-                                        {isTrueFalse
-                                            ? option.text.content
-                                            : `${String.fromCharCode(65 + index)}. ${option.text.content}`}
+                                        {isTrueFalse ? (
+                                            <span dangerouslySetInnerHTML={{ __html: option.text.content }} />
+                                        ) : (
+                                            <>
+                                                {String.fromCharCode(65 + index)}.{" "}
+                                                <span dangerouslySetInnerHTML={{ __html: option.text.content }} />
+                                            </>
+                                        )}
                                     </span>
                                 </div>
                                 <div className="ml-3 flex items-center gap-2">
@@ -724,7 +757,7 @@ const VideoQuestionOverlay = ({
     };
 
     return (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[9999] p-4">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-300">
                 {/* Header */}
                 <div className="sticky top-0 bg-white z-10 border-b border-gray-100">
@@ -776,7 +809,7 @@ const VideoQuestionOverlay = ({
                     {/* Question text */}
                     <div className="mb-6">
                         <h4 className="text-base sm:text-lg font-medium text-gray-900 mb-3">
-                            {/* {question.text_data.content.replace(/<[^>]*>/g, "")} */}
+                            <span dangerouslySetInnerHTML={{ __html: question.text_data.content }} />
                         </h4>
 
                         {question.parent_rich_text?.content && (

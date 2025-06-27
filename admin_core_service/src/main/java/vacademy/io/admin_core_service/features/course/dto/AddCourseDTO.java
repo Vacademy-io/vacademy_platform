@@ -29,5 +29,5 @@ public class AddCourseDTO {
     private List<String> tags;
     private Integer courseDepth;
     private String courseHtmlDescription;
-    List<AddFacultyToCourseDTO>addFacultyToCourse;
+    private List<AddFacultyToCourseDTO>addFacultyToCourse;
 }

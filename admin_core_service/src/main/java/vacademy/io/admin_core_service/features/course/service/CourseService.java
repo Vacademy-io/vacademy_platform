@@ -57,7 +57,7 @@ public class CourseService {
         }
         createPackageInstitute(savedPackage, instituteId);
         if (addCourseDTO.getContainLevels()) {
-            createPackageSession(savedPackage,addCourseDTO.getAddFacultyToCourse(), addCourseDTO.getSessions(), user,instituteId);
+            createPackageSession(savedPackage, addCourseDTO.getSessions(), user,instituteId);
         } else {
             createPackageSessionForDefaultLevelAndSession(savedPackage,addCourseDTO.getAddFacultyToCourse(),instituteId, user);
         }
@@ -71,13 +71,13 @@ public class CourseService {
 
     }
 
-    private void createPackageSession(PackageEntity savedPackage, List<AddFacultyToCourseDTO>addFacultyToCourseDTOS, List<AddNewSessionDTO> addNewSessionDTOS, CustomUserDetails user, String instituteId) {
+    private void createPackageSession(PackageEntity savedPackage, List<AddNewSessionDTO> addNewSessionDTOS, CustomUserDetails user, String instituteId) {
         if (Objects.isNull(addNewSessionDTOS) || addNewSessionDTOS.isEmpty()) {
             throw new VacademyException("Levels and Sessions cannot be null or empty. You must provide at least one level.");
         }
         for (AddNewSessionDTO addNewSessionDTO : addNewSessionDTOS) {
             addNewSessionDTO.getLevels().forEach(level -> level.setPackageId(savedPackage.getId()));
-            sessionService.addNewSession(addNewSessionDTO,addFacultyToCourseDTOS,instituteId, user);
+            sessionService.addNewSession(addNewSessionDTO,instituteId, user);
         }
     }
 

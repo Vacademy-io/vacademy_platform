@@ -371,6 +371,12 @@ public class VideoSlideService {
             videoSlide.setSourceType(dto.getSourceType());
         }
 
+        if (StringUtils.hasText(dto.getEmbeddedData())){
+            videoSlide.setEmbeddedData(dto.getEmbeddedData());
+        }
+        if (StringUtils.hasText(dto.getEmbeddedType())){
+            videoSlide.setEmbeddedType(dto.getEmbeddedType());
+        }
         SlideStatus slideStatus = SlideStatus.valueOf(status.toUpperCase());
 
         switch (slideStatus) {

@@ -26,7 +26,7 @@ import java.util.List;
 public class PackageSessionService {
 
     private final PackageSessionRepository packageRepository;
-    private FacultyService facultyService;
+    private final FacultyService facultyService;
     private final LearnerInvitationService learnerInvitationService;
 
     public void createPackageSession(Level level, Session session, PackageEntity packageEntity, Group group, Date startTime, String instituteId, CustomUserDetails userDetails, List<AddFacultyToCourseDTO>addFacultyToCourseDTOS) {

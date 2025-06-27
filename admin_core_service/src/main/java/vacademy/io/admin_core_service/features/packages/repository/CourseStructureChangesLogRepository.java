@@ -69,7 +69,9 @@ public interface CourseStructureChangesLogRepository extends JpaRepository<Cours
         ps.status,
         l.id,
         l.level_name,
-        l.status
+        l.status,
+        p_log.created_at
+    ORDER BY p_log.source_id, l.id, p_log.created_at DESC
     """,
         countQuery = """
         SELECT COUNT(*) FROM (

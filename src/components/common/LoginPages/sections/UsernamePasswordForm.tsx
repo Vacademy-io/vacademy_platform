@@ -23,8 +23,9 @@ type FormValues = z.infer<typeof loginSchema>;
 
 interface UsernameLoginProps {
   onSwitchToEmail: () => void;
+  variant?: string;
 }
-export function UsernameLogin({ onSwitchToEmail }: UsernameLoginProps) {
+export function UsernameLogin({ onSwitchToEmail,variant }: UsernameLoginProps) {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   /* eslint-disable-next-line */
@@ -130,7 +131,7 @@ export function UsernameLogin({ onSwitchToEmail }: UsernameLoginProps) {
     <div>
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="w-full ">
-          <div className="flex w-full flex-col items-center justify-center gap-4 md:gap-8 px-4 md:px-8 lg:px-12">
+          <div className={`flex w-full flex-col  items-center justify-center ${variant==='dialog'?"gap-2 md:gap-4 px-2 md:px-4 lg:px-8":"gap-4 md:gap-8 px-4 md:px-8 lg:px-12"}`}>
             <div className="flex flex-col ">
               <FormField
                 control={form.control}
@@ -203,7 +204,7 @@ export function UsernameLogin({ onSwitchToEmail }: UsernameLoginProps) {
               </span>
             </div>
           </div>
-          <div className="mt-14 md:mt-16 lg:mt-18 flex flex-col items-center gap-2 md:gap-3 lg:gap-4">
+          <div className={`${variant==='dialog'?"mt-4 md:mt-6 lg:mt-8":"mt-14 md:mt-16 lg:mt-18 gap-2 md:gap-3 lg:gap-4"} flex flex-col items-center `}>
             <MyButton
               type="submit"
               scale="large"

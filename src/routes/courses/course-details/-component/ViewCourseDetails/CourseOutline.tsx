@@ -1,7 +1,17 @@
 import React, { useState } from 'react';
 import { PlayCircle, FileCode2, FileText } from 'lucide-react';
-import { LoginModel } from '@/components/common/LoginModel/LoginModel';
-import { SignUpModel } from '@/components/common/SignUpModel/SignUpModel';
+// import { LoginModel } from '@/components/common/LoginModel/LoginModel';
+// import { SignUpModel } from '@/components/common/SignUpModel/SignUpModel';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { LoginForm } from '@/components/common/LoginPages/sections/login-form';
+
 interface CourseItem {
   type: 'video' | 'code' | 'pdf';
   title: string;
@@ -25,7 +35,7 @@ const CourseOutline: React.FC = () => {
     <div className=" p-8 flex ml-8 mr-8">
 
       {/* Course Outline */}
-      <div className='left pl-6  w-[60%] bg-white shadow-md'>
+      <div className='left pl-6  w-[60%]  shadow-md bg-white'>
         {/* Filters */}
         <div className="flex flex-wrap gap-4 mb-6">
           <div>
@@ -82,23 +92,39 @@ const CourseOutline: React.FC = () => {
 
       {/* //Scrath Programming Language */}
 
-      <div className='righ w-[40%]'>
-        <div className="max-w-sm mx-auto bg-white rounded-lg shadow-lg p-5">
-          <h2 className="text-xl font-bold mb-2">Scratch Programming Language</h2>
-          <p className="text-gray-600 mb-1">🏷️ Beginner</p>
-          <p className="text-gray-600 mb-1">🕒 1 hour 38 minutes</p>
-          <p className="text-gray-600 mb-1">📹 11 Video slides</p>
-          <p className="text-gray-600 mb-1">👨‍💻 8 Code slides</p>
-          <p className="text-gray-600 mb-1">📄 2 PDF slides</p>
-          <p className="text-gray-600 mb-1">📝 1 Doc slide</p>
-          <p className="text-gray-600 mb-1">❓ 1 Question slide</p>
-          <p className="text-gray-600 mb-3">📁 1 Assignment slide</p>
-          <p className="text-gray-600">👥 Satya Dilliikar, Savir Dilliikar</p>
-          <button className="w-full text-center mt-4 bg-blue-500 text-white font-semibold py-2 px-4 rounded"
-            onClick={() => setShowLogin(true)}>
-            Enroll
-          </button>
-          {showLogin && (
+      <div className="w-full md:w-[40%] bg-white flex flex-col items-center justify-center py-8 px-4">
+  {/* Course Details Card */}
+  <div className="w-full max-w-sm bg-white rounded-lg shadow-lg p-5">
+    <h2 className="text-xl font-bold mb-3">Scratch Programming Language</h2>
+    <p className="text-gray-600 mb-1">🏷️ Beginner</p>
+    <p className="text-gray-600 mb-1">🕒 1 hour 38 minutes</p>
+    <p className="text-gray-600 mb-1">📹 11 Video slides</p>
+    <p className="text-gray-600 mb-1">👨‍💻 8 Code slides</p>
+    <p className="text-gray-600 mb-1">📄 2 PDF slides</p>
+    <p className="text-gray-600 mb-1">📝 1 Doc slide</p>
+    <p className="text-gray-600 mb-1">❓ 1 Question slide</p>
+    <p className="text-gray-600 mb-4">📁 1 Assignment slide</p>
+    <p className="text-gray-600">👥 Satya Dilliikar, Savir Dilliikar</p>
+  </div>
+
+  {/* Enroll Button and Dialog */}
+  <div className="w-full max-w-sm mt-6">
+    <Dialog>
+      <DialogTrigger asChild>
+        <button className="w-full text-center bg-blue-500 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded">
+          Enroll
+        </button>
+      </DialogTrigger>
+      <DialogContent>
+        <LoginForm variant="dialog" />
+      </DialogContent>
+    </Dialog>
+  </div>
+</div>
+
+      
+
+        {/* {showLogin && (
             <LoginModel
               onClose={() => setShowLogin(false)}
               switchToSignUp={() => {
@@ -116,9 +142,7 @@ const CourseOutline: React.FC = () => {
                 setShowLogin(true);
               }}
             />
-          )}
-        </div>
-      </div>
+          )} */}
     </div>
   );
 };

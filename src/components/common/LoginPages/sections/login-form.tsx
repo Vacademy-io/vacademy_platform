@@ -194,50 +194,101 @@ export function LoginForm({ variant = 'page', className = '' }: LoginFormProps) 
   console.log("isEmailLogin", isEmailLogin)
 
   return (
-    <div className={`${variant==='dialog'? "w-fit":"w-screen"} gap-4 md:gap-8 lg:gap-10 pt-14 lg:pt-20`}>
-      {/* Login Form Section */}
-      <div className={`flex  w-full flex-col items-center justify-center gap-4 md:gap-8 lg:gap-12 px-4 md:px-8 lg:px-12`}>
-        <Heading
-          heading="Hello, Student!"
-          subHeading="Ready to learn something new? Log in and continue your academic adventure!"
-        />
-        {/* OAuth Login Buttons */}
-        <div className="flex w-full flex-col items-center justify-center gap-4 px-4 md:px-8 lg:px-12">
-          <button
-            className="flex w-[300px] items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium text-neutral-700 shadow-sm transition-colors hover:bg-neutral-50"
-            onClick={() => handleOAuthLogin("google")}
-            type="button"
-          >
-            <FcGoogle className="size-5" />
-            Continue with Google
-          </button>
-          <button
-            className="flex w-[300px] items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium text-neutral-700 shadow-sm transition-colors hover:bg-neutral-50"
-            onClick={() => handleOAuthLogin("github")}
-            type="button"
-          >
-            <GitHubLogoIcon className="size-5" />
-            Continue with GitHub
-          </button>
+    variant === "dialog" ? (
+<div className={`${variant==='dialog'?"flex items-center justify-center h-auto":"w-screen  gap-4 md:gap-8 lg:gap-10 pt-14 lg:pt-20"}`}>
+    <div className={`${variant==='dialog'?"w-[40vw] max-w-sm h-auto rounded-xl shadow-lg  p-1 gap-2 flex flex-col":"flex w-full flex-col items-center justify-center gap-4 md:gap-8 lg:gap-12 px-4 md:px-8 lg:px-12"}`}>
+    {/* Dialog Variant Content */}
+    <Heading
+      heading="Hello, Student!"
+      subHeading="Log in to continue learning"
+    />
+    {/* OAuth Login Buttons */}
+    <div className={`${variant==='dialog'?"flex flex-col w-full items-center gap-3":"flex w-full flex-col items-center justify-center gap-4 px-4 md:px-8 lg:px-12"}`}>
+      <button
+        className={`${variant==='dialog'?"flex w-full items-center justify-center gap-2 rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm font-medium text-neutral-700 shadow-sm transition-colors hover:bg-neutral-100":"flex w-[300px] items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium text-neutral-700 shadow-sm transition-colors hover:bg-neutral-50"}`}
+        onClick={() => handleOAuthLogin("google")}
+        type="button"
+      >
+        <FcGoogle className="size-5" />
+        Continue with Google
+      </button>
+      <button
+        className={`${variant==='dialog'?"flex w-full items-center justify-center gap-2 rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm font-medium text-neutral-700 shadow-sm transition-colors hover:bg-neutral-100":"flex w-[300px] items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium text-neutral-700 shadow-sm transition-colors hover:bg-neutral-50"}`}
+        onClick={() => handleOAuthLogin("github")}
+        type="button"
+      >
+        <GitHubLogoIcon className="size-5" />
+        Continue with GitHub
+      </button>
 
-          <div className="relative flex items-center justify-center">
-            <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t" />
-            </div>
-            <div className="relative bg-white px-4 text-sm text-neutral-500">
-              or continue with
-            </div>
-          </div>
+      <div className={`${variant==='dialog'?"relative w-full flex items-center justify-center mt-2 mb-1":"relative flex items-center justify-center"}`}>
+        <div className="absolute inset-0 flex items-center">
+          <span className="w-full border-t border-neutral-300" />
         </div>
-        {/* Toggle Content */}
-        <div className="w-full max-w-md">
-          {isEmailLogin ? (
-            <EmailLogin onSwitchToUsername={() => setIsEmailLogin(false)} />
-          ) : (
-            <UsernameLogin onSwitchToEmail={() => setIsEmailLogin(true)} />
-          )}
+        <div className={`${variant==='dialog'?"px-2 text-xs":"px-4 text-sm"} relative bg-white  text-neutral-500`}>
+          or continue with
         </div>
       </div>
     </div>
+
+    {/* Email or Username Login */}
+    <div className={`${variant==='dialog'?"":"max-w-md"}w-full`}>
+      {isEmailLogin ? (
+        <EmailLogin onSwitchToUsername={() => setIsEmailLogin(false)} />
+      ) : (
+        <UsernameLogin onSwitchToEmail={() => setIsEmailLogin(true)} variant="dialog"/>
+      )}
+    </div>
+  </div>
+  </div>
+) : (
+  // Original Full-Screen Variant
+  <div className={`w-screen   gap-4 md:gap-8 lg:gap-10 pt-14 lg:pt-20`}>
+    {/* Login Form Section */}
+    <div className="flex w-full flex-col items-center justify-center gap-4 md:gap-8 lg:gap-12 px-4 md:px-8 lg:px-12">
+      <Heading
+        heading="Hello, Student!"
+        subHeading="Ready to learn something new? Log in and continue your academic adventure!"
+      />
+      {/* OAuth Login Buttons */}
+      <div className="flex w-full flex-col items-center justify-center gap-4 px-4 md:px-8 lg:px-12">
+        <button
+          className="flex w-[300px] items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium text-neutral-700 shadow-sm transition-colors hover:bg-neutral-50"
+          onClick={() => handleOAuthLogin("google")}
+          type="button"
+        >
+          <FcGoogle className="size-5" />
+          Continue with Google
+        </button>
+        <button
+          className="flex w-[300px] items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium text-neutral-700 shadow-sm transition-colors hover:bg-neutral-50"
+          onClick={() => handleOAuthLogin("github")}
+          type="button"
+        >
+          <GitHubLogoIcon className="size-5" />
+          Continue with GitHub
+        </button>
+
+        <div className="relative flex items-center justify-center">
+          <div className="absolute inset-0 flex items-center">
+            <span className="w-full border-t" />
+          </div>
+          <div className="relative bg-white px-4 text-sm text-neutral-500">
+            or continue with
+          </div>
+        </div>
+      </div>
+
+      <div className="w-full max-w-md">
+        {isEmailLogin ? (
+          <EmailLogin onSwitchToUsername={() => setIsEmailLogin(false)} />
+        ) : (
+          <UsernameLogin onSwitchToEmail={() => setIsEmailLogin(true)} variant="" />
+        )}
+      </div>
+    </div>
+  </div>
+)
+
   );
 }

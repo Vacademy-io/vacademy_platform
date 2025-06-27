@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { PlayCircle, FileCode2, FileText } from 'lucide-react';
 // import { LoginModel } from '@/components/common/LoginModel/LoginModel';
 // import { SignUpModel } from '@/components/common/SignUpModel/SignUpModel';
+
 interface CourseItem {
   type: 'video' | 'code' | 'pdf';
   title: string;
@@ -83,7 +84,7 @@ const CourseOutline: React.FC = () => {
       {/* //Scrath Programming Language */}
 
       <div className='righ w-[40%]'>
-        <div className="max-w-sm mx-auto bg-white rounded-lg shadow-lg p-5">
+        <div className="max-w-sm mx-auto rounded-lg shadow-lg p-5">
           <h2 className="text-xl font-bold mb-2">Scratch Programming Language</h2>
           <p className="text-gray-600 mb-1">🏷️ Beginner</p>
           <p className="text-gray-600 mb-1">🕒 1 hour 38 minutes</p>
@@ -98,6 +99,7 @@ const CourseOutline: React.FC = () => {
             >
             View
           </button>
+
           {/* {showLogin && (
             <LoginModel
               onClose={() => setShowLogin(false)}

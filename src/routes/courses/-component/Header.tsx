@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useCatalogStore } from '../-store/catalogStore';
 import { getPublicUrl } from '@/services/upload_file';
-import { LoginModel } from '@/components/common/LoginModel/LoginModel';
-import { SignUpModel } from '@/components/common/SignUpModel/SignUpModel';
+// import { LoginModel } from '@/components/common/LoginModel/LoginModel';
+// import { SignUpModel } from '@/components/common/SignUpModel/SignUpModel';
 import {
   Dialog,
   DialogContent,
@@ -93,7 +93,8 @@ const Header: React.FC = () => {
         </ul>
         <div className='flex gap-3'>
           <Dialog>
-            <DialogTrigger><button className='px-3 py-2 border border-1 border-gray-300 bg-white text-black rounded-md hover:bg-gray-100 transition'
+            <DialogTrigger>
+              <button className='px-3 py-2 border border-1 border-gray-300  text-black rounded-md hover:bg-gray-100 transition'
             >
               Login
             </button></DialogTrigger>

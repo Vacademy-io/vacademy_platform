@@ -32,9 +32,10 @@ export const SlideMaterial = () => {
   const playerRef = useRef<any>(null);
 
   // Video time update handler - simplified since questions are now handled internally by YouTube player
-  const handleVideoTimeUpdate = (currentTime: number) => {
+  const handleVideoTimeUpdate = (_currentTime: number) => {
     // Questions are now handled internally by the YouTube player component
     // This function can be used for other time-based functionality if needed
+    // Using underscore prefix to indicate the parameter is intentionally unused
   };
 
   const handleQuestionSubmit = async (

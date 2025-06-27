@@ -17,5 +17,7 @@ public class VideoSlideDTO {
     private String publishedUrl;
     private Long publishedVideoLengthInMillis;
     private String sourceType;
+    private String embeddedType;
+    private String embeddedData;
     private List<VideoSlideQuestionDTO>questions;
 }

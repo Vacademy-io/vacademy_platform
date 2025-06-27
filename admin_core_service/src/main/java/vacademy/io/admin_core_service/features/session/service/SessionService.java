@@ -153,14 +153,10 @@ public class SessionService {
         List<PackageSession> packageSessions = new ArrayList<>();
         for (AddLevelWithSessionDTO levelDTO : addNewSessionDTO.getLevels()) {
             PackageSession packageSession = createPackageSession(levelDTO, session, addNewSessionDTO.getStartDate());
+            facultyService.addFacultyToBatch(levelDTO.getAddFacultyToCourse(),packageSession.getId(),instituteId);
             packageSessions.add(packageSession);
         }
-
-        packageSessionRepository.saveAll(packageSessions);
         this.createLearnerInvitationForm(packageSessions, instituteId, user);
-        for (PackageSession packageSession:packageSessions){
-            facultyService.addFacultyToBatch(addNewSessionDTO.getAddFacultyToCourseDTOS(),packageSession.getId(),instituteId);
-        }
         return String.valueOf(session.getId()); // Ensure return type is String
     }
 
@@ -185,8 +181,6 @@ public class SessionService {
             PackageSession packageSession = createPackageSession(levelDTO, session, addNewSessionDTO.getStartDate());
             packageSessions.add(packageSession);
         }
-
-        packageSessionRepository.saveAll(packageSessions);
         this.createLearnerInvitationForm(packageSessions, instituteId, user);
         for (PackageSession packageSession:packageSessions){
             facultyService.addFacultyToBatch(addFacultyToCourseDTOS,packageSession.getId(),instituteId);
@@ -214,6 +208,7 @@ public class SessionService {
         packageSession.setStatus(PackageSessionStatusEnum.ACTIVE.name());
         packageSession.setStartTime(startDate);
         packageSession.setGroup(group);
+        packageSessionRepository.save(packageSession);
         return packageSession;
     }
 

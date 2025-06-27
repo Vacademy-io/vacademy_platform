@@ -18,5 +18,4 @@ public class AddNewSessionDTO {
     private Date startDate;
     private boolean newSession;
     private List<AddLevelWithSessionDTO> levels;
-    private List<AddFacultyToCourseDTO>addFacultyToCourseDTOS;
 }

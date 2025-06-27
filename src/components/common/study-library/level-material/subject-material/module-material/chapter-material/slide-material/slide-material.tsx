@@ -3,7 +3,6 @@ import PDFViewer from "./pdf-viewer";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import { EmptySlideMaterial } from "@/assets/svgs";
 import YouTubePlayerWrapper from "./youtube-player";
-//import { convertHtmlToPdf } from "@/utils/html-to-pdf";
 import { useFileUpload } from "@/hooks/use-file-upload";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { extractVideoId } from "@/utils/study-library/tracking/extractVideoId";
@@ -13,9 +12,8 @@ import { DoubtResolutionSidebar } from "./doubt-resolution-sidebar/components/si
 import CustomVideoPlayer from "./custom-video-player";
 import QuestionSlide from "./question-slide";
 import AssignmentSlide from "./assignment-slide";
-import VideoQuestionOverlay from "./video-question-overlay";
+
 import { MyButton } from "@/components/design-system/button";
-// import { useMediaRefsStore } from "@/stores/mediaRefsStore";
 import { DocViewer } from "./doc-viewer";
 import PresentationViewer from "./presentation-viewer";
 
@@ -29,88 +27,28 @@ export const SlideMaterial = () => {
   const [error, setError] = useState<string | null>(null);
   const { uploadFile, getPublicUrl } = useFileUpload();
   const { toggleSidebar, open } = useSidebar();
-  // const { currentPdfPage } = useMediaRefsStore();
 
-  const [currentVideoQuestion, setCurrentVideoQuestion] = useState<any>(null);
-  const [showVideoQuestion, setShowVideoQuestion] = useState(false);
+
   const playerRef = useRef<any>(null);
 
-  //   useEffect(() => {
-  //     console.log("currentPdfPage: ", currentPdfPage);
-  //   }, [currentPdfPage]);
-
-  // const handleConvertAndUpload = async (
-  //   htmlString: string | null
-  // ): Promise<string | null> => {
-  //   if (htmlString == null) return null;
-  //   try {
-  //     setIsUploading(true);
-  //     setError(null);
-
-  //     // Step 1: Convert HTML to PDF
-  //     const pdfBlob = await convertHtmlToPdf(htmlString);
-
-  //     // Step 2: Convert Blob to File
-  //     const pdfFile = new File([pdfBlob], "document.pdf", {
-  //       type: "application/pdf",
-  //     });
-
-  //     // Step 3: Upload the PDF file
-  //     const uploadedFileId = await uploadFile({
-  //       file: pdfFile,
-  //       setIsUploading,
-  //       userId: "your-user-id",
-  //       source: "PDF",
-  //       sourceId: "", // Optional
-  //       publicUrl: true, // Set to true to get a public URL
-  //     });
-
-  //     if (uploadedFileId) {
-  //       const publicUrl = await getPublicUrl(uploadedFileId);
-  //       return publicUrl; // Return the public URL as a string
-  //     }
-  //   } catch (error) {
-  //     console.error("Upload Failed:", error);
-  //     setError("Failed to convert or upload document. Please try again.");
-  //   } finally {
-  //     setIsUploading(false);
-  //   }
-  //   return null; // Return null if the upload fails
-  // };
-
+  // Video time update handler - simplified since questions are now handled internally by YouTube player
   const handleVideoTimeUpdate = (currentTime: number) => {
-    if (!activeItem?.video_slide?.questions?.length) return;
-    const questionToShow = activeItem.video_slide.questions.find((q) => {
-      const questionTime = q.question_time_in_millis
-        ? q.question_time_in_millis / 1000
-        : 0;
-      return Math.abs(currentTime - questionTime) < 0.5;
-    });
-    if (questionToShow && !showVideoQuestion) {
-      setCurrentVideoQuestion(questionToShow);
-      setShowVideoQuestion(true);
-      if (playerRef.current) playerRef.current.pauseVideo();
-    }
+    // Questions are now handled internally by the YouTube player component
+    // This function can be used for other time-based functionality if needed
   };
 
   const handleQuestionSubmit = async (
     selectedOption: string | string[]
   ) => {
-    // If selectedOption is an array, pick the first option or handle as needed
     const optionToSubmit = Array.isArray(selectedOption)
       ? selectedOption[0]
       : selectedOption;
 
-
-    if (showVideoQuestion && playerRef.current) {
-      setShowVideoQuestion(false);
-      setCurrentVideoQuestion(null);
-      playerRef.current.playVideo();
-    }
-
+    // Questions are now handled internally by the YouTube player
+    // This function is kept for other question types (e.g., QuestionSlide)
     return {
       success: true,
-      isCorrect: true, // you can plug in actual evaluation logic here later
+      isCorrect: true,
       correctOption: optionToSubmit,
       explanation: "Correct answer!",
     };
@@ -202,46 +140,14 @@ export const SlideMaterial = () => {
                     onTimeUpdate={handleVideoTimeUpdate}
                     ref={playerRef}
                     ms={activeItem.progress_marker}
+                    questions={activeItem.video_slide?.questions || []}
                   />
-                  {/* <YouTubePlayerWrapper
-                  ref={playerRef}
-                  videoId={extractVideoId(
-                    activeItem.video_slide?.published_url ||
-                    activeItem.video_slide?.url ||
-                    ""
-                  )}
-                  onTimeUpdate={handleVideoTimeUpdate}
-                  questions={activeItem.video_slide?.questions}
-                  /> */}
                 </div>
               );
               break;
           }
           break;
         }
-
-        // case "DOCUMENT": {
-        //     switch (activeItem.document_slide?.type) {
-        //         case "PDF": {
-        //             const url = await getPublicUrl(activeItem?.document_slide?.published_data || "");
-        //             if (generationId !== loadGenerationRef.current) return;
-        //             if (!url) throw new Error("Failed to retrieve PDF URL");
-        //             setContent(<PDFViewer pdfUrl={url} />);
-        //             break;
-        //         }
-        //         case "DOC": {
-        //             const url = await handleConvertAndUpload(activeItem.document_slide?.published_data);
-        //             if (generationId !== loadGenerationRef.current) return;
-        //             if (url == null) throw new Error("Error generating PDF URL");
-        //             setContent(<PDFViewer pdfUrl={url} />);
-        //             break;
-        //         }
-        //         default:
-        //             // Handle unknown document type if needed
-        //             break;
-        //     }
-        //     break;
-        // }
 
         case "QUESTION": {
           if (activeItem.question_slide) {
@@ -261,16 +167,12 @@ export const SlideMaterial = () => {
               activeItem.document_slide.published_data || ""
             );
             if (!url) throw new Error("Failed to retrieve PDF URL");
-            setContent(<PDFViewer pdfUrl={url} />);
+            // NOTE: PDFViewer might need specific sizing, so we can keep a special case for it.
+            setContent(<div className="h-full w-full max-w-4xl mx-auto"><PDFViewer pdfUrl={url} /></div>);
           } else if (activeItem.document_slide?.type === "DOC") {
-            // Check if content is HTML
                     const isHtml = activeItem.document_slide.published_data && 
                                   activeItem.document_slide.published_data.includes("<html");
-                    console.log('Is HTML content:', isHtml);
-                    console.log('HTML content preview:', activeItem.document_slide.published_data?.substring(0, 100));
-
                     if (isHtml) {
-                        console.log('Rendering HTML content directly');
                         setContent(
                             <DocViewer
                                 docUrl={activeItem.document_slide.published_data}
@@ -279,10 +181,7 @@ export const SlideMaterial = () => {
                             />
                         );
                     } else {
-                        // For non-HTML content, get public URL
-                        console.log('Getting public URL for DOC content');
                         const url = await getPublicUrl(activeItem.document_slide.published_data);
-                        console.log('Generated URL:', url);
                         setContent(
                             <DocViewer
                                 docUrl={url}
@@ -299,8 +198,7 @@ export const SlideMaterial = () => {
             if (!url) throw new Error("Failed to retrieve presentation URL");
             setContent(
               <PresentationViewer
-                presentationUrl={url}
-                documentId={activeItem.id}
+                slideTitle={activeItem.title}
               />
             );
           }
@@ -319,7 +217,6 @@ export const SlideMaterial = () => {
         }
 
         default:
-          // Handle unknown source_type if needed
           break;
       }
     } catch (err) {
@@ -364,8 +261,9 @@ export const SlideMaterial = () => {
   }, [activeItem]);
 
   return (
-    <div className="flex w-full flex-col" ref={selectionRef}>
-      <div className="flex items-center justify-between gap-6 border-b border-neutral-300 p-4">
+    // FIX 1: Add `h-full` to the root element to make it fill its container's height.
+    <div className="flex h-full w-full flex-col" ref={selectionRef}>
+      <div className="flex flex-shrink-0 items-center justify-between gap-6 border-b border-neutral-300 p-4">
         <h3 className="text-subtitle font-semibold text-neutral-600">
           {heading || "No content"}
         </h3>
@@ -373,30 +271,14 @@ export const SlideMaterial = () => {
               <MyButton scale="medium" className=" flex items-center gap-2" buttonType="secondary" ><p className="leading-[1rem]">Doubts</p> <ChatText /></MyButton>
           </SidebarTrigger>
       </div>
-      <div
-        className={`mx-auto mt-8 ${
-          activeItem?.source_type == "DOCUMENT" &&
-          activeItem?.document_slide?.type == "PDF"
-            ? "h-[calc(100vh-200px)] w-[500px]"
-            : "h-full"
-        } w-full overflow-hidden`}
-      >
+
+      {/* FIX 2: This container now grows to fill the remaining space. */}
+      {/* It's simpler and works for all content types that need to fill the screen. */}
+      <div className="w-full flex-1 p-4 sm:p-6 lg:p-8 min-h-0">
         {content}
-        {isUploading && <DashboardLoader />}
-        {showVideoQuestion && currentVideoQuestion && (
-          <VideoQuestionOverlay
-            question={currentVideoQuestion}
-            onSubmit={() =>
-              handleQuestionSubmit(currentVideoQuestion.id)
-            }
-            onClose={() => {
-              setShowVideoQuestion(false);
-              setCurrentVideoQuestion(null);
-              if (playerRef.current) playerRef.current.playVideo();
-            }}
-          />
-        )}
       </div>
+
+      {isUploading && <DashboardLoader />}
       <DoubtResolutionSidebar />
     </div>
   );

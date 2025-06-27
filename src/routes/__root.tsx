@@ -9,7 +9,7 @@ import {
   AppUpdate,
   AppUpdateAvailability,
 } from "@capawesome/capacitor-app-update";
-import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
+
 import { toast } from "sonner";
 import { useUpdate } from "@/stores/useUpdate";
 import Favicon from "react-favicon";

@@ -1,7 +1,6 @@
 import React from "react";
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { SidebarGroup } from "@/components/ui/sidebar";
 import { SidebarItemProps } from "../../../../types/layout-container-types";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useRouter } from "@tanstack/react-router";

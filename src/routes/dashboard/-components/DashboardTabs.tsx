@@ -1,4 +1,3 @@
-import { PlayCircle } from "@/assets/svgs";
 import { Slide } from "@/types/dashbaord/types";
 
 interface DashboardTabsProps {

@@ -199,9 +199,12 @@ export function InstituteSelection() {
                     <FormControl>
                       <MyDropdown
                         {...field}
-                        options={dropdownList}
+                        dropdownList={dropdownList.map(item => item.label)}
                         placeholder="Select your institute"
-                        className="w-full"
+                        handleChange={(value) => {
+                          const selectedItem = dropdownList.find(item => item.label === value);
+                          field.onChange(selectedItem?.value || value);
+                        }}
                       />
                     </FormControl>
                   </FormItem>

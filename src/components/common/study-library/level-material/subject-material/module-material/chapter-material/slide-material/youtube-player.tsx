@@ -214,10 +214,15 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       });
 
       if (questionToShow && !showQuestion) {
+        console.log("Question detected at time:", currentTimeMs, "- Force pausing video");
+        // Use the force pause function for immediate pause
         player.pauseVideo();
         setIsPlayed(false);
+        stopProgressTracking();
+        stopTimer();
         setCurrentQuestion(questionToShow.question);
         setShowQuestion(true);
+        console.log("Question overlay shown and video paused");
       }
     } catch (error) {
       console.error("Error checking for questions:", error);
@@ -756,6 +761,24 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     }
   };
 
+  // Direct pause function for question overlay - bypasses state management issues
+  const forcePause = () => {
+    console.log("VideoQuestionOverlay: Force pausing video");
+    if (player && playerReady) {
+      try {
+        player.pauseVideo();
+        setIsPlayed(false);
+        stopProgressTracking();
+        stopTimer();
+        console.log("VideoQuestionOverlay: Video force paused successfully");
+      } catch (error) {
+        console.error("VideoQuestionOverlay: Error force pausing video:", error);
+      }
+    } else {
+      console.warn("VideoQuestionOverlay: Player not ready for force pause");
+    }
+  };
+
   const togglePlay = () => {
     setIsPlayed(true);
     console.log("Video is played");
@@ -809,23 +832,6 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       console.error("Error getting iframe:", error);
     }
   };
-
-  // Show/hide fullscreen controls on mouse movement
-  const handleMouseMove = useCallback(() => {
-    if (isFullscreen) {
-      setShowFullscreenControls(true);
-
-      // Clear any existing timeout
-      if (fullscreenControlsTimeoutRef.current) {
-        clearTimeout(fullscreenControlsTimeoutRef.current);
-      }
-
-      // Set a new timeout to hide controls after 3 seconds
-      fullscreenControlsTimeoutRef.current = setTimeout(() => {
-        setShowFullscreenControls(false);
-      }, 3000);
-    }
-  }, [isFullscreen]);
 
   // Clean up fullscreen controls timeout
   useEffect(() => {
@@ -1323,15 +1329,13 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
               <button
                 onClick={() => {
                   if (player) {
-                    safeGetNumber(player.getCurrentTime()).then(
-                      (currentTime) => {
-                        const newTime = currentTime + 10;
-                        safeGetNumber(player.getDuration()).then((duration) => {
-                          player.seekTo(Math.min(newTime, duration), true);
-                          setCurrentTime(Math.min(newTime, duration));
-                        });
-                      }
-                    );
+                    safeGetNumber(player.getCurrentTime()).then((currentTime) => {
+                      const newTime = currentTime + 10;
+                      safeGetNumber(player.getDuration()).then((duration) => {
+                        player.seekTo(Math.min(newTime, duration), true);
+                        setCurrentTime(Math.min(newTime, duration));
+                      });
+                    });
                   }
                 }}
                 className="p-3 rounded-full bg-black/60 text-white hover:bg-black/80 transition-all hover:scale-105 shadow-lg backdrop-blur-sm border border-white/10"
@@ -1516,18 +1520,12 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         </div>
 
         {/* Question Overlay */}
-        {/* {showQuestion && currentQuestion && (
-          <VideoQuestionOverlay
-            question={currentQuestion}
-            onSubmit={handleQuestionSubmit}
-            onClose={handleQuestionClose}
-          />
-        )} */}
         {showQuestion && (
           <VideoQuestionOverlay
             question={currentQuestion}
             onSubmit={handleQuestionSubmit}
             onClose={handleQuestionClose}
+            onPause={forcePause}
           />
         )}
       </div>

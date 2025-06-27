@@ -1,11 +1,10 @@
+import { useEffect, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { LayoutContainer } from "@/components/common/layout-container/layout-container";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
-import { useEffect, useState } from "react";
 import { fetchStaticData } from "./-lib/utils";
 import { DashboardTabs } from "./-components/DashboardTabs";
 import { Helmet } from "react-helmet";
-import { DashboardImg } from "@/assets/svgs";
 import { fetchStudentDetails } from "@/services/studentDetails";
 import { getUserId } from "@/constants/getUserId";
 import { getInstituteId } from "@/constants/helper";
@@ -13,16 +12,14 @@ import { Preferences } from "@capacitor/preferences";
 import { getPackageSessionId } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
 import { fetchStudyLibraryDetails } from "@/services/study-library/getStudyLibraryDetails";
 import { useStudyLibraryStore } from "@/stores/study-library/use-study-library-store";
-import { MyButton } from "@/components/design-system/button";
 import {
   DashbaordResponse,
   DashboardSlide,
 } from "./-types/dashboard-data-types";
-import { getIcon } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/chapter-sidebar-slides";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import { PastLearningInsights } from "./-components/PastLearningInsights";
 import { fetchAndStoreInstituteDetails } from "@/services/fetchAndStoreInstituteDetails";
-import { Slide } from "@/hooks/study-library/use-slides";
+
 export const Route = createFileRoute("/dashboard/")({
   beforeLoad: async () => {
     const instituteId = await getInstituteId();
@@ -211,7 +208,7 @@ export function DashboardComponent() {
             {/* List Items */}
             {data?.slides && data.slides.length > 0 && (
               <div className="space-y-3 mb-4">
-                {data.slides.slice(0, 3).map((slide, idx) => (
+                {data.slides.slice(0, 3).map((slide) => (
                   <div 
                     key={slide.slide_id} 
                     className="flex items-center gap-3 py-2 px-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors duration-150"

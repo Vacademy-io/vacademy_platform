@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import { getUserId } from "@/constants/getUserId";
 import { ArrowSquareOut, CaretUp } from "@phosphor-icons/react";
 import { CaretDown } from "@phosphor-icons/react";
@@ -21,7 +21,7 @@ export const Doubt = ({doubt, refetch}:{doubt:DoubtType, filter:DoubtFilter, ref
     const [imageUrl, setImageUrl] = useState<string | null>(null);
     // const imageUrl: string | null = null;
     const [userId, setUserId] = useState<string | null>(null);
-    const [showReplies, setShowReplies] = useState<boolean>(false);
+    const [showReplies, setShowReplies] = useState<boolean>(true);
     const {activeItem, setActiveItem} = useContentStore();
     const {setOpen} = useSidebar();
     const { navigateToPdfPage } = useMediaRefsStore();
@@ -84,70 +84,116 @@ export const Doubt = ({doubt, refetch}:{doubt:DoubtType, filter:DoubtFilter, ref
     
     return (
         <>
-            <div className="lg:px-3 md:px-1 py-3 px-3 flex flex-col gap-3 rounded-lg max-sm:text-caption">
-                <div className="flex flex-col gap-2">
-                    <div className="flex sm:items-center justify-between sm:flex-row flex-col gap-2">
-                        <div className="flex items-center gap-2">
-                        <div className="size-8 rounded-full bg-neutral-300 sm:size-10">
-                            {/* add image here */}
-                            {imageUrl ? (
-                                <img
-                                    src={imageUrl}
-                                    alt={doubt.name}
-                                    className="size-full rounded-lg object-cover "
-                                />
-                            ) : (
-                                <SmallDummyProfile />
-                            )}
-                        </div>
-                            <div className="text-subtitle text-lg text-neutral-700 font-semibold">
-                            {userBasicDetails?.[0].name}
+            <div className="bg-white rounded-xl border border-gray-200/60 p-5 shadow-sm hover:shadow-lg transition-all duration-300 hover:border-gray-300/80 group">
+                <div className="flex flex-col gap-4">
+                    {/* Enhanced Header */}
+                    <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                            <div className="relative flex-shrink-0">
+                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-gray-100 to-gray-200 overflow-hidden ring-2 ring-white shadow-sm">
+                                    {imageUrl ? (
+                                        <img
+                                            src={imageUrl}
+                                            alt={doubt.name}
+                                            className="w-full h-full object-cover"
+                                        />
+                                    ) : (
+                                        <div className="w-full h-full flex items-center justify-center">
+                                            <SmallDummyProfile />
+                                        </div>
+                                    )}
+                                </div>
+                                <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${doubt.status === "RESOLVED" ? "bg-green-500" : "bg-amber-500"}`}></div>
+                            </div>
+                            <div className="flex flex-col min-w-0 flex-1">
+                                <h4 className="font-semibold text-gray-900 text-sm leading-tight truncate">
+                                    {userBasicDetails?.[0].name}
+                                </h4>
+                                <p className="text-xs text-gray-500 mt-0.5">
+                                    {formatISODateTimeReadable(doubt.raised_time)}
+                                </p>
                             </div>
                         </div>
-                        <div className="flex gap-3 items-center">
-                            <StatusChip text={doubt.status === "RESOLVED" ? "Resolved" : "Unresolved"} textSize="text-caption" status={doubt.status === "RESOLVED" ? "SUCCESS" : "INFO"} />
-                            <p className="text-neutral-500 sm:text-body text-caption">{formatISODateTimeReadable(doubt.raised_time)}</p>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                            <StatusChip 
+                                text={doubt.status === "RESOLVED" ? "Resolved" : "Pending"} 
+                                textSize="text-xs" 
+                                status={doubt.status === "RESOLVED" ? "SUCCESS" : "INFO"} 
+                            />
                         </div>
                     </div>
-                    <div className="flex flex-col gap-3">
-                    {(activeItem?.source_type=="VIDEO" || activeItem?.source_type=="DOCUMENT") &&
-                        <div className="flex items-center justify-between">
-                            <div className="flex gap-1 items-center justify-center line-clamp-[1rem]">
-                                <p className="text-body font-semibold text-neutral-500"><span className="font-semibold text-neutral-600">{activeItem?.source_type=="VIDEO"? "Timestamp" : "Page No"}: </span>{activeItem?.source_type=="VIDEO" ? formatTime(parseInt(doubt.content_position || "0")/1000) : parseInt(doubt.content_position || "0") + 1 }</p>
-                                <ArrowSquareOut className="cursor-pointer" onClick={()=>handleTimeStampClick(parseInt(doubt.content_position || "0"))}/>   
+                    {/* Content Section */}
+                    <div className="flex flex-col gap-4">
+                        {/* Timestamp/Page Section */}
+                        {(activeItem?.source_type=="VIDEO" || activeItem?.source_type=="DOCUMENT") && (
+                            <div className="flex items-center justify-between">
+                                <div 
+                                    onClick={()=>handleTimeStampClick(parseInt(doubt.content_position || "0"))}
+                                    className="flex items-center gap-2 px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded-lg border border-gray-200 cursor-pointer transition-all duration-200 hover:shadow-sm group/timestamp"
+                                >
+                                    <div className="text-sm font-medium text-gray-700">
+                                        {activeItem?.source_type=="VIDEO"? "Timestamp" : "Page"}: 
+                                    </div>
+                                    <div className="text-sm font-semibold text-primary-600">
+                                        {activeItem?.source_type=="VIDEO" 
+                                            ? formatTime(parseInt(doubt.content_position || "0")/1000) 
+                                            : `Page ${parseInt(doubt.content_position || "0") + 1}`
+                                        }
+                                    </div>
+                                    <ArrowSquareOut 
+                                        size={16} 
+                                        className="text-gray-400 group-hover/timestamp:text-primary-500 transition-colors" 
+                                    />   
+                                </div>
+                                {userId && doubt.user_id === userId && doubt.replies.length > 0 && ( 
+                                    <MarkAsResolved doubt={doubt} refetch={refetch}/>
+                                )}
                             </div>
-                            {userId && doubt.user_id === userId && doubt.replies.length>0 && ( 
-                            <MarkAsResolved doubt={doubt} refetch={refetch}/>
-                            )}
-                        </div>
-                    }
-                    <div
-                        dangerouslySetInnerHTML={{
-                            __html:doubt.html_text || '',
-                        }}
-                        className="custom-html-content text-neutral-500"
-                    />
-                    {doubt.user_id==userId && doubt.replies.length==0 && 
-                       <DeleteDoubt doubt={doubt} refetch={refetch} />
-                    }
+                        )}
+
+                        {/* Doubt Content */}
+                        <div
+                            dangerouslySetInnerHTML={{
+                                __html:doubt.html_text || '',
+                            }}
+                            className="custom-html-content text-gray-700 text-sm leading-relaxed bg-gray-50/50 rounded-lg p-4 border border-gray-100"
+                        />
+
+                        {/* Actions for own doubts */}
+                        {doubt.user_id == userId && doubt.replies.length == 0 && (
+                            <div className="flex justify-end">
+                                <DeleteDoubt doubt={doubt} refetch={refetch} />
+                            </div>
+                        )}
                     </div>
                 </div>
-                {doubt.replies.length>0 &&
-                    <div className="flex flex-col gap-1">
-                        <div className="flex gap-2 items-center">
-                            <p className="sm:text-body text-caption font-semibold">Replies <span className="text-primary-500">{doubt.replies.length}</span></p>
-                            {showReplies==false && <CaretDown onClick={() => setShowReplies(true)} className="cursor-pointer"/>}
-                            {showReplies==true && <CaretUp onClick={() => setShowReplies(false)} className="cursor-pointer"/>}
-                        </div>
-                        {showReplies &&
-                            <div className="flex flex-col gap-6 p-4 border border-neutral-300 rounded-md">
+                {/* Replies Section */}
+                {doubt.replies.length > 0 && (
+                    <div className="flex flex-col gap-3 mt-2">
+                        <button 
+                            onClick={() => setShowReplies(!showReplies)}
+                            className="flex items-center gap-2 p-2 hover:bg-gray-50 rounded-lg transition-colors w-fit group/replies"
+                        >
+                            <p className="text-sm font-semibold text-gray-700">
+                                Replies <span className="text-primary-500 bg-primary-50 px-2 py-0.5 rounded-full text-xs ml-1">{doubt.replies.length}</span>
+                            </p>
+                            {showReplies ? (
+                                <CaretUp size={16} className="text-gray-500 group-hover/replies:text-gray-700 transition-colors"/>
+                            ) : (
+                                <CaretDown size={16} className="text-gray-500 group-hover/replies:text-gray-700 transition-colors"/>
+                            )}
+                        </button>
+                        {showReplies && (
+                            <div className="space-y-4 pl-4 border-l-2 border-gray-200 ml-2 animate-in slide-in-from-top-2 duration-200">
                                 {doubt.replies.map((reply, key) => (
-                                    <Reply reply={reply} key={key} />
+                                    <div key={key} className="animate-in fade-in slide-in-from-left-4 duration-300" style={{ animationDelay: `${key * 100}ms` }}>
+                                        <Reply reply={reply} />
+                                    </div>
                                 ))}
                             </div>
-                        }
+                        )}
                     </div>
-                }
+                )}
             </div>
         </>
     )

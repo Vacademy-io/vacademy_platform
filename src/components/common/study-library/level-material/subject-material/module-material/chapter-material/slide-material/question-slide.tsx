@@ -508,9 +508,14 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
                                             : "text-gray-700"
                                     }`}
                                 >
-                                    {questionType === "TRUE_FALSE"
-                                        ? option.text.content
-                                        : `${String.fromCharCode(97 + index)}. ${option.text.content}`}
+                                    {questionType === "TRUE_FALSE" ? (
+                                        <span dangerouslySetInnerHTML={{ __html: option.text.content }} />
+                                    ) : (
+                                        <>
+                                            {String.fromCharCode(97 + index)}.{" "}
+                                            <span dangerouslySetInnerHTML={{ __html: option.text.content }} />
+                                        </>
+                                    )}
                                 </label>
                             </div>
                         ))}
@@ -566,7 +571,8 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
                                             : "text-gray-700"
                                     }`}
                                 >
-                                    {`${String.fromCharCode(97 + index)}. ${option.text.content}`}
+                                    {String.fromCharCode(97 + index)}.{" "}
+                                    <span dangerouslySetInnerHTML={{ __html: option.text.content }} />
                                 </label>
                             </div>
                         ))}
@@ -708,19 +714,15 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
                 }}
             />
 
-            {/* Question image or diagram if available */}
-            {/* {questionData?.media_id && (
-        <div className="mb-4">
-          <img
-            src="/placeholder.svg?height=200&width=400"
-            alt="Question diagram"
-            className="mx-auto rounded-lg"
-          />
-          <p className="text-sm text-neutral-500 mt-1 text-center">
-            Question image
-          </p>
-        </div>
-      )} */}
+            {/* Parent rich text content if available */}
+            {questionData?.parent_rich_text?.content && (
+                <div 
+                    className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200"
+                    dangerouslySetInnerHTML={{
+                        __html: questionData.parent_rich_text.content,
+                    }}
+                />
+            )}
 
             <div className="mt-4 sm:mt-6">
                 <h3 className="text-base sm:text-lg font-medium text-gray-700 mb-2 sm:mb-3">

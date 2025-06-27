@@ -44,7 +44,7 @@ export function NotificationList() {
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-5 5v-5z" />
                   </svg>
-                  General Notifications
+                General Notifications
                 </span>
                 <div className="absolute inset-0 bg-gradient-to-r from-primary-400 to-primary-500 opacity-0 group-hover:opacity-10 transition-opacity duration-300"></div>
               </TabsTrigger>
@@ -56,7 +56,7 @@ export function NotificationList() {
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" />
                   </svg>
-                  Announcements
+                Announcements
                 </span>
                 <div className="absolute inset-0 bg-gradient-to-r from-primary-400 to-primary-500 opacity-0 group-hover:opacity-10 transition-opacity duration-300"></div>
               </TabsTrigger>
@@ -71,20 +71,20 @@ export function NotificationList() {
           >
             <div className="space-y-5">
               <div className="animate-slide-in-left" style={{animationDelay: '0.1s'}}>
-                <NotifcationCard
-                  title="New Assessment Assigned!"
-                  description="You have been assigned a new assessment: The Human Eye and The Colourful World. Check the details and stay prepared!"
-                  date="Today, 11:06 AM"
-                  isNew={true}
-                />
+              <NotifcationCard
+                title="New Assessment Assigned!"
+                description="You have been assigned a new assessment: The Human Eye and The Colourful World. Check the details and stay prepared!"
+                date="Today, 11:06 AM"
+                isNew={true}
+              />
               </div>
               <div className="animate-slide-in-left" style={{animationDelay: '0.2s'}}>
-                <NotifcationCard
-                  title="Study Material Updated"
-                  description="New study materials have been added to your Physics course. Review the latest chapters on Optics and Light."
-                  date="Yesterday, 3:45 PM"
-                  isNew={false}
-                />
+              <NotifcationCard
+                title="Study Material Updated"
+                description="New study materials have been added to your Physics course. Review the latest chapters on Optics and Light."
+                date="Yesterday, 3:45 PM"
+                isNew={false}
+              />
               </div>
               <div className="animate-slide-in-left" style={{animationDelay: '0.3s'}}>
                 <NotifcationCard
@@ -105,20 +105,20 @@ export function NotificationList() {
           >
             <div className="space-y-5">
               <div className="animate-slide-in-left" style={{animationDelay: '0.1s'}}>
-                <NotifcationCard
-                  title="School Holiday Notice"
-                  description="Please note that the school will be closed on Monday, December 25th for Christmas holiday. All classes will resume on December 26th."
-                  date="Dec 20, 2023, 9:00 AM"
-                  isNew={true}
-                />
+              <NotifcationCard
+                title="School Holiday Notice"
+                description="Please note that the school will be closed on Monday, December 25th for Christmas holiday. All classes will resume on December 26th."
+                date="Dec 20, 2023, 9:00 AM"
+                isNew={true}
+              />
               </div>
               <div className="animate-slide-in-left" style={{animationDelay: '0.2s'}}>
-                <NotifcationCard
-                  title="Exam Schedule Released"
-                  description="The final examination schedule for this semester has been published. Please check your student portal for detailed timings and venues."
-                  date="Dec 18, 2023, 2:30 PM"
-                  isNew={false}
-                />
+              <NotifcationCard
+                title="Exam Schedule Released"
+                description="The final examination schedule for this semester has been published. Please check your student portal for detailed timings and venues."
+                date="Dec 18, 2023, 2:30 PM"
+                isNew={false}
+              />
               </div>
               <div className="animate-slide-in-left" style={{animationDelay: '0.3s'}}>
                 <NotifcationCard

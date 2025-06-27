@@ -52,6 +52,7 @@ interface VideoQuestionProps {
         question_time_in_millis: number;
         answered?: boolean;
     }>;
+    previousAnswer?: string | string[];
 }
 
 interface SelectedOption {
@@ -67,6 +68,7 @@ const VideoQuestionOverlay = ({
     // videoDuration = 0,
     // currentTime = 0,
     // allQuestions = [],
+    previousAnswer,
 }: VideoQuestionProps) => {
     const { activeItem } = useContentStore();
     const [selectedOption, setSelectedOption] = useState<SelectedOption | null>(
@@ -144,6 +146,33 @@ const VideoQuestionOverlay = ({
             }
         }
     }, [isNumeric, question.options_json]);
+
+    // Restore previous answer when component mounts
+    useEffect(() => {
+        if (previousAnswer && previousAnswer.length > 0) {
+            if (Array.isArray(previousAnswer)) {
+                // Multiple choice answer
+                const restoredOptions = previousAnswer.map(optionId => {
+                    const option = question.options.find(opt => opt.id === optionId);
+                    return option ? { id: option.id, name: option.text.content } : null;
+                }).filter(Boolean) as SelectedOption[];
+                setSelectedOptions(restoredOptions);
+            } else {
+                // Single choice or text answer
+                if (isOneWord || isLongAnswer) {
+                    setInputValue(previousAnswer);
+                } else if (isNumeric) {
+                    setNumericValue(previousAnswer);
+                } else {
+                    // Single choice (MCQS or TRUE_FALSE)
+                    const option = question.options.find(opt => opt.id === previousAnswer);
+                    if (option) {
+                        setSelectedOption({ id: option.id, name: option.text.content });
+                    }
+                }
+            }
+        }
+    }, [previousAnswer, question.options, isOneWord, isLongAnswer, isNumeric]);
 
     const handleOptionToggle = (optionId: string, optionName: string) => {
         if (response) return;
@@ -757,10 +786,10 @@ const VideoQuestionOverlay = ({
     };
 
     return (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[9999] p-4">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-300">
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[10] p-4">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-300">
                 {/* Header */}
-                <div className="sticky top-0 bg-white z-10 border-b border-gray-100">
+                <div className="flex-shrink-0 bg-white border-b border-gray-100 rounded-t-xl">
                     <div className="flex items-center justify-between p-4 sm:p-6">
                         <div className="flex items-center gap-3">
                             <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center">
@@ -805,7 +834,7 @@ const VideoQuestionOverlay = ({
                 </div>
 
                 {/* Content - Scrollable */}
-                <div className="p-4 sm:p-6 overflow-y-auto max-h-[calc(90vh-200px)]">
+                <div className="flex-1 overflow-y-auto p-4 sm:p-6 min-h-0">
                     {/* Question text */}
                     <div className="mb-6">
                         <h4 className="text-base sm:text-lg font-medium text-gray-900 mb-3">
@@ -878,23 +907,27 @@ const VideoQuestionOverlay = ({
                 </div>
 
                 {/* Footer - Action buttons */}
-                <div className="sticky bottom-0 bg-white border-t border-gray-100 p-4 sm:p-6">
+                <div className="flex-shrink-0 bg-white border-t border-gray-100 p-4 sm:p-6 rounded-b-xl">
                     <div className="flex flex-col sm:flex-row gap-3 justify-center">
                         {response ? (
                             <MyButton
-                                buttonType="secondary"
-                                scale="medium"
-                                layoutVariant="icon"
+                                buttonType="primary"
+                                scale="large"
+                                layoutVariant="default"
                                 onClick={onClose}
                                 disable={false}
+                                className="min-w-[160px] shadow-lg"
                             >
                                 Continue Video
                             </MyButton>
                         ) : (
                             <MyButton
                                 buttonType="primary"
+                                scale="large"
+                                layoutVariant="default"
                                 onClick={handleSubmit}
                                 disable={isSubmitDisabled()}
+                                className="min-w-[160px] shadow-lg"
                             >
                                 {isSubmitting
                                     ? "Submitting..."

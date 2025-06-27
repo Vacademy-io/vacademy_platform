@@ -551,7 +551,7 @@ const AssignmentSlide = ({
   };
 
   return (
-    <div className="max-w-3xl mx-auto px-4 sm:px-6">
+    <div className="w-full max-w-none mx-auto px-2 sm:px-4">
       <Card className="mb-4 sm:mb-6 bg-white shadow-sm">
         <CardHeader className="space-y-2">
           <CardTitle className="text-lg sm:text-xl font-medium text-gray-900">

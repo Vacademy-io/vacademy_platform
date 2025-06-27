@@ -10,7 +10,7 @@ import { formatISODateTimeReadable } from "@/helpers/formatISOTime";
 export const Reply = ({reply}:{reply: Doubt}) => {
 
     const [imageUrl, setImageUrl] = useState<string | null>(null);
-    const [showReplies, setShowReplies] = useState<boolean>(false);
+    const [showReplies, setShowReplies] = useState<boolean>(true);
 
 
     const { data: userBasicDetails } = useGetUserBasicDetails([reply.user_id]);

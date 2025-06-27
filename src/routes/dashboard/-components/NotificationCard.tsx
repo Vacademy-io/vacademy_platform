@@ -65,7 +65,7 @@ export function NotifcationCard({
           </div>
           <div className="flex-1">
             <h3 className="text-lg font-bold text-slate-900 tracking-tight group-hover:text-slate-700 transition-colors duration-300 leading-tight">
-              {title}
+        {title}
             </h3>
             {isNew && (
               <div className="inline-flex items-center gap-1 mt-1">
@@ -74,13 +74,13 @@ export function NotifcationCard({
               </div>
             )}
           </div>
-        </div>
-        
-        {/* Description */}
+      </div>
+      
+      {/* Description */}
         <div className="text-slate-600 font-medium leading-relaxed mb-4 text-base line-clamp-3 group-hover:text-slate-700 transition-colors duration-300">
-          {description}
-        </div>
-        
+        {description}
+      </div>
+      
         {/* Enhanced Footer */}
         <div className="flex items-center justify-between pt-3 border-t border-slate-100/60">
           <div className="flex items-center gap-2">
@@ -91,13 +91,13 @@ export function NotifcationCard({
           </div>
           
           <div className="flex items-center gap-2">
-            {isNew && (
+        {isNew && (
               <div className="animate-slide-in-right">
                 <span className="bg-gradient-to-r from-primary-100 to-primary-200 text-primary-700 px-2.5 py-1 rounded-full text-sm font-bold tracking-wide shadow-sm">
-                  New
-                </span>
-              </div>
-            )}
+              New
+            </span>
+          </div>
+        )}
             
             {/* Action Arrow */}
             <div className="text-slate-400 group-hover:text-primary-500 transition-all duration-300 transform group-hover:translate-x-1">

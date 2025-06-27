@@ -139,7 +139,12 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   const [currentQuestion, setCurrentQuestion] = useState<any>(null);
   const [showQuestion, setShowQuestion] = useState(false);
   const [answeredQuestions, setAnsweredQuestions] = useState<
-    Record<string, boolean>
+    Record<string, {
+      answered: boolean;
+      selectedOptions: string | string[];
+      isCorrect?: boolean;
+      timestamp: number;
+    }>
   >({});
 
   // Verification state
@@ -182,7 +187,14 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       setTimeToQuestionMap(mapped);
       console.log("Mapped questions:", mapped);
     }
+    // Reset answered questions when questions change (new video/slide)
+    setAnsweredQuestions({});
   }, [questions]);
+
+  // Reset answered questions when video changes
+  useEffect(() => {
+    setAnsweredQuestions({});
+  }, [videoId]);
 
   // Helper function to safely get a number from potentially a Promise<number>
   const safeGetNumber = async (value: any): Promise<number> => {
@@ -208,8 +220,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       const currentTimeMs = currentTime * 1000;
 
       const questionToShow = timeToQuestionMap.find(({ time, question }) => {
-        if (answeredQuestions && answeredQuestions[question.id]) return false;
-        console.log(setAnsweredQuestions);
+        if (answeredQuestions && answeredQuestions[question.id]?.answered) return false;
         return Math.abs(currentTimeMs - time) < 500;
       });
 
@@ -230,19 +241,46 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   }, [timeToQuestionMap, showQuestion, answeredQuestions, player]);
 
   // Handle question submission
-  const handleQuestionSubmit = async () => {
+  const handleQuestionSubmit = async (selectedOption: string | string[]) => {
     if (!currentQuestion) return { success: false };
+
+    // Evaluate the answer (you can enhance this logic)
+    const isCorrect = true; // This should be based on actual evaluation logic
+
+    // Mark question as answered with detailed info
+    setAnsweredQuestions(prev => ({
+      ...prev,
+      [currentQuestion.id]: {
+        answered: true,
+        selectedOptions: selectedOption,
+        isCorrect,
+        timestamp: Date.now()
+      }
+    }));
 
     // Return mock response (in a real app, this would come from the server)
     return {
       success: true,
-      isCorrect: true,
+      isCorrect: isCorrect,
       explanation: "Great job! You've answered correctly.",
     };
   };
 
-  // Handle closing the question overlay
+  // Handle closing the question overlay (skip/close)
   const handleQuestionClose = () => {
+    // Mark question as skipped only if it's skippable
+    if (currentQuestion && currentQuestion.can_skip) {
+      setAnsweredQuestions(prev => ({
+        ...prev,
+        [currentQuestion.id]: {
+          answered: true,
+          selectedOptions: [],
+          isCorrect: false,
+          timestamp: Date.now()
+        }
+      }));
+    }
+
     setShowQuestion(false);
     setCurrentQuestion(null);
 
@@ -504,6 +542,47 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       progressIntervalRef.current = null;
     }
   }, []);
+
+  // Function to check if user can navigate to a specific time
+  const canNavigateToTime = useCallback((targetTimeSeconds: number) => {
+    const targetTimeMs = targetTimeSeconds * 1000;
+    
+    // Find all questions that come before or at the target time
+    const previousQuestions = timeToQuestionMap.filter(({ time }) => time <= targetTimeMs);
+    
+    // Check if all previous questions that cannot be skipped are answered
+    for (const { question } of previousQuestions) {
+      if (!question.can_skip && !answeredQuestions[question.id]?.answered) {
+        return false; // Cannot navigate forward past unanswered required questions
+      }
+    }
+    
+    return true;
+  }, [timeToQuestionMap, answeredQuestions]);
+
+  // Function to handle question marker click
+  const handleQuestionMarkerClick = useCallback((questionData: any) => {
+    // Check if we can navigate to this question's time
+    const questionTimeSeconds = questionData.question_time_in_millis / 1000;
+    
+    if (!canNavigateToTime(questionTimeSeconds)) {
+      // Show a message that they need to answer previous questions first
+      console.log("Cannot navigate: Please answer previous required questions first");
+      return;
+    }
+
+    // Set the current question and show overlay
+    setCurrentQuestion(questionData);
+    setShowQuestion(true);
+    
+    // Pause the video
+    if (player) {
+      player.pauseVideo();
+      setIsPlayed(false);
+      stopProgressTracking();
+      stopTimer();
+    }
+  }, [canNavigateToTime, player, stopProgressTracking, stopTimer]);
   // Pause video when tab is switched
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -844,13 +923,15 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
 
   useEffect(() => {
     const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
-      console.log("fullscreen change", isFullscreen);
+      const isNowFullscreen = !!document.fullscreenElement;
+      setIsFullscreen(isNowFullscreen);
+      console.log("fullscreen change", isNowFullscreen);
 
       // Show controls briefly when entering/exiting fullscreen
-      if (!document.fullscreenElement) {
+      if (isNowFullscreen) {
+        // Entering fullscreen - show fullscreen controls
         setShowFullscreenControls(true);
-
+        
         // Hide controls after 3 seconds
         if (fullscreenControlsTimeoutRef.current) {
           clearTimeout(fullscreenControlsTimeoutRef.current);
@@ -858,6 +939,19 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
 
         fullscreenControlsTimeoutRef.current = setTimeout(() => {
           setShowFullscreenControls(false);
+        }, 3000);
+      } else {
+        // Exiting fullscreen - show regular controls
+        setShowFullscreenControls(false);
+        setShowControls(true);
+        
+        // Hide regular controls after 3 seconds
+        if (controlsTimeoutRef.current) {
+          clearTimeout(controlsTimeoutRef.current);
+        }
+
+        controlsTimeoutRef.current = setTimeout(() => {
+          setShowControls(false);
         }, 3000);
       }
     };
@@ -998,8 +1092,8 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     }
   };
 
-  const seekToTimestamp = async (targetTimeInSeconds?: number) => {
-    if (!player || !playerReady) return;
+  const seekToTimestamp = async (targetTimeInSeconds?: number, forceSeek = false) => {
+    if (!player || !playerReady) return false;
 
     let totalSecondsToSeek: number;
 
@@ -1009,6 +1103,13 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       const minutes = minutesInput === "" ? 0 : Number.parseInt(minutesInput);
       const seconds = secondsInput === "" ? 0 : Number.parseInt(secondsInput);
       totalSecondsToSeek = minutes * 60 + seconds;
+    }
+
+    // Check navigation restrictions unless forced (e.g., for initial seek with ms prop)
+    if (!forceSeek && !canNavigateToTime(totalSecondsToSeek)) {
+      console.log("Navigation blocked: Please answer previous required questions first");
+      // You could show a toast notification here
+      return false;
     }
 
     try {
@@ -1027,13 +1128,10 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       // Update currentTime state to reflect new position
       setCurrentTime(finalSeekTime);
 
-      // Optional: Clear inputs after seeking if called via button without targetTimeInSeconds
-      // if (typeof targetTimeInSeconds === 'undefined') {
-      // setMinutesInput("");
-      // setSecondsInput("");
-      // }
+      return true;
     } catch (error) {
       console.error("Error seeking to timestamp:", error);
+      return false;
     }
   };
 
@@ -1049,8 +1147,8 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       setMinutesInput(minutes.toString());
       setSecondsInput(seconds.toString());
 
-      // Call seekToTimestamp with the calculated totalSeconds
-      seekToTimestamp(totalSeconds);
+      // Call seekToTimestamp with the calculated totalSeconds (force it for initial load)
+      seekToTimestamp(totalSeconds, true);
     }
   }, [ms, player, playerReady]);
 
@@ -1141,6 +1239,13 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         setShowSeekAnimation({ side: 'left', show: true });
       }
 
+      // Check if navigation is allowed (only for forward seeks)
+      if (isRightSide && !canNavigateToTime(newTime)) {
+        console.log("Navigation blocked: Please answer previous required questions first");
+        setShowSeekAnimation({ side: 'right', show: false });
+        return;
+      }
+
       player.seekTo(newTime, true);
       setCurrentTime(newTime);
 
@@ -1155,20 +1260,40 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
 
   // Handle mouse movement to show/hide controls
   const handleMouseMoveOnVideo = useCallback(() => {
-    setShowControls(true);
+    console.log("Mouse move detected, isFullscreen:", isFullscreen);
     
-    // Clear existing timeout
-    if (controlsTimeoutRef.current) {
-      clearTimeout(controlsTimeoutRef.current);
-    }
-
-    // Set timeout to hide controls after 3 seconds of inactivity
-    controlsTimeoutRef.current = setTimeout(() => {
-      if (!showSpeedOptions) { // Don't hide if speed menu is open
-        setShowControls(false);
+    if (isFullscreen) {
+      // Handle fullscreen controls
+      console.log("Showing fullscreen controls");
+      setShowFullscreenControls(true);
+      
+      // Clear existing fullscreen timeout
+      if (fullscreenControlsTimeoutRef.current) {
+        clearTimeout(fullscreenControlsTimeoutRef.current);
       }
-    }, 3000);
-  }, [showSpeedOptions]);
+
+      // Set timeout to hide fullscreen controls after 3 seconds of inactivity
+      fullscreenControlsTimeoutRef.current = setTimeout(() => {
+        console.log("Hiding fullscreen controls after timeout");
+        setShowFullscreenControls(false);
+      }, 3000);
+    } else {
+      // Handle regular controls
+      setShowControls(true);
+      
+      // Clear existing timeout
+      if (controlsTimeoutRef.current) {
+        clearTimeout(controlsTimeoutRef.current);
+      }
+
+      // Set timeout to hide controls after 3 seconds of inactivity
+      controlsTimeoutRef.current = setTimeout(() => {
+        if (!showSpeedOptions) { // Don't hide if speed menu is open
+          setShowControls(false);
+        }
+      }, 3000);
+    }
+  }, [isFullscreen, showSpeedOptions]);
 
   // Show controls when speed menu opens
   useEffect(() => {
@@ -1180,6 +1305,15 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     }
   }, [showSpeedOptions]);
 
+  // Debug effect to track fullscreen controls state
+  useEffect(() => {
+    console.log("Fullscreen controls state changed:", {
+      isFullscreen,
+      showFullscreenControls,
+      showControls
+    });
+  }, [isFullscreen, showFullscreenControls, showControls]);
+
   // Format time for display
 
   // Handle progress bar click for seeking
@@ -1190,6 +1324,12 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     const rect = progressBar.getBoundingClientRect();
     const clickPosition = (e.clientX - rect.left) / rect.width;
     const seekTime = clickPosition * duration;
+
+    // Check if navigation is allowed
+    if (!canNavigateToTime(seekTime)) {
+      console.log("Navigation blocked: Please answer previous required questions first");
+      return;
+    }
 
     player.seekTo(seekTime, true);
     setCurrentTime(seekTime);
@@ -1237,6 +1377,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         ref={playerContainerRef}
         className="aspect-video w-full relative h-full items-center flex justify-center overflow-hidden bg-black rounded-lg group"
         onMouseMove={handleMouseMoveOnVideo}
+        onMouseEnter={handleMouseMoveOnVideo}
         onDoubleClick={handleDoubleClick}
       >
         {/* Verification overlay - only shown in fullscreen */}
@@ -1272,6 +1413,15 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
               </div>
             </div>
           </div>
+        )}
+
+        {/* Invisible fullscreen mouse capture overlay */}
+        {isFullscreen && (
+          <div 
+            className="absolute inset-0 z-[9998] pointer-events-auto"
+            onMouseMove={handleMouseMoveOnVideo}
+            onMouseEnter={handleMouseMoveOnVideo}
+          />
         )}
 
         {/* Fullscreen controls overlay */}
@@ -1370,16 +1520,50 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
           }`}>
             <div className="bg-gradient-to-b from-black/60 to-transparent p-4 pb-8">
               {/* Progress Bar */}
-              <div
-                className="w-full h-1 bg-white/30 rounded-full cursor-pointer group"
-                onClick={handleProgressBarClick}
-              >
+              <div className="relative w-full">
                 <div
-                  className="h-full bg-white rounded-full transition-all duration-150 group-hover:h-1.5"
-                  style={{
-                    width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%`,
-                  }}
-                ></div>
+                  className="w-full h-1 bg-white/30 rounded-full cursor-pointer group"
+                  onClick={handleProgressBarClick}
+                >
+                  <div
+                    className="h-full bg-white rounded-full transition-all duration-150 group-hover:h-1.5"
+                    style={{
+                      width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%`,
+                    }}
+                  ></div>
+                </div>
+                
+                {/* Question Markers */}
+                {timeToQuestionMap.map(({ time, question }, index) => {
+                  const position = duration > 0 ? (time / 1000 / duration) * 100 : 0;
+                  const isAnswered = answeredQuestions[question.id]?.answered;
+                  const canSkip = question.can_skip;
+                  
+                  return (
+                    <button
+                      key={question.id}
+                      className={`absolute w-3 h-3 rounded-full transform -translate-x-1/2 -translate-y-1 top-0 border-2 border-white shadow-lg transition-all hover:scale-125 z-10 ${
+                        isAnswered
+                          ? "bg-green-500 hover:bg-green-600"
+                          : canSkip
+                            ? "bg-yellow-500 hover:bg-yellow-600"
+                            : "bg-red-500 hover:bg-red-600"
+                      }`}
+                      style={{ left: `${Math.max(1.5, Math.min(98.5, position))}%` }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleQuestionMarkerClick(question);
+                      }}
+                      title={`Question ${index + 1}${isAnswered ? " (Answered)" : canSkip ? " (Skippable)" : " (Required)"}`}
+                    >
+                      {isAnswered ? (
+                        <span className="text-white text-xs font-bold flex items-center justify-center w-full h-full">✓</span>
+                      ) : (
+                        <span className="text-white text-xs font-bold flex items-center justify-center w-full h-full">?</span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
               
               {/* Time Display */}
@@ -1424,9 +1608,10 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                     onClick={() => {
                       if (player) {
                         safeGetNumber(player.getCurrentTime()).then((currentTime) => {
-                          const newTime = currentTime - 10;
-                          player.seekTo(Math.max(newTime, 0), true);
-                          setCurrentTime(Math.max(newTime, 0));
+                          const newTime = Math.max(currentTime - 10, 0);
+                          // Always allow backward navigation
+                          player.seekTo(newTime, true);
+                          setCurrentTime(newTime);
                         });
                       }
                     }}
@@ -1442,8 +1627,16 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                         safeGetNumber(player.getCurrentTime()).then((currentTime) => {
                           const newTime = currentTime + 10;
                           safeGetNumber(player.getDuration()).then((duration) => {
-                            player.seekTo(Math.min(newTime, duration), true);
-                            setCurrentTime(Math.min(newTime, duration));
+                            const finalTime = Math.min(newTime, duration);
+                            
+                            // Check if forward navigation is allowed
+                            if (!canNavigateToTime(finalTime)) {
+                              console.log("Navigation blocked: Please answer previous required questions first");
+                              return;
+                            }
+                            
+                            player.seekTo(finalTime, true);
+                            setCurrentTime(finalTime);
                           });
                         });
                       }
@@ -1526,6 +1719,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
             onSubmit={handleQuestionSubmit}
             onClose={handleQuestionClose}
             onPause={forcePause}
+            previousAnswer={currentQuestion ? answeredQuestions[currentQuestion.id]?.selectedOptions : undefined}
           />
         )}
       </div>

@@ -15,7 +15,7 @@ export const LayoutContainer = ({
 }) => {
   return (
     <>
-      <MySidebar sidebarComponent={sidebarComponent} />
+        <MySidebar sidebarComponent={sidebarComponent} />
       <SidebarInset>
         <Navbar />
         <div className={cn("m-4 md:m-7 max-w-full", className)}>{children}</div>

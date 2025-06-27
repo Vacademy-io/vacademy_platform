@@ -95,7 +95,7 @@ export const PastLearningInsights = () => {
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                                 </svg>
                             </div>
-                            <div>
+            <div>
                                 <h3 className="text-base font-semibold text-gray-900">Daily Progress Details</h3>
                                 <p className="text-sm text-gray-500">Detailed breakdown of your learning sessions</p>
                             </div>
@@ -109,7 +109,7 @@ export const PastLearningInsights = () => {
                 
                 {/* Table Container */}
                 <div className="p-4">
-                    <StudentProgressTable userActivity={userActivity} />
+                <StudentProgressTable userActivity={userActivity} />
                 </div>
             </div>
         </div>

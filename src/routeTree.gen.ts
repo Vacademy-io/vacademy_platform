@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as TestSlidesRouteImport } from './routes/test-slides'
 import { Route as UserProfileIndexRouteImport } from './routes/user-profile/index'
 import { Route as StudyLibraryIndexRouteImport } from './routes/study-library/index'
 import { Route as RegisterIndexRouteImport } from './routes/register/index'
@@ -45,6 +46,11 @@ import { Route as StudyLibraryCoursesLevelsSubjectsModulesIndexRouteImport } fro
 import { Route as StudyLibraryCoursesLevelsSubjectsModulesChaptersIndexRouteImport } from './routes/study-library/courses/levels/subjects/modules/chapters/index'
 import { Route as StudyLibraryCoursesLevelsSubjectsModulesChaptersSlidesIndexRouteImport } from './routes/study-library/courses/levels/subjects/modules/chapters/slides/index'
 
+const TestSlidesRoute = TestSlidesRouteImport.update({
+  id: '/test-slides',
+  path: '/test-slides',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const UserProfileIndexRoute = UserProfileIndexRouteImport.update({
   id: '/user-profile/',
   path: '/user-profile/',
@@ -244,6 +250,7 @@ const StudyLibraryCoursesLevelsSubjectsModulesChaptersSlidesIndexRoute =
   )
 
 export interface FileRoutesByFullPath {
+  '/test-slides': typeof TestSlidesRoute
   '/SessionSelectionPage': typeof SessionSelectionPageIndexRoute
   '/dashboard': typeof DashboardIndexRoute
   '/delete-user': typeof DeleteUserIndexRoute
@@ -281,6 +288,7 @@ export interface FileRoutesByFullPath {
   '/study-library/courses/levels/subjects/modules/chapters/slides': typeof StudyLibraryCoursesLevelsSubjectsModulesChaptersSlidesIndexRoute
 }
 export interface FileRoutesByTo {
+  '/test-slides': typeof TestSlidesRoute
   '/SessionSelectionPage': typeof SessionSelectionPageIndexRoute
   '/dashboard': typeof DashboardIndexRoute
   '/delete-user': typeof DeleteUserIndexRoute
@@ -319,6 +327,7 @@ export interface FileRoutesByTo {
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
+  '/test-slides': typeof TestSlidesRoute
   '/SessionSelectionPage/': typeof SessionSelectionPageIndexRoute
   '/dashboard/': typeof DashboardIndexRoute
   '/delete-user/': typeof DeleteUserIndexRoute
@@ -358,6 +367,7 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
+    | '/test-slides'
     | '/SessionSelectionPage'
     | '/dashboard'
     | '/delete-user'
@@ -395,6 +405,7 @@ export interface FileRouteTypes {
     | '/study-library/courses/levels/subjects/modules/chapters/slides'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/test-slides'
     | '/SessionSelectionPage'
     | '/dashboard'
     | '/delete-user'
@@ -432,6 +443,7 @@ export interface FileRouteTypes {
     | '/study-library/courses/levels/subjects/modules/chapters/slides'
   id:
     | '__root__'
+    | '/test-slides'
     | '/SessionSelectionPage/'
     | '/dashboard/'
     | '/delete-user/'
@@ -470,6 +482,7 @@ export interface FileRouteTypes {
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
+  TestSlidesRoute: typeof TestSlidesRoute
   SessionSelectionPageIndexRoute: typeof SessionSelectionPageIndexRoute
   DashboardIndexRoute: typeof DashboardIndexRoute
   DeleteUserIndexRoute: typeof DeleteUserIndexRoute
@@ -509,6 +522,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/test-slides': {
+      id: '/test-slides'
+      path: '/test-slides'
+      fullPath: '/test-slides'
+      preLoaderRoute: typeof TestSlidesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/user-profile/': {
       id: '/user-profile/'
       path: '/user-profile'
@@ -758,6 +778,7 @@ declare module '@tanstack/react-router' {
 }
 
 const rootRouteChildren: RootRouteChildren = {
+  TestSlidesRoute: TestSlidesRoute,
   SessionSelectionPageIndexRoute: SessionSelectionPageIndexRoute,
   DashboardIndexRoute: DashboardIndexRoute,
   DeleteUserIndexRoute: DeleteUserIndexRoute,

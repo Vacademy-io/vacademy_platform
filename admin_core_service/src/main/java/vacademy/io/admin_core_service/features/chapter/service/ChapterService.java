@@ -49,6 +49,11 @@ public class ChapterService {
         chapterDTO.setStatus(ChapterStatus.ACTIVE.name());
         modules = subjectService.processSubjectsAndModules(Arrays.stream(getPackageSessionIds(commaSeparatedPackageSessionIds)).toList(), subjectModuleMapping.get().getSubject(), subjectModuleMapping.get().getModule());
         processPackageSessionMappings(chapter, commaSeparatedPackageSessionIds, chapterDTO.getChapterOrder());
+        List<ModuleChapterMapping>moduleChapterMappings = new ArrayList<>();
+        for (Module module:modules){
+            moduleChapterMappings.add(new ModuleChapterMapping(chapter,module));
+        }
+        moduleChapterMappingRepository.saveAll(moduleChapterMappings);
         String[] packageSessionIds = getPackageSessionIds(commaSeparatedPackageSessionIds);
         for (String packageSessionId:packageSessionIds){
             learnerTrackingAsyncService.updateLearnerOperationsForBatch("CHAPTER",null,null,chapter.getId(),moduleId,subjectId,packageSessionId);

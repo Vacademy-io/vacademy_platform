@@ -43,7 +43,7 @@ public class LearnerOAuth2Manager {
 
 
     public JwtResponseDto loginUserByEmail(String email) {
-        Optional<User> userOptional = userRepository.findTopByEmailOrderByCreatedAtDesc(email);
+        Optional<User> userOptional = userRepository.findMostRecentUserByRootFlagAndRoleStatusNative(false, List.of(UserRoleStatus.ACTIVE.name()), email);
         if (userOptional.isEmpty()) {
             throw new UsernameNotFoundException("invalid user request..!!");
         }

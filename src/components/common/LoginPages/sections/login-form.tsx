@@ -1,11 +1,4 @@
 import { useEffect, useState } from "react";
-// import { SplashScreen } from "@/components/common/LoginPages/layout/splash-container";
-// import { useAnimationStore } from "@/stores/login/animationStore";
-
-// import { MyButton } from "@/components/design-system/button";
-// import { loginSchema } from "@/schemas/login/login";
-// import { z } from "zod";
-
 import { TokenKey } from "@/constants/auth/tokens";
 import { useNavigate } from "@tanstack/react-router";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
@@ -44,36 +37,30 @@ export function LoginForm() {
   const [isSSOLoading, setIsSSOLoading] = useState(false);
   const isPublic = urlParams.get("isPublicAssessment");
   const redirect = urlParams.get("redirect");
-  const [isEmailLogin, setIsEmailLogin] = useState(
-    isPublic === "true" ? true : false
-  );
+  const [isEmailLogin, setIsEmailLogin] = useState(isPublic === "true");
 
-  // Handle OAuth callback
   useEffect(() => {
     const handleOAuthCallback = async () => {
       const urlParams = new URLSearchParams(window.location.search);
       const accessToken = urlParams.get("accessToken");
       const refreshToken = urlParams.get("refreshToken");
       const error = urlParams.get("error");
+      const message = urlParams.get("message");
 
       if (error) {
         console.error("OAuth error:", error);
-        toast.error("Authentication failed. Please try again.");
+        toast.error(decodeURIComponent(message || "Authentication failed."));
         return;
       }
+
       if (accessToken && refreshToken) {
         try {
-          // Store tokens in Capacitor Preferences with specific keys
           await setToStorage("accessToken", accessToken);
           await setToStorage("refreshToken", refreshToken);
-
-          // Also store in the regular token storage for compatibility
           await setTokenInStorage(TokenKey.accessToken, accessToken);
           await setTokenInStorage(TokenKey.refreshToken, refreshToken);
 
           console.log("Tokens stored successfully");
-
-          // Execute the onSuccess logic
           await handleSuccessfulLogin(accessToken, redirect);
         } catch (error) {
           console.error("Error storing tokens:", error);
@@ -86,16 +73,16 @@ export function LoginForm() {
   }, []);
 
   useEffect(() => {
-    // Handle SSO login from URL parameters
     const ssoLoginSuccess = handleSSOLogin();
-
     if (ssoLoginSuccess) {
       setIsSSOLoading(true);
       return;
     }
+
     const urlParams = new URLSearchParams(window.location.search);
     const accessToken = urlParams.get("accessToken");
     const refreshToken = urlParams.get("refreshToken");
+
     if (
       isNullOrEmptyOrUndefined(accessToken) ||
       isNullOrEmptyOrUndefined(refreshToken)
@@ -111,40 +98,28 @@ export function LoginForm() {
     }
   }, [navigate]);
 
-  // Handle successful login logic
   const handleSuccessfulLogin = async (
     accessToken: string,
     redirect?: string | null
   ) => {
     try {
-      // Decode token to get user data
       const decodedData = await getTokenDecodedData(accessToken);
-
-      // Check authorities in decoded data
       const authorities = decodedData?.authorities;
       const userId = decodedData?.user;
       const authorityKeys = authorities ? Object.keys(authorities) : [];
 
       if (authorityKeys.length > 1) {
-        // Redirect to InstituteSelection if multiple authorities are found
         navigate({
           to: "/institute-selection",
           search: { redirect: redirect || "/dashboard/" },
         });
         setIsSSOLoading(false);
       } else {
-        // Get the single institute ID
-        const instituteId = authorities
-          ? Object.keys(authorities)[0]
-          : undefined;
+        const instituteId = authorities ? Object.keys(authorities)[0] : undefined;
 
         if (instituteId && userId) {
           try {
-            // Fetch and store institute details
-            const details = await fetchAndStoreInstituteDetails(
-              instituteId,
-              userId
-            );
+            const details = await fetchAndStoreInstituteDetails(instituteId, userId);
             console.log("Institute color:", details?.institute_theme_code);
             setPrimaryColor(details?.institute_theme_code ?? "#E67E22");
           } catch (error) {
@@ -153,7 +128,6 @@ export function LoginForm() {
           }
 
           try {
-            // Fetch and store student details
             await fetchAndStoreStudentDetails(instituteId, userId);
           } catch (error) {
             console.error("Error fetching student details:", error);
@@ -164,7 +138,6 @@ export function LoginForm() {
           toast.error("Invalid user data received");
         }
 
-        // Redirect to SessionSelectionPage
         navigate({
           to: "/SessionSelectionPage",
           search: { redirect: redirect || "/dashboard" },
@@ -176,9 +149,8 @@ export function LoginForm() {
     }
   };
 
-  // Check for existing authentication
   useEffect(() => {
-    const redirect = async () => {
+    const redirectToDashboardIfAuthenticated = async () => {
       const token = await getTokenFromStorage(TokenKey.accessToken);
       const studentDetails = await getFromStorage("StudentDetails");
       const instituteDetails = await getFromStorage("InstituteDetails");
@@ -192,26 +164,20 @@ export function LoginForm() {
       }
     };
 
-    redirect();
+    redirectToDashboardIfAuthenticated();
   }, [navigate]);
 
-  // OAuth login handler
   const handleOAuthLogin = (provider: "google" | "github") => {
     try {
-      // Create state object with redirect information
+      console.log("handleOAuthLogin called");
+
       const stateObj = {
-        // from: "http://localhost:8100/login",
-        from: "https://learner.vacademy.io/login",
+        from: `${window.location.origin}/login/oauth/redirect`, // ✅ fixed interpolation
         account_type: "",
       };
 
-      // Encode state as base64
       const base64State = btoa(JSON.stringify(stateObj));
-
-      // Construct OAuth URL
       const loginUrl = `${LOGIN_URL_GOOGLE_GITHUB}/${provider}?state=${encodeURIComponent(base64State)}`;
-
-      // Redirect to OAuth provider
       window.location.href = loginUrl;
     } catch (error) {
       console.error("Error initiating OAuth login:", error);
@@ -231,15 +197,12 @@ export function LoginForm() {
   return (
     <div className="fixed inset-0 bg-gradient-to-br from-slate-50 to-white flex items-center justify-center p-4 z-50">
       <div className="w-full max-w-sm mx-auto">
-        {/* Login Card */}
         <div className="bg-white rounded-xl shadow-lg border border-slate-200/60 p-8">
-          {/* Header */}
           <div className="text-center mb-8">
             <h1 className="text-2xl font-semibold text-slate-900 mb-2">Welcome back</h1>
             <p className="text-slate-600 text-sm">Sign in to continue your learning journey</p>
           </div>
 
-          {/* OAuth Login Buttons */}
           <div className="space-y-3 mb-6">
             <button
               className="w-full flex items-center justify-center gap-3 px-4 py-3 border border-slate-200 rounded-lg bg-white text-slate-700 text-sm font-medium hover:bg-slate-50 hover:border-slate-300 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
@@ -259,7 +222,6 @@ export function LoginForm() {
             </button>
           </div>
 
-          {/* Divider */}
           <div className="relative my-6">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-slate-200" />
@@ -269,7 +231,6 @@ export function LoginForm() {
             </div>
           </div>
 
-          {/* Login Forms */}
           <div className="space-y-4">
             {isEmailLogin ? (
               <EmailLogin onSwitchToUsername={() => setIsEmailLogin(false)} />
@@ -279,7 +240,6 @@ export function LoginForm() {
           </div>
         </div>
 
-        {/* Footer */}
         <div className="text-center mt-6">
           <p className="text-xs text-slate-500">
             Secure login powered by modern encryption

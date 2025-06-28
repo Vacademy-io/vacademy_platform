@@ -20,6 +20,10 @@ import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.media.constant.MediaConstant;
 import vacademy.io.common.media.dto.FileDetailsDTO;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -49,6 +53,36 @@ public class FileService {
             return allUrls;
         } catch (JsonProcessingException e) {
             throw new RuntimeException(e);
+        }
+    }
+
+    public String getPublicUrlForFileId(String fileId) {
+        log.debug("Entering in getPublicUrlForFileId Method...");
+
+        ResponseEntity<String> response = internalClientUtils.makeHmacRequest(clientName, HttpMethod.GET.name(), mediaServerBaseUrl, MediaConstant.publicUrlGetRoute + "?fileId=" + fileId + "&expiryDays=1", null);
+
+        try {
+            return response.getBody();
+        } catch (Exception e) {
+            throw new VacademyException(e.getMessage());
+        }
+    }
+
+    public byte[] getFileFromFileId(String fileId) {
+        String publicFileUrl = getPublicUrlForFileId(fileId);
+
+        try {
+            // Step 1: Open connection to the URL
+            URL url = new URL(publicFileUrl);
+            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+            connection.setRequestMethod("GET");
+
+            // Step 2: Read bytes from input stream
+            try (InputStream in = connection.getInputStream()) {
+                return in.readAllBytes();
+            }
+        } catch (IOException e) {
+            throw new VacademyException(e.getMessage());
         }
     }
 

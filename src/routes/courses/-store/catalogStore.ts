@@ -18,6 +18,7 @@ interface InstituteData {
 }
 
 interface CourseData {
+  id: string;
   package_name: string;
   thumbnail_file_id: string;
   level_name: string;

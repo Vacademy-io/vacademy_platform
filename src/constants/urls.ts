@@ -2,6 +2,15 @@ export const BASE_URL = "https://backend-stage.vacademy.io";
 //urls
 export const INSTITUTE_ID = "c70f40a5-e4d3-4b6c-a498-e612d0d4b133";
 
+export const GET_SLIDES_COUNT =
+    "/admin-core-service/open/slide/v1/slide-counts-by-source-type";
+
+export const SUBMIT_RATING_URL = `${BASE_URL}/admin-core-service/open/rating`;
+export const GET_ALL_USER_RATINGS = `${BASE_URL}/admin-core-service/open/rating/get-source-ratings`;
+export const GET_ALL_RATING_SUMMARY = `${BASE_URL}/admin-core-service/open/rating/summary`;
+export const GET_COURSE_DETAILS = `${BASE_URL}/admin-core-service/open/packages/v1/package-detail`;
+export const GET_ALL_COURSE_DETAILS = `${BASE_URL}/admin-core-service/open/v1/learner-study-library/init`;
+
 export const LOGIN_URL = `${BASE_URL}/auth-service/learner/v1/login`;
 export const LOGIN_URL_GOOGLE_GITHUB = `${BASE_URL}/auth-service/oauth2/authorization`;
 export const REQUEST_OTP = `${BASE_URL}/auth-service/learner/v1/request-otp`;
@@ -33,8 +42,9 @@ export const ADD_UPDATE_VIDEO_ACTIVITY = `${BASE_URL}/admin-core-service/learner
 export const ADD_UPDATE_DOCUMENT_ACTIVITY = `${BASE_URL}/admin-core-service/learner-tracking/v1/add-or-update-document-activity`;
 export const SUBMIT_SLIDE_ANSWERS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/video-question-slide/add-or-update`;
 export const INIT_STUDY_LIBRARY = `${BASE_URL}/admin-core-service/v1/learner-study-library/init-details`;
-export const MODULES_WITH_CHAPTERS = `${BASE_URL}/admin-core-service/v1/learner-study-library/modules-with-chapters`;
-export const GET_SLIDES = `${BASE_URL}/admin-core-service/v1/learner-study-library/slides`;
+export const MODULES_WITH_CHAPTERS = `${BASE_URL}/admin-core-service/open/v1/learner-study-library/modules-with-chapters`;
+export const CHAPTERS_WITH_SLIDES = `${BASE_URL}/admin-core-service/open/v1/learner-study-library/chapters-with-slides`;
+export const GET_SLIDES = `${BASE_URL}/admin-core-service/open/v1/learner-study-library/slides`;
 
 export const GET_DETAILS = `${BASE_URL}/media-service/get-details/ids`;
 export const GET_SIGNED_URL = `${BASE_URL}/media-service/get-signed-url`;
@@ -72,4 +82,4 @@ export const GET_USER_BASIC_DETAILS = `${BASE_URL}/auth-service/v1/user-details/
 
 export const urlInstituteDetails = `${BASE_URL}/admin-core-service/public/institute/v1/details`;
 export const urlCourseDetails = `${BASE_URL}/admin-core-service/open/packages/v1/search`;
-export const urlInstructor=`${BASE_URL}/auth-service/public/v1/users-of-status?instituteId=`;
+export const urlInstructor = `${BASE_URL}/auth-service/public/v1/users-of-status?instituteId=`;

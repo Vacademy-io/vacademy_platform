@@ -1,7 +1,0 @@
-ignoredBuiltDependencies:
-  - canvas
-  - core-js
-  - esbuild
-  - sharp
-onlyBuiltDependencies:
-  - '@swc/core'

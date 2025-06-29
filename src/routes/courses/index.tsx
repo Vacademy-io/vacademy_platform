@@ -9,7 +9,7 @@ export const Route = createFileRoute('/courses/')({
 
 validateSearch: (search) => {
     return {
-      instituteId: search.instituteId as string ?? '', // fallback to empty string
+      instituteId: search.instituteId as string ?? 'dd9b9687-56ee-467a-9fc4-8c5835eae7f9', // fallback to empty string
     }
   },
 

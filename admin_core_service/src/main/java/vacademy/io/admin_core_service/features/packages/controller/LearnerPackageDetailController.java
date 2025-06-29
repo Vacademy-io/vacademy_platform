@@ -29,4 +29,10 @@ public class LearnerPackageDetailController {
         Page<PackageDetailDTO> result = learnerPackageService.getLearnerPackageDetail(filterDTO, user,instituteId, page, size);
         return ResponseEntity.ok(result);
     }
+
+    @GetMapping("/package-detail")
+    public ResponseEntity<PackageDetailDTO> getPackageDetailById(@RequestParam("packageId") String packageId) {
+        PackageDetailDTO result = learnerPackageService.getPackageDetailById(packageId);
+        return ResponseEntity.ok(result);
+    }
 }

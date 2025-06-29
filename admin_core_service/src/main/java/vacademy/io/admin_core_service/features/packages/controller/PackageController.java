@@ -28,4 +28,10 @@ public class PackageController {
         return ResponseEntity.ok(result);
     }
 
+   @GetMapping("/package-detail")
+    public ResponseEntity<PackageDetailDTO> getPackageDetailById(@RequestParam("packageId") String packageId) {
+        PackageDetailDTO result = packageService.getPackageDetailById(packageId);
+        return ResponseEntity.ok(result);
+    }
+
 }

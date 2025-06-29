@@ -13,6 +13,7 @@ import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.common.institute.entity.session.SessionProjection;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface PackageRepository extends JpaRepository<PackageEntity, String> {
@@ -611,7 +612,60 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
         Pageable pageable
     );
 
-
+    @Query(value = """
+    SELECT
+        p.id AS id,
+        p.package_name AS packageName,
+        p.thumbnail_file_id AS thumbnailFileId,
+        p.is_course_published_to_catalaouge AS isCoursePublishedToCatalaouge,
+        p.course_preview_image_media_id AS coursePreviewImageMediaId,
+        p.course_banner_media_id AS courseBannerMediaId,
+        p.course_media_id AS courseMediaId,
+        p.why_learn AS whyLearnHtml,
+        p.who_should_learn AS whoShouldLearnHtml,
+        p.about_the_course AS aboutTheCourseHtml,
+        p.comma_separated_tags AS commaSeparetedTags,
+        p.course_depth AS courseDepth,
+        p.course_html_description AS courseHtmlDescriptionHtml,
+        p.created_at AS createdAt,
+        5.0 AS rating,
+        ps.id AS packageSessionId,
+        l.id AS levelId,
+        l.level_name AS levelName,
+        ARRAY_REMOVE(
+            ARRAY_AGG(DISTINCT
+                CASE
+                    WHEN :#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true
+                         OR fspm.status IN (:facultySubjectSessionStatus)
+                    THEN fspm.user_id
+                    ELSE NULL
+                END
+            ), NULL
+        ) AS facultyUserIds
+    FROM package p
+    JOIN package_session ps ON ps.package_id = p.id
+    JOIN level l ON l.id = ps.level_id
+    LEFT JOIN faculty_subject_package_session_mapping fspm
+        ON fspm.package_session_id = ps.id
+        AND fspm.subject_id IS NULL
+    WHERE p.id = :packageId
+      AND (
+          :#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true
+          OR ps.status IN (:packageSessionStatus)
+      )
+    GROUP BY
+        p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
+        p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
+        p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
+        p.course_depth, p.course_html_description, p.created_at,
+        ps.id, l.id, l.level_name
+    """,
+            nativeQuery = true)
+    Optional<PackageDetailProjection> getPackageDetailByIdWithSessionAndFacultyStatus(
+            @Param("packageId") String packageId,
+            @Param("packageSessionStatus") List<String> packageSessionStatus,
+            @Param("facultySubjectSessionStatus") List<String> facultySubjectSessionStatus
+    );
 
     @Query(value = """
     SELECT

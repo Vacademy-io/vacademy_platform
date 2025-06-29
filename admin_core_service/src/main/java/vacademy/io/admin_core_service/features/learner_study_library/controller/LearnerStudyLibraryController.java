@@ -9,6 +9,8 @@ import vacademy.io.admin_core_service.features.learner_study_library.dto.Learner
 import vacademy.io.admin_core_service.features.learner_study_library.service.LearnerStudyLibraryService;
 import vacademy.io.admin_core_service.features.slide.dto.SlideDTO;
 import vacademy.io.admin_core_service.features.slide.dto.SlideDetailProjection;
+import vacademy.io.admin_core_service.features.study_library.dto.ChapterDTOWithDetails;
+import vacademy.io.admin_core_service.features.study_library.service.StudyLibraryService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.institute.dto.SubjectDTO;
 
@@ -19,6 +21,9 @@ import java.util.List;
 public class LearnerStudyLibraryController {
     @Autowired
     private LearnerStudyLibraryService learnerStudyLibraryService;
+
+    @Autowired
+    private StudyLibraryService studyLibraryService;
 
     @GetMapping("/init-details")
     public ResponseEntity<List<LearnerSubjectProjection>> getLearnerStudyLibraryInitDetails(
@@ -40,5 +45,10 @@ public class LearnerStudyLibraryController {
     @GetMapping("/slides")
     public ResponseEntity<List<LearnerSlidesDetailDTO>> getLearnerSlidesByChapterId(@RequestParam String chapterId, @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok(learnerStudyLibraryService.getLearnerSlides(chapterId, user));
+    }
+
+    @GetMapping("/chapters-with-slides")
+    public ResponseEntity<List<ChapterDTOWithDetails>>getChaptersWithSlides(@RequestParam("moduleId") String subjectId, @RequestParam("packageSessionId") String packageSessionId) {
+        return ResponseEntity.ok(studyLibraryService.getChaptersWithSlides(subjectId, packageSessionId, null));
     }
 }

@@ -113,10 +113,15 @@ export const SlideMaterial = () => {
       await new Promise((resolve) => setTimeout(resolve, 300));
 
       console.log(
-        "Loading slide with source_type:",
+        "[SlideMaterial] Loading slide with source_type:",
         activeItem.source_type,
         "activeItem:",
         activeItem
+      );
+      console.log("[SlideMaterial] document_slide:", activeItem.document_slide);
+      console.log(
+        "[SlideMaterial] document_slide type:",
+        activeItem.document_slide?.type
       );
       switch (activeItem.source_type) {
         case "VIDEO": {
@@ -268,12 +273,19 @@ export const SlideMaterial = () => {
               </div>
             );
           } else if (activeItem.document_slide?.type === "CODE") {
-            // Code Editor Slide
             const publishedData = activeItem.document_slide.published_data;
+
             if (publishedData) {
+              console.log("[SlideMaterial] Creating CodeEditorSlide component");
               setContent(
                 <div className="h-full w-full animate-in fade-in slide-in-from-bottom-4 duration-700">
                   <CodeEditorSlide published_data={publishedData} />
+                </div>
+              );
+            } else {
+              setContent(
+                <div className="flex items-center justify-center h-full">
+                  <div className="text-neutral-500">No code data available</div>
                 </div>
               );
             }

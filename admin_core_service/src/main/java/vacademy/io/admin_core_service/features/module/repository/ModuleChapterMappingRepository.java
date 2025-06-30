@@ -64,7 +64,7 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
         LEFT JOIN chapter c ON c.id = mcm.chapter_id AND c.status IN (:chapterStatusList)
         LEFT JOIN chapter_package_session_mapping cpsm
             ON cpsm.chapter_id = c.id
-            AND cpsm.status != 'DELETED'
+            AND cpsm.status IN (:chapterStatusList)
             AND cpsm.package_session_id = :packageSessionId
         LEFT JOIN (
             SELECT

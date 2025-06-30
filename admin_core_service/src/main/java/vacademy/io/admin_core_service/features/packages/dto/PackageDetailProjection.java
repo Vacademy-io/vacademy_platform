@@ -26,4 +26,5 @@ public interface PackageDetailProjection {
     String getLevelId();
     String getLevelName();
     List<String> getFacultyUserIds();
+    List<String>getLevelIds();
 }

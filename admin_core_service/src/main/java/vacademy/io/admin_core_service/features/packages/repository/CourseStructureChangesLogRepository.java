@@ -40,6 +40,7 @@ public interface CourseStructureChangesLogRepository extends JpaRepository<Cours
         CAST(p_log.json_data AS jsonb)->>'courseHtmlDescriptionHtml' AS courseHtmlDescriptionHtml,
         l.id AS levelId,
         l.level_name AS levelName,
+        ARRAY_AGG(DISTINCT l.id) AS levelIds, -- ✅ Added line for array of levelIds
         ARRAY_REMOVE(ARRAY_AGG(DISTINCT p_log.user_id), NULL) AS instructors
     FROM course_structure_changes_log p_log
     JOIN package_session ps ON ps.package_id = p_log.source_id
@@ -72,43 +73,44 @@ public interface CourseStructureChangesLogRepository extends JpaRepository<Cours
         l.status,
         p_log.created_at
     ORDER BY p_log.source_id, l.id, p_log.created_at DESC
-    """,
-        countQuery = """
-        SELECT COUNT(*) FROM (
-            SELECT DISTINCT p_log.source_id, l.id
-            FROM course_structure_changes_log p_log
-            JOIN package_session ps ON ps.package_id = p_log.source_id
-            JOIN level l ON l.id = ps.level_id
-            WHERE p_log.source_type = 'PACKAGE'
-              AND (:instituteId IS NULL OR p_log.parent_id = :instituteId)
-              AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR l.id IN (:levelIds))
-              AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
-              AND (
-                  :#{#tags == null || #tags.isEmpty()} = true OR
-                  EXISTS (
-                      SELECT 1 FROM unnest(string_to_array(CAST(p_log.json_data AS jsonb)->>'commaSeparatedTags', ',')) AS tag
-                      WHERE tag ILIKE ANY (array[:tags])
-                  )
+""",
+
+            countQuery = """
+    SELECT COUNT(*) FROM (
+        SELECT DISTINCT p_log.source_id, l.id
+        FROM course_structure_changes_log p_log
+        JOIN package_session ps ON ps.package_id = p_log.source_id
+        JOIN level l ON l.id = ps.level_id
+        WHERE p_log.source_type = 'PACKAGE'
+          AND (:instituteId IS NULL OR p_log.parent_id = :instituteId)
+          AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR l.id IN (:levelIds))
+          AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
+          AND (
+              :#{#tags == null || #tags.isEmpty()} = true OR
+              EXISTS (
+                  SELECT 1 FROM unnest(string_to_array(CAST(p_log.json_data AS jsonb)->>'commaSeparatedTags', ',')) AS tag
+                  WHERE tag ILIKE ANY (array[:tags])
               )
-              AND (:#{#userIds == null || #userIds.isEmpty()} = true OR p_log.user_id IN (:userIds))
-              AND (:#{#logStatuses == null || #logStatuses.isEmpty()} = true OR p_log.status IN (:logStatuses))
-              AND EXISTS (
-                  SELECT 1 FROM package_session ps2
-                  WHERE ps2.package_id = p_log.source_id
-                  AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps2.status IN (:packageSessionStatus))
-              )
-        ) sub
-    """,
-        nativeQuery = true)
+          )
+          AND (:#{#userIds == null || #userIds.isEmpty()} = true OR p_log.user_id IN (:userIds))
+          AND (:#{#logStatuses == null || #logStatuses.isEmpty()} = true OR p_log.status IN (:logStatuses))
+          AND EXISTS (
+              SELECT 1 FROM package_session ps2
+              WHERE ps2.package_id = p_log.source_id
+              AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps2.status IN (:packageSessionStatus))
+          )
+    ) sub
+""",
+            nativeQuery = true)
     Page<PackageDetailProjection> getCourseRequestCatalogDetail(
-        @Param("instituteId") String instituteId,
-        @Param("levelIds") List<String> levelIds,
-        @Param("tags") List<String> tags,
-        @Param("userIds") List<String> userIds,
-        @Param("logStatuses") List<String> logStatuses,
-        @Param("packageSessionStatus") List<String> packageSessionStatus,
-        @Param("levelStatus") List<String> levelStatus,
-        Pageable pageable
+            @Param("instituteId") String instituteId,
+            @Param("levelIds") List<String> levelIds,
+            @Param("tags") List<String> tags,
+            @Param("userIds") List<String> userIds,
+            @Param("logStatuses") List<String> logStatuses,
+            @Param("packageSessionStatus") List<String> packageSessionStatus,
+            @Param("levelStatus") List<String> levelStatus,
+            Pageable pageable
     );
 
     @Query(value = """
@@ -118,7 +120,7 @@ WITH latest_log AS (
         p_log.source_id,
         p_log.json_data,
         p_log.status,
-        p_log.parent_id -- Include parent_id for filtering
+        p_log.parent_id
     FROM course_structure_changes_log p_log
     WHERE p_log.source_type = 'PACKAGE'
     ORDER BY p_log.source_id, p_log.id DESC
@@ -137,13 +139,22 @@ SELECT
     CAST(p_log.json_data AS jsonb)->>'tags' AS commaSeparetedTags,
     CAST(CAST(p_log.json_data AS jsonb)->>'courseDepth' AS INTEGER) AS courseDepth,
     CAST(p_log.json_data AS jsonb)->>'courseHtmlDescriptionHtml' AS courseHtmlDescriptionHtml,
-    ARRAY_AGG(DISTINCT l.level_name) AS levelName,
+
+    -- Representative (sample) level ID and name
+    MIN(l.id) AS levelId,
+    MIN(l.level_name) AS levelName,
+
+    -- Array of all distinct level names and IDs
+    ARRAY_AGG(DISTINCT l.level_name) AS levelNames,
+    ARRAY_AGG(DISTINCT l.id) AS levelIds,
 
     ARRAY_REMOVE(ARRAY_AGG(DISTINCT inst.user_id), NULL) AS instructors
+
 FROM latest_log p_log
 JOIN course_structure_changes_log inst ON inst.source_id = p_log.source_id AND inst.source_type = 'PACKAGE'
 JOIN package_session ps ON ps.package_id = p_log.source_id
 JOIN level l ON l.id = ps.level_id
+
 WHERE
     (:instituteId IS NULL OR p_log.parent_id = :instituteId)
     AND (:name IS NULL OR LOWER(CAST(p_log.json_data AS jsonb)->>'packageName') LIKE LOWER(CONCAT('%', CAST(:name AS TEXT), '%')))
@@ -151,13 +162,15 @@ WHERE
     AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
     AND (:#{#userIds == null || #userIds.isEmpty()} = true OR inst.user_id IN (:userIds))
     AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
+
 GROUP BY
     p_log.source_id,
     p_log.json_data,
     p_log.id,
     p_log.status
 """,
-        countQuery = """
+
+            countQuery = """
 SELECT COUNT(DISTINCT p_log.source_id)
 FROM course_structure_changes_log p_log
 JOIN package_session ps ON ps.package_id = p_log.source_id
@@ -173,14 +186,14 @@ WHERE p_log.source_type = 'PACKAGE'
         WHERE inst.source_id = p_log.source_id AND inst.source_type = 'PACKAGE' AND inst.user_id IN (:userIds)
     ))
 """,
-        nativeQuery = true)
+            nativeQuery = true)
     Page<PackageDetailProjection> getCatalogSearch(
-        @Param("name") String name,
-        @Param("userIds") List<String> userIds,
-        @Param("instituteId") String instituteId,
-        @Param("logStatuses") List<String> logStatuses,
-        @Param("packageSessionStatus") List<String> packageSessionStatus,
-        @Param("levelStatus") List<String> levelStatus,
-        Pageable pageable
+            @Param("name") String name,
+            @Param("userIds") List<String> userIds,
+            @Param("instituteId") String instituteId,
+            @Param("logStatuses") List<String> logStatuses,
+            @Param("packageSessionStatus") List<String> packageSessionStatus,
+            @Param("levelStatus") List<String> levelStatus,
+            Pageable pageable
     );
 }

@@ -58,7 +58,7 @@ public class LearnerPackageService {
             );
         }else{
             learnerPackageDetail= packageRepository.getLearnerPackageDetail(
-                    user.getId(),
+                    user.getUserId(),
                     instituteId,
                     learnerPackageFilterDTO.getLevelIds(),
                     List.of(PackageStatusEnum.ACTIVE.name()),
@@ -112,7 +112,8 @@ public class LearnerPackageService {
                     projection.getPackageSessionId(),
                     projection.getLevelId(),
                     projection.getLevelName(),
-                    instructors
+                    instructors,
+                    projection.getLevelIds()
             );
         }).toList();
 
@@ -164,7 +165,8 @@ public class LearnerPackageService {
                 projection.getPackageSessionId(),
                 projection.getLevelId(),
                 projection.getLevelName(),
-                instructors
+                instructors,
+                projection.getLevelIds()
         );
 
         return dto;

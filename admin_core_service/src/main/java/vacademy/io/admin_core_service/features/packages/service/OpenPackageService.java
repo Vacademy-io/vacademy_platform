@@ -106,7 +106,8 @@ public class OpenPackageService {
                     projection.getPackageSessionId(),
                     projection.getLevelId(),
                     projection.getLevelName(),
-                    instructors
+                    instructors,
+                    projection.getLevelIds()
             );
         }).toList();
 
@@ -157,7 +158,8 @@ public class OpenPackageService {
                 projection.getPackageSessionId(),
                 projection.getLevelId(),
                 projection.getLevelName(),
-                instructors
+                instructors,
+                projection.getLevelIds()
         );
 
         return dto;

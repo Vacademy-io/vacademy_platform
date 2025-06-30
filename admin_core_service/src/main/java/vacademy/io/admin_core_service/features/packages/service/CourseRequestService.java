@@ -105,7 +105,8 @@ public class CourseRequestService {
                 projection.getPackageSessionId(),
                 projection.getLevelId(),
                 projection.getLevelName(),
-                instructors
+                instructors,
+                    projection.getLevelIds()
             );
         }).toList();
 

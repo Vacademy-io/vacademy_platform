@@ -23,12 +23,6 @@ function CoursesContainerComponent() {
   // to get the instituteId and make its API call.
   return (
     <div className='min-h-screen bg-white'>
-      {/* <h1>Welcome to the Courses Section</h1>
-      <p>
-        The catalog below should display based on the 'instituteId' in the URL (e.g., /courses?instituteId=YOUR_UUID).
-      </p>
-      <hr /> */}
-      {/* <CatalogPageComponent /> */}
       <CourseCatalougePage/>
     </div>
   )

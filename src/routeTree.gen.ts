@@ -39,7 +39,6 @@ import { Route as DashboardNotificationsIndexImport } from './routes/dashboard/n
 import { Route as CoursesCourseDetailsIndexImport } from './routes/courses/course-details/index'
 import { Route as AssessmentReportsIndexImport } from './routes/assessment/reports/index'
 import { Route as AssessmentExaminationIndexImport } from './routes/assessment/examination/index'
-import { Route as StudyLibraryCourseDetailsCourseIdImport } from './routes/study-library/course-details/$courseId'
 import { Route as StudyLibraryLiveClassWaitingRoomIndexImport } from './routes/study-library/live-class/waiting-room/index'
 import { Route as StudyLibraryLiveClassEmbedIndexImport } from './routes/study-library/live-class/embed/index'
 import { Route as StudyLibraryCoursesLevelsIndexImport } from './routes/study-library/courses/levels/index'
@@ -233,13 +232,6 @@ const AssessmentExaminationIndexRoute = AssessmentExaminationIndexImport.update(
   } as any,
 )
 
-const StudyLibraryCourseDetailsCourseIdRoute =
-  StudyLibraryCourseDetailsCourseIdImport.update({
-    id: '/study-library/course-details/$courseId',
-    path: '/study-library/course-details/$courseId',
-    getParentRoute: () => rootRoute,
-  } as any)
-
 const StudyLibraryLiveClassWaitingRoomIndexRoute =
   StudyLibraryLiveClassWaitingRoomIndexImport.update({
     id: '/study-library/live-class/waiting-room/',
@@ -403,13 +395,6 @@ declare module '@tanstack/react-router' {
       path: '/user-profile'
       fullPath: '/user-profile'
       preLoaderRoute: typeof UserProfileIndexImport
-      parentRoute: typeof rootRoute
-    }
-    '/study-library/course-details/$courseId': {
-      id: '/study-library/course-details/$courseId'
-      path: '/study-library/course-details/$courseId'
-      fullPath: '/study-library/course-details/$courseId'
-      preLoaderRoute: typeof StudyLibraryCourseDetailsCourseIdImport
       parentRoute: typeof rootRoute
     }
     '/assessment/examination/': {
@@ -619,7 +604,6 @@ export interface FileRoutesByFullPath {
   '/register': typeof RegisterIndexRoute
   '/study-library': typeof StudyLibraryIndexRoute
   '/user-profile': typeof UserProfileIndexRoute
-  '/study-library/course-details/$courseId': typeof StudyLibraryCourseDetailsCourseIdRoute
   '/assessment/examination': typeof AssessmentExaminationIndexRoute
   '/assessment/reports': typeof AssessmentReportsIndexRoute
   '/courses/course-details': typeof CoursesCourseDetailsIndexRoute
@@ -662,7 +646,6 @@ export interface FileRoutesByTo {
   '/register': typeof RegisterIndexRoute
   '/study-library': typeof StudyLibraryIndexRoute
   '/user-profile': typeof UserProfileIndexRoute
-  '/study-library/course-details/$courseId': typeof StudyLibraryCourseDetailsCourseIdRoute
   '/assessment/examination': typeof AssessmentExaminationIndexRoute
   '/assessment/reports': typeof AssessmentReportsIndexRoute
   '/courses/course-details': typeof CoursesCourseDetailsIndexRoute
@@ -706,7 +689,6 @@ export interface FileRoutesById {
   '/register/': typeof RegisterIndexRoute
   '/study-library/': typeof StudyLibraryIndexRoute
   '/user-profile/': typeof UserProfileIndexRoute
-  '/study-library/course-details/$courseId': typeof StudyLibraryCourseDetailsCourseIdRoute
   '/assessment/examination/': typeof AssessmentExaminationIndexRoute
   '/assessment/reports/': typeof AssessmentReportsIndexRoute
   '/courses/course-details/': typeof CoursesCourseDetailsIndexRoute
@@ -751,7 +733,6 @@ export interface FileRouteTypes {
     | '/register'
     | '/study-library'
     | '/user-profile'
-    | '/study-library/course-details/$courseId'
     | '/assessment/examination'
     | '/assessment/reports'
     | '/courses/course-details'
@@ -793,7 +774,6 @@ export interface FileRouteTypes {
     | '/register'
     | '/study-library'
     | '/user-profile'
-    | '/study-library/course-details/$courseId'
     | '/assessment/examination'
     | '/assessment/reports'
     | '/courses/course-details'
@@ -835,7 +815,6 @@ export interface FileRouteTypes {
     | '/register/'
     | '/study-library/'
     | '/user-profile/'
-    | '/study-library/course-details/$courseId'
     | '/assessment/examination/'
     | '/assessment/reports/'
     | '/courses/course-details/'
@@ -879,7 +858,6 @@ export interface RootRouteChildren {
   RegisterIndexRoute: typeof RegisterIndexRoute
   StudyLibraryIndexRoute: typeof StudyLibraryIndexRoute
   UserProfileIndexRoute: typeof UserProfileIndexRoute
-  StudyLibraryCourseDetailsCourseIdRoute: typeof StudyLibraryCourseDetailsCourseIdRoute
   AssessmentExaminationIndexRoute: typeof AssessmentExaminationIndexRoute
   AssessmentReportsIndexRoute: typeof AssessmentReportsIndexRoute
   CoursesCourseDetailsIndexRoute: typeof CoursesCourseDetailsIndexRoute
@@ -922,8 +900,6 @@ const rootRouteChildren: RootRouteChildren = {
   RegisterIndexRoute: RegisterIndexRoute,
   StudyLibraryIndexRoute: StudyLibraryIndexRoute,
   UserProfileIndexRoute: UserProfileIndexRoute,
-  StudyLibraryCourseDetailsCourseIdRoute:
-    StudyLibraryCourseDetailsCourseIdRoute,
   AssessmentExaminationIndexRoute: AssessmentExaminationIndexRoute,
   AssessmentReportsIndexRoute: AssessmentReportsIndexRoute,
   CoursesCourseDetailsIndexRoute: CoursesCourseDetailsIndexRoute,
@@ -984,7 +960,6 @@ export const routeTree = rootRoute
         "/register/",
         "/study-library/",
         "/user-profile/",
-        "/study-library/course-details/$courseId",
         "/assessment/examination/",
         "/assessment/reports/",
         "/courses/course-details/",
@@ -1049,9 +1024,6 @@ export const routeTree = rootRoute
     },
     "/user-profile/": {
       "filePath": "user-profile/index.tsx"
-    },
-    "/study-library/course-details/$courseId": {
-      "filePath": "study-library/course-details/$courseId.tsx"
     },
     "/assessment/examination/": {
       "filePath": "assessment/examination/index.tsx"

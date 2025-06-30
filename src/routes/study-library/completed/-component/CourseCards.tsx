@@ -1,168 +1,196 @@
-import React, { useEffect, useState } from 'react';
-import { StarIcon } from 'lucide-react';
+import React, { useEffect, useState } from "react";
+import { StarIcon } from "lucide-react";
+import { useRouter } from "@tanstack/react-router";
 
 interface Instructor {
-  id: string;
-  full_name: string;
-  image_url?: string;
+    id: string;
+    full_name: string;
+    image_url?: string;
 }
 
 interface CourseCardProps {
-  package_name: string;
-  level_name: string;
-  thumbnailUrl: string;
-  instructors: Instructor[];
-  rating: number;
-  percentage_completed: number;
-  description: string;
-  tags: string[];
-  studentCount?: number;
+    courseId: string;
+    package_name: string;
+    level_name: string;
+    thumbnailUrl: string;
+    instructors: Instructor[];
+    rating: number;
+    percentage_completed: number;
+    description: string;
+    tags: string[];
+    studentCount?: number;
 }
 
-const fallbackImage = '/images/placeholder-course.jpg';
-const fallbackInstructorImage = 'https://api.dicebear.com/7.x/thumbs/svg?seed=anon';
+const fallbackImage = "/images/placeholder-course.jpg";
+const fallbackInstructorImage =
+    "https://api.dicebear.com/7.x/thumbs/svg?seed=anon";
 
 const CourseCard: React.FC<CourseCardProps> = ({
-  package_name,
-  level_name,
-  thumbnailUrl,
-  instructors,
-  rating,
-  percentage_completed,
-  description,
-  tags,
-  studentCount,
+    courseId,
+    package_name,
+    level_name,
+    thumbnailUrl,
+    instructors,
+    rating,
+    percentage_completed,
+    description,
+    tags,
+    studentCount,
 }) => {
-  const [courseImageUrl, setCourseImageUrl] = useState(thumbnailUrl);
-  const [loadingImage, setLoadingImage] = useState(true);
-  //percenteatg
-  console.log("complete_percentage", percentage_completed);
-  const instructor = instructors[0];
-  const instructorName = instructor?.full_name || 'Unknown Instructor';
-  const instructorImage = instructor?.image_url || fallbackInstructorImage;
+    const [courseImageUrl, setCourseImageUrl] = useState(thumbnailUrl);
+    const [loadingImage, setLoadingImage] = useState(true);
+    //percenteatg
+    console.log("complete_percentage", percentage_completed);
+    const instructor = instructors[0];
+    const instructorName = instructor?.full_name || "Unknown Instructor";
+    const instructorImage = instructor?.image_url || fallbackInstructorImage;
 
-  const ratingValue = rating || 0;
+    const ratingValue = rating || 0;
 
-  // Simulate image loading state
-  useEffect(() => {
-    setCourseImageUrl(thumbnailUrl);
-    setLoadingImage(true);
-  }, [thumbnailUrl]);
+    // Simulate image loading state
+    useEffect(() => {
+        setCourseImageUrl(thumbnailUrl);
+        setLoadingImage(true);
+    }, [thumbnailUrl]);
 
-  const getLevelColor = () => {
-    switch (level_name.toLowerCase()) {
-      case 'beginner':
-        return 'bg-green-100 text-green-700';
-      case 'intermediate':
-        return 'bg-yellow-100 text-yellow-700';
-      case 'advanced':
-        return 'bg-red-100 text-red-700';
-      default:
-        return 'bg-blue-100 text-blue-600';
-    }
-  };
+    const router = useRouter();
+    const handleViewCoureseDetails = (id: string) => {
+        // console.log("course-detailsIdis",id);
+        router.navigate({
+            to: "/study-library/course-details",
+            search: { courseId: id },
+        });
+    };
 
-  return (
-    <div className="bg-white rounded-lg shadow-lg overflow-hidden flex flex-col">
-      <div className="w-full h-48 bg-gray-200 flex items-center justify-center relative">
-        {loadingImage && (
-          <div className="absolute inset-0 flex items-center justify-center bg-gray-200 bg-opacity-75">
-            <div className="text-gray-500">Loading...</div>
-          </div>
-        )}
-        <img
-          src={courseImageUrl}
-          alt={package_name}
-          loading="lazy"
-          className={`w-full h-full object-cover transition-opacity duration-300 ${loadingImage ? 'opacity-0' : 'opacity-100'}`}
-          onLoad={() => setLoadingImage(false)}
-          onError={() => {
-            setCourseImageUrl(fallbackImage);
-            setLoadingImage(false);
-          }}
-        />
-      </div>
+    const getLevelColor = () => {
+        switch (level_name.toLowerCase()) {
+            case "beginner":
+                return "bg-green-100 text-green-700";
+            case "intermediate":
+                return "bg-yellow-100 text-yellow-700";
+            case "advanced":
+                return "bg-red-100 text-red-700";
+            default:
+                return "bg-blue-100 text-blue-600";
+        }
+    };
 
-      <div className="p-4 flex flex-col flex-grow">
-        <div className="flex justify-between items-start mb-2">
-          <h3 className="text-lg font-semibold text-gray-800 truncate" title={package_name}>
-            {package_name}
-          </h3>
-          <span className={`text-xs font-semibold px-2 py-1 rounded-sm ${getLevelColor()}`}>
-            {level_name}
-          </span>
+    return (
+        <div className="bg-white rounded-lg shadow-lg overflow-hidden flex flex-col">
+            <div className="w-full h-48 bg-gray-200 flex items-center justify-center relative">
+                {loadingImage && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-gray-200 bg-opacity-75">
+                        <div className="text-gray-500">Loading...</div>
+                    </div>
+                )}
+                <img
+                    src={courseImageUrl}
+                    alt={package_name}
+                    loading="lazy"
+                    className={`w-full h-full object-cover transition-opacity duration-300 ${loadingImage ? "opacity-0" : "opacity-100"}`}
+                    onLoad={() => setLoadingImage(false)}
+                    onError={() => {
+                        setCourseImageUrl(fallbackImage);
+                        setLoadingImage(false);
+                    }}
+                />
+            </div>
+
+            <div className="p-4 flex flex-col flex-grow">
+                <div className="flex justify-between items-start mb-2">
+                    <h3
+                        className="text-lg font-semibold text-gray-800 truncate"
+                        title={package_name}
+                    >
+                        {package_name}
+                    </h3>
+                    <span
+                        className={`text-xs font-semibold px-2 py-1 rounded-sm ${getLevelColor()}`}
+                    >
+                        {level_name}
+                    </span>
+                </div>
+
+                <p
+                    className="text-sm text-gray-600 mb-3 flex-grow line-clamp-3"
+                    title={description}
+                >
+                    {description}
+                </p>
+
+                <div className="flex items-center mb-3">
+                    <img
+                        src={instructorImage}
+                        alt={instructorName}
+                        className="w-8 h-8 rounded-full mr-2 object-cover"
+                    />
+                    {instructors.map((instructor, index) => (
+                        <span key={instructor.id}>
+                            {instructor.full_name}
+                            {index !== instructors.length - 1 ? ", " : ""}
+                        </span>
+                    ))}
+                </div>
+
+                <div className="mb-3 min-h-[24px]">
+                    {tags && tags.length > 0 ? (
+                        tags.slice(0, 3).map((tag) => (
+                            <span
+                                key={tag}
+                                className="text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded-full mr-1 mb-1 inline-block"
+                            >
+                                {tag}
+                            </span>
+                        ))
+                    ) : (
+                        <span className="text-xs text-gray-400 italic">
+                            No tags available
+                        </span>
+                    )}
+                    {tags && tags.length > 3 && (
+                        <span className="text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded-full mr-1 mb-1 inline-block">
+                            + {tags.length - 3} more
+                        </span>
+                    )}
+                </div>
+
+                <div className="flex items-center text-sm text-gray-600 mb-4">
+                    {[...Array(5)].map((_, i) => (
+                        <StarIcon
+                            key={i}
+                            className={`w-5 h-5 ${i < Math.floor(ratingValue) ? "text-yellow-400" : "text-gray-300"}`}
+                        />
+                    ))}
+                    <span className="ml-1">{ratingValue.toFixed(1)}</span>
+                    {studentCount !== undefined && (
+                        <span className="ml-2 text-gray-500">
+                            ({studentCount} students)
+                        </span>
+                    )}
+                </div>
+
+                <div className="mb-4">
+                    <div className="flex justify-between items-center mb-1 text-sm text-gray-600">
+                        <span>Course Progress</span>
+                        <span>{percentage_completed}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div
+                            className="bg-blue-600 h-2 rounded-full"
+                            style={{ width: `${percentage_completed}%` }}
+                        ></div>
+                    </div>
+                </div>
+
+                <button
+                    className="mt-auto w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors"
+                    onClick={() => handleViewCoureseDetails(courseId)}
+                >
+                    View Course
+                </button>
+            </div>
         </div>
-
-        <p className="text-sm text-gray-600 mb-3 flex-grow line-clamp-3" title={description}>
-          {description}
-        </p>
-
-        <div className="flex items-center mb-3">
-          <img
-            src={instructorImage}
-            alt={instructorName}
-            className="w-8 h-8 rounded-full mr-2 object-cover"
-          />
-          {instructors.map((instructor, index) => (
-            <span key={instructor.id}>
-              {instructor.full_name}
-              {index !== instructors.length - 1 ? ', ' : ''}
-            </span>
-          ))}
-        </div>
-
-        <div className="mb-3 min-h-[24px]">
-          {tags && tags.length > 0 ? (
-            tags.slice(0, 3).map((tag) => (
-              <span
-                key={tag}
-                className="text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded-full mr-1 mb-1 inline-block"
-              >
-                {tag}
-              </span>
-            ))
-          ) : (
-            <span className="text-xs text-gray-400 italic">No tags available</span>
-          )}
-          {tags && tags.length > 3 && (
-            <span className="text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded-full mr-1 mb-1 inline-block">
-              + {tags.length - 3} more
-            </span>
-          )}
-        </div>
-
-        <div className="flex items-center text-sm text-gray-600 mb-4">
-          {[...Array(5)].map((_, i) => (
-            <StarIcon
-              key={i}
-              className={`w-5 h-5 ${i < Math.floor(ratingValue) ? 'text-yellow-400' : 'text-gray-300'}`}
-            />
-          ))}
-          <span className="ml-1">{ratingValue.toFixed(1)}</span>
-          {studentCount !== undefined && (
-            <span className="ml-2 text-gray-500">({studentCount} students)</span>
-          )}
-        </div>
-
-        <div className="mb-4">
-          <div className="flex justify-between items-center mb-1 text-sm text-gray-600">
-            <span>Course Progress</span>
-            <span>{percentage_completed}%</span>
-          </div>
-          <div className="w-full bg-gray-200 rounded-full h-2">
-            <div
-              className="bg-blue-600 h-2 rounded-full"
-              style={{ width: `${percentage_completed}%` }}
-            ></div>
-          </div>
-        </div>
-
-        <button className="mt-auto w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors">
-          View Course
-        </button>
-      </div>
-    </div>
-  );
+    );
 };
 
 export default CourseCard;

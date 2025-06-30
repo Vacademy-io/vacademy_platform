@@ -187,9 +187,8 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
 
                 return (
                   <CourseCard
-                  
                     key={index}
-                    package_session_id={course.package_session_id}
+                    courseId={course.id}
                     package_name={course.package_name || 'Untitled Package'}
                     level_name={course.level_name || 'Beginner'}
                     thumbnailUrl={currentUrl}

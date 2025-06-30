@@ -10,6 +10,7 @@ import {
     Question,
     CaretDown,
     CaretRight,
+    Export,
 } from "phosphor-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -22,7 +23,6 @@ import {
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import {
-    DialogTrigger,
     Dialog,
     DialogContent,
     DialogDescription,
@@ -59,9 +59,8 @@ import { transformApiDataToCourseData } from "../-utils/helper";
 import { handleGetAllCourseDetails } from "../-services/get-course-details";
 import axios from "axios";
 import { urlInstituteDetails } from "@/constants/urls";
-import CourseListHeader from "../../-component/CourseListHeader";
-import { MyButton } from "@/components/design-system/button";
-import { LoginForm } from "@/components/common/LoginPages/sections/login-form";
+import { getInstituteId } from "@/constants/helper";
+import { Preferences } from "@capacitor/preferences";
 
 type DialogType = "subject" | "module" | "chapter" | "slide" | null;
 
@@ -186,6 +185,18 @@ export const CourseDetailsPage = () => {
     const [selectedLevel, setSelectedLevel] = useState<string>("");
     const router = useRouter();
     const searchParams = router.state.location.search;
+    const [instituteId, setInstituteId] = useState<string | null>(null);
+
+    useEffect(() => {
+        const fetchInstituteAndUserId = async () => {
+            const instituteResult = await Preferences.get({
+                key: "InstituteId",
+            });
+            setInstituteId(instituteResult.value || null);
+        };
+
+        fetchInstituteAndUserId();
+    }, []);
 
     const [
         packageSessionIdForCurrentLevel,
@@ -203,19 +214,17 @@ export const CourseDetailsPage = () => {
         null
     );
 
-    const [instituteDetails, setInstituteDetails] = useState(null);
-
     // ✅ Fetch institute details
     useEffect(() => {
         const FetchInstituteDetails = async () => {
+            const instituteId = await getInstituteId();
             try {
                 const response = await axios.get(
-                    `${urlInstituteDetails}/${searchParams.instituteId}`
+                    `${urlInstituteDetails}/${instituteId}`
                 );
                 setPackageSessionIds(
                     findIdByPackageId(response.data.batches_for_sessions)
                 );
-                setInstituteDetails(response.data);
                 setPackageSessionIdForCurrentLevel(
                     getIdByLevelAndSession(
                         response.data.batches_for_sessions,
@@ -229,12 +238,12 @@ export const CourseDetailsPage = () => {
         };
 
         FetchInstituteDetails();
-    }, [searchParams.instituteId, selectedSession, selectedLevel]);
+    }, [instituteId, selectedSession, selectedLevel]);
 
     // Only run the query if instituteId is available
     const { data: studyLibraryData } = useSuspenseQuery(
         handleGetAllCourseDetails({
-            instituteId: searchParams.instituteId || "",
+            instituteId: instituteId || "",
         })
     );
 
@@ -2109,39 +2118,6 @@ export const CourseDetailsPage = () => {
         );
     };
 
-    const handleAddSlide = (parentId: string) => {
-        const parts = parentId.split("|");
-        let subjectId = parts[2] || "";
-        let moduleId = parts[3] || "";
-        let chapterId = parts[4] || "";
-
-        // Handle course structure 2 - extract IDs from slidesResult
-        if (selectedCourse?.level === 2) {
-            // For course structure 2, all slides share the same subject, module, and chapter
-            const firstSlide = slidesResult[0];
-            if (firstSlide) {
-                subjectId = firstSlide.subjectId || "";
-                moduleId = firstSlide.moduleId || "";
-                chapterId = firstSlide.chapterId || "";
-            }
-        }
-
-        const navigationParams = {
-            courseId: router.state.location.search.courseId ?? "",
-            levelId: selectedLevel,
-            subjectId,
-            moduleId,
-            chapterId,
-            slideId: "", // Empty for new slide
-            sessionId: selectedSession,
-        };
-
-        router.navigate({
-            to: "/study-library/courses/course-details/subjects/modules/chapters/slides",
-            search: navigationParams,
-        });
-    };
-
     const renderTreeItem = (
         label: string,
         id: string,
@@ -2156,25 +2132,96 @@ export const CourseDetailsPage = () => {
             slideId?: string;
         }
     ) => {
-        return (
-            <div className={`flex items-center gap-2 py-1  `}>
-                {!isAddButton && hasChildren && type && (
-                    <button onClick={() => toggleExpand(id)} className="p-1">
-                        {expandedItems[id] ? (
-                            <CaretDown className="size-4" />
-                        ) : (
-                            <CaretRight className="size-4" />
-                        )}
-                    </button>
-                )}
+        const handleSlideClick = (e: React.MouseEvent) => {
+            e.stopPropagation(); // Prevent event bubbling
 
-                <div className="flex w-full items-center justify-between">
-                    <span className="flex items-center gap-2">
+            const chapterId = parentIds?.chapterId ?? "";
+            const subjectId = parentIds?.subjectId ?? "";
+            const moduleId = parentIds?.moduleId ?? "";
+            const slideId = parentIds?.slideId ?? "";
+
+            const navigationParams = {
+                courseId: router.state.location.search.courseId ?? "",
+                levelId: selectedLevel,
+                subjectId,
+                moduleId,
+                chapterId,
+                slideId,
+                sessionId: selectedSession,
+            };
+
+            router.navigate({
+                to: "/study-library/courses/course-details/subjects/modules/chapters/slides",
+                search: navigationParams,
+            });
+        };
+
+        const handleExportClick = (e: React.MouseEvent) => {
+            e.stopPropagation(); // Prevent event bubbling
+
+            const chapterId = parentIds?.chapterId ?? "";
+            const subjectId = parentIds?.subjectId ?? "";
+            const moduleId = parentIds?.moduleId ?? "";
+            const slideId = parentIds?.slideId ?? "";
+
+            const navigationParams = {
+                courseId: router.state.location.search.courseId ?? "",
+                levelId: selectedLevel,
+                subjectId,
+                moduleId,
+                chapterId,
+                slideId,
+                sessionId: selectedSession,
+            };
+
+            router.navigate({
+                to: "/study-library/courses/course-details/subjects/modules/chapters/slides",
+                search: navigationParams,
+            });
+        };
+        return (
+            <>
+                <div
+                    className={`flex items-center gap-2 py-1 ${type === "slide" ? "cursor-pointer hover:text-blue-600" : ""}`}
+                >
+                    {!isAddButton && hasChildren && type && (
+                        <button
+                            onClick={() => toggleExpand(id)}
+                            className="p-1"
+                        >
+                            {expandedItems[id] ? (
+                                <CaretDown className="size-4" />
+                            ) : (
+                                <CaretRight className="size-4" />
+                            )}
+                        </button>
+                    )}
+                </div>
+                <div
+                    className={`flex w-full pr-4 items-center justify-between ${type === "slide" ? "cursor-pointer hover:text-blue-600" : ""}`}
+                >
+                    <span
+                        className="flex items-center gap-2"
+                        onClick={
+                            type === "slide"
+                                ? (e) => handleSlideClick(e)
+                                : undefined
+                        }
+                    >
                         {!hasChildren && <div className="size-4" />}
                         {label}
                     </span>
+                    {type === "slide" && (
+                        <button
+                            onClick={(e) => handleExportClick(e)}
+                            className="ml-2 rounded-full p-1 hover:bg-gray-100"
+                            title="Export Slide"
+                        >
+                            <Export className="size-4 text-gray-600" />
+                        </button>
+                    )}
                 </div>
-            </div>
+            </>
         );
     };
 
@@ -2303,7 +2350,7 @@ export const CourseDetailsPage = () => {
                     return <div className="p-4">Loading slides...</div>;
                 return (
                     <div className="rounded-lg border p-4 px-0">
-                        {slidesResult.map((slide) => (
+                        {slidesResult?.map((slide) => (
                             <div key={slide.id}>
                                 {renderTreeItem(
                                     slide.title,
@@ -2855,10 +2902,6 @@ export const CourseDetailsPage = () => {
     return (
         <>
             <div className="flex min-h-screen flex-col bg-white w-full">
-                <CourseListHeader
-                    fileId={instituteDetails?.institute_logo_file_id || ""}
-                    instituteId={instituteDetails?.id}
-                />
                 {/* Top Banner */}
                 <div className="relative h-[300px]">
                     {!form.watch("courseData").courseBannerMediaId ? (
@@ -3349,22 +3392,6 @@ export const CourseDetailsPage = () => {
                                         </>
                                     )}
                                 </div>
-                                <Dialog>
-                                    <DialogTrigger>
-                                        <MyButton
-                                            type="button"
-                                            scale="medium"
-                                            buttonType="primary"
-                                            layoutVariant="default"
-                                            className="mt-4 w-full"
-                                        >
-                                            Enroll
-                                        </MyButton>
-                                    </DialogTrigger>
-                                    <DialogContent>
-                                        <LoginForm variant="dialog" />
-                                    </DialogContent>
-                                </Dialog>
                             </div>
                         </div>
                     </div>

@@ -5,11 +5,13 @@ import { Batch, Institute, Student } from "@/types/user/user-detail";
 
 // Fetch student details from API
 export const fetchStudentDetails = async (instituteId: string, userId: string) => {
+  
   const response = await authenticatedAxiosInstance({
     method: "GET",
     url: STUDENT_DETAIL,
     params: { instituteId, userId },
   });
+  
   return response;
 };
 
@@ -18,6 +20,7 @@ export const getStudentDetails = (instituteId?: string, userId?: string) => {
   return {
     queryKey: ["STUDENT_DETAILS", instituteId, userId],
     queryFn: async () => {
+      console.log("[getStudentDetails.queryFn] Called with:", { instituteId, userId });
       if (!instituteId || !userId) {
         throw new Error("Institute ID and User ID are required");
       }
@@ -35,21 +38,24 @@ export const fetchAndStoreStudentDetails = async (
   userId: string
 ) => {
   try {
+    
     const { queryFn } = getStudentDetails(instituteId, userId);
     const response = await queryFn();
-
+   
     if (response.status === 200) {
       const students: Student[] = response.data;
-
+     
       await Preferences.set({
         key: "students",
         value: JSON.stringify(students),
       });
+      
 
       const instituteData = await Preferences.get({ key: "InstituteDetails" });
+     
       if (!instituteData.value) throw new Error("No institute data found!");
-
       const institute: Institute = JSON.parse(instituteData.value);
+
       if (!institute.batches_for_sessions)
         throw new Error("No batches found in institute details!");
 
@@ -57,16 +63,18 @@ export const fetchAndStoreStudentDetails = async (
       const matchedSessions = institute.batches_for_sessions.filter((batch: Batch) =>
         packageSessionIds.includes(batch.id)
       );
+      
 
       await Preferences.set({
         key: "sessionList",
         value: JSON.stringify(matchedSessions),
       });
 
-      // ✅ Now safe to call
       await storeMappedSessions();
     } else if (response.status === 201) {
       const student: Student = response.data[0];
+      
+
       await Preferences.set({
         key: "StudentDetails",
         value: JSON.stringify(student),
@@ -83,10 +91,12 @@ export const fetchAndStoreStudentDetails = async (
 // ✅ Store mapped sessions from Preferences
 const storeMappedSessions = async () => {
   try {
+  
+
     const studentData = await Preferences.get({ key: "students" });
-    const students: Student[] = studentData.value
-      ? JSON.parse(studentData.value)
-      : [];
+   
+
+    const students: Student[] = studentData.value ? JSON.parse(studentData.value) : [];
 
     const instituteData = await Preferences.get({ key: "InstituteDetails" });
     if (!instituteData.value) throw new Error("No institute data found!");
@@ -97,6 +107,8 @@ const storeMappedSessions = async () => {
     const matchedSessions = institute.batches_for_sessions?.filter((batch: Batch) =>
       sessionIds.includes(batch.id)
     ) || [];
+
+    console.log("[storeMappedSessions] Final matched sessions:", matchedSessions);
 
     await Preferences.set({
       key: "sessionList",
@@ -111,6 +123,8 @@ const storeMappedSessions = async () => {
 export const getStoredStudentDetails = async (): Promise<Student[] | null> => {
   try {
     const { value } = await Preferences.get({ key: "students" });
+    console.log("[getStoredStudentDetails] Retrieved value:", value);
+
     return value ? (JSON.parse(value) as Student[]) : null;
   } catch (error) {
     console.error("Error parsing stored student details:", error);
@@ -122,9 +136,12 @@ export const getStoredStudentDetails = async (): Promise<Student[] | null> => {
 export const getMappedSessions = async (): Promise<Batch[] | null> => {
   try {
     let studentData = await Preferences.get({ key: "students" });
+    console.log("[getMappedSessions] Initial student data:", studentData);
 
     if (!studentData.value) {
       studentData = await Preferences.get({ key: "StudentDetails" });
+      console.log("[getMappedSessions] Fallback student data:", studentData);
+
       if (!studentData.value) {
         console.warn("No student data found! Returning null.");
         return null;
@@ -140,6 +157,7 @@ export const getMappedSessions = async (): Promise<Batch[] | null> => {
     }
 
     const institute: Institute = JSON.parse(instituteData.value);
+    console.log("[getMappedSessions] Institute:", institute);
 
     if (!institute.batches_for_sessions || institute.batches_for_sessions.length === 0) {
       console.warn("No batches found in institute details! Returning null.");
@@ -149,6 +167,8 @@ export const getMappedSessions = async (): Promise<Batch[] | null> => {
     const matchedSessions = institute.batches_for_sessions.filter(
       (batch: Batch) => batch.id === student.package_session_id
     );
+
+    console.log("[getMappedSessions] Final matched sessions:", matchedSessions);
 
     if (matchedSessions.length === 0) {
       console.warn("No matching sessions found!");
@@ -161,4 +181,3 @@ export const getMappedSessions = async (): Promise<Batch[] | null> => {
     return null;
   }
 };
- 

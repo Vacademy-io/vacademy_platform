@@ -268,7 +268,7 @@ export const SlideMaterial = () => {
             setContent(
               <div className="h-full w-full animate-in fade-in slide-in-from-bottom-4 duration-700">
                 <div className="h-full w-full bg-white rounded-lg overflow-hidden border border-neutral-200">
-                  <PresentationViewer slideTitle={activeItem.title} />
+                  <PresentationViewer slide={activeItem} />
                 </div>
               </div>
             );

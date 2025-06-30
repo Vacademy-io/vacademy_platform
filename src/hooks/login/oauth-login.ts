@@ -2,30 +2,6 @@ import { toast } from 'sonner';
 import { setTokenInStorage, isTokenExpired } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
 
-// export type OAuthProvider = 'google' | 'github';
-
-
-// export const handleOAuthLogin = (
-//   provider: OAuthProvider
-// ) => {
-//   console.log("handleOathLogin Called");
-//   try {
-//     const stateObj = {
-//       from: `${window.location.origin}/login/oauth/redirect?`};
-//     const base64State = btoa(JSON.stringify(stateObj));
-
-//     const loginUrl = `https://backend-stage.vacademy.io/auth-service/oauth2/authorization/${provider}?state=${encodeURIComponent(
-//       base64State
-//     )}`;
-
-//     console.log('[OAuthLogin] Redirecting to:', loginUrl);
-//     window.location.href = loginUrl;
-//   } catch (error) {
-//     console.error('[OAuthLogin] Error during OAuth login initiation:', error);
-//     toast.error('Failed to initiate login. Please try again.');
-//   }
-// };
-
 export const handleLoginOAuthCallback = async () => {
   const urlParams = new URLSearchParams(window.location.search);
  console.log("we are in handle LoginAuthcall")

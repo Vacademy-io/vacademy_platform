@@ -41,6 +41,7 @@ export function LoginForm() {
 
   useEffect(() => {
     const handleOAuthCallback = async () => {
+      console.log("called ...................");
       const urlParams = new URLSearchParams(window.location.search);
       const accessToken = urlParams.get("accessToken");
       const refreshToken = urlParams.get("refreshToken");

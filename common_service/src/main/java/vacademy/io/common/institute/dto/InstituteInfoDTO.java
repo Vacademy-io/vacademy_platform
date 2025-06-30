@@ -44,4 +44,5 @@ public class InstituteInfoDTO {
     private List<PackageGroupDTO>packageGroups;
     private String letterHeadFileId;
     private List<String> tags;
+    private String setting;
 }

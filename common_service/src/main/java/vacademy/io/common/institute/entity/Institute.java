@@ -78,6 +78,9 @@ public class Institute {
     @Column(name = "subdomain")
     private String subdomain;
 
+    @Column(name = "setting_json")
+    private String setting;
+
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Date updatedAt;
 

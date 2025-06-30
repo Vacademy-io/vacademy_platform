@@ -1,9 +1,11 @@
 package vacademy.io.admin_core_service.features.institute.service;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import vacademy.io.admin_core_service.features.institute.constants.ConstantsSettingDefaultValue;
 import vacademy.io.admin_core_service.features.institute.constants.ConstantsSubModuleList;
 import vacademy.io.admin_core_service.features.institute.dto.InstituteDashboardResponse;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
@@ -28,6 +30,7 @@ import java.util.Objects;
 import java.util.Optional;
 
 
+@Slf4j
 @Service
 public class UserInstituteService {
 
@@ -45,6 +48,9 @@ public class UserInstituteService {
     private PackageRepository packageRepository;
     @Autowired
     private SubjectPackageSessionRepository subjectPackageSessionRepository;
+
+    @Autowired
+    private InstituteSettingService instituteSettingService;
 
     public static InstituteInfoDTO getInstituteDetails(Institute institute) {
         InstituteInfoDTO instituteInfoDTO = new InstituteInfoDTO();
@@ -78,6 +84,11 @@ public class UserInstituteService {
 
             if (institute.getInstituteName() != null) {
                 Institute savedInstitute = instituteRepository.save(institute);
+                try{
+                    instituteSettingService.createDefaultNamingSetting(savedInstitute, ConstantsSettingDefaultValue.getDefaultNamingSettingRequest());
+                } catch (Exception e) {
+                    log.error("Error Occurred in Creating Default Setting: "+e.getMessage());
+                }
 
                 createInstituteSubModulesMapping(allSubModules, savedInstitute);
 

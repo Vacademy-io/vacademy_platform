@@ -3,7 +3,6 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { LayoutContainer } from "@/components/common/layout-container/layout-container";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
 import { fetchStaticData } from "./-lib/utils";
-import { DashboardTabs } from "./-components/DashboardTabs";
 import { Helmet } from "react-helmet";
 import { fetchStudentDetails } from "@/services/studentDetails";
 import { getUserId } from "@/constants/getUserId";
@@ -95,156 +94,174 @@ export function DashboardComponent() {
   }, []);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3 md:space-y-4">
       <Helmet>
         <title>Dashboard</title>
         <meta name="description" content="Dashboard page" />
       </Helmet>
       
-      {/* Compact Welcome Header */}
-      <div className="flex items-center justify-between bg-gradient-to-r from-white to-primary-50/30 p-5 rounded-lg border border-neutral-200">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-gradient-to-br from-primary-50 to-primary-100 border border-primary-200 rounded-lg">
-            <svg className="w-5 h-5 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2-2z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5a2 2 0 012-2h2a2 2 0 012 2v0M8 5a2 2 0 012-2h2a2 2 0 012 2v0" />
-            </svg>
+      {/* Compact Professional Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0">
+        <div className="flex items-center gap-2.5">
+          <div className="w-9 h-9 md:w-10 md:h-10 bg-neutral-100 rounded-full flex items-center justify-center">
+            <span className="text-neutral-700 font-medium text-sm md:text-base">{username?.charAt(0)?.toUpperCase()}</span>
           </div>
           <div>
-            <h1 className="text-lg font-semibold text-neutral-900">
-              Welcome back, <span className="text-primary-600">{username}</span>
-            </h1>
-            <p className="text-sm text-neutral-500 mt-0.5">Let's continue your learning journey</p>
+            <h1 className="text-base md:text-lg lg:text-xl font-medium text-neutral-900">Good morning, {username}</h1>
+            <p className="text-xs md:text-sm text-neutral-500">Your learning overview</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 px-3 py-2 bg-white border border-neutral-200 rounded-lg">
-          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-          <span className="text-sm font-medium text-neutral-700">
-            {new Date().toLocaleDateString('en-US', { 
-              weekday: 'short', 
-              month: 'short', 
-              day: 'numeric' 
-            })}
-          </span>
+        <div className="text-xs md:text-sm text-neutral-400 font-mono self-start sm:self-auto">
+          {new Date().toLocaleDateString('en-US', { 
+            weekday: 'short',
+            month: 'short', 
+            day: 'numeric' 
+          })}
         </div>
       </div>
 
-      {/* Compact Dashboard Layout */}
-      <div className="space-y-6">
-        {/* Quick Stats Row */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div
-            onClick={() => {
-              navigate({
-                to: `/study-library/courses`,
-              });
-            }}
-            className="cursor-pointer group"
-          >
-            <DashboardTabs
-              title={"Study Materials"}
-              count={studyLibraryData?.length || 0}
-              button={false}
-            />
-          </div>
-          
-          <div
-            onClick={() => {
-              navigate({
-                to: `/homework/list`,
-            });
-            }}
-            className="cursor-pointer group"
-          >
-            <DashboardTabs
-              title={"Assignments"}
-              count={homeworkAssignedCount}
-              button={false}
-            />
-          </div>
-
-          <div
-            onClick={() => {
-              navigate({
-                to: `/assessment/examination`,
-              });
-            }}
-            className="cursor-pointer group"
-          >
-            <DashboardTabs
-              title="Evaluations"
-              count={testAssignedCount}
-              button={false}
-            />
-          </div>
-
-          {/* Continue Learning Card */}
-          <div className="bg-gradient-to-br from-white to-primary-50/20 border border-neutral-200 rounded-lg transition-all duration-200 hover:border-primary-300 p-4 group">
-            {/* Header with Icon */}
-            <div className="flex items-center gap-2.5 mb-3">
-              <div className="p-1.5 bg-gradient-to-br from-primary-100 to-primary-200 border border-primary-300 rounded-lg group-hover:scale-105 transition-transform duration-200">
-                <svg className="w-4 h-4 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+      {/* Ultra Compact Stats Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 md:gap-3">
+        {/* Study Materials */}
+        <div
+          onClick={() => navigate({ to: `/study-library/courses` })}
+          className="group cursor-pointer"
+        >
+          <div className="bg-white border border-neutral-200 rounded-lg p-3 md:p-4 hover:border-neutral-300 transition-colors duration-200">
+            <div className="flex items-center justify-between mb-2 md:mb-3">
+              <div className="w-7 h-7 md:w-8 md:h-8 bg-neutral-100 rounded-lg flex items-center justify-center">
+                <svg className="w-3.5 h-3.5 md:w-4 md:h-4 text-neutral-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253" />
                 </svg>
               </div>
-              <div className="text-sm font-semibold text-neutral-900">
-                Continue From Where You Left
-              </div>
+              <svg className="w-3.5 h-3.5 md:w-4 md:h-4 text-neutral-400 group-hover:text-neutral-600 transition-colors duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5l7 7-7 7" />
+              </svg>
             </div>
-            
-            {/* Count Badge */}
-            <div className="inline-flex items-center px-2.5 py-1 bg-gradient-to-r from-neutral-100 to-neutral-200 border border-neutral-300 rounded-full text-xs font-medium text-neutral-700 mb-3">
-              {data?.slides?.length || 0} pending
+            <div className="space-y-0.5">
+              <div className="text-xl md:text-2xl font-light text-neutral-900">{studyLibraryData?.length || 0}</div>
+              <div className="text-xs md:text-sm text-neutral-600">Study Materials</div>
             </div>
-            
-            {/* Status */}
-            <div className="text-xs text-neutral-500 mb-3">
-              <span className="inline-flex items-center gap-1.5">
-                <div className={`w-1.5 h-1.5 rounded-full ${!data?.slides || data.slides.length === 0 ? 'bg-neutral-300' : 'bg-green-500 animate-pulse'}`}></div>
-                {!data?.slides || data.slides.length === 0 ? 'All caught up!' : `${data.slides.length} ${data.slides.length === 1 ? 'lesson' : 'lessons'} waiting`}
-              </span>
-            </div>
-
-            {/* List Items */}
-            {data?.slides && data.slides.length > 0 && (
-              <div className="space-y-2 mb-3">
-                {data.slides.slice(0, 2).map((slide) => (
-                  <div 
-                    key={slide.slide_id} 
-                    className="flex items-center gap-2 py-1.5 px-2.5 bg-white border border-neutral-200 rounded-md hover:border-primary-300 transition-colors duration-150"
-                  >
-                    <div className="w-1.5 h-1.5 bg-primary-500 rounded-full flex-shrink-0"></div>
-                    <div className="truncate text-xs font-medium text-neutral-700 flex-1 min-w-0">{slide.slide_title}</div>
-                  </div>
-                ))}
-                {data.slides.length > 2 && (
-                  <div className="text-xs text-neutral-400 pl-4">
-                    +{data.slides.length - 2} more lessons
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Action Button */}
-            {data?.slides && data.slides.length > 0 ? (
-              <button 
-                className="w-full bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 text-white text-xs font-medium py-2 px-3 rounded-lg transition-all duration-200 border border-primary-600"
-                onClick={() => data.slides[0] && handleResumeClick(data.slides[0])}
-              >
-                Resume Learning
-              </button>
-            ) : (
-              <div className="w-full bg-gradient-to-r from-neutral-100 to-neutral-200 text-neutral-500 text-xs font-medium py-2 px-3 rounded-lg border border-neutral-300 text-center">
-                You're all caught up! 🎉
-              </div>
-            )}
           </div>
         </div>
 
-        {/* Analytics Section */}
-        <div className="w-full">
-          <PastLearningInsights />
+        {/* Assignments */}
+        <div
+          onClick={() => navigate({ to: `/homework/list` })}
+          className="group cursor-pointer"
+        >
+          <div className="bg-white border border-neutral-200 rounded-lg p-3 md:p-4 hover:border-neutral-300 transition-colors duration-200">
+            <div className="flex items-center justify-between mb-2 md:mb-3">
+              <div className="w-7 h-7 md:w-8 md:h-8 bg-neutral-100 rounded-lg flex items-center justify-center">
+                <svg className="w-3.5 h-3.5 md:w-4 md:h-4 text-neutral-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              </div>
+              <svg className="w-3.5 h-3.5 md:w-4 md:h-4 text-neutral-400 group-hover:text-neutral-600 transition-colors duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5l7 7-7 7" />
+              </svg>
+            </div>
+            <div className="space-y-0.5">
+              <div className="text-xl md:text-2xl font-light text-neutral-900">{homeworkAssignedCount}</div>
+              <div className="text-xs md:text-sm text-neutral-600">Assignments</div>
+            </div>
+          </div>
         </div>
+
+        {/* Evaluations */}
+        <div
+          onClick={() => navigate({ to: `/assessment/examination` })}
+          className="group cursor-pointer sm:col-span-2 lg:col-span-1"
+        >
+          <div className="bg-white border border-neutral-200 rounded-lg p-3 md:p-4 hover:border-neutral-300 transition-colors duration-200">
+            <div className="flex items-center justify-between mb-2 md:mb-3">
+              <div className="w-7 h-7 md:w-8 md:h-8 bg-neutral-100 rounded-lg flex items-center justify-center">
+                <svg className="w-3.5 h-3.5 md:w-4 md:h-4 text-neutral-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <svg className="w-3.5 h-3.5 md:w-4 md:h-4 text-neutral-400 group-hover:text-neutral-600 transition-colors duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5l7 7-7 7" />
+              </svg>
+            </div>
+            <div className="space-y-0.5">
+              <div className="text-xl md:text-2xl font-light text-neutral-900">{testAssignedCount}</div>
+              <div className="text-xs md:text-sm text-neutral-600">Evaluations</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Compact Continue Learning Section */}
+      {data?.slides && data.slides.length > 0 && (
+        <div className="bg-neutral-50 border border-neutral-200 rounded-lg p-3 md:p-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-0 mb-3 md:mb-4">
+            <div>
+              <h2 className="text-base md:text-lg font-medium text-neutral-900">Continue Learning</h2>
+              <p className="text-xs md:text-sm text-neutral-500">{data.slides.length} lessons in progress</p>
+            </div>
+            <button 
+              className="text-xs md:text-sm text-primary-600 hover:text-primary-700 transition-colors duration-200 self-start sm:self-auto"
+              onClick={() => navigate({ to: `/study-library/courses` })}
+            >
+              View all →
+            </button>
+          </div>
+
+          <div className="space-y-2 md:space-y-3">
+            {data.slides.slice(0, 3).map((slide, index) => (
+              <div 
+                key={slide.slide_id} 
+                className="flex items-center gap-2.5 md:gap-3 p-2.5 md:p-3 bg-white border border-neutral-200 rounded-lg hover:border-neutral-300 transition-colors duration-200 cursor-pointer"
+                onClick={() => handleResumeClick(slide)}
+              >
+                <div className="w-1.5 h-6 md:h-7 bg-neutral-300 rounded-full flex-shrink-0">
+                  <div className="w-full h-1/3 bg-primary-500 rounded-full"></div>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs md:text-sm font-medium text-neutral-900 truncate">{slide.slide_title}</div>
+                  <div className="text-xs text-neutral-500 mt-0.5 line-clamp-1">{slide.slide_description || 'Continue from where you left off'}</div>
+                </div>
+                <div className="text-xs text-neutral-400 flex-shrink-0">
+                  {index === 0 ? 'Next' : `${index + 1}`}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-3 md:mt-4 pt-3 md:pt-4 border-t border-neutral-200">
+            <button 
+              className="w-full bg-neutral-900 hover:bg-neutral-800 text-white text-xs md:text-sm font-medium py-2.5 md:py-3 px-3 md:px-4 rounded-lg transition-colors duration-200"
+              onClick={() => data.slides[0] && handleResumeClick(data.slides[0])}
+            >
+              Resume Learning
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Compact Empty State */}
+      {(!data?.slides || data.slides.length === 0) && (
+        <div className="bg-neutral-50 border border-neutral-200 rounded-lg p-4 md:p-6 text-center">
+          <div className="w-10 h-10 md:w-12 md:h-12 bg-primary-100 rounded-full flex items-center justify-center mx-auto mb-3 md:mb-4">
+            <svg className="w-5 h-5 md:w-6 md:h-6 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <h3 className="text-sm md:text-base font-medium text-neutral-900 mb-1 md:mb-2">All caught up</h3>
+          <p className="text-xs md:text-sm text-neutral-500 mb-3 md:mb-4 max-w-sm mx-auto">You've completed all available lessons</p>
+          <button 
+            className="bg-primary-600 hover:bg-primary-700 text-white text-xs md:text-sm font-medium py-2 md:py-2.5 px-3 md:px-4 rounded-lg transition-colors duration-200"
+            onClick={() => navigate({ to: `/study-library/courses` })}
+          >
+            Explore content
+          </button>
+        </div>
+      )}
+
+      {/* Analytics */}
+      <div>
+        <PastLearningInsights />
       </div>
     </div>
   );

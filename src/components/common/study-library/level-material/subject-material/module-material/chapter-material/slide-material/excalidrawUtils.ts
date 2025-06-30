@@ -8,30 +8,53 @@ export interface ExcalidrawSceneData {
   files?: any;
 }
 
-// This is a placeholder. In a real app, you'd fetch this from a URL (e.g., S3)
-// using the fileId (source_id or content field from the slide object).
-// The admin code uses getPublicUrl and UploadFileInS3V2.
-// You would need a similar mechanism or an API endpoint to get the slide content.
-
+// Mocked data for fallback (kept for development/testing purposes)
 const MOCKED_EXCALIDRAW_DATA: Record<string, ExcalidrawSceneData> = {
-    "b4762686-84ef-48a1-bb83-e9b41eb8f4f9": { // Example ID from your sample
+    "default": {
         elements: [
-            { id: "1", type: "text", x: 100, y: 100, width: 200, height: 50, text: "Hello from Excalidraw!", strokeColor: "#000000", backgroundColor: "transparent", fillStyle: "hachure", strokeWidth: 1, strokeStyle: "solid", roughness: 1, opacity: 100, angle: 0, seed: 12345, version: 2, versionNonce: 0, isDeleted: false, boundElements: null, updated: 0, link: null, locked: false, fontSize: 20, fontFamily: 1, textAlign: "center", verticalAlign: "middle", baseline: 18 },
+            {
+                id: "fallback-text",
+                type: "text",
+                x: 10,
+                y: 10,
+                width: 300,
+                height: 100,
+                text: "Fallback Content - API data not available",
+                strokeColor: "#666666",
+                backgroundColor: "transparent",
+                fillStyle: "hachure",
+                strokeWidth: 1,
+                strokeStyle: "solid",
+                roughness: 1,
+                opacity: 100,
+                angle: 0,
+                seed: 12345,
+                version: 2,
+                versionNonce: 0,
+                isDeleted: false,
+                boundElements: null,
+                updated: 0,
+                link: null,
+                locked: false,
+                fontSize: 20,
+                fontFamily: 1,
+                textAlign: "left",
+                verticalAlign: "top",
+                baseline: 18
+            }
         ],
-        appState: { viewBackgroundColor: "#FFFFFF" },
-    },
-    "8bc45ea1-3cd0-4edb-86d9-7e58d1d476f6": {
-        elements: [ { id: "2", type: "ellipse", x: 150, y: 150, width: 100, height: 100, strokeColor: "#FF6347", backgroundColor: "transparent", fillStyle: "solid", strokeWidth: 2, strokeStyle: "dashed", roughness: 0, opacity: 80, angle: 0, seed: 67890, version: 2, versionNonce: 0, isDeleted: false, boundElements: null, updated: 0, link: null, locked: false } ],
-        appState: { viewBackgroundColor: "#FAFAFA" },
-    },
-    "c6e41d32-4f41-4875-bef3-a9dd0901e540": {
-        elements: [],
-        appState: { viewBackgroundColor: "#F0F0F0", zenModeEnabled: true },
+        appState: { 
+            viewBackgroundColor: "#F8F9FA",
+            collaborators: new Map(),
+            currentItemFontFamily: 1,
+            zoom: { value: 1 },
+            scrollX: 0,
+            scrollY: 0
+        },
     }
 };
 
 export const GET_PUBLIC_URL_PUBLIC = `https://backend-stage.vacademy.io/media-service/public/get-public-url`;
-
 
 export const getPublicUrl = async (fileId: string | undefined | null): Promise<string> => {
     const response = await axios.get(GET_PUBLIC_URL_PUBLIC, {
@@ -40,31 +63,71 @@ export const getPublicUrl = async (fileId: string | undefined | null): Promise<s
     return response?.data;
 };
 
-
 export const fetchExcalidrawContent = async (fileId: string): Promise<ExcalidrawSceneData | null> => {
-    console.log(`[ExcalidrawUtils] Attempting to fetch content for file ID: ${fileId}`);
-    try {
+    console.log(`[ExcalidrawUtils] Fetching content for fileId: ${fileId}`);
     
+    try {
+        // Get the public URL for the file
+        console.log(`[ExcalidrawUtils] Getting public URL for fileId: ${fileId}`);
         const publicUrl = await getPublicUrl(fileId);
-        console.log(`[ExcalidrawUtils] Public URL: ${publicUrl}`);
+        console.log(`[ExcalidrawUtils] Received public URL:`, publicUrl);
+        
+        if (!publicUrl) {
+            throw new Error('No public URL received from API');
+        }
+
+        // Fetch the actual Excalidraw data from the public URL
+        console.log(`[ExcalidrawUtils] Fetching data from URL: ${publicUrl}`);
         const response = await fetch(publicUrl);
-        console.log(`[ExcalidrawUtils] Public Response: ${response}`);
+        console.log(`[ExcalidrawUtils] Fetch response status: ${response.status} ${response.statusText}`);
 
         if (!response.ok) {
-            console.error(`Failed to fetch Excalidraw content for ${fileId}: ${response.statusText}`);
-            return null;
+            throw new Error(`Failed to fetch Excalidraw content: ${response.status} ${response.statusText}`);
         }
-        const data = await response.json();
-        return data as ExcalidrawSceneData;
-    } catch (error) {
-      console.error(`Error fetching Excalidraw content for ${fileId}:`, error);
-      return null;
-    }
+        
+        // Get the response as text first to see what we're getting
+        const responseText = await response.text();
+        console.log(`[ExcalidrawUtils] Response text (first 200 chars):`, responseText.substring(0, 200));
+        
+        // Check if it looks like HTML
+        if (responseText.trim().startsWith('<!DOCTYPE') || responseText.trim().startsWith('<html')) {
+            throw new Error(`Received HTML instead of JSON. Response starts with: ${responseText.substring(0, 100)}`);
+        }
+        
+        // Try to parse as JSON
+        const data = JSON.parse(responseText);
+        console.log(`[ExcalidrawUtils] Parsed JSON data:`, data);
+        console.log(`[ExcalidrawUtils] Elements found: ${data.elements?.length || 0}`);
+        console.log(`[ExcalidrawUtils] Original appState:`, data.appState);
 
-    // Using mocked data for now:
-    if (MOCKED_EXCALIDRAW_DATA[fileId]) {
-        return new Promise(resolve => setTimeout(() => resolve(MOCKED_EXCALIDRAW_DATA[fileId]), 500));
+        // Ensure appState has the correct structure with proper Map for collaborators
+        const appState = {
+            viewBackgroundColor: "#FFFFFF",
+            currentItemFontFamily: 1,
+            zoom: { value: 1 },
+            scrollX: 0,
+            scrollY: 0,
+            // Spread the original appState but override critical properties
+            ...(data.appState || {}),
+            // Force these to be correct types
+            collaborators: new Map(), // Ensure this is always a Map
+        };
+
+        console.log(`[ExcalidrawUtils] Processed appState:`, appState);
+
+        const result = {
+            elements: data.elements || [],
+            appState,
+            files: data.files || {}
+        } as ExcalidrawSceneData;
+
+        console.log(`[ExcalidrawUtils] Returning successful result with ${result.elements.length} elements`);
+        return result;
+    } catch (error) {
+        console.error(`[ExcalidrawUtils] Error fetching Excalidraw content for ${fileId}:`, error);
+        console.log(`[ExcalidrawUtils] Returning fallback content`);
+        
+        // Return fallback content instead of null to provide better user experience
+        return MOCKED_EXCALIDRAW_DATA["default"];
     }
-    console.warn(`[ExcalidrawUtils] No mocked data found for file ID: ${fileId}. Returning empty scene.`);
-    return new Promise(resolve => setTimeout(() => resolve({ elements: [], appState: { viewBackgroundColor: '#FFFFFF' }}), 500));
 };

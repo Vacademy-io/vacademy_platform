@@ -50,7 +50,8 @@ export function InstituteSelection() {
       try {
         const token = await getTokenFromStorage(TokenKey.accessToken);
         if (!token) {
-          toast.error("No token found");
+          toast.error("No token found - Please login first");
+          setIsLoadingInstitutes(false);
           return;
         }
   
@@ -59,7 +60,8 @@ export function InstituteSelection() {
         const userId = decodedData?.user;
   
         if (!authorities || !userId) {
-          toast.error("Invalid token data");
+          toast.error("Invalid token data - Please login again");
+          setIsLoadingInstitutes(false);
           return;
         }
   
@@ -160,25 +162,64 @@ export function InstituteSelection() {
   // Show loader while fetching institutes
   if (isLoadingInstitutes) {
     return (
-      <div className="flex w-full flex-col items-center justify-center gap-10 md:gap-8 lg:gap-6 px-4 md:px-8 lg:px-12">
-        <Heading
-          heading="Welcome, Student!"
-          subHeading="Loading your institutes..."
-        />
-        <DashboardLoader />
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50 flex items-center justify-center p-4">
+        <div className="flex w-full flex-col items-center justify-center gap-10 md:gap-8 lg:gap-6 px-4 md:px-8 lg:px-12">
+          <Heading
+            heading="Welcome, Student!"
+            subHeading="Loading your institutes..."
+          />
+          <DashboardLoader />
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state if no institutes are available
+  if (!isLoadingInstitutes && dropdownList.length === 0) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50 flex items-center justify-center p-4">
+        <div className="w-full max-w-lg md:max-w-xl lg:max-w-2xl xl:max-w-3xl mx-auto">
+          <div className="glass-card rounded-2xl p-8 md:p-10 lg:p-12 xl:p-16 shadow-xl text-center">
+            <div className="w-20 h-20 bg-gradient-to-br from-red-500 to-pink-600 rounded-2xl mx-auto flex items-center justify-center shadow-lg mb-6">
+              <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+              </svg>
+            </div>
+            <Heading
+              heading="No Institutes Available"
+              subHeading="You don't have access to any institutes. Please contact your administrator or login with a different account."
+            />
+            <div className="mt-6">
+              <MyButton
+                type="button"
+                scale="large"
+                buttonType="primary"
+                layoutVariant="default"
+                onClick={() =>
+                  navigate({
+                    to: "/login",
+                    search: { redirect: redirect },
+                  })
+                }
+              >
+                Back to Login
+              </MyButton>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-lg">
+      <div className="w-full max-w-lg md:max-w-xl lg:max-w-2xl xl:max-w-3xl mx-auto">
         {/* Selection Card */}
-        <div className="glass-card rounded-2xl p-8 shadow-xl animate-scale-in opacity-0 [animation-delay:0.2s] [animation-fill-mode:forwards]">
+        <div className="glass-card rounded-2xl p-8 md:p-10 lg:p-12 xl:p-16 shadow-xl animate-scale-in [animation-delay:0.2s] [animation-fill-mode:forwards]">
           {/* Header */}
-          <div className="text-center space-y-4 mb-8 animate-fade-in-down opacity-0 [animation-delay:0.4s] [animation-fill-mode:forwards]">
-            <div className="w-20 h-20 bg-gradient-to-br from-purple-500 to-pink-600 rounded-2xl mx-auto flex items-center justify-center shadow-lg">
-              <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="text-center space-y-4 md:space-y-6 mb-8 md:mb-10 lg:mb-12 animate-fade-in-down [animation-delay:0.4s] [animation-fill-mode:forwards]">
+            <div className="w-20 h-20 md:w-24 md:h-24 lg:w-28 lg:h-28 bg-gradient-to-br from-purple-500 to-pink-600 rounded-2xl mx-auto flex items-center justify-center shadow-lg">
+              <svg className="w-10 h-10 md:w-12 md:h-12 lg:w-14 lg:h-14 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
               </svg>
             </div>
@@ -190,22 +231,24 @@ export function InstituteSelection() {
 
           {/* Form */}
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 animate-fade-in-up opacity-0 [animation-delay:0.6s] [animation-fill-mode:forwards]">
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 md:space-y-8 lg:space-y-10 animate-fade-in-up [animation-delay:0.6s] [animation-fill-mode:forwards]">
               <FormField
                 control={form.control}
                 name="instituteId"
                 render={({ field }) => (
                   <FormItem>
                     <FormControl>
-                      <MyDropdown
-                        {...field}
-                        dropdownList={dropdownList.map(item => item.label)}
-                        placeholder="Select your institute"
-                        handleChange={(value) => {
-                          const selectedItem = dropdownList.find(item => item.label === value);
-                          field.onChange(selectedItem?.value || value);
-                        }}
-                      />
+                      <div className="w-full max-w-md mx-auto">
+                        <MyDropdown
+                          {...field}
+                          dropdownList={dropdownList.map(item => item.label)}
+                          placeholder="Select your institute"
+                          handleChange={(value) => {
+                            const selectedItem = dropdownList.find(item => item.label === value);
+                            field.onChange(selectedItem?.value || value);
+                          }}
+                        />
+                      </div>
                     </FormControl>
                   </FormItem>
                 )}
@@ -255,7 +298,7 @@ export function InstituteSelection() {
         </div>
 
         {/* Info Cards */}
-        <div className="mt-6 grid grid-cols-2 gap-4 animate-fade-in-up opacity-0 [animation-delay:1s] [animation-fill-mode:forwards]">
+        <div className="mt-6 md:mt-8 lg:mt-10 grid grid-cols-2 md:grid-cols-2 lg:grid-cols-2 gap-4 md:gap-6 lg:gap-8 max-w-md mx-auto animate-fade-in-up [animation-delay:1s] [animation-fill-mode:forwards]">
           <div className="text-center p-4 glass-card rounded-xl hover-lift">
             <div className="w-10 h-10 bg-purple-100 rounded-lg mx-auto mb-3 flex items-center justify-center">
               <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">

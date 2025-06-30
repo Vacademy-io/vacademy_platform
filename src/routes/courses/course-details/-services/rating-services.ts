@@ -101,6 +101,7 @@ export const handleGetRatingDetails = ({
         queryKey: ["GET_ALL_USER_COURSE_RATINGS", pageNo, pageSize, data],
         queryFn: () => getRatingDetails({ pageNo, pageSize, data }),
         staleTime: 60 * 60 * 1000,
+        enabled: !!data.source_id,
     };
 };
 

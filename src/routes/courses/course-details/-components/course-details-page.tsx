@@ -24,6 +24,7 @@ import {
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import {
+    DialogTrigger,
     Dialog,
     DialogContent,
     DialogDescription,
@@ -39,7 +40,6 @@ import {
     CourseDetailsFormValues,
     courseDetailsSchema,
 } from "./course-details-schema";
-import { useStudyLibraryStore } from "@/stores/study-library/use-study-library-store";
 import { handleFetchModulesWithChapters } from "../../-services/getModulesWithChapters";
 import {
     handleFetchChaptersWithSlides,
@@ -48,23 +48,22 @@ import {
     QuestionSlide,
     AssignmentSlide,
     ChapterWithSlides,
+    handleFetchSlides,
 } from "../../-services/getAllSlides";
 import { useQueries, useSuspenseQuery } from "@tanstack/react-query";
 import { useQuery } from "@tanstack/react-query";
-import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
-import { GET_SLIDES } from "@/constants/urls";
-import { CourseDetailsRatingsComponent } from "./course-details-ratings-page";
-import { transformApiDataToCourseData } from "../-utils/helper";
-import { getPackageSessionId } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
 import { handleGetSlideCountDetails } from "../-services/get-slides-count";
 import {
-    handleGetAllCourseDetails,
-    handleGetCourseDetails,
-} from "../-services/get-course-details";
-import { getInstituteId } from "@/constants/helper";
-import { Preferences } from "@capacitor/preferences";
-import { DashboardLoader } from "@/components/core/dashboard-loader";
+    CourseDetailsRatingsComponent,
+    getIdByLevelAndSession,
+} from "./course-details-ratings-page";
+import { transformApiDataToCourseData } from "../-utils/helper";
+import { handleGetAllCourseDetails } from "../-services/get-course-details";
 import axios from "axios";
+import { urlInstituteDetails } from "@/constants/urls";
+import CourseListHeader from "../../-component/CourseListHeader";
+import { MyButton } from "@/components/design-system/button";
+import { LoginForm } from "@/components/common/LoginPages/sections/login-form";
 
 type DialogType = "subject" | "module" | "chapter" | "slide" | null;
 
@@ -81,7 +80,7 @@ type SlideType = {
     assignmentSlide?: AssignmentSlide;
 };
 
-type ChapterType = {
+export type ChapterType = {
     id: string;
     name: string;
     status: string;
@@ -92,7 +91,7 @@ type ChapterType = {
     isOpen?: boolean;
 };
 
-type ModuleType = {
+export type ModuleType = {
     id: string;
     name: string;
     description: string;
@@ -102,7 +101,7 @@ type ModuleType = {
     isOpen?: boolean;
 };
 
-type SubjectType = {
+export type SubjectType = {
     id: string;
     subject_name: string;
     subject_code: string;
@@ -138,16 +137,6 @@ type SessionType = {
         start_date: string;
     };
     levelDetails: LevelType[];
-};
-
-type ModuleResponse = {
-    module: {
-        id: string;
-        module_name: string;
-        description: string;
-        status: string;
-        thumbnail_id: string;
-    };
 };
 
 type SlideCountType = {
@@ -195,16 +184,61 @@ const mockCourses: Course[] = [
 ];
 
 export const CourseDetailsPage = () => {
+    const [selectedSession, setSelectedSession] = useState<string>("");
+    const [selectedLevel, setSelectedLevel] = useState<string>("");
     const router = useRouter();
     const searchParams = router.state.location.search;
 
-    // Only run the query if instituteId is available
-    const { data: studyLibraryData, isLoading: isStudyLibraryDataLoading } =
-        useSuspenseQuery(
-            handleGetAllCourseDetails({
-                instituteId: searchParams.instituteId || "",
-            })
+    const [
+        packageSessionIdForCurrentLevel,
+        setPackageSessionIdForCurrentLevel,
+    ] = useState<string | null>(null);
+
+    const findIdByPackageId = (data: any) => {
+        const result = data?.find(
+            (item) => item.package_dto?.id === searchParams.courseId
         );
+        return result?.id || "";
+    };
+
+    const [packageSessionIds, setPackageSessionIds] = useState<string | null>(
+        null
+    );
+
+    const [instituteDetails, setInstituteDetails] = useState(null);
+
+    // ✅ Fetch institute details
+    useEffect(() => {
+        const FetchInstituteDetails = async () => {
+            try {
+                const response = await axios.get(
+                    `${urlInstituteDetails}/${searchParams.instituteId}`
+                );
+                setPackageSessionIds(
+                    findIdByPackageId(response.data.batches_for_sessions)
+                );
+                setInstituteDetails(response.data);
+                setPackageSessionIdForCurrentLevel(
+                    getIdByLevelAndSession(
+                        response.data.batches_for_sessions,
+                        selectedSession,
+                        selectedLevel
+                    )
+                );
+            } catch (error) {
+                console.log(error);
+            }
+        };
+
+        FetchInstituteDetails();
+    }, [searchParams.instituteId, selectedSession, selectedLevel]);
+
+    // Only run the query if instituteId is available
+    const { data: studyLibraryData } = useSuspenseQuery(
+        handleGetAllCourseDetails({
+            instituteId: searchParams.instituteId || "",
+        })
+    );
 
     const courseDetailsData = useMemo(() => {
         return studyLibraryData?.find(
@@ -267,8 +301,6 @@ export const CourseDetailsPage = () => {
         return name?.slice(0, 2).toUpperCase();
     };
 
-    const [selectedSession, setSelectedSession] = useState<string>("");
-    const [selectedLevel, setSelectedLevel] = useState<string>("");
     const [levelOptions, setLevelOptions] = useState<
         { _id: string; value: string; label: string }[]
     >([]);
@@ -291,18 +323,6 @@ export const CourseDetailsPage = () => {
     const currentLevel = currentSession?.levelDetails.find(
         (level) => level.id === selectedLevel
     );
-
-    const [packageSessionIds, setPackageSessionIds] = useState<string | null>(
-        null
-    );
-
-    useEffect(() => {
-        const fetchPackageSessionId = async () => {
-            const id = await getPackageSessionId();
-            setPackageSessionIds(id);
-        };
-        fetchPackageSessionId();
-    }, []);
 
     // Convert sessions to select options format
     const sessionOptions = useMemo(() => {
@@ -387,10 +407,7 @@ export const CourseDetailsPage = () => {
                                     ...level,
                                     subjects:
                                         level.subjects?.map((subject) => {
-                                            if (
-                                                courseStructure === 3 &&
-                                                subject.id === "DEFAULT"
-                                            ) {
+                                            if (courseStructure === 3) {
                                                 // Preserve DEFAULT modules for course structure 3
                                                 return {
                                                     ...subject,
@@ -421,42 +438,13 @@ export const CourseDetailsPage = () => {
     // Move query logic outside useEffect
     const moduleQueries = useQueries({
         queries: (() => {
-            const courseStructure =
-                form.getValues("courseData").courseStructure;
             const subjects =
                 (currentLevel?.subjects as unknown as SubjectType[]) || [];
-
-            // For course structure 3, only query the DEFAULT subject
-            if (courseStructure === 3) {
-                const defaultSubject = subjects.find(
-                    (subject) => subject.id === "DEFAULT"
-                );
-                return defaultSubject
-                    ? [
-                          {
-                              ...handleFetchModulesWithChapters(
-                                  defaultSubject.id,
-                                  packageSessionIds
-                              ),
-                              queryKey: [
-                                  "GET_MODULES_WITH_CHAPTERS",
-                                  defaultSubject.id,
-                                  packageSessionIds,
-                                  refreshKey,
-                              ],
-                              enabled:
-                                  !!defaultSubject.id && !!packageSessionIds,
-                              refetchOnMount: true,
-                          },
-                      ]
-                    : [];
-            }
-
             // For other course structures, query all subjects
             return subjects.map((subject) => ({
                 ...handleFetchModulesWithChapters(
                     subject.id,
-                    packageSessionIds
+                    packageSessionIds || ""
                 ),
                 queryKey: [
                     "GET_MODULES_WITH_CHAPTERS",
@@ -472,44 +460,27 @@ export const CourseDetailsPage = () => {
 
     // Add chapter queries for each module
     const chapterQueries = useQueries({
-        queries:
-            form.getValues("courseData").courseStructure === 3
-                ? [
-                      {
-                          ...handleFetchChaptersWithSlides(
-                              "DEFAULT",
-                              packageSessionIds || ""
-                          ),
-                          queryKey: [
-                              "GET_CHAPTERS_WITH_SLIDES",
-                              "DEFAULT",
-                              packageSessionIds,
-                              refreshKey,
-                          ],
-                          enabled: !!packageSessionIds,
-                          refetchOnMount: true,
-                          refetchOnWindowFocus: true,
-                      },
-                  ]
-                : moduleQueries.flatMap((moduleQuery) => {
-                      const modules =
-                          (moduleQuery.data as ModuleResponse[]) || [];
-                      return modules.map((module) => ({
-                          ...handleFetchChaptersWithSlides(
-                              module.module.id,
-                              packageSessionIds || ''
-                          ),
-                          queryKey: [
-                              "GET_CHAPTERS_WITH_SLIDES",
-                              module.module.id,
-                              packageSessionIds,
-                              refreshKey,
-                          ],
-                          enabled: !!module.module.id && !!packageSessionIds,
-                          refetchOnMount: true,
-                          refetchOnWindowFocus: true,
-                      }));
-                  }),
+        queries: moduleQueries.flatMap((moduleQuery) => {
+            const modules = (moduleQuery.data as ModuleType[]) || [];
+            if (!modules || !packageSessionIds) return [];
+            return modules
+                .filter((module) => module && module.id) // Only include modules with valid IDs
+                .map((module) => ({
+                    ...handleFetchChaptersWithSlides(
+                        module.id,
+                        packageSessionIds || ""
+                    ),
+                    queryKey: [
+                        "GET_CHAPTERS_WITH_SLIDES",
+                        module.id,
+                        packageSessionIds,
+                        refreshKey,
+                    ],
+                    enabled: !!module.id && !!packageSessionIds,
+                    refetchOnMount: true,
+                    refetchOnWindowFocus: true,
+                }));
+        }),
     });
 
     // Extract stable data from queries
@@ -573,21 +544,12 @@ export const CourseDetailsPage = () => {
                                                 subjects: (
                                                     level.subjects || []
                                                 ).map((subject) => {
-                                                    if (
-                                                        subject.id !== "DEFAULT"
-                                                    )
-                                                        return subject;
                                                     return {
                                                         ...subject,
                                                         modules: (
                                                             subject.modules ||
                                                             []
                                                         ).map((module) => {
-                                                            if (
-                                                                module.id !==
-                                                                "DEFAULT"
-                                                            )
-                                                                return module;
                                                             return {
                                                                 ...module,
                                                                 chapters:
@@ -624,8 +586,8 @@ export const CourseDetailsPage = () => {
                                                                                     slide
                                                                                 ) => ({
                                                                                     id: slide.id,
-                                                                                    name: slide.title,
-                                                                                    type: slide.source_type,
+                                                                                    name: slide.name,
+                                                                                    type: slide.type,
                                                                                     description:
                                                                                         slide.description ||
                                                                                         "",
@@ -633,19 +595,19 @@ export const CourseDetailsPage = () => {
                                                                                         slide.status ||
                                                                                         "",
                                                                                     order:
-                                                                                        slide.slide_order ||
+                                                                                        slide.order ||
                                                                                         0,
                                                                                     videoSlide:
-                                                                                        slide.video_slide ||
+                                                                                        slide.videoSlide ||
                                                                                         null,
                                                                                     documentSlide:
-                                                                                        slide.document_slide ||
+                                                                                        slide.documentSlide ||
                                                                                         null,
                                                                                     questionSlide:
-                                                                                        slide.question_slide ||
+                                                                                        slide.questionSlide ||
                                                                                         null,
                                                                                     assignmentSlide:
-                                                                                        slide.assignment_slide ||
+                                                                                        slide.assignmentSlide ||
                                                                                         null,
                                                                                 })
                                                                             ),
@@ -672,18 +634,16 @@ export const CourseDetailsPage = () => {
                         const subjectModulesMap: Record<string, ModuleType[]> =
                             {};
                         moduleData.forEach(
-                            (modulesArr: ModuleResponse[], idx: number) => {
+                            (modulesArr: ModuleType[], idx: number) => {
                                 const subject = currentLevel.subjects![idx];
                                 if (!subject) return;
                                 subjectModulesMap[subject.id] = modulesArr.map(
                                     (moduleRes) => ({
-                                        id: moduleRes.module.id,
-                                        name: moduleRes.module.module_name,
-                                        description:
-                                            moduleRes.module.description,
-                                        status: moduleRes.module.status,
-                                        thumbnail_id:
-                                            moduleRes.module.thumbnail_id,
+                                        id: moduleRes.id,
+                                        name: moduleRes.name,
+                                        description: moduleRes.description,
+                                        status: moduleRes.status,
+                                        thumbnail_id: moduleRes.thumbnail_id,
                                         chapters: [], // Will be filled in by chapter queries if needed
                                         isOpen: false,
                                     })
@@ -735,12 +695,10 @@ export const CourseDetailsPage = () => {
                                                         chapterWithSlides.slides
                                                     )
                                                         ? chapterWithSlides.slides.map(
-                                                              (
-                                                                  slide: Slide
-                                                              ) => ({
+                                                              (slide: any) => ({
                                                                   id: slide.id,
-                                                                  name: slide.title,
-                                                                  type: slide.source_type,
+                                                                  name: slide.name,
+                                                                  type: slide.type,
                                                                   description:
                                                                       slide.description ||
                                                                       "",
@@ -748,19 +706,19 @@ export const CourseDetailsPage = () => {
                                                                       slide.status ||
                                                                       "",
                                                                   order:
-                                                                      slide.slide_order ||
+                                                                      slide.order ||
                                                                       0,
                                                                   videoSlide:
-                                                                      slide.video_slide ||
+                                                                      slide.videoSlide ||
                                                                       null,
                                                                   documentSlide:
-                                                                      slide.document_slide ||
+                                                                      slide.documentSlide ||
                                                                       null,
                                                                   questionSlide:
-                                                                      slide.question_slide ||
+                                                                      slide.questionSlide ||
                                                                       null,
                                                                   assignmentSlide:
-                                                                      slide.assignment_slide ||
+                                                                      slide.assignmentSlide ||
                                                                       null,
                                                               })
                                                           )
@@ -804,88 +762,34 @@ export const CourseDetailsPage = () => {
 
                     if (currentCourseStructure === 4) {
                         // For course structure 4, update the mockCourse with modules from DEFAULT subject
-                        const defaultSubject = updatedSubjects.find(
-                            (subject) => subject.id === "DEFAULT"
-                        );
-                        if (
-                            defaultSubject &&
-                            defaultSubject.modules.length > 0
-                        ) {
-                            const currentMockCourses =
-                                form.getValues("mockCourses");
-                            const updatedMockCourses = currentMockCourses.map(
-                                (mockCourse) => {
-                                    if (mockCourse.level === 4) {
-                                        return {
-                                            ...mockCourse,
-                                            structure: {
-                                                ...mockCourse.structure,
-                                                items: defaultSubject.modules.map(
-                                                    (module: ModuleType) => ({
-                                                        id: module.id,
-                                                        title: module.name, // Use title instead of name for mockCourse structure
-                                                        description:
-                                                            module.description,
-                                                        status: module.status,
-                                                        thumbnail_id:
-                                                            module.thumbnail_id,
-                                                        chapters:
-                                                            module.chapters,
-                                                        isOpen: false,
-                                                    })
-                                                ),
-                                            },
-                                        };
-                                    }
-                                    return mockCourse;
+                        const currentMockCourses =
+                            form.getValues("mockCourses");
+                        const updatedMockCourses = currentMockCourses.map(
+                            (mockCourse) => {
+                                if (mockCourse.level === 4) {
+                                    return {
+                                        ...mockCourse,
+                                    };
                                 }
-                            );
-                            form.setValue("mockCourses", updatedMockCourses);
-                        }
+                                return mockCourse;
+                            }
+                        );
+                        form.setValue("mockCourses", updatedMockCourses);
                     } else if (currentCourseStructure === 3) {
                         // For course structure 3, update the mockCourse with chapters from DEFAULT module
-                        const defaultSubject = updatedSubjects.find(
-                            (subject) => subject.id === "DEFAULT"
-                        );
-                        const defaultModule = defaultSubject?.modules?.find(
-                            (module) => module.id === "DEFAULT"
-                        );
-                        if (
-                            defaultModule &&
-                            defaultModule.chapters.length > 0
-                        ) {
-                            const currentMockCourses =
-                                form.getValues("mockCourses");
-                            const updatedMockCourses = currentMockCourses.map(
-                                (mockCourse) => {
-                                    if (mockCourse.level === 3) {
-                                        return {
-                                            ...mockCourse,
-                                            structure: {
-                                                ...mockCourse.structure,
-                                                items: defaultModule.chapters.map(
-                                                    (chapter: ChapterType) => ({
-                                                        id: chapter.id,
-                                                        title: chapter.name, // Use title instead of name for mockCourse structure
-                                                        status: chapter.status,
-                                                        file_id:
-                                                            chapter.file_id,
-                                                        description:
-                                                            chapter.description,
-                                                        chapter_order:
-                                                            chapter.chapter_order,
-                                                        slides: chapter.slides,
-                                                        isOpen: false,
-                                                    })
-                                                ),
-                                            },
-                                        };
-                                    }
-                                    return mockCourse;
+                        const currentMockCourses =
+                            form.getValues("mockCourses");
+                        const updatedMockCourses = currentMockCourses.map(
+                            (mockCourse) => {
+                                if (mockCourse.level === 3) {
+                                    return {
+                                        ...mockCourse,
+                                    };
                                 }
-                            );
-                            form.setValue("mockCourses", updatedMockCourses);
-                        }
+                                return mockCourse;
+                            }
+                        );
+                        form.setValue("mockCourses", updatedMockCourses);
                     }
 
                     // Replace the code that sets chapters for the selected session/level/module with a merge update
@@ -905,18 +809,18 @@ export const CourseDetailsPage = () => {
                                 slides: Array.isArray(item.slides)
                                     ? item.slides.map((slide: SlideType) => ({
                                           id: slide.id,
-                                          name: slide.title,
-                                          type: slide.source_type,
+                                          name: slide.name,
+                                          type: slide.type,
                                           description: slide.description || "",
                                           status: slide.status || "",
-                                          order: slide.slide_order || 0,
-                                          videoSlide: slide.video_slide || null,
+                                          order: slide.order || 0,
+                                          videoSlide: slide.videoSlide || null,
                                           documentSlide:
-                                              slide.document_slide || null,
+                                              slide.documentSlide || null,
                                           questionSlide:
-                                              slide.question_slide || null,
+                                              slide.questionSlide || null,
                                           assignmentSlide:
-                                              slide.assignment_slide || null,
+                                              slide.assignmentSlide || null,
                                       }))
                                     : [],
                                 isOpen: false,
@@ -938,18 +842,11 @@ export const CourseDetailsPage = () => {
                                             subjects: (
                                                 level.subjects || []
                                             ).map((subject) => {
-                                                if (subject.id !== "DEFAULT")
-                                                    return subject;
                                                 return {
                                                     ...subject,
                                                     modules: (
                                                         subject.modules || []
                                                     ).map((module) => {
-                                                        if (
-                                                            module.id !==
-                                                            "DEFAULT"
-                                                        )
-                                                            return module;
                                                         return {
                                                             ...module,
                                                             chapters:
@@ -1043,7 +940,7 @@ export const CourseDetailsPage = () => {
             case "subject": {
                 try {
                     const newSubject: SubjectType = {
-                        id: "", // Let backend assign ID
+                        id: crypto.randomUUID(),
                         subject_name: newItemName,
                         subject_code: "",
                         credit: 0,
@@ -1092,7 +989,7 @@ export const CourseDetailsPage = () => {
             case "module": {
                 try {
                     const newModule = {
-                        id: "", // Let the backend assign the ID
+                        id: crypto.randomUUID(),
                         module_name: newItemName,
                         description: "",
                         status: "",
@@ -1101,7 +998,7 @@ export const CourseDetailsPage = () => {
 
                     if (selectedCourse.level === 4) {
                         const response = await addModuleMutation.mutateAsync({
-                            subjectId: "DEFAULT",
+                            subjectId: crypto.randomUUID(),
                             packageSessionIds: packageSessionIds,
                             module: newModule,
                         });
@@ -1109,19 +1006,19 @@ export const CourseDetailsPage = () => {
                         if (response) {
                             // Fetch the latest modules for the DEFAULT subject
                             const moduleQuery = handleFetchModulesWithChapters(
-                                "DEFAULT",
-                                packageSessionIds
+                                crypto.randomUUID(),
+                                packageSessionIds || ""
                             );
                             const modulesResponse = await moduleQuery.queryFn();
 
                             // Map the modules to ModuleType[]
                             const modules: ModuleType[] = modulesResponse.map(
-                                (moduleRes: ModuleResponse) => ({
-                                    id: moduleRes.module.id,
-                                    name: moduleRes.module.module_name,
-                                    description: moduleRes.module.description,
-                                    status: moduleRes.module.status,
-                                    thumbnail_id: moduleRes.module.thumbnail_id,
+                                (moduleRes: ModuleType) => ({
+                                    id: moduleRes.id,
+                                    name: moduleRes.name,
+                                    description: moduleRes.description,
+                                    status: moduleRes.status,
+                                    thumbnail_id: moduleRes.thumbnail_id,
                                     chapters: [],
                                     isOpen: false,
                                 })
@@ -1141,13 +1038,7 @@ export const CourseDetailsPage = () => {
                                 );
                             if (currentLevel) {
                                 const updatedSubjects =
-                                    currentLevel.subjects.map((subject) => {
-                                        if (subject.id === "DEFAULT") {
-                                            return {
-                                                ...subject,
-                                                modules,
-                                            };
-                                        }
+                                    currentLevel?.subjects?.map((subject) => {
                                         return subject;
                                     });
 
@@ -1289,7 +1180,7 @@ export const CourseDetailsPage = () => {
                     try {
                         setIsAddingChapter(true);
                         const newChapter = {
-                            id: "", // Let backend assign ID
+                            id: crypto.randomUUID(),
                             chapter_name: newItemName,
                             status: "ACTIVE",
                             file_id: "",
@@ -1303,8 +1194,8 @@ export const CourseDetailsPage = () => {
                                 selectedParentId.split("|");
                             const response =
                                 await addChapterMutation.mutateAsync({
-                                    subjectId,
-                                    moduleId,
+                                    subjectId: subjectId || "",
+                                    moduleId: moduleId || "",
                                     commaSeparatedPackageSessionIds:
                                         packageSessionIds,
                                     chapter: newChapter,
@@ -1331,7 +1222,7 @@ export const CourseDetailsPage = () => {
                                                 const moduleQuery =
                                                     handleFetchModulesWithChapters(
                                                         subject.id,
-                                                        packageSessionIds
+                                                        packageSessionIds || ""
                                                     );
                                                 const moduleResponse =
                                                     await moduleQuery.queryFn();
@@ -1352,15 +1243,15 @@ export const CourseDetailsPage = () => {
                                                 modules.map(async (module) => {
                                                     const chapterQuery =
                                                         handleFetchChaptersWithSlides(
-                                                            module.module.id,
-                                                            packageSessionIds
+                                                            module.id,
+                                                            packageSessionIds ||
+                                                                ""
                                                         );
                                                     const chapterResponse =
                                                         await chapterQuery.queryFn();
                                                     return {
                                                         subjectId,
-                                                        moduleId:
-                                                            module.module.id,
+                                                        moduleId: module.id,
                                                         chapters:
                                                             chapterResponse,
                                                     };
@@ -1445,8 +1336,8 @@ export const CourseDetailsPage = () => {
                                                                                 slide
                                                                             ) => ({
                                                                                 id: slide.id,
-                                                                                name: slide.title,
-                                                                                type: slide.source_type,
+                                                                                name: slide.name,
+                                                                                type: slide.type,
                                                                                 description:
                                                                                     slide.description ||
                                                                                     "",
@@ -1454,19 +1345,19 @@ export const CourseDetailsPage = () => {
                                                                                     slide.status ||
                                                                                     "",
                                                                                 order:
-                                                                                    slide.slide_order ||
+                                                                                    slide.order ||
                                                                                     0,
                                                                                 videoSlide:
-                                                                                    slide.video_slide ||
+                                                                                    slide.videoSlide ||
                                                                                     null,
                                                                                 documentSlide:
-                                                                                    slide.document_slide ||
+                                                                                    slide.documentSlide ||
                                                                                     null,
                                                                                 questionSlide:
-                                                                                    slide.question_slide ||
+                                                                                    slide.questionSlide ||
                                                                                     null,
                                                                                 assignmentSlide:
-                                                                                    slide.assignment_slide ||
+                                                                                    slide.assignmentSlide ||
                                                                                     null,
                                                                             })
                                                                         ),
@@ -1521,6 +1412,7 @@ export const CourseDetailsPage = () => {
                             const moduleId = selectedParentId;
                             const response =
                                 await addChapterMutation.mutateAsync({
+                                    subjectId: "",
                                     moduleId,
                                     commaSeparatedPackageSessionIds:
                                         packageSessionIds,
@@ -1532,7 +1424,7 @@ export const CourseDetailsPage = () => {
                                 const chapterQuery =
                                     handleFetchChaptersWithSlides(
                                         moduleId,
-                                        packageSessionIds
+                                        packageSessionIds || ""
                                     );
                                 const chapterResponse =
                                     await chapterQuery.queryFn();
@@ -1581,8 +1473,8 @@ export const CourseDetailsPage = () => {
                                                                         slide
                                                                     ) => ({
                                                                         id: slide.id,
-                                                                        name: slide.title,
-                                                                        type: slide.source_type,
+                                                                        name: slide.name,
+                                                                        type: slide.type,
                                                                         description:
                                                                             slide.description ||
                                                                             "",
@@ -1590,19 +1482,19 @@ export const CourseDetailsPage = () => {
                                                                             slide.status ||
                                                                             "",
                                                                         order:
-                                                                            slide.slide_order ||
+                                                                            slide.order ||
                                                                             0,
                                                                         videoSlide:
-                                                                            slide.video_slide ||
+                                                                            slide.videoSlide ||
                                                                             null,
                                                                         documentSlide:
-                                                                            slide.document_slide ||
+                                                                            slide.documentSlide ||
                                                                             null,
                                                                         questionSlide:
-                                                                            slide.question_slide ||
+                                                                            slide.questionSlide ||
                                                                             null,
                                                                         assignmentSlide:
-                                                                            slide.assignment_slide ||
+                                                                            slide.assignmentSlide ||
                                                                             null,
                                                                     })
                                                                 ),
@@ -1620,8 +1512,8 @@ export const CourseDetailsPage = () => {
                         } else if (selectedCourse.level === 3) {
                             const response =
                                 await addChapterMutation.mutateAsync({
-                                    subjectId: "DEFAULT",
-                                    moduleId: "DEFAULT",
+                                    subjectId: crypto.randomUUID(),
+                                    moduleId: crypto.randomUUID(),
                                     commaSeparatedPackageSessionIds:
                                         packageSessionIds,
                                     chapter: newChapter,
@@ -1631,8 +1523,8 @@ export const CourseDetailsPage = () => {
                                 // Fetch fresh chapter data using the DEFAULT module ID
                                 const chapterQuery =
                                     handleFetchChaptersWithSlides(
-                                        "DEFAULT",
-                                        packageSessionIds
+                                        crypto.randomUUID(),
+                                        packageSessionIds || ""
                                     );
                                 const chapterResponse =
                                     await chapterQuery.queryFn();
@@ -1675,8 +1567,8 @@ export const CourseDetailsPage = () => {
                                                                 []
                                                             ).map((slide) => ({
                                                                 id: slide.id,
-                                                                name: slide.title,
-                                                                type: slide.source_type,
+                                                                name: slide.name,
+                                                                type: slide.type,
                                                                 description:
                                                                     slide.description ||
                                                                     "",
@@ -1684,19 +1576,19 @@ export const CourseDetailsPage = () => {
                                                                     slide.status ||
                                                                     "",
                                                                 order:
-                                                                    slide.slide_order ||
+                                                                    slide.order ||
                                                                     0,
                                                                 videoSlide:
-                                                                    slide.video_slide ||
+                                                                    slide.videoSlide ||
                                                                     null,
                                                                 documentSlide:
-                                                                    slide.document_slide ||
+                                                                    slide.documentSlide ||
                                                                     null,
                                                                 questionSlide:
-                                                                    slide.question_slide ||
+                                                                    slide.questionSlide ||
                                                                     null,
                                                                 assignmentSlide:
-                                                                    slide.assignment_slide ||
+                                                                    slide.assignmentSlide ||
                                                                     null,
                                                             })),
                                                             isOpen: false,
@@ -1743,24 +1635,23 @@ export const CourseDetailsPage = () => {
                                                     []
                                                 ).map((slide) => ({
                                                     id: slide.id,
-                                                    name: slide.title,
-                                                    type: slide.source_type,
+                                                    name: slide.name,
+                                                    type: slide.type,
                                                     description:
                                                         slide.description || "",
                                                     status: slide.status || "",
-                                                    order:
-                                                        slide.slide_order || 0,
+                                                    order: slide.order || 0,
                                                     videoSlide:
-                                                        slide.video_slide ||
+                                                        slide.videoSlide ||
                                                         null,
                                                     documentSlide:
-                                                        slide.document_slide ||
+                                                        slide.documentSlide ||
                                                         null,
                                                     questionSlide:
-                                                        slide.question_slide ||
+                                                        slide.questionSlide ||
                                                         null,
                                                     assignmentSlide:
-                                                        slide.assignment_slide ||
+                                                        slide.assignmentSlide ||
                                                         null,
                                                 })),
                                                 isOpen: false,
@@ -1813,7 +1704,7 @@ export const CourseDetailsPage = () => {
                                             const moduleQuery =
                                                 handleFetchModulesWithChapters(
                                                     subject.id,
-                                                    packageSessionIds
+                                                    packageSessionIds || ""
                                                 );
                                             const moduleResponse =
                                                 await moduleQuery.queryFn();
@@ -1826,6 +1717,7 @@ export const CourseDetailsPage = () => {
 
                                 const moduleResults =
                                     await Promise.all(modulePromises);
+                                if (!moduleResults) return [];
 
                                 // Fetch fresh chapter data for all modules
                                 const chapterPromises = moduleResults.flatMap(
@@ -1833,14 +1725,14 @@ export const CourseDetailsPage = () => {
                                         modules.map(async (module) => {
                                             const chapterQuery =
                                                 handleFetchChaptersWithSlides(
-                                                    module.module.id,
-                                                    packageSessionIds
+                                                    module.id,
+                                                    packageSessionIds || ""
                                                 );
                                             const chapterResponse =
                                                 await chapterQuery.queryFn();
                                             return {
                                                 subjectId,
-                                                moduleId: module.module.id,
+                                                moduleId: module.id,
                                                 chapters: chapterResponse,
                                             };
                                         })
@@ -1848,6 +1740,8 @@ export const CourseDetailsPage = () => {
 
                                 const chapterResults =
                                     await Promise.all(chapterPromises);
+
+                                if (!chapterResults) return [];
 
                                 // Update subjects with fresh module and chapter data
                                 const updatedSubjects =
@@ -1921,8 +1815,8 @@ export const CourseDetailsPage = () => {
                                                                             slide
                                                                         ) => ({
                                                                             id: slide.id,
-                                                                            name: slide.title,
-                                                                            type: slide.source_type,
+                                                                            name: slide.name,
+                                                                            type: slide.type,
                                                                             description:
                                                                                 slide.description ||
                                                                                 "",
@@ -1930,19 +1824,19 @@ export const CourseDetailsPage = () => {
                                                                                 slide.status ||
                                                                                 "",
                                                                             order:
-                                                                                slide.slide_order ||
+                                                                                slide.order ||
                                                                                 0,
                                                                             videoSlide:
-                                                                                slide.video_slide ||
+                                                                                slide.videoSlide ||
                                                                                 null,
                                                                             documentSlide:
-                                                                                slide.document_slide ||
+                                                                                slide.documentSlide ||
                                                                                 null,
                                                                             questionSlide:
-                                                                                slide.question_slide ||
+                                                                                slide.questionSlide ||
                                                                                 null,
                                                                             assignmentSlide:
-                                                                                slide.assignment_slide ||
+                                                                                slide.assignmentSlide ||
                                                                                 null,
                                                                         })
                                                                     ),
@@ -1996,7 +1890,7 @@ export const CourseDetailsPage = () => {
                         } else if (selectedCourse.level === 4) {
                             const chapterQuery = handleFetchChaptersWithSlides(
                                 moduleId,
-                                packageSessionIds
+                                packageSessionIds || ""
                             );
                             const chapterResponse =
                                 await chapterQuery.queryFn();
@@ -2040,8 +1934,8 @@ export const CourseDetailsPage = () => {
                                                             []
                                                         ).map((slide) => ({
                                                             id: slide.id,
-                                                            name: slide.title,
-                                                            type: slide.source_type,
+                                                            name: slide.name,
+                                                            type: slide.type,
                                                             description:
                                                                 slide.description ||
                                                                 "",
@@ -2049,19 +1943,19 @@ export const CourseDetailsPage = () => {
                                                                 slide.status ||
                                                                 "",
                                                             order:
-                                                                slide.slide_order ||
+                                                                slide.order ||
                                                                 0,
                                                             videoSlide:
-                                                                slide.video_slide ||
+                                                                slide.videoSlide ||
                                                                 null,
                                                             documentSlide:
-                                                                slide.document_slide ||
+                                                                slide.documentSlide ||
                                                                 null,
                                                             questionSlide:
-                                                                slide.question_slide ||
+                                                                slide.questionSlide ||
                                                                 null,
                                                             assignmentSlide:
-                                                                slide.assignment_slide ||
+                                                                slide.assignmentSlide ||
                                                                 null,
                                                         })),
                                                         isOpen: false,
@@ -2077,7 +1971,7 @@ export const CourseDetailsPage = () => {
                         } else if (selectedCourse.level === 3) {
                             const chapterQuery = handleFetchChaptersWithSlides(
                                 selectedParentId,
-                                packageSessionIds
+                                packageSessionIds || ""
                             );
                             const chapterResponse =
                                 await chapterQuery.queryFn();
@@ -2108,22 +2002,20 @@ export const CourseDetailsPage = () => {
                                                 chapterWithSlides.slides || []
                                             ).map((slide) => ({
                                                 id: slide.id,
-                                                name: slide.title,
-                                                type: slide.source_type,
+                                                name: slide.name,
+                                                type: slide.type,
                                                 description:
                                                     slide.description || "",
                                                 status: slide.status || "",
-                                                order: slide.slide_order || 0,
+                                                order: slide.order || 0,
                                                 videoSlide:
-                                                    slide.video_slide || null,
+                                                    slide.videoSlide || null,
                                                 documentSlide:
-                                                    slide.document_slide ||
-                                                    null,
+                                                    slide.documentSlide || null,
                                                 questionSlide:
-                                                    slide.question_slide ||
-                                                    null,
+                                                    slide.questionSlide || null,
                                                 assignmentSlide:
-                                                    slide.assignment_slide ||
+                                                    slide.assignmentSlide ||
                                                     null,
                                             })),
                                             isOpen: false,
@@ -2221,24 +2113,19 @@ export const CourseDetailsPage = () => {
 
     const handleAddSlide = (parentId: string) => {
         const parts = parentId.split("|");
-        let subjectId = "",
-            moduleId = "",
-            chapterId = "";
+        let subjectId = parts[2] || "";
+        let moduleId = parts[3] || "";
+        let chapterId = parts[4] || "";
 
+        // Handle course structure 2 - extract IDs from slidesResult
         if (selectedCourse?.level === 2) {
-            chapterId = "DEFAULT";
-        } else if (selectedCourse?.level === 5) {
-            // For level 5, format is: add|slide|subjectId|moduleId|chapterId
-            subjectId = parts[2] || "";
-            moduleId = parts[3] || "";
-            chapterId = parts[4] || "";
-        } else if (selectedCourse?.level === 4) {
-            // For level 4, format is: add|slide|moduleId|chapterId
-            moduleId = parts[2] || "";
-            chapterId = parts[3] || "";
-        } else if (selectedCourse?.level === 3) {
-            // For level 3, format is: add|slide|chapterId
-            chapterId = parts[2] || "";
+            // For course structure 2, all slides share the same subject, module, and chapter
+            const firstSlide = slidesResult[0];
+            if (firstSlide) {
+                subjectId = firstSlide.subjectId || "";
+                moduleId = firstSlide.moduleId || "";
+                chapterId = firstSlide.chapterId || "";
+            }
         }
 
         const navigationParams = {
@@ -2268,69 +2155,11 @@ export const CourseDetailsPage = () => {
             subjectId?: string;
             moduleId?: string;
             chapterId?: string;
+            slideId?: string;
         }
     ) => {
-        const handleSlideClick = (e: React.MouseEvent, slideId: string) => {
-            e.stopPropagation(); // Prevent event bubbling
-
-            let chapterId = parentIds?.chapterId ?? "";
-            let subjectId = parentIds?.subjectId ?? "";
-            let moduleId = parentIds?.moduleId ?? "";
-            if (selectedCourse?.level === 2) {
-                chapterId = "DEFAULT";
-                subjectId = "";
-                moduleId = "";
-            }
-
-            const navigationParams = {
-                courseId: router.state.location.search.courseId ?? "",
-                levelId: selectedLevel,
-                subjectId,
-                moduleId,
-                chapterId,
-                slideId,
-                sessionId: selectedSession,
-            };
-
-            router.navigate({
-                to: "/study-library/courses/course-details/subjects/modules/chapters/slides",
-                search: navigationParams,
-            });
-        };
-
-        const handleExportClick = (e: React.MouseEvent, slideId: string) => {
-            e.stopPropagation(); // Prevent event bubbling
-
-            let chapterId = parentIds?.chapterId ?? "";
-            let subjectId = parentIds?.subjectId ?? "";
-            let moduleId = parentIds?.moduleId ?? "";
-            if (selectedCourse?.level === 2) {
-                chapterId = "DEFAULT";
-                subjectId = "";
-                moduleId = "";
-            }
-
-            const navigationParams = {
-                courseId: router.state.location.search.courseId ?? "",
-                levelId: selectedLevel,
-                subjectId,
-                moduleId,
-                chapterId,
-                slideId,
-                sessionId: selectedSession,
-            };
-
-            router.navigate({
-                to: "/study-library/courses/course-details/subjects/modules/chapters/slides",
-                search: navigationParams,
-            });
-        };
-
         return (
-            <div
-                className={`flex items-center gap-2 py-1 ${isAddButton ? "text-blue-600 hover:text-blue-700" : ""} ${type === "slide" ? "cursor-pointer hover:text-blue-600" : ""}`}
-                style={{ paddingLeft: `${level * 20}px` }}
-            >
+            <div className={`flex items-center gap-2 py-1  `}>
                 {!isAddButton && hasChildren && type && (
                     <button onClick={() => toggleExpand(id)} className="p-1">
                         {expandedItems[id] ? (
@@ -2340,112 +2169,159 @@ export const CourseDetailsPage = () => {
                         )}
                     </button>
                 )}
-                {isAddButton ? (
-                    <Button
-                        variant="ghost"
-                        className="h-8 gap-2 p-2 text-sm"
-                        onClick={() => {
-                            const parts = id.split("|");
-                            if (parts[1] === "subject") {
-                                handleAddClick("subject");
-                            } else if (parts[1] === "module") {
-                                if (selectedCourse?.level === 4) {
-                                    handleAddClick("module");
-                                } else if (selectedCourse?.level === 5) {
-                                    handleAddClick("module", parts[2]);
-                                }
-                            } else if (parts[1] === "chapter") {
-                                if (selectedCourse?.level === 4) {
-                                    handleAddClick("chapter", parts[2]);
-                                } else if (selectedCourse?.level === 5) {
-                                    handleAddClick(
-                                        "chapter",
-                                        `${parts[2]}|${parts[3]}`
-                                    );
-                                } else if (selectedCourse?.level === 3) {
-                                    handleAddClick("chapter");
-                                }
-                            } else if (parts[1] === "slide") {
-                                handleAddSlide(id);
-                            }
-                        }}
-                    >
-                        <Plus className="size-4" />
+
+                <div className="flex w-full items-center justify-between">
+                    <span className="flex items-center gap-2">
+                        {!hasChildren && <div className="size-4" />}
                         {label}
-                    </Button>
-                ) : (
-                    <div className="flex w-full items-center justify-between">
-                        <span
-                            className="flex items-center gap-2"
-                            onClick={
-                                type === "slide"
-                                    ? (e) => handleSlideClick(e, id)
-                                    : undefined
-                            }
-                        >
-                            {!hasChildren && <div className="size-4" />}
-                            {label}
-                        </span>
-                        {type === "slide" && (
-                            <button
-                                onClick={(e) => handleExportClick(e, id)}
-                                className="ml-2 rounded-full p-1 hover:bg-gray-100"
-                                title="Export Slide"
-                            >
-                                <Export className="size-4 text-gray-600" />
-                            </button>
-                        )}
-                    </div>
-                )}
+                    </span>
+                </div>
             </div>
         );
     };
 
+    // Add state for slidesResult and loading
+    const [slidesResult, setSlidesResult] = useState([]);
+    const [slidesLoading, setSlidesLoading] = useState(false);
+    const [idsContainerStructure2, setIdsContainerStructure2] = useState({
+        subjectId: "",
+        moduleId: "",
+        chapterId: "",
+    });
+
+    useEffect(() => {
+        const fetchSlides = async () => {
+            if (selectedCourse?.level === 2 && currentLevel?.subjects) {
+                setSlidesLoading(true);
+                try {
+                    const modulePromises = currentLevel.subjects.map(
+                        async (subject) => {
+                            const moduleQuery = handleFetchModulesWithChapters(
+                                subject.id,
+                                packageSessionIds || ""
+                            );
+                            const moduleResponse = await moduleQuery.queryFn();
+                            return {
+                                subjectId: subject.id,
+                                modules: moduleResponse,
+                            };
+                        }
+                    );
+                    const moduleResults = await Promise.all(modulePromises);
+
+                    const chapterPromises = moduleResults.flatMap(
+                        ({ subjectId, modules }) =>
+                            modules.map(async (module) => {
+                                if (!module || !module.module.id) return [];
+                                const chapterQuery =
+                                    handleFetchChaptersWithSlides(
+                                        module.module.id,
+                                        packageSessionIds || ""
+                                    );
+                                const chapterResponse =
+                                    await chapterQuery.queryFn();
+                                return {
+                                    subjectId,
+                                    moduleId: module.module.id,
+                                    chapters: chapterResponse,
+                                };
+                            })
+                    );
+                    const chapterResults = await Promise.all(chapterPromises);
+
+                    const slidePromises = chapterResults.flatMap(
+                        ({ subjectId, moduleId, chapters }) =>
+                            chapters.flatMap(({ chapter }) => {
+                                if (!chapter || !chapter.id) return [];
+                                setIdsContainerStructure2({
+                                    subjectId,
+                                    moduleId,
+                                    chapterId: chapter.id,
+                                });
+                                const slideQuery = handleFetchSlides(
+                                    chapter.id
+                                );
+                                return slideQuery.queryFn().then((slides) =>
+                                    slides.map((slide: any) => ({
+                                        ...slide,
+                                        name: slide.name || slide.title || "",
+                                        type:
+                                            slide.type ||
+                                            slide.source_type ||
+                                            "",
+                                        order:
+                                            slide.order ||
+                                            slide.slide_order ||
+                                            0,
+                                        videoSlide:
+                                            slide.videoSlide ||
+                                            slide.video_slide ||
+                                            null,
+                                        documentSlide:
+                                            slide.documentSlide ||
+                                            slide.document_slide ||
+                                            null,
+                                        questionSlide:
+                                            slide.questionSlide ||
+                                            slide.question_slide ||
+                                            null,
+                                        assignmentSlide:
+                                            slide.assignmentSlide ||
+                                            slide.assignment_slide ||
+                                            null,
+                                        subjectId,
+                                        moduleId,
+                                        chapterId: chapter.id,
+                                    }))
+                                );
+                            })
+                    );
+                    // Flatten the array of arrays
+                    const slidesNested = await Promise.all(slidePromises);
+                    setSlidesResult(slidesNested.flat());
+                } catch (e) {
+                    setSlidesResult([]);
+                } finally {
+                    setSlidesLoading(false);
+                }
+            }
+        };
+        fetchSlides();
+        // Only run when course structure 2 and dependencies change
+    }, [selectedCourse?.level, currentLevel, packageSessionIds]);
+
+    // Synchronous renderCourseStructure
     const renderCourseStructure = () => {
         if (!selectedCourse) return null;
-
-        // Get current session and level subjects
         const currentSession = (
             form.getValues("courseData").sessions as SessionType[]
         ).find((session) => session.sessionDetails.id === selectedSession);
         const currentLevel = currentSession?.levelDetails.find(
             (level) => level.id === selectedLevel
         );
-
         switch (selectedCourse.level) {
             case 2: {
-                // Only slides, flat structure, use getSlidesQuery for courseStructure 2
-                if (getSlidesQuery.isLoading) {
+                if (slidesLoading)
                     return <div className="p-4">Loading slides...</div>;
-                }
-                if (getSlidesQuery.error) {
-                    return (
-                        <div className="p-4 text-red-500">
-                            Error loading slides.
-                        </div>
-                    );
-                }
-                const slides = getSlidesQuery.data || [];
                 return (
-                    <div className="rounded-lg border p-4">
-                        {renderTreeItem(
-                            "Add Slide",
-                            "add|slide",
-                            false,
-                            0,
-                            true
-                        )}
-                        {slides.map((slide) => (
+                    <div className="rounded-lg border p-4 px-0">
+                        {slidesResult.map((slide) => (
                             <div key={slide.id}>
                                 {renderTreeItem(
                                     slide.title,
-                                    slide.id,
+                                    `${idsContainerStructure2.subjectId}|${idsContainerStructure2.moduleId}|${idsContainerStructure2.chapterId}`,
                                     false,
                                     0,
                                     false,
                                     "slide",
                                     {
-                                        chapterId: "DEFAULT",
+                                        subjectId:
+                                            idsContainerStructure2.subjectId,
+                                        moduleId:
+                                            idsContainerStructure2.moduleId,
+                                        chapterId:
+                                            idsContainerStructure2.chapterId,
+                                        slideId: slide.id,
                                     }
                                 )}
                             </div>
@@ -2455,24 +2331,12 @@ export const CourseDetailsPage = () => {
             }
             case 3: {
                 // Chapters with slides - use actual form data for course structure 3
-                const defaultSubjectForLevel3 = currentLevel?.subjects?.find(
-                    (subject) => subject.id === "DEFAULT"
-                );
-                const defaultModuleForLevel3 =
-                    defaultSubjectForLevel3?.modules?.find(
-                        (module) => module.id === "DEFAULT"
-                    );
+                const defaultSubjectForLevel3 = currentLevel?.subjects;
+                const defaultModuleForLevel3 = defaultSubjectForLevel3?.modules;
                 const chapters = defaultModuleForLevel3?.chapters || [];
 
                 return (
                     <div className="rounded-lg border p-4">
-                        {renderTreeItem(
-                            "Add Chapter",
-                            "add|chapter",
-                            false,
-                            0,
-                            true
-                        )}
                         {chapters.map((chapter) => (
                             <div key={chapter.id}>
                                 {renderTreeItem(
@@ -2485,13 +2349,6 @@ export const CourseDetailsPage = () => {
                                 )}
                                 {expandedItems[chapter.id] && (
                                     <>
-                                        {renderTreeItem(
-                                            "Add Slide",
-                                            `add|slide|${chapter.id}`,
-                                            false,
-                                            1,
-                                            true
-                                        )}
                                         {chapter.slides.map((slide) => (
                                             <div key={slide.id}>
                                                 {renderTreeItem(
@@ -2514,20 +2371,11 @@ export const CourseDetailsPage = () => {
             }
             case 4: {
                 // Modules with chapters and slides - use actual form data
-                const defaultSubject = currentLevel?.subjects?.find(
-                    (subject) => subject.id === "DEFAULT"
-                );
+                const defaultSubject = currentLevel?.subjects;
                 const modules = defaultSubject?.modules || [];
 
                 return (
                     <div className="rounded-lg border p-4">
-                        {renderTreeItem(
-                            "Add Module",
-                            "add|module",
-                            false,
-                            0,
-                            true
-                        )}
                         {modules.map((module) => (
                             <div key={module.id}>
                                 {renderTreeItem(
@@ -2540,13 +2388,6 @@ export const CourseDetailsPage = () => {
                                 )}
                                 {expandedItems[module.id] && (
                                     <>
-                                        {renderTreeItem(
-                                            "Add Chapter",
-                                            `add|chapter|${module.id}`,
-                                            false,
-                                            1,
-                                            true
-                                        )}
                                         {module.chapters?.map((chapter) => (
                                             <div key={chapter.id}>
                                                 {renderTreeItem(
@@ -2561,13 +2402,6 @@ export const CourseDetailsPage = () => {
                                                     `${module.id}|${chapter.id}`
                                                 ] && (
                                                     <>
-                                                        {renderTreeItem(
-                                                            "Add Slide",
-                                                            `add|slide|${module.id}|${chapter.id}`,
-                                                            false,
-                                                            2,
-                                                            true
-                                                        )}
                                                         {chapter.slides.map(
                                                             (slide) => (
                                                                 <div
@@ -2640,14 +2474,6 @@ export const CourseDetailsPage = () => {
                                                                         chapter.id
                                                                     }
                                                                 >
-                                                                    {renderTreeItem(
-                                                                        chapter.name,
-                                                                        `${subject.id}|${module.id}|${chapter.id}`,
-                                                                        true,
-                                                                        2,
-                                                                        false,
-                                                                        "chapter"
-                                                                    )}
                                                                     {expandedItems[
                                                                         `${subject.id}|${module.id}|${chapter.id}`
                                                                     ] && (
@@ -2750,66 +2576,18 @@ export const CourseDetailsPage = () => {
                 const updatedLevelDetails = session.levelDetails.map(
                     (level) => {
                         // Check if this level needs DEFAULT subject
-                        const defaultSubject = (level.subjects || []).find(
-                            (subject) => subject.id === "DEFAULT"
-                        );
+                        const defaultSubject = level.subjects || [];
                         if (!defaultSubject) {
                             hasChanges = true;
                             return {
                                 ...level,
-                                subjects: [
-                                    ...(level.subjects || []),
-                                    {
-                                        id: "DEFAULT",
-                                        subject_name: "DEFAULT",
-                                        subject_code: "DEFAULT",
-                                        credit: 0,
-                                        thumbnail_id: null,
-                                        created_at: new Date().toISOString(),
-                                        updated_at: new Date().toISOString(),
-                                        modules: [
-                                            {
-                                                id: "DEFAULT",
-                                                name: "DEFAULT",
-                                                description: "DEFAULT",
-                                                status: "DEFAULT",
-                                                thumbnail_id: "DEFAULT",
-                                                chapters: [],
-                                                isOpen: false,
-                                            },
-                                        ],
-                                    },
-                                ],
                             };
                         } else {
                             // DEFAULT subject exists, check for DEFAULT module
-                            const defaultModule = (
-                                defaultSubject.modules || []
-                            ).find((module) => module.id === "DEFAULT");
+                            const defaultModule = defaultSubject.modules || [];
                             if (!defaultModule) {
                                 hasChanges = true;
-                                const updatedSubjects = (
-                                    level.subjects || []
-                                ).map((subject) => {
-                                    if (subject.id === "DEFAULT") {
-                                        return {
-                                            ...subject,
-                                            modules: [
-                                                ...(subject.modules || []),
-                                                {
-                                                    id: "DEFAULT",
-                                                    name: "DEFAULT",
-                                                    description: "DEFAULT",
-                                                    status: "DEFAULT",
-                                                    thumbnail_id: "DEFAULT",
-                                                    chapters: [],
-                                                    isOpen: false,
-                                                },
-                                            ],
-                                        };
-                                    }
-                                    return subject;
-                                });
+                                const updatedSubjects = level.subjects || [];
                                 return {
                                     ...level,
                                     subjects: updatedSubjects,
@@ -2869,15 +2647,15 @@ export const CourseDetailsPage = () => {
                     slides: Array.isArray(item.slides)
                         ? item.slides.map((slide: SlideType) => ({
                               id: slide.id,
-                              name: slide.title,
-                              type: slide.source_type,
+                              name: slide.name,
+                              type: slide.type,
                               description: slide.description || "",
                               status: slide.status || "",
-                              order: slide.slide_order || 0,
-                              videoSlide: slide.video_slide || null,
-                              documentSlide: slide.document_slide || null,
-                              questionSlide: slide.question_slide || null,
-                              assignmentSlide: slide.assignment_slide || null,
+                              order: slide.order || 0,
+                              videoSlide: slide.videoSlide || null,
+                              documentSlide: slide.documentSlide || null,
+                              questionSlide: slide.questionSlide || null,
+                              assignmentSlide: slide.assignmentSlide || null,
                           }))
                         : [],
                     isOpen: false,
@@ -2895,13 +2673,10 @@ export const CourseDetailsPage = () => {
                         return {
                             ...level,
                             subjects: (level.subjects || []).map((subject) => {
-                                if (subject.id !== "DEFAULT") return subject;
                                 return {
                                     ...subject,
                                     modules: (subject.modules || []).map(
                                         (module) => {
-                                            if (module.id !== "DEFAULT")
-                                                return module;
                                             return {
                                                 ...module,
                                                 chapters: mappedChapters,
@@ -2918,20 +2693,6 @@ export const CourseDetailsPage = () => {
         }
     }, [chapterQueries[0]?.data, selectedSession, selectedLevel, formResetKey]);
 
-    // For courseStructure 2, fetch slides for chapterId 'DEFAULT' using useQuery directly
-    const courseStructure = form.getValues("courseData").courseStructure;
-    const getSlidesQuery = useQuery({
-        queryKey: ["slides", "DEFAULT"],
-        queryFn: async () => {
-            const response = await axios.get(
-                `${GET_SLIDES}?chapterId=DEFAULT`
-            );
-            return response.data;
-        },
-        enabled: courseStructure === 2,
-        staleTime: 3600000,
-    });
-
     // Add this with other queries at the top level of the component
     const slideCountQuery = useQuery({
         ...handleGetSlideCountDetails(packageSessionIds || ""),
@@ -2939,266 +2700,314 @@ export const CourseDetailsPage = () => {
     });
 
     useEffect(() => {
-        const fetchAllModulesAndChapters = async () => {
-            const sessions = form.getValues("courseData").sessions;
-            const currentSession = sessions.find(
-                (session) => session.sessionDetails.id === selectedSession
-            );
-            const currentLevel = currentSession?.levelDetails.find(
-                (level) => level.id === selectedLevel
-            );
-            if (!currentLevel || !packageSessionIds) return;
-            const subjects = currentLevel.subjects || [];
-            // Fetch modules for all subjects
-            const moduleResults: {
-                subjectId: string;
-                modules: ModuleResponse[];
-            }[] = await Promise.all(
-                subjects.map(async (subject) => {
-                    const moduleQuery = handleFetchModulesWithChapters(
-                        subject.id,
-                        packageSessionIds
-                    );
-                    const moduleResponse: ModuleResponse[] =
-                        await moduleQuery.queryFn();
-                    return {
-                        subjectId: subject.id,
-                        modules: moduleResponse,
-                    };
-                })
-            );
-            // Fetch chapters for all modules
-            const chapterResults: {
-                subjectId: string;
-                moduleId: string;
-                chapters: ChapterWithSlides[];
-            }[] = await Promise.all(
-                moduleResults.flatMap(({ subjectId, modules }) =>
-                    modules.map(async (module) => {
-                        const chapterQuery = handleFetchChaptersWithSlides(
-                            module.module.id,
+        if (packageSessionIds) {
+            const fetchAllModulesAndChapters = async () => {
+                const sessions = form.getValues("courseData").sessions;
+                const currentSession = sessions.find(
+                    (session) => session.sessionDetails.id === selectedSession
+                );
+                const currentLevel = currentSession?.levelDetails.find(
+                    (level) => level.id === selectedLevel
+                );
+                if (!currentLevel || !packageSessionIds) return;
+                const subjects = currentLevel.subjects || [];
+                if (!subjects) return [];
+                // Fetch modules for all subjects
+                const moduleResults: {
+                    subjectId: string;
+                    modules: ModuleType[];
+                }[] = await Promise.all(
+                    subjects.map(async (subject) => {
+                        const moduleQuery = handleFetchModulesWithChapters(
+                            subject.id,
                             packageSessionIds
                         );
-                        const chapterResponse: ChapterWithSlides[] =
-                            await chapterQuery.queryFn();
+                        const moduleResponse: ModuleType[] =
+                            await moduleQuery.queryFn();
                         return {
-                            subjectId,
-                            moduleId: module.module.id,
-                            chapters: chapterResponse,
+                            subjectId: subject.id,
+                            modules: moduleResponse,
                         };
                     })
-                )
-            );
-            // Assign modules and chapters into form state
-            const updatedSubjects = subjects.map((subject) => {
-                const subjectModules =
-                    moduleResults.find((r) => r.subjectId === subject.id)
-                        ?.modules || [];
-                return {
-                    ...subject,
-                    modules: subjectModules.map((moduleData) => {
-                        const moduleChapters =
-                            chapterResults.find(
-                                (r) =>
-                                    r.subjectId === subject.id &&
-                                    r.moduleId === moduleData.module.id
-                            )?.chapters || [];
-                        return {
-                            id: moduleData.module.id,
-                            name: moduleData.module.module_name,
-                            description: moduleData.module.description,
-                            status: moduleData.module.status,
-                            thumbnail_id: moduleData.module.thumbnail_id,
-                            chapters: moduleChapters.map(
-                                (chapterWithSlides) => ({
-                                    id: chapterWithSlides.chapter.id,
-                                    name: chapterWithSlides.chapter
-                                        .chapter_name,
-                                    status: chapterWithSlides.chapter.status,
-                                    file_id: chapterWithSlides.chapter.file_id,
-                                    description:
-                                        chapterWithSlides.chapter.description,
-                                    chapter_order:
-                                        chapterWithSlides.chapter.chapter_order,
-                                    slides: Array.isArray(
-                                        chapterWithSlides.slides
-                                    )
-                                        ? chapterWithSlides.slides.map(
-                                              (slide) => ({
-                                                  id: slide.id,
-                                                  name: slide.title,
-                                                  type: slide.source_type,
-                                                  description:
-                                                      slide.description || "",
-                                                  status: slide.status || "",
-                                                  order: slide.slide_order || 0,
-                                                  videoSlide:
-                                                      slide.video_slide || null,
-                                                  documentSlide:
-                                                      slide.document_slide ||
-                                                      null,
-                                                  questionSlide:
-                                                      slide.question_slide ||
-                                                      null,
-                                                  assignmentSlide:
-                                                      slide.assignment_slide ||
-                                                      null,
-                                              })
-                                          )
-                                        : [],
-                                    isOpen: false,
-                                })
-                            ),
-                            isOpen: false,
-                        };
-                    }),
-                };
+                );
+                // Fetch chapters for all modules
+                const chapterResults = await Promise.all(
+                    moduleResults.flatMap(({ subjectId, modules }) =>
+                        modules.map(async (module) => {
+                            if (!module || !module.module.id) return;
+                            const chapterQuery = handleFetchChaptersWithSlides(
+                                module.module.id,
+                                packageSessionIds
+                            );
+                            const chapterResponse: ChapterWithSlides[] =
+                                await chapterQuery.queryFn();
+                            return {
+                                subjectId,
+                                moduleId: module.module.id,
+                                chapters: chapterResponse,
+                            };
+                        })
+                    )
+                );
+                // Assign modules and chapters into form state
+                const updatedSubjects = subjects.map((subject) => {
+                    const subjectModules =
+                        moduleResults.find((r) => r.subjectId === subject.id)
+                            ?.modules || [];
+                    return {
+                        ...subject,
+                        modules: subjectModules.map((moduleData) => {
+                            const moduleChapters =
+                                chapterResults.find(
+                                    (r) =>
+                                        r.subjectId === subject.id &&
+                                        r.moduleId === moduleData.module.id
+                                )?.chapters || [];
+                            return {
+                                id: moduleData.module.id,
+                                name: moduleData.module.module_name,
+                                description: moduleData.module.description,
+                                status: moduleData.module.status,
+                                thumbnail_id: moduleData.module.thumbnail_id,
+                                chapters: moduleChapters.map(
+                                    (chapterWithSlides) => ({
+                                        id: chapterWithSlides.chapter.id,
+                                        name: chapterWithSlides.chapter
+                                            .chapter_name,
+                                        status: chapterWithSlides.chapter
+                                            .status,
+                                        file_id:
+                                            chapterWithSlides.chapter.file_id,
+                                        description:
+                                            chapterWithSlides.chapter
+                                                .description,
+                                        chapter_order:
+                                            chapterWithSlides.chapter
+                                                .chapter_order,
+                                        slides: Array.isArray(
+                                            chapterWithSlides.slides
+                                        )
+                                            ? chapterWithSlides.slides.map(
+                                                  (slide) => ({
+                                                      id: slide.id,
+                                                      name: slide.name,
+                                                      type: slide.type,
+                                                      description:
+                                                          slide.description ||
+                                                          "",
+                                                      status:
+                                                          slide.status || "",
+                                                      order: slide.order || 0,
+                                                      videoSlide:
+                                                          slide.videoSlide ||
+                                                          null,
+                                                      documentSlide:
+                                                          slide.documentSlide ||
+                                                          null,
+                                                      questionSlide:
+                                                          slide.questionSlide ||
+                                                          null,
+                                                      assignmentSlide:
+                                                          slide.assignmentSlide ||
+                                                          null,
+                                                  })
+                                              )
+                                            : [],
+                                        isOpen: false,
+                                    })
+                                ),
+                                isOpen: false,
+                            };
+                        }),
+                    };
+                });
+                // Update form state
+                const updatedSessions = sessions.map((session) => {
+                    if (session.sessionDetails.id !== selectedSession)
+                        return session;
+                    return {
+                        ...session,
+                        levelDetails: session.levelDetails.map((level) => {
+                            if (level.id !== selectedLevel) return level;
+                            return {
+                                ...level,
+                                subjects: updatedSubjects,
+                            };
+                        }),
+                    };
+                });
+                form.setValue("courseData.sessions", updatedSessions);
+            };
+            // Call on mount
+            fetchAllModulesAndChapters();
+            // Call on navigation
+            const unsubscribe = router.subscribe(() => {
+                if (
+                    router.state.location.pathname.includes(
+                        "/study-library/courses/course-details"
+                    )
+                ) {
+                    fetchAllModulesAndChapters();
+                }
             });
-            // Update form state
-            const updatedSessions = sessions.map((session) => {
-                if (session.sessionDetails.id !== selectedSession)
-                    return session;
-                return {
-                    ...session,
-                    levelDetails: session.levelDetails.map((level) => {
-                        if (level.id !== selectedLevel) return level;
-                        return {
-                            ...level,
-                            subjects: updatedSubjects,
-                        };
-                    }),
-                };
-            });
-            form.setValue("courseData.sessions", updatedSessions);
-        };
-        // Call on mount
-        fetchAllModulesAndChapters();
-        // Call on navigation
-        const unsubscribe = router.subscribe(() => {
-            if (
-                router.state.location.pathname.includes(
-                    "/study-library/courses/course-details"
-                )
-            ) {
-                fetchAllModulesAndChapters();
-            }
-        });
-        return () => unsubscribe();
+            return () => unsubscribe();
+        }
     }, [router, selectedSession, selectedLevel, packageSessionIds]);
 
-    if (isStudyLibraryDataLoading) return <DashboardLoader />;
-
     return (
-        <div className="flex min-h-screen flex-col bg-white w-full">
-            {/* Top Banner */}
-            <div className="relative h-[300px]">
-                {!form.watch("courseData").courseBannerMediaId ? (
-                    <div className="absolute inset-0 bg-primary-500" />
-                ) : (
-                    <div className="absolute inset-0 opacity-70">
-                        <img
-                            src={form.watch("courseData").courseBannerMediaId}
-                            alt="Course Banner"
-                            className="size-full object-cover"
-                            onError={(e) => {
-                                e.currentTarget.style.display = "none";
-                                e.currentTarget.parentElement?.classList.add(
-                                    "bg-primary-500"
-                                );
-                            }}
-                        />
-                    </div>
-                )}
-                {/* Primary color overlay with 70% opacity */}
-                <div className="container relative mx-auto px-4 py-12 text-white">
-                    <div className="flex items-start justify-between gap-8">
-                        {/* Left side - Title and Description */}
-                        <div className="max-w-2xl">
-                            {!form.watch("courseData").title ? (
-                                <div className="space-y-4">
-                                    <div className="h-8 w-32 animate-pulse rounded bg-white/20" />
-                                    <div className="h-12 w-3/4 animate-pulse rounded bg-white/20" />
-                                    <div className="h-4 w-full animate-pulse rounded bg-white/20" />
-                                    <div className="h-4 w-2/3 animate-pulse rounded bg-white/20" />
-                                </div>
-                            ) : (
-                                <>
-                                    <div className="mb-4 flex gap-2">
-                                        {form
-                                            .getValues("courseData")
-                                            .tags.map((tag, index) => (
-                                                <span
-                                                    key={index}
-                                                    className="rounded-full bg-blue-600 px-3 py-1 text-sm"
-                                                >
-                                                    {tag}
-                                                </span>
-                                            ))}
-                                    </div>
-                                    <h1 className="mb-4 text-4xl font-bold">
-                                        {form.getValues("courseData").title}
-                                    </h1>
-                                    <p className="text-lg opacity-90">
-                                        {
-                                            form.getValues("courseData")
-                                                .description
-                                        }
-                                    </p>
-                                </>
-                            )}
+        <>
+            <div className="flex min-h-screen flex-col bg-white w-full">
+                <CourseListHeader
+                    fileId={instituteDetails?.institute_logo_file_id || ""}
+                    instituteId={instituteDetails?.id}
+                />
+                {/* Top Banner */}
+                <div className="relative h-[300px]">
+                    {!form.watch("courseData").courseBannerMediaId ? (
+                        <div className="absolute inset-0 bg-primary-500" />
+                    ) : (
+                        <div className="absolute inset-0 opacity-70">
+                            <img
+                                src={
+                                    form.watch("courseData").courseBannerMediaId
+                                }
+                                alt="Course Banner"
+                                className="size-full object-cover"
+                                onError={(e) => {
+                                    e.currentTarget.style.display = "none";
+                                    e.currentTarget.parentElement?.classList.add(
+                                        "bg-primary-500"
+                                    );
+                                }}
+                            />
                         </div>
-
-                        {/* Right side - Video Player */}
-                        <div className="w-[400px] overflow-hidden rounded-lg shadow-xl">
-                            <div className="relative aspect-video bg-black">
-                                {!form.watch("courseData").courseMediaId ? (
-                                    <div className="absolute inset-0 flex items-center justify-center">
-                                        <div className="flex size-16 items-center justify-center rounded-full bg-white/20">
-                                            <svg
-                                                className="size-8 text-white"
-                                                fill="currentColor"
-                                                viewBox="0 0 24 24"
-                                            >
-                                                <path d="M8 5v14l11-7z" />
-                                            </svg>
-                                        </div>
+                    )}
+                    {/* Primary color overlay with 70% opacity */}
+                    <div className="container relative mx-auto px-4 py-12 text-white">
+                        <div className="flex items-start justify-between gap-8">
+                            {/* Left side - Title and Description */}
+                            <div className="max-w-2xl">
+                                {!form.watch("courseData").title ? (
+                                    <div className="space-y-4">
+                                        <div className="h-8 w-32 animate-pulse rounded bg-white/20" />
+                                        <div className="h-12 w-3/4 animate-pulse rounded bg-white/20" />
+                                        <div className="h-4 w-full animate-pulse rounded bg-white/20" />
+                                        <div className="h-4 w-2/3 animate-pulse rounded bg-white/20" />
                                     </div>
                                 ) : (
-                                    <video
-                                        src={
-                                            form.watch("courseData")
-                                                .courseMediaId
-                                        }
-                                        controls
-                                        className="size-full rounded-lg object-contain"
-                                        onError={(e) => {
-                                            e.currentTarget.style.display =
-                                                "none";
-                                            e.currentTarget.parentElement?.classList.add(
-                                                "bg-black"
-                                            );
-                                        }}
-                                    >
-                                        Your browser does not support the video
-                                        tag.
-                                    </video>
+                                    <>
+                                        <div className="mb-4 flex gap-2">
+                                            {form
+                                                .getValues("courseData")
+                                                .tags.map((tag, index) => (
+                                                    <span
+                                                        key={index}
+                                                        className="rounded-full bg-blue-600 px-3 py-1 text-sm"
+                                                    >
+                                                        {tag}
+                                                    </span>
+                                                ))}
+                                        </div>
+                                        <h1 className="mb-4 text-4xl font-bold">
+                                            {form.getValues("courseData").title}
+                                        </h1>
+                                        <p className="text-lg opacity-90">
+                                            {
+                                                form.getValues("courseData")
+                                                    .description
+                                            }
+                                        </p>
+                                    </>
                                 )}
+                            </div>
+
+                            {/* Right side - Video Player */}
+                            <div className="w-[400px] overflow-hidden rounded-lg shadow-xl">
+                                <div className="relative aspect-video bg-black">
+                                    {!form.watch("courseData").courseMediaId ? (
+                                        <div className="absolute inset-0 flex items-center justify-center">
+                                            <div className="flex size-16 items-center justify-center rounded-full bg-white/20">
+                                                <svg
+                                                    className="size-8 text-white"
+                                                    fill="currentColor"
+                                                    viewBox="0 0 24 24"
+                                                >
+                                                    <path d="M8 5v14l11-7z" />
+                                                </svg>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <video
+                                            src={
+                                                form.watch("courseData")
+                                                    .courseMediaId
+                                            }
+                                            controls
+                                            className="size-full rounded-lg object-contain"
+                                            onError={(e) => {
+                                                e.currentTarget.style.display =
+                                                    "none";
+                                                e.currentTarget.parentElement?.classList.add(
+                                                    "bg-black"
+                                                );
+                                            }}
+                                        >
+                                            Your browser does not support the
+                                            video tag.
+                                        </video>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
-            </div>
 
-            {/* Main Content */}
-            <div className="container mx-auto px-4 py-8">
-                <div className="flex gap-8">
-                    {/* Left Column - 2/3 width */}
-                    <div className="w-2/3 grow">
-                        {/* Session and Level Selectors */}
-                        <div className="container mx-auto px-0 pb-6">
-                            <div className="flex items-center gap-6">
-                                {sessionOptions.length === 1 ? (
-                                    sessionOptions[0].label !== "default" && (
+                {/* Main Content */}
+                <div className="container mx-auto px-4 py-8">
+                    <div className="flex gap-8">
+                        {/* Left Column - 2/3 width */}
+                        <div className="w-2/3 grow">
+                            {/* Session and Level Selectors */}
+                            <div className="container mx-auto px-0 pb-6">
+                                <div className="flex items-center gap-6">
+                                    {sessionOptions.length === 1 ? (
+                                        sessionOptions[0].label !==
+                                            "default" && (
+                                            <div className="flex flex-col gap-2">
+                                                <label className="text-sm font-medium">
+                                                    Session
+                                                </label>
+                                                <Select
+                                                    value={selectedSession}
+                                                    onValueChange={
+                                                        handleSessionChange
+                                                    }
+                                                >
+                                                    <SelectTrigger className="w-48">
+                                                        <SelectValue placeholder="Select Session" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {sessionOptions.map(
+                                                            (option) => (
+                                                                <SelectItem
+                                                                    key={
+                                                                        option._id
+                                                                    }
+                                                                    value={
+                                                                        option.value
+                                                                    }
+                                                                >
+                                                                    {
+                                                                        option.label
+                                                                    }
+                                                                </SelectItem>
+                                                            )
+                                                        )}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                        )
+                                    ) : (
                                         <div className="flex flex-col gap-2">
                                             <label className="text-sm font-medium">
                                                 Session
@@ -3228,37 +3037,46 @@ export const CourseDetailsPage = () => {
                                                 </SelectContent>
                                             </Select>
                                         </div>
-                                    )
-                                ) : (
-                                    <div className="flex flex-col gap-2">
-                                        <label className="text-sm font-medium">
-                                            Session
-                                        </label>
-                                        <Select
-                                            value={selectedSession}
-                                            onValueChange={handleSessionChange}
-                                        >
-                                            <SelectTrigger className="w-48">
-                                                <SelectValue placeholder="Select Session" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {sessionOptions.map(
-                                                    (option) => (
-                                                        <SelectItem
-                                                            key={option._id}
-                                                            value={option.value}
-                                                        >
-                                                            {option.label}
-                                                        </SelectItem>
-                                                    )
-                                                )}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                )}
+                                    )}
 
-                                {levelOptions.length === 1 ? (
-                                    levelOptions[0].label !== "default" && (
+                                    {levelOptions.length === 1 ? (
+                                        levelOptions[0].label !== "default" && (
+                                            <div className="flex flex-col gap-2">
+                                                <label className="text-sm font-medium">
+                                                    Level
+                                                </label>
+                                                <Select
+                                                    value={selectedLevel}
+                                                    onValueChange={
+                                                        handleLevelChange
+                                                    }
+                                                    disabled={!selectedSession}
+                                                >
+                                                    <SelectTrigger className="w-48">
+                                                        <SelectValue placeholder="Select Level" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {levelOptions.map(
+                                                            (option) => (
+                                                                <SelectItem
+                                                                    key={
+                                                                        option._id
+                                                                    }
+                                                                    value={
+                                                                        option.value
+                                                                    }
+                                                                >
+                                                                    {
+                                                                        option.label
+                                                                    }
+                                                                </SelectItem>
+                                                            )
+                                                        )}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                        )
+                                    ) : (
                                         <div className="flex flex-col gap-2">
                                             <label className="text-sm font-medium">
                                                 Level
@@ -3289,274 +3107,275 @@ export const CourseDetailsPage = () => {
                                                 </SelectContent>
                                             </Select>
                                         </div>
-                                    )
-                                ) : (
-                                    <div className="flex flex-col gap-2">
-                                        <label className="text-sm font-medium">
-                                            Level
-                                        </label>
-                                        <Select
-                                            value={selectedLevel}
-                                            onValueChange={handleLevelChange}
-                                            disabled={!selectedSession}
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Course Structure */}
+                            <div className="mb-8">
+                                <h2 className="mb-4 text-xl font-semibold">
+                                    Course Structure
+                                </h2>
+                                {selectedCourse && renderCourseStructure()}
+                            </div>
+
+                            {/* What You'll Learn Section */}
+                            <div className="mb-8">
+                                <h2 className="mb-4 text-2xl font-bold">
+                                    What you&apos;ll learn?
+                                </h2>
+                                <div className="rounded-lg">
+                                    <p
+                                        dangerouslySetInnerHTML={{
+                                            __html:
+                                                form.getValues("courseData")
+                                                    .whatYoullLearn || "",
+                                        }}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* About Content Section */}
+                            <div className="mb-8">
+                                <h2 className="mb-4 text-2xl font-bold">
+                                    About this course
+                                </h2>
+                                <div className="rounded-lg">
+                                    <p
+                                        dangerouslySetInnerHTML={{
+                                            __html:
+                                                form.getValues("courseData")
+                                                    .aboutTheCourse || "",
+                                        }}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Who Should Join Section */}
+                            <div className="mb-8">
+                                <h2 className="mb-4 text-2xl font-bold">
+                                    Who should join?
+                                </h2>
+                                <div className="rounded-lg">
+                                    <p
+                                        dangerouslySetInnerHTML={{
+                                            __html:
+                                                form.getValues("courseData")
+                                                    .whoShouldLearn || "",
+                                        }}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Instructors Section */}
+                            <div className="mb-8">
+                                <h2 className="mb-4 text-2xl font-bold">
+                                    Instructors
+                                </h2>
+                                {form
+                                    .getValues("courseData")
+                                    .instructors.map((instructor, index) => (
+                                        <div
+                                            key={index}
+                                            className="flex gap-4 rounded-lg bg-gray-50 p-4"
                                         >
-                                            <SelectTrigger className="w-48">
-                                                <SelectValue placeholder="Select Level" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {levelOptions.map((option) => (
-                                                    <SelectItem
-                                                        key={option._id}
-                                                        value={option.value}
-                                                    >
-                                                        {option.label}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                )}
+                                            <Avatar className="size-8">
+                                                <AvatarImage
+                                                    src=""
+                                                    alt={instructor.email}
+                                                />
+                                                <AvatarFallback className="bg-[#3B82F6] text-xs font-medium text-white">
+                                                    {getInitials(
+                                                        instructor.email
+                                                    )}
+                                                </AvatarFallback>
+                                            </Avatar>
+                                            <h3 className="text-lg">
+                                                {instructor.name}
+                                            </h3>
+                                        </div>
+                                    ))}
                             </div>
                         </div>
 
-                        {/* Course Structure */}
-                        <div className="mb-8">
-                            <h2 className="mb-4 text-xl font-semibold">
-                                Course Structure
-                            </h2>
-                            {selectedCourse && renderCourseStructure()}
-                        </div>
-
-                        {/* What You'll Learn Section */}
-                        <div className="mb-8">
-                            <h2 className="mb-4 text-2xl font-bold">
-                                What you&apos;ll learn?
-                            </h2>
-                            <div className="rounded-lg">
-                                <p
-                                    dangerouslySetInnerHTML={{
-                                        __html:
-                                            form.getValues("courseData")
-                                                .whatYoullLearn || "",
-                                    }}
-                                />
-                            </div>
-                        </div>
-
-                        {/* About Content Section */}
-                        <div className="mb-8">
-                            <h2 className="mb-4 text-2xl font-bold">
-                                About this course
-                            </h2>
-                            <div className="rounded-lg">
-                                <p
-                                    dangerouslySetInnerHTML={{
-                                        __html:
-                                            form.getValues("courseData")
-                                                .aboutTheCourse || "",
-                                    }}
-                                />
-                            </div>
-                        </div>
-
-                        {/* Who Should Join Section */}
-                        <div className="mb-8">
-                            <h2 className="mb-4 text-2xl font-bold">
-                                Who should join?
-                            </h2>
-                            <div className="rounded-lg">
-                                <p
-                                    dangerouslySetInnerHTML={{
-                                        __html:
-                                            form.getValues("courseData")
-                                                .whoShouldLearn || "",
-                                    }}
-                                />
-                            </div>
-                        </div>
-
-                        {/* Instructors Section */}
-                        <div className="mb-8">
-                            <h2 className="mb-4 text-2xl font-bold">
-                                Instructors
-                            </h2>
-                            {form
-                                .getValues("courseData")
-                                .instructors.map((instructor, index) => (
-                                    <div
-                                        key={index}
-                                        className="flex gap-4 rounded-lg bg-gray-50 p-4"
-                                    >
-                                        <Avatar className="size-8">
-                                            <AvatarImage
-                                                src=""
-                                                alt={instructor.email}
-                                            />
-                                            <AvatarFallback className="bg-[#3B82F6] text-xs font-medium text-white">
-                                                {getInitials(instructor.email)}
-                                            </AvatarFallback>
-                                        </Avatar>
-                                        <h3 className="text-lg">
-                                            {instructor.name}
-                                        </h3>
-                                    </div>
-                                ))}
-                        </div>
-                    </div>
-
-                    {/* Right Column - 1/3 width */}
-                    <div className="w-1/3">
-                        <div className="sticky top-4 rounded-lg border bg-white p-6 shadow-lg">
-                            {/* Course Stats */}
-                            <h2 className="mb-4 text-lg font-bold">
-                                Scratch Programming Language
-                            </h2>
-                            <div className="space-y-4">
-                                {levelOptions[0]?.label !== "default" && (
-                                    <div className="flex items-center gap-2">
-                                        <Steps size={18} />
-                                        <span>
-                                            {
-                                                levelOptions.find(
-                                                    (option) =>
-                                                        option.value ===
-                                                        selectedLevel
-                                                )?.label
-                                            }
-                                        </span>
-                                    </div>
-                                )}
-                                {slideCountQuery.isLoading ? (
-                                    <div className="space-y-2">
-                                        {[1, 2, 3, 4, 5].map((i) => (
-                                            <div
-                                                key={i}
-                                                className="h-6 w-32 animate-pulse rounded bg-gray-200"
-                                            />
-                                        ))}
-                                    </div>
-                                ) : slideCountQuery.error ? (
-                                    <div className="text-sm text-red-500">
-                                        Error loading slide counts
-                                    </div>
-                                ) : (
-                                    <>
-                                        {slideCountQuery.data?.map(
-                                            (count: SlideCountType) => (
+                        {/* Right Column - 1/3 width */}
+                        <div className="w-1/3">
+                            <div className="sticky top-4 rounded-lg border bg-white p-6 shadow-lg">
+                                {/* Course Stats */}
+                                <h2 className="mb-4 text-lg font-bold">
+                                    Scratch Programming Language
+                                </h2>
+                                <div className="space-y-4">
+                                    {levelOptions[0]?.label !== "default" && (
+                                        <div className="flex items-center gap-2">
+                                            <Steps size={18} />
+                                            <span>
+                                                {
+                                                    levelOptions.find(
+                                                        (option) =>
+                                                            option.value ===
+                                                            selectedLevel
+                                                    )?.label
+                                                }
+                                            </span>
+                                        </div>
+                                    )}
+                                    {slideCountQuery.isLoading ? (
+                                        <div className="space-y-2">
+                                            {[1, 2, 3, 4, 5].map((i) => (
                                                 <div
-                                                    key={count.source_type}
-                                                    className="flex items-center gap-2"
-                                                >
-                                                    {count.source_type ===
-                                                        "VIDEO" && (
-                                                        <>
-                                                            <PlayCircle
-                                                                size={18}
-                                                            />
-                                                            <span>
-                                                                {
-                                                                    count.slide_count
-                                                                }{" "}
-                                                                Video slides
-                                                            </span>
-                                                        </>
-                                                    )}
-                                                    {count.source_type ===
-                                                        "CODE" && (
-                                                        <>
-                                                            <Code size={18} />
-                                                            <span>
-                                                                {
-                                                                    count.slide_count
-                                                                }{" "}
-                                                                Code slides
-                                                            </span>
-                                                        </>
-                                                    )}
-                                                    {count.source_type ===
-                                                        "PDF" && (
-                                                        <>
-                                                            <FilePdf
-                                                                size={18}
-                                                            />
-                                                            <span>
-                                                                {
-                                                                    count.slide_count
-                                                                }{" "}
-                                                                PDF slides
-                                                            </span>
-                                                        </>
-                                                    )}
-                                                    {count.source_type ===
-                                                        "DOCUMENT" && (
-                                                        <>
-                                                            <FileDoc
-                                                                size={18}
-                                                            />
-                                                            <span>
-                                                                {
-                                                                    count.slide_count
-                                                                }{" "}
-                                                                Doc slides
-                                                            </span>
-                                                        </>
-                                                    )}
-                                                    {count.source_type ===
-                                                        "QUESTION" && (
-                                                        <>
-                                                            <Question
-                                                                size={18}
-                                                            />
-                                                            <span>
-                                                                {
-                                                                    count.slide_count
-                                                                }{" "}
-                                                                Question slides
-                                                            </span>
-                                                        </>
-                                                    )}
-                                                    {count.source_type ===
-                                                        "ASSIGNMENT" && (
-                                                        <>
-                                                            <File size={18} />
-                                                            <span>
-                                                                {
-                                                                    count.slide_count
-                                                                }{" "}
-                                                                Assignment
-                                                                slides
-                                                            </span>
-                                                        </>
-                                                    )}
+                                                    key={i}
+                                                    className="h-6 w-32 animate-pulse rounded bg-gray-200"
+                                                />
+                                            ))}
+                                        </div>
+                                    ) : slideCountQuery.error ? (
+                                        <div className="text-sm text-red-500">
+                                            Error loading slide counts
+                                        </div>
+                                    ) : (
+                                        <>
+                                            {slideCountQuery.data?.map(
+                                                (count: SlideCountType) => (
+                                                    <div
+                                                        key={count.source_type}
+                                                        className="flex items-center gap-2"
+                                                    >
+                                                        {count.source_type ===
+                                                            "VIDEO" && (
+                                                            <>
+                                                                <PlayCircle
+                                                                    size={18}
+                                                                />
+                                                                <span>
+                                                                    {
+                                                                        count.slide_count
+                                                                    }{" "}
+                                                                    Video slides
+                                                                </span>
+                                                            </>
+                                                        )}
+                                                        {count.source_type ===
+                                                            "CODE" && (
+                                                            <>
+                                                                <Code
+                                                                    size={18}
+                                                                />
+                                                                <span>
+                                                                    {
+                                                                        count.slide_count
+                                                                    }{" "}
+                                                                    Code slides
+                                                                </span>
+                                                            </>
+                                                        )}
+                                                        {count.source_type ===
+                                                            "PDF" && (
+                                                            <>
+                                                                <FilePdf
+                                                                    size={18}
+                                                                />
+                                                                <span>
+                                                                    {
+                                                                        count.slide_count
+                                                                    }{" "}
+                                                                    PDF slides
+                                                                </span>
+                                                            </>
+                                                        )}
+                                                        {count.source_type ===
+                                                            "DOCUMENT" && (
+                                                            <>
+                                                                <FileDoc
+                                                                    size={18}
+                                                                />
+                                                                <span>
+                                                                    {
+                                                                        count.slide_count
+                                                                    }{" "}
+                                                                    Doc slides
+                                                                </span>
+                                                            </>
+                                                        )}
+                                                        {count.source_type ===
+                                                            "QUESTION" && (
+                                                            <>
+                                                                <Question
+                                                                    size={18}
+                                                                />
+                                                                <span>
+                                                                    {
+                                                                        count.slide_count
+                                                                    }{" "}
+                                                                    Question
+                                                                    slides
+                                                                </span>
+                                                            </>
+                                                        )}
+                                                        {count.source_type ===
+                                                            "ASSIGNMENT" && (
+                                                            <>
+                                                                <File
+                                                                    size={18}
+                                                                />
+                                                                <span>
+                                                                    {
+                                                                        count.slide_count
+                                                                    }{" "}
+                                                                    Assignment
+                                                                    slides
+                                                                </span>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                )
+                                            )}
+                                            {form.getValues("courseData")
+                                                .instructors.length > 0 && (
+                                                <div className="flex items-center gap-2">
+                                                    <ChalkboardTeacher
+                                                        size={18}
+                                                    />
+                                                    <span>
+                                                        {form
+                                                            .getValues(
+                                                                "courseData"
+                                                            )
+                                                            .instructors.map(
+                                                                (i) => i.name
+                                                            )
+                                                            .join(", ")}
+                                                    </span>
                                                 </div>
-                                            )
-                                        )}
-                                        {form.getValues("courseData")
-                                            .instructors.length > 0 && (
-                                            <div className="flex items-center gap-2">
-                                                <ChalkboardTeacher size={18} />
-                                                <span>
-                                                    {form
-                                                        .getValues("courseData")
-                                                        .instructors.map(
-                                                            (i) => i.name
-                                                        )
-                                                        .join(", ")}
-                                                </span>
-                                            </div>
-                                        )}
-                                    </>
-                                )}
+                                            )}
+                                        </>
+                                    )}
+                                </div>
+                                <Dialog>
+                                    <DialogTrigger>
+                                        <MyButton
+                                            type="button"
+                                            scale="medium"
+                                            buttonType="primary"
+                                            layoutVariant="default"
+                                            className="mt-4 w-full"
+                                        >
+                                            Enroll
+                                        </MyButton>
+                                    </DialogTrigger>
+                                    <DialogContent>
+                                        <LoginForm variant="dialog" />
+                                    </DialogContent>
+                                </Dialog>
                             </div>
                         </div>
                     </div>
+                    <CourseDetailsRatingsComponent
+                        packageSessionId={packageSessionIdForCurrentLevel}
+                    />
                 </div>
-                <CourseDetailsRatingsComponent
-                    currentSession={currentSession}
-                    currentLevel={currentLevel}
-                />
+                {getDialogContent()}
             </div>
-            {getDialogContent()}
-        </div>
+        </>
     );
 };

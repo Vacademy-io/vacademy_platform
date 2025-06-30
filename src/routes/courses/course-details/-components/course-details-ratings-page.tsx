@@ -2,7 +2,7 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { ThumbsUp, ThumbsDown, Trash } from "phosphor-react";
 import { Progress } from "@/components/ui/progress";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { MyPagination } from "@/components/design-system/pagination";
 import { AxiosError } from "axios";
 import { toast } from "sonner";
@@ -17,7 +17,7 @@ import {
     handleUpdateRating,
 } from "../-services/rating-services";
 import { StarRatingComponent } from "@/components/common/star-rating-component";
-import { getPackageSessionId } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
+import { DashboardLoader } from "@/components/core/dashboard-loader";
 
 // Types for API Response
 interface User {
@@ -105,28 +105,21 @@ function timeAgo(dateString: string) {
     return date.toLocaleDateString();
 }
 
-export function CourseDetailsRatingsComponent({
-    currentSession,
-    currentLevel,
-}: {
-    currentSession: Session;
-    currentLevel: Level;
-}) {
-    console.log(currentSession, currentLevel);
-    const queryClient = useQueryClient();
-    const [page, setPage] = useState(0);
-
-    const [packageSessionId, setPackageSessionId] = useState<string | null>(
-        null
+export function getIdByLevelAndSession(data, sessionId, levelId) {
+    const match = data?.find(
+        (item) => item.level?.id === levelId && item.session?.id === sessionId
     );
 
-    useEffect(() => {
-        const fetchPackageSessionId = async () => {
-            const id = await getPackageSessionId();
-            setPackageSessionId(id);
-        };
-        fetchPackageSessionId();
-    }, []);
+    return match?.id || "";
+}
+
+export function CourseDetailsRatingsComponent({
+    packageSessionId,
+}: {
+    packageSessionId: string | null;
+}) {
+    const queryClient = useQueryClient();
+    const [page, setPage] = useState(0);
 
     const { data: ratingData, isLoading } = useSuspenseQuery<PaginatedResponse>(
         handleGetRatingDetails({
@@ -202,11 +195,11 @@ export function CourseDetailsRatingsComponent({
         setPage(pageNo);
     };
 
+    if (isLoading || !packageSessionId) return <DashboardLoader />;
+
     return (
         <div className="flex flex-col gap-5">
-            <h1 className="text-2xl font-bold text-neutral-600">
-                Ratings & Reviews
-            </h1>
+            <h1 className="text-2xl font-bold">Ratings & Reviews</h1>
             {reviews.length > 0 && (
                 <div className="flex w-full gap-12">
                     <div className="flex flex-col gap-2 text-center">

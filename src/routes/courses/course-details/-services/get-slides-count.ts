@@ -1,8 +1,8 @@
 import { GET_SLIDES_COUNT } from "@/constants/urls";
-import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
+import axios from "axios";
 
 const fetchSlidesCountDetails = async (packageSessionId: string) => {
-    const response = await authenticatedAxiosInstance({
+    const response = await axios({
         method: "GET",
         url: GET_SLIDES_COUNT,
         params: { packageSessionId },
@@ -17,5 +17,6 @@ export const handleGetSlideCountDetails = (packageSessionId: string) => {
             return data;
         },
         staleTime: 60 * 60 * 1000,
+        enabled: !!packageSessionId,
     };
 };

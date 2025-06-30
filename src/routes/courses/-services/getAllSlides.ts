@@ -1,4 +1,4 @@
-import { CHAPTERS_WITH_SLIDES } from "@/constants/urls";
+import { CHAPTERS_WITH_SLIDES, GET_SLIDES } from "@/constants/urls";
 import axios from "axios";
 
 export const fetchChaptersWithSlides = async (
@@ -21,6 +21,23 @@ export const handleFetchChaptersWithSlides = (
     return {
         queryKey: ["GET_CHAPTERS_WITH_SLIDES", moduleId, packageSessionId],
         queryFn: () => fetchChaptersWithSlides(moduleId, packageSessionId),
+        staleTime: 60 * 60 * 1000,
+    };
+};
+
+export const fetchSlidesOnly = async (chapterId: string) => {
+    const response = await axios.get(`${GET_SLIDES}`, {
+        params: {
+            chapterId,
+        },
+    });
+    return response.data;
+};
+
+export const handleFetchSlides = (chapterId: string) => {
+    return {
+        queryKey: ["GET_SLIDES_ONLY_OF_CHAPTERS", chapterId],
+        queryFn: () => fetchSlidesOnly(chapterId),
         staleTime: 60 * 60 * 1000,
     };
 };

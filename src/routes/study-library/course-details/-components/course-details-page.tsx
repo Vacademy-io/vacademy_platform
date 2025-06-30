@@ -11,6 +11,7 @@ import {
     CaretDown,
     CaretRight,
     Export,
+    CaretLeft,
 } from "phosphor-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -181,12 +182,23 @@ const mockCourses: Course[] = [
     },
 ];
 
+const heading = (
+    <div className="flex items-center">
+        <CaretLeft
+            onClick={() => window.history.back()}
+            className="cursor-pointer"
+        />
+        <h1 className="text-lg">Course Details</h1>
+    </div>
+);
+
 export const CourseDetailsPage = () => {
     const { setNavHeading } = useNavHeadingStore();
 
     useEffect(() => {
-        setNavHeading("Course Details");
+        setNavHeading(heading);
     }, []);
+
     const [selectedSession, setSelectedSession] = useState<string>("");
     const [selectedLevel, setSelectedLevel] = useState<string>("");
     const router = useRouter();

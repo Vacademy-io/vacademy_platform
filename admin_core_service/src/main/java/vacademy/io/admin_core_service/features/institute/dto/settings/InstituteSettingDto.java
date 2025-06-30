@@ -7,7 +7,6 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import vacademy.io.admin_core_service.features.institute.dto.settings.naming.SettingDto;
 
 import java.util.Map;
 

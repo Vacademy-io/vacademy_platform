@@ -1,14 +1,13 @@
 package vacademy.io.admin_core_service.features.institute.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.AllArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.institute.constants.ConstantsSettingDefaultValue;
 import vacademy.io.admin_core_service.features.institute.dto.settings.InstituteSettingDto;
 import vacademy.io.admin_core_service.features.institute.dto.settings.naming.NamePreferenceSettingDataDto;
 import vacademy.io.admin_core_service.features.institute.dto.settings.naming.NameSettingRequest;
 import vacademy.io.admin_core_service.features.institute.dto.settings.naming.NamingSettingDto;
-import vacademy.io.admin_core_service.features.institute.dto.settings.naming.SettingDto;
+import vacademy.io.admin_core_service.features.institute.dto.settings.SettingDto;
 import vacademy.io.admin_core_service.features.institute.enums.SettingKeyEnums;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
@@ -49,7 +48,7 @@ public class NameSettingStrategy extends IInstituteSettingStrategy{
             // Check if the naming setting already exists
             if (existingSettings.containsKey(SettingKeyEnums.NAMING_SETTING.name())) {
                 // Just rebuild using rebuildInstituteSetting if already present
-                return rebuildInstituteSetting(institute, settingRequest, SettingKeyEnums.NAMING_SETTING.name());
+                return rebuildInstituteSetting(institute, nameSettingRequest, SettingKeyEnums.NAMING_SETTING.name());
             }
 
             // Otherwise, create a new naming setting and add it
@@ -58,7 +57,7 @@ public class NameSettingStrategy extends IInstituteSettingStrategy{
             SettingDto settingDto = new SettingDto();
             settingDto.setKey(SettingKeyEnums.NAMING_SETTING.name());
             settingDto.setName("Naming Setting");
-            settingDto.setData(objectMapper.writeValueAsString(data));
+            settingDto.setData(data);
 
             existingSettings.put(SettingKeyEnums.NAMING_SETTING.name(), settingDto);
             instituteSettingDto.setSetting(existingSettings);
@@ -85,7 +84,7 @@ public class NameSettingStrategy extends IInstituteSettingStrategy{
             SettingDto settingDto = new SettingDto();
             settingDto.setKey(SettingKeyEnums.NAMING_SETTING.name());
             settingDto.setName("Naming Setting");
-            settingDto.setData(objectMapper.writeValueAsString(data));
+            settingDto.setData(data);
 
             settingMap.put(SettingKeyEnums.NAMING_SETTING.name(), settingDto);
 
@@ -102,7 +101,7 @@ public class NameSettingStrategy extends IInstituteSettingStrategy{
                 .map(entry -> {
                     NamingSettingDto dto = new NamingSettingDto();
                     dto.setKey(entry.getKey());
-                    dto.setSystemValue(entry.getKey()); // assuming system value is same as key
+                    dto.setSystemValue(ConstantsSettingDefaultValue.getNameSystemValueForKey(entry.getKey())); // assuming system value is same as key
                     dto.setCustomValue(entry.getValue());
                     return dto;
                 })
@@ -137,7 +136,7 @@ public class NameSettingStrategy extends IInstituteSettingStrategy{
             NamePreferenceSettingDataDto newData = createNamingDataFromRequest(nameSettingRequest);
 
             SettingDto settingDto = settingMap.get(key);
-            settingDto.setData(objectMapper.writeValueAsString(newData));
+            settingDto.setData(newData);
 
             // Replace and return updated JSON
             settingMap.put(key, settingDto);

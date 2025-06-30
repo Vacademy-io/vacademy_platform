@@ -1,9 +1,19 @@
-import { Preferences } from "@capacitor/preferences";
+import { getAccessToken } from '@/lib/auth/sessionUtility';
+import { jwtDecode } from 'jwt-decode';
 
-export const getUserId = async () => {
-    const USER_ID_KEY = 'StudentDetails';
-    const userDetailsStr = await Preferences.get({ key: USER_ID_KEY });
-    const userDetails = userDetailsStr.value ? JSON.parse(userDetailsStr.value) : null;
-    const userId = userDetails?.user_id || null;
-    return userId;
+export async function getUserId(): Promise<string | null> {
+  try {
+    const token = await getAccessToken();
+
+    if (typeof token !== 'string') {
+      console.warn('[getUserId] Token is not a string:', token);
+      return null;
+    }
+
+    const decoded: any = jwtDecode(token);
+    return decoded?.user ?? null;
+  } catch (error) {
+    console.error('[getUserId] Failed to decode token:', error);
+    return null;
+  }
 }

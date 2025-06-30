@@ -88,6 +88,7 @@ public class InstituteInitManager {
         return instituteInfoDTO;
     }
 
+    @Transactional
     public InstituteInfoDTO getPublicInstituteDetails(String instituteId) {
 
         Optional<Institute> institute = instituteRepository.findById(instituteId);
@@ -120,6 +121,9 @@ public class InstituteInitManager {
         instituteInfoDTO.setTags(packageRepository.findAllDistinctTagsByInstituteId(institute.get().getId()));
         instituteInfoDTO.setCoverImageFileId(institute.get().getCoverImageFileId());
         instituteInfoDTO.setCoverTextJson(institute.get().getCoverTextJson());
+        instituteInfoDTO.setBatchesForSessions(packageSessionRepository.findPackageSessionsByInstituteId(institute.get().getId(), List.of(PackageSessionStatusEnum.ACTIVE.name())).stream().map((obj) -> {
+            return new PackageSessionDTO(obj);
+        }).toList());
         return instituteInfoDTO;
     }
 

@@ -1,75 +1,82 @@
 import { truncateString } from "@/lib/reusable/truncateString";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
-import { 
-  PlayCircle, 
-  BookOpenText, 
-  FilePdf, 
-  FileDoc, 
-  Circle, 
+import {
+  PlayCircle,
+  BookOpenText,
+  FilePdf,
+  FileDoc,
+  Circle,
   CheckCircle,
   Question,
   FileText,
   PresentationChart,
   Lightning,
-  File
+  File,
 } from "@phosphor-icons/react";
 import { useRouter } from "@tanstack/react-router";
 import { Slide, useSlides } from "@/hooks/study-library/use-slides";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { BookOpen, Code, Gamepad2 } from "lucide-react";
 
 // Helper function to get slide status
 export const getSlideStatus = (percentage: number | null | undefined) => {
   if (percentage === null || percentage === undefined) {
-    return 'not-started';
+    return "not-started";
   }
   if (percentage >= 80) {
-    return 'completed';
+    return "completed";
   }
-  return 'in-progress';
+  return "in-progress";
 };
 
 // Helper function to get status details with modern design
 export const getStatusDetails = (percentage: number | null | undefined) => {
   const status = getSlideStatus(percentage);
   switch (status) {
-    case 'not-started':
+    case "not-started":
       return {
-        label: 'Ready to Start',
-        description: 'Begin your learning journey',
+        label: "Ready to Start",
+        description: "Begin your learning journey",
         icon: Circle,
-        color: 'text-neutral-400',
-        bgColor: 'bg-neutral-100',
-        badge: null
+        color: "text-neutral-400",
+        bgColor: "bg-neutral-100",
+        badge: null,
       };
-    case 'in-progress':
+    case "in-progress":
       return {
-        label: 'In Progress',
-        description: percentage === 0 
-          ? 'Just started - Keep going!'
-          : `${percentage?.toFixed(0)}% completed - You're doing great!`,
+        label: "In Progress",
+        description:
+          percentage === 0
+            ? "Just started - Keep going!"
+            : `${percentage?.toFixed(0)}% completed - You're doing great!`,
         icon: Lightning,
-        color: 'text-primary-500',
-        bgColor: 'bg-primary-100',
-        badge: 'learning'
+        color: "text-primary-500",
+        bgColor: "bg-primary-100",
+        badge: "learning",
       };
-    case 'completed':
+    case "completed":
       return {
-        label: 'Completed',
+        label: "Completed",
         description: `Perfect! 100% mastered`,
         icon: CheckCircle,
-        color: 'text-green-500',
-        bgColor: 'bg-green-100',
-        badge: 'mastered'
+        color: "text-green-500",
+        bgColor: "bg-green-100",
+        badge: "mastered",
       };
     default:
       return {
-        label: 'Unknown',
-        description: 'Status unknown',
+        label: "Unknown",
+        description: "Status unknown",
         icon: Circle,
-        color: 'text-neutral-400',
-        bgColor: 'bg-neutral-100',
-        badge: null
+        color: "text-neutral-400",
+        bgColor: "bg-neutral-100",
+        badge: null,
       };
   }
 };
@@ -78,30 +85,63 @@ export const getStatusDetails = (percentage: number | null | undefined) => {
 export const getIcon = (slide: Slide, size?: string): React.ReactNode => {
   const sizeClass = `size-${size || "4"}`;
   const iconClass = `${sizeClass} transition-all duration-200 ease-in-out`;
-  
+
   switch (slide.source_type) {
     case "VIDEO":
-      return <PlayCircle className={`${iconClass} text-green-500`} weight="duotone" />;
+      return (
+        <PlayCircle
+          className={`${iconClass} text-green-500`}
+          weight="duotone"
+        />
+      );
     case "QUESTION":
-      return <Question className={`${iconClass} text-purple-500`} weight="duotone" />;
+      return (
+        <Question className={`${iconClass} text-purple-500`} weight="duotone" />
+      );
     case "ASSIGNMENT":
       return <File className={`${iconClass} text-blue-500`} weight="duotone" />;
-    case "DOCUMENT": {
-      const docType = slide.document_slide?.type;
-      switch (docType) {
+    case "DOCUMENT":
+      switch (slide.document_slide?.type) {
         case "PDF":
-          return <FilePdf className={`${iconClass} text-red-500`} weight="duotone" />;
+          return (
+            <FilePdf className={`${iconClass} text-red-500`} weight="duotone" />
+          );
         case "DOC":
         case "DOCX":
-          return <FileDoc className={`${iconClass} text-blue-600`} weight="duotone" />;
+          return (
+            <FileDoc
+              className={`${iconClass} text-blue-600`}
+              weight="duotone"
+            />
+          );
         case "PRESENTATION":
-          return <PresentationChart className={`${iconClass} text-orange-500`} weight="duotone" />;
+          return (
+            <PresentationChart
+              className={`${iconClass} text-orange-500`}
+              weight="duotone"
+            />
+          );
+        case "CODE":
+          return <Code className={`${iconClass} text-green-500`} />;
+        case "JUPYTER":
+          return <BookOpen className={`${iconClass} text-purple-500`} />;
+        case "SCRATCH":
+          return <Gamepad2 className={`${iconClass} text-orange-500`} />;
         default:
-          return <FileText className={`${iconClass} text-neutral-500`} weight="duotone" />;
+          return (
+            <FileText
+              className={`${iconClass} text-neutral-500`}
+              weight="duotone"
+            />
+          );
       }
-    }
     default:
-      return <BookOpenText className={`${iconClass} text-neutral-500`} weight="duotone" />;
+      return (
+        <BookOpenText
+          className={`${iconClass} text-neutral-500`}
+          weight="duotone"
+        />
+      );
   }
 };
 
@@ -123,29 +163,52 @@ const SlideItem = ({
 
   const getSlideTitle = () => {
     return (
-      (slide.source_type === 'DOCUMENT' && slide.document_slide?.title) ||
-      (slide.source_type === 'VIDEO' && slide.video_slide?.title) ||
-      (slide.source_type === 'QUESTION' && slide?.title) ||
-      (slide.source_type === 'ASSIGNMENT' && slide?.title) ||
+      (slide.source_type === "DOCUMENT" && slide.document_slide?.title) ||
+      (slide.source_type === "VIDEO" && slide.video_slide?.title) ||
+      (slide.source_type === "QUESTION" && slide?.title) ||
+      (slide.source_type === "ASSIGNMENT" && slide?.title) ||
       slide.title ||
-      'Untitled'
+      "Untitled"
     );
   };
 
   const getStatusBadge = () => {
     if (!statusDetails.badge) return null;
-    
     return (
-      <div className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-medium transition-all duration-200 ${
-        statusDetails.badge === 'mastered' 
-          ? 'bg-green-50 border border-green-200 text-green-600' 
-          : 'bg-primary-50 border border-primary-200 text-primary-600'
-      }`}>
-        {statusDetails.badge === 'mastered' ? 'Done' : 'Active'}
+      <div
+        className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-medium transition-all duration-200 ${
+          statusDetails.badge === "mastered"
+            ? "bg-green-50 border border-green-200 text-green-600"
+            : "bg-primary-50 border border-primary-200 text-primary-600"
+        }`}
+      >
+        {statusDetails.badge === "mastered" ? "Done" : "Active"}
       </div>
     );
   };
 
+  const getSlideTypeDisplay = (slide: Slide): string => {
+    // For DOCUMENT slides with specific sub-types (not DOC), show just the sub-type
+    if (
+      slide.source_type === "DOCUMENT" &&
+      slide.document_slide?.type &&
+      slide.document_slide.type !== "DOC"
+    ) {
+      return slide.document_slide.type.toLowerCase().replace("_", " ");
+    }
+
+    // For VIDEO slides with embedded_type, show the embedded_type
+    if (slide.source_type === "VIDEO" && slide.video_slide?.embedded_type) {
+      return `${slide.source_type
+        .toLowerCase()
+        .replace("_", " ")} - ${slide.video_slide.embedded_type
+        .toLowerCase()
+        .replace("_", " ")}`;
+    }
+
+    // For all other cases, show the main source_type
+    return slide.source_type.toLowerCase().replace("_", " ");
+  };
   return (
     <TooltipProvider>
       <Tooltip>
@@ -153,9 +216,9 @@ const SlideItem = ({
           <div
             className="w-full transition-all duration-300 ease-in-out animate-in fade-in slide-in-from-left-2 hover:scale-[1.01] cursor-pointer"
             onClick={onClick}
-            style={{ 
+            style={{
               animationDelay: `${index * 80}ms`,
-              animation: `slideInUp 0.5s ease-out ${index * 80}ms both`
+              animation: `slideInUp 0.5s ease-out ${index * 80}ms both`,
             }}
           >
             <div
@@ -165,8 +228,8 @@ const SlideItem = ({
                 duration-300 ease-in-out
                 ${
                   isActive
-                    ? 'text-primary-600 border-primary-300 bg-primary-50/80 shadow-md shadow-primary-100/50'
-                    : 'hover:bg-primary-25 border-neutral-100 bg-white/60 text-neutral-600 hover:border-primary-200 hover:text-primary-500 hover:shadow-sm'
+                    ? "text-primary-600 border-primary-300 bg-primary-50/80 shadow-md shadow-primary-100/50"
+                    : "hover:bg-primary-25 border-neutral-100 bg-white/60 text-neutral-600 hover:border-primary-200 hover:text-primary-500 hover:shadow-sm"
                 }
                 group hover:shadow-md
               `}
@@ -179,8 +242,8 @@ const SlideItem = ({
                     duration-200 ease-in-out group-hover:scale-105
                     ${
                       isActive
-                        ? 'bg-primary-500 text-white shadow-sm'
-                        : 'group-hover:text-primary-600 bg-neutral-100 text-neutral-500 group-hover:bg-primary-100'
+                        ? "bg-primary-500 text-white shadow-sm"
+                        : "group-hover:text-primary-600 bg-neutral-100 text-neutral-500 group-hover:bg-primary-100"
                     }
                   `}
                 >
@@ -188,9 +251,7 @@ const SlideItem = ({
                 </div>
 
                 {/* Icon with enhanced styling */}
-                <div className="shrink-0">
-                  {getIcon(slide, '4')}
-                </div>
+                <div className="shrink-0">{getIcon(slide, "4")}</div>
 
                 {/* Content area */}
                 <div className="min-w-0 flex-1 space-y-1">
@@ -199,43 +260,55 @@ const SlideItem = ({
                     <h4 className="flex-1 text-sm font-medium leading-tight truncate">
                       {truncateString(getSlideTitle(), 18)}
                     </h4>
-                    
+
                     {/* Status badge */}
                     {getStatusBadge()}
                   </div>
 
                   {/* Source type */}
                   <p className="text-xs capitalize leading-tight text-neutral-400">
-                    {slide.source_type.toLowerCase().replace('_', ' ')}
+                    {getSlideTypeDisplay(slide)}
                   </p>
 
                   {/* Progress section */}
                   {slide.percentage_completed != null && (
                     <div className="flex items-center gap-2">
                       <div className="flex-1 relative h-1.5 bg-neutral-200 rounded-full overflow-hidden">
-                        <div 
+                        <div
                           className={`absolute left-0 top-0 h-full rounded-full transition-all duration-500 ease-out ${
-                            isCompleted 
-                              ? "bg-gradient-to-r from-green-400 to-green-500" 
-                              : isActive 
-                                ? "bg-gradient-to-r from-primary-400 to-primary-600" 
-                                : "bg-gradient-to-r from-blue-400 to-blue-500"
+                            isCompleted
+                              ? "bg-gradient-to-r from-green-400 to-green-500"
+                              : isActive
+                              ? "bg-gradient-to-r from-primary-400 to-primary-600"
+                              : "bg-gradient-to-r from-blue-400 to-blue-500"
                           }`}
-                          style={{ 
-                            width: `${Math.min(slide.percentage_completed > 100 ? 100 : slide.percentage_completed, 100)}%`,
-                            boxShadow: isCompleted ? '0 0 8px rgba(34, 197, 94, 0.4)' : undefined
+                          style={{
+                            width: `${Math.min(
+                              slide.percentage_completed > 100
+                                ? 100
+                                : slide.percentage_completed,
+                              100
+                            )}%`,
+                            boxShadow: isCompleted
+                              ? "0 0 8px rgba(34, 197, 94, 0.4)"
+                              : undefined,
                           }}
                         />
                       </div>
-                      
-                      <span className={`text-xs font-bold min-w-[35px] text-right transition-colors duration-200 ${
-                        isCompleted 
-                          ? "text-green-600" 
-                          : isActive 
-                            ? "text-primary-600" 
+
+                      <span
+                        className={`text-xs font-bold min-w-[35px] text-right transition-colors duration-200 ${
+                          isCompleted
+                            ? "text-green-600"
+                            : isActive
+                            ? "text-primary-600"
                             : "text-blue-500"
-                      }`}>
-                        {slide.percentage_completed > 100 ? 100 : slide.percentage_completed.toFixed(0)}%
+                        }`}
+                      >
+                        {slide.percentage_completed > 100
+                          ? 100
+                          : slide.percentage_completed.toFixed(0)}
+                        %
                       </span>
                     </div>
                   )}
@@ -244,12 +317,15 @@ const SlideItem = ({
                 {/* Completion indicator for completed slides */}
                 {isCompleted && (
                   <div className="shrink-0 relative">
-                    <CheckCircle 
-                      className="size-3 text-green-400 animate-pulse" 
-                      weight="fill" 
+                    <CheckCircle
+                      className="size-3 text-green-400 animate-pulse"
+                      weight="fill"
                     />
                     <div className="absolute inset-0 animate-ping">
-                      <CheckCircle className="size-3 text-green-400 opacity-75" weight="fill" />
+                      <CheckCircle
+                        className="size-3 text-green-400 opacity-75"
+                        weight="fill"
+                      />
                     </div>
                   </div>
                 )}
@@ -257,32 +333,37 @@ const SlideItem = ({
 
               {/* Status indicator */}
               <div className="shrink-0">
-                <div className={`p-1 rounded-md transition-all duration-300 ${
-                  isActive ? statusDetails.bgColor : "hover:bg-neutral-50"
-                }`}>
-                  <StatusIcon 
-                    className={`size-3.5 transition-all duration-300 ${statusDetails.color}`} 
-                    weight="duotone" 
+                <div
+                  className={`p-1 rounded-md transition-all duration-300 ${
+                    isActive ? statusDetails.bgColor : "hover:bg-neutral-50"
+                  }`}
+                >
+                  <StatusIcon
+                    className={`size-3.5 transition-all duration-300 ${statusDetails.color}`}
+                    weight="duotone"
                   />
                 </div>
               </div>
             </div>
           </div>
         </TooltipTrigger>
-        <TooltipContent 
-          side="right" 
+        <TooltipContent
+          side="right"
           className="max-w-xs border border-neutral-300 bg-white/95 text-neutral-700 shadow-lg backdrop-blur-sm z-[9999]"
           sideOffset={8}
         >
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <StatusIcon className={`size-4 ${statusDetails.color}`} weight="duotone" />
+              <StatusIcon
+                className={`size-4 ${statusDetails.color}`}
+                weight="duotone"
+              />
               <p className="font-semibold text-sm">{statusDetails.label}</p>
             </div>
             <div className="space-y-1">
               <p className="font-medium">{getSlideTitle()}</p>
               <p className="text-xs capitalize text-neutral-500">
-                {slide.source_type.toLowerCase().replace('_', ' ')}
+                {slide.source_type.toLowerCase().replace("_", " ")}
               </p>
               <p className="text-xs text-neutral-400 leading-relaxed">
                 {statusDetails.description}
@@ -322,7 +403,9 @@ export const ChapterSidebarSlides = () => {
         <div className="mb-3 flex size-12 animate-pulse items-center justify-center rounded-full bg-neutral-100">
           <File className="size-6 text-neutral-400" />
         </div>
-        <h3 className="mb-1 text-base font-medium text-neutral-600">No slides yet</h3>
+        <h3 className="mb-1 text-base font-medium text-neutral-600">
+          No slides yet
+        </h3>
         <p className="max-w-xs text-xs leading-relaxed text-neutral-400">
           Slides will appear here when available
         </p>
@@ -345,8 +428,9 @@ export const ChapterSidebarSlides = () => {
       </div>
 
       {/* Custom animation styles */}
-      <style dangerouslySetInnerHTML={{
-        __html: `
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
           @keyframes slideInUp {
             from {
               opacity: 0;
@@ -357,8 +441,9 @@ export const ChapterSidebarSlides = () => {
               transform: translateY(0);
             }
           }
-        `
-      }} />
+        `,
+        }}
+      />
     </div>
   );
 };

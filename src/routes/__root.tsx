@@ -10,6 +10,7 @@ import {
   AppUpdateAvailability,
 } from "@capawesome/capacitor-app-update";
 
+import { Capacitor } from "@capacitor/core";
 import { toast } from "sonner";
 import { useUpdate } from "@/stores/useUpdate";
 import Favicon from "react-favicon";
@@ -37,18 +38,27 @@ const RootComponent = () => {
   };
 
   useEffect(() => {
-    (async () => {
-      const result = await AppUpdate.getAppUpdateInfo();
-      if (
-        result.updateAvailability === AppUpdateAvailability.UPDATE_AVAILABLE
-      ) {
-        toast.warning("Update available, please update app...");
-        setUpdateAvailable(true);
-        if (result.immediateUpdateAllowed) {
-          await AppUpdate.performImmediateUpdate();
+    const checkForUpdate = async () => {
+      if (Capacitor.getPlatform() === "web") return;
+
+      try {
+        const result = await AppUpdate.getAppUpdateInfo();
+        if (
+          result.updateAvailability === AppUpdateAvailability.UPDATE_AVAILABLE
+        ) {
+          toast.warning("Update available, please update app...");
+          setUpdateAvailable(true);
+
+          if (result.immediateUpdateAllowed) {
+            await AppUpdate.performImmediateUpdate();
+          }
         }
+      } catch (error) {
+        console.error("Error checking app update:", error);
       }
-    })();
+    };
+
+    checkForUpdate();
     setPrimaryColorFromStorage();
   }, []);
 

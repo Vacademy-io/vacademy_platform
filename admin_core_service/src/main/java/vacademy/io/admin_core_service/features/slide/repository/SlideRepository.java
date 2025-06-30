@@ -867,7 +867,6 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
             @Param("slideStatusList") List<String> slideStatusList,
             @Param("chapterPackageStatusList") List<String> chapterPackageStatusList
     );
-
     @Query(value = """
     SELECT json_agg(slide_data ORDER BY slide_order IS NOT NULL, slide_order, created_at DESC) AS slides
     FROM (
@@ -947,14 +946,171 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
         AND s.status IN (:slideStatus)
         AND cs.status IN (:chapterToSlidesStatus)
 
-        -- Additional slide types (document, question, assignment) can be appended similarly
+        UNION ALL
+
+        -- DOCUMENT SLIDES
+        SELECT DISTINCT ON (s.id)
+            s.created_at,
+            cs.slide_order,
+            json_build_object(
+                'id', s.id,
+                'title', s.title,
+                'status', s.status,
+                'is_loaded', true,
+                'new_slide', true,
+                'source_id', s.source_id,
+                'description', s.description,
+                'slide_order', cs.slide_order,
+                'source_type', s.source_type,
+                'progress_marker', NULL,
+                'percentage_completed', NULL,
+                'document_slide', json_build_object(
+                    'id', d.id,
+                    'title', d.title,
+                    'type', d.type,
+                    'cover_file_id', d.cover_file_id,
+                    'total_pages', d.total_pages,
+                    'published_document_total_pages', d.published_document_total_pages,
+                    'data', d.data,
+                    'published_data', d.published_data
+                )
+            ) AS slide_data
+        FROM slide s
+        JOIN chapter_to_slides cs ON cs.slide_id = s.id
+        JOIN chapter c ON c.id = cs.chapter_id
+        JOIN document_slide d ON d.id = s.source_id
+        WHERE s.source_type = 'DOCUMENT' AND c.id = :chapterId
+        AND s.status IN (:slideStatus)
+        AND cs.status IN (:chapterToSlidesStatus)
+
+        UNION ALL
+
+        -- QUESTION SLIDES
+        SELECT DISTINCT ON (s.id)
+            s.created_at,
+            cs.slide_order,
+            json_build_object(
+                'id', s.id,
+                'title', s.title,
+                'status', s.status,
+                'source_id', s.source_id,
+                'description', s.description,
+                'slide_order', cs.slide_order,
+                'source_type', s.source_type,
+                'progress_marker', NULL,
+                'percentage_completed', NULL,
+                'question_slide', json_build_object(
+                    'id', q.id,
+                    'question_type', q.question_type,
+                    'question_response_type', q.question_response_type,
+                    'access_level', q.access_level,
+                    'default_question_time_mins', q.default_question_time_mins,
+                    'points', q.points,
+                    're_attempt_count', q.re_attempt_count,
+                    'auto_evaluation_json', q.auto_evaluation_json,
+                    'evaluation_type', q.evaluation_type,
+                    'media_id', q.media_id,
+                    'source_type', q.source_type,
+                    'text_data', json_build_object('id', rt_text.id, 'type', 'RICH_TEXT', 'content', rt_text.content),
+                    'parent_rich_text', CASE WHEN q.parent_rich_text_id IS NOT NULL THEN json_build_object('id', rt_parent.id, 'type', 'RICH_TEXT', 'content', rt_parent.content) ELSE NULL END,
+                    'explanation_text_data', CASE WHEN q.explanation_text_id IS NOT NULL THEN json_build_object('id', rt_exp.id, 'type', 'RICH_TEXT', 'content', rt_exp.content) ELSE NULL END,
+                    'options', COALESCE((
+                        SELECT json_agg(
+                            json_build_object(
+                                'id', o.id,
+                                'media_id', o.media_id,
+                                'text', CASE WHEN o.text_id IS NOT NULL THEN json_build_object('id', rt_opt.id, 'type', 'RICH_TEXT', 'content', rt_opt.content) ELSE NULL END,
+                                'explanation_text_data', CASE WHEN o.explanation_text_id IS NOT NULL THEN json_build_object('id', rt_opt_exp.id, 'type', 'RICH_TEXT', 'content', rt_opt_exp.content) ELSE NULL END
+                            )
+                            ORDER BY o.created_on
+                        )
+                        FROM option o
+                        LEFT JOIN rich_text_data rt_opt ON rt_opt.id = o.text_id
+                        LEFT JOIN rich_text_data rt_opt_exp ON rt_opt_exp.id = o.explanation_text_id
+                        WHERE o.question_id = q.id
+                    ), CAST('[]' AS json))
+                )
+            ) AS slide_data
+        FROM slide s
+        JOIN chapter_to_slides cs ON cs.slide_id = s.id
+        JOIN chapter c ON c.id = cs.chapter_id
+        JOIN question_slide q ON q.id = s.source_id
+        LEFT JOIN rich_text_data rt_text ON rt_text.id = q.text_id
+        LEFT JOIN rich_text_data rt_parent ON rt_parent.id = q.parent_rich_text_id
+        LEFT JOIN rich_text_data rt_exp ON rt_exp.id = q.explanation_text_id
+        WHERE s.source_type = 'QUESTION' AND c.id = :chapterId
+        AND s.status IN (:slideStatus)
+        AND cs.status IN (:chapterToSlidesStatus)
+
+        UNION ALL
+
+        -- ASSIGNMENT SLIDES
+        SELECT DISTINCT ON (s.id)
+            s.created_at,
+            cs.slide_order,
+            json_build_object(
+                'id', s.id,
+                'title', s.title,
+                'status', s.status,
+                'is_loaded', true,
+                'new_slide', true,
+                'source_id', s.source_id,
+                'description', s.description,
+                'slide_order', cs.slide_order,
+                'source_type', s.source_type,
+                'progress_marker', NULL,
+                'percentage_completed', NULL,
+                'assignment_slide', json_build_object(
+                    'id', a.id,
+                    'live_date', a.live_date,
+                    'end_date', a.end_date,
+                    'comma_separated_media_ids', a.comma_separated_media_ids,
+                    're_attempt_count', a.re_attempt_count,
+                    'text_data', CASE
+                        WHEN a.text_id IS NOT NULL THEN json_build_object(
+                            'id', rt_text.id, 'type', 'RICH_TEXT', 'content', rt_text.content
+                        ) ELSE NULL
+                    END,
+                    'parent_rich_text', CASE
+                        WHEN a.parent_rich_text_id IS NOT NULL THEN json_build_object(
+                            'id', rt_parent.id, 'type', 'RICH_TEXT', 'content', rt_parent.content
+                        ) ELSE NULL
+                    END,
+                    'questions', COALESCE((
+                        SELECT json_agg(
+                            json_build_object(
+                                'id', q.id,
+                                'question_order', q.question_order,
+                                'status', q.status,
+                                'text_data', CASE
+                                    WHEN q.text_id IS NOT NULL THEN json_build_object(
+                                        'id', rtq.id, 'type', 'RICH_TEXT', 'content', rtq.content
+                                    ) ELSE NULL
+                                END
+                            )
+                            ORDER BY q.question_order
+                        )
+                        FROM assignment_slide_question q
+                        LEFT JOIN rich_text_data rtq ON rtq.id = q.text_id
+                        WHERE q.assignment_slide_id = a.id AND q.status IN (:videoSlideQuestionStatus)
+                    ), CAST('[]' AS json))
+                )
+            ) AS slide_data
+        FROM slide s
+        JOIN chapter_to_slides cs ON cs.slide_id = s.id
+        JOIN chapter c ON c.id = cs.chapter_id
+        JOIN assignment_slide a ON a.id = s.source_id
+        LEFT JOIN rich_text_data rt_text ON rt_text.id = a.text_id
+        LEFT JOIN rich_text_data rt_parent ON rt_parent.id = a.parent_rich_text_id
+        WHERE s.source_type = 'ASSIGNMENT' AND c.id = :chapterId
+        AND s.status IN (:slideStatus)
+        AND cs.status IN (:chapterToSlidesStatus)
     ) AS slide_data
 """, nativeQuery = true)
     String getSlidesByChapterIdOpen(
-        @Param("chapterId") String chapterId,
-        @Param("slideStatus") List<String> slideStatus,
-        @Param("chapterToSlidesStatus") List<String> chapterToSlidesStatus,
-        @Param("videoSlideQuestionStatus") List<String> videoSlideQuestionStatus
+            @Param("chapterId") String chapterId,
+            @Param("slideStatus") List<String> slideStatus,
+            @Param("chapterToSlidesStatus") List<String> chapterToSlidesStatus,
+            @Param("videoSlideQuestionStatus") List<String> videoSlideQuestionStatus
     );
-
 }

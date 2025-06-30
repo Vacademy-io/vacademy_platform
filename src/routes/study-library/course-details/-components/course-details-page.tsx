@@ -2146,19 +2146,17 @@ export const CourseDetailsPage = () => {
             const moduleId = parentIds?.moduleId ?? "";
             const slideId = parentIds?.slideId ?? "";
 
-            const navigationParams = {
-                courseId: router.state.location.search.courseId ?? "",
-                levelId: selectedLevel,
-                subjectId,
-                moduleId,
-                chapterId,
-                slideId,
-                sessionId: selectedSession,
-            };
-
             router.navigate({
-                to: "/study-library/courses/course-details/subjects/modules/chapters/slides",
-                search: navigationParams,
+                to: "/study-library/course-details/subjects/modules/chapters/slides",
+                search: {
+                    courseId: router.state.location.search.courseId ?? "",
+                    levelId: selectedLevel,
+                    subjectId,
+                    moduleId,
+                    chapterId,
+                    slideId,
+                    sessionId: selectedSession,
+                },
             });
         };
 
@@ -2170,19 +2168,17 @@ export const CourseDetailsPage = () => {
             const moduleId = parentIds?.moduleId ?? "";
             const slideId = parentIds?.slideId ?? "";
 
-            const navigationParams = {
-                courseId: router.state.location.search.courseId ?? "",
-                levelId: selectedLevel,
-                subjectId,
-                moduleId,
-                chapterId,
-                slideId,
-                sessionId: selectedSession,
-            };
-
             router.navigate({
-                to: "/study-library/courses/course-details/subjects/modules/chapters/slides",
-                search: navigationParams,
+                to: "/study-library/course-details/subjects/modules/chapters/slides",
+                search: {
+                    courseId: router.state.location.search.courseId ?? "",
+                    levelId: selectedLevel,
+                    subjectId,
+                    moduleId,
+                    chapterId,
+                    slideId,
+                    sessionId: selectedSession,
+                },
             });
         };
         return (

@@ -76,7 +76,7 @@ export const MyDropdown = ({
                     </DropdownMenuTrigger>
                 ) : (
                     <DropdownMenuTrigger
-                        className={`inline-flex h-9 min-w-60 items-center justify-between rounded-lg border px-3 py-2 text-subtitle text-neutral-600 focus:outline-none ${
+                        className={`inline-flex h-9 w-full min-w-60 items-center justify-between rounded-lg border px-3 py-2 text-subtitle text-neutral-600 focus:outline-none ${
                             error || validationError
                                 ? "border-danger-600"
                                 : isOpen
@@ -95,7 +95,7 @@ export const MyDropdown = ({
                 )}
                 <DropdownMenuPortal container={document.getElementById("portal-root")}>
                     <DropdownMenuContent
-                        className="z-[9999] mt-2 w-60 rounded-lg bg-white py-2 shadow focus:outline-none"
+                        className="z-[9999] mt-2 min-w-60 w-[var(--radix-dropdown-menu-trigger-width)] rounded-lg bg-white py-2 shadow focus:outline-none"
                         sideOffset={5}
                         align="start"
                     >

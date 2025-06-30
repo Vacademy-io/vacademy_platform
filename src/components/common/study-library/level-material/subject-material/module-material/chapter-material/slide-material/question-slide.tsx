@@ -128,7 +128,7 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
                 documents: [],
                 question_slides: [
                     {
-                        id: slideId,
+                        id: uuidv4(),
                         attempt_number: maxAttempts,
                         question_name: questionName,
                         response_json: JSON.stringify({

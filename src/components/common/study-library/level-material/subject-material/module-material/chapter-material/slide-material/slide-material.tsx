@@ -232,7 +232,7 @@ export const SlideMaterial = () => {
               <div className="h-full w-full animate-in fade-in slide-in-from-bottom-4 duration-700">
                 <div className="h-full w-full bg-white rounded-lg overflow-hidden border border-neutral-200">
                   <PresentationViewer
-                    slideTitle={activeItem.title}
+                    slide={activeItem}
                   />
                 </div>
               </div>

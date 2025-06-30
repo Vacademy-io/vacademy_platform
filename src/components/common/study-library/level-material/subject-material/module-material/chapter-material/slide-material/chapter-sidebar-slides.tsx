@@ -86,7 +86,7 @@ export const getIcon = (slide: Slide, size?: string): React.ReactNode => {
       return <Question className={`${iconClass} text-purple-500`} weight="duotone" />;
     case "ASSIGNMENT":
       return <File className={`${iconClass} text-blue-500`} weight="duotone" />;
-    case "DOCUMENT":
+    case "DOCUMENT": {
       const docType = slide.document_slide?.type;
       switch (docType) {
         case "PDF":
@@ -99,6 +99,7 @@ export const getIcon = (slide: Slide, size?: string): React.ReactNode => {
         default:
           return <FileText className={`${iconClass} text-neutral-500`} weight="duotone" />;
       }
+    }
     default:
       return <BookOpenText className={`${iconClass} text-neutral-500`} weight="duotone" />;
   }

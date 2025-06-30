@@ -7,12 +7,12 @@ import { formatTimeFromMillis, millisToMinutes } from "@/helpers/formatTimeFromM
 
 const chartConfig = {
     avg_daily_time_minutes: {
-        label: "Your Time Spent",
-        color: "#ed7626", 
+        label: "Your Time",
+        color: "hsl(var(--primary))", 
     },
     avg_daily_time_minutes_batch: {
-        label: "Batch Average Time",
-        color: "#f6b879", 
+        label: "Batch Average",
+        color: "hsl(var(--muted-foreground))", 
     },
 } satisfies ChartConfig;
 
@@ -45,142 +45,158 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
     };
 
     return(
-        <Card className="p-6 bg-white border border-gray-200 shadow-sm rounded-lg">
-            <div className="mb-6 flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
-                <div className="flex items-center gap-3">
-                    <div className="p-2 bg-primary-50 rounded-lg text-primary-600">
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+        <div>
+            {/* Compact Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0 mb-3 md:mb-4">
+                <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 bg-primary-50 rounded flex items-center justify-center">
+                        <svg className="w-3 h-3 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                         </svg>
                     </div>
                     <div>
-                        <h3 className="text-base font-semibold text-gray-900 mb-1">Daily Activity Overview</h3>
-                        <p className="text-sm text-gray-500">Performance tracking and insights</p>
+                        <h3 className="text-sm md:text-base font-medium text-neutral-900">Activity Trend</h3>
+                        <p className="text-xs text-neutral-500">7-day performance</p>
                     </div>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                    <div className="flex items-center gap-2 px-3 py-1 bg-gray-50 rounded-lg border border-gray-200">
-                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: chartConfig.avg_daily_time_minutes.color }}></div>
-                        <span className="text-sm font-medium text-gray-700">Your Time</span>
+                
+                {/* Compact Legend */}
+                <div className="flex gap-2 text-xs">
+                    <div className="flex items-center gap-1.5">
+                        <div className="w-2 h-2 rounded-full bg-primary-500"></div>
+                        <span className="text-neutral-600 font-medium">Your Time</span>
                     </div>
-                    <div className="flex items-center gap-2 px-3 py-1 bg-gray-50 rounded-lg border border-gray-200">
-                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: chartConfig.avg_daily_time_minutes_batch.color }}></div>
-                        <span className="text-sm font-medium text-gray-700">Batch Average</span>
+                    <div className="flex items-center gap-1.5">
+                        <div className="w-2 h-2 rounded-full bg-neutral-400"></div>
+                        <span className="text-neutral-600 font-medium">Batch Avg</span>
                     </div>
                 </div>
             </div>
-            <div className="relative">
-            <ChartContainer config={chartConfig}>
-                <LineChart
-                    accessibilityLayer
-                    data={chartData}
-                    margin={{
-                        left: 35,
-                        right: 25,
-                        bottom: 25,
-                        top: 20,
-                    }}
-                    className="!h-fit !maxh-h-screen min-h-64"
-                >
-                    <CartesianGrid vertical={false} />
-                    <XAxis
-                        dataKey="activity_date"
-                        tickLine={false}
-                        axisLine={false}
-                        tickMargin={8}
-                        tickFormatter={(value) => dayjs(value).format("DD MMM")}
-                        label={{
-                            value: "Date",
-                            position: "left",
-                            dx: 55,
-                            dy: 30,
-                            style: { fontSize: "14px", fill: "#ED7424" },
+
+            {/* Responsive Chart Container */}
+            <div className="w-full h-48 sm:h-56 md:h-64 lg:h-72">
+                <ChartContainer config={chartConfig} className="w-full h-full">
+                    <LineChart
+                        data={chartData}
+                        margin={{
+                            left: 10,
+                            right: 10,
+                            bottom: 20,
+                            top: 10,
                         }}
-                    />
-                    <YAxis
-                        dataKey="avg_daily_time_minutes"
-                        tickLine={false}
-                        axisLine={true}
-                        tickMargin={8}
-                        width={60} // Increased width to accommodate longer time format
-                        tickFormatter={(value) => formatMinutesToTime(value)}
-                        label={{
-                            value: "Time Spent",
-                            position: "insideLeft",
-                            angle: -90,
-                            dx: -10,
-                            dy: 200,
-                            style: { fontSize: "14px", fill: "#ED7424" },
-                        }}
-                    />
-                    <ChartTooltip 
-                        cursor={{ stroke: '#CCC', strokeDasharray: '5 5', strokeWidth: 1 }}
-                        content={({active, payload, label}) => {
-                            if (active && payload && payload.length) {
-                                return (
-                                    <div className="bg-white p-2 border border-gray-200 shadow-md rounded">
-                                        <p className="text-sm font-medium">{dayjs(label).format("DD MMM YYYY")}</p>
-                                        {payload.map((entry, index) => {
-                                            // Get original millisecond values for more accurate formatting
-                                            const dataKey = entry.dataKey;
-                                            const originalMillis = dataKey === "avg_daily_time_minutes" 
-                                                ? payload[0].payload.time_spent_by_user_millis
-                                                : payload[0].payload.avg_time_spent_by_batch_millis;
-                                            
-                                            return (
-                                                <div key={`item-${index}`} className="flex items-center gap-2 mt-1">
-                                                    <div 
-                                                        className="w-2 h-2 rounded-full" 
-                                                        style={{ backgroundColor: entry.color }}
-                                                    />
-                                                    <span className="text-xs">
-                                                        {entry.name}: {formatTimeFromMillis(originalMillis, 'full')}
-                                                    </span>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                );
-                            }
-                            return null;
-                        }}
-                    />
-                    {/* Render the line elements in reverse order to ensure both are visible */}
-                    <Line
-                        dataKey="avg_daily_time_minutes_batch"
-                        type="monotone"
-                        name="Batch Average Time"
-                        stroke={chartConfig.avg_daily_time_minutes_batch.color}
-                        strokeWidth={3}
-                        dot={{
-                            fill: chartConfig.avg_daily_time_minutes_batch.color,
-                            r: 4,
-                        }}
-                        activeDot={{
-                            r: 6,
-                            stroke: chartConfig.avg_daily_time_minutes_batch.color,
-                            strokeWidth: 2,
-                        }}
-                    />
-                    <Line
-                        dataKey="avg_daily_time_minutes"
-                        type="monotone"
-                        name="Your Time Spent"
-                        stroke={chartConfig.avg_daily_time_minutes.color}
-                        strokeWidth={3}
-                        dot={{
-                            fill: chartConfig.avg_daily_time_minutes.color,
-                            r: 4,
-                        }}
-                        activeDot={{
-                            r: 6,
-                            stroke: chartConfig.avg_daily_time_minutes.color,
-                            strokeWidth: 2,
-                        }}
-                    />
-                </LineChart>
-            </ChartContainer>
+                        className="w-full h-full"
+                    >
+                        <CartesianGrid 
+                            vertical={false} 
+                            strokeDasharray="3 3" 
+                            stroke="hsl(var(--border))"
+                            opacity={0.3}
+                        />
+                        <XAxis
+                            dataKey="activity_date"
+                            tickLine={false}
+                            axisLine={false}
+                            tickMargin={8}
+                            tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+                            tickFormatter={(value) => dayjs(value).format("MMM DD")}
+                            interval={0}
+                            angle={-45}
+                            textAnchor="end"
+                            height={40}
+                        />
+                        <YAxis
+                            tickLine={false}
+                            axisLine={false}
+                            tickMargin={8}
+                            width={50}
+                            tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                            tickFormatter={(value) => {
+                                const milliseconds = value * 60 * 1000;
+                                return formatTimeFromMillis(milliseconds, 'minutes');
+                            }}
+                        />
+                        <ChartTooltip 
+                            cursor={{ 
+                                stroke: 'hsl(var(--primary))', 
+                                strokeDasharray: '4 4', 
+                                strokeWidth: 1,
+                                opacity: 0.5
+                            }}
+                            content={({active, payload, label}) => {
+                                if (active && payload && payload.length) {
+                                    return (
+                                        <div className="bg-white border border-neutral-200 rounded-lg p-2.5 shadow-sm">
+                                            <p className="text-xs font-medium text-neutral-900 mb-1">
+                                                {dayjs(label).format("MMM DD, YYYY")}
+                                            </p>
+                                            {payload.map((entry, index) => {
+                                                const dataKey = entry.dataKey;
+                                                const originalMillis = dataKey === "avg_daily_time_minutes" 
+                                                    ? payload[0].payload.time_spent_by_user_millis
+                                                    : payload[0].payload.avg_time_spent_by_batch_millis;
+                                                
+                                                return (
+                                                    <div key={`item-${index}`} className="flex items-center gap-2">
+                                                        <div 
+                                                            className="w-2 h-2 rounded-full" 
+                                                            style={{ backgroundColor: entry.color }}
+                                                        />
+                                                        <span className="text-xs text-neutral-700">
+                                                            {entry.name}: <span className="font-medium">{formatTimeFromMillis(originalMillis, 'full')}</span>
+                                                        </span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    );
+                                }
+                                return null;
+                            }}
+                        />
+                        
+                        {/* Batch Average Line (Background) */}
+                        <Line
+                            dataKey="avg_daily_time_minutes_batch"
+                            type="monotone"
+                            name="Batch Average"
+                            stroke="hsl(var(--muted-foreground))"
+                            strokeWidth={2}
+                            strokeDasharray="5 5"
+                            dot={{
+                                fill: "hsl(var(--muted-foreground))",
+                                r: 3,
+                                strokeWidth: 0,
+                            }}
+                            activeDot={{
+                                r: 4,
+                                stroke: "hsl(var(--muted-foreground))",
+                                strokeWidth: 2,
+                                fill: "white"
+                            }}
+                        />
+                        
+                        {/* User Time Line (Foreground) */}
+                        <Line
+                            dataKey="avg_daily_time_minutes"
+                            type="monotone"
+                            name="Your Time"
+                            stroke="hsl(var(--primary))"
+                            strokeWidth={2.5}
+                            dot={{
+                                fill: "hsl(var(--primary))",
+                                r: 3,
+                                strokeWidth: 0,
+                            }}
+                            activeDot={{
+                                r: 5,
+                                stroke: "hsl(var(--primary))",
+                                strokeWidth: 2,
+                                fill: "white"
+                            }}
+                        />
+                    </LineChart>
+                </ChartContainer>
             </div>
-        </Card>
+        </div>
     )
 }

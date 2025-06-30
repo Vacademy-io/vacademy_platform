@@ -15,7 +15,21 @@ import java.util.Optional;
 public interface UserRepository extends CrudRepository<User, String> {
     Optional<User> findByUsername(String username);
 
-    Optional<User> findTopByEmailOrderByCreatedAtDesc(String email);
+    @Query(value = """
+    SELECT u.* 
+    FROM users u
+    JOIN user_role ur ON ur.user_id = u.id
+    WHERE u.is_root_user = :isRootUser
+      AND u.email = :emailId
+      AND ur.status IN (:userRoleStatuses)
+    ORDER BY u.created_at DESC
+    LIMIT 1
+""", nativeQuery = true)
+    Optional<User> findMostRecentUserByRootFlagAndRoleStatusNative(
+            @Param("isRootUser") boolean isRootUser,
+            @Param("userRoleStatuses") List<String> userRoleStatuses,
+            @Param("emailId") String emailId
+    );
 
     List<User> findByIdIn(List<String> userIds);
 

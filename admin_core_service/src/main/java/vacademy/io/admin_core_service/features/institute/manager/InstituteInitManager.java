@@ -73,7 +73,6 @@ public class InstituteInitManager {
         instituteInfoDTO.setInstituteThemeCode(institute.get().getInstituteThemeCode());
         instituteInfoDTO.setSubModules(instituteModuleService.getSubmoduleIdsForInstitute(institute.get().getId()));
         instituteInfoDTO.setSessions(packageRepository.findDistinctSessionsByInstituteIdAndStatusIn(institute.get().getId(), List.of(PackageSessionStatusEnum.ACTIVE.name())).stream().map((SessionDTO::new)).toList());
-        System.out.println(packageSessionRepository.findPackageSessionsByInstituteId(institute.get().getId(), List.of(PackageSessionStatusEnum.ACTIVE.name())));
         instituteInfoDTO.setBatchesForSessions(packageSessionRepository.findPackageSessionsByInstituteId(institute.get().getId(), List.of(PackageSessionStatusEnum.ACTIVE.name())).stream().map((obj) -> {
             return new PackageSessionDTO(obj);
         }).toList());
@@ -85,6 +84,8 @@ public class InstituteInitManager {
         instituteInfoDTO.setLetterHeadFileId(institute.get().getLetterHeadFileId());
         instituteInfoDTO.setPackageGroups(packageGroupMappingRepository.findAllByInstituteId(institute.get().getId()).stream().map((obj)->obj.mapToDTO()).toList());
         instituteInfoDTO.setSetting(institute.get().getSetting());
+        instituteInfoDTO.setCoverImageFileId(institute.get().getCoverImageFileId());
+        instituteInfoDTO.setCoverTextJson(institute.get().getCoverTextJson());
         return instituteInfoDTO;
     }
 
@@ -118,6 +119,8 @@ public class InstituteInitManager {
         instituteInfoDTO.setLevels(packageRepository.findDistinctLevelsByInstituteIdAndStatusIn(institute.get().getId(), List.of(PackageSessionStatusEnum.ACTIVE.name())).stream().map((LevelDTO::new)).toList());
         instituteInfoDTO.setPackageGroups(packageGroupMappingRepository.findAllByInstituteId(institute.get().getId()).stream().map((obj)->obj.mapToDTO()).toList());
         instituteInfoDTO.setTags(packageRepository.findAllDistinctTagsByInstituteId(institute.get().getId()));
+        instituteInfoDTO.setCoverImageFileId(institute.get().getCoverImageFileId());
+        instituteInfoDTO.setCoverTextJson(institute.get().getCoverTextJson());
         return instituteInfoDTO;
     }
 

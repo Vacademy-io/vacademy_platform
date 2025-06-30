@@ -9,6 +9,7 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Component;
 import vacademy.io.auth_service.feature.auth.dto.AuthRequestDto;
 import vacademy.io.auth_service.feature.auth.dto.JwtResponseDto;
+import vacademy.io.auth_service.feature.auth.enums.ClientNameEnum;
 import vacademy.io.auth_service.feature.notification.service.NotificationService;
 import vacademy.io.common.auth.dto.RefreshTokenRequestDTO;
 import vacademy.io.common.auth.entity.RefreshToken;
@@ -87,8 +88,12 @@ public class LearnerAuthManager {
     }
 
     public String requestOtp(AuthRequestDto authRequestDTO) {
-        Optional<User> user = userRepository.findTopByEmailOrderByCreatedAtDesc(authRequestDTO.getEmail());
-
+        Optional<User> user = null;
+        if (authRequestDTO.getClientName() != null && authRequestDTO.getClientName().equals(ClientNameEnum.ADMIN.name())) {
+            user = userRepository.findMostRecentUserByRootFlagAndRoleStatusNative(true, List.of(UserRoleStatus.ACTIVE.name()), authRequestDTO.getEmail());
+        } else {
+            user = userRepository.findMostRecentUserByRootFlagAndRoleStatusNative(false, List.of(UserRoleStatus.ACTIVE.name()), authRequestDTO.getEmail());
+        }
         if (user.isEmpty()) {
             throw new UsernameNotFoundException("invalid user request..!!");
         } else {
@@ -115,7 +120,7 @@ public class LearnerAuthManager {
             throw new UsernameNotFoundException("invalid user request..!!");
         }
 
-        Optional<User> user = userRepository.findTopByEmailOrderByCreatedAtDesc(authRequestDTO.getEmail());
+        Optional<User> user = userRepository.findMostRecentUserByRootFlagAndRoleStatusNative(false, List.of(UserRoleStatus.ACTIVE.name()), authRequestDTO.getEmail());
 
         if (user.isEmpty()) {
             throw new UsernameNotFoundException("invalid user request..!!");

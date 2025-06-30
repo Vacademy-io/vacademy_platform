@@ -58,8 +58,8 @@ public class AuthController {
     }
 
     @PostMapping("/send-password")
-    public ResponseEntity<String> sendPassword(@RequestParam String email) {
-        String response = passwordResetManager.sendPasswordToUser(email);
+    public ResponseEntity<String> sendPassword(@RequestParam String email,@RequestParam(required = false) String clientName) {
+        String response = passwordResetManager.sendPasswordToUser(email,clientName);
         return ResponseEntity.ok(response);
     }
 

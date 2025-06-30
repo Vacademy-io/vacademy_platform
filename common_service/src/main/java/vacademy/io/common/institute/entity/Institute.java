@@ -87,4 +87,10 @@ public class Institute {
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;
 
+    @Column(name = "cover_image_file_id")
+    private String coverImageFileId;
+
+    @Column(name = "cover_text_json")
+    private String coverTextJson;
+
 }

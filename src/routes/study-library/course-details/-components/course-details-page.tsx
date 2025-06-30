@@ -61,6 +61,7 @@ import axios from "axios";
 import { urlInstituteDetails } from "@/constants/urls";
 import { getInstituteId } from "@/constants/helper";
 import { Preferences } from "@capacitor/preferences";
+import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
 
 type DialogType = "subject" | "module" | "chapter" | "slide" | null;
 
@@ -181,6 +182,11 @@ const mockCourses: Course[] = [
 ];
 
 export const CourseDetailsPage = () => {
+    const { setNavHeading } = useNavHeadingStore();
+
+    useEffect(() => {
+        setNavHeading("Course Details");
+    }, []);
     const [selectedSession, setSelectedSession] = useState<string>("");
     const [selectedLevel, setSelectedLevel] = useState<string>("");
     const router = useRouter();
@@ -2180,7 +2186,7 @@ export const CourseDetailsPage = () => {
             });
         };
         return (
-            <>
+            <div className="flex items-center">
                 <div
                     className={`flex items-center gap-2 py-1 ${type === "slide" ? "cursor-pointer hover:text-blue-600" : ""}`}
                 >
@@ -2221,7 +2227,7 @@ export const CourseDetailsPage = () => {
                         </button>
                     )}
                 </div>
-            </>
+            </div>
         );
     };
 

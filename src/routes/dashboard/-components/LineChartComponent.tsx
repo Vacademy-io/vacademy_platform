@@ -1,4 +1,3 @@
-import { Card } from "@/components/ui/card";
 import { ChartConfig, ChartContainer, ChartTooltip } from "@/components/ui/chart";
 import { LineChart, CartesianGrid, XAxis, YAxis, Line } from "recharts";
 import dayjs from "dayjs";
@@ -37,12 +36,6 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
     // Sort data by date to ensure correct order
     chartData.sort((a, b) => new Date(a.activity_date).getTime() - new Date(b.activity_date).getTime());
 
-    // Function to convert minutes back to milliseconds for formatting
-    const formatMinutesToTime = (minutes: number) => {
-        if (minutes === undefined || minutes === null) return '';
-        const milliseconds = minutes * 60 * 1000;
-        return formatTimeFromMillis(milliseconds, 'full');
-    };
 
     return(
         <div>

@@ -3,7 +3,6 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { LayoutContainer } from "@/components/common/layout-container/layout-container";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
 import { fetchStaticData } from "./-lib/utils";
-import { DashboardTabs } from "./-components/DashboardTabs";
 import { Helmet } from "react-helmet";
 import { fetchStudentDetails } from "@/services/studentDetails";
 import { getUserId } from "@/constants/getUserId";

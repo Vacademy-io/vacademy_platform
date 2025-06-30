@@ -1,6 +1,5 @@
 import type React from "react";
 import { useEffect } from "react";
-import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import { FileX } from "@phosphor-icons/react";
 import { ExcalidrawViewer } from "./ExcalidrawViewer";
 import { useAddDocumentActivity } from '../../../../../../../../services/study-library/tracking-api/add-document-activity';
@@ -12,7 +11,6 @@ interface PresentationViewerProps {
 
 const PresentationViewer: React.FC<PresentationViewerProps> = ({ slide }) => {
   const { mutate: addActivity } = useAddDocumentActivity();
-  const { activeItem } = useContentStore();
 
   // Get fileId from slide.document_slide.published_data
   const fileId = slide.document_slide?.published_data;

@@ -22,7 +22,9 @@ import { fetchAndStoreInstituteDetails } from "@/services/fetchAndStoreInstitute
 export const Route = createFileRoute("/dashboard/")({
   beforeLoad: async () => {
     const instituteId = await getInstituteId();
+   
     const userId = await getUserId();
+
     if (!instituteId || !userId) {
       throw new Error("Institute ID or User ID is missing");
     }

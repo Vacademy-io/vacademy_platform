@@ -92,12 +92,13 @@ const CourseCatalougePage: React.FC = () => {
                     tag: selectedTags,
                     min_percentage_completed: 0,
                     max_percentage_completed: 0,
+                    type: "PROGRESS",
                 },
                 {
                     params: {
                         instituteId,
                         page: 0,
-                        size: 95,
+                        size: 10,
                     },
                     headers: {
                         accept: "*/*",

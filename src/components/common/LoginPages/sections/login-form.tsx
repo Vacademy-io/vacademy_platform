@@ -33,7 +33,7 @@ export const setToStorage = async (key: string, value: string) => {
 
 export function LoginForm() {
   const navigate = useNavigate();
-  const { setPrimaryColor, getPrimaryColorCode } = useTheme();
+  const { setPrimaryColor } = useTheme();
 
   const urlParams = new URLSearchParams(window.location.search);
   const [isSSOLoading, setIsSSOLoading] = useState(false);

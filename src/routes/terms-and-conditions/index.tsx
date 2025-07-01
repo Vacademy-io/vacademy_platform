@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { motion } from "framer-motion";
-import { FileText, ArrowLeft, Users, CreditCard, Shield, AlertCircle, Scale, BookOpen, RefreshCw } from "lucide-react";
+import { FileText, ArrowLeft, Users, CreditCard, AlertCircle, BookOpen } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/terms-and-conditions/")({

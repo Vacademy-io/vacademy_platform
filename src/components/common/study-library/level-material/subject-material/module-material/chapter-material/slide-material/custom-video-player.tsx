@@ -16,8 +16,7 @@ import { convertTimeToSeconds } from "@/utils/study-library/tracking/convertTime
 import { formatVideoTime } from "@/utils/study-library/tracking/formatVideoTime";
 import { calculateNetDuration } from "@/utils/study-library/tracking/calculateNetDuration";
 import { useVideoSync } from "@/hooks/study-library/useVideoSync";
-import { MyButton } from "@/components/design-system/button";
-import { MyInput } from "@/components/design-system/input";
+
 import {
   ArrowsOut,
   Check,

@@ -47,6 +47,7 @@ const CourseCatalougePage: React.FC = () => {
                     tag: [],
                     min_percentage_completed: 0,
                     max_percentage_completed: 0,
+                    type: "COMPLETED",
                 },
                 {
                     params: {

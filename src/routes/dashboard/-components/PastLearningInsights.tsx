@@ -43,72 +43,65 @@ export const PastLearningInsights = () => {
     if(isPending) return <DashboardLoader />
 
     return(
-        <div className="flex flex-col gap-6 p-6 bg-white rounded-lg border border-gray-200 shadow-sm">
-            {/* Clean Header Section */}
-            <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
-                
-                <div className="relative z-10 w-full">
-                    {/* Main Content Section */}
-                    <div className="flex items-start gap-4 mb-6">
-                        <div className="p-3 bg-primary-50 rounded-lg flex-shrink-0">
-                            <svg className="w-6 h-6 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+        <div className="space-y-3 md:space-y-4">
+            {/* Compact Header Section */}
+            <div className="bg-white border border-neutral-200 rounded-lg p-3 md:p-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-0">
+                    <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 bg-primary-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <svg className="w-4 h-4 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
                             </svg>
                         </div>
-                        <div className="flex-1 min-w-0">
-                            <h2 className="text-lg font-semibold text-gray-900 mb-1">Learning Analytics</h2>
-                            <p className="text-sm text-gray-500">Comprehensive performance insights from the past 7 days</p>
+                        <div className="min-w-0">
+                            <h2 className="text-base md:text-lg font-medium text-neutral-900">Learning Analytics</h2>
+                            <p className="text-xs md:text-sm text-neutral-500">Past 7 days performance</p>
                         </div>
                     </div>
                     
-                    {/* Stats Card Section - Separate Row */}
-                    <div className="flex justify-end">
-                        <div className="w-full sm:w-auto sm:max-w-sm">
-                            <div className="bg-gray-50 border border-gray-200 p-4 rounded-lg">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                                    <div className="text-right">
-                                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Average Study Time</p>
-                                        <p className="text-xl font-semibold text-gray-900">{avgTimeSpent}</p>
-                                        <p className="text-xs text-gray-500 mt-1">Daily average</p>
-                                    </div>
-                                </div>
+                    {/* Compact Stats */}
+                    <div className="bg-primary-50/50 border border-primary-200 rounded-lg p-2.5 md:p-3 min-w-0 sm:max-w-xs">
+                        <div className="flex items-center gap-2">
+                            <div className="w-1.5 h-1.5 bg-primary-500 rounded-full flex-shrink-0"></div>
+                            <div className="min-w-0">
+                                <p className="text-xs text-neutral-500 font-medium">Avg. Study Time</p>
+                                <p className="text-lg md:text-xl font-light text-neutral-900">{avgTimeSpent}</p>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* Chart Section */}
-            <div>
+            {/* Compact Chart Section */}
+            <div className="bg-white border border-neutral-200 rounded-lg p-3 md:p-4">
                 <LineChartComponent userActivity={userActivity} />
             </div>
 
-            {/* Table Section */}
-            <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-                {/* Header */}
-                <div className="p-4 border-b border-gray-200 bg-gray-50">
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 bg-gray-200 rounded-lg text-gray-600">
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            {/* Compact Table Section */}
+            <div className="bg-white border border-neutral-200 rounded-lg overflow-hidden">
+                {/* Compact Header */}
+                <div className="p-3 md:p-4 border-b border-neutral-200 bg-neutral-50">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0">
+                        <div className="flex items-center gap-2">
+                            <div className="w-6 h-6 bg-neutral-200 rounded flex items-center justify-center">
+                                <svg className="w-3 h-3 text-neutral-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                                 </svg>
                             </div>
                             <div>
-                                <h3 className="text-base font-semibold text-gray-900">Daily Progress Details</h3>
-                                <p className="text-sm text-gray-500">Detailed breakdown of your learning sessions</p>
+                                <h3 className="text-sm md:text-base font-medium text-neutral-900">Daily Progress</h3>
+                                <p className="text-xs text-neutral-500">Learning session breakdown</p>
                             </div>
                         </div>
-                        <div className="hidden sm:flex items-center gap-2 px-2 py-1 bg-green-50 rounded-lg border border-green-200">
-                            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                            <span className="text-xs font-medium text-green-700">Live Data</span>
+                        <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 bg-primary-50 rounded border border-primary-200">
+                            <div className="w-1.5 h-1.5 bg-primary-500 rounded-full"></div>
+                            <span className="text-xs font-medium text-primary-700">Live</span>
                         </div>
                     </div>
                 </div>
                 
-                {/* Table Container */}
-                <div className="p-4">
+                {/* Compact Table Container */}
+                <div className="p-3 md:p-4">
                     <StudentProgressTable userActivity={userActivity} />
                 </div>
             </div>

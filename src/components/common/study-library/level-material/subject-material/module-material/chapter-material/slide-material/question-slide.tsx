@@ -12,6 +12,8 @@ import { SUBMIT_QUESTION_SLIDE_ANSWERS } from "@/constants/urls";
 import { v4 as uuidv4 } from "uuid";
 import { getUserId } from "@/constants/getUserId";
 import { Textarea } from "@/components/ui/textarea";
+import { useRouter } from "@tanstack/react-router";
+import { getPackageSessionId } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
 
 interface Option {
     id: string;
@@ -65,6 +67,8 @@ interface QuestionResponseMap {
 }
 
 const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
+    const router = useRouter();
+    const { chapterId, moduleId, subjectId } = router.state.location.search;
     // const { activeItem } = useContentStore();
     const [selectedOptionsMap, setSelectedOptionsMap] = useState<
         Record<string, SelectedOption | null>
@@ -111,8 +115,12 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
         }) => {
             const userId = await getUserId();
 
-            if (!slideId || !userId) {
-                throw new Error("Missing slideId or userId in URL");
+            const packageSessionId = await getPackageSessionId();
+
+            if (!slideId || !userId || !packageSessionId) {
+                throw new Error(
+                    "Missing slideId or userId or !packageSessionId in URL"
+                );
             }
 
             const payload = {
@@ -128,7 +136,7 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
                 documents: [],
                 question_slides: [
                     {
-                        id: slideId,
+                        id: uuidv4(),
                         attempt_number: maxAttempts,
                         question_name: questionName,
                         response_json: JSON.stringify({
@@ -157,6 +165,10 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
                 {
                     params: {
                         slideId,
+                        chapterId: chapterId || "",
+                        packageSessionId: packageSessionId || "",
+                        moduleId: moduleId || "",
+                        subjectId: subjectId || "",
                         userId,
                     },
                 }
@@ -508,9 +520,22 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
                                             : "text-gray-700"
                                     }`}
                                 >
-                                    {questionType === "TRUE_FALSE"
-                                        ? option.text.content
-                                        : `${String.fromCharCode(97 + index)}. ${option.text.content}`}
+                                    {questionType === "TRUE_FALSE" ? (
+                                        <span
+                                            dangerouslySetInnerHTML={{
+                                                __html: option.text.content,
+                                            }}
+                                        />
+                                    ) : (
+                                        <>
+                                            {String.fromCharCode(97 + index)}.{" "}
+                                            <span
+                                                dangerouslySetInnerHTML={{
+                                                    __html: option.text.content,
+                                                }}
+                                            />
+                                        </>
+                                    )}
                                 </label>
                             </div>
                         ))}
@@ -566,7 +591,12 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
                                             : "text-gray-700"
                                     }`}
                                 >
-                                    {`${String.fromCharCode(97 + index)}. ${option.text.content}`}
+                                    {String.fromCharCode(97 + index)}.{" "}
+                                    <span
+                                        dangerouslySetInnerHTML={{
+                                            __html: option.text.content,
+                                        }}
+                                    />
                                 </label>
                             </div>
                         ))}
@@ -708,19 +738,15 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
                 }}
             />
 
-            {/* Question image or diagram if available */}
-            {/* {questionData?.media_id && (
-        <div className="mb-4">
-          <img
-            src="/placeholder.svg?height=200&width=400"
-            alt="Question diagram"
-            className="mx-auto rounded-lg"
-          />
-          <p className="text-sm text-neutral-500 mt-1 text-center">
-            Question image
-          </p>
-        </div>
-      )} */}
+            {/* Parent rich text content if available */}
+            {questionData?.parent_rich_text?.content && (
+                <div
+                    className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200"
+                    dangerouslySetInnerHTML={{
+                        __html: questionData.parent_rich_text.content,
+                    }}
+                />
+            )}
 
             <div className="mt-4 sm:mt-6">
                 <h3 className="text-base sm:text-lg font-medium text-gray-700 mb-2 sm:mb-3">

@@ -37,15 +37,15 @@ export const MySidebar = ({
           }`}
         >
           <div className="relative">
-            {!isNullOrEmptyOrUndefined(instituteLogoFileUrl) ? (
-              <img
+              {!isNullOrEmptyOrUndefined(instituteLogoFileUrl) ? (
+                <img
                 className={`object-cover shadow-sm border border-gray-200 transition-all duration-300 ${
                   isExpanded ? "w-8 h-8 rounded-md" : "w-7 h-7 rounded-md"
                 }`}
-                src={instituteLogoFileUrl}
-                alt="Logo"
-              />
-            ) : (
+                  src={instituteLogoFileUrl}
+                  alt="Logo"
+                />
+              ) : (
               <div 
                 className={`bg-primary-50 border border-primary-200 rounded-md flex items-center justify-center transition-all duration-300 ${
                   isExpanded ? "w-8 h-8" : "w-7 h-7"
@@ -53,13 +53,13 @@ export const MySidebar = ({
               >
                 <div className={`bg-primary-500 rounded-sm ${isExpanded ? "w-4 h-4" : "w-3 h-3"}`}></div>
               </div>
-            )}
-          </div>
+              )}
+            </div>
           
           {isExpanded && (
             <div className="flex-1 min-w-0">
               <div className="text-sm font-semibold text-gray-900 truncate">
-                {instituteName}
+              {instituteName}
               </div>
               <p className="text-xs text-gray-500 truncate">Dashboard</p>
             </div>
@@ -82,14 +82,14 @@ export const MySidebar = ({
                     className="animate-slide-in-left"
                     style={{ animationDelay: `${key * 30}ms` }}
                   >
-                    <SidebarItem
-                      icon={obj.icon}
-                      subItems={obj.subItems}
-                      title={obj.title}
-                      to={obj.to}
-                    />
-                  </SidebarMenuItem>
-                ));
+                        <SidebarItem
+                          icon={obj.icon}
+                          subItems={obj.subItems}
+                          title={obj.title}
+                          to={obj.to}
+                        />
+                      </SidebarMenuItem>
+                    ));
               })()}
         </SidebarMenu>
       </SidebarContent>

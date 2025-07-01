@@ -40,10 +40,13 @@ export const DeleteDoubt = ({doubt, refetch}: {doubt: DoubtType, refetch: () => 
 
     return(
         <>
-            <div className="flex gap-1 items-center cursor-pointer" onClick={()=>setShowDeleteDialog(true)}>
-                <TrashSimple className="text-danger-500" />
-                <p className="text-body text-neutral-600">Delete</p>
-            </div>
+            <button 
+                onClick={() => setShowDeleteDialog(true)}
+                className="flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-all duration-200 border border-red-200/60 hover:border-red-300 group"
+            >
+                <TrashSimple size={16} className="text-red-500 group-hover:text-red-600 transition-colors" />
+                <span className="font-medium">Delete</span>
+            </button>
             <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
                 <AlertDialogContent>
                     <AlertDialogHeader>

@@ -30,8 +30,13 @@ export const ModuleMaterial = () => {
 
   const heading = (
     <div className="flex items-center gap-2">
-      <CaretLeft onClick={handleBackClick} className="cursor-pointer size-5" />
-      <div>{subjectName}</div>
+      <div 
+        onClick={handleBackClick} 
+        className="cursor-pointer p-1 rounded-md hover:bg-primary-50 hover:text-primary-600 transition-all duration-200 hover:scale-110"
+      >
+        <CaretLeft className="size-5" />
+      </div>
+      <div className="text-neutral-800 font-medium">{subjectName}</div>
     </div>
   );
 

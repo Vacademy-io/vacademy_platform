@@ -3,6 +3,7 @@ export const BASE_URL = "https://backend-stage.vacademy.io";
 export const INSTITUTE_ID = "c70f40a5-e4d3-4b6c-a498-e612d0d4b133";
 
 export const LOGIN_URL = `${BASE_URL}/auth-service/learner/v1/login`;
+
 export const LOGIN_URL_GOOGLE_GITHUB = `${BASE_URL}/auth-service/oauth2/authorization`;
 
 export const REQUEST_OTP = `${BASE_URL}/auth-service/learner/v1/request-otp`;

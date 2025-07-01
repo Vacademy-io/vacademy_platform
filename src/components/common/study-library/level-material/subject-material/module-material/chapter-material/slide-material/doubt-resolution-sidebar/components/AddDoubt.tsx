@@ -1,4 +1,4 @@
-import { MyButton } from "@/components/design-system/button"
+
 import { DoubtType, StudentDetailsType } from "../types/add-doubt-type"
 import { getFromStorage } from "@/components/common/LoginPages/sections/login-form";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
@@ -96,12 +96,16 @@ export const AddDoubt = ({
     }
 
     return (
-        <MyButton 
-            layoutVariant="icon" 
-            disable={doubtText.length === 0} 
+        <button
             onClick={handleAddDoubt}
+            disabled={doubtText.length === 0}
+            className={`flex items-center justify-center w-10 h-10 rounded-xl transition-all duration-200 ${
+                doubtText.length === 0 
+                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                    : 'bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 text-white shadow-lg hover:shadow-xl hover:scale-105 active:scale-95'
+            }`}
         >
-            <ArrowUp />
-        </MyButton>
+            <ArrowUp size={18} />
+        </button>
     )
 }

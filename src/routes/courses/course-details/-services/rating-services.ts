@@ -111,7 +111,7 @@ export const handleGetOverallRating = async (source_id: string) => {
         url: GET_ALL_RATING_SUMMARY,
         params: {
             sourceId: source_id,
-            source_type: "PACKAGE_SESSION",
+            sourceType: "PACKAGE_SESSION",
         },
     });
     return response?.data;

@@ -1,23 +1,21 @@
-import { Heading } from "@/components/common/LoginPages/ui/heading";
 import { MyInput } from "@/components/design-system/input";
 import { forgotPasswordSchema } from "@/schemas/login/login";
 import { z } from "zod";
 import { forgotPassword } from "@/hooks/login/send-link-button";
 import { sendResetLink } from "@/hooks/login/reset-link-click";
 import { useMutation } from "@tanstack/react-query";
-import { MyButton } from "@/components/design-system/button";
 import { toast } from "sonner";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Form, FormControl, FormField, FormItem } from "@/components/ui/form";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Mail, ArrowLeft, Key, Shield, CheckCircle, RefreshCw } from "lucide-react";
 
 type FormValues = z.infer<typeof forgotPasswordSchema>;
 
 export function ForgotPassword() {
-  console.log("ForgotPassword component rendered");
-
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
@@ -77,132 +75,258 @@ export function ForgotPassword() {
     form.reset();
   };
 
- return (
-  <div className="min-h-screen w-full flex items-center justify-center bg-gradient-to-br from-orange-50 via-white to-red-50 p-4">
-    <div className="w-full max-w-md mx-auto">
-      <div className="bg-white glass-card rounded-2xl p-8 shadow-xl">
-        {/* Your existing content inside here */}
-     
-          <div className="text-center space-y-4 mb-8">
-            <div className="w-20 h-20 bg-gradient-to-br from-orange-500 to-red-600 rounded-2xl mx-auto flex items-center justify-center shadow-lg">
-              <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-              </svg>
-            </div>
-            <Heading
-              heading="Forgot Your Credentials?"
-              subHeading={!emailSent ? "Enter your email to receive your login credentials" : "Check your email for credentials"}
-            />
-          </div>
+  return (
+    <div className="min-h-screen bg-gray-50 relative overflow-hidden">
+      {/* Subtle Background Pattern */}
+      <div className="absolute inset-0 bg-grid-gray-100 [mask-image:linear-gradient(0deg,white,rgba(255,255,255,0.6))] -z-10" />
+      
+      {/* Subtle Floating Background Elements */}
+      <motion.div 
+        animate={{ 
+          x: [0, 20, 0],
+          y: [0, -10, 0],
+          rotate: [0, 2, 0] 
+        }}
+        transition={{ 
+          duration: 12,
+          repeat: Infinity,
+          ease: "easeInOut" 
+        }}
+        className="absolute top-20 left-20 w-48 h-48 bg-gradient-to-br from-gray-200/10 to-gray-300/10 rounded-full blur-3xl"
+      />
 
-          {!emailSent ? (
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-                <div className="space-y-2">
-                  <FormField
-                    control={form.control}
-                    name="email"
-                    render={({ field: { onChange, value, ...field } }) => (
-                      <FormItem>
-                        <FormControl>
-                          <div className="relative">
-                            <MyInput
-                              inputType="email"
-                              inputPlaceholder="you@example.com"
-                              input={value}
-                              onChangeFunction={onChange}
-                              error={form.formState.errors.email?.message}
-                              required={true}
-                              size="large"
-                              label="Email Address"
-                              {...field}
-                              className="w-full"
-                            />
-                          </div>
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
-                </div>
+      <div className="flex min-h-screen items-center justify-center p-4">
+        <motion.div 
+          initial={{ opacity: 0, y: 20, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.4 }}
+          className="w-full max-w-md"
+        >
+          {/* Main Card */}
+          <div className="bg-white/90 backdrop-blur-xl rounded-xl shadow-xl border border-gray-200/50 p-6 lg:p-7">
+            {/* Back Button */}
+            <motion.button
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.1 }}
+              onClick={() => navigate({ to: "/login" })}
+              className="flex items-center space-x-2 text-gray-600 hover:text-gray-800 transition-colors duration-200 mb-6 group"
+            >
+              <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform duration-200" />
+              <span className="text-sm font-medium">Back to Login</span>
+            </motion.button>
 
-                <div className="space-y-4 pt-4">
-                  <MyButton
-                    type="submit"
-                    scale="large"
-                    buttonType="primary"
-                    layoutVariant="default"
-                    disabled={isLoading}
-                    className="w-full"
+            <AnimatePresence mode="wait">
+              {!emailSent ? (
+                <motion.div
+                  key="form"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  {/* Header */}
+                  <motion.div 
+                    initial={{ y: 10, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{ delay: 0.2 }}
+                    className="text-center mb-6"
                   >
-                    {isLoading ? "Sending..." : "Send Credentials"}
-                  </MyButton>
+                    <div className="w-12 h-12 bg-gray-900 rounded-lg mx-auto flex items-center justify-center mb-4">
+                      <Key className="w-6 h-6 text-white" />
+                    </div>
+                    <h2 className="text-xl lg:text-2xl font-bold text-gray-900 mb-2">
+                      Forgot Your Password?
+                    </h2>
+                    <p className="text-gray-600 text-sm">
+                      Enter your email address and we'll send you your login credentials
+                    </p>
+                  </motion.div>
 
-                  <div className="text-center">
-                    <p className="text-sm text-gray-600 mb-3">Remember your credentials?</p>
-                    <MyButton
-                      type="button"
-                      scale="medium"
-                      buttonType="text"
-                      layoutVariant="default"
-                      className="text-orange-600 hover:text-orange-700"
-                      onClick={() => navigate({ to: "/login" })}
+                  {/* Form */}
+                  <Form {...form}>
+                    <motion.form 
+                      initial={{ y: 10, opacity: 0 }}
+                      animate={{ y: 0, opacity: 1 }}
+                      transition={{ delay: 0.4 }}
+                      onSubmit={form.handleSubmit(onSubmit)} 
+                      className="space-y-5"
                     >
-                      Back to Login
-                    </MyButton>
-                  </div>
-                </div>
-              </form>
-            </Form>
-          ) : (
-            <div className="text-center space-y-6">
-              <div className="w-16 h-16 bg-green-100 rounded-full mx-auto flex items-center justify-center">
-                <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-              <div className="space-y-2">
-                <h3 className="text-lg font-semibold text-gray-900">Email Sent!</h3>
-                <p className="text-sm text-gray-600">
-                  We've sent your login credentials to{" "}
-                  <span className="font-medium text-orange-600">{form.getValues().email}</span>
-                </p>
-                <p className="text-xs text-gray-500">Please check your inbox and spam folder</p>
-              </div>
-              <div className="space-y-3">
-                <MyButton
-                  type="button"
-                  scale="large"
-                  buttonType="primary"
-                  layoutVariant="default"
-                  className="w-full"
-                  onClick={() => navigate({ to: "/login" })}
-                >
-                  Back to Login
-                </MyButton>
-                <MyButton
-                  type="button"
-                  scale="medium"
-                  buttonType="text"
-                  className="text-orange-600 hover:text-orange-700"
-                  onClick={handleTryAgain}
-                >
-                  Try Different Email
-                </MyButton>
-              </div>
-            </div>
-          )}
-        </div>
+                      {/* Email Field */}
+                      <FormField
+                        control={form.control}
+                        name="email"
+                        render={({ field: { onChange, value, ...field } }) => (
+                          <FormItem>
+                            <FormControl>
+                              <div className="relative">
+                                <MyInput
+                                  inputType="email"
+                                  inputPlaceholder="Enter your email address"
+                                  input={value}
+                                  onChangeFunction={onChange}
+                                  error={form.formState.errors.email?.message}
+                                  required={true}
+                                  size="large"
+                                  label="Email Address"
+                                  {...field}
+                                  className="w-full transition-all duration-200 border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pr-10"
+                                />
+                                <Mail className="absolute right-3 bottom-3 w-4 h-4 text-gray-400" />
+                              </div>
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
 
-        <div className="mt-6 text-center">
-          <div className="glass-card rounded-xl p-4">
-            <div className="flex items-center justify-center space-x-2 text-sm text-gray-600">
-              <svg className="w-4 h-4 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <span>Need help? Contact your administrator</span>
-            </div>
+                      {/* Submit Button */}
+                      <motion.button
+                        type="submit"
+                        disabled={isLoading}
+                        whileHover={{ scale: 1.01 }}
+                        whileTap={{ scale: 0.99 }}
+                        className="w-full bg-gray-900 hover:bg-black text-white font-medium py-3 px-4 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md"
+                      >
+                        {isLoading ? (
+                          <div className="flex items-center justify-center space-x-2">
+                            <motion.div
+                              animate={{ rotate: 360 }}
+                              transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                            >
+                              <RefreshCw className="w-4 h-4" />
+                            </motion.div>
+                            <span className="text-sm">Sending...</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-center space-x-2">
+                            <Mail className="w-4 h-4" />
+                            <span className="text-sm">Send Credentials</span>
+                          </div>
+                        )}
+                      </motion.button>
+                    </motion.form>
+                  </Form>
+
+                  {/* Security Notice */}
+                  <motion.div 
+                    initial={{ y: 10, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{ delay: 0.6 }}
+                    className="mt-6 p-3 bg-gray-50/80 border border-gray-200/60 rounded-lg"
+                  >
+                    <div className="flex items-start space-x-2">
+                      <Shield className="w-4 h-4 text-gray-600 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="text-xs font-medium text-gray-800 mb-1">
+                          Account Security
+                        </p>
+                        <p className="text-xs text-gray-600">
+                          We'll send your credentials securely to your registered email address.
+                        </p>
+                      </div>
+                    </div>
+                  </motion.div>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="success"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ duration: 0.3 }}
+                  className="text-center"
+                >
+                  {/* Success Icon */}
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
+                    className="w-16 h-16 bg-gray-900 rounded-full mx-auto flex items-center justify-center mb-6"
+                  >
+                    <CheckCircle className="w-8 h-8 text-white" />
+                  </motion.div>
+
+                  {/* Success Message */}
+                  <motion.div
+                    initial={{ y: 10, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{ delay: 0.4 }}
+                    className="mb-6"
+                  >
+                    <h2 className="text-xl font-bold text-gray-900 mb-2">
+                      Email Sent Successfully!
+                    </h2>
+                    <p className="text-gray-600 text-sm mb-2">
+                      We've sent your login credentials to
+                    </p>
+                    <p className="font-medium text-gray-900 text-sm">
+                      {form.getValues().email}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-2">
+                      Please check your inbox and spam folder
+                    </p>
+                  </motion.div>
+
+                  {/* Action Buttons */}
+                  <motion.div
+                    initial={{ y: 10, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{ delay: 0.6 }}
+                    className="space-y-3"
+                  >
+                    <motion.button
+                      whileHover={{ scale: 1.01 }}
+                      whileTap={{ scale: 0.99 }}
+                      onClick={() => navigate({ to: "/login" })}
+                      className="w-full bg-gray-900 hover:bg-black text-white font-medium py-3 px-4 rounded-lg transition-all duration-200 shadow-sm hover:shadow-md"
+                    >
+                      <div className="flex items-center justify-center space-x-2">
+                        <ArrowLeft className="w-4 h-4" />
+                        <span className="text-sm">Back to Login</span>
+                      </div>
+                    </motion.button>
+                    
+                    <motion.button
+                      whileHover={{ scale: 1.01 }}
+                      onClick={handleTryAgain}
+                      className="w-full text-gray-600 hover:text-gray-800 font-medium py-2 transition-colors duration-200 text-sm"
+                    >
+                      Try different email
+                    </motion.button>
+                  </motion.div>
+
+                  {/* Additional Help */}
+                  <motion.div
+                    initial={{ y: 10, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{ delay: 0.8 }}
+                    className="mt-6 p-3 bg-gray-50/80 border border-gray-200/60 rounded-lg"
+                  >
+                    <p className="text-xs text-gray-600">
+                      <strong>Didn't receive the email?</strong><br />
+                      Check your spam folder or contact support if the issue persists.
+                    </p>
+                  </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
-        </div>
+
+          {/* Footer */}
+          <motion.div 
+            initial={{ y: 10, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.8 }}
+            className="mt-6 text-center text-xs text-gray-600"
+          >
+            <p>
+              Need help? Contact{" "}
+              <a href="#" className="text-gray-800 hover:text-gray-900 font-medium underline">
+                support
+              </a>
+            </p>
+          </motion.div>
+        </motion.div>
       </div>
     </div>
   );

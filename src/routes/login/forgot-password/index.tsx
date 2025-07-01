@@ -9,5 +9,5 @@ export const Route = createFileRoute("/login/forgot-password/")({
 
 export function PasswordReset() {
   useSyncLanguage();
-  return <ForgotPassword />;
+  return <div className="w-full h-full"><ForgotPassword /></div>;
 }

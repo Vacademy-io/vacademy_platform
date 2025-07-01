@@ -1,7 +1,6 @@
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { ThumbsUp, ThumbsDown, Trash } from "phosphor-react";
-import { Progress } from "@/components/ui/progress";
 import { useState } from "react";
 import { MyPagination } from "@/components/design-system/pagination";
 import { AxiosError } from "axios";
@@ -18,6 +17,7 @@ import {
 } from "../-services/rating-services";
 import { StarRatingComponent } from "@/components/common/star-rating-component";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
+import { ProgressBar } from "@/components/ui/custom-progress-bar";
 
 // Types for API Response
 interface User {
@@ -214,7 +214,7 @@ export function CourseDetailsRatingsComponent({
                     <div className="flex w-full flex-col gap-4">
                         <div className="flex w-1/2 items-center gap-2">
                             <span>5</span>
-                            <Progress
+                            <ProgressBar
                                 value={
                                     overallRatingData?.percent_five_star ?? 0
                                 }
@@ -230,7 +230,7 @@ export function CourseDetailsRatingsComponent({
                         </div>
                         <div className="flex w-1/2 items-center gap-2">
                             <span>4</span>
-                            <Progress
+                            <ProgressBar
                                 value={
                                     overallRatingData?.percent_four_star ?? 0
                                 }
@@ -246,7 +246,7 @@ export function CourseDetailsRatingsComponent({
                         </div>
                         <div className="flex w-1/2 items-center gap-2">
                             <span>3</span>
-                            <Progress
+                            <ProgressBar
                                 value={
                                     overallRatingData?.percent_three_star ?? 0
                                 }
@@ -262,7 +262,7 @@ export function CourseDetailsRatingsComponent({
                         </div>
                         <div className="flex w-1/2 items-center gap-2">
                             <span>2</span>
-                            <Progress
+                            <ProgressBar
                                 value={overallRatingData?.percent_two_star ?? 0}
                             />
                             <span>
@@ -275,7 +275,7 @@ export function CourseDetailsRatingsComponent({
                         </div>
                         <div className="flex w-1/2 items-center gap-2">
                             <span>1</span>
-                            <Progress
+                            <ProgressBar
                                 value={overallRatingData?.percent_one_star ?? 0}
                             />
                             <span>

@@ -1,9 +1,5 @@
 import React, { useState, useEffect } from "react";
-import Footer from "./Footer.tsx";
-import InstructorCTASection from "./InstructorCTASection.tsx";
-import SupportersSection from "./SupportersSection.tsx";
 import CoursesPage from "./CoursesPage.tsx";
-import Header from "./Header.tsx";
 import { useCatalogStore } from "../-store/catalogStore.ts";
 import axios from "axios";
 import HeroSection from "./HeroSection.tsx";
@@ -11,9 +7,8 @@ import Tab from "./Tab.tsx";
 import { getInstituteId } from "@/constants/helper.ts";
 import {
     STUDENT_DETAIL,
-    urlCourseDetails,
-    urlInstituteDetails,
     urlInstructor,
+    urlPublicCourseDetails,
 } from "@/constants/urls.ts";
 import { getUserId } from "@/constants/getUserId.ts";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance.ts";
@@ -37,8 +32,8 @@ const CourseCatalougePage: React.FC = () => {
     const fetchPackages = async (search = "", sort = "Newest") => {
         try {
             const instituteId = await getInstituteId();
-            const response = await axios.post(
-                urlCourseDetails,
+            const response = await authenticatedAxiosInstance.post(
+                urlPublicCourseDetails,
                 {
                     status: [],
                     level_ids: [],
@@ -83,8 +78,8 @@ const CourseCatalougePage: React.FC = () => {
     const handleApplyFilters = async () => {
         try {
             const instituteId = await getInstituteId();
-            const response = await axios.post(
-                urlCourseDetails,
+            const response = await authenticatedAxiosInstance.post(
+                urlPublicCourseDetails,
                 {
                     status: [],
                     level_ids: selectedLevels,

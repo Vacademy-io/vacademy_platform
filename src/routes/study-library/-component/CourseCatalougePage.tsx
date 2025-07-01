@@ -13,6 +13,7 @@ import {
     urlCourseDetails,
     urlInstituteDetails,
     urlInstructor,
+    urlPublicCourseDetails,
 } from "@/constants/urls.ts";
 import { getInstituteId } from "@/constants/helper.ts";
 import { getUserId } from "@/constants/getUserId.ts";
@@ -38,8 +39,8 @@ const CourseCatalougePage: React.FC = () => {
     const fetchPackages = async (search = "", sort = "Newest") => {
         try {
             const instituteId = await getInstituteId();
-            const response = await axios.post(
-                urlCourseDetails,
+            const response = await authenticatedAxiosInstance.post(
+                urlPublicCourseDetails,
                 {
                     status: [],
                     level_ids: [],
@@ -84,8 +85,8 @@ const CourseCatalougePage: React.FC = () => {
     const handleApplyFilters = async () => {
         try {
             const instituteId = await getInstituteId();
-            const response = await axios.post(
-                urlCourseDetails,
+            const response = await authenticatedAxiosInstance.post(
+                urlPublicCourseDetails,
                 {
                     status: [],
                     level_ids: selectedLevels,

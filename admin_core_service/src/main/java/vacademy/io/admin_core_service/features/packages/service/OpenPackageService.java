@@ -51,10 +51,11 @@ public class OpenPackageService {
                     List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
                     List.of(LevelStatusEnum.ACTIVE.name()),
                     List.of(StatusEnum.ACTIVE.name()),
+                    List.of(StatusEnum.ACTIVE.name()),
                     pageable
             );
         }else{
-            learnerPackageDetail= packageRepository.getCatalogPackageDetail(
+            learnerPackageDetail= packageRepository.getOpenCatalogPackageDetail(
                     instituteId,
                     learnerPackageFilterDTO.getLevelIds(),
                     List.of(PackageStatusEnum.ACTIVE.name()),
@@ -63,6 +64,7 @@ public class OpenPackageService {
                     List.of(StatusEnum.ACTIVE.name()),
                     learnerPackageFilterDTO.getTag(),
                     List.of(LevelStatusEnum.ACTIVE.name()),
+                    List.of(StatusEnum.ACTIVE.name()),
                     pageable
             );
         }
@@ -118,7 +120,7 @@ public class OpenPackageService {
             String packageId
     ) {
         Optional<PackageDetailProjection> optionalProjection =
-                packageRepository.getPackageDetailByIdWithSessionAndFacultyStatus(packageId, List.of(PackageSessionStatusEnum.ACTIVE.name(),PackageSessionStatusEnum.HIDDEN.name()), List.of(FacultyStatusEnum.ACTIVE.name()));
+                packageRepository.getPackageDetailByIdWithSessionAndFacultyStatus(packageId, List.of(PackageSessionStatusEnum.ACTIVE.name(),PackageSessionStatusEnum.HIDDEN.name()), List.of(FacultyStatusEnum.ACTIVE.name()),List.of(StatusEnum.ACTIVE.name()));
 
         if (optionalProjection.isEmpty()) {
             throw new VacademyException("Package not found");

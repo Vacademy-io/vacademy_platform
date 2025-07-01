@@ -98,14 +98,18 @@ public interface RatingRepository extends JpaRepository<Rating, String> {
     FROM rating
     WHERE source_id = :sourceId
       AND source_type = :sourceType
-      AND status IN (:ratingStatuses)
+      AND (
+        :#{#ratingStatuses == null || #ratingStatuses.isEmpty()} = true
+        OR status IN (:ratingStatuses)
+      )
     """,
-        nativeQuery = true)
+            nativeQuery = true)
     RatingSummaryProjection getRatingSummary(
-        @Param("sourceId") String sourceId,
-        @Param("sourceType") String sourceType,
-        @Param("ratingStatuses") List<String> ratingStatuses
+            @Param("sourceId") String sourceId,
+            @Param("sourceType") String sourceType,
+            @Param("ratingStatuses") List<String> ratingStatuses
     );
+
 
     @Query(value = """
     SELECT

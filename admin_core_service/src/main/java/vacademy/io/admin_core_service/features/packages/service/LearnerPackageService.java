@@ -54,6 +54,7 @@ public class LearnerPackageService {
                     learnerPackageFilterDTO.getMinPercentageCompleted(),
                     learnerPackageFilterDTO.getMaxPercentageCompleted(),
                     List.of(StatusEnum.ACTIVE.name()),
+                    List.of(StatusEnum.ACTIVE.name()),
                     pageable
             );
         }else{
@@ -69,6 +70,7 @@ public class LearnerPackageService {
                     learnerPackageFilterDTO.getFacultyIds(),
                     List.of(StatusEnum.ACTIVE.name()),
                     learnerPackageFilterDTO.getTag(),
+                    List.of(StatusEnum.ACTIVE.name()),
                     pageable
             );
         }
@@ -125,7 +127,11 @@ public class LearnerPackageService {
             String packageId
     ) {
         Optional<PackageDetailProjection> optionalProjection =
-                packageRepository.getPackageDetailByIdWithSessionAndFacultyStatus(packageId, List.of(PackageSessionStatusEnum.ACTIVE.name(),PackageSessionStatusEnum.HIDDEN.name()), List.of(FacultyStatusEnum.ACTIVE.name()));
+                packageRepository.getPackageDetailByIdWithSessionAndFacultyStatus(packageId,
+                        List.of(PackageSessionStatusEnum.ACTIVE.name(),PackageSessionStatusEnum.HIDDEN.name()),
+                        List.of(FacultyStatusEnum.ACTIVE.name()),
+                        List.of(StatusEnum.ACTIVE.name())
+                );
 
         if (optionalProjection.isEmpty()) {
             throw new VacademyException("Package not found");

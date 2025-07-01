@@ -8,7 +8,15 @@ import { useCatalogStore } from "../-store/catalogStore.ts";
 import axios from "axios";
 import HeroSection from "../-component1/HeroSection.tsx";
 import Tab from "../-component1/Tab.tsx";
-import { urlCourseDetails, urlInstituteDetails, urlInstructor } from "@/constants/urls.ts";
+import {
+    STUDENT_DETAIL,
+    urlCourseDetails,
+    urlInstituteDetails,
+    urlInstructor,
+} from "@/constants/urls.ts";
+import { getInstituteId } from "@/constants/helper.ts";
+import { getUserId } from "@/constants/getUserId.ts";
+import authenticatedAxiosInstance from "@/lib/auth/axiosInstance.ts";
 
 const CourseCatalougePage: React.FC = () => {
     const { courseData, setCourseData, setInstituteData, setInstructors } =
@@ -29,6 +37,7 @@ const CourseCatalougePage: React.FC = () => {
     //console.log("getInsutteId from the helper function",getInstituteId);
     const fetchPackages = async (search = "", sort = "Newest") => {
         try {
+            const instituteId = await getInstituteId();
             const response = await axios.post(
                 urlCourseDetails,
                 {
@@ -42,9 +51,9 @@ const CourseCatalougePage: React.FC = () => {
                 },
                 {
                     params: {
-                        instituteId: "94337b5b-7687-4a1e-993f-1b3529dd6f44",
+                        instituteId,
                         page: 0,
-                        size: 95,
+                        size: 10,
                         sortBy:
                             sort === "Newest"
                                 ? "created_at,desc"
@@ -73,6 +82,7 @@ const CourseCatalougePage: React.FC = () => {
 
     const handleApplyFilters = async () => {
         try {
+            const instituteId = await getInstituteId();
             const response = await axios.post(
                 urlCourseDetails,
                 {
@@ -86,9 +96,9 @@ const CourseCatalougePage: React.FC = () => {
                 },
                 {
                     params: {
-                        instituteId: "94337b5b-7687-4a1e-993f-1b3529dd6f44",
+                        instituteId,
                         page: 0,
-                        size: 95,
+                        size: 10,
                     },
                     headers: {
                         accept: "*/*",
@@ -106,7 +116,11 @@ const CourseCatalougePage: React.FC = () => {
     useEffect(() => {
         const FetchInstituteDetails = async () => {
             try {
-                const response = await axios.get(urlInstituteDetails);
+                const userId = await getUserId();
+                const instituteId = await getInstituteId();
+                const response = await authenticatedAxiosInstance.get(STUDENT_DETAIL, {
+                    params: { instituteId, userId },
+                });
                 // console.log("Institute details", response.data);
                 setInstituteData(response.data);
                 setLoading(false);

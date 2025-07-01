@@ -13,10 +13,6 @@ import {
     urlInstructor,
 } from "@/constants/urls.ts";
 import CourseListHeader from "./CourseListHeader.tsx";
-// import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
-// const urlInstituteDetails = 'https://backend-stage.vacademy.io/admin-core-service/public/institute/v1/details/94337b5b-7687-4a1e-993f-1b3529dd6f44';
-// const urlCourseDetails = 'https://backend-stage.vacademy.io/admin-core-service/open/packages/v1/search';
-//const urlInstructor = 'https://backend-stage.vacademy.io/auth-service/public/v1/users-of-status?instituteId=23103559-5632-42c9-b9ce-619d55fce3cb';
 
 const CourseCatalougePage: React.FC = () => {
     const { courseData, setCourseData, instituteData, setInstituteData, setInstructors } =

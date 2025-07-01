@@ -265,6 +265,9 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                                                           tag.trim()
                                                       )
                                         }
+                                        previewImageUrl={
+                                            course.course_preview_image_media_id
+                                        }
                                     />
                                 );
                             })}

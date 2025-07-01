@@ -41,7 +41,6 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
 }) => {
     const { courseData } = useCatalogStore();
     const [thumbnailUrls, setThumbnailUrls] = useState<string[]>([]);
-    const [imagesLoading, setImagesLoading] = useState(false);
 
     const fallbackInstructor = [
         { id: "373jeue38", full_name: "Shyam" },
@@ -96,10 +95,6 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
     // Convert thumbnail_file_id to URLs with individual loading (more reliable)
     useEffect(() => {
         const convertThumbnailsToUrls = async () => {
-            console.log(
-                `Starting image conversion for ${courseData.length} courses`
-            );
-
             // Initialize with fallback images to show immediately
             const initialUrls = new Array(courseData.length).fill(
                 fallbackImageUrl
@@ -123,7 +118,6 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
 
             const imageUrlPromises = validFileIds.map(async (item) => {
                 try {
-                    console.log(`Loading image for fileId: ${item.fileId}`);
                     const url = await getPublicUrlWithoutLogin(item.fileId);
                     if (
                         url &&
@@ -132,19 +126,12 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                         url !== "null" &&
                         url !== "undefined"
                     ) {
-                        console.log(
-                            `Individual load success for index ${item.index}: ${url}`
-                        );
                         return { index: item.index, url };
                     } else {
-                        console.log(
-                            `Individual load failed for index ${item.index}: ${url}`
-                        );
                         return { index: item.index, url: fallbackImageUrl };
                     }
                 } catch (error) {
-                    console.error(`Failed to load image ${item.index}:`, error);
-                    return { index: item.index, url: fallbackImageUrl };
+                    console.log(error);
                 }
             });
 
@@ -264,6 +251,9 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                                                       .map((tag: string) =>
                                                           tag.trim()
                                                       )
+                                        }
+                                        previewImageUrl={
+                                            course.course_preview_image_media_id
                                         }
                                     />
                                 );

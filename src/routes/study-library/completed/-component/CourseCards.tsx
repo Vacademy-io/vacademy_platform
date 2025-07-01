@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { StarIcon } from "lucide-react";
 import { useRouter } from "@tanstack/react-router";
+import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 
 interface Instructor {
     id: string;
@@ -19,6 +20,7 @@ interface CourseCardProps {
     description: string;
     tags: string[];
     studentCount?: number;
+    previewImageUrl: string;
 }
 
 const fallbackImage = "/images/placeholder-course.jpg";
@@ -36,6 +38,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
     description,
     tags,
     studentCount,
+    previewImageUrl,
 }) => {
     const [courseImageUrl, setCourseImageUrl] = useState(thumbnailUrl);
     const [loadingImage, setLoadingImage] = useState(true);
@@ -47,11 +50,21 @@ const CourseCard: React.FC<CourseCardProps> = ({
 
     const ratingValue = rating || 0;
 
-    // Simulate image loading state
-    useEffect(() => {
-        setCourseImageUrl(thumbnailUrl);
+    const loadImage = async () => {
         setLoadingImage(true);
-    }, [thumbnailUrl]);
+        try {
+            const url = await getPublicUrlWithoutLogin(previewImageUrl);
+            setCourseImageUrl(url);
+        } catch (error) {
+            console.error("Error fetching institute details:", error);
+        } finally {
+            setLoadingImage(false);
+        }
+    };
+
+    useEffect(() => {
+        loadImage();
+    }, [courseImageUrl]);
 
     const router = useRouter();
     const handleViewCoureseDetails = (id: string) => {
@@ -78,24 +91,30 @@ const CourseCard: React.FC<CourseCardProps> = ({
     return (
         <div className="bg-white rounded-lg shadow-lg overflow-hidden flex flex-col">
             <div className="w-full h-48 bg-gray-200 flex items-center justify-center relative">
-                {loadingImage && (
+                {loadingImage ? (
                     <div className="absolute inset-0 flex items-center justify-center bg-gray-200 bg-opacity-75">
                         <div className="text-gray-500">Loading...</div>
                     </div>
+                ) : courseImageUrl ? (
+                    <img
+                        src={courseImageUrl}
+                        alt={package_name}
+                        loading="lazy"
+                        className={`w-full h-full object-cover transition-opacity duration-300 ${
+                            loadingImage ? "opacity-0" : "opacity-100"
+                        }`}
+                    />
+                ) : (
+                    <img
+                        src={fallbackImage}
+                        alt={package_name}
+                        loading="lazy"
+                        className={`w-full h-full object-cover transition-opacity duration-300 ${
+                            loadingImage ? "opacity-0" : "opacity-100"
+                        }`}
+                    />
                 )}
-                <img
-                    src={courseImageUrl}
-                    alt={package_name}
-                    loading="lazy"
-                    className={`w-full h-full object-cover transition-opacity duration-300 ${loadingImage ? "opacity-0" : "opacity-100"}`}
-                    onLoad={() => setLoadingImage(false)}
-                    onError={() => {
-                        setCourseImageUrl(fallbackImage);
-                        setLoadingImage(false);
-                    }}
-                />
             </div>
-
             <div className="p-4 flex flex-col flex-grow">
                 <div className="flex justify-between items-start mb-2">
                     <h3

@@ -95,7 +95,6 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
     // Convert thumbnail_file_id to URLs with individual loading (more reliable)
     useEffect(() => {
         const convertThumbnailsToUrls = async () => {
-
             // Initialize with fallback images to show immediately
             const initialUrls = new Array(courseData.length).fill(
                 fallbackImageUrl
@@ -260,6 +259,9 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                                                       .map((tag: string) =>
                                                           tag.trim()
                                                       )
+                                        }
+                                        previewImageUrl={
+                                            course.course_preview_image_media_id
                                         }
                                     />
                                 );

@@ -15,10 +15,13 @@ import {
 import CourseListHeader from "./CourseListHeader.tsx";
 
 const CourseCatalougePage: React.FC = () => {
-    const { courseData, setCourseData, instituteData, setInstituteData, setInstructors } =
-        useCatalogStore();
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
+    const {
+        courseData,
+        setCourseData,
+        instituteData,
+        setInstituteData,
+        setInstructors,
+    } = useCatalogStore();
 
     const [searchTerm, setSearchTerm] = useState("");
     const [sortOption, setSortOption] = useState("Newest");
@@ -112,11 +115,8 @@ const CourseCatalougePage: React.FC = () => {
                     `${urlInstituteDetails}/${instituteId}`
                 );
                 setInstituteData(response.data);
-                setLoading(false);
             } catch (error) {
-                setError(
-                    "Something went wrong while fetching the institute details."
-                );
+                console.log(error);
             }
         };
 
@@ -130,7 +130,7 @@ const CourseCatalougePage: React.FC = () => {
         const fetchInstructor = async () => {
             try {
                 const response = await axios.post(
-                    `${urlInstructor}${instituteId}`,
+                    `${urlInstructor}/${instituteId}`,
                     {
                         roles: ["TEACHER", "ADMIN"],
                         status: ["ACTIVE"],
@@ -142,12 +142,9 @@ const CourseCatalougePage: React.FC = () => {
                         },
                     }
                 );
-                console.log("Instructor response:", response.data);
                 setInstructors(response.data);
             } catch (error) {
-                setError(
-                    "Something went wrong while fetching the instructors."
-                );
+                console.log(error);
             }
         };
 

@@ -33,6 +33,7 @@ import { Route as DashboardNotificationsIndexRouteImport } from './routes/dashbo
 import { Route as AssessmentReportsIndexRouteImport } from './routes/assessment/reports/index'
 import { Route as AssessmentExaminationIndexRouteImport } from './routes/assessment/examination/index'
 import { Route as LoginOauthRedirectRouteImport } from './routes/login/oauth/redirect'
+
 import { Route as StudyLibraryLiveClassWaitingRoomIndexRouteImport } from './routes/study-library/live-class/waiting-room/index'
 import { Route as StudyLibraryLiveClassEmbedIndexRouteImport } from './routes/study-library/live-class/embed/index'
 import { Route as StudyLibraryCoursesLevelsIndexRouteImport } from './routes/study-library/courses/levels/index'
@@ -174,6 +175,7 @@ const LoginOauthRedirectRoute = LoginOauthRedirectRouteImport.update({
   path: '/login/oauth/redirect',
   getParentRoute: () => rootRouteImport,
 } as any)
+
 const StudyLibraryLiveClassWaitingRoomIndexRoute =
   StudyLibraryLiveClassWaitingRoomIndexRouteImport.update({
     id: '/study-library/live-class/waiting-room/',
@@ -670,6 +672,7 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AssessmentExaminationIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+
     '/login/oauth/redirect': {
       id: '/login/oauth/redirect'
       path: '/login/oauth/redirect'
@@ -677,6 +680,7 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginOauthRedirectRouteImport
       parentRoute: typeof rootRouteImport
     }
+
     '/study-library/live-class/waiting-room/': {
       id: '/study-library/live-class/waiting-room/'
       path: '/study-library/live-class/waiting-room'

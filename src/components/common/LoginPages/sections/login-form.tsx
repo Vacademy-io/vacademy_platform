@@ -61,7 +61,6 @@ export function LoginForm() {
           await setTokenInStorage(TokenKey.accessToken, accessToken);
           await setTokenInStorage(TokenKey.refreshToken, refreshToken);
 
-          console.log("Tokens stored successfully");
           await handleSuccessfulLogin(accessToken, redirect);
         } catch (error) {
           console.error("Error storing tokens:", error);
@@ -120,8 +119,14 @@ export function LoginForm() {
 
         if (instituteId && userId) {
           try {
-            const details = await fetchAndStoreInstituteDetails(instituteId, userId);
-            console.log("Institute color:", details?.institute_theme_code);
+
+            // Fetch and store institute details
+            const details = await fetchAndStoreInstituteDetails(
+              instituteId,
+              userId
+            );
+           
+
             setPrimaryColor(details?.institute_theme_code ?? "#E67E22");
           } catch (error) {
             console.error("Error fetching institute details:", error);
@@ -239,12 +244,6 @@ export function LoginForm() {
               <UsernameLogin onSwitchToEmail={() => setIsEmailLogin(true)} />
             )}
           </div>
-        </div>
-
-        <div className="text-center mt-6">
-          <p className="text-xs text-slate-500">
-            Secure login powered by modern encryption
-          </p>
         </div>
       </div>
     </div>

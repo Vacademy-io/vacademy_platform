@@ -31,7 +31,7 @@ public class InstituteSettingService {
     }
 
     public void createDefaultNamingSetting(Institute institute, NameSettingRequest request){
-        String settingJsonString = settingStrategyFactory.rebuildOldSettingAndGetSettingJsonString(institute,request, SettingKeyEnums.NAMING_SETTING.name());
+        String settingJsonString = settingStrategyFactory.buildNewSettingAndGetSettingJsonString(institute,request, SettingKeyEnums.NAMING_SETTING.name());
         institute.setSetting(settingJsonString);
         instituteRepository.save(institute);
     }

@@ -56,6 +56,7 @@ public class InstituteInitManager {
         InstituteInfoDTO instituteInfoDTO = new InstituteInfoDTO();
         instituteInfoDTO.setInstituteName(institute.get().getInstituteName());
         instituteInfoDTO.setId(institute.get().getId());
+        instituteInfoDTO.setTags(packageRepository.findAllDistinctTagsByInstituteId(instituteId));
         instituteInfoDTO.setCity(institute.get().getCity());
         instituteInfoDTO.setCountry(institute.get().getCountry());
         instituteInfoDTO.setWebsiteUrl(institute.get().getWebsiteUrl());

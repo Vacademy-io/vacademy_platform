@@ -1,9 +1,8 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { useCatalogStore } from "../-store/catalogStore";
-import axios from "axios";
-import { getInstituteId } from "@/constants/helper";
-import { urlInstituteDetails } from "@/constants/urls";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
+import { useSuspenseQuery } from "@tanstack/react-query";
+import { handleFetchInstituteDetails } from "../../-services/institute-details";
 
 // Internal reusable component for individual filter sections
 interface FilterSectionProps {
@@ -110,7 +109,10 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
     instructorsDisabled = false,
 }) => {
     const { instructor } = useCatalogStore();
-    const [instituteData, setInstituteData] = useState(null);
+
+    const { data: instituteData, isLoading } = useSuspenseQuery(
+        handleFetchInstituteDetails()
+    );
 
     const hasActiveFilters =
         selectedLevels.length > 0 ||
@@ -132,28 +134,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
         name: inst.full_name || inst.username || "Unnamed Instructor",
     }));
 
-    useEffect(() => {
-        const FetchInstituteDetails = async () => {
-            try {
-                const instituteId = await getInstituteId();
-                const response = await axios.get(
-                    `${urlInstituteDetails}/${instituteId}`,
-                    {
-                        params: {
-                            instituteId,
-                        },
-                    }
-                );
-                setInstituteData(response.data);
-            } catch (error) {
-                console.log(error);
-            }
-        };
-
-        FetchInstituteDetails();
-    }, []);
-
-    if (!instituteData) return <DashboardLoader />;
+    if (isLoading) return <DashboardLoader />;
 
     return (
         <div className="bg-white p-6 rounded-lg shadow ml-0">

@@ -19,7 +19,7 @@ function OAuthRedirectHandler() {
                 navigate({ to: '/dashboard' });
                 return;
             } else {
-                toast.error('OAuth failed. Redirecting to login...');
+                // toast.error('OAuth failed. Redirecting to login...');
                 navigate({ to: '/login' });
             }
         };

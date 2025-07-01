@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { useEffect } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { toast } from 'sonner';
+
 import { handleLoginOAuthCallback } from '@/hooks/login/oauth-login';
 
 export const Route = createFileRoute('/login/oauth/redirect')({
@@ -19,7 +19,7 @@ function OAuthRedirectHandler() {
                 navigate({ to: '/dashboard' });
                 return;
             } else {
-                toast.error('OAuth failed. Redirecting to login...');
+                // toast.error('OAuth failed. Redirecting to login...');
                 navigate({ to: '/login' });
             }
         };

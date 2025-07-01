@@ -20,9 +20,7 @@ export const handleLoginOAuthCallback = async () => {
   });
 
   if (error === 'true' || message) {
-    const errorMsg = message || 'OAuth Authentication failed.';
-    toast.error('OAuth Login Failed', {
-      description: decodeURIComponent(errorMsg),
+    toast.error('No account linked with this GitHub profile. Please sign up first.', {
       duration: 5000,
     });
     return { success: false };

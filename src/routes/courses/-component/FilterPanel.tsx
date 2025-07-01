@@ -131,28 +131,20 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
         <div className="bg-white p-6 rounded-lg shadow">
             <div className="flex justify-between items-center mb-6">
                 <h2 className="text-xl font-bold text-gray-800">Filters</h2>
-                <div className="flex gap-3">
-                    <button
-                        onClick={onApplyFilters}
-                        disabled={!hasActiveFilters}
-                        className={`text font-semibold px-2 py-1 transition ${
-                            hasActiveFilters
-                                ? "text-green-600  hover:bg-green-700"
-                                : "opacity-0 cursor-not-allowed"
-                        }`}
-                    >
-                        Apply Filters
-                    </button>
+                <div className="flex gap-1">
                     <button
                         onClick={clearAllFilters}
                         disabled={!hasActiveFilters}
-                        className={`text font-semibold px-2 py-1 transition ${
-                            hasActiveFilters
-                                ? "text-blue-600  hover:bg-blue-700"
-                                : "opacity-0 cursor-not-allowed"
-                        }`}
+                        className={`text font-semibold px-2 py-1 transition text-primary-500 text-sm mt-[1px]`}
                     >
                         Clear All
+                    </button>
+                    <button
+                        onClick={onApplyFilters}
+                        disabled={!hasActiveFilters}
+                        className={`text-white text-xs font-semibold px-3 py-1 mt-1 h-fit transition bg-primary-500 rounded-md`}
+                    >
+                        Apply
                     </button>
                 </div>
             </div>

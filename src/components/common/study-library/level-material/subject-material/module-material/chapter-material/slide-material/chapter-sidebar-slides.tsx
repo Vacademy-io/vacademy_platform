@@ -12,6 +12,7 @@ import {
   PresentationChart,
   Lightning,
   File,
+  ChatText,
 } from "@phosphor-icons/react";
 import { useRouter } from "@tanstack/react-router";
 import { Slide, useSlides } from "@/hooks/study-library/use-slides";
@@ -23,6 +24,21 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { BookOpen, Code, Gamepad2 } from "lucide-react";
+import { useDoubtSidebarStore } from "@/stores/study-library/doubt-sidebar-store";
+
+// Helper function to calculate overall completion percentage
+export const calculateOverallCompletion = (slides: Slide[]): number => {
+  if (!slides || slides.length === 0) return 0;
+  
+  const totalSlides = slides.length;
+  const totalCompletion = slides.reduce((sum, slide) => {
+    // Treat null/undefined percentage_completed as 0
+    const percentage = slide.percentage_completed ?? 0;
+    return sum + percentage;
+  }, 0);
+  
+  return Math.round(totalCompletion / totalSlides);
+};
 
 // Helper function to get slide status
 export const getSlideStatus = (percentage: number | null | undefined) => {
@@ -160,6 +176,7 @@ const SlideItem = ({
   const statusDetails = getStatusDetails(slide.percentage_completed);
   const StatusIcon = statusDetails.icon;
   const isCompleted = slide.percentage_completed >= 80;
+  const { setIsOpen: setDoubtSidebarOpen } = useDoubtSidebarStore();
 
   const getSlideTitle = () => {
     return (
@@ -209,12 +226,23 @@ const SlideItem = ({
     // For all other cases, show the main source_type
     return slide.source_type.toLowerCase().replace("_", " ");
   };
+
+  const handleDoubtClick = (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent triggering the slide click
+    // First set this slide as active
+    onClick();
+    // Then open the doubt sidebar after a short delay to ensure the slide is active
+    setTimeout(() => {
+      setDoubtSidebarOpen(true);
+    }, 100);
+  };
+
   return (
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
           <div
-            className="w-full transition-all duration-300 ease-in-out animate-in fade-in slide-in-from-left-2 hover:scale-[1.01] cursor-pointer"
+            className="w-full transition-all duration-300 ease-in-out animate-in fade-in slide-in-from-left-2 hover:scale-[1.01] cursor-pointer group/slide"
             onClick={onClick}
             style={{
               animationDelay: `${index * 80}ms`,
@@ -225,7 +253,7 @@ const SlideItem = ({
               className={`
                 flex w-full items-center gap-2.5 rounded-lg border px-3
                 py-2 backdrop-blur-sm transition-all
-                duration-300 ease-in-out
+                duration-300 ease-in-out relative
                 ${
                   isActive
                     ? "text-primary-600 border-primary-300 bg-primary-50/80 shadow-md shadow-primary-100/50"
@@ -234,7 +262,7 @@ const SlideItem = ({
                 group hover:shadow-md
               `}
             >
-              <div className="flex flex-1 items-center gap-2.5">
+              <div className="flex flex-1 items-center gap-2.5 min-w-0">
                 {/* Slide Number with enhanced styling */}
                 <div
                   className={`
@@ -329,6 +357,28 @@ const SlideItem = ({
                     </div>
                   </div>
                 )}
+              </div>
+
+              {/* Ask Doubt Button - appears on hover */}
+              <div className="flex items-center justify-center w-7 h-7 opacity-0 group-hover/slide:opacity-100 transition-all duration-200 ease-in-out">
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={handleDoubtClick}
+                        className="flex items-center justify-center w-6 h-6 rounded-md bg-white/90 hover:bg-white border border-primary-200/60 hover:border-primary-300 shadow-sm hover:shadow-md transition-all duration-200 hover:scale-110 group/doubt"
+                      >
+                        <ChatText 
+                          className="w-3 h-3 text-primary-600 group-hover/doubt:text-primary-700" 
+                          weight="duotone" 
+                        />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="left" className="bg-slate-900 text-white text-xs px-2 py-1">
+                      Ask Doubt
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               </div>
 
               {/* Status indicator */}

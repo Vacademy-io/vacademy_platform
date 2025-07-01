@@ -1,6 +1,7 @@
 import { MySidebar } from "./sidebar/mySidebar";
-import { SidebarInset } from "@/components/ui/sidebar";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Navbar } from "./top-navbar.tsx/navbar";
+import { SidebarHoverTrigger } from "./sidebar/sidebar-hover-trigger";
 import { cn } from "@/lib/utils";
 import React from "react";
 

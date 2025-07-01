@@ -26,6 +26,7 @@ const instituteSelectionSchema = z.object({
 });
 
 type FormValues = z.infer<typeof instituteSelectionSchema>;
+
 export function InstituteSelection() {
   const navigate = useNavigate();
   const { redirect } = useSearch<any>({ from: "/institute-selection/" });
@@ -46,27 +47,33 @@ export function InstituteSelection() {
 
   useEffect(() => {
     const fetchInstitutes = async () => {
+      console.log("[InstituteSelection] Fetching institutes...");
       setIsLoadingInstitutes(true);
       try {
         const token = await getTokenFromStorage(TokenKey.accessToken);
+        console.log("[InstituteSelection] Retrieved token:", token);
+
         if (!token) {
           toast.error("No token found - Please login first");
           setIsLoadingInstitutes(false);
           return;
         }
-  
+
         const decodedData = await getTokenDecodedData(token);
+        console.log("[InstituteSelection] Decoded token data:", decodedData);
+
         const authorities = decodedData?.authorities;
         const userId = decodedData?.user;
-  
+
         if (!authorities || !userId) {
           toast.error("Invalid token data - Please login again");
           setIsLoadingInstitutes(false);
           return;
         }
-  
+
         const instituteIds = Object.keys(authorities);
-  
+        console.log("[InstituteSelection] Institute IDs found:", instituteIds);
+
         const instituteList = await Promise.all(
           instituteIds.map(async (instituteId) => {
             try {
@@ -78,38 +85,41 @@ export function InstituteSelection() {
                   userId,
                 },
               });
-  
+
               const data = response.data;
-  
+              console.log(`[InstituteSelection] Data for ${instituteId}:`, data);
+
               return {
-                label: data?.institute_name || instituteId, // Fallback if name is missing
+                label: data?.institute_name || instituteId,
                 value: instituteId,
               };
             } catch (err) {
-              console.error(`Error fetching details for ${instituteId}`, err);
+              console.error(`[InstituteSelection] Error fetching ${instituteId}:`, err);
               return {
-                label: instituteId, // Fallback
+                label: instituteId,
                 value: instituteId,
               };
             }
           })
         );
-  
+
+        console.log("[InstituteSelection] Final dropdown list:", instituteList);
         setDropdownList(instituteList);
       } catch (error) {
-        console.error("Error fetching institute list:", error);
+        console.error("[InstituteSelection] Error fetching institute list:", error);
         toast.error("Failed to fetch institute list");
       } finally {
         setIsLoadingInstitutes(false);
+        console.log("[InstituteSelection] Institute loading complete.");
       }
     };
-  
+
     fetchInstitutes();
   }, []);
-  
 
   const onSubmit = async (data: FormValues) => {
-    console.log("Form submitted with data:", data);
+    console.log("[InstituteSelection] Submitting form with data:", data);
+
     if (!data.instituteId) {
       toast.error("Please select an institute.");
       return;
@@ -117,49 +127,44 @@ export function InstituteSelection() {
 
     setIsSubmitting(true);
     try {
-      console.log("Storing selected institute in storage...");
-      // await setTokenInStorage("selectedInstitute", data.instituteId);
-
       const userId = await getTokenFromStorage(TokenKey.accessToken)
         .then(getTokenDecodedData)
         .then((data) => data?.user);
+
+      console.log("[InstituteSelection] userId:", userId);
 
       if (!userId) {
         toast.error("Failed to retrieve user details.");
         return;
       }
 
-      console.log("Fetching and storing institute details...");
+      console.log(`[InstituteSelection] Storing details for institute ${data.instituteId}...`);
       await fetchAndStoreInstituteDetails(data.instituteId, userId);
-      console.log("Navigating to dashboard...");
-      if (data.instituteId && userId) {
-        try {
-          await fetchAndStoreStudentDetails(data.instituteId, userId);
-        } catch {
-          // console.error("Error fetching details:");
-          toast.error("Failed to fetch details");
-          //   toast.error("Login Error", {
-          //     description: "Failed to fetch details",
-          //     className: "error-toast",
-          //     duration: 3000,
-          // });
-        }
-      } else {
-        console.error("Institute ID or User ID is undefined");
+      console.log("[InstituteSelection] Institute details stored successfully.");
+
+      try {
+        console.log("[InstituteSelection] Fetching student details...");
+        await fetchAndStoreStudentDetails(data.instituteId, userId);
+        console.log("[InstituteSelection] Student details fetched.");
+      } catch (err) {
+        console.error("[InstituteSelection] Failed to fetch student details:", err);
+        toast.error("Failed to fetch details");
       }
+
+      console.log("[InstituteSelection] Navigating to SessionSelectionPage...");
       navigate({
         to: "/SessionSelectionPage",
         search: { redirect: redirect },
       });
     } catch (error) {
-      console.error("Error processing institute selection:", error);
+      console.error("[InstituteSelection] Error in form submission:", error);
       toast.error("Failed to process institute selection");
     } finally {
       setIsSubmitting(false);
+      console.log("[InstituteSelection] Submission process ended.");
     }
   };
 
-  // Show loader while fetching institutes
   if (isLoadingInstitutes) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50 flex items-center justify-center p-4">
@@ -174,7 +179,6 @@ export function InstituteSelection() {
     );
   }
 
-  // Show error state if no institutes are available
   if (!isLoadingInstitutes && dropdownList.length === 0) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50 flex items-center justify-center p-4">
@@ -214,9 +218,7 @@ export function InstituteSelection() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50 flex items-center justify-center p-4">
       <div className="w-full max-w-lg md:max-w-xl lg:max-w-2xl xl:max-w-3xl mx-auto">
-        {/* Selection Card */}
         <div className="glass-card rounded-2xl p-8 md:p-10 lg:p-12 xl:p-16 shadow-xl animate-scale-in [animation-delay:0.2s] [animation-fill-mode:forwards]">
-          {/* Header */}
           <div className="text-center space-y-4 md:space-y-6 mb-8 md:mb-10 lg:mb-12 animate-fade-in-down [animation-delay:0.4s] [animation-fill-mode:forwards]">
             <div className="w-20 h-20 md:w-24 md:h-24 lg:w-28 lg:h-28 bg-gradient-to-br from-purple-500 to-pink-600 rounded-2xl mx-auto flex items-center justify-center shadow-lg">
               <svg className="w-10 h-10 md:w-12 md:h-12 lg:w-14 lg:h-14 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -229,7 +231,6 @@ export function InstituteSelection() {
             />
           </div>
 
-          {/* Form */}
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 md:space-y-8 lg:space-y-10 animate-fade-in-up [animation-delay:0.6s] [animation-fill-mode:forwards]">
               <FormField
@@ -297,8 +298,7 @@ export function InstituteSelection() {
           </Form>
         </div>
 
-        {/* Info Cards */}
-        <div className="mt-6 md:mt-8 lg:mt-10 grid grid-cols-2 md:grid-cols-2 lg:grid-cols-2 gap-4 md:gap-6 lg:gap-8 max-w-md mx-auto animate-fade-in-up [animation-delay:1s] [animation-fill-mode:forwards]">
+        <div className="mt-6 md:mt-8 lg:mt-10 grid grid-cols-2 gap-4 md:gap-6 lg:gap-8 max-w-md mx-auto animate-fade-in-up [animation-delay:1s] [animation-fill-mode:forwards]">
           <div className="text-center p-4 glass-card rounded-xl hover-lift">
             <div className="w-10 h-10 bg-purple-100 rounded-lg mx-auto mb-3 flex items-center justify-center">
               <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">

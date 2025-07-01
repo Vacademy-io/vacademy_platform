@@ -36,7 +36,6 @@ import { Route as HomeworkListIndexImport } from './routes/homework/list/index'
 import { Route as DashboardNotificationsIndexImport } from './routes/dashboard/notifications/index'
 import { Route as AssessmentReportsIndexImport } from './routes/assessment/reports/index'
 import { Route as AssessmentExaminationIndexImport } from './routes/assessment/examination/index'
-import { Route as LoginOauthRedirectImport } from './routes/login/oauth/redirect'
 import { Route as StudyLibraryLiveClassWaitingRoomIndexImport } from './routes/study-library/live-class/waiting-room/index'
 import { Route as StudyLibraryLiveClassEmbedIndexImport } from './routes/study-library/live-class/embed/index'
 import { Route as StudyLibraryCoursesLevelsIndexImport } from './routes/study-library/courses/levels/index'
@@ -208,12 +207,6 @@ const AssessmentExaminationIndexRoute = AssessmentExaminationIndexImport.update(
   } as any,
 )
 
-const LoginOauthRedirectRoute = LoginOauthRedirectImport.update({
-  id: '/login/oauth/redirect',
-  path: '/login/oauth/redirect',
-  getParentRoute: () => rootRoute,
-} as any)
-
 const StudyLibraryLiveClassWaitingRoomIndexRoute =
   StudyLibraryLiveClassWaitingRoomIndexImport.update({
     id: '/study-library/live-class/waiting-room/',
@@ -384,13 +377,6 @@ declare module '@tanstack/react-router' {
       path: '/user-profile'
       fullPath: '/user-profile'
       preLoaderRoute: typeof UserProfileIndexImport
-      parentRoute: typeof rootRoute
-    }
-    '/login/oauth/redirect': {
-      id: '/login/oauth/redirect'
-      path: '/login/oauth/redirect'
-      fullPath: '/login/oauth/redirect'
-      preLoaderRoute: typeof LoginOauthRedirectImport
       parentRoute: typeof rootRoute
     }
     '/assessment/examination/': {
@@ -573,7 +559,6 @@ export interface FileRoutesByFullPath {
   '/study-library': typeof StudyLibraryIndexRoute
   '/terms-and-conditions': typeof TermsAndConditionsIndexRoute
   '/user-profile': typeof UserProfileIndexRoute
-  '/login/oauth/redirect': typeof LoginOauthRedirectRoute
   '/assessment/examination': typeof AssessmentExaminationIndexRoute
   '/assessment/reports': typeof AssessmentReportsIndexRoute
   '/dashboard/notifications': typeof DashboardNotificationsIndexRoute
@@ -613,7 +598,6 @@ export interface FileRoutesByTo {
   '/study-library': typeof StudyLibraryIndexRoute
   '/terms-and-conditions': typeof TermsAndConditionsIndexRoute
   '/user-profile': typeof UserProfileIndexRoute
-  '/login/oauth/redirect': typeof LoginOauthRedirectRoute
   '/assessment/examination': typeof AssessmentExaminationIndexRoute
   '/assessment/reports': typeof AssessmentReportsIndexRoute
   '/dashboard/notifications': typeof DashboardNotificationsIndexRoute
@@ -654,7 +638,6 @@ export interface FileRoutesById {
   '/study-library/': typeof StudyLibraryIndexRoute
   '/terms-and-conditions/': typeof TermsAndConditionsIndexRoute
   '/user-profile/': typeof UserProfileIndexRoute
-  '/login/oauth/redirect': typeof LoginOauthRedirectRoute
   '/assessment/examination/': typeof AssessmentExaminationIndexRoute
   '/assessment/reports/': typeof AssessmentReportsIndexRoute
   '/dashboard/notifications/': typeof DashboardNotificationsIndexRoute
@@ -696,7 +679,6 @@ export interface FileRouteTypes {
     | '/study-library'
     | '/terms-and-conditions'
     | '/user-profile'
-    | '/login/oauth/redirect'
     | '/assessment/examination'
     | '/assessment/reports'
     | '/dashboard/notifications'
@@ -735,7 +717,6 @@ export interface FileRouteTypes {
     | '/study-library'
     | '/terms-and-conditions'
     | '/user-profile'
-    | '/login/oauth/redirect'
     | '/assessment/examination'
     | '/assessment/reports'
     | '/dashboard/notifications'
@@ -774,7 +755,6 @@ export interface FileRouteTypes {
     | '/study-library/'
     | '/terms-and-conditions/'
     | '/user-profile/'
-    | '/login/oauth/redirect'
     | '/assessment/examination/'
     | '/assessment/reports/'
     | '/dashboard/notifications/'
@@ -815,7 +795,6 @@ export interface RootRouteChildren {
   StudyLibraryIndexRoute: typeof StudyLibraryIndexRoute
   TermsAndConditionsIndexRoute: typeof TermsAndConditionsIndexRoute
   UserProfileIndexRoute: typeof UserProfileIndexRoute
-  LoginOauthRedirectRoute: typeof LoginOauthRedirectRoute
   AssessmentExaminationIndexRoute: typeof AssessmentExaminationIndexRoute
   AssessmentReportsIndexRoute: typeof AssessmentReportsIndexRoute
   DashboardNotificationsIndexRoute: typeof DashboardNotificationsIndexRoute
@@ -855,7 +834,6 @@ const rootRouteChildren: RootRouteChildren = {
   StudyLibraryIndexRoute: StudyLibraryIndexRoute,
   TermsAndConditionsIndexRoute: TermsAndConditionsIndexRoute,
   UserProfileIndexRoute: UserProfileIndexRoute,
-  LoginOauthRedirectRoute: LoginOauthRedirectRoute,
   AssessmentExaminationIndexRoute: AssessmentExaminationIndexRoute,
   AssessmentReportsIndexRoute: AssessmentReportsIndexRoute,
   DashboardNotificationsIndexRoute: DashboardNotificationsIndexRoute,
@@ -913,7 +891,6 @@ export const routeTree = rootRoute
         "/study-library/",
         "/terms-and-conditions/",
         "/user-profile/",
-        "/login/oauth/redirect",
         "/assessment/examination/",
         "/assessment/reports/",
         "/dashboard/notifications/",
@@ -977,9 +954,6 @@ export const routeTree = rootRoute
     },
     "/user-profile/": {
       "filePath": "user-profile/index.tsx"
-    },
-    "/login/oauth/redirect": {
-      "filePath": "login/oauth/redirect.tsx"
     },
     "/assessment/examination/": {
       "filePath": "assessment/examination/index.tsx"

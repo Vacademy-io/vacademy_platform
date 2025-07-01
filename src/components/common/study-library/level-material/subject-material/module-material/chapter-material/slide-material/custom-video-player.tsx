@@ -1187,6 +1187,128 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
             </div>
           )}
 
+          {/* Top Controls Overlay - Video controls moved to top */}
+          {!isFullscreen && (
+            <div className="absolute top-0 left-0 right-0 z-[999] bg-gradient-to-b from-black/80 via-black/40 to-transparent p-4 pb-8">
+              {/* Video Controls */}
+              <div className="flex gap-2 justify-between items-center w-full mb-4">
+                <div className="w-full flex gap-2 items-center justify-start">
+                  {isPlayed ? (
+                    <button
+                      onClick={togglePlay}
+                      className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all hover:scale-105 backdrop-blur-sm"
+                      disabled={!actualVideoUrl || isLoading}
+                    >
+                      <Pause size={20} weight="fill" />
+                    </button>
+                  ) : (
+                    <button
+                      onClick={togglePlay}
+                      className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all hover:scale-105 backdrop-blur-sm"
+                      disabled={!actualVideoUrl || isLoading}
+                    >
+                      <Play size={20} weight="fill" />
+                    </button>
+                  )}
+
+                  <button
+                    onClick={() => {
+                      if (videoRef.current) {
+                        const newTime = videoRef.current.currentTime - 10;
+                        videoRef.current.currentTime = Math.max(newTime, 0);
+                        setCurrentTime(Math.max(newTime, 0));
+                      }
+                    }}
+                    className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all hover:scale-105 backdrop-blur-sm"
+                    disabled={!actualVideoUrl || isLoading}
+                  >
+                    <Rewind size={18} weight="fill" />
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      if (videoRef.current) {
+                        const newTime = videoRef.current.currentTime + 10;
+                        const duration = videoRef.current.duration;
+                        const finalTime = Math.min(newTime, duration);
+                        
+                        // Check if forward navigation is allowed
+                        if (!canNavigateToTime(finalTime)) {
+                          console.log("Navigation blocked: Please answer previous required questions first");
+                          return;
+                        }
+                        
+                        videoRef.current.currentTime = finalTime;
+                        setCurrentTime(finalTime);
+                      }
+                    }}
+                    className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all hover:scale-105 backdrop-blur-sm"
+                    disabled={!actualVideoUrl || isLoading}
+                  >
+                    <FastForward size={18} weight="fill" />
+                  </button>
+                  
+                  <button
+                    onClick={toggleFullscreen}
+                    className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all hover:scale-105 backdrop-blur-sm"
+                    disabled={
+                      !actualVideoUrl || isLoading || !playerContainerRef.current
+                    }
+                  >
+                    <ArrowsOut size={18} weight="fill" />
+                  </button>
+                </div>
+                
+                {/* Time Jump Controls */}
+                <div className="flex items-center gap-1">
+                  <input
+                    type="text"
+                    placeholder="Min"
+                    value={minutesInput}
+                    onChange={(e) => handleNumericInput(e, setMinutesInput)}
+                    className="w-12 h-8 text-center text-xs bg-white/20 border border-white/30 rounded text-white placeholder-white/70 backdrop-blur-sm"
+                  />
+                  <span className="text-white text-xs">:</span>
+                  <input
+                    type="text"
+                    placeholder="Sec"
+                    value={secondsInput}
+                    onChange={(e) => handleNumericInput(e, setSecondsInput)}
+                    className="w-12 h-8 text-center text-xs bg-white/20 border border-white/30 rounded text-white placeholder-white/70 backdrop-blur-sm"
+                  />
+                  <button
+                    onClick={seekToTimestamp}
+                    className="p-1.5 rounded bg-white/20 hover:bg-white/30 text-white transition-all hover:scale-105 backdrop-blur-sm"
+                    disabled={!actualVideoUrl || isLoading}
+                  >
+                    <Check size={14} weight="fill" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Progress Bar */}
+              <div className="w-full flex flex-col gap-1">
+                <div
+                  className="w-full h-2 bg-white/30 rounded-full cursor-pointer relative"
+                  onClick={handleProgressBarClick}
+                >
+                  <div
+                    className="h-full bg-white rounded-full transition-all duration-150"
+                    style={{
+                      width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%`,
+                    }}
+                  ></div>
+                  {/* Question markers */}
+                  {renderQuestionMarkers()}
+                </div>
+                <div className="flex justify-between text-xs text-white font-medium">
+                  <span>{formatTime(currentTime)}</span>
+                  <span>{formatTime(duration)}</span>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Fullscreen controls overlay */}
           {isFullscreen && showFullscreenControls && (
             <div className="absolute inset-0 z-[9999] flex flex-col justify-between p-4 bg-gradient-to-b from-black/50 via-transparent to-black/50 animate-in fade-in duration-200">
@@ -1314,133 +1436,6 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
               previousAnswer={currentQuestion ? answeredQuestions[currentQuestion.id]?.selectedOptions : undefined}
             />
           )}
-        </div>
-
-        {/* Progress Bar and controls - only shown when not in fullscreen */}
-        <div className="w-full flex flex-col gap-1">
-          <div
-            className="w-full h-2 bg-gray-200 rounded-full cursor-pointer relative"
-            onClick={handleProgressBarClick}
-          >
-            <div
-              className="h-full bg-primary-500 rounded-full"
-              style={{
-                width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%`,
-              }}
-            ></div>
-            {/* Question markers */}
-            {renderQuestionMarkers()}
-          </div>
-          <div className="flex justify-between text-xs text-gray-600">
-            <span>{formatTime(currentTime)}</span>
-            <span>{formatTime(duration)}</span>
-          </div>
-        </div>
-
-        <div className="flex gap-2 justify-between items-center w-full">
-          <div className="w-full flex gap-2 items-center justify-start">
-            {isPlayed ? (
-              <MyButton
-                buttonType="secondary"
-                scale="medium"
-                layoutVariant="icon"
-                onClick={togglePlay}
-                disable={!actualVideoUrl || isLoading}
-              >
-                <Pause />
-              </MyButton>
-            ) : (
-              <MyButton
-                buttonType="primary"
-                scale="medium"
-                layoutVariant="icon"
-                onClick={togglePlay}
-                disable={!actualVideoUrl || isLoading}
-              >
-                <Play />
-              </MyButton>
-            )}
-
-            <MyButton
-              buttonType="secondary"
-              scale="medium"
-              layoutVariant="icon"
-              onClick={() => {
-                if (videoRef.current) {
-                  const newTime = videoRef.current.currentTime - 10;
-                  videoRef.current.currentTime = Math.max(newTime, 0);
-                  setCurrentTime(Math.max(newTime, 0));
-                }
-              }}
-              disable={!actualVideoUrl || isLoading}
-            >
-              <Rewind />
-            </MyButton>
-
-            <MyButton
-              buttonType="secondary"
-              scale="medium"
-              layoutVariant="icon"
-              onClick={() => {
-                if (videoRef.current) {
-                  const newTime = videoRef.current.currentTime + 10;
-                  const duration = videoRef.current.duration;
-                  const finalTime = Math.min(newTime, duration);
-                  
-                  // Check if forward navigation is allowed
-                  if (!canNavigateToTime(finalTime)) {
-                    console.log("Navigation blocked: Please answer previous required questions first");
-                    return;
-                  }
-                  
-                  videoRef.current.currentTime = finalTime;
-                  setCurrentTime(finalTime);
-                }
-              }}
-              disable={!actualVideoUrl || isLoading}
-            >
-              <FastForward />
-            </MyButton>
-            <MyButton
-              buttonType="secondary"
-              scale="medium"
-              layoutVariant="icon"
-              onClick={toggleFullscreen}
-              disable={
-                !actualVideoUrl || isLoading || !playerContainerRef.current
-              }
-            >
-              <ArrowsOut />
-            </MyButton>
-          </div>
-          <div className="flex items-center gap-1">
-            <MyInput
-              inputType="text"
-              inputPlaceholder="Min"
-              input={minutesInput}
-              onChangeFunction={(e) => handleNumericInput(e, setMinutesInput)}
-              size="small"
-              className="w-12 h-full"
-            />
-            <span>:</span>
-            <MyInput
-              inputType="text"
-              inputPlaceholder="Sec"
-              input={secondsInput}
-              onChangeFunction={(e) => handleNumericInput(e, setSecondsInput)}
-              size="small"
-              className="w-12 h-full"
-            />
-            <MyButton
-              buttonType="secondary"
-              scale="medium"
-              layoutVariant="icon"
-              onClick={seekToTimestamp}
-              disable={!actualVideoUrl || isLoading}
-            >
-              <Check />
-            </MyButton>
-          </div>
         </div>
       </div>
     );

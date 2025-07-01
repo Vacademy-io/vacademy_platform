@@ -1,11 +1,4 @@
 import { useEffect, useState } from "react";
-// import { SplashScreen } from "@/components/common/LoginPages/layout/splash-container";
-// import { useAnimationStore } from "@/stores/login/animationStore";
-
-// import { MyButton } from "@/components/design-system/button";
-// import { loginSchema } from "@/schemas/login/login";
-// import { z } from "zod";
-
 import { TokenKey } from "@/constants/auth/tokens";
 import { useNavigate } from "@tanstack/react-router";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
@@ -71,7 +64,7 @@ export function LoginForm() {
           await setTokenInStorage(TokenKey.accessToken, accessToken);
           await setTokenInStorage(TokenKey.refreshToken, refreshToken);
 
-          console.log("Tokens stored successfully");
+         
 
           // Execute the onSuccess logic
           await handleSuccessfulLogin(accessToken, redirect);
@@ -145,7 +138,7 @@ export function LoginForm() {
               instituteId,
               userId
             );
-            console.log("Institute color:", details?.institute_theme_code);
+            // console.log("Institute color:", details?.institute_theme_code);
             setPrimaryColor(details?.institute_theme_code ?? "#E67E22");
           } catch (error) {
             console.error("Error fetching institute details:", error);
@@ -280,11 +273,11 @@ export function LoginForm() {
         </div>
 
         {/* Footer */}
-        <div className="text-center mt-6">
+        {/* <div className="text-center mt-6">
           <p className="text-xs text-slate-500">
             Secure login powered by modern encryption
           </p>
-        </div>
+        </div> */}
       </div>
     </div>
   );

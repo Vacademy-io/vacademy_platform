@@ -4,8 +4,11 @@ export const INSTITUTE_ID = "c70f40a5-e4d3-4b6c-a498-e612d0d4b133";
 
 export const LOGIN_URL = `${BASE_URL}/auth-service/learner/v1/login`;
 export const LOGIN_URL_GOOGLE_GITHUB = `${BASE_URL}/auth-service/oauth2/authorization`;
+
 export const REQUEST_OTP = `${BASE_URL}/auth-service/learner/v1/request-otp`;
 export const LOGIN_OTP = `${BASE_URL}/auth-service/learner/v1/login-otp`;
+export const FORGOT_PASSWORD = `${BASE_URL}/auth-service/v1/send-password`;
+
 export const REFRESH_TOKEN_URL = `${BASE_URL}/auth-service/learner/v1/refresh-token`;
 export const INSTITUTE_DETAIL = `${BASE_URL}/admin-core-service/learner/v1/details`;
 export const STUDENT_DETAIL = `${BASE_URL}/admin-core-service/learner/info/v1/details`;

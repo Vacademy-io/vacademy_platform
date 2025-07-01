@@ -1,34 +1,46 @@
-import { z } from "zod";
-
-// Define the request and response schemas using Zod
-const forgotPasswordRequestSchema = z.object({
-    email: z.string().email(),
-});
+import { z } from 'zod';
+import { FORGOT_PASSWORD } from '@/constants/urls';
 
 const forgotPasswordResponseSchema = z.object({
-    status: z.enum(["success", "error"]),
+    status: z.enum(['success', 'error']),
     message: z.string().optional(),
 });
 
-// Dummy forgot password function
-async function forgotPassword(
-    email: string,
-): Promise<z.infer<typeof forgotPasswordResponseSchema>> {
-    // Validate the input using the request schema
-    const { email: validEmail } = forgotPasswordRequestSchema.parse({ email });
+async function forgotPassword(email: string) {
+    const encodedEmail = encodeURIComponent(email);
+    const url = `${FORGOT_PASSWORD}?email=${encodedEmail}`;
 
-    // Simulate a successful forgot password request
-    if (validEmail === "test@example.com") {
-        return {
-            status: "success",
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+            Accept: '*/*',
+        },
+        body: '',
+    });
+
+    const contentType = response.headers.get('Content-Type') || '';
+
+    let data: any;
+
+    if (contentType.includes('application/json')) {
+        data = await response.json();
+
+        // ✅ Patch missing status if needed
+        if (!data.status) {
+            data.status = response.ok ? 'success' : 'error';
+        }
+    } else {
+        const text = await response.text();
+        console.warn('[API] Non-JSON response received:', text);
+        data = {
+            status: response.ok ? 'success' : 'error',
+            message: text,
         };
     }
 
-    // Simulate a failed forgot password request
-    return {
-        status: "error",
-        message: "Invalid email address",
-    };
+    console.log('[API] Final parsed response:', data);
+
+    return forgotPasswordResponseSchema.parse(data);
 }
 
-export { forgotPassword, forgotPasswordRequestSchema, forgotPasswordResponseSchema };
+export { forgotPassword };

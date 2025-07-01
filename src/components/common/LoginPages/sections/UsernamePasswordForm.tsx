@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { MyInput } from "@/components/design-system/input";
-
 import { loginSchema } from "@/schemas/login/login";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
@@ -155,7 +154,7 @@ export function UsernameLogin({ onSwitchToEmail }: UsernameLoginProps) {
                 </FormItem>
               )}
             />
-            <div className="flex justify-end">
+            {/* <div className="flex justify-end">
               <button
                 type="button"
                 className="text-xs text-gray-400 hover:text-orange-500 transition-colors duration-200 font-light"
@@ -163,7 +162,7 @@ export function UsernameLogin({ onSwitchToEmail }: UsernameLoginProps) {
               >
                 Forgot username?
               </button>
-            </div>
+            </div> */}
           </div>
 
           {/* Password Field */}

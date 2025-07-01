@@ -15,13 +15,8 @@ import {
 import CourseListHeader from "./CourseListHeader.tsx";
 
 const CourseCatalougePage: React.FC = () => {
-    const {
-        courseData,
-        setCourseData,
-        instituteData,
-        setInstituteData,
-        setInstructors,
-    } = useCatalogStore();
+    const { setCourseData, instituteData, setInstituteData, setInstructors } =
+        useCatalogStore();
 
     const [searchTerm, setSearchTerm] = useState("");
     const [sortOption, setSortOption] = useState("Newest");
@@ -112,7 +107,12 @@ const CourseCatalougePage: React.FC = () => {
         const FetchInstituteDetails = async () => {
             try {
                 const response = await axios.get(
-                    `${urlInstituteDetails}/${instituteId}`
+                    `${urlInstituteDetails}/${instituteId}`,
+                    {
+                        params: {
+                            instituteId,
+                        },
+                    }
                 );
                 setInstituteData(response.data);
             } catch (error) {
@@ -130,7 +130,7 @@ const CourseCatalougePage: React.FC = () => {
         const fetchInstructor = async () => {
             try {
                 const response = await axios.post(
-                    `${urlInstructor}/${instituteId}`,
+                    `${urlInstructor}`,
                     {
                         roles: ["TEACHER", "ADMIN"],
                         status: ["ACTIVE"],
@@ -139,6 +139,9 @@ const CourseCatalougePage: React.FC = () => {
                         headers: {
                             Accept: "*/*",
                             "Content-Type": "application/json",
+                        },
+                        params: {
+                            instituteId,
                         },
                     }
                 );

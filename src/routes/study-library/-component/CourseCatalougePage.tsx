@@ -141,6 +141,7 @@ const CourseCatalougePage: React.FC = () => {
     useEffect(() => {
         const fetchInstructor = async () => {
             try {
+                const instituteId = await getInstituteId();
                 const response = await axios.post(
                     urlInstructor,
                     {
@@ -151,6 +152,9 @@ const CourseCatalougePage: React.FC = () => {
                         headers: {
                             Accept: "*/*",
                             "Content-Type": "application/json",
+                        },
+                        params: {
+                            instituteId,
                         },
                     }
                 );

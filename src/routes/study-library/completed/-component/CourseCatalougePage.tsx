@@ -9,7 +9,14 @@ import axios from "axios";
 import HeroSection from "./HeroSection.tsx";
 import Tab from "./Tab.tsx";
 import { getInstituteId } from "@/constants/helper.ts";
-import { urlCourseDetails, urlInstituteDetails, urlInstructor } from "@/constants/urls.ts";
+import {
+    STUDENT_DETAIL,
+    urlCourseDetails,
+    urlInstituteDetails,
+    urlInstructor,
+} from "@/constants/urls.ts";
+import { getUserId } from "@/constants/getUserId.ts";
+import authenticatedAxiosInstance from "@/lib/auth/axiosInstance.ts";
 
 const CourseCatalougePage: React.FC = () => {
     const { courseData, setCourseData, setInstituteData, setInstructors } =
@@ -103,13 +110,18 @@ const CourseCatalougePage: React.FC = () => {
             console.error("Error applying filters:", error);
         }
     };
-
     // ✅ Fetch institute details
     useEffect(() => {
         const FetchInstituteDetails = async () => {
             try {
-                const response = await axios.get(urlInstituteDetails);
-                console.log("Institute details", response.data);
+                const userId = await getUserId();
+                const instituteId = await getInstituteId();
+                const response = await authenticatedAxiosInstance.get(
+                    STUDENT_DETAIL,
+                    {
+                        params: { instituteId, userId },
+                    }
+                );
                 setInstituteData(response.data);
                 setLoading(false);
             } catch (error) {
@@ -126,6 +138,7 @@ const CourseCatalougePage: React.FC = () => {
     useEffect(() => {
         const fetchInstructor = async () => {
             try {
+                const instituteId = await getInstituteId();
                 const response = await axios.post(
                     urlInstructor,
                     {
@@ -136,6 +149,9 @@ const CourseCatalougePage: React.FC = () => {
                         headers: {
                             Accept: "*/*",
                             "Content-Type": "application/json",
+                        },
+                        params: {
+                            instituteId,
                         },
                     }
                 );

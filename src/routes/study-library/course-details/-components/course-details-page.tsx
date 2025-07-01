@@ -2918,10 +2918,14 @@ export const CourseDetailsPage = () => {
             <div className="flex min-h-screen flex-col bg-white w-full">
                 {/* Top Banner */}
                 <div className="relative h-[300px]">
+                    {/* Transparent black overlay */}
+                    {form.watch("courseData").courseBannerMediaId && (
+                        <div className="pointer-events-none absolute inset-0 z-10 bg-black/50" />
+                    )}
                     {!form.watch("courseData").courseBannerMediaId ? (
-                        <div className="absolute inset-0 bg-primary-500" />
+                        <div className="absolute inset-0 z-0 bg-primary-500" />
                     ) : (
-                        <div className="absolute inset-0 opacity-70">
+                        <div className="absolute inset-0 z-0 opacity-70">
                             <img
                                 src={
                                     form.watch("courseData").courseBannerMediaId
@@ -2938,7 +2942,7 @@ export const CourseDetailsPage = () => {
                         </div>
                     )}
                     {/* Primary color overlay with 70% opacity */}
-                    <div className="container relative mx-auto px-4 py-12 text-white">
+                    <div className="container relative z-20 mx-auto px-4 py-12 text-white">
                         <div className="flex items-start justify-between gap-8">
                             {/* Left side - Title and Description */}
                             <div className="max-w-2xl">

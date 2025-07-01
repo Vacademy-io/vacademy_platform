@@ -1,5 +1,6 @@
 package vacademy.io.admin_core_service.features.packages.service;
 
+import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
@@ -33,6 +34,7 @@ public class OpenPackageService {
     @Autowired
     private AuthService authService;
 
+    @Transactional
     public Page<PackageDetailDTO> getLearnerPackageDetail(
             LearnerPackageFilterDTO learnerPackageFilterDTO,
             String instituteId,

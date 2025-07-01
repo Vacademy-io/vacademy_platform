@@ -649,7 +649,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
         JOIN chapter c ON c.id = cs.chapter_id
         JOIN document_slide d ON d.id = s.source_id
         LEFT JOIN learner_operation lo_doc_marker ON lo_doc_marker.source = 'SLIDE' AND lo_doc_marker.source_id = s.id AND lo_doc_marker.user_id = :userId AND lo_doc_marker.operation = 'DOCUMENT_LAST_PAGE'
-        LEFT JOIN learner_operation lo_doc_percent ON lo_doc_percent.source = 'SLIDE' AND lo_doc_percent.source_id = s.id AND lo_doc_percent.user_id = :userId AND lo_doc_percent.operation = 'PERCENTAGE_DOCUMENT_READ'
+        LEFT JOIN learner_operation lo_doc_percent ON lo_doc_percent.source = 'SLIDE' AND lo_doc_percent.source_id = s.id AND lo_doc_percent.user_id = :userId AND lo_doc_percent.operation = 'PERCENTAGE_DOCUMENT_COMPLETED'
         WHERE s.source_type = 'DOCUMENT' AND c.id = :chapterId
         AND s.status IN (:slideStatus)
         AND cs.status IN (:chapterToSlidesStatus)

@@ -52,7 +52,7 @@ public class LearnerTrackingService {
         validateActivityLogDTO(activityLogDTO, true); // Validate for documents
         ActivityLog activityLog = activityLogDTO.isNewActivity() ?
                 saveActivityLog(activityLogDTO, slideId, user.getUserId()) :
-                updateActivityLog(activityLogDTO, activityLogDTO.getId());
+                updateActivityLog(activityLogDTO, activityLogDTO.getUserId());
         saveDocumentTracking(activityLogDTO, activityLog);
         learnerTrackingAsyncService.updateLearnerOperationsForDocument(user.getUserId(), slideId, chapterId, moduleId,subjectId,packageSessionId,activityLogDTO);
         concentrationScoreService.addConcentrationScore(activityLogDTO.getConcentrationScore(), activityLog);

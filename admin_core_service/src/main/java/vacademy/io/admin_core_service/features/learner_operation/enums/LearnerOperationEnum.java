@@ -3,7 +3,7 @@ package vacademy.io.admin_core_service.features.learner_operation.enums;
 public enum LearnerOperationEnum {
     VIDEO_LAST_TIMESTAMP,
     DOCUMENT_LAST_PAGE,
-    PERCENTAGE_DOCUMENT_WATCHED,
+    PERCENTAGE_DOCUMENT_COMPLETED,
     PERCENTAGE_VIDEO_WATCHED,
     PERCENTAGE_QUESTION_COMPLETED,
     PERCENTAGE_ASSIGNMENT_COMPLETED,

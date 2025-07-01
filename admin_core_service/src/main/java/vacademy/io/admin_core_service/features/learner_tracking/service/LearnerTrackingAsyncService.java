@@ -26,7 +26,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
@@ -43,30 +42,30 @@ public class LearnerTrackingAsyncService {
 
     // ==== Document Slide Tracking ====
 
+    @Async
+    @Transactional
     public void updateLearnerOperationsForDocument(String userId, String slideId, String chapterId,
                                                    String moduleId, String subjectId, String packageSessionId,
                                                    ActivityLogDTO activityLogDTO) {
-        executor.submit(() -> {
-            int highestPage = activityLogDTO.getDocuments().stream()
-                    .map(DocumentActivityLogDTO::getPageNumber)
-                    .max(Integer::compareTo)
-                    .orElse(0);
+        int highestPage = activityLogDTO.getDocuments().stream()
+                .map(DocumentActivityLogDTO::getPageNumber)
+                .max(Integer::compareTo)
+                .orElse(0);
 
-            learnerOperationService.deleteLearnerOperationByUserIdSourceAndSourceIdAndOperation(userId,LearnerOperationSourceEnum.SLIDE.name(),slideId,LearnerOperationEnum.DOCUMENT_LAST_PAGE.name());
-            learnerOperationService.deleteLearnerOperationByUserIdSourceAndSourceIdAndOperation(userId,LearnerOperationSourceEnum.SLIDE.name(),slideId,LearnerOperationEnum.PERCENTAGE_DOCUMENT_WATCHED.name());
+        learnerOperationService.deleteLearnerOperationByUserIdSourceAndSourceIdAndOperation(userId,LearnerOperationSourceEnum.SLIDE.name(),slideId,LearnerOperationEnum.DOCUMENT_LAST_PAGE.name());
+        learnerOperationService.deleteLearnerOperationByUserIdSourceAndSourceIdAndOperation(userId,LearnerOperationSourceEnum.SLIDE.name(),slideId,LearnerOperationEnum.PERCENTAGE_DOCUMENT_COMPLETED.name());
 
-            Double percentageWatched = activityLogRepository.getPercentageDocumentWatched(slideId, userId);
-            if (percentageWatched == null) {
-                percentageWatched = 0.0;
-            }
-            learnerOperationService.addOrUpdateOperation(userId, LearnerOperationSourceEnum.SLIDE.name(), slideId,
-                    LearnerOperationEnum.PERCENTAGE_DOCUMENT_WATCHED.name(), String.valueOf(percentageWatched));
+        Double percentageWatched = activityLogRepository.getPercentageDocumentWatched(slideId, userId);
+        if (percentageWatched == null) {
+            percentageWatched = 0.0;
+        }
+        learnerOperationService.addOrUpdateOperation(userId, LearnerOperationSourceEnum.SLIDE.name(), slideId,
+                LearnerOperationEnum.PERCENTAGE_DOCUMENT_COMPLETED.name(), String.valueOf(percentageWatched));
 
-            learnerOperationService.addOrUpdateOperation(userId, LearnerOperationSourceEnum.SLIDE.name(), slideId,
-                    LearnerOperationEnum.DOCUMENT_LAST_PAGE.name(), String.valueOf(highestPage));
+        learnerOperationService.addOrUpdateOperation(userId, LearnerOperationSourceEnum.SLIDE.name(), slideId,
+                LearnerOperationEnum.DOCUMENT_LAST_PAGE.name(), String.valueOf(highestPage));
 
-            updateLearnerOperationsForChapter(userId, chapterId, moduleId, subjectId, packageSessionId);
-        });
+        updateLearnerOperationsForChapter(userId, chapterId, moduleId, subjectId, packageSessionId);
     }
 
     @Transactional
@@ -177,7 +176,7 @@ public class LearnerTrackingAsyncService {
         learnerOperationService.deleteLearnerOperationByUserIdSourceAndSourceIdAndOperation(userId,LearnerOperationSourceEnum.CHAPTER.name(),chapterId,LearnerOperationEnum.LAST_SLIDE_VIEWED.name());
         List<String> operationList = List.of(
                 LearnerOperationEnum.PERCENTAGE_VIDEO_WATCHED.name(),
-                LearnerOperationEnum.PERCENTAGE_DOCUMENT_WATCHED.name(),
+                LearnerOperationEnum.PERCENTAGE_DOCUMENT_COMPLETED.name(),
                 LearnerOperationEnum.PERCENTAGE_ASSIGNMENT_COMPLETED.name(),
                 LearnerOperationEnum.PERCENTAGE_QUESTION_COMPLETED.name()
         );
@@ -295,7 +294,7 @@ public class LearnerTrackingAsyncService {
 
         LearnerOperationEnum operation = slideType.equals(SlideTypeEnum.VIDEO.name())
                 ? LearnerOperationEnum.PERCENTAGE_VIDEO_WATCHED
-                : LearnerOperationEnum.PERCENTAGE_DOCUMENT_WATCHED;
+                : LearnerOperationEnum.PERCENTAGE_DOCUMENT_COMPLETED;
 
         learnerOperationService.addOrUpdateOperation(
                 userId,

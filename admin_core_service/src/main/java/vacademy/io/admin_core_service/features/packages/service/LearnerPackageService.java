@@ -41,38 +41,14 @@ public class LearnerPackageService {
 
         Sort thisSort = ListService.createSortObject(learnerPackageFilterDTO.getSortColumns());
         Pageable pageable = PageRequest.of(pageNo, pageSize, thisSort);
+        Page<PackageDetailProjection> learnerPackageDetail;
 
-        Page<PackageDetailProjection> learnerPackageDetail = null;
-        if (StringUtils.hasText(learnerPackageFilterDTO.getSearchByName())){
-            learnerPackageDetail= packageRepository.getLearnerPackageDetail(
-                    user.getId(),
-                    learnerPackageFilterDTO.getSearchByName(),
-                    instituteId,
-                    List.of(PackageStatusEnum.ACTIVE.name()),
-                    List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
-                    List.of(LearnerOperationEnum.PERCENTAGE_PACKAGE_SESSION_COMPLETED.name()),
-                    learnerPackageFilterDTO.getMinPercentageCompleted(),
-                    learnerPackageFilterDTO.getMaxPercentageCompleted(),
-                    List.of(StatusEnum.ACTIVE.name()),
-                    List.of(StatusEnum.ACTIVE.name()),
-                    pageable
-            );
-        }else{
-            learnerPackageDetail= packageRepository.getLearnerPackageDetail(
-                    user.getUserId(),
-                    instituteId,
-                    learnerPackageFilterDTO.getLevelIds(),
-                    List.of(PackageStatusEnum.ACTIVE.name()),
-                    List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
-                    List.of(LearnerOperationEnum.PERCENTAGE_PACKAGE_SESSION_COMPLETED.name()),
-                    learnerPackageFilterDTO.getMinPercentageCompleted(),
-                    learnerPackageFilterDTO.getMaxPercentageCompleted(),
-                    learnerPackageFilterDTO.getFacultyIds(),
-                    List.of(StatusEnum.ACTIVE.name()),
-                    learnerPackageFilterDTO.getTag(),
-                    List.of(StatusEnum.ACTIVE.name()),
-                    pageable
-            );
+        if (StringUtils.hasText(learnerPackageFilterDTO.getType()) && learnerPackageFilterDTO.getType().equalsIgnoreCase("COMPLETED")) {
+            learnerPackageDetail = getCompletedLearnerPackageDetail(learnerPackageFilterDTO, instituteId, pageable, user);
+        } else if (StringUtils.hasText(learnerPackageFilterDTO.getType()) && learnerPackageFilterDTO.getType().equalsIgnoreCase("PROGRESS")) {
+            learnerPackageDetail = getInProgressLearnerPackageDetail(learnerPackageFilterDTO, instituteId, pageable, user);
+        } else {
+            learnerPackageDetail = getAllLearnerPackageDetail(learnerPackageFilterDTO, instituteId, pageable, user);
         }
 
         // Get all instructor userIds
@@ -122,13 +98,120 @@ public class LearnerPackageService {
         return new PageImpl<>(dtos, pageable, learnerPackageDetail.getTotalElements());
     }
 
+    private Page<PackageDetailProjection> getCompletedLearnerPackageDetail(
+            LearnerPackageFilterDTO learnerPackageFilterDTO,
+            String instituteId,
+            Pageable pageable,
+            CustomUserDetails user) {
+        Page<PackageDetailProjection> learnerPackageDetail;
+        if (StringUtils.hasText(learnerPackageFilterDTO.getSearchByName())) {
+            learnerPackageDetail = packageRepository.getCompletedLearnerPackageDetail(
+                    user.getId(),
+                    learnerPackageFilterDTO.getSearchByName(),
+                    instituteId,
+                    List.of(PackageStatusEnum.ACTIVE.name()),
+                    List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
+                    List.of(LearnerOperationEnum.PERCENTAGE_PACKAGE_SESSION_COMPLETED.name()),
+                    List.of(StatusEnum.ACTIVE.name()),
+                    List.of(StatusEnum.ACTIVE.name()),
+                    pageable
+            );
+        } else {
+            learnerPackageDetail = packageRepository.getCompletedLearnerPackageDetail(
+                    user.getId(),
+                    instituteId,
+                    learnerPackageFilterDTO.getLevelIds(),
+                    List.of(PackageStatusEnum.ACTIVE.name()),
+                    List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
+                    List.of(LearnerOperationEnum.PERCENTAGE_PACKAGE_SESSION_COMPLETED.name()),
+                    learnerPackageFilterDTO.getFacultyIds(),
+                    List.of(StatusEnum.ACTIVE.name()),
+                    learnerPackageFilterDTO.getTag(),
+                    List.of(StatusEnum.ACTIVE.name()),
+                    pageable
+            );
+        }
+        return learnerPackageDetail;
+    }
+
+    private Page<PackageDetailProjection> getAllLearnerPackageDetail(
+            LearnerPackageFilterDTO learnerPackageFilterDTO,
+            String instituteId,
+            Pageable pageable,
+            CustomUserDetails user) {
+        Page<PackageDetailProjection> learnerPackageDetail;
+        if (StringUtils.hasText(learnerPackageFilterDTO.getSearchByName())) {
+            learnerPackageDetail = packageRepository.getAllPackagesIrrespectiveOfLearnerOperation(
+                    user.getId(),
+                    learnerPackageFilterDTO.getSearchByName(),
+                    instituteId,
+                    List.of(PackageStatusEnum.ACTIVE.name()),
+                    List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
+                    List.of(LearnerOperationEnum.PERCENTAGE_PACKAGE_SESSION_COMPLETED.name()),
+                    List.of(StatusEnum.ACTIVE.name()),
+                    List.of(StatusEnum.ACTIVE.name()),
+                    pageable
+            );
+        } else {
+            learnerPackageDetail = packageRepository.getAllLearnerPackagesIrrespectiveOfProgress(
+                    user.getId(),
+                    instituteId,
+                    learnerPackageFilterDTO.getLevelIds(),
+                    List.of(PackageStatusEnum.ACTIVE.name()),
+                    List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
+                    List.of(LearnerOperationEnum.PERCENTAGE_PACKAGE_SESSION_COMPLETED.name()),
+                    learnerPackageFilterDTO.getFacultyIds(),
+                    List.of(StatusEnum.ACTIVE.name()),
+                    learnerPackageFilterDTO.getTag(),
+                    List.of(StatusEnum.ACTIVE.name()),
+                    pageable
+            );
+        }
+        return learnerPackageDetail;
+    }
+
+    private Page<PackageDetailProjection> getInProgressLearnerPackageDetail(
+            LearnerPackageFilterDTO learnerPackageFilterDTO,
+            String instituteId,
+            Pageable pageable,
+            CustomUserDetails user) {
+        Page<PackageDetailProjection> learnerPackageDetail;
+        if (StringUtils.hasText(learnerPackageFilterDTO.getSearchByName())) {
+            learnerPackageDetail = packageRepository.getIncomplteLearnerPackageDetail(
+                    user.getId(),
+                    learnerPackageFilterDTO.getSearchByName(),
+                    instituteId,
+                    List.of(PackageStatusEnum.ACTIVE.name()),
+                    List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
+                    List.of(LearnerOperationEnum.PERCENTAGE_PACKAGE_SESSION_COMPLETED.name()),
+                    List.of(StatusEnum.ACTIVE.name()),
+                    List.of(StatusEnum.ACTIVE.name()),
+                    pageable
+            );
+        } else {
+            learnerPackageDetail = packageRepository.getIncompleteLearnerPackages(
+                    user.getId(),
+                    instituteId,
+                    learnerPackageFilterDTO.getLevelIds(),
+                    List.of(PackageStatusEnum.ACTIVE.name()),
+                    List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
+                    List.of(LearnerOperationEnum.PERCENTAGE_PACKAGE_SESSION_COMPLETED.name()),
+                    learnerPackageFilterDTO.getFacultyIds(),
+                    List.of(StatusEnum.ACTIVE.name()),
+                    learnerPackageFilterDTO.getTag(),
+                    List.of(StatusEnum.ACTIVE.name()),
+                    pageable
+            );
+        }
+        return learnerPackageDetail;
+    }
 
     public PackageDetailDTO getPackageDetailById(
             String packageId
     ) {
         Optional<PackageDetailProjection> optionalProjection =
                 packageRepository.getPackageDetailByIdWithSessionAndFacultyStatus(packageId,
-                        List.of(PackageSessionStatusEnum.ACTIVE.name(),PackageSessionStatusEnum.HIDDEN.name()),
+                        List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
                         List.of(FacultyStatusEnum.ACTIVE.name()),
                         List.of(StatusEnum.ACTIVE.name())
                 );
@@ -177,5 +260,4 @@ public class LearnerPackageService {
 
         return dto;
     }
-
 }

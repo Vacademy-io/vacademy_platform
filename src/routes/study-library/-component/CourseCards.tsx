@@ -126,27 +126,27 @@ const CourseCard: React.FC<CourseCardProps> = ({
                         {level_name}
                     </span>
                 </div>
-
                 <p
                     className="text-sm text-gray-600 mb-3 flex-grow line-clamp-3"
-                    title={description}
-                >
-                    {description}
-                </p>
-
-                <div className="flex items-center mb-3">
-                    <img
-                        src={instructorImage}
-                        alt={instructorName}
-                        className="w-8 h-8 rounded-full mr-2 object-cover"
-                    />
-                    {instructors.map((instructor, index) => (
-                        <span key={instructor.id}>
-                            {instructor.full_name}
-                            {index !== instructors.length - 1 ? ", " : ""}
-                        </span>
-                    ))}
-                </div>
+                    dangerouslySetInnerHTML={{
+                        __html: description || "",
+                    }}
+                />
+                {instructors.length > 0 && (
+                    <div className="flex items-center mb-3">
+                        <img
+                            src={instructorImage}
+                            alt={instructorName}
+                            className="w-8 h-8 rounded-full mr-2 object-cover"
+                        />
+                        {instructors.map((instructor, index) => (
+                            <span key={instructor.id}>
+                                {instructor.full_name}
+                                {index !== instructors.length - 1 ? ", " : ""}
+                            </span>
+                        ))}
+                    </div>
+                )}
 
                 <div className="mb-3 min-h-[24px]">
                     {tags && tags.length > 0 ? (

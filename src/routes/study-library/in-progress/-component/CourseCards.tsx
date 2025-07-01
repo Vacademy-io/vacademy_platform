@@ -132,10 +132,10 @@ const CourseCard: React.FC<CourseCardProps> = ({
 
                 <p
                     className="text-sm text-gray-600 mb-3 flex-grow line-clamp-3"
-                    title={description}
-                >
-                    {description}
-                </p>
+                    dangerouslySetInnerHTML={{
+                        __html: description || "",
+                    }}
+                />
 
                 <div className="flex items-center mb-3">
                     <img

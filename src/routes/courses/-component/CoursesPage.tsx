@@ -41,11 +41,6 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
 }) => {
     const { courseData } = useCatalogStore();
     const [thumbnailUrls, setThumbnailUrls] = useState<string[]>([]);
-
-    const fallbackInstructor = [
-        { id: "373jeue38", full_name: "Shyam" },
-        { id: "9ek393932", full_name: "Rajkumar" },
-    ];
     const fallbackDescription =
         "build responsive scalable and human-like AI application";
     const fallbackTags = "LLMs,Reinforcement Learning";
@@ -232,7 +227,7 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                                         instructors={
                                             course.instructors?.length
                                                 ? course.instructors
-                                                : fallbackInstructor
+                                                : []
                                         }
                                         rating={course.rating || 4}
                                         description={

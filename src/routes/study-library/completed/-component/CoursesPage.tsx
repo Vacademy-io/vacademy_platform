@@ -43,10 +43,6 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
     const [thumbnailUrls, setThumbnailUrls] = useState<string[]>([]);
     const [imagesLoading, setImagesLoading] = useState(false);
 
-    const fallbackInstructor = [
-        { id: "373jeue38", full_name: "shyam" },
-        { id: "9ek393932", full_name: "rajkumar" },
-    ];
     const fallbackDescription =
         "build responsive scalable and human-like AI application";
     const fallbackTags = "LLMs,Reinforcement Learning";
@@ -242,7 +238,7 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                                         instructors={
                                             course.instructors?.length
                                                 ? course.instructors
-                                                : fallbackInstructor
+                                                : []
                                         }
                                         rating={course.rating || 4}
                                         percentage_completed={

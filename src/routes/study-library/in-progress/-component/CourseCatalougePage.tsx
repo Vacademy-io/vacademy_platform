@@ -133,7 +133,7 @@ const CourseCatalougePage: React.FC = () => {
                 const response = await axios.post(
                     urlInstructor,
                     {
-                        roles: ["TEACHER"],
+                        roles: ["TEACHER", "ADMIN"],
                         status: ["ACTIVE"],
                     },
                     {

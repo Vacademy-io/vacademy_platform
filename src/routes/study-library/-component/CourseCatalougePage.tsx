@@ -118,9 +118,12 @@ const CourseCatalougePage: React.FC = () => {
             try {
                 const userId = await getUserId();
                 const instituteId = await getInstituteId();
-                const response = await authenticatedAxiosInstance.get(STUDENT_DETAIL, {
-                    params: { instituteId, userId },
-                });
+                const response = await authenticatedAxiosInstance.get(
+                    STUDENT_DETAIL,
+                    {
+                        params: { instituteId, userId },
+                    }
+                );
                 // console.log("Institute details", response.data);
                 setInstituteData(response.data);
                 setLoading(false);
@@ -141,7 +144,7 @@ const CourseCatalougePage: React.FC = () => {
                 const response = await axios.post(
                     urlInstructor,
                     {
-                        roles: ["TEACHER"],
+                        roles: ["TEACHER", "ADMIN"],
                         status: ["ACTIVE"],
                     },
                     {

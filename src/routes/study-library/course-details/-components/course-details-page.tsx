@@ -188,7 +188,7 @@ const heading = (
             onClick={() => window.history.back()}
             className="cursor-pointer"
         />
-        <h1 className="text-lg">Course Details</h1>
+        <h1 className="text-lg ml-2">Course Details</h1>
     </div>
 );
 

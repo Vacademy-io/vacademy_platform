@@ -5,13 +5,13 @@ import { Batch, Institute, Student } from "@/types/user/user-detail";
 
 // Fetch student details from API
 export const fetchStudentDetails = async (instituteId: string, userId: string) => {
-  
+  console.log("Fetching student details:", { instituteId, userId });
   const response = await authenticatedAxiosInstance({
     method: "GET",
     url: STUDENT_DETAIL,
     params: { instituteId, userId },
   });
-  
+  console.log("Student details fetched successfully:", response);
   return response;
 };
 
@@ -20,8 +20,8 @@ export const getStudentDetails = (instituteId?: string, userId?: string) => {
   return {
     queryKey: ["STUDENT_DETAILS", instituteId, userId],
     queryFn: async () => {
-      console.log("[getStudentDetails.queryFn] Called with:", { instituteId, userId });
       if (!instituteId || !userId) {
+        console.error("Missing required parameters:", { instituteId, userId });
         throw new Error("Institute ID and User ID are required");
       }
       const data = await fetchStudentDetails(instituteId, userId);
@@ -38,24 +38,24 @@ export const fetchAndStoreStudentDetails = async (
   userId: string
 ) => {
   try {
-    
+    console.log("Starting fetchAndStoreStudentDetails");
     const { queryFn } = getStudentDetails(instituteId, userId);
     const response = await queryFn();
-   
+
     if (response.status === 200) {
       const students: Student[] = response.data;
-     
+      console.log("Received multiple students:", students);
+
       await Preferences.set({
         key: "students",
         value: JSON.stringify(students),
       });
-      
+      console.log("Stored student list to Preferences");
 
       const instituteData = await Preferences.get({ key: "InstituteDetails" });
-     
       if (!instituteData.value) throw new Error("No institute data found!");
-      const institute: Institute = JSON.parse(instituteData.value);
 
+      const institute: Institute = JSON.parse(instituteData.value);
       if (!institute.batches_for_sessions)
         throw new Error("No batches found in institute details!");
 
@@ -63,22 +63,23 @@ export const fetchAndStoreStudentDetails = async (
       const matchedSessions = institute.batches_for_sessions.filter((batch: Batch) =>
         packageSessionIds.includes(batch.id)
       );
-      
+      console.log("Matched sessions:", matchedSessions);
 
       await Preferences.set({
         key: "sessionList",
         value: JSON.stringify(matchedSessions),
       });
+      console.log("Stored sessionList to Preferences");
 
       await storeMappedSessions();
     } else if (response.status === 201) {
       const student: Student = response.data[0];
-      
-
+      console.log("Received single student:", student);
       await Preferences.set({
         key: "StudentDetails",
         value: JSON.stringify(student),
       });
+      console.log("Stored StudentDetails to Preferences");
     }
 
     return response.status;
@@ -88,15 +89,15 @@ export const fetchAndStoreStudentDetails = async (
   }
 };
 
-// ✅ Store mapped sessions from Preferences
+// Store mapped sessions from Preferences
 const storeMappedSessions = async () => {
   try {
-  
-
+    console.log("Storing mapped sessions...");
     const studentData = await Preferences.get({ key: "students" });
-   
-
-    const students: Student[] = studentData.value ? JSON.parse(studentData.value) : [];
+    const students: Student[] = studentData.value
+      ? JSON.parse(studentData.value)
+      : [];
+    console.log("Loaded students:", students);
 
     const instituteData = await Preferences.get({ key: "InstituteDetails" });
     if (!instituteData.value) throw new Error("No institute data found!");
@@ -108,40 +109,41 @@ const storeMappedSessions = async () => {
       sessionIds.includes(batch.id)
     ) || [];
 
-    console.log("[storeMappedSessions] Final matched sessions:", matchedSessions);
+    console.log("Matched sessions from storeMappedSessions:", matchedSessions);
 
     await Preferences.set({
       key: "sessionList",
       value: JSON.stringify(matchedSessions),
     });
+    console.log("Mapped sessions saved to Preferences");
   } catch (error) {
     console.error("Error in storing mapped sessions:", error);
   }
 };
 
-// ✅ Get stored student array
+// Get stored student array
 export const getStoredStudentDetails = async (): Promise<Student[] | null> => {
   try {
+    console.log("Getting stored student details");
     const { value } = await Preferences.get({ key: "students" });
-    console.log("[getStoredStudentDetails] Retrieved value:", value);
-
-    return value ? (JSON.parse(value) as Student[]) : null;
+    const parsed = value ? (JSON.parse(value) as Student[]) : null;
+    console.log("Stored student details:", parsed);
+    return parsed;
   } catch (error) {
     console.error("Error parsing stored student details:", error);
     return null;
   }
 };
 
-// ✅ Get sessions mapped to student package_session_id
+// Get sessions mapped to student package_session_id
 export const getMappedSessions = async (): Promise<Batch[] | null> => {
   try {
+    console.log("Getting mapped sessions");
     let studentData = await Preferences.get({ key: "students" });
-    console.log("[getMappedSessions] Initial student data:", studentData);
 
     if (!studentData.value) {
+      console.warn("No student list found, trying StudentDetails...");
       studentData = await Preferences.get({ key: "StudentDetails" });
-      console.log("[getMappedSessions] Fallback student data:", studentData);
-
       if (!studentData.value) {
         console.warn("No student data found! Returning null.");
         return null;
@@ -149,6 +151,7 @@ export const getMappedSessions = async (): Promise<Batch[] | null> => {
     }
 
     const student: Student = JSON.parse(studentData.value);
+    console.log("Loaded student:", student);
 
     const instituteData = await Preferences.get({ key: "InstituteDetails" });
     if (!instituteData.value) {
@@ -157,7 +160,7 @@ export const getMappedSessions = async (): Promise<Batch[] | null> => {
     }
 
     const institute: Institute = JSON.parse(instituteData.value);
-    console.log("[getMappedSessions] Institute:", institute);
+    console.log("Loaded institute data:", institute);
 
     if (!institute.batches_for_sessions || institute.batches_for_sessions.length === 0) {
       console.warn("No batches found in institute details! Returning null.");
@@ -168,13 +171,12 @@ export const getMappedSessions = async (): Promise<Batch[] | null> => {
       (batch: Batch) => batch.id === student.package_session_id
     );
 
-    console.log("[getMappedSessions] Final matched sessions:", matchedSessions);
-
     if (matchedSessions.length === 0) {
       console.warn("No matching sessions found!");
       return null;
     }
 
+    console.log("Matched sessions for student:", matchedSessions);
     return matchedSessions;
   } catch (error) {
     console.error("Error mapping sessions:", error);

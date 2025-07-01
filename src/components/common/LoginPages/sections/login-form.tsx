@@ -41,7 +41,7 @@ export function LoginForm() {
 
   useEffect(() => {
     const handleOAuthCallback = async () => {
-      console.log("called ...................");
+     
       const urlParams = new URLSearchParams(window.location.search);
       const accessToken = urlParams.get("accessToken");
       const refreshToken = urlParams.get("refreshToken");
@@ -49,7 +49,7 @@ export function LoginForm() {
       const message = urlParams.get("message");
 
       if (error) {
-        console.error("OAuth error:", error);
+        
         toast.error(decodeURIComponent(message || "Authentication failed."));
         return;
       }
@@ -60,7 +60,6 @@ export function LoginForm() {
           await setToStorage("refreshToken", refreshToken);
           await setTokenInStorage(TokenKey.accessToken, accessToken);
           await setTokenInStorage(TokenKey.refreshToken, refreshToken);
-
           await handleSuccessfulLogin(accessToken, redirect);
         } catch (error) {
           console.error("Error storing tokens:", error);
@@ -103,10 +102,12 @@ export function LoginForm() {
     redirect?: string | null
   ) => {
     try {
-      const decodedData = await getTokenDecodedData(accessToken);
+      const decodedData = getTokenDecodedData(accessToken);
       const authorities = decodedData?.authorities;
       const userId = decodedData?.user;
       const authorityKeys = authorities ? Object.keys(authorities) : [];
+
+      console.log("authorityKeys   :",authorityKeys);
 
       if (authorityKeys.length > 1) {
         navigate({
@@ -175,10 +176,8 @@ export function LoginForm() {
 
   const handleOAuthLogin = (provider: "google" | "github") => {
     try {
-      console.log("handleOAuthLogin called");
-
-      const stateObj = {
-        from: `${window.location.origin}/login/oauth/redirect`, // ✅ fixed interpolation
+        const stateObj = {
+        from: `${window.location.origin}/login`, // ✅ fixed interpolation
         account_type: "",
       };
 

@@ -138,15 +138,15 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
 
     return (
         <div className="bg-white p-6 rounded-lg shadow ml-0">
-            <div className="flex justify-between items-center mb-6">
+            <div className="flex justify-between items-center mb-6 gap-1 w-full">
                 <h2 className="text-xl font-bold text-gray-800">Filters</h2>
-                <div className="flex gap-1">
+                <div className="flex">
                     <button
                         onClick={clearAllFilters}
                         disabled={!hasActiveFilters}
-                        className={`text font-semibold px-2 py-1 transition text-primary-500 text-sm mt-[1px]`}
+                        className={`whitespace-nowrap text font-semibold px-2 py-1 transition text-primary-500 text-sm mt-[1px]`}
                     >
-                        Clear All
+                        Clear
                     </button>
                     <button
                         onClick={onApplyFilters}

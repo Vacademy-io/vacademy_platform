@@ -55,7 +55,7 @@ const SessionSelectionPage = () => {
     try {
       setLoading(true);
       const { value } = await Preferences.get({ key: "sessionList" });
-
+      console.log("value ",value)
       if (!value) {
         toast.error("No sessions found");
         setSessionList([]);

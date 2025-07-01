@@ -3350,13 +3350,13 @@ export const CourseDetailsPage = () => {
                                     )}
                                 </div>
                                 <Dialog>
-                                    <DialogTrigger>
+                                    <DialogTrigger className="w-full">
                                         <MyButton
                                             type="button"
-                                            scale="medium"
+                                            scale="large"
                                             buttonType="primary"
                                             layoutVariant="default"
-                                            className="mt-4 w-full"
+                                            className="mt-4 !min-w-full !w-full"
                                         >
                                             Enroll
                                         </MyButton>

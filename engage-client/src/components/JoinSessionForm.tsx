@@ -45,30 +45,33 @@ export const JoinSessionForm: React.FC<JoinSessionFormProps> = ({ onJoin, isJoin
   };
 
   return (
-    <Card className="w-full max-w-md shadow-lg rounded-lg bg-white">
-      <CardHeader className="px-6 pt-8 pb-2 text-center">
-        <CardTitle className="text-xl font-semibold text-primary">Join Live Session</CardTitle>
-        <CardDescription className="text-sm text-gray-500 pt-1">Enter the invite code and your name to participate.</CardDescription>
+    <Card className="w-full max-w-md bg-black/40 backdrop-blur-xl border border-white/20 rounded-2xl shadow-2xl relative overflow-hidden">
+      {/* Darker background for better text contrast */}
+      <div className="absolute inset-0 bg-gradient-to-r from-orange-900/30 to-orange-800/20 rounded-2xl pointer-events-none" />
+      
+      <CardHeader className="px-6 pt-8 pb-2 text-center relative z-10">
+        <CardTitle className="text-xl font-semibold text-white">Join Live Session</CardTitle>
+        <CardDescription className="text-sm text-white/90 pt-1">Enter the invite code and your name to participate.</CardDescription>
       </CardHeader>
       <Form {...form}>
         <form onSubmit={form.handleSubmit(handleSubmit)}>
-          <CardContent className="px-6 pt-5 space-y-5 pb-5">
+          <CardContent className="px-6 pt-5 space-y-5 pb-5 relative z-10">
             <FormField
               control={form.control}
               name="inviteCode"
               render={({ field }: { field: ControllerRenderProps<JoinFormValues, 'inviteCode'> }) => (
                 <FormItem>
-                  <FormLabel className="text-slate-700 text-sm font-medium">Invite Code</FormLabel>
+                  <FormLabel className="text-white font-medium">Invite Code</FormLabel>
                   <FormControl>
                     <Input
                       placeholder="e.g., A1B2C"
                       {...field}
-                      className="text-base h-10 tracking-wider uppercase focus:ring-2 focus:ring-blue-500 transition-shadow duration-200 ease-in-out"
+                      className="bg-white/10 border border-white/20 text-white placeholder:text-white/50 h-10 tracking-wider uppercase focus:border-orange-400/50 focus:ring-orange-400/25 backdrop-blur-sm transition-all duration-300 ease-out hover:bg-white/15"
                       disabled={isJoining || !!initialInviteCode}
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => field.onChange(e.target.value.toUpperCase())}
                     />
                   </FormControl>
-                  <FormMessage />
+                  <FormMessage className="text-red-300" />
                 </FormItem>
               )}
             />
@@ -77,26 +80,34 @@ export const JoinSessionForm: React.FC<JoinSessionFormProps> = ({ onJoin, isJoin
               name="username"
               render={({ field }: { field: ControllerRenderProps<JoinFormValues, 'username'> }) => (
                 <FormItem>
-                  <FormLabel className="text-slate-700 text-sm font-medium">your username</FormLabel>
+                  <FormLabel className="text-white font-medium">Your Username</FormLabel>
                   <FormControl>
                     <Input
                       placeholder="Enter your username"
                       {...field}
-                      className="text-base h-10 focus:ring-2 focus:ring-blue-500 transition-shadow duration-200 ease-in-out"
+                      className="bg-white/10 border border-white/20 text-white placeholder:text-white/50 h-10 focus:border-orange-400/50 focus:ring-orange-400/25 backdrop-blur-sm transition-all duration-300 ease-out hover:bg-white/15"
                       disabled={isJoining}
                     />
                   </FormControl>
-                  <FormMessage />
-                  <p className="text-xs text-slate-500 pt-1">
+                  <FormMessage className="text-red-300" />
+                  <p className="text-xs text-white/60 pt-1">
                     Keep your username as your email to get the session action points, recording and presentation details.
                   </p>
                 </FormItem>
               )}
             />
-            {error && <p className="text-sm font-medium text-red-600 text-center py-2">{error}</p>}
+            {error && (
+              <div className="bg-red-500/20 border border-red-400/30 rounded-lg px-3 py-2 backdrop-blur-sm">
+                <p className="text-sm font-medium text-red-300 text-center">{error}</p>
+              </div>
+            )}
           </CardContent>
-          <CardFooter className="px-6 pt-0 pb-6">
-            <Button type="submit" className="w-full h-10 text-base bg-primary hover:bg-primary/90 text-primary-foreground transition-colors duration-200 ease-in-out" disabled={isJoining}>
+          <CardFooter className="px-6 pt-0 pb-6 relative z-10">
+            <Button 
+              type="submit" 
+              className="w-full h-10 rounded-xl bg-gradient-to-r from-green-600 to-emerald-700 hover:from-green-700 hover:to-emerald-800 text-white font-semibold backdrop-blur-sm transition-all duration-300 ease-out hover:scale-105 shadow-lg shadow-green-500/25 border-0" 
+              disabled={isJoining}
+            >
               {isJoining ? (
                 <Loader2 className="mr-2 size-4 animate-spin" />
               ) : (

@@ -54,8 +54,30 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white;
     font-feature-settings: "rlig" 1, "calt" 1;
+    overflow-x: hidden;
+  }
+  
+  /* Global glassmorphism utility classes */
+  .glassmorphism-container {
+    @apply bg-black/40 backdrop-blur-xl border border-white/20 rounded-2xl shadow-2xl;
+  }
+  
+  .glassmorphism-card {
+    @apply bg-black/30 backdrop-blur-sm border border-white/20 rounded-xl shadow-lg;
+  }
+  
+  .gradient-text {
+    @apply bg-gradient-to-r from-white via-orange-100 to-orange-200 bg-clip-text text-transparent;
+  }
+  
+  .accent-text {
+    @apply text-orange-300 font-bold font-mono tracking-wider;
+  }
+  
+  .floating-orb {
+    @apply absolute rounded-full blur-3xl animate-pulse pointer-events-none;
   }
 }
 
@@ -171,6 +193,6 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white;
   }
 }

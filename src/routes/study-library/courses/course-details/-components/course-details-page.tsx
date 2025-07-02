@@ -39,7 +39,7 @@ import {
     CourseDetailsFormValues,
     courseDetailsSchema,
 } from "./course-details-schema";
-import { handleFetchModulesWithChapters } from "../../courses/-services/getModulesWithChapters";
+import { handleFetchModulesWithChapters } from "../../-services/getModulesWithChapters";
 import {
     handleFetchChaptersWithSlides,
     VideoSlide,
@@ -48,7 +48,7 @@ import {
     AssignmentSlide,
     ChapterWithSlides,
     handleFetchSlides,
-} from "../../courses/-services/getAllSlides";
+} from "../../-services/getAllSlides";
 import { useQueries, useSuspenseQuery } from "@tanstack/react-query";
 import { useQuery } from "@tanstack/react-query";
 import { handleGetSlideCountDetails } from "../-services/get-slides-count";

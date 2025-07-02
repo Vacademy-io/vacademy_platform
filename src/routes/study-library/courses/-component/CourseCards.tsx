@@ -51,7 +51,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
     const handleViewCoureseDetails = (id: string) => {
         // console.log("course-detailsIdis",id);
         router.navigate({
-            to: "/study-library/course-details",
+            to: "/study-library/courses/course-details",
             search: { courseId: id },
         });
     };

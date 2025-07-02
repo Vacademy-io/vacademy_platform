@@ -9,7 +9,7 @@ interface LevelSearchParams {
     levelId: string;
 }
 
-export const Route = createFileRoute("/study-library/course-details/subjects/")(
+export const Route = createFileRoute("/study-library/courses/course-details/subjects/")(
     {
         component: RouteComponent,
         validateSearch: (

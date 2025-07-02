@@ -14,7 +14,7 @@ interface SubjectSearchParams {
 }
 
 export const Route = createFileRoute(
-    "/study-library/course-details/subjects/modules/"
+    "/study-library/courses/course-details/subjects/modules/"
 )({
     component: RouteComponent,
     validateSearch: (search: Record<string, unknown>): SubjectSearchParams => {

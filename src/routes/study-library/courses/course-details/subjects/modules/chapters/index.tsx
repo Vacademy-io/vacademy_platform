@@ -21,7 +21,7 @@ interface ModulesSearchParams {
 }
 
 export const Route = createFileRoute(
-    "/study-library/course-details/subjects/modules/chapters/"
+    "/study-library/courses/course-details/subjects/modules/chapters/"
 )({
     component: ModuleMaterialPage,
     validateSearch: (search: Record<string, unknown>): ModulesSearchParams => {

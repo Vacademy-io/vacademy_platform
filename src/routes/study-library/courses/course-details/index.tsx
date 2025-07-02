@@ -5,7 +5,7 @@ interface CourseSearchParams {
     courseId: string;
 }
 
-export const Route = createFileRoute("/study-library/course-details/")({
+export const Route = createFileRoute("/study-library/courses/course-details/")({
     component: () => (
         <LayoutContainer>
             <CourseDetailsPage />

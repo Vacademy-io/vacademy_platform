@@ -29,7 +29,7 @@ interface ChapterSearchParams {
 }
 
 export const Route = createFileRoute(
-    "/study-library/course-details/subjects/modules/chapters/slides/"
+    "/study-library/courses/course-details/subjects/modules/chapters/slides/"
 )({
     component: Slides,
     validateSearch: (search: Record<string, unknown>): ChapterSearchParams => {

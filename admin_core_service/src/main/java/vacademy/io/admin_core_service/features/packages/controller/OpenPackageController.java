@@ -27,4 +27,10 @@ public class OpenPackageController {
         return ResponseEntity.ok(result);
     }
 
+    @GetMapping("/package-detail")
+    public ResponseEntity<PackageDetailDTO> getPackageDetailById(@RequestParam("packageId") String packageId) {
+        PackageDetailDTO result = openPackageService.getPackageDetailById(packageId);
+        return ResponseEntity.ok(result);
+    }
+
 }

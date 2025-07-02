@@ -18,8 +18,15 @@ public class AssignmentSlideActivityLogController {
     private AssignmentSlideActivityLogService assignmentSlideActivityLogService;
 
     @PostMapping("/add-or-update-assignment-slide-activity-log")
-    public ResponseEntity<String> addOrUpdateAssignmentSlideActivityLog(@RequestBody ActivityLogDTO activityLogDTO, String slideId, String userId,@RequestAttribute("user") CustomUserDetails user) {
-        return ResponseEntity.ok(assignmentSlideActivityLogService.addOrUpdateAssignmentSlideSlideActivityLog(activityLogDTO, slideId, userId, user));
+    public ResponseEntity<String> addOrUpdateAssignmentSlideActivityLog(@RequestBody ActivityLogDTO activityLogDTO,
+                                                                        String slideId,
+                                                                        String chapterId,
+                                                                        String moduleId,
+                                                                        String subjectId,
+                                                                        String packageSessionId,
+                                                                        String userId,
+                                                                        @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(assignmentSlideActivityLogService.addOrUpdateAssignmentSlideSlideActivityLog(activityLogDTO, slideId,chapterId,moduleId,subjectId,packageSessionId, userId, user));
     }
 
     @GetMapping("/assignment-slide-activity-logs")

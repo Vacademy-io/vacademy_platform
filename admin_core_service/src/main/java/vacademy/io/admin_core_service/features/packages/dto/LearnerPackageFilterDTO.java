@@ -19,4 +19,5 @@ public class LearnerPackageFilterDTO {
     private double minPercentageCompleted;
     private double maxPercentageCompleted;
     private Map<String, String> sortColumns;
+    private String type;
 }

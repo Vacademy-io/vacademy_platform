@@ -26,6 +26,7 @@ public class AssignmentSlideActivityLogService {
     private final AssignmentSlideTrackedRepository assignmentSlideTrackedRepository;
     private final ActivityLogRepository activityLogRepository;
     private final ActivityLogService activityLogService;
+    private final LearnerTrackingAsyncService learnerTrackingAsyncService;
 
 
     public void addAssigmentSlideActivityLog(ActivityLog activityLog, List<AssignmentSlideActivityLogDTO> assignmentSlideActivityLogDTOS) {
@@ -37,7 +38,7 @@ public class AssignmentSlideActivityLogService {
         assignmentSlideTrackedRepository.saveAll(questionSlideTrackeds);
     }
 
-    public String addOrUpdateAssignmentSlideSlideActivityLog(ActivityLogDTO activityLogDTO, String slideId, String userId, CustomUserDetails user) {
+    public String addOrUpdateAssignmentSlideSlideActivityLog(ActivityLogDTO activityLogDTO, String slideId,String chapterId,String moduleId,String subjectId,String packageSessionId, String userId, CustomUserDetails user) {
         ActivityLog activityLog = null;
         if (activityLogDTO.isNewActivity()){
             activityLog = activityLogService.saveActivityLog(activityLogDTO, userId, slideId);
@@ -45,6 +46,7 @@ public class AssignmentSlideActivityLogService {
             activityLog = activityLogService.updateActivityLog(activityLogDTO);
         }
         addAssigmentSlideActivityLog(activityLog,activityLogDTO.getAssignmentSlides());
+        learnerTrackingAsyncService.updateLearnerOperationsForAssignment(user.getUserId(), slideId, chapterId, moduleId,subjectId,packageSessionId,activityLogDTO);
         return activityLog.getId();
     }
 

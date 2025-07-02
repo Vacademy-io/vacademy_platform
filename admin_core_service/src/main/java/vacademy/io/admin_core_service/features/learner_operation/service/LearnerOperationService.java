@@ -13,6 +13,9 @@ public class LearnerOperationService {
 
     private final LearnerOperationRepository learnerOperationRepository;
 
+    public void deleteLearnerOperationByUserIdSourceAndSourceIdAndOperation(String userId, String source, String sourceId, String operation) {
+        learnerOperationRepository.deleteBySourceAndSourceIdAndOperationAndUserId(source,sourceId,operation,userId);
+    }
     public void addOrUpdateOperation(String userId, String source, String sourceId, String operation, String value) {
         Optional<LearnerOperation> existingOperation = findByUserIdSourceAndSourceIdAndOperation(userId, source, sourceId, operation);
 

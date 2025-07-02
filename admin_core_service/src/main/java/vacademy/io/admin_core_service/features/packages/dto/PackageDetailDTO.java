@@ -33,4 +33,5 @@ public class PackageDetailDTO {
     private String levelId;
     private String levelName;
     private List<UserDTO> instructors;
+    private List<String>levelIds;
 }

@@ -55,15 +55,12 @@ public class PackageEntity {
     @Column(name = "course_media_id")
     private String courseMediaId;
 
-    @Lob
     @Column(name = "why_learn", columnDefinition = "TEXT")
     private String whyLearn;
 
-    @Lob
     @Column(name = "who_should_learn", columnDefinition = "TEXT")
     private String whoShouldLearn;
 
-    @Lob
     @Column(name = "about_the_course", columnDefinition = "TEXT")
     private String aboutTheCourse;
 
@@ -73,7 +70,6 @@ public class PackageEntity {
     @Column(name = "course_depth")
     private Integer courseDepth;
 
-    @Lob
     @Column(name = "course_html_description", columnDefinition = "TEXT")
     private String courseHtmlDescription;
 

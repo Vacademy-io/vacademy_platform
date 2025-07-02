@@ -43,6 +43,7 @@ import { SessionDetailsResponse } from "@/routes/study-library/live-class/-types
 import { SessionStreamingServiceType } from "@/routes/register/live-class/-types/enum";
 import { getPublicFileUrl } from "../-hooks/getPublicUrl";
 import { useMarkAttendance } from "@/routes/live-class-guest/-hooks/useMarkAttendance";
+import { Storage } from "@capacitor/storage";
 
 export const verifyEmailSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -73,10 +74,8 @@ export default function LiveClassRegistrationPage() {
   const { mutateAsync: markAttendance } = useMarkAttendance();
 
   const fetchSessionDetail = async (id: string) => {
-    console.log("fetching session details");
     const response = await fetchSessionDetails(id);
     setSessionDetails(response);
-    console.log("sessionDetails ", response);
   };
 
   useEffect(() => {
@@ -107,10 +106,18 @@ export default function LiveClassRegistrationPage() {
       // Check if we're in waiting room period or main session
       const isInWaitingRoom = now >= waitingRoomStart && now < sessionDate;
       const isInMainSession = now >= sessionDate;
+      console.log(sessionDate, waitingRoomStart);
+      console.log("iswaiting room " , isInWaitingRoom);
 
       const handleSessionNavigation = async () => {
-        if (isInWaitingRoom && sessionDetails?.defaultMeetLink) {
-          navigate({
+        console.log(sessionDetails?.defaultMeetLink);
+        console.log(isInWaitingRoom);
+        console.log(isInWaitingRoom && sessionDetails?.defaultMeetLink);
+        if (isInWaitingRoom) {
+          console.log('here ')
+          console.log(earliestScheduleId);
+          console.log(registrationResponse);
+          await navigate({
             to: "/live-class-guest/waiting-room",
             search: {
               sessionId: earliestScheduleId || "",
@@ -180,8 +187,8 @@ export default function LiveClassRegistrationPage() {
   } = form;
 
   const onSubmit = async (formValues: RegistrationFormValues) => {
-    console.log("data ", formValues);
     let payload;
+    const email = String(formValues.email)
     try {
       payload = transformToGuestRegistrationDTO(
         formValues,
@@ -197,8 +204,15 @@ export default function LiveClassRegistrationPage() {
     try {
       const response = await registerGuestUser(payload);
       setRegistrationResponse(response);
-      console.log("response ", response.status);
       if (response) {
+         await Storage.set({
+            key : "live-session-email",
+            value: email, // Directly store the token without stringifying
+          });
+         await Storage.set({
+            key : "live-session-guestId",
+            value: response, // Directly store the token without stringifying
+          });
         toast.success("Registration successful");
         fetchSessionDetail(earliestScheduleId || "");
       }
@@ -229,7 +243,6 @@ export default function LiveClassRegistrationPage() {
         toast.success("Email already registered");
         if (sessionId) {
           fetchSessionDetail(earliestScheduleId || "");
-          console.log("sessionDetails ", sessionDetails);
         }
       } else {
         toast.error("Email not registered");

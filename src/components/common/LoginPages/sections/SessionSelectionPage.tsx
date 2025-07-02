@@ -10,7 +10,7 @@ import { Session } from "@/types/user/user-detail";
 const SessionSelectionPage = () => {
   const [sessionList, setSessionList] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
   const navigate = useNavigate();
   const { redirect } = useSearch<any>({ from: "/SessionSelectionPage/" });
@@ -65,7 +65,7 @@ const SessionSelectionPage = () => {
 
   const handleSessionSelect = async (selectedSession: Session) => {
     try {
-      setSelectedId(selectedSession.id); // Triggers full-page loader
+      setSubmitting(true);
       const studentData = await Preferences.get({ key: "students" });
       if (!studentData.value) throw new Error("No student data found!");
 
@@ -85,22 +85,22 @@ const SessionSelectionPage = () => {
     } catch (error) {
       console.error("Error selecting session:", error);
       toast.error("Something went wrong while selecting session.");
-      setSelectedId(null);
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  // 🔁 Central loader when loading or selecting
-  if (loading || selectedId)
+  if (loading || submitting) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white">
+      <div className="fixed inset-0 flex items-center justify-center bg-white z-50">
         <DashboardLoader />
       </div>
     );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-teal-50 p-4">
       <div className="max-w-6xl mx-auto">
-        {/* Header */}
         <div className="text-center space-y-4 mb-8 animate-fade-in-down opacity-0 [animation-delay:0.2s] [animation-fill-mode:forwards]">
           <div className="w-20 h-20 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl mx-auto flex items-center justify-center shadow-lg">
             <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -113,7 +113,6 @@ const SessionSelectionPage = () => {
           </div>
         </div>
 
-        {/* If no sessions */}
         {sessionList.length === 0 ? (
           <div className="max-w-md mx-auto animate-fade-in-up opacity-0 [animation-delay:0.4s] [animation-fill-mode:forwards]">
             <div className="glass-card rounded-2xl p-8 text-center shadow-xl">
@@ -133,19 +132,11 @@ const SessionSelectionPage = () => {
             {sessionList.map((session, index) => (
               <div
                 key={session.id}
-                className={`group cursor-pointer transition-all duration-300 hover:scale-[1.02] ${
-                  selectedId === session.id ? "scale-[1.02]" : ""
-                }`}
+                className="group cursor-pointer transition-all duration-300 hover:scale-[1.02]"
                 onClick={() => handleSessionSelect(session)}
                 style={{ animationDelay: `${0.1 * index}s` }}
               >
-                <Card
-                  className={`glass-card border-2 transition-all duration-300 shadow-lg hover:shadow-xl ${
-                    selectedId === session.id
-                      ? "border-emerald-500 ring-4 ring-emerald-500/20"
-                      : "border-gray-200 hover:border-emerald-300"
-                  }`}
-                >
+                <Card className="glass-card border-2 transition-all duration-300 shadow-lg hover:shadow-xl border-gray-200 hover:border-emerald-300">
                   <div className="relative h-48 overflow-hidden rounded-t-lg">
                     {imageUrls[session.id] ? (
                       <img
@@ -157,13 +148,6 @@ const SessionSelectionPage = () => {
                       <div className="flex w-full h-full items-center justify-center bg-gradient-to-br from-emerald-100 to-teal-100">
                         <svg className="w-16 h-16 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13..." />
-                        </svg>
-                      </div>
-                    )}
-                    {selectedId === session.id && (
-                      <div className="absolute top-3 right-3 w-8 h-8 bg-emerald-500 rounded-full flex items-center justify-center animate-scale-in">
-                        <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                         </svg>
                       </div>
                     )}

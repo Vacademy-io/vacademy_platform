@@ -3,9 +3,9 @@ import { Link, useRouterState } from '@tanstack/react-router';
 import React from 'react';
 
 const tabs = [
-  { name: 'All Courses', path: '/study-library' },
-  { name: 'In Progress', path: '/study-library/in-progress' },
-  { name: 'Completed', path: '/study-library/completed' },
+  { name: 'All Courses', path: '/study-library/courses' },
+  { name: 'In Progress', path: '/study-library/courses' },
+  { name: 'Completed', path: '/study-library/courses' },
 ];
 
 const Tab: React.FC = () => {

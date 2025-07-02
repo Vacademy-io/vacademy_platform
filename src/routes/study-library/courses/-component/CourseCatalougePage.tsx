@@ -1,29 +1,52 @@
 import React, { useState, useEffect } from "react";
-// import Footer from './Footer.tsx';
-// import InstructorCTASection from './InstructorCTASection.tsx';
-// import SupportersSection from './SupportersSection.tsx';
 import CoursesPage from "./CoursesPage.tsx";
-// import Header from './Header.tsx';
 import { useCatalogStore } from "../-store/catalogStore.ts";
 import axios from "axios";
-import HeroSection from "../-component1/HeroSection.tsx";
-import Tab from "../-component1/Tab.tsx";
 import {
     STUDENT_DETAIL,
-    urlCourseDetails,
-    urlInstituteDetails,
     urlInstructor,
     urlPublicCourseDetails,
 } from "@/constants/urls.ts";
 import { getInstituteId } from "@/constants/helper.ts";
 import { getUserId } from "@/constants/getUserId.ts";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance.ts";
+import HeroSection from "../-component1/HeroSection.tsx";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { DashboardLoader } from "@/components/core/dashboard-loader.tsx";
+import { CoursePackageResponse } from "@/types/course-catalog/course-catalog-list.ts";
 
 const CourseCatalougePage: React.FC = () => {
-    const { courseData, setCourseData, setInstituteData, setInstructors } =
-        useCatalogStore();
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
+    const { setInstituteData, setInstructors } = useCatalogStore();
+    const [selectedTab, setSelectedTab] = useState("ALL");
+    const [page, setPage] = useState(0);
+    const [courseData, setCourseData] = useState<CoursePackageResponse>({
+        content: [],
+        empty: false,
+        first: false,
+        last: false,
+        number: 0,
+        numberOfElements: 0,
+        pageable: {
+            pageNumber: 0,
+            pageSize: 10,
+            offset: 0,
+            paged: true,
+            unpaged: false,
+            sort: {
+                unsorted: true,
+                sorted: false,
+                empty: true,
+            },
+        },
+        size: 10,
+        sort: {
+            unsorted: true,
+            sorted: false,
+            empty: true,
+        },
+        totalElements: 0,
+        totalPages: 0,
+    });
 
     const [searchTerm, setSearchTerm] = useState("");
     const [sortOption, setSortOption] = useState("Newest");
@@ -33,10 +56,15 @@ const CourseCatalougePage: React.FC = () => {
     const [selectedInstructors, setSelectedInstructors] = useState<string[]>(
         []
     );
-    //api call to store the courses details
 
-    //console.log("getInsutteId from the helper function",getInstituteId);
+    const [isLoadingCourse, setIsLoadingCourse] = useState(false);
+
+    const handlePageChange = (page: number) => {
+        setPage(page + 1);
+    };
+
     const fetchPackages = async (search = "", sort = "Newest") => {
+        setIsLoadingCourse(true);
         try {
             const instituteId = await getInstituteId();
             const response = await authenticatedAxiosInstance.post(
@@ -49,7 +77,7 @@ const CourseCatalougePage: React.FC = () => {
                     tag: [],
                     min_percentage_completed: 0,
                     max_percentage_completed: 0,
-                    type: "ALL",
+                    type: selectedTab,
                 },
                 {
                     params: {
@@ -71,18 +99,16 @@ const CourseCatalougePage: React.FC = () => {
                     },
                 }
             );
-            setCourseData(response.data.content);
-            //console.log('Response courses:', response.data);
+            setCourseData(response.data);
         } catch (error) {
-            // console.error('Error fetching packages:', error);
+            console.log(error);
+        } finally {
+            setIsLoadingCourse(false);
         }
     };
 
-    useEffect(() => {
-        fetchPackages(searchTerm, sortOption);
-    }, [searchTerm, sortOption]);
-
     const handleApplyFilters = async () => {
+        setIsLoadingCourse(true);
         try {
             const instituteId = await getInstituteId();
             const response = await authenticatedAxiosInstance.post(
@@ -95,7 +121,7 @@ const CourseCatalougePage: React.FC = () => {
                     tag: selectedTags,
                     min_percentage_completed: 0,
                     max_percentage_completed: 0,
-                    type: "ALL",
+                    type: selectedTab,
                 },
                 {
                     params: {
@@ -109,9 +135,11 @@ const CourseCatalougePage: React.FC = () => {
                     },
                 }
             );
-            setCourseData(response.data.content);
+            setCourseData(response.data);
         } catch (error) {
             console.error("Error applying filters:", error);
+        } finally {
+            setIsLoadingCourse(false);
         }
     };
 
@@ -129,11 +157,8 @@ const CourseCatalougePage: React.FC = () => {
                 );
                 // console.log("Institute details", response.data);
                 setInstituteData(response.data);
-                setLoading(false);
             } catch (error) {
-                setError(
-                    "Something went wrong while fetching the institute details."
-                );
+                console.log(error);
             }
         };
 
@@ -164,38 +189,73 @@ const CourseCatalougePage: React.FC = () => {
                 // console.log('Instructor response9999:', response.data);
                 setInstructors(response.data);
             } catch (error) {
-                setError(
-                    "Something went wrong while fetching the instructors."
-                );
+                console.log(error);
             }
         };
 
         fetchInstructor();
     }, []);
 
+    useEffect(() => {
+        fetchPackages(searchTerm, sortOption);
+    }, [searchTerm, sortOption, selectedTab, page]);
+
     return (
         <div>
             <HeroSection />
-            <Tab />
-            <CoursesPage
-                searchTerm={searchTerm}
-                onSearchChange={setSearchTerm}
-                sortOption={sortOption}
-                onSortChange={setSortOption}
-                selectedLevels={selectedLevels}
-                setSelectedLevels={setSelectedLevels}
-                selectedTags={selectedTags}
-                setSelectedTags={setSelectedTags}
-                selectedInstructors={selectedInstructors}
-                setSelectedInstructors={setSelectedInstructors}
-                onApplyFilters={handleApplyFilters}
-                clearAllFilters={() => {
-                    setSelectedLevels([]);
-                    setSelectedTags([]);
-                    setSelectedInstructors([]);
-                    fetchPackages();
-                }}
-            />
+            <Tabs value={selectedTab} onValueChange={setSelectedTab}>
+                <TabsList className="p-0 !bg-transparent mb-4 border-b w-full flex justify-start rounded-none">
+                    <TabsTrigger
+                        value="ALL"
+                        className={`text-md !shadow-none border-b-2 -mb-1 rounded-none font-semibold 
+          ${selectedTab === "ALL" ? "border-primary-500 !text-primary-500" : "border-transparent text-gray-500"}`}
+                    >
+                        All Courses
+                    </TabsTrigger>
+                    <TabsTrigger
+                        value="PROGRESS"
+                        className={`text-md !shadow-none border-b-2 -mb-1 rounded-none font-semibold 
+          ${selectedTab === "PROGRESS" ? "border-primary-500 !text-primary-500" : "border-transparent text-gray-500"}`}
+                    >
+                        In Progress
+                    </TabsTrigger>
+                    <TabsTrigger
+                        value="COMPLETED"
+                        className={`text-md !shadow-none border-b-2 -mb-1 rounded-none font-semibold 
+          ${selectedTab === "COMPLETED" ? "border-primary-500 !text-primary-500" : "border-transparent text-gray-500"}`}
+                    >
+                        Completed
+                    </TabsTrigger>
+                </TabsList>
+                {isLoadingCourse ? (
+                    <DashboardLoader />
+                ) : (
+                    <TabsContent value={selectedTab}>
+                        <CoursesPage
+                            courseData={courseData}
+                            searchTerm={searchTerm}
+                            onSearchChange={setSearchTerm}
+                            sortOption={sortOption}
+                            onSortChange={setSortOption}
+                            selectedLevels={selectedLevels}
+                            setSelectedLevels={setSelectedLevels}
+                            selectedTags={selectedTags}
+                            setSelectedTags={setSelectedTags}
+                            selectedInstructors={selectedInstructors}
+                            setSelectedInstructors={setSelectedInstructors}
+                            onApplyFilters={handleApplyFilters}
+                            clearAllFilters={() => {
+                                setSelectedLevels([]);
+                                setSelectedTags([]);
+                                setSelectedInstructors([]);
+                                fetchPackages();
+                            }}
+                            page={page}
+                            handlePageChange={handlePageChange}
+                        />
+                    </TabsContent>
+                )}
+            </Tabs>
         </div>
     );
 };

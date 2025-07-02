@@ -80,6 +80,6 @@ export const GET_DOUBTS = `${BASE_URL}/admin-core-service/institute/v1/doubts/ge
 export const GET_USER_BASIC_DETAILS = `${BASE_URL}/auth-service/v1/user-details/get-basic-details`;
 
 export const urlInstituteDetails = `${BASE_URL}/admin-core-service/public/institute/v1/details`;
-export const urlCourseDetails = `${BASE_URL}/admin-core-service/open/packages/v1/search`;
-export const urlPublicCourseDetails = `${BASE_URL}/admin-core-service/packages/v1/search`;
+export const urlCourseDetails = `${BASE_URL}/admin-core-service/open/learner-packages/v1/search`;
+export const urlPublicCourseDetails = `${BASE_URL}/admin-core-service/learner-packages/v1/search`;
 export const urlInstructor = `${BASE_URL}/auth-service/public/v1/users-of-status`;

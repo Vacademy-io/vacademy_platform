@@ -23,10 +23,8 @@ import { Route as CoursesIndexRouteImport } from './routes/courses/index'
 import { Route as SessionSelectionPageIndexRouteImport } from './routes/SessionSelectionPage/index'
 import { Route as UserProfileEditIndexRouteImport } from './routes/user-profile/edit/index'
 import { Route as StudyLibraryLiveClassIndexRouteImport } from './routes/study-library/live-class/index'
-import { Route as StudyLibraryInProgressIndexRouteImport } from './routes/study-library/in-progress/index'
 import { Route as StudyLibraryCoursesIndexRouteImport } from './routes/study-library/courses/index'
 import { Route as StudyLibraryCourseDetailsIndexRouteImport } from './routes/study-library/course-details/index'
-import { Route as StudyLibraryCompletedIndexRouteImport } from './routes/study-library/completed/index'
 import { Route as RegisterLiveClassIndexRouteImport } from './routes/register/live-class/index'
 import { Route as LoginForgotPasswordIndexRouteImport } from './routes/login/forgot-password/index'
 import { Route as LiveClassGuestWaitingRoomIndexRouteImport } from './routes/live-class-guest/waiting-room/index'
@@ -39,19 +37,14 @@ import { Route as AssessmentReportsIndexRouteImport } from './routes/assessment/
 import { Route as AssessmentExaminationIndexRouteImport } from './routes/assessment/examination/index'
 import { Route as StudyLibraryLiveClassWaitingRoomIndexRouteImport } from './routes/study-library/live-class/waiting-room/index'
 import { Route as StudyLibraryLiveClassEmbedIndexRouteImport } from './routes/study-library/live-class/embed/index'
-import { Route as StudyLibraryCoursesLevelsIndexRouteImport } from './routes/study-library/courses/levels/index'
 import { Route as StudyLibraryCourseDetailsSubjectsIndexRouteImport } from './routes/study-library/course-details/subjects/index'
 import { Route as AssessmentReportsStudentReportIndexRouteImport } from './routes/assessment/reports/student-report/index'
 import { Route as AssessmentExaminationAssessmentIdIndexRouteImport } from './routes/assessment/examination/$assessmentId/index'
 import { Route as AssessmentExaminationAssessmentIdAssessmentPreviewRouteImport } from './routes/assessment/examination/$assessmentId/assessmentPreview'
 import { Route as AssessmentExaminationAssessmentIdLearnerLiveTestRouteImport } from './routes/assessment/examination/$assessmentId/LearnerLiveTest'
-import { Route as StudyLibraryCoursesLevelsSubjectsIndexRouteImport } from './routes/study-library/courses/levels/subjects/index'
 import { Route as StudyLibraryCourseDetailsSubjectsModulesIndexRouteImport } from './routes/study-library/course-details/subjects/modules/index'
-import { Route as StudyLibraryCoursesLevelsSubjectsModulesIndexRouteImport } from './routes/study-library/courses/levels/subjects/modules/index'
 import { Route as StudyLibraryCourseDetailsSubjectsModulesChaptersIndexRouteImport } from './routes/study-library/course-details/subjects/modules/chapters/index'
-import { Route as StudyLibraryCoursesLevelsSubjectsModulesChaptersIndexRouteImport } from './routes/study-library/courses/levels/subjects/modules/chapters/index'
 import { Route as StudyLibraryCourseDetailsSubjectsModulesChaptersSlidesIndexRouteImport } from './routes/study-library/course-details/subjects/modules/chapters/slides/index'
-import { Route as StudyLibraryCoursesLevelsSubjectsModulesChaptersSlidesIndexRouteImport } from './routes/study-library/courses/levels/subjects/modules/chapters/slides/index'
 
 const UserProfileIndexRoute = UserProfileIndexRouteImport.update({
   id: '/user-profile/',
@@ -126,12 +119,6 @@ const StudyLibraryLiveClassIndexRoute =
     path: '/study-library/live-class/',
     getParentRoute: () => rootRouteImport,
   } as any)
-const StudyLibraryInProgressIndexRoute =
-  StudyLibraryInProgressIndexRouteImport.update({
-    id: '/study-library/in-progress/',
-    path: '/study-library/in-progress/',
-    getParentRoute: () => rootRouteImport,
-  } as any)
 const StudyLibraryCoursesIndexRoute =
   StudyLibraryCoursesIndexRouteImport.update({
     id: '/study-library/courses/',
@@ -142,12 +129,6 @@ const StudyLibraryCourseDetailsIndexRoute =
   StudyLibraryCourseDetailsIndexRouteImport.update({
     id: '/study-library/course-details/',
     path: '/study-library/course-details/',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const StudyLibraryCompletedIndexRoute =
-  StudyLibraryCompletedIndexRouteImport.update({
-    id: '/study-library/completed/',
-    path: '/study-library/completed/',
     getParentRoute: () => rootRouteImport,
   } as any)
 const RegisterLiveClassIndexRoute = RegisterLiveClassIndexRouteImport.update({
@@ -218,12 +199,6 @@ const StudyLibraryLiveClassEmbedIndexRoute =
     path: '/study-library/live-class/embed/',
     getParentRoute: () => rootRouteImport,
   } as any)
-const StudyLibraryCoursesLevelsIndexRoute =
-  StudyLibraryCoursesLevelsIndexRouteImport.update({
-    id: '/study-library/courses/levels/',
-    path: '/study-library/courses/levels/',
-    getParentRoute: () => rootRouteImport,
-  } as any)
 const StudyLibraryCourseDetailsSubjectsIndexRoute =
   StudyLibraryCourseDetailsSubjectsIndexRouteImport.update({
     id: '/study-library/course-details/subjects/',
@@ -254,22 +229,10 @@ const AssessmentExaminationAssessmentIdLearnerLiveTestRoute =
     path: '/assessment/examination/$assessmentId/LearnerLiveTest',
     getParentRoute: () => rootRouteImport,
   } as any)
-const StudyLibraryCoursesLevelsSubjectsIndexRoute =
-  StudyLibraryCoursesLevelsSubjectsIndexRouteImport.update({
-    id: '/study-library/courses/levels/subjects/',
-    path: '/study-library/courses/levels/subjects/',
-    getParentRoute: () => rootRouteImport,
-  } as any)
 const StudyLibraryCourseDetailsSubjectsModulesIndexRoute =
   StudyLibraryCourseDetailsSubjectsModulesIndexRouteImport.update({
     id: '/study-library/course-details/subjects/modules/',
     path: '/study-library/course-details/subjects/modules/',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const StudyLibraryCoursesLevelsSubjectsModulesIndexRoute =
-  StudyLibraryCoursesLevelsSubjectsModulesIndexRouteImport.update({
-    id: '/study-library/courses/levels/subjects/modules/',
-    path: '/study-library/courses/levels/subjects/modules/',
     getParentRoute: () => rootRouteImport,
   } as any)
 const StudyLibraryCourseDetailsSubjectsModulesChaptersIndexRoute =
@@ -278,25 +241,11 @@ const StudyLibraryCourseDetailsSubjectsModulesChaptersIndexRoute =
     path: '/study-library/course-details/subjects/modules/chapters/',
     getParentRoute: () => rootRouteImport,
   } as any)
-const StudyLibraryCoursesLevelsSubjectsModulesChaptersIndexRoute =
-  StudyLibraryCoursesLevelsSubjectsModulesChaptersIndexRouteImport.update({
-    id: '/study-library/courses/levels/subjects/modules/chapters/',
-    path: '/study-library/courses/levels/subjects/modules/chapters/',
-    getParentRoute: () => rootRouteImport,
-  } as any)
 const StudyLibraryCourseDetailsSubjectsModulesChaptersSlidesIndexRoute =
   StudyLibraryCourseDetailsSubjectsModulesChaptersSlidesIndexRouteImport.update(
     {
       id: '/study-library/course-details/subjects/modules/chapters/slides/',
       path: '/study-library/course-details/subjects/modules/chapters/slides/',
-      getParentRoute: () => rootRouteImport,
-    } as any,
-  )
-const StudyLibraryCoursesLevelsSubjectsModulesChaptersSlidesIndexRoute =
-  StudyLibraryCoursesLevelsSubjectsModulesChaptersSlidesIndexRouteImport.update(
-    {
-      id: '/study-library/courses/levels/subjects/modules/chapters/slides/',
-      path: '/study-library/courses/levels/subjects/modules/chapters/slides/',
       getParentRoute: () => rootRouteImport,
     } as any,
   )
@@ -324,10 +273,8 @@ export interface FileRoutesByFullPath {
   '/live-class-guest/waiting-room': typeof LiveClassGuestWaitingRoomIndexRoute
   '/login/forgot-password': typeof LoginForgotPasswordIndexRoute
   '/register/live-class': typeof RegisterLiveClassIndexRoute
-  '/study-library/completed': typeof StudyLibraryCompletedIndexRoute
   '/study-library/course-details': typeof StudyLibraryCourseDetailsIndexRoute
   '/study-library/courses': typeof StudyLibraryCoursesIndexRoute
-  '/study-library/in-progress': typeof StudyLibraryInProgressIndexRoute
   '/study-library/live-class': typeof StudyLibraryLiveClassIndexRoute
   '/user-profile/edit': typeof UserProfileEditIndexRoute
   '/assessment/examination/$assessmentId/LearnerLiveTest': typeof AssessmentExaminationAssessmentIdLearnerLiveTestRoute
@@ -335,16 +282,11 @@ export interface FileRoutesByFullPath {
   '/assessment/examination/$assessmentId': typeof AssessmentExaminationAssessmentIdIndexRoute
   '/assessment/reports/student-report': typeof AssessmentReportsStudentReportIndexRoute
   '/study-library/course-details/subjects': typeof StudyLibraryCourseDetailsSubjectsIndexRoute
-  '/study-library/courses/levels': typeof StudyLibraryCoursesLevelsIndexRoute
   '/study-library/live-class/embed': typeof StudyLibraryLiveClassEmbedIndexRoute
   '/study-library/live-class/waiting-room': typeof StudyLibraryLiveClassWaitingRoomIndexRoute
   '/study-library/course-details/subjects/modules': typeof StudyLibraryCourseDetailsSubjectsModulesIndexRoute
-  '/study-library/courses/levels/subjects': typeof StudyLibraryCoursesLevelsSubjectsIndexRoute
   '/study-library/course-details/subjects/modules/chapters': typeof StudyLibraryCourseDetailsSubjectsModulesChaptersIndexRoute
-  '/study-library/courses/levels/subjects/modules': typeof StudyLibraryCoursesLevelsSubjectsModulesIndexRoute
   '/study-library/course-details/subjects/modules/chapters/slides': typeof StudyLibraryCourseDetailsSubjectsModulesChaptersSlidesIndexRoute
-  '/study-library/courses/levels/subjects/modules/chapters': typeof StudyLibraryCoursesLevelsSubjectsModulesChaptersIndexRoute
-  '/study-library/courses/levels/subjects/modules/chapters/slides': typeof StudyLibraryCoursesLevelsSubjectsModulesChaptersSlidesIndexRoute
 }
 export interface FileRoutesByTo {
   '/SessionSelectionPage': typeof SessionSelectionPageIndexRoute
@@ -369,10 +311,8 @@ export interface FileRoutesByTo {
   '/live-class-guest/waiting-room': typeof LiveClassGuestWaitingRoomIndexRoute
   '/login/forgot-password': typeof LoginForgotPasswordIndexRoute
   '/register/live-class': typeof RegisterLiveClassIndexRoute
-  '/study-library/completed': typeof StudyLibraryCompletedIndexRoute
   '/study-library/course-details': typeof StudyLibraryCourseDetailsIndexRoute
   '/study-library/courses': typeof StudyLibraryCoursesIndexRoute
-  '/study-library/in-progress': typeof StudyLibraryInProgressIndexRoute
   '/study-library/live-class': typeof StudyLibraryLiveClassIndexRoute
   '/user-profile/edit': typeof UserProfileEditIndexRoute
   '/assessment/examination/$assessmentId/LearnerLiveTest': typeof AssessmentExaminationAssessmentIdLearnerLiveTestRoute
@@ -380,16 +320,11 @@ export interface FileRoutesByTo {
   '/assessment/examination/$assessmentId': typeof AssessmentExaminationAssessmentIdIndexRoute
   '/assessment/reports/student-report': typeof AssessmentReportsStudentReportIndexRoute
   '/study-library/course-details/subjects': typeof StudyLibraryCourseDetailsSubjectsIndexRoute
-  '/study-library/courses/levels': typeof StudyLibraryCoursesLevelsIndexRoute
   '/study-library/live-class/embed': typeof StudyLibraryLiveClassEmbedIndexRoute
   '/study-library/live-class/waiting-room': typeof StudyLibraryLiveClassWaitingRoomIndexRoute
   '/study-library/course-details/subjects/modules': typeof StudyLibraryCourseDetailsSubjectsModulesIndexRoute
-  '/study-library/courses/levels/subjects': typeof StudyLibraryCoursesLevelsSubjectsIndexRoute
   '/study-library/course-details/subjects/modules/chapters': typeof StudyLibraryCourseDetailsSubjectsModulesChaptersIndexRoute
-  '/study-library/courses/levels/subjects/modules': typeof StudyLibraryCoursesLevelsSubjectsModulesIndexRoute
   '/study-library/course-details/subjects/modules/chapters/slides': typeof StudyLibraryCourseDetailsSubjectsModulesChaptersSlidesIndexRoute
-  '/study-library/courses/levels/subjects/modules/chapters': typeof StudyLibraryCoursesLevelsSubjectsModulesChaptersIndexRoute
-  '/study-library/courses/levels/subjects/modules/chapters/slides': typeof StudyLibraryCoursesLevelsSubjectsModulesChaptersSlidesIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -415,10 +350,8 @@ export interface FileRoutesById {
   '/live-class-guest/waiting-room/': typeof LiveClassGuestWaitingRoomIndexRoute
   '/login/forgot-password/': typeof LoginForgotPasswordIndexRoute
   '/register/live-class/': typeof RegisterLiveClassIndexRoute
-  '/study-library/completed/': typeof StudyLibraryCompletedIndexRoute
   '/study-library/course-details/': typeof StudyLibraryCourseDetailsIndexRoute
   '/study-library/courses/': typeof StudyLibraryCoursesIndexRoute
-  '/study-library/in-progress/': typeof StudyLibraryInProgressIndexRoute
   '/study-library/live-class/': typeof StudyLibraryLiveClassIndexRoute
   '/user-profile/edit/': typeof UserProfileEditIndexRoute
   '/assessment/examination/$assessmentId/LearnerLiveTest': typeof AssessmentExaminationAssessmentIdLearnerLiveTestRoute
@@ -426,16 +359,11 @@ export interface FileRoutesById {
   '/assessment/examination/$assessmentId/': typeof AssessmentExaminationAssessmentIdIndexRoute
   '/assessment/reports/student-report/': typeof AssessmentReportsStudentReportIndexRoute
   '/study-library/course-details/subjects/': typeof StudyLibraryCourseDetailsSubjectsIndexRoute
-  '/study-library/courses/levels/': typeof StudyLibraryCoursesLevelsIndexRoute
   '/study-library/live-class/embed/': typeof StudyLibraryLiveClassEmbedIndexRoute
   '/study-library/live-class/waiting-room/': typeof StudyLibraryLiveClassWaitingRoomIndexRoute
   '/study-library/course-details/subjects/modules/': typeof StudyLibraryCourseDetailsSubjectsModulesIndexRoute
-  '/study-library/courses/levels/subjects/': typeof StudyLibraryCoursesLevelsSubjectsIndexRoute
   '/study-library/course-details/subjects/modules/chapters/': typeof StudyLibraryCourseDetailsSubjectsModulesChaptersIndexRoute
-  '/study-library/courses/levels/subjects/modules/': typeof StudyLibraryCoursesLevelsSubjectsModulesIndexRoute
   '/study-library/course-details/subjects/modules/chapters/slides/': typeof StudyLibraryCourseDetailsSubjectsModulesChaptersSlidesIndexRoute
-  '/study-library/courses/levels/subjects/modules/chapters/': typeof StudyLibraryCoursesLevelsSubjectsModulesChaptersIndexRoute
-  '/study-library/courses/levels/subjects/modules/chapters/slides/': typeof StudyLibraryCoursesLevelsSubjectsModulesChaptersSlidesIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -462,10 +390,8 @@ export interface FileRouteTypes {
     | '/live-class-guest/waiting-room'
     | '/login/forgot-password'
     | '/register/live-class'
-    | '/study-library/completed'
     | '/study-library/course-details'
     | '/study-library/courses'
-    | '/study-library/in-progress'
     | '/study-library/live-class'
     | '/user-profile/edit'
     | '/assessment/examination/$assessmentId/LearnerLiveTest'
@@ -473,16 +399,11 @@ export interface FileRouteTypes {
     | '/assessment/examination/$assessmentId'
     | '/assessment/reports/student-report'
     | '/study-library/course-details/subjects'
-    | '/study-library/courses/levels'
     | '/study-library/live-class/embed'
     | '/study-library/live-class/waiting-room'
     | '/study-library/course-details/subjects/modules'
-    | '/study-library/courses/levels/subjects'
     | '/study-library/course-details/subjects/modules/chapters'
-    | '/study-library/courses/levels/subjects/modules'
     | '/study-library/course-details/subjects/modules/chapters/slides'
-    | '/study-library/courses/levels/subjects/modules/chapters'
-    | '/study-library/courses/levels/subjects/modules/chapters/slides'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/SessionSelectionPage'
@@ -507,10 +428,8 @@ export interface FileRouteTypes {
     | '/live-class-guest/waiting-room'
     | '/login/forgot-password'
     | '/register/live-class'
-    | '/study-library/completed'
     | '/study-library/course-details'
     | '/study-library/courses'
-    | '/study-library/in-progress'
     | '/study-library/live-class'
     | '/user-profile/edit'
     | '/assessment/examination/$assessmentId/LearnerLiveTest'
@@ -518,16 +437,11 @@ export interface FileRouteTypes {
     | '/assessment/examination/$assessmentId'
     | '/assessment/reports/student-report'
     | '/study-library/course-details/subjects'
-    | '/study-library/courses/levels'
     | '/study-library/live-class/embed'
     | '/study-library/live-class/waiting-room'
     | '/study-library/course-details/subjects/modules'
-    | '/study-library/courses/levels/subjects'
     | '/study-library/course-details/subjects/modules/chapters'
-    | '/study-library/courses/levels/subjects/modules'
     | '/study-library/course-details/subjects/modules/chapters/slides'
-    | '/study-library/courses/levels/subjects/modules/chapters'
-    | '/study-library/courses/levels/subjects/modules/chapters/slides'
   id:
     | '__root__'
     | '/SessionSelectionPage/'
@@ -552,10 +466,8 @@ export interface FileRouteTypes {
     | '/live-class-guest/waiting-room/'
     | '/login/forgot-password/'
     | '/register/live-class/'
-    | '/study-library/completed/'
     | '/study-library/course-details/'
     | '/study-library/courses/'
-    | '/study-library/in-progress/'
     | '/study-library/live-class/'
     | '/user-profile/edit/'
     | '/assessment/examination/$assessmentId/LearnerLiveTest'
@@ -563,16 +475,11 @@ export interface FileRouteTypes {
     | '/assessment/examination/$assessmentId/'
     | '/assessment/reports/student-report/'
     | '/study-library/course-details/subjects/'
-    | '/study-library/courses/levels/'
     | '/study-library/live-class/embed/'
     | '/study-library/live-class/waiting-room/'
     | '/study-library/course-details/subjects/modules/'
-    | '/study-library/courses/levels/subjects/'
     | '/study-library/course-details/subjects/modules/chapters/'
-    | '/study-library/courses/levels/subjects/modules/'
     | '/study-library/course-details/subjects/modules/chapters/slides/'
-    | '/study-library/courses/levels/subjects/modules/chapters/'
-    | '/study-library/courses/levels/subjects/modules/chapters/slides/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -598,10 +505,8 @@ export interface RootRouteChildren {
   LiveClassGuestWaitingRoomIndexRoute: typeof LiveClassGuestWaitingRoomIndexRoute
   LoginForgotPasswordIndexRoute: typeof LoginForgotPasswordIndexRoute
   RegisterLiveClassIndexRoute: typeof RegisterLiveClassIndexRoute
-  StudyLibraryCompletedIndexRoute: typeof StudyLibraryCompletedIndexRoute
   StudyLibraryCourseDetailsIndexRoute: typeof StudyLibraryCourseDetailsIndexRoute
   StudyLibraryCoursesIndexRoute: typeof StudyLibraryCoursesIndexRoute
-  StudyLibraryInProgressIndexRoute: typeof StudyLibraryInProgressIndexRoute
   StudyLibraryLiveClassIndexRoute: typeof StudyLibraryLiveClassIndexRoute
   UserProfileEditIndexRoute: typeof UserProfileEditIndexRoute
   AssessmentExaminationAssessmentIdLearnerLiveTestRoute: typeof AssessmentExaminationAssessmentIdLearnerLiveTestRoute
@@ -609,16 +514,11 @@ export interface RootRouteChildren {
   AssessmentExaminationAssessmentIdIndexRoute: typeof AssessmentExaminationAssessmentIdIndexRoute
   AssessmentReportsStudentReportIndexRoute: typeof AssessmentReportsStudentReportIndexRoute
   StudyLibraryCourseDetailsSubjectsIndexRoute: typeof StudyLibraryCourseDetailsSubjectsIndexRoute
-  StudyLibraryCoursesLevelsIndexRoute: typeof StudyLibraryCoursesLevelsIndexRoute
   StudyLibraryLiveClassEmbedIndexRoute: typeof StudyLibraryLiveClassEmbedIndexRoute
   StudyLibraryLiveClassWaitingRoomIndexRoute: typeof StudyLibraryLiveClassWaitingRoomIndexRoute
   StudyLibraryCourseDetailsSubjectsModulesIndexRoute: typeof StudyLibraryCourseDetailsSubjectsModulesIndexRoute
-  StudyLibraryCoursesLevelsSubjectsIndexRoute: typeof StudyLibraryCoursesLevelsSubjectsIndexRoute
   StudyLibraryCourseDetailsSubjectsModulesChaptersIndexRoute: typeof StudyLibraryCourseDetailsSubjectsModulesChaptersIndexRoute
-  StudyLibraryCoursesLevelsSubjectsModulesIndexRoute: typeof StudyLibraryCoursesLevelsSubjectsModulesIndexRoute
   StudyLibraryCourseDetailsSubjectsModulesChaptersSlidesIndexRoute: typeof StudyLibraryCourseDetailsSubjectsModulesChaptersSlidesIndexRoute
-  StudyLibraryCoursesLevelsSubjectsModulesChaptersIndexRoute: typeof StudyLibraryCoursesLevelsSubjectsModulesChaptersIndexRoute
-  StudyLibraryCoursesLevelsSubjectsModulesChaptersSlidesIndexRoute: typeof StudyLibraryCoursesLevelsSubjectsModulesChaptersSlidesIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -721,13 +621,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StudyLibraryLiveClassIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/study-library/in-progress/': {
-      id: '/study-library/in-progress/'
-      path: '/study-library/in-progress'
-      fullPath: '/study-library/in-progress'
-      preLoaderRoute: typeof StudyLibraryInProgressIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/study-library/courses/': {
       id: '/study-library/courses/'
       path: '/study-library/courses'
@@ -740,13 +633,6 @@ declare module '@tanstack/react-router' {
       path: '/study-library/course-details'
       fullPath: '/study-library/course-details'
       preLoaderRoute: typeof StudyLibraryCourseDetailsIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/study-library/completed/': {
-      id: '/study-library/completed/'
-      path: '/study-library/completed'
-      fullPath: '/study-library/completed'
-      preLoaderRoute: typeof StudyLibraryCompletedIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/register/live-class/': {
@@ -833,13 +719,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StudyLibraryLiveClassEmbedIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/study-library/courses/levels/': {
-      id: '/study-library/courses/levels/'
-      path: '/study-library/courses/levels'
-      fullPath: '/study-library/courses/levels'
-      preLoaderRoute: typeof StudyLibraryCoursesLevelsIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/study-library/course-details/subjects/': {
       id: '/study-library/course-details/subjects/'
       path: '/study-library/course-details/subjects'
@@ -875,25 +754,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AssessmentExaminationAssessmentIdLearnerLiveTestRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/study-library/courses/levels/subjects/': {
-      id: '/study-library/courses/levels/subjects/'
-      path: '/study-library/courses/levels/subjects'
-      fullPath: '/study-library/courses/levels/subjects'
-      preLoaderRoute: typeof StudyLibraryCoursesLevelsSubjectsIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/study-library/course-details/subjects/modules/': {
       id: '/study-library/course-details/subjects/modules/'
       path: '/study-library/course-details/subjects/modules'
       fullPath: '/study-library/course-details/subjects/modules'
       preLoaderRoute: typeof StudyLibraryCourseDetailsSubjectsModulesIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/study-library/courses/levels/subjects/modules/': {
-      id: '/study-library/courses/levels/subjects/modules/'
-      path: '/study-library/courses/levels/subjects/modules'
-      fullPath: '/study-library/courses/levels/subjects/modules'
-      preLoaderRoute: typeof StudyLibraryCoursesLevelsSubjectsModulesIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/study-library/course-details/subjects/modules/chapters/': {
@@ -903,25 +768,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StudyLibraryCourseDetailsSubjectsModulesChaptersIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/study-library/courses/levels/subjects/modules/chapters/': {
-      id: '/study-library/courses/levels/subjects/modules/chapters/'
-      path: '/study-library/courses/levels/subjects/modules/chapters'
-      fullPath: '/study-library/courses/levels/subjects/modules/chapters'
-      preLoaderRoute: typeof StudyLibraryCoursesLevelsSubjectsModulesChaptersIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/study-library/course-details/subjects/modules/chapters/slides/': {
       id: '/study-library/course-details/subjects/modules/chapters/slides/'
       path: '/study-library/course-details/subjects/modules/chapters/slides'
       fullPath: '/study-library/course-details/subjects/modules/chapters/slides'
       preLoaderRoute: typeof StudyLibraryCourseDetailsSubjectsModulesChaptersSlidesIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/study-library/courses/levels/subjects/modules/chapters/slides/': {
-      id: '/study-library/courses/levels/subjects/modules/chapters/slides/'
-      path: '/study-library/courses/levels/subjects/modules/chapters/slides'
-      fullPath: '/study-library/courses/levels/subjects/modules/chapters/slides'
-      preLoaderRoute: typeof StudyLibraryCoursesLevelsSubjectsModulesChaptersSlidesIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -950,10 +801,8 @@ const rootRouteChildren: RootRouteChildren = {
   LiveClassGuestWaitingRoomIndexRoute: LiveClassGuestWaitingRoomIndexRoute,
   LoginForgotPasswordIndexRoute: LoginForgotPasswordIndexRoute,
   RegisterLiveClassIndexRoute: RegisterLiveClassIndexRoute,
-  StudyLibraryCompletedIndexRoute: StudyLibraryCompletedIndexRoute,
   StudyLibraryCourseDetailsIndexRoute: StudyLibraryCourseDetailsIndexRoute,
   StudyLibraryCoursesIndexRoute: StudyLibraryCoursesIndexRoute,
-  StudyLibraryInProgressIndexRoute: StudyLibraryInProgressIndexRoute,
   StudyLibraryLiveClassIndexRoute: StudyLibraryLiveClassIndexRoute,
   UserProfileEditIndexRoute: UserProfileEditIndexRoute,
   AssessmentExaminationAssessmentIdLearnerLiveTestRoute:
@@ -966,24 +815,15 @@ const rootRouteChildren: RootRouteChildren = {
     AssessmentReportsStudentReportIndexRoute,
   StudyLibraryCourseDetailsSubjectsIndexRoute:
     StudyLibraryCourseDetailsSubjectsIndexRoute,
-  StudyLibraryCoursesLevelsIndexRoute: StudyLibraryCoursesLevelsIndexRoute,
   StudyLibraryLiveClassEmbedIndexRoute: StudyLibraryLiveClassEmbedIndexRoute,
   StudyLibraryLiveClassWaitingRoomIndexRoute:
     StudyLibraryLiveClassWaitingRoomIndexRoute,
   StudyLibraryCourseDetailsSubjectsModulesIndexRoute:
     StudyLibraryCourseDetailsSubjectsModulesIndexRoute,
-  StudyLibraryCoursesLevelsSubjectsIndexRoute:
-    StudyLibraryCoursesLevelsSubjectsIndexRoute,
   StudyLibraryCourseDetailsSubjectsModulesChaptersIndexRoute:
     StudyLibraryCourseDetailsSubjectsModulesChaptersIndexRoute,
-  StudyLibraryCoursesLevelsSubjectsModulesIndexRoute:
-    StudyLibraryCoursesLevelsSubjectsModulesIndexRoute,
   StudyLibraryCourseDetailsSubjectsModulesChaptersSlidesIndexRoute:
     StudyLibraryCourseDetailsSubjectsModulesChaptersSlidesIndexRoute,
-  StudyLibraryCoursesLevelsSubjectsModulesChaptersIndexRoute:
-    StudyLibraryCoursesLevelsSubjectsModulesChaptersIndexRoute,
-  StudyLibraryCoursesLevelsSubjectsModulesChaptersSlidesIndexRoute:
-    StudyLibraryCoursesLevelsSubjectsModulesChaptersSlidesIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

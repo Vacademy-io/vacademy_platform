@@ -16,7 +16,6 @@ interface CourseCardProps {
     thumbnailUrl: string;
     instructors: Instructor[];
     rating: number;
-    percentage_completed: number;
     description: string;
     tags: string[];
     studentCount?: number;
@@ -34,7 +33,6 @@ const CourseCard: React.FC<CourseCardProps> = ({
     thumbnailUrl,
     instructors,
     rating,
-    percentage_completed,
     description,
     tags,
     studentCount,
@@ -42,13 +40,21 @@ const CourseCard: React.FC<CourseCardProps> = ({
 }) => {
     const [courseImageUrl, setCourseImageUrl] = useState(thumbnailUrl);
     const [loadingImage, setLoadingImage] = useState(true);
-    //percenteatg
-    console.log("complete_percentage", percentage_completed);
+
     const instructor = instructors[0];
     const instructorName = instructor?.full_name || "Unknown Instructor";
     const instructorImage = instructor?.image_url || fallbackInstructorImage;
 
     const ratingValue = rating || 0;
+
+    const router = useRouter();
+    const handleViewCoureseDetails = (id: string) => {
+        // console.log("course-detailsIdis",id);
+        router.navigate({
+            to: "/study-library/course-details",
+            search: { courseId: id },
+        });
+    };
 
     const loadImage = async () => {
         setLoadingImage(true);
@@ -65,15 +71,6 @@ const CourseCard: React.FC<CourseCardProps> = ({
     useEffect(() => {
         loadImage();
     }, [courseImageUrl]);
-
-    const router = useRouter();
-    const handleViewCoureseDetails = (id: string) => {
-        // console.log("course-detailsIdis",id);
-        router.navigate({
-            to: "/study-library/course-details",
-            search: { courseId: id },
-        });
-    };
 
     const getLevelColor = () => {
         switch (level_name.toLowerCase()) {
@@ -115,6 +112,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
                     />
                 )}
             </div>
+
             <div className="p-4 flex flex-col flex-grow">
                 <div className="flex justify-between items-start mb-2">
                     <h3
@@ -135,7 +133,6 @@ const CourseCard: React.FC<CourseCardProps> = ({
                         __html: description || "",
                     }}
                 />
-
                 {instructors.length > 0 && (
                     <div className="flex items-center mb-3">
                         <img
@@ -187,19 +184,6 @@ const CourseCard: React.FC<CourseCardProps> = ({
                             ({studentCount} students)
                         </span>
                     )}
-                </div>
-
-                <div className="mb-4">
-                    <div className="flex justify-between items-center mb-1 text-sm text-gray-600">
-                        <span>Course Progress</span>
-                        <span>{percentage_completed}%</span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div
-                            className="bg-blue-600 h-2 rounded-full"
-                            style={{ width: `${percentage_completed}%` }}
-                        ></div>
-                    </div>
                 </div>
 
                 <button

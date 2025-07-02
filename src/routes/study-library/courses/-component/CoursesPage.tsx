@@ -2,30 +2,30 @@ import React, { useEffect, useState, useRef } from "react";
 import FilterPanel from "./FilterPanel.tsx";
 import SearchAndSortBar from "./SearchAndSortBar.tsx";
 import CourseCard from "./CourseCards.tsx";
-import Pagination from "./Pagination.tsx";
-import { useCatalogStore } from "../-store/catalogStore.ts";
 import { getPublicUrl } from "@/services/upload_file";
+import { MyPagination } from "@/components/design-system/pagination.tsx";
+import { CoursePackageResponse } from "@/types/course-catalog/course-catalog-list.ts";
 
 interface CoursesPageProps {
+    courseData: CoursePackageResponse;
     searchTerm: string;
     onSearchChange: (value: string) => void;
     sortOption: string;
     onSortChange: (value: string) => void;
-
     selectedLevels: string[];
     setSelectedLevels: (levels: string[]) => void;
-
     selectedTags: string[];
     setSelectedTags: (tags: string[]) => void;
-
     selectedInstructors: string[];
     setSelectedInstructors: (instructors: string[]) => void;
-
     clearAllFilters: () => void;
     onApplyFilters: () => void;
+    page: number;
+    handlePageChange: (page: number) => void;
 }
 
 const CoursesPage: React.FC<CoursesPageProps> = ({
+    courseData,
     searchTerm,
     onSearchChange,
     sortOption,
@@ -38,10 +38,10 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
     setSelectedInstructors,
     clearAllFilters,
     onApplyFilters,
+    page,
+    handlePageChange,
 }) => {
-    const { courseData } = useCatalogStore();
     const [thumbnailUrls, setThumbnailUrls] = useState<string[]>([]);
-    const [imagesLoading, setImagesLoading] = useState(false);
 
     const fallbackDescription =
         "build responsive scalable and human-like AI application";
@@ -51,16 +51,6 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
 
     const scrollRef = useRef<HTMLDivElement | null>(null);
 
-    const [currentPage, setCurrentPage] = useState(1);
-    const itemsPerPage = 4;
-
-    const paginatedCourses = courseData.slice(
-        (currentPage - 1) * itemsPerPage,
-        currentPage * itemsPerPage
-    );
-
-    const totalPages = Math.ceil(courseData.length / itemsPerPage);
-
     // Smooth scroll on page change
     useEffect(() => {
         if (scrollRef.current) {
@@ -69,12 +59,7 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                 block: "start",
             });
         }
-    }, [currentPage]);
-
-    // Reset page to 1 on course data change
-    useEffect(() => {
-        setCurrentPage(1);
-    }, [courseData]);
+    }, []);
 
     // Helper function to toggle item in array
     const toggleItem = (
@@ -95,13 +80,13 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
             //  console.log(`Starting image conversion for ${courseData.length} courses`);
 
             // Initialize with fallback images to show immediately
-            const initialUrls = new Array(courseData.length).fill(
+            const initialUrls = new Array(courseData.content.length).fill(
                 fallbackImageUrl
             );
             setThumbnailUrls(initialUrls);
 
             // Collect all valid file IDs
-            const validFileIds = courseData
+            const validFileIds = courseData.content
                 .map((course, index) => ({
                     fileId: course.thumbnail_file_id,
                     index,
@@ -126,19 +111,12 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                         url !== "null" &&
                         url !== "undefined"
                     ) {
-                        console.log(
-                            `Individual load success for index ${item.index}: ${url}`
-                        );
                         return { index: item.index, url };
                     } else {
-                        console.log(
-                            `Individual load failed for index ${item.index}: ${url}`
-                        );
                         return { index: item.index, url: fallbackImageUrl };
                     }
                 } catch (error) {
-                    console.error(`Failed to load image ${item.index}:`, error);
-                    return { index: item.index, url: fallbackImageUrl };
+                    console.log(error);
                 }
             });
 
@@ -146,24 +124,16 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
 
             setThumbnailUrls((prevUrls) => {
                 const newUrls = [...prevUrls];
-                results.forEach((result, i) => {
-                    if (result.status === "fulfilled") {
-                        console.log(
-                            `Setting URL for index ${result.value.index}: ${result.value.url}`
-                        );
+                results.forEach((result) => {
+                    if (result.status === "fulfilled" && result.value) {
                         newUrls[result.value.index] = result.value.url;
-                    } else {
-                        console.log(
-                            `Failed result for index ${i}:`,
-                            result.reason
-                        );
                     }
                 });
                 return newUrls;
             });
         };
 
-        if (courseData.length > 0) {
+        if (courseData.content.length > 0) {
             convertThumbnailsToUrls();
         }
     }, [courseData]);
@@ -208,19 +178,15 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                         onSortChange={onSortChange}
                     />
 
-                    {courseData.length === 0 ? (
+                    {courseData.content.length === 0 ? (
                         <p className="text-gray-500 text-center">
                             No courses available
                         </p>
                     ) : (
                         <div className="grid grid-cols-1 sm:grid-cols-1 lg:grid-cols-2 gap-6">
-                            {paginatedCourses.map((course, index) => {
-                                const originalIndex =
-                                    (currentPage - 1) * itemsPerPage + index;
+                            {courseData.content.map((course, index) => {
                                 const currentUrl =
-                                    thumbnailUrls[originalIndex] ||
-                                    fallbackImageUrl;
-
+                                    thumbnailUrls[index] || fallbackImageUrl;
                                 return (
                                     <CourseCard
                                         key={index}
@@ -264,12 +230,15 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                             })}
                         </div>
                     )}
-
-                    <Pagination
-                        currentPage={currentPage}
-                        totalPages={totalPages}
-                        onPageChange={(page) => setCurrentPage(page)}
-                    />
+                    {courseData.content.length > 0 && (
+                        <div className="w-full mt-8">
+                            <MyPagination
+                                currentPage={page}
+                                totalPages={courseData.totalPages}
+                                onPageChange={handlePageChange}
+                            />
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

@@ -42,38 +42,6 @@ export function LoginForm() {
   const [isEmailLogin, setIsEmailLogin] = useState(isPublic === "true");
 
   useEffect(() => {
-    const handleOAuthCallback = async () => {
-     
-      const urlParams = new URLSearchParams(window.location.search);
-      const accessToken = urlParams.get("accessToken");
-      const refreshToken = urlParams.get("refreshToken");
-      const error = urlParams.get("error");
-      const message = urlParams.get("message");
-
-      if (error) {
-        
-        toast.error(decodeURIComponent(message || "Authentication failed."));
-        return;
-      }
-
-      if (accessToken && refreshToken) {
-        try {
-          await setToStorage("accessToken", accessToken);
-          await setToStorage("refreshToken", refreshToken);
-          await setTokenInStorage(TokenKey.accessToken, accessToken);
-          await setTokenInStorage(TokenKey.refreshToken, refreshToken);
-          await handleSuccessfulLogin(accessToken, redirect);
-        } catch (error) {
-          console.error("Error storing tokens:", error);
-          toast.error("Failed to store authentication tokens");
-        }
-      }
-    };
-
-    handleOAuthCallback();
-  }, []);
-
-  useEffect(() => {
     const ssoLoginSuccess = handleSSOLogin();
     if (ssoLoginSuccess) {
       setIsSSOLoading(true);
@@ -92,7 +60,6 @@ export function LoginForm() {
     }
 
     if (accessToken && refreshToken) {
-      console.log("accessToken", accessToken);
       setTokenInStorage(TokenKey.accessToken, accessToken);
       setTokenInStorage(TokenKey.refreshToken, refreshToken);
       handleSuccessfulLogin(accessToken, redirect);
@@ -109,8 +76,6 @@ export function LoginForm() {
       const userId = decodedData?.user;
       const authorityKeys = authorities ? Object.keys(authorities) : [];
 
-      console.log("authorityKeys   :",authorityKeys);
-
       if (authorityKeys.length > 1) {
         navigate({
           to: "/institute-selection",
@@ -118,32 +83,22 @@ export function LoginForm() {
         });
         setIsSSOLoading(false);
       } else {
-        const instituteId = authorities ? Object.keys(authorities)[0] : undefined;
+        const instituteId = authorities ? authorityKeys[0] : undefined;
 
         if (instituteId && userId) {
           try {
-
-            // Fetch and store institute details
-            const details = await fetchAndStoreInstituteDetails(
-              instituteId,
-              userId
-            );
-           
-
+            const details = await fetchAndStoreInstituteDetails(instituteId, userId);
             setPrimaryColor(details?.institute_theme_code ?? "#E67E22");
-          } catch (error) {
-            console.error("Error fetching institute details:", error);
+          } catch {
             toast.error("Failed to fetch institute details");
           }
 
           try {
             await fetchAndStoreStudentDetails(instituteId, userId);
-          } catch (error) {
-            console.error("Error fetching student details:", error);
+          } catch {
             toast.error("Failed to fetch student details");
           }
         } else {
-          console.error("Institute ID or User ID is undefined");
           toast.error("Invalid user data received");
         }
 
@@ -152,8 +107,7 @@ export function LoginForm() {
           search: { redirect: redirect || "/dashboard" },
         });
       }
-    } catch (error) {
-      console.error("Error processing decoded data:", error);
+    } catch {
       toast.error("Failed to process user data");
     }
   };
@@ -178,16 +132,15 @@ export function LoginForm() {
 
   const handleOAuthLogin = (provider: "google" | "github") => {
     try {
-        const stateObj = {
-        from: `${window.location.origin}/login`, // ✅ fixed interpolation
+      const stateObj = {
+        from: `${window.location.origin}/login/oauth/learner`,
         account_type: "",
       };
 
       const base64State = btoa(JSON.stringify(stateObj));
       const loginUrl = `${LOGIN_URL_GOOGLE_GITHUB}/${provider}?state=${encodeURIComponent(base64State)}`;
       window.location.href = loginUrl;
-    } catch (error) {
-      console.error("Error initiating OAuth login:", error);
+    } catch {
       toast.error("Failed to initiate login. Please try again.");
     }
   };

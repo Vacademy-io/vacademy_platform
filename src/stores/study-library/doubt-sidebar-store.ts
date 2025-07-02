@@ -4,10 +4,14 @@ interface DoubtSidebarStore {
   isOpen: boolean;
   setIsOpen: (open: boolean) => void;
   toggle: () => void;
+  openSidebar: () => void;
+  closeSidebar: () => void;
 }
 
 export const useDoubtSidebarStore = create<DoubtSidebarStore>((set, get) => ({
   isOpen: false,
   setIsOpen: (open: boolean) => set({ isOpen: open }),
   toggle: () => set({ isOpen: !get().isOpen }),
+  openSidebar: () => set({ isOpen: true }),
+  closeSidebar: () => set({ isOpen: false }),
 })); 

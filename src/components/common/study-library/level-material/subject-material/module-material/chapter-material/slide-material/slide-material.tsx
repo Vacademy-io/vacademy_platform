@@ -6,7 +6,7 @@ import YouTubePlayerWrapper from "./youtube-player";
 import { useFileUpload } from "@/hooks/use-file-upload";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { extractVideoId } from "@/utils/study-library/tracking/extractVideoId";
-import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
+// Removed SidebarTrigger and useSidebar - using doubt sidebar store instead
 import { ChatText } from "@phosphor-icons/react";
 import { DoubtResolutionSidebar } from "./doubt-resolution-sidebar/components/sidebar";
 import CustomVideoPlayer from "./custom-video-player";
@@ -20,6 +20,7 @@ import { CodeEditorSlide } from "./code-editor-slide";
 import { JupyterNotebookSlide } from "./jupyter-notebook-slide";
 import { ScratchProjectSlide } from "./scratch-project-slide";
 import { SplitScreenVideoSlide } from "./split-screen-video-slide";
+import { useDoubtSidebarStore } from "@/stores/study-library/doubt-sidebar-store";
 
 export const SlideMaterial = () => {
   const { activeItem } = useContentStore();
@@ -31,7 +32,6 @@ export const SlideMaterial = () => {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const { uploadFile, getPublicUrl } = useFileUpload();
-  const { toggleSidebar, open } = useSidebar();
 
   const playerRef = useRef<HTMLVideoElement | null>(null);
 
@@ -368,10 +368,6 @@ export const SlideMaterial = () => {
     loadGenerationRef.current += 1;
     const currentGeneration = loadGenerationRef.current;
 
-    if (open) {
-      toggleSidebar();
-    }
-
     if (activeItem) {
       setHeading(activeItem.title || "");
       loadContent(currentGeneration);
@@ -412,26 +408,28 @@ export const SlideMaterial = () => {
 
         <div className="flex items-center gap-2 pr-4">
           <div className="h-6 w-px bg-neutral-200"></div>
-          <SidebarTrigger>
-            <div className="animate-in fade-in slide-in-from-right-4 duration-500 delay-100">
-              <MyButton
-                scale="medium"
-                className="flex items-center gap-2 px-3 py-2 font-medium transition-all duration-300 hover:scale-[1.02] bg-white border border-neutral-300 hover:border-primary-400 rounded-lg backdrop-blur-sm hover:bg-primary-50"
-                buttonType="secondary"
-              >
-                <span className="text-neutral-700 font-medium text-sm">
-                  Doubts
-                </span>
-                <div className="relative">
-                  <ChatText
-                    size={16}
-                    className="text-neutral-600 transition-all duration-300 group-hover:text-primary-600"
-                  />
-                  <div className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-primary-500 rounded-full animate-pulse"></div>
-                </div>
-              </MyButton>
-            </div>
-          </SidebarTrigger>
+          <div className="animate-in fade-in slide-in-from-right-4 duration-500 delay-100">
+            <MyButton
+              scale="medium"
+              onClick={() => {
+                const { openSidebar } = useDoubtSidebarStore.getState();
+                openSidebar();
+              }}
+              className="flex items-center gap-2 px-3 py-2 font-medium transition-all duration-300 hover:scale-[1.02] bg-white border border-neutral-300 hover:border-primary-400 rounded-lg backdrop-blur-sm hover:bg-primary-50"
+              buttonType="secondary"
+            >
+              <span className="text-neutral-700 font-medium text-sm">
+                Doubts
+              </span>
+              <div className="relative">
+                <ChatText
+                  size={16}
+                  className="text-neutral-600 transition-all duration-300 group-hover:text-primary-600"
+                />
+                <div className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-primary-500 rounded-full animate-pulse"></div>
+              </div>
+            </MyButton>
+          </div>
         </div>
       </div>
 

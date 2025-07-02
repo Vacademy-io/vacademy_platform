@@ -1045,7 +1045,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
               console.log("integrate update video activity api now");
               syncVideoTrackingData();
             },
-            2 * 60 * 1000
+            60 * 1000
           );
         }
       }

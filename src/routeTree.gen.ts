@@ -32,6 +32,7 @@ import { Route as HomeworkListIndexRouteImport } from './routes/homework/list/in
 import { Route as DashboardNotificationsIndexRouteImport } from './routes/dashboard/notifications/index'
 import { Route as AssessmentReportsIndexRouteImport } from './routes/assessment/reports/index'
 import { Route as AssessmentExaminationIndexRouteImport } from './routes/assessment/examination/index'
+import { Route as LoginOauthLearnerRouteImport } from './routes/login/oauth/learner'
 import { Route as StudyLibraryLiveClassWaitingRoomIndexRouteImport } from './routes/study-library/live-class/waiting-room/index'
 import { Route as StudyLibraryLiveClassEmbedIndexRouteImport } from './routes/study-library/live-class/embed/index'
 import { Route as StudyLibraryCoursesLevelsIndexRouteImport } from './routes/study-library/courses/levels/index'
@@ -168,6 +169,11 @@ const AssessmentExaminationIndexRoute =
     path: '/assessment/examination/',
     getParentRoute: () => rootRouteImport,
   } as any)
+const LoginOauthLearnerRoute = LoginOauthLearnerRouteImport.update({
+  id: '/login/oauth/learner',
+  path: '/login/oauth/learner',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const StudyLibraryLiveClassWaitingRoomIndexRoute =
   StudyLibraryLiveClassWaitingRoomIndexRouteImport.update({
     id: '/study-library/live-class/waiting-room/',
@@ -249,6 +255,7 @@ export interface FileRoutesByFullPath {
   '/register': typeof RegisterIndexRoute
   '/study-library': typeof StudyLibraryIndexRoute
   '/user-profile': typeof UserProfileIndexRoute
+  '/login/oauth/learner': typeof LoginOauthLearnerRoute
   '/assessment/examination': typeof AssessmentExaminationIndexRoute
   '/assessment/reports': typeof AssessmentReportsIndexRoute
   '/dashboard/notifications': typeof DashboardNotificationsIndexRoute
@@ -285,6 +292,7 @@ export interface FileRoutesByTo {
   '/register': typeof RegisterIndexRoute
   '/study-library': typeof StudyLibraryIndexRoute
   '/user-profile': typeof UserProfileIndexRoute
+  '/login/oauth/learner': typeof LoginOauthLearnerRoute
   '/assessment/examination': typeof AssessmentExaminationIndexRoute
   '/assessment/reports': typeof AssessmentReportsIndexRoute
   '/dashboard/notifications': typeof DashboardNotificationsIndexRoute
@@ -322,6 +330,7 @@ export interface FileRoutesById {
   '/register/': typeof RegisterIndexRoute
   '/study-library/': typeof StudyLibraryIndexRoute
   '/user-profile/': typeof UserProfileIndexRoute
+  '/login/oauth/learner': typeof LoginOauthLearnerRoute
   '/assessment/examination/': typeof AssessmentExaminationIndexRoute
   '/assessment/reports/': typeof AssessmentReportsIndexRoute
   '/dashboard/notifications/': typeof DashboardNotificationsIndexRoute
@@ -360,6 +369,7 @@ export interface FileRouteTypes {
     | '/register'
     | '/study-library'
     | '/user-profile'
+    | '/login/oauth/learner'
     | '/assessment/examination'
     | '/assessment/reports'
     | '/dashboard/notifications'
@@ -396,6 +406,7 @@ export interface FileRouteTypes {
     | '/register'
     | '/study-library'
     | '/user-profile'
+    | '/login/oauth/learner'
     | '/assessment/examination'
     | '/assessment/reports'
     | '/dashboard/notifications'
@@ -432,6 +443,7 @@ export interface FileRouteTypes {
     | '/register/'
     | '/study-library/'
     | '/user-profile/'
+    | '/login/oauth/learner'
     | '/assessment/examination/'
     | '/assessment/reports/'
     | '/dashboard/notifications/'
@@ -469,6 +481,7 @@ export interface RootRouteChildren {
   RegisterIndexRoute: typeof RegisterIndexRoute
   StudyLibraryIndexRoute: typeof StudyLibraryIndexRoute
   UserProfileIndexRoute: typeof UserProfileIndexRoute
+  LoginOauthLearnerRoute: typeof LoginOauthLearnerRoute
   AssessmentExaminationIndexRoute: typeof AssessmentExaminationIndexRoute
   AssessmentReportsIndexRoute: typeof AssessmentReportsIndexRoute
   DashboardNotificationsIndexRoute: typeof DashboardNotificationsIndexRoute
@@ -657,6 +670,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AssessmentExaminationIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/login/oauth/learner': {
+      id: '/login/oauth/learner'
+      path: '/login/oauth/learner'
+      fullPath: '/login/oauth/learner'
+      preLoaderRoute: typeof LoginOauthLearnerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/study-library/live-class/waiting-room/': {
       id: '/study-library/live-class/waiting-room/'
       path: '/study-library/live-class/waiting-room'
@@ -749,6 +769,7 @@ const rootRouteChildren: RootRouteChildren = {
   RegisterIndexRoute: RegisterIndexRoute,
   StudyLibraryIndexRoute: StudyLibraryIndexRoute,
   UserProfileIndexRoute: UserProfileIndexRoute,
+  LoginOauthLearnerRoute: LoginOauthLearnerRoute,
   AssessmentExaminationIndexRoute: AssessmentExaminationIndexRoute,
   AssessmentReportsIndexRoute: AssessmentReportsIndexRoute,
   DashboardNotificationsIndexRoute: DashboardNotificationsIndexRoute,

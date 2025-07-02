@@ -9,6 +9,7 @@ import { Preferences } from "@capacitor/preferences";
 import { useRouter } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { z } from "zod";
+import { useSlidesRefresh } from "./useSlidesRefresh";
 
 const STORAGE_KEY = "pdf_tracking_data";
 const USER_ID_KEY = "StudentDetails";
@@ -19,6 +20,7 @@ export const usePDFSync = () => {
   const router = useRouter();
   const { chapterId, moduleId, subjectId } = router.state.location.search;
   const [packageSessionId, setPackageSessionId] = useState<string | null>(null);
+  const { refreshSlides } = useSlidesRefresh();
 
   useEffect(() => {
     const fetchPackageSessionId = async () => {
@@ -90,6 +92,9 @@ export const usePDFSync = () => {
             activity.sync_status = "SYNCED";
             activity.new_activity = false; // Move this here, after successful API call
             updatedActivities.push(activity);
+            
+            // Refresh slides data to get updated progress
+            await refreshSlides();
           }
         } catch (error) {
           console.error("API call failed:", error);

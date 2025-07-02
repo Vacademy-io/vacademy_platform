@@ -176,7 +176,7 @@ const SlideItem = ({
   const statusDetails = getStatusDetails(slide.percentage_completed);
   const StatusIcon = statusDetails.icon;
   const isCompleted = slide.percentage_completed >= 80;
-  const { setIsOpen: setDoubtSidebarOpen } = useDoubtSidebarStore();
+  // Doubt sidebar is now managed via direct store access in handleDoubtClick
 
   const getSlideTitle = () => {
     return (
@@ -233,7 +233,8 @@ const SlideItem = ({
     onClick();
     // Then open the doubt sidebar after a short delay to ensure the slide is active
     setTimeout(() => {
-      setDoubtSidebarOpen(true);
+      const { openSidebar } = useDoubtSidebarStore.getState();
+      openSidebar();
     }, 100);
   };
 

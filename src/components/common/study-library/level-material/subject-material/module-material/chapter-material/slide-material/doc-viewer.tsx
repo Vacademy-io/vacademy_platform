@@ -381,7 +381,7 @@ export const DocViewer: React.FC<DocViewerProps> = ({ docUrl, documentId, isHtml
           () => {
             syncPDFTrackingData();
           },
-          2 * 60 * 1000
+          60 * 1000
         );
       }
     }

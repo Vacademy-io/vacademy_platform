@@ -847,7 +847,7 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
                   console.log("integrate update video activity api now");
                   syncVideoTrackingData();
                 },
-                2 * 60 * 1000
+                60 * 1000
               );
             }
           }
@@ -1033,7 +1033,7 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
               console.log("integrate update video activity api now");
               syncVideoTrackingData();
             },
-            2 * 60 * 1000
+            60 * 1000
           );
         }
       }

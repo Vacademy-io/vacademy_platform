@@ -6,9 +6,9 @@ import { useEffect, useState } from 'react'
 import { truncateString } from '@/lib/reusable/truncateString'
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore'
 import { CaretLeft, CaretRight } from 'phosphor-react'
-import { BookOpenText, Notebook, FileText } from '@phosphor-icons/react'
+import { BookOpenText, Notebook, FileText, ChartBar } from '@phosphor-icons/react'
 import { SlideMaterial } from '@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/slide-material'
-import { ChapterSidebarSlides } from '@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/chapter-sidebar-slides'
+import { ChapterSidebarSlides, calculateOverallCompletion } from '@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/chapter-sidebar-slides'
 import { getModuleName } from '@/utils/study-library/get-name-by-id/getModuleNameById'
 import { getSubjectName } from '@/utils/study-library/get-name-by-id/getSubjectNameById'
 import { getChapterName } from '@/utils/study-library/get-name-by-id/getChapterById'
@@ -48,6 +48,9 @@ function Slides() {
   const { slides } = useSlides(chapterId || "");
   const {studyLibraryData} = useStudyLibraryStore();
   const {modulesWithChaptersData} = useModulesWithChaptersStore();
+
+  // Calculate overall completion percentage
+  const overallCompletion = calculateOverallCompletion(slides || []);
 
   useEffect(() => {
     if (slides?.length) {
@@ -163,6 +166,47 @@ function Slides() {
                       </div>
                   </div>
               </div>
+
+              {/* Compact Chapter Progress */}
+              {slides && slides.length > 0 && (
+                  <div className="px-2 -mx-1">
+                      <div className="bg-gradient-to-r from-slate-50/30 to-white/30 border border-slate-200/40 rounded-lg p-2">
+                          <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-1.5">
+                                  <div className="p-0.5 bg-primary-100/60 rounded">
+                                      <ChartBar className="w-2 h-2 text-primary-600" weight="duotone" />
+                                  </div>
+                                  <span className="text-xs font-medium text-slate-600">Progress</span>
+                              </div>
+                              <div className="flex items-center gap-2 flex-1">
+                                  <div className="flex-1 relative h-1 bg-slate-200 rounded-full overflow-hidden">
+                                      <div
+                                          className={`absolute left-0 top-0 h-full rounded-full transition-all duration-500 ease-out ${
+                                              overallCompletion >= 80
+                                                  ? "bg-gradient-to-r from-green-400 to-green-500"
+                                                  : overallCompletion >= 50
+                                                      ? "bg-gradient-to-r from-primary-400 to-primary-600"
+                                                      : "bg-gradient-to-r from-blue-400 to-blue-500"
+                                          }`}
+                                          style={{
+                                              width: `${Math.min(overallCompletion, 100)}%`,
+                                          }}
+                                      />
+                                  </div>
+                                  <span className={`text-xs font-bold min-w-[28px] text-right ${
+                                      overallCompletion >= 80 
+                                          ? "text-green-600" 
+                                          : overallCompletion >= 50 
+                                              ? "text-primary-600" 
+                                              : "text-slate-600"
+                                  }`}>
+                                      {overallCompletion}%
+                                  </span>
+                              </div>
+                          </div>
+                      </div>
+                  </div>
+              )}
               
               {/* Slides Container */}
               <div className="flex w-full flex-col">

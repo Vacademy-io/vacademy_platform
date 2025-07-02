@@ -1518,70 +1518,9 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
           <div className={`absolute top-0 left-0 right-0 z-[999] transition-all duration-300 ${
             showControls ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2'
           }`}>
-            <div className="bg-gradient-to-b from-black/60 to-transparent p-4 pb-8">
-              {/* Progress Bar */}
-              <div className="relative w-full">
-                <div
-                  className="w-full h-1 bg-white/30 rounded-full cursor-pointer group"
-                  onClick={handleProgressBarClick}
-                >
-                  <div
-                    className="h-full bg-white rounded-full transition-all duration-150 group-hover:h-1.5"
-                    style={{
-                      width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%`,
-                    }}
-                  ></div>
-                </div>
-                
-                {/* Question Markers */}
-                {timeToQuestionMap.map(({ time, question }, index) => {
-                  const position = duration > 0 ? (time / 1000 / duration) * 100 : 0;
-                  const isAnswered = answeredQuestions[question.id]?.answered;
-                  const canSkip = question.can_skip;
-                  
-                  return (
-                    <button
-                      key={question.id}
-                      className={`absolute w-3 h-3 rounded-full transform -translate-x-1/2 -translate-y-1 top-0 border-2 border-white shadow-lg transition-all hover:scale-125 z-10 ${
-                        isAnswered
-                          ? "bg-green-500 hover:bg-green-600"
-                          : canSkip
-                            ? "bg-yellow-500 hover:bg-yellow-600"
-                            : "bg-red-500 hover:bg-red-600"
-                      }`}
-                      style={{ left: `${Math.max(1.5, Math.min(98.5, position))}%` }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleQuestionMarkerClick(question);
-                      }}
-                      title={`Question ${index + 1}${isAnswered ? " (Answered)" : canSkip ? " (Skippable)" : " (Required)"}`}
-                    >
-                      {isAnswered ? (
-                        <span className="text-white text-xs font-bold flex items-center justify-center w-full h-full">✓</span>
-                      ) : (
-                        <span className="text-white text-xs font-bold flex items-center justify-center w-full h-full">?</span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-              
-              {/* Time Display */}
-              <div className="flex justify-between text-white text-xs mt-2 font-medium">
-                <span>{formatTime(currentTime)}</span>
-                <span>{formatTime(duration)}</span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Professional Video Controls Overlay */}
-        {!isFullscreen && (
-          <div className={`absolute bottom-0 left-0 right-0 z-[999] transition-all duration-300 ${
-            showControls ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'
-          }`}>
-            <div className="bg-gradient-to-t from-black/80 via-black/40 to-transparent p-4 pt-8">
-              <div className="flex items-center justify-between">
+            <div className="bg-gradient-to-b from-black/80 via-black/40 to-transparent p-4 pb-8">
+              {/* Professional Video Controls Overlay */}
+              <div className="flex items-center justify-between mb-4">
                 {/* Left Controls */}
                 <div className="flex items-center gap-3">
                   {/* Play/Pause */}
@@ -1666,7 +1605,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                     
                     {/* Speed Options Dropdown */}
                     {showSpeedOptions && (
-                      <div className="absolute bottom-full right-0 mb-2 bg-black/90 backdrop-blur-sm rounded-lg shadow-lg border border-white/20 py-2 z-50 min-w-[80px]">
+                      <div className="absolute top-full right-0 mt-2 bg-black/90 backdrop-blur-sm rounded-lg shadow-lg border border-white/20 py-2 z-50 min-w-[80px]">
                         <div className="px-3 py-1 text-xs font-medium text-white/70 border-b border-white/20 mb-1">
                           Speed
                         </div>
@@ -1696,6 +1635,59 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                     <ArrowsOut size={18} weight="fill" />
                   </button>
                 </div>
+              </div>
+
+              {/* Progress Bar */}
+              <div className="relative w-full">
+                <div
+                  className="w-full h-1 bg-white/30 rounded-full cursor-pointer group"
+                  onClick={handleProgressBarClick}
+                >
+                  <div
+                    className="h-full bg-white rounded-full transition-all duration-150 group-hover:h-1.5"
+                    style={{
+                      width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%`,
+                    }}
+                  ></div>
+                </div>
+                
+                {/* Question Markers */}
+                {timeToQuestionMap.map(({ time, question }, index) => {
+                  const position = duration > 0 ? (time / 1000 / duration) * 100 : 0;
+                  const isAnswered = answeredQuestions[question.id]?.answered;
+                  const canSkip = question.can_skip;
+                  
+                  return (
+                    <button
+                      key={question.id}
+                      className={`absolute w-3 h-3 rounded-full transform -translate-x-1/2 -translate-y-1 top-0 border-2 border-white shadow-lg transition-all hover:scale-125 z-10 ${
+                        isAnswered
+                          ? "bg-green-500 hover:bg-green-600"
+                          : canSkip
+                            ? "bg-yellow-500 hover:bg-yellow-600"
+                            : "bg-red-500 hover:bg-red-600"
+                      }`}
+                      style={{ left: `${Math.max(1.5, Math.min(98.5, position))}%` }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleQuestionMarkerClick(question);
+                      }}
+                      title={`Question ${index + 1}${isAnswered ? " (Answered)" : canSkip ? " (Skippable)" : " (Required)"}`}
+                    >
+                      {isAnswered ? (
+                        <span className="text-white text-xs font-bold flex items-center justify-center w-full h-full">✓</span>
+                      ) : (
+                        <span className="text-white text-xs font-bold flex items-center justify-center w-full h-full">?</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+              
+              {/* Time Display */}
+              <div className="flex justify-between text-white text-xs mt-2 font-medium">
+                <span>{formatTime(currentTime)}</span>
+                <span>{formatTime(duration)}</span>
               </div>
             </div>
           </div>

@@ -10,8 +10,10 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as UserProfileIndexRouteImport } from './routes/user-profile/index'
+import { Route as TermsAndConditionsIndexRouteImport } from './routes/terms-and-conditions/index'
 import { Route as StudyLibraryIndexRouteImport } from './routes/study-library/index'
 import { Route as RegisterIndexRouteImport } from './routes/register/index'
+import { Route as PrivacyPolicyIndexRouteImport } from './routes/privacy-policy/index'
 import { Route as LogoutIndexRouteImport } from './routes/logout/index'
 import { Route as LoginIndexRouteImport } from './routes/login/index'
 import { Route as LiveClassGuestIndexRouteImport } from './routes/live-class-guest/index'
@@ -50,6 +52,11 @@ const UserProfileIndexRoute = UserProfileIndexRouteImport.update({
   path: '/user-profile/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TermsAndConditionsIndexRoute = TermsAndConditionsIndexRouteImport.update({
+  id: '/terms-and-conditions/',
+  path: '/terms-and-conditions/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const StudyLibraryIndexRoute = StudyLibraryIndexRouteImport.update({
   id: '/study-library/',
   path: '/study-library/',
@@ -58,6 +65,11 @@ const StudyLibraryIndexRoute = StudyLibraryIndexRouteImport.update({
 const RegisterIndexRoute = RegisterIndexRouteImport.update({
   id: '/register/',
   path: '/register/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrivacyPolicyIndexRoute = PrivacyPolicyIndexRouteImport.update({
+  id: '/privacy-policy/',
+  path: '/privacy-policy/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LogoutIndexRoute = LogoutIndexRouteImport.update({
@@ -252,8 +264,10 @@ export interface FileRoutesByFullPath {
   '/live-class-guest': typeof LiveClassGuestIndexRoute
   '/login': typeof LoginIndexRoute
   '/logout': typeof LogoutIndexRoute
+  '/privacy-policy': typeof PrivacyPolicyIndexRoute
   '/register': typeof RegisterIndexRoute
   '/study-library': typeof StudyLibraryIndexRoute
+  '/terms-and-conditions': typeof TermsAndConditionsIndexRoute
   '/user-profile': typeof UserProfileIndexRoute
   '/login/oauth/learner': typeof LoginOauthLearnerRoute
   '/assessment/examination': typeof AssessmentExaminationIndexRoute
@@ -289,8 +303,10 @@ export interface FileRoutesByTo {
   '/live-class-guest': typeof LiveClassGuestIndexRoute
   '/login': typeof LoginIndexRoute
   '/logout': typeof LogoutIndexRoute
+  '/privacy-policy': typeof PrivacyPolicyIndexRoute
   '/register': typeof RegisterIndexRoute
   '/study-library': typeof StudyLibraryIndexRoute
+  '/terms-and-conditions': typeof TermsAndConditionsIndexRoute
   '/user-profile': typeof UserProfileIndexRoute
   '/login/oauth/learner': typeof LoginOauthLearnerRoute
   '/assessment/examination': typeof AssessmentExaminationIndexRoute
@@ -327,8 +343,10 @@ export interface FileRoutesById {
   '/live-class-guest/': typeof LiveClassGuestIndexRoute
   '/login/': typeof LoginIndexRoute
   '/logout/': typeof LogoutIndexRoute
+  '/privacy-policy/': typeof PrivacyPolicyIndexRoute
   '/register/': typeof RegisterIndexRoute
   '/study-library/': typeof StudyLibraryIndexRoute
+  '/terms-and-conditions/': typeof TermsAndConditionsIndexRoute
   '/user-profile/': typeof UserProfileIndexRoute
   '/login/oauth/learner': typeof LoginOauthLearnerRoute
   '/assessment/examination/': typeof AssessmentExaminationIndexRoute
@@ -366,8 +384,10 @@ export interface FileRouteTypes {
     | '/live-class-guest'
     | '/login'
     | '/logout'
+    | '/privacy-policy'
     | '/register'
     | '/study-library'
+    | '/terms-and-conditions'
     | '/user-profile'
     | '/login/oauth/learner'
     | '/assessment/examination'
@@ -403,8 +423,10 @@ export interface FileRouteTypes {
     | '/live-class-guest'
     | '/login'
     | '/logout'
+    | '/privacy-policy'
     | '/register'
     | '/study-library'
+    | '/terms-and-conditions'
     | '/user-profile'
     | '/login/oauth/learner'
     | '/assessment/examination'
@@ -440,8 +462,10 @@ export interface FileRouteTypes {
     | '/live-class-guest/'
     | '/login/'
     | '/logout/'
+    | '/privacy-policy/'
     | '/register/'
     | '/study-library/'
+    | '/terms-and-conditions/'
     | '/user-profile/'
     | '/login/oauth/learner'
     | '/assessment/examination/'
@@ -478,8 +502,10 @@ export interface RootRouteChildren {
   LiveClassGuestIndexRoute: typeof LiveClassGuestIndexRoute
   LoginIndexRoute: typeof LoginIndexRoute
   LogoutIndexRoute: typeof LogoutIndexRoute
+  PrivacyPolicyIndexRoute: typeof PrivacyPolicyIndexRoute
   RegisterIndexRoute: typeof RegisterIndexRoute
   StudyLibraryIndexRoute: typeof StudyLibraryIndexRoute
+  TermsAndConditionsIndexRoute: typeof TermsAndConditionsIndexRoute
   UserProfileIndexRoute: typeof UserProfileIndexRoute
   LoginOauthLearnerRoute: typeof LoginOauthLearnerRoute
   AssessmentExaminationIndexRoute: typeof AssessmentExaminationIndexRoute
@@ -516,6 +542,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof UserProfileIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/terms-and-conditions/': {
+      id: '/terms-and-conditions/'
+      path: '/terms-and-conditions'
+      fullPath: '/terms-and-conditions'
+      preLoaderRoute: typeof TermsAndConditionsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/study-library/': {
       id: '/study-library/'
       path: '/study-library'
@@ -528,6 +561,13 @@ declare module '@tanstack/react-router' {
       path: '/register'
       fullPath: '/register'
       preLoaderRoute: typeof RegisterIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privacy-policy/': {
+      id: '/privacy-policy/'
+      path: '/privacy-policy'
+      fullPath: '/privacy-policy'
+      preLoaderRoute: typeof PrivacyPolicyIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/logout/': {
@@ -766,8 +806,10 @@ const rootRouteChildren: RootRouteChildren = {
   LiveClassGuestIndexRoute: LiveClassGuestIndexRoute,
   LoginIndexRoute: LoginIndexRoute,
   LogoutIndexRoute: LogoutIndexRoute,
+  PrivacyPolicyIndexRoute: PrivacyPolicyIndexRoute,
   RegisterIndexRoute: RegisterIndexRoute,
   StudyLibraryIndexRoute: StudyLibraryIndexRoute,
+  TermsAndConditionsIndexRoute: TermsAndConditionsIndexRoute,
   UserProfileIndexRoute: UserProfileIndexRoute,
   LoginOauthLearnerRoute: LoginOauthLearnerRoute,
   AssessmentExaminationIndexRoute: AssessmentExaminationIndexRoute,

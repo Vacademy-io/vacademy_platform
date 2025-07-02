@@ -1,5 +1,6 @@
 import { MyButton } from "@/components/design-system/button";
-import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, useSidebar } from "@/components/ui/sidebar"
+import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader } from "@/components/ui/sidebar"
+import { useDoubtSidebarStore } from "@/stores/study-library/doubt-sidebar-store"
 import { X, ChatText, Plus, CheckCircle, Clock } from "@phosphor-icons/react"
 import {  useState, useRef, useCallback, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -15,7 +16,7 @@ import { TimestampChip } from "./TimestampChip";
 
 export const DoubtResolutionSidebar = () => {
 
-    const {open, setOpen} = useSidebar();
+    const { isOpen: open, setIsOpen: setOpen } = useDoubtSidebarStore();
     const [showInput, setShowInput] = useState<boolean>(false)
     const [doubt, setDoubt] = useState<string>("")
     const [showTimestampDialog, setShowTimestampDialog] = useState<boolean>(false)

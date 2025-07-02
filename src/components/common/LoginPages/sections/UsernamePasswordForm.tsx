@@ -10,6 +10,11 @@ import { toast } from "sonner";
 import { loginUser } from "@/hooks/login/login-button";
 import { TokenKey } from "@/constants/auth/tokens";
 import { useNavigate, useSearch } from "@tanstack/react-router";
+import { motion } from "framer-motion";
+import { User, Lock, RefreshCw, Shield, Eye, EyeOff } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { VscError } from "react-icons/vsc";
 
 import {
   getTokenDecodedData,
@@ -26,6 +31,7 @@ interface UsernameLoginProps {
 export function UsernameLogin({ onSwitchToEmail }: UsernameLoginProps) {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   /* eslint-disable-next-line */
   const { redirect } = useSearch<any>({ from: "/login/" });
   const { setPrimaryColor } = useTheme();
@@ -123,18 +129,23 @@ export function UsernameLogin({ onSwitchToEmail }: UsernameLoginProps) {
   }
 
   return (
-    <div className="w-full space-y-6">
+    <div className="w-full space-y-5">
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
           {/* Username Field */}
-          <div className="space-y-2 animate-fade-in-up" style={{animationDelay: '0.1s'}}>
+          <motion.div 
+            initial={{ y: 10, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.1 }}
+            className="space-y-2"
+          >
             <FormField
               control={form.control}
               name="username"
               render={({ field: { onChange, value, ...field } }) => (
                 <FormItem>
                   <FormControl>
-                    <div className="relative group">
+                    <div className="relative">
                       <MyInput
                         inputType="text"
                         inputPlaceholder="Enter your username"
@@ -145,96 +156,142 @@ export function UsernameLogin({ onSwitchToEmail }: UsernameLoginProps) {
                         size="large"
                         label="Username"
                         {...field}
-                        className="w-full transition-all duration-300 border-gray-200/60 focus:border-orange-400 focus:ring-2 focus:ring-orange-100/50 rounded-2xl bg-gray-50/30 focus:bg-white font-light"
+                        className="w-full transition-all duration-200 border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pr-10"
                       />
-                      {/* Subtle focus indicator */}
-                      <div className="absolute inset-0 rounded-2xl ring-1 ring-orange-400 opacity-0 group-focus-within:opacity-30 transition-all duration-300 pointer-events-none"></div>
+                      <User className="absolute right-3 bottom-3 w-4 h-4 text-gray-400" />
                     </div>
                   </FormControl>
                 </FormItem>
               )}
             />
-            {/* <div className="flex justify-end">
-              <button
-                type="button"
-                className="text-xs text-gray-400 hover:text-orange-500 transition-colors duration-200 font-light"
-                onClick={() => navigate({ to: "/login/forgot-password" })}
-              >
-                Forgot username?
-              </button>
-            </div> */}
-          </div>
+          </motion.div>
 
           {/* Password Field */}
-          <div className="space-y-2 animate-fade-in-up" style={{animationDelay: '0.2s'}}>
+          <motion.div 
+            initial={{ y: 10, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.2 }}
+            className="space-y-2"
+          >
             <FormField
               control={form.control}
               name="password"
               render={({ field: { onChange, value, ...field } }) => (
                 <FormItem>
                   <FormControl>
-                    <div className="relative group">
-                      <MyInput
-                        inputType="password"
-                        inputPlaceholder="Enter your password"
-                        input={value}
-                        onChangeFunction={onChange}
-                        error={form.formState.errors.password?.message}
-                        required
-                        size="large"
-                        label="Password"
-                        {...field}
-                        className="w-full transition-all duration-300 border-gray-200/60 focus:border-orange-400 focus:ring-2 focus:ring-orange-100/50 rounded-2xl bg-gray-50/30 focus:bg-white font-light"
-                      />
-                      {/* Subtle focus indicator */}
-                      <div className="absolute inset-0 rounded-2xl ring-1 ring-orange-400 opacity-0 group-focus-within:opacity-30 transition-all duration-300 pointer-events-none"></div>
+                    <div className="relative">
+                      <div className="relative">
+                        {/* Custom input wrapper to override MyInput's password behavior */}
+                        <div className="flex flex-col gap-1">
+                          <Label className="text-subtitle font-regular">
+                            Password
+                            <span className="text-subtitle text-danger-600">*</span>
+                          </Label>
+                          <div className="relative">
+                            <Input
+                              type={showPassword ? "text" : "password"}
+                              placeholder="Enter your password"
+                              className="h-10 py-2 px-3 text-subtitle w-full border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pr-20 text-neutral-600 shadow-none placeholder:text-body placeholder:font-regular hover:border-primary-200 focus:border-primary-500"
+                              value={value}
+                              onChange={onChange}
+                              required
+                              {...field}
+                            />
+                            {/* Custom password toggle and lock icon */}
+                            <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center space-x-2">
+                              <motion.button
+                                type="button"
+                                whileHover={{ scale: 1.1 }}
+                                whileTap={{ scale: 0.9 }}
+                                onClick={() => setShowPassword(!showPassword)}
+                                className="text-gray-400 hover:text-gray-600 transition-colors duration-200 z-10"
+                              >
+                                {showPassword ? (
+                                  <EyeOff className="w-4 h-4" />
+                                ) : (
+                                  <Eye className="w-4 h-4" />
+                                )}
+                              </motion.button>
+                              <Lock className="w-4 h-4 text-gray-400" />
+                            </div>
+                          </div>
+                          {form.formState.errors.password?.message && (
+                            <div className="flex items-center gap-1 pl-1 text-body font-regular text-danger-600">
+                              <VscError />
+                              <span className="mt-[3px]">{form.formState.errors.password.message}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </FormControl>
                 </FormItem>
               )}
             />
             <div className="flex justify-end">
-              <button
+              <motion.button
                 type="button"
-                className="text-xs text-gray-400 hover:text-orange-500 transition-colors duration-200 font-light"
+                whileHover={{ scale: 1.02 }}
+                className="text-xs text-gray-500 hover:text-gray-700 transition-colors duration-200 font-medium"
                 onClick={() => navigate({ to: "/login/forgot-password" })}
               >
                 Forgot password?
-              </button>
+              </motion.button>
             </div>
-          </div>
+          </motion.div>
 
           {/* Login Button */}
-          <div className="pt-4 animate-fade-in-up" style={{animationDelay: '0.3s'}}>
-            <button
+          <motion.div 
+            initial={{ y: 10, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.3 }}
+            className="pt-1"
+          >
+            <motion.button
               type="submit"
               disabled={isLoading}
-              className="w-full bg-gradient-to-r from-orange-400 to-orange-500 hover:from-orange-500 hover:to-orange-600 text-white font-light py-4 px-6 rounded-2xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-[1.01] active:scale-[0.99] shadow-lg hover:shadow-xl text-base tracking-wide"
+              whileHover={{ scale: 1.01 }}
+              whileTap={{ scale: 0.99 }}
+              className="w-full bg-gray-900 hover:bg-black text-white font-medium py-3 px-4 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md"
             >
               {isLoading ? (
                 <div className="flex items-center justify-center space-x-2">
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                  <span className="font-light">Signing in...</span>
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                  </motion.div>
+                  <span className="text-sm">Signing in...</span>
                 </div>
               ) : (
-                "Sign In"
+                <div className="flex items-center justify-center space-x-2">
+                  <Shield className="w-4 h-4" />
+                  <span className="text-sm">Sign In</span>
+                </div>
               )}
-            </button>
-          </div>
+            </motion.button>
+          </motion.div>
         </form>
       </Form>
 
       {/* Switch to Email Login */}
-      <div className="text-center pt-6 animate-fade-in-up" style={{animationDelay: '0.4s'}}>
-        <button
+      <motion.div 
+        initial={{ y: 10, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ delay: 0.4 }}
+        className="text-center pt-3"
+      >
+        <motion.button
           type="button"
-          className="text-sm text-gray-400 hover:text-orange-500 transition-colors duration-200 relative group font-light"
+          whileHover={{ scale: 1.02 }}
+          className="text-sm text-gray-500 hover:text-gray-700 transition-colors duration-200 relative group font-medium"
           onClick={onSwitchToEmail}
         >
           Prefer email login?
-          <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-orange-500 transition-all duration-300 group-hover:w-full"></span>
-        </button>
-      </div>
+          <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gray-700 transition-all duration-200 group-hover:w-full"></span>
+        </motion.button>
+      </motion.div>
     </div>
   );
 }

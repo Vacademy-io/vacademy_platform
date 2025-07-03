@@ -60,7 +60,7 @@ public interface CustomFieldRepository extends JpaRepository<CustomFields, Strin
       s.subject           AS subject,
       s.cover_file_id     AS coverFileId
     FROM live_session s
-    LEFT JOIN institute_custom_fields icf
+    INNER JOIN institute_custom_fields icf
            ON icf.type     = 'SESSION'
           AND icf.type_id  = s.id
     LEFT JOIN custom_fields cf

@@ -41,9 +41,16 @@ export const EngageStreamPage: React.FC = () => {
   // This is different from SSE connection errors handled within SessionController.
   if (sessionState.sseStatus === 'error' && !sessionState.sessionData) {
     return (
-        <div className="flex items-center justify-center min-h-screen p-4">
-            <ErrorMessage title="Initialization Error" message={sessionState.error || "Could not initialize the session."} className="max-w-lg"/>
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 relative overflow-hidden p-4">
+        {/* Floating background orbs */}
+        <div className="absolute inset-0 bg-gradient-to-r from-blue-900/10 via-transparent to-purple-900/10 pointer-events-none" />
+        <div className="floating-orb top-1/4 left-1/4 w-96 h-96 bg-blue-500/5" />
+        <div className="floating-orb bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/5" style={{ animationDelay: '2s' }} />
+        
+        <div className="relative z-10">
+          <ErrorMessage title="Initialization Error" message={sessionState.error || "Could not initialize the session."} className="max-w-lg"/>
         </div>
+      </div>
     );
   }
 

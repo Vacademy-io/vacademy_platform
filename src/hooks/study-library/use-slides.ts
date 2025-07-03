@@ -1,9 +1,8 @@
 // hooks/use-slides.ts
 import { useQuery } from "@tanstack/react-query";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
-import {
-    GET_SLIDES,
-} from "@/constants/urls";
+import { GET_SLIDES } from "@/constants/urls";
+import axios from "axios";
 
 export interface TextData {
     id: string;
@@ -105,7 +104,7 @@ export interface Slide {
     image_file_id: string;
     description: string;
     status: string;
-    slide_order: number ;
+    slide_order: number;
     video_slide?: VideoSlide;
     document_slide?: DocumentSlide;
     question_slide?: QuestionSlide;
@@ -116,27 +115,29 @@ export interface Slide {
     progress_marker: number;
 }
 
-export const fetchSlidesByChapterId = async (chapterId: string): Promise<Slide[]> => {
-  const response = await authenticatedAxiosInstance.get(`${GET_SLIDES}?chapterId=${chapterId}`);
-  return response.data;
+export const fetchSlidesByChapterId = async (
+    chapterId: string
+): Promise<Slide[]> => {
+    const response = await axios.get(`${GET_SLIDES}?chapterId=${chapterId}`);
+    return response.data;
 };
 
 export const useSlides = (chapterId: string) => {
-
     const getSlidesQuery = useQuery({
         queryKey: ["slides", chapterId],
         queryFn: async () => {
-            const response = await authenticatedAxiosInstance.get(`${GET_SLIDES}?chapterId=${chapterId}`);
-            console.log("response use-slides",response.data);
+            const response = await authenticatedAxiosInstance.get(
+                `${GET_SLIDES}?chapterId=${chapterId}`
+            );
+            console.log("response use-slides", response.data);
             return response.data;
         },
         staleTime: 3600000,
     });
-    
 
     return {
         slides: getSlidesQuery.data,
         isLoading: getSlidesQuery.isLoading,
-        error: getSlidesQuery.error
+        error: getSlidesQuery.error,
     };
 };

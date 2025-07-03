@@ -1,4 +1,6 @@
 import { getPublicUrl } from "@/services/upload_file";
+import { CourseDetailsFormValues } from "../-components/course-details-schema";
+import { BatchForSessionType } from "@/types/institute-details/institute-details-interface";
 
 interface SubjectType {
     id: string;
@@ -8,7 +10,8 @@ interface SubjectType {
     thumbnail_id: string | null;
     created_at: string | null;
     updated_at: string | null;
-    subject_order?: number;
+    subject_order: number;
+    percentage_completed: number;
 }
 
 interface CourseWithSessionsType {
@@ -52,6 +55,8 @@ const createDefaultSubject = (): SubjectType => ({
     thumbnail_id: null,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
+    subject_order: 0,
+    percentage_completed: 0,
 });
 
 const tryGetPublicUrl = async (
@@ -142,3 +147,45 @@ export const transformApiDataToCourseData = async (
         return null;
     }
 };
+
+export function getSubjectDetails(
+    courseData: CourseDetailsFormValues,
+    currentSessionId: string,
+    currentLevelId: string
+): SubjectType[] {
+    const session = courseData.courseData.sessions.find(
+        (s) => s.sessionDetails.id === currentSessionId
+    );
+
+    if (!session) return [];
+
+    const level = session.levelDetails.find((l) => l.id === currentLevelId);
+
+    if (!level || !level?.subjects) return [];
+
+    return level?.subjects?.map(
+        (subject, index): SubjectType => ({
+            id: subject.id,
+            subject_name: subject.subject_name,
+            subject_code: subject.subject_code,
+            credit: subject.credit ?? 0,
+            thumbnail_id: subject.thumbnail_id ?? null,
+            created_at: subject.created_at ?? null,
+            updated_at: subject.updated_at ?? null,
+            subject_order: index, // fallback if undefined
+            percentage_completed: 0, // default initial value
+        })
+    );
+}
+
+export function getIdByLevelAndSession(
+    data: BatchForSessionType[],
+    sessionId: string,
+    levelId: string
+) {
+    const match = data?.find(
+        (item) => item.level?.id === levelId && item.session?.id === sessionId
+    );
+
+    return match?.id || "";
+}

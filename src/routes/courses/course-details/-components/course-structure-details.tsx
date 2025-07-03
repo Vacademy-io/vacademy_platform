@@ -1,48 +1,38 @@
-// class-study-material.tsx
-import { useRouter } from "@tanstack/react-router";
-import { useMutation } from "@tanstack/react-query";
+import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
 import { useEffect, useState } from "react";
-import {
-    SubjectType,
-    useStudyLibraryStore,
-} from "@/stores/study-library/use-study-library-store";
-import { DashboardLoader } from "@/components/core/dashboard-loader";
-import { getCourseSubjects } from "@/utils/helpers/study-library-helpers.ts/get-list-from-stores/getSubjects";
-import { useGetPackageSessionId } from "@/utils/helpers/study-library-helpers.ts/get-list-from-stores/getPackageSessionId";
-import useIntroJsTour from "@/hooks/use-intro";
-import { StudyLibraryIntroKey } from "@/constants/storage/introKey";
-import { studyLibrarySteps } from "@/constants/intro/steps";
+import { PullToRefreshWrapper } from "@/components/design-system/pull-to-refresh";
+import { fetchStudyLibraryDetails } from "@/services/study-library/getStudyLibraryDetails";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import {
-    Collapsible,
-    CollapsibleContent,
-    CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import { useInstituteDetailsStore } from "@/stores/students/students-list/useInstituteDetailsStore";
-import { DropdownItemType } from "@/components/common/students/enroll-manually/dropdownTypesForPackageItems";
 import {
     CaretDown,
     CaretRight,
     Folder,
     FileText,
     PresentationChart,
+    TreeStructure,
+    FolderOpen,
 } from "phosphor-react";
-import AddTeachers from "@/routes/dashboard/-components/AddTeachers";
-import { TabType, tabs } from "../subjects/-constants/constant";
-import { fetchModulesWithChapters } from "../../-services/getModulesWithChapters";
 import {
-    UseSlidesFromModulesInput,
-    fetchChaptersWithSlides,
-    ChapterWithSlides,
+    Collapsible,
+    CollapsibleContent,
+    CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { fetchModulesWithChaptersPublic } from "@/services/study-library/getModulesWithChapters";
+import { SubjectType } from "@/stores/study-library/use-study-library-store";
+import { useMutation } from "@tanstack/react-query";
+import {
+    fetchSlidesByChapterId,
     Slide,
-} from "../../-services/getAllSlides";
-import Students from "../subjects/-components/student-list";
-import Assessments from "../subjects/-components/assessment-list";
-import { getIcon } from "../subjects/modules/chapters/slides/-components/slides-sidebar/slides-sidebar-slides";
-import { useContentStore } from "../subjects/modules/chapters/slides/-stores/chapter-sidebar-store";
-import { TeachersList } from "../subjects/-components/teacher-list";
+} from "@/hooks/study-library/use-slides";
+import { Button } from "@/components/ui/button";
+import {
+    TabType,
+    tabs,
+} from "@/components/common/study-library/level-material/subject-material/-constants/constant";
+import { getIcon } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/chapter-sidebar-slides";
+import { getSubjectDetails } from "../-utils/helper";
+import { CourseDetailsFormValues } from "./course-details-schema";
 
-// Interfaces (assuming these are unchanged)
 export interface Chapter {
     id: string;
     chapter_name: string;
@@ -70,7 +60,7 @@ export interface Module {
 }
 export interface ModuleWithChapters {
     module: Module;
-    chapters: ChapterMetadata[];
+    chapters: Chapter[];
 }
 export type SubjectModulesMap = { [subjectId: string]: ModuleWithChapters[] };
 
@@ -78,507 +68,453 @@ export const CourseStructureDetails = ({
     selectedSession,
     selectedLevel,
     courseStructure,
+    courseData,
+    packageSessionId,
 }: {
     selectedSession: string;
     selectedLevel: string;
     courseStructure: number;
+    courseData: CourseDetailsFormValues;
+    packageSessionId: string;
 }) => {
-    const router = useRouter();
-    const searchParams = router.state.location.search;
-    const { getSessionFromPackage, getPackageSessionId } =
-        useInstituteDetailsStore();
-    const { studyLibraryData } = useStudyLibraryStore();
-    const { setActiveItem } = useContentStore();
+    console.log(courseStructure);
+    const { setNavHeading } = useNavHeadingStore();
 
-    const courseId: string = searchParams.courseId || "";
-    const levelId: string = selectedLevel || "";
-
-    const [sessionList, setSessionList] = useState<DropdownItemType[]>(
-        searchParams.courseId
-            ? getSessionFromPackage({ courseId: courseId, levelId: levelId })
-            : []
-    );
-    const initialSession: DropdownItemType | undefined = {
-        id: selectedSession || "",
-        name: sessionList[0]?.name || "",
-    };
-
-    const [currentSession, setCurrentSession] = useState<
-        DropdownItemType | undefined
-    >(() => initialSession);
-
-    useEffect(() => {
-        setSessionList(
-            searchParams.courseId
-                ? getSessionFromPackage({
-                      courseId: courseId,
-                      levelId: searchParams.levelId,
-                  })
-                : []
-        );
-    }, [searchParams.courseId, searchParams.levelId, getSessionFromPackage]);
-
-    useEffect(() => {
-        setCurrentSession({
-            id: sessionList[0]?.id || "",
-            name: sessionList[0]?.name || "",
-        });
-    }, [sessionList]);
+    const [studyLibraryData, setStudyLibraryData] = useState<SubjectType[]>([]);
 
     const [selectedTab, setSelectedTab] = useState<string>(TabType.OUTLINE);
     const handleTabChange = (value: string) => setSelectedTab(value);
-
     const [subjectModulesMap, setSubjectModulesMap] =
         useState<SubjectModulesMap>({});
-    const [chapterSlidesMap, setChapterSlidesMap] = useState<{
-        [chapterId: string]: Slide[];
-    }>({});
-    const [openSubjects, setOpenSubjects] = useState<Set<string>>(new Set());
-    const [openModules, setOpenModules] = useState<Set<string>>(new Set());
-    const [openChapters, setOpenChapters] = useState<Set<string>>(new Set());
+    const [slidesMap, setSlidesMap] = useState<Record<string, Slide[]>>({});
 
-    useIntroJsTour({
-        key: StudyLibraryIntroKey.addSubjectStep,
-        steps: studyLibrarySteps.addSubjectStep,
-    });
+    const getSlidesWithChapterId = async (chapterId: string) => {
+        // Avoid duplicate fetch
+        if (slidesMap[chapterId]) return;
 
-    const initialSubjects = getCourseSubjects(
-        courseId,
-        currentSession?.id ?? "",
-        levelId
-    );
-    const [subjects, setSubjects] = useState(initialSubjects);
-
-    useEffect(() => {
-        const newSubjects = getCourseSubjects(
-            courseId,
-            currentSession?.id ?? "",
-            levelId
-        );
-        setSubjects(newSubjects);
-    }, [currentSession, studyLibraryData, courseId, levelId]);
-
-    const packageSessionIds =
-        useGetPackageSessionId(courseId, currentSession?.id ?? "", levelId) ||
-        "";
-
-    const useSlidesByChapterMutation = () => {
-        return useMutation({
-            mutationFn: async ({
-                modules,
-                packageSessionId,
-            }: UseSlidesFromModulesInput) => {
-                const chapterSlidesMapUpdate: { [chapterId: string]: Slide[] } =
-                    {};
-                await Promise.all(
-                    modules.map(async (module) => {
-                        const chaptersWithSlides =
-                            await fetchChaptersWithSlides(
-                                module.id,
-                                packageSessionId
-                            );
-                        chaptersWithSlides.forEach(
-                            (chapterWithSlides: ChapterWithSlides) => {
-                                chapterSlidesMapUpdate[
-                                    chapterWithSlides.chapter.id
-                                ] = chapterWithSlides.slides;
-                            }
-                        );
-                    })
-                );
-                return chapterSlidesMapUpdate;
-            },
-        });
+        try {
+            const slides = await fetchSlidesByChapterId(chapterId);
+            setSlidesMap((prev) => ({ ...prev, [chapterId]: slides }));
+        } catch (err) {
+            console.log(err);
+        }
     };
-    const { mutateAsync: fetchSlides } = useSlidesByChapterMutation();
 
     const useModulesMutation = () => {
         return useMutation({
             mutationFn: async ({
                 subjects: currentSubjects,
-                packageSessionIds: currentPackageSessionIds,
             }: {
                 subjects: SubjectType[];
-                packageSessionIds: string;
             }) => {
                 const results = await Promise.all(
-                    currentSubjects.map(async (subject) => {
-                        const res = await fetchModulesWithChapters(
+                    currentSubjects?.map(async (subject) => {
+                        const res = await fetchModulesWithChaptersPublic(
                             subject.id,
-                            currentPackageSessionIds
+                            packageSessionId
                         );
                         return { subjectId: subject.id, modules: res };
                     })
                 );
+
                 const modulesMap: SubjectModulesMap = {};
                 results.forEach(({ subjectId, modules }) => {
                     modulesMap[subjectId] = modules;
                 });
+
                 return modulesMap;
             },
         });
     };
+
     const { mutateAsync: fetchModules } = useModulesMutation();
 
-    useEffect(() => {
-        const loadModules = async () => {
-            if (subjects.length > 0 && packageSessionIds) {
-                try {
-                    const modulesMap = await fetchModules({
-                        subjects,
-                        packageSessionIds,
-                    });
-                    setSubjectModulesMap(modulesMap);
+    const refreshData = async () => {
+        const data = await fetchStudyLibraryDetails(packageSessionId);
+        setStudyLibraryData(data);
+    };
 
-                    // Expand all by default
-                    const allSubjectIds = new Set(subjects.map((s) => s.id));
-                    const allModuleIds = new Set<string>();
-                    const allChapterIds = new Set<string>();
-
-                    Object.values(modulesMap)
-                        .flat()
-                        .forEach((modWithChapters) => {
-                            allModuleIds.add(modWithChapters.module.id);
-                            modWithChapters.chapters.forEach((chapWithMeta) => {
-                                allChapterIds.add(chapWithMeta.chapter.id);
-                            });
-                        });
-                    setOpenSubjects(allSubjectIds);
-                    setOpenModules(allModuleIds);
-                    setOpenChapters(allChapterIds);
-                } catch (error) {
-                    console.error("Failed to fetch modules:", error);
-                    setSubjectModulesMap({});
-                }
-            } else {
-                setSubjectModulesMap({});
-            }
-        };
-        loadModules();
-    }, [subjects, packageSessionIds, fetchModules]);
-
-    useEffect(() => {
-        const loadSlides = async () => {
-            const allModules: { id: string }[] = Object.values(
-                subjectModulesMap
-            )
-                .flat()
-                .map((m) => ({ id: m.module.id }));
-            if (allModules.length > 0 && packageSessionIds) {
-                try {
-                    const slideMap = await fetchSlides({
-                        modules: allModules,
-                        packageSessionId: packageSessionIds,
-                    });
-                    setChapterSlidesMap(slideMap);
-                } catch (error) {
-                    console.error("Failed to fetch slides:", error);
-                    setChapterSlidesMap({});
-                }
-            } else {
-                setChapterSlidesMap({});
-            }
-        };
-        if (Object.keys(subjectModulesMap).length > 0 && packageSessionIds) {
-            loadSlides();
-        } else {
-            setChapterSlidesMap({});
-        }
-    }, [subjectModulesMap, packageSessionIds, fetchSlides]);
+    const [openSubjects, setOpenSubjects] = useState<Set<string>>(new Set());
+    const [openModules, setOpenModules] = useState<Set<string>>(new Set());
+    const [openChapters, setOpenChapters] = useState<Set<string>>(new Set());
 
     const toggleOpenState = (
         id: string,
         setter: React.Dispatch<React.SetStateAction<Set<string>>>
     ) => {
         setter((prev) => {
-            const u = new Set(prev);
-            u.has(id) ? u.delete(id) : u.add(id);
-            return u;
+            const updated = new Set(prev);
+            if (updated.has(id)) {
+                updated.delete(id);
+            } else {
+                updated.add(id);
+            }
+            return new Set(updated); // ensure a new Set reference
         });
     };
+
     const toggleSubject = (id: string) => toggleOpenState(id, setOpenSubjects);
     const toggleModule = (id: string) => toggleOpenState(id, setOpenModules);
     const toggleChapter = (id: string) => toggleOpenState(id, setOpenChapters);
+
+    // Expand all functionality
+    const expandAll = () => {
+        if (!studyLibraryData) return;
+
+        const allSubjectIds = new Set<string>(
+            studyLibraryData.map((s: SubjectType) => s.id)
+        );
+        const allModuleIds = new Set<string>();
+        const allChapterIds = new Set<string>();
+
+        Object.values(subjectModulesMap).forEach((modules) => {
+            modules.forEach((mod) => {
+                allModuleIds.add(mod.module.id);
+                mod.chapters.forEach((ch) => {
+                    allChapterIds.add(ch.id);
+                    // Load slides for each chapter
+                    getSlidesWithChapterId(ch.id);
+                });
+            });
+        });
+
+        setOpenSubjects(allSubjectIds);
+        setOpenModules(allModuleIds);
+        setOpenChapters(allChapterIds);
+    };
+
+    const collapseAll = () => {
+        setOpenSubjects(new Set());
+        setOpenModules(new Set());
+        setOpenChapters(new Set());
+    };
+
+    const isAllExpanded =
+        studyLibraryData?.every((subject: SubjectType) =>
+            openSubjects.has(subject.id)
+        ) &&
+        Object.values(subjectModulesMap).every((modules) =>
+            modules.every(
+                (mod) =>
+                    openModules.has(mod.module.id) &&
+                    mod.chapters.every((ch) => openChapters.has(ch.id))
+            )
+        );
+
     const tabContent: Record<TabType, React.ReactNode> = {
         [TabType.OUTLINE]: (
             <div className="space-y-4">
-                <div className="max-w-3xl space-y-1 rounded-lg border border-gray-200 px-2">
+                {/* Expand/Collapse Controls */}
+                <div className="flex items-center justify-between border-b border-neutral-200 pb-3">
+                    <div className="flex items-center gap-2">
+                        <TreeStructure size={18} className="text-primary-600" />
+                        <span className="text-sm font-medium text-neutral-700">
+                            Course Structure
+                        </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={isAllExpanded ? collapseAll : expandAll}
+                            className="h-7 px-3 text-xs border-neutral-300 hover:border-primary-300 hover:bg-primary-50/50"
+                        >
+                            {isAllExpanded ? (
+                                <>
+                                    <FolderOpen size={14} className="mr-1.5" />
+                                    Collapse All
+                                </>
+                            ) : (
+                                <>
+                                    <Folder size={14} className="mr-1.5" />
+                                    Expand All
+                                </>
+                            )}
+                        </Button>
+                    </div>
+                </div>
+                <div className="max-w-2xl space-y-1.5">
                     {courseStructure === 5 &&
-                        subjects.map((subject, idx) => {
-                            const isSubjectOpen = openSubjects.has(subject.id);
+                        studyLibraryData?.map(
+                            (subject: SubjectType, idx: number) => {
+                                const isSubjectOpen = openSubjects.has(
+                                    subject.id
+                                );
+                                const baseIndent =
+                                    "pl-[calc(18px+0.5rem+18px+0.5rem)]";
+                                const subjectContentIndent = `${baseIndent} pl-[1.5rem]`;
 
-                            return (
-                                <Collapsible
-                                    key={subject.id}
-                                    open={isSubjectOpen}
-                                    onOpenChange={() =>
-                                        toggleSubject(subject.id)
-                                    }
-                                    className="group"
-                                >
-                                    <CollapsibleTrigger className="flex w-full items-center rounded-md p-2 text-left text-sm font-semibold text-gray-800 transition-colors duration-150 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2">
-                                        <div className="flex flex-1 items-center gap-2.5">
-                                            {isSubjectOpen ? (
-                                                <CaretDown
-                                                    size={18}
-                                                    weight="bold"
-                                                    className="shrink-0 text-gray-500"
-                                                />
-                                            ) : (
-                                                <CaretRight
-                                                    size={18}
-                                                    weight="bold"
-                                                    className="shrink-0 text-gray-500"
-                                                />
-                                            )}
-                                            <Folder
-                                                size={20}
-                                                weight="duotone"
-                                                className="shrink-0 text-primary-500"
-                                            />
-                                            <span className="w-7 shrink-0 rounded-md bg-gray-100 py-0.5 text-center font-mono text-xs font-medium text-gray-600 group-hover:bg-white">
-                                                S{idx + 1}
-                                            </span>
-                                            <span
-                                                className="truncate"
-                                                title={subject.subject_name}
-                                            >
-                                                {subject.subject_name}
-                                            </span>
-                                        </div>
-                                    </CollapsibleTrigger>
-                                    <CollapsibleContent className="py-1 pl-11">
-                                        <div className="relative space-y-1.5 border-l-2 border-dashed border-gray-200 pl-6">
-                                            <div className="absolute -left-[13px] top-0 h-full">
-                                                <div className="sticky top-0 flex h-full flex-col items-center" />
+                                return (
+                                    <Collapsible
+                                        key={subject.id}
+                                        open={isSubjectOpen}
+                                        onOpenChange={() =>
+                                            toggleSubject(subject.id)
+                                        }
+                                    >
+                                        <CollapsibleTrigger className="group flex w-full items-center rounded-lg px-3 py-2 text-left text-sm font-semibold text-neutral-700 transition-all duration-200 hover:bg-gradient-to-r hover:from-primary-50/60 hover:to-blue-50/40 hover:border-primary-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-1">
+                                            <div className="flex min-w-0 flex-1 items-center gap-2.5">
+                                                {isSubjectOpen ? (
+                                                    <CaretDown
+                                                        size={18}
+                                                        weight="bold"
+                                                        className="shrink-0 text-neutral-500 group-hover:text-primary-600 transition-colors"
+                                                    />
+                                                ) : (
+                                                    <CaretRight
+                                                        size={18}
+                                                        weight="bold"
+                                                        className="shrink-0 text-neutral-500 group-hover:text-primary-600 transition-colors"
+                                                    />
+                                                )}
+                                                <div className="flex items-center justify-center w-6 h-6 rounded-full bg-gradient-to-br from-primary-500 to-primary-600 text-white text-xs font-bold shrink-0">
+                                                    {isSubjectOpen ? (
+                                                        <FolderOpen size={12} />
+                                                    ) : (
+                                                        <Folder size={12} />
+                                                    )}
+                                                </div>
+                                                <span className="w-7 shrink-0 text-center font-mono text-xs font-semibold text-neutral-500 bg-neutral-100 rounded px-1 py-0.5">
+                                                    S{idx + 1}
+                                                </span>
+                                                <span
+                                                    className="truncate font-medium group-hover:text-primary-700 transition-colors"
+                                                    title={subject.subject_name}
+                                                >
+                                                    {subject.subject_name}
+                                                </span>
                                             </div>
-
-                                            {(
-                                                subjectModulesMap[subject.id] ??
-                                                []
-                                            ).map((mod, modIdx) => {
-                                                const isModuleOpen =
-                                                    openModules.has(
-                                                        mod.module.id
-                                                    );
-
-                                                return (
-                                                    <Collapsible
-                                                        key={mod.module.id}
-                                                        open={isModuleOpen}
-                                                        onOpenChange={() =>
-                                                            toggleModule(
-                                                                mod.module.id
-                                                            )
-                                                        }
-                                                        className="group/module"
-                                                    >
-                                                        <CollapsibleTrigger className="flex w-full items-center rounded-md px-2 py-1.5 text-left text-sm font-medium text-gray-700 transition-colors duration-150 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2">
-                                                            <div className="flex flex-1 items-center gap-2.5">
-                                                                {isModuleOpen ? (
-                                                                    <CaretDown
-                                                                        size={
-                                                                            16
+                                        </CollapsibleTrigger>
+                                        <CollapsibleContent
+                                            className={`pb-1 pt-2 ${subjectContentIndent}`}
+                                        >
+                                            <div className="space-y-1 border-l-2 border-gradient-to-b from-primary-200/60 to-neutral-200/40 pl-3 relative">
+                                                <div className="absolute left-0 top-0 w-0.5 h-full bg-gradient-to-b from-primary-300/80 to-transparent"></div>
+                                                {(
+                                                    subjectModulesMap[
+                                                        subject.id
+                                                    ] ?? []
+                                                ).map((mod, modIdx) => {
+                                                    const isModuleOpen =
+                                                        openModules.has(
+                                                            mod.module.id
+                                                        );
+                                                    const moduleContentIndent = `pl-[calc(16px+0.5rem+16px+0.5rem+1.5rem)]`;
+                                                    return (
+                                                        <Collapsible
+                                                            key={mod.module.id}
+                                                            open={isModuleOpen}
+                                                            onOpenChange={() =>
+                                                                toggleModule(
+                                                                    mod.module
+                                                                        .id
+                                                                )
+                                                            }
+                                                        >
+                                                            <CollapsibleTrigger className="group flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-sm font-medium text-neutral-600 transition-all duration-200 hover:bg-gradient-to-r hover:from-blue-50/70 hover:to-indigo-50/50 hover:border-blue-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1">
+                                                                <div className="flex min-w-0 flex-1 items-center gap-2">
+                                                                    {isModuleOpen ? (
+                                                                        <CaretDown
+                                                                            size={
+                                                                                16
+                                                                            }
+                                                                            className="shrink-0 text-neutral-500 group-hover:text-blue-600 transition-colors"
+                                                                        />
+                                                                    ) : (
+                                                                        <CaretRight
+                                                                            size={
+                                                                                16
+                                                                            }
+                                                                            className="shrink-0 text-neutral-500 group-hover:text-blue-600 transition-colors"
+                                                                        />
+                                                                    )}
+                                                                    <div className="flex items-center justify-center w-5 h-5 rounded bg-gradient-to-br from-blue-500 to-blue-600 text-white">
+                                                                        <FileText
+                                                                            size={
+                                                                                12
+                                                                            }
+                                                                        />
+                                                                    </div>
+                                                                    <span className="w-6 shrink-0 text-center font-mono text-xs font-medium text-neutral-500 bg-neutral-100 rounded px-1">
+                                                                        M
+                                                                        {modIdx +
+                                                                            1}
+                                                                    </span>
+                                                                    <span
+                                                                        className="truncate group-hover:text-blue-700 transition-colors"
+                                                                        title={
+                                                                            mod
+                                                                                .module
+                                                                                .module_name
                                                                         }
-                                                                        className="shrink-0 text-gray-500"
-                                                                    />
-                                                                ) : (
-                                                                    <CaretRight
-                                                                        size={
-                                                                            16
+                                                                    >
+                                                                        {
+                                                                            mod
+                                                                                .module
+                                                                                .module_name
                                                                         }
-                                                                        className="shrink-0 text-gray-500"
-                                                                    />
-                                                                )}
-                                                                <FileText
-                                                                    size={18}
-                                                                    weight="duotone"
-                                                                    className="shrink-0 text-blue-600"
-                                                                />
-                                                                <span className="w-7 shrink-0 rounded-md bg-gray-100 py-0.5 text-center font-mono text-xs font-medium text-gray-500 group-hover/module:bg-white">
-                                                                    M
-                                                                    {modIdx + 1}
-                                                                </span>
-                                                                <span
-                                                                    className="truncate"
-                                                                    title={
-                                                                        mod
-                                                                            .module
-                                                                            .module_name
-                                                                    }
-                                                                >
-                                                                    {
-                                                                        mod
-                                                                            .module
-                                                                            .module_name
-                                                                    }
-                                                                </span>
-                                                            </div>
-                                                        </CollapsibleTrigger>
-                                                        <CollapsibleContent className="py-1 pl-10">
-                                                            <div className="relative space-y-1.5 border-l-2 border-dashed border-gray-200 pl-6">
-                                                                {(
-                                                                    mod.chapters ??
-                                                                    []
-                                                                ).map(
-                                                                    (
-                                                                        ch,
-                                                                        chIdx
-                                                                    ) => {
-                                                                        const isChapterOpen =
-                                                                            openChapters.has(
-                                                                                ch
-                                                                                    .chapter
-                                                                                    .id
-                                                                            );
-                                                                        return (
-                                                                            <Collapsible
-                                                                                key={
-                                                                                    ch
-                                                                                        .chapter
-                                                                                        .id
-                                                                                }
-                                                                                open={
-                                                                                    isChapterOpen
-                                                                                }
-                                                                                onOpenChange={() =>
-                                                                                    toggleChapter(
-                                                                                        ch
-                                                                                            .chapter
-                                                                                            .id
-                                                                                    )
-                                                                                }
-                                                                                className="group/chapter"
-                                                                            >
-                                                                                <CollapsibleTrigger className="flex w-full items-center rounded-md px-2 py-1 text-left text-xs font-medium text-gray-600 transition-colors duration-150 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2">
-                                                                                    <div className="flex flex-1 items-center gap-2">
-                                                                                        {isChapterOpen ? (
-                                                                                            <CaretDown
-                                                                                                size={
-                                                                                                    14
-                                                                                                }
-                                                                                                className="shrink-0 text-gray-500"
-                                                                                            />
-                                                                                        ) : (
-                                                                                            <CaretRight
-                                                                                                size={
-                                                                                                    14
-                                                                                                }
-                                                                                                className="shrink-0 text-gray-500"
-                                                                                            />
-                                                                                        )}
-                                                                                        <PresentationChart
-                                                                                            size={
-                                                                                                16
-                                                                                            }
-                                                                                            weight="duotone"
-                                                                                            className="shrink-0 text-green-600"
-                                                                                        />
-                                                                                        <span className="w-7 shrink-0 rounded-md bg-gray-100 py-0.5 text-center font-mono text-xs text-gray-500 group-hover/chapter:bg-white">
-                                                                                            C
-                                                                                            {chIdx +
-                                                                                                1}
-                                                                                        </span>
-                                                                                        <span
-                                                                                            className="truncate"
-                                                                                            title={
-                                                                                                ch
-                                                                                                    .chapter
-                                                                                                    .chapter_name
-                                                                                            }
-                                                                                        >
-                                                                                            {
-                                                                                                ch
-                                                                                                    .chapter
-                                                                                                    .chapter_name
-                                                                                            }
-                                                                                        </span>
-                                                                                    </div>
-                                                                                </CollapsibleTrigger>
-                                                                                <CollapsibleContent className="py-1 pl-9">
-                                                                                    <div className="relative space-y-1.5 border-l-2 border-dashed border-gray-200 pl-6">
-                                                                                        {(
-                                                                                            chapterSlidesMap[
-                                                                                                ch
-                                                                                                    .chapter
-                                                                                                    .id
-                                                                                            ] ??
-                                                                                            []
-                                                                                        )
-                                                                                            .length ===
-                                                                                        0 ? (
-                                                                                            <div className="px-2 py-1 text-xs text-gray-400">
-                                                                                                No
-                                                                                                slides
-                                                                                                in
-                                                                                                this
-                                                                                                chapter.
+                                                                    </span>
+                                                                </div>
+                                                            </CollapsibleTrigger>
+
+                                                            <CollapsibleContent
+                                                                className={`py-1 ${moduleContentIndent}`}
+                                                            >
+                                                                <div className="space-y-0.5 border-l-2 border-blue-200/40 pl-2.5 relative">
+                                                                    <div className="absolute left-0 top-0 w-0.5 h-full bg-gradient-to-b from-blue-300/60 to-transparent"></div>
+                                                                    {(
+                                                                        mod.chapters ??
+                                                                        []
+                                                                    ).map(
+                                                                        (
+                                                                            ch,
+                                                                            chIdx
+                                                                        ) => {
+                                                                            const isChapterOpen =
+                                                                                openChapters.has(
+                                                                                    ch.id
+                                                                                );
+
+                                                                            return (
+                                                                                <Collapsible
+                                                                                    key={
+                                                                                        ch.id
+                                                                                    }
+                                                                                    open={
+                                                                                        isChapterOpen
+                                                                                    }
+                                                                                    onOpenChange={() => {
+                                                                                        toggleChapter(
+                                                                                            ch.id
+                                                                                        );
+                                                                                        getSlidesWithChapterId(
+                                                                                            ch.id
+                                                                                        );
+                                                                                    }}
+                                                                                >
+                                                                                    <CollapsibleTrigger className="group flex w-full items-center rounded-md px-2 py-1 text-left text-sm text-neutral-600 transition-all duration-200 hover:bg-gradient-to-r hover:from-green-50/70 hover:to-emerald-50/50 hover:border-green-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-1">
+                                                                                        <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                                                                                            {isChapterOpen ? (
+                                                                                                <CaretDown
+                                                                                                    size={
+                                                                                                        14
+                                                                                                    }
+                                                                                                    className="shrink-0 text-neutral-500 group-hover:text-green-600 transition-colors"
+                                                                                                />
+                                                                                            ) : (
+                                                                                                <CaretRight
+                                                                                                    size={
+                                                                                                        14
+                                                                                                    }
+                                                                                                    className="shrink-0 text-neutral-500 group-hover:text-green-600 transition-colors"
+                                                                                                />
+                                                                                            )}
+                                                                                            <div className="flex items-center justify-center w-4 h-4 rounded bg-gradient-to-br from-green-500 to-green-600 text-white">
+                                                                                                <PresentationChart
+                                                                                                    size={
+                                                                                                        10
+                                                                                                    }
+                                                                                                />
                                                                                             </div>
-                                                                                        ) : (
-                                                                                            (
-                                                                                                chapterSlidesMap[
+                                                                                            <span className="text-xs w-5 shrink-0 text-center font-mono text-neutral-500 bg-neutral-100 rounded px-0.5">
+                                                                                                C
+                                                                                                {chIdx +
+                                                                                                    1}
+                                                                                            </span>
+                                                                                            <span
+                                                                                                className="truncate group-hover:text-green-700 transition-colors text-xs"
+                                                                                                title={
+                                                                                                    ch.chapter_name
+                                                                                                }
+                                                                                            >
+                                                                                                {
+                                                                                                    ch.chapter_name
+                                                                                                }
+                                                                                            </span>
+                                                                                        </div>
+                                                                                    </CollapsibleTrigger>
+                                                                                    <CollapsibleContent>
+                                                                                        <div className="space-y-px ml-5 border-l border-green-200/50 py-1 pl-2 relative">
+                                                                                            <div className="absolute left-0 top-0 w-px h-full bg-gradient-to-b from-green-300/50 to-transparent"></div>
+                                                                                            {(
+                                                                                                slidesMap[
                                                                                                     ch
-                                                                                                        .chapter
                                                                                                         .id
                                                                                                 ] ??
                                                                                                 []
-                                                                                            ).map(
-                                                                                                (
-                                                                                                    slide,
-                                                                                                    sIdx
-                                                                                                ) => (
-                                                                                                    <div
-                                                                                                        key={
-                                                                                                            slide.id
-                                                                                                        }
-                                                                                                        className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-xs text-gray-600 hover:bg-gray-100"
-                                                                                                    >
-                                                                                                        <span className="w-7 shrink-0 text-center font-mono text-xs text-gray-400">
-                                                                                                            S
-                                                                                                            {sIdx +
-                                                                                                                1}
-                                                                                                        </span>
-                                                                                                        {getIcon(
-                                                                                                            slide.source_type,
-                                                                                                            slide
-                                                                                                                .document_slide
-                                                                                                                ?.type,
-                                                                                                            "3"
-                                                                                                        )}
-                                                                                                        <span
-                                                                                                            className="truncate"
-                                                                                                            title={
-                                                                                                                slide.title
-                                                                                                            }
-                                                                                                        >
-                                                                                                            {
-                                                                                                                slide.title
-                                                                                                            }
-                                                                                                        </span>
-                                                                                                    </div>
-                                                                                                )
                                                                                             )
-                                                                                        )}
-                                                                                    </div>
-                                                                                </CollapsibleContent>
-                                                                            </Collapsible>
-                                                                        );
-                                                                    }
-                                                                )}
-                                                            </div>
-                                                        </CollapsibleContent>
-                                                    </Collapsible>
-                                                );
-                                            })}
-                                        </div>
-                                    </CollapsibleContent>
-                                </Collapsible>
-                            );
-                        })}
+                                                                                                .length ===
+                                                                                            0 ? (
+                                                                                                <div className="text-xs px-2 py-1 text-neutral-400 italic bg-neutral-50/50 rounded">
+                                                                                                    No
+                                                                                                    slides
+                                                                                                    in
+                                                                                                    this
+                                                                                                    chapter.
+                                                                                                </div>
+                                                                                            ) : (
+                                                                                                (
+                                                                                                    slidesMap[
+                                                                                                        ch
+                                                                                                            .id
+                                                                                                    ] ??
+                                                                                                    []
+                                                                                                ).map(
+                                                                                                    (
+                                                                                                        slide,
+                                                                                                        sIdx
+                                                                                                    ) => (
+                                                                                                        <div
+                                                                                                            key={
+                                                                                                                slide.id
+                                                                                                            }
+                                                                                                            className="group flex cursor-pointer items-center gap-1.5 px-2 py-1 text-xs text-neutral-500 rounded hover:bg-gradient-to-r hover:from-amber-50/60 hover:to-orange-50/40 hover:border-amber-200/40 border border-transparent transition-all duration-200"
+                                                                                                        >
+                                                                                                            <span className="w-5 shrink-0 text-center font-mono text-neutral-400 bg-neutral-100 rounded px-0.5 text-xs">
+                                                                                                                S
+                                                                                                                {sIdx +
+                                                                                                                    1}
+                                                                                                            </span>
+                                                                                                            <div className="shrink-0 group-hover:scale-110 transition-transform">
+                                                                                                                {getIcon(
+                                                                                                                    slide,
+                                                                                                                    "3"
+                                                                                                                )}
+                                                                                                            </div>
+                                                                                                            <span
+                                                                                                                className="truncate group-hover:text-amber-700 transition-colors"
+                                                                                                                title={
+                                                                                                                    slide.title
+                                                                                                                }
+                                                                                                            >
+                                                                                                                {
+                                                                                                                    slide.title
+                                                                                                                }
+                                                                                                            </span>
+                                                                                                        </div>
+                                                                                                    )
+                                                                                                )
+                                                                                            )}
+                                                                                        </div>
+                                                                                    </CollapsibleContent>
+                                                                                </Collapsible>
+                                                                            );
+                                                                        }
+                                                                    )}
+                                                                </div>
+                                                            </CollapsibleContent>
+                                                        </Collapsible>
+                                                    );
+                                                })}
+                                            </div>
+                                        </CollapsibleContent>
+                                    </Collapsible>
+                                );
+                            }
+                        )}
                     {courseStructure === 4 &&
-                        subjects.map((subject) => {
+                        studyLibraryData?.map((subject: SubjectType) => {
                             const isSubjectOpen = openSubjects.has(subject.id);
-
                             return (
                                 <Collapsible
                                     key={subject.id}
@@ -586,14 +522,11 @@ export const CourseStructureDetails = ({
                                     onOpenChange={() =>
                                         toggleSubject(subject.id)
                                     }
-                                    className="group"
                                 >
-                                    <CollapsibleContent className="py-1">
-                                        <div className="relative space-y-1.5 border-gray-200">
-                                            <div className="absolute -left-[13px] top-0 h-full">
-                                                <div className="sticky top-0 flex h-full flex-col items-center" />
-                                            </div>
-
+                                    <CollapsibleContent
+                                        className={`pb-1 pt-2 `}
+                                    >
+                                        <div className="space-y-1 relative">
                                             {(
                                                 subjectModulesMap[subject.id] ??
                                                 []
@@ -602,7 +535,7 @@ export const CourseStructureDetails = ({
                                                     openModules.has(
                                                         mod.module.id
                                                     );
-
+                                                const moduleContentIndent = `pl-[calc(16px+0.5rem+16px+0.5rem+1.5rem)]`;
                                                 return (
                                                     <Collapsible
                                                         key={mod.module.id}
@@ -612,36 +545,37 @@ export const CourseStructureDetails = ({
                                                                 mod.module.id
                                                             )
                                                         }
-                                                        className="group/module"
                                                     >
-                                                        <CollapsibleTrigger className="flex w-full items-center rounded-md px-2 py-1.5 text-left text-sm font-medium text-gray-700 transition-colors duration-150 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2">
-                                                            <div className="flex flex-1 items-center gap-2.5">
+                                                        <CollapsibleTrigger className="group flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-sm font-medium text-neutral-600 transition-all duration-200 hover:bg-gradient-to-r hover:from-blue-50/70 hover:to-indigo-50/50 hover:border-blue-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1">
+                                                            <div className="flex min-w-0 flex-1 items-center gap-2">
                                                                 {isModuleOpen ? (
                                                                     <CaretDown
                                                                         size={
                                                                             16
                                                                         }
-                                                                        className="shrink-0 text-gray-500"
+                                                                        className="shrink-0 text-neutral-500 group-hover:text-blue-600 transition-colors"
                                                                     />
                                                                 ) : (
                                                                     <CaretRight
                                                                         size={
                                                                             16
                                                                         }
-                                                                        className="shrink-0 text-gray-500"
+                                                                        className="shrink-0 text-neutral-500 group-hover:text-blue-600 transition-colors"
                                                                     />
                                                                 )}
-                                                                <FileText
-                                                                    size={18}
-                                                                    weight="duotone"
-                                                                    className="shrink-0 text-blue-600"
-                                                                />
-                                                                <span className="w-7 shrink-0 rounded-md bg-gray-100 py-0.5 text-center font-mono text-xs font-medium text-gray-500 group-hover/module:bg-white">
+                                                                <div className="flex items-center justify-center w-5 h-5 rounded bg-gradient-to-br from-blue-500 to-blue-600 text-white">
+                                                                    <FileText
+                                                                        size={
+                                                                            12
+                                                                        }
+                                                                    />
+                                                                </div>
+                                                                <span className="w-6 shrink-0 text-center font-mono text-xs font-medium text-neutral-500 bg-neutral-100 rounded px-1">
                                                                     M
                                                                     {modIdx + 1}
                                                                 </span>
                                                                 <span
-                                                                    className="truncate"
+                                                                    className="truncate group-hover:text-blue-700 transition-colors"
                                                                     title={
                                                                         mod
                                                                             .module
@@ -656,8 +590,12 @@ export const CourseStructureDetails = ({
                                                                 </span>
                                                             </div>
                                                         </CollapsibleTrigger>
-                                                        <CollapsibleContent className="py-1 pl-10">
-                                                            <div className="relative space-y-1.5 border-l-2 border-dashed border-gray-200 pl-6">
+
+                                                        <CollapsibleContent
+                                                            className={`py-1 ${moduleContentIndent}`}
+                                                        >
+                                                            <div className="space-y-0.5 border-l-2 border-blue-200/40 pl-2.5 relative">
+                                                                <div className="absolute left-0 top-0 w-0.5 h-full bg-gradient-to-b from-blue-300/60 to-transparent"></div>
                                                                 {(
                                                                     mod.chapters ??
                                                                     []
@@ -668,87 +606,80 @@ export const CourseStructureDetails = ({
                                                                     ) => {
                                                                         const isChapterOpen =
                                                                             openChapters.has(
-                                                                                ch
-                                                                                    .chapter
-                                                                                    .id
+                                                                                ch.id
                                                                             );
+
                                                                         return (
                                                                             <Collapsible
                                                                                 key={
-                                                                                    ch
-                                                                                        .chapter
-                                                                                        .id
+                                                                                    ch.id
                                                                                 }
                                                                                 open={
                                                                                     isChapterOpen
                                                                                 }
-                                                                                onOpenChange={() =>
+                                                                                onOpenChange={() => {
                                                                                     toggleChapter(
-                                                                                        ch
-                                                                                            .chapter
-                                                                                            .id
-                                                                                    )
-                                                                                }
-                                                                                className="group/chapter"
+                                                                                        ch.id
+                                                                                    );
+                                                                                    getSlidesWithChapterId(
+                                                                                        ch.id
+                                                                                    );
+                                                                                }}
                                                                             >
-                                                                                <CollapsibleTrigger className="flex w-full items-center rounded-md px-2 py-1 text-left text-xs font-medium text-gray-600 transition-colors duration-150 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2">
-                                                                                    <div className="flex flex-1 items-center gap-2">
+                                                                                <CollapsibleTrigger className="group flex w-full items-center rounded-md px-2 py-1 text-left text-sm text-neutral-600 transition-all duration-200 hover:bg-gradient-to-r hover:from-green-50/70 hover:to-emerald-50/50 hover:border-green-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-1">
+                                                                                    <div className="flex min-w-0 flex-1 items-center gap-1.5">
                                                                                         {isChapterOpen ? (
                                                                                             <CaretDown
                                                                                                 size={
                                                                                                     14
                                                                                                 }
-                                                                                                className="shrink-0 text-gray-500"
+                                                                                                className="shrink-0 text-neutral-500 group-hover:text-green-600 transition-colors"
                                                                                             />
                                                                                         ) : (
                                                                                             <CaretRight
                                                                                                 size={
                                                                                                     14
                                                                                                 }
-                                                                                                className="shrink-0 text-gray-500"
+                                                                                                className="shrink-0 text-neutral-500 group-hover:text-green-600 transition-colors"
                                                                                             />
                                                                                         )}
-                                                                                        <PresentationChart
-                                                                                            size={
-                                                                                                16
-                                                                                            }
-                                                                                            weight="duotone"
-                                                                                            className="shrink-0 text-green-600"
-                                                                                        />
-                                                                                        <span className="w-7 shrink-0 rounded-md bg-gray-100 py-0.5 text-center font-mono text-xs text-gray-500 group-hover/chapter:bg-white">
+                                                                                        <div className="flex items-center justify-center w-4 h-4 rounded bg-gradient-to-br from-green-500 to-green-600 text-white">
+                                                                                            <PresentationChart
+                                                                                                size={
+                                                                                                    10
+                                                                                                }
+                                                                                            />
+                                                                                        </div>
+                                                                                        <span className="text-xs w-5 shrink-0 text-center font-mono text-neutral-500 bg-neutral-100 rounded px-0.5">
                                                                                             C
                                                                                             {chIdx +
                                                                                                 1}
                                                                                         </span>
                                                                                         <span
-                                                                                            className="truncate"
+                                                                                            className="truncate group-hover:text-green-700 transition-colors text-xs"
                                                                                             title={
-                                                                                                ch
-                                                                                                    .chapter
-                                                                                                    .chapter_name
+                                                                                                ch.chapter_name
                                                                                             }
                                                                                         >
                                                                                             {
-                                                                                                ch
-                                                                                                    .chapter
-                                                                                                    .chapter_name
+                                                                                                ch.chapter_name
                                                                                             }
                                                                                         </span>
                                                                                     </div>
                                                                                 </CollapsibleTrigger>
-                                                                                <CollapsibleContent className="py-1 pl-9">
-                                                                                    <div className="relative space-y-1.5 border-l-2 border-dashed border-gray-200 pl-6">
+                                                                                <CollapsibleContent>
+                                                                                    <div className="space-y-px ml-5 border-l border-green-200/50 py-1 pl-2 relative">
+                                                                                        <div className="absolute left-0 top-0 w-px h-full bg-gradient-to-b from-green-300/50 to-transparent"></div>
                                                                                         {(
-                                                                                            chapterSlidesMap[
+                                                                                            slidesMap[
                                                                                                 ch
-                                                                                                    .chapter
                                                                                                     .id
                                                                                             ] ??
                                                                                             []
                                                                                         )
                                                                                             .length ===
                                                                                         0 ? (
-                                                                                            <div className="px-2 py-1 text-xs text-gray-400">
+                                                                                            <div className="text-xs px-2 py-1 text-neutral-400 italic bg-neutral-50/50 rounded">
                                                                                                 No
                                                                                                 slides
                                                                                                 in
@@ -757,9 +688,8 @@ export const CourseStructureDetails = ({
                                                                                             </div>
                                                                                         ) : (
                                                                                             (
-                                                                                                chapterSlidesMap[
+                                                                                                slidesMap[
                                                                                                     ch
-                                                                                                        .chapter
                                                                                                         .id
                                                                                                 ] ??
                                                                                                 []
@@ -772,22 +702,21 @@ export const CourseStructureDetails = ({
                                                                                                         key={
                                                                                                             slide.id
                                                                                                         }
-                                                                                                        className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-xs text-gray-600 hover:bg-gray-100"
+                                                                                                        className="group flex cursor-pointer items-center gap-1.5 px-2 py-1 text-xs text-neutral-500 rounded hover:bg-gradient-to-r hover:from-amber-50/60 hover:to-orange-50/40 hover:border-amber-200/40 border border-transparent transition-all duration-200"
                                                                                                     >
-                                                                                                        <span className="w-7 shrink-0 text-center font-mono text-xs text-gray-400">
+                                                                                                        <span className="w-5 shrink-0 text-center font-mono text-neutral-400 bg-neutral-100 rounded px-0.5 text-xs">
                                                                                                             S
                                                                                                             {sIdx +
                                                                                                                 1}
                                                                                                         </span>
-                                                                                                        {getIcon(
-                                                                                                            slide.source_type,
-                                                                                                            slide
-                                                                                                                .document_slide
-                                                                                                                ?.type,
-                                                                                                            "3"
-                                                                                                        )}
+                                                                                                        <div className="shrink-0 group-hover:scale-110 transition-transform">
+                                                                                                            {getIcon(
+                                                                                                                slide,
+                                                                                                                "3"
+                                                                                                            )}
+                                                                                                        </div>
                                                                                                         <span
-                                                                                                            className="truncate"
+                                                                                                            className="truncate group-hover:text-amber-700 transition-colors"
                                                                                                             title={
                                                                                                                 slide.title
                                                                                                             }
@@ -817,9 +746,8 @@ export const CourseStructureDetails = ({
                             );
                         })}
                     {courseStructure === 3 &&
-                        subjects.map((subject) => {
+                        studyLibraryData?.map((subject: SubjectType) => {
                             const isSubjectOpen = openSubjects.has(subject.id);
-
                             return (
                                 <Collapsible
                                     key={subject.id}
@@ -827,14 +755,11 @@ export const CourseStructureDetails = ({
                                     onOpenChange={() =>
                                         toggleSubject(subject.id)
                                     }
-                                    className="group"
                                 >
-                                    <CollapsibleContent className="py-1">
-                                        <div className="relative space-y-1.5 border-gray-200">
-                                            <div className="absolute -left-[13px] top-0 h-full">
-                                                <div className="sticky top-0 flex h-full flex-col items-center" />
-                                            </div>
-
+                                    <CollapsibleContent
+                                        className={`pb-1 pt-2 `}
+                                    >
+                                        <div className="space-y-1 relative">
                                             {(
                                                 subjectModulesMap[subject.id] ??
                                                 []
@@ -843,7 +768,6 @@ export const CourseStructureDetails = ({
                                                     openModules.has(
                                                         mod.module.id
                                                     );
-
                                                 return (
                                                     <Collapsible
                                                         key={mod.module.id}
@@ -853,10 +777,11 @@ export const CourseStructureDetails = ({
                                                                 mod.module.id
                                                             )
                                                         }
-                                                        className="group/module"
                                                     >
-                                                        <CollapsibleContent className="py-1">
-                                                            <div className="relative space-y-1.5  border-gray-200">
+                                                        <CollapsibleContent
+                                                            className={`py-1`}
+                                                        >
+                                                            <div className="space-y-0.5">
                                                                 {(
                                                                     mod.chapters ??
                                                                     []
@@ -867,87 +792,80 @@ export const CourseStructureDetails = ({
                                                                     ) => {
                                                                         const isChapterOpen =
                                                                             openChapters.has(
-                                                                                ch
-                                                                                    .chapter
-                                                                                    .id
+                                                                                ch.id
                                                                             );
+
                                                                         return (
                                                                             <Collapsible
                                                                                 key={
-                                                                                    ch
-                                                                                        .chapter
-                                                                                        .id
+                                                                                    ch.id
                                                                                 }
                                                                                 open={
                                                                                     isChapterOpen
                                                                                 }
-                                                                                onOpenChange={() =>
+                                                                                onOpenChange={() => {
                                                                                     toggleChapter(
-                                                                                        ch
-                                                                                            .chapter
-                                                                                            .id
-                                                                                    )
-                                                                                }
-                                                                                className="group/chapter"
+                                                                                        ch.id
+                                                                                    );
+                                                                                    getSlidesWithChapterId(
+                                                                                        ch.id
+                                                                                    );
+                                                                                }}
                                                                             >
-                                                                                <CollapsibleTrigger className="flex w-full items-center rounded-md px-2 py-1 text-left text-xs font-medium text-gray-600 transition-colors duration-150 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2">
-                                                                                    <div className="flex flex-1 items-center gap-2">
+                                                                                <CollapsibleTrigger className="group flex w-full items-center rounded-md px-2 py-1 text-left text-sm text-neutral-600 transition-all duration-200 hover:bg-gradient-to-r hover:from-green-50/70 hover:to-emerald-50/50 hover:border-green-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-1">
+                                                                                    <div className="flex min-w-0 flex-1 items-center gap-1.5">
                                                                                         {isChapterOpen ? (
                                                                                             <CaretDown
                                                                                                 size={
                                                                                                     14
                                                                                                 }
-                                                                                                className="shrink-0 text-gray-500"
+                                                                                                className="shrink-0 text-neutral-500 group-hover:text-green-600 transition-colors"
                                                                                             />
                                                                                         ) : (
                                                                                             <CaretRight
                                                                                                 size={
                                                                                                     14
                                                                                                 }
-                                                                                                className="shrink-0 text-gray-500"
+                                                                                                className="shrink-0 text-neutral-500 group-hover:text-green-600 transition-colors"
                                                                                             />
                                                                                         )}
-                                                                                        <PresentationChart
-                                                                                            size={
-                                                                                                16
-                                                                                            }
-                                                                                            weight="duotone"
-                                                                                            className="shrink-0 text-green-600"
-                                                                                        />
-                                                                                        <span className="w-7 shrink-0 rounded-md bg-gray-100 py-0.5 text-center font-mono text-xs text-gray-500 group-hover/chapter:bg-white">
+                                                                                        <div className="flex items-center justify-center w-4 h-4 rounded bg-gradient-to-br from-green-500 to-green-600 text-white">
+                                                                                            <PresentationChart
+                                                                                                size={
+                                                                                                    10
+                                                                                                }
+                                                                                            />
+                                                                                        </div>
+                                                                                        <span className="text-xs w-5 shrink-0 text-center font-mono text-neutral-500 bg-neutral-100 rounded px-0.5">
                                                                                             C
                                                                                             {chIdx +
                                                                                                 1}
                                                                                         </span>
                                                                                         <span
-                                                                                            className="truncate"
+                                                                                            className="truncate group-hover:text-green-700 transition-colors text-xs"
                                                                                             title={
-                                                                                                ch
-                                                                                                    .chapter
-                                                                                                    .chapter_name
+                                                                                                ch.chapter_name
                                                                                             }
                                                                                         >
                                                                                             {
-                                                                                                ch
-                                                                                                    .chapter
-                                                                                                    .chapter_name
+                                                                                                ch.chapter_name
                                                                                             }
                                                                                         </span>
                                                                                     </div>
                                                                                 </CollapsibleTrigger>
-                                                                                <CollapsibleContent className="py-1 pl-9">
-                                                                                    <div className="relative space-y-1.5 border-l-2 border-dashed border-gray-200 pl-6">
+                                                                                <CollapsibleContent>
+                                                                                    <div className="space-y-px ml-5 border-l border-green-200/50 py-1 pl-2 relative">
+                                                                                        <div className="absolute left-0 top-0 w-px h-full bg-gradient-to-b from-green-300/50 to-transparent"></div>
                                                                                         {(
-                                                                                            chapterSlidesMap[
+                                                                                            slidesMap[
                                                                                                 ch
-                                                                                                    .chapter
                                                                                                     .id
                                                                                             ] ??
                                                                                             []
                                                                                         )
                                                                                             .length ===
                                                                                         0 ? (
-                                                                                            <div className="px-2 py-1 text-xs text-gray-400">
+                                                                                            <div className="text-xs px-2 py-1 text-neutral-400 italic bg-neutral-50/50 rounded">
                                                                                                 No
                                                                                                 slides
                                                                                                 in
@@ -956,9 +874,8 @@ export const CourseStructureDetails = ({
                                                                                             </div>
                                                                                         ) : (
                                                                                             (
-                                                                                                chapterSlidesMap[
+                                                                                                slidesMap[
                                                                                                     ch
-                                                                                                        .chapter
                                                                                                         .id
                                                                                                 ] ??
                                                                                                 []
@@ -971,22 +888,21 @@ export const CourseStructureDetails = ({
                                                                                                         key={
                                                                                                             slide.id
                                                                                                         }
-                                                                                                        className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-xs text-gray-600 hover:bg-gray-100"
+                                                                                                        className="group flex cursor-pointer items-center gap-1.5 px-2 py-1 text-xs text-neutral-500 rounded hover:bg-gradient-to-r hover:from-amber-50/60 hover:to-orange-50/40 hover:border-amber-200/40 border border-transparent transition-all duration-200"
                                                                                                     >
-                                                                                                        <span className="w-7 shrink-0 text-center font-mono text-xs text-gray-400">
+                                                                                                        <span className="w-5 shrink-0 text-center font-mono text-neutral-400 bg-neutral-100 rounded px-0.5 text-xs">
                                                                                                             S
                                                                                                             {sIdx +
                                                                                                                 1}
                                                                                                         </span>
-                                                                                                        {getIcon(
-                                                                                                            slide.source_type,
-                                                                                                            slide
-                                                                                                                .document_slide
-                                                                                                                ?.type,
-                                                                                                            "3"
-                                                                                                        )}
+                                                                                                        <div className="shrink-0 group-hover:scale-110 transition-transform">
+                                                                                                            {getIcon(
+                                                                                                                slide,
+                                                                                                                "3"
+                                                                                                            )}
+                                                                                                        </div>
                                                                                                         <span
-                                                                                                            className="truncate"
+                                                                                                            className="truncate group-hover:text-amber-700 transition-colors"
                                                                                                             title={
                                                                                                                 slide.title
                                                                                                             }
@@ -1017,9 +933,8 @@ export const CourseStructureDetails = ({
                         })}
 
                     {courseStructure === 2 &&
-                        subjects.map((subject) => {
+                        studyLibraryData?.map((subject: SubjectType) => {
                             const isSubjectOpen = openSubjects.has(subject.id);
-
                             return (
                                 <Collapsible
                                     key={subject.id}
@@ -1027,14 +942,11 @@ export const CourseStructureDetails = ({
                                     onOpenChange={() =>
                                         toggleSubject(subject.id)
                                     }
-                                    className="group"
                                 >
-                                    <CollapsibleContent className="py-1 ">
-                                        <div className="relative space-y-1.5  border-gray-200 ">
-                                            <div className="absolute -left-[13px] top-0 h-full">
-                                                <div className="sticky top-0 flex h-full flex-col items-center" />
-                                            </div>
-
+                                    <CollapsibleContent
+                                        className={`pb-1 pt-2 `}
+                                    >
+                                        <div className="space-y-1 relative">
                                             {(
                                                 subjectModulesMap[subject.id] ??
                                                 []
@@ -1043,7 +955,6 @@ export const CourseStructureDetails = ({
                                                     openModules.has(
                                                         mod.module.id
                                                     );
-
                                                 return (
                                                     <Collapsible
                                                         key={mod.module.id}
@@ -1053,52 +964,49 @@ export const CourseStructureDetails = ({
                                                                 mod.module.id
                                                             )
                                                         }
-                                                        className="group/module"
                                                     >
-                                                        <CollapsibleContent className="py-1">
-                                                            <div className="relative space-y-1.5 border-gray-200">
+                                                        <CollapsibleContent
+                                                            className={`py-1`}
+                                                        >
+                                                            <div className="space-y-0.5">
                                                                 {(
                                                                     mod.chapters ??
                                                                     []
                                                                 ).map((ch) => {
                                                                     const isChapterOpen =
                                                                         openChapters.has(
-                                                                            ch
-                                                                                .chapter
-                                                                                .id
+                                                                            ch.id
                                                                         );
+
                                                                     return (
                                                                         <Collapsible
                                                                             key={
-                                                                                ch
-                                                                                    .chapter
-                                                                                    .id
+                                                                                ch.id
                                                                             }
                                                                             open={
                                                                                 isChapterOpen
                                                                             }
-                                                                            onOpenChange={() =>
+                                                                            onOpenChange={() => {
                                                                                 toggleChapter(
-                                                                                    ch
-                                                                                        .chapter
-                                                                                        .id
-                                                                                )
-                                                                            }
-                                                                            className="group/chapter"
+                                                                                    ch.id
+                                                                                );
+                                                                                getSlidesWithChapterId(
+                                                                                    ch.id
+                                                                                );
+                                                                            }}
                                                                         >
-                                                                            <CollapsibleContent className="py-1">
-                                                                                <div className="relative space-y-1.5  border-gray-200 ">
+                                                                            <CollapsibleContent>
+                                                                                <div className="space-y-px pl-2 relative">
                                                                                     {(
-                                                                                        chapterSlidesMap[
+                                                                                        slidesMap[
                                                                                             ch
-                                                                                                .chapter
                                                                                                 .id
                                                                                         ] ??
                                                                                         []
                                                                                     )
                                                                                         .length ===
                                                                                     0 ? (
-                                                                                        <div className="px-2 py-1 text-xs text-gray-400">
+                                                                                        <div className="text-xs px-2 text-neutral-400 italic bg-neutral-50/50 rounded">
                                                                                             No
                                                                                             slides
                                                                                             in
@@ -1107,9 +1015,8 @@ export const CourseStructureDetails = ({
                                                                                         </div>
                                                                                     ) : (
                                                                                         (
-                                                                                            chapterSlidesMap[
+                                                                                            slidesMap[
                                                                                                 ch
-                                                                                                    .chapter
                                                                                                     .id
                                                                                             ] ??
                                                                                             []
@@ -1122,22 +1029,21 @@ export const CourseStructureDetails = ({
                                                                                                     key={
                                                                                                         slide.id
                                                                                                     }
-                                                                                                    className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-xs text-gray-600 hover:bg-gray-100"
+                                                                                                    className="group flex cursor-pointer items-center gap-1.5 px-2 py-1 text-xs text-neutral-500 rounded hover:bg-gradient-to-r hover:from-amber-50/60 hover:to-orange-50/40 hover:border-amber-200/40 border border-transparent transition-all duration-200"
                                                                                                 >
-                                                                                                    <span className="w-7 shrink-0 text-center font-mono text-xs text-gray-400">
+                                                                                                    <span className="w-5 shrink-0 text-center font-mono text-neutral-400 bg-neutral-100 rounded px-0.5 text-xs">
                                                                                                         S
                                                                                                         {sIdx +
                                                                                                             1}
                                                                                                     </span>
-                                                                                                    {getIcon(
-                                                                                                        slide.source_type,
-                                                                                                        slide
-                                                                                                            .document_slide
-                                                                                                            ?.type,
-                                                                                                        "3"
-                                                                                                    )}
+                                                                                                    <div className="shrink-0 group-hover:scale-110 transition-transform">
+                                                                                                        {getIcon(
+                                                                                                            slide,
+                                                                                                            "3"
+                                                                                                        )}
+                                                                                                    </div>
                                                                                                     <span
-                                                                                                        className="truncate"
+                                                                                                        className="truncate group-hover:text-amber-700 transition-colors"
                                                                                                         title={
                                                                                                             slide.title
                                                                                                         }
@@ -1168,78 +1074,128 @@ export const CourseStructureDetails = ({
                 </div>
             </div>
         ),
-        [TabType.STUDENT]: (
-            <div className="rounded-md bg-white p-3 text-sm text-gray-600 shadow-sm">
-                {currentSession && (
-                    <Students
-                        packageSessionId={packageSessionIds ?? ""}
-                        currentSession={currentSession}
-                    />
-                )}
-            </div>
-        ),
         [TabType.TEACHERS]: (
-            <div className="space-y-3">
-                <div className="flex flex-col items-start justify-between gap-2 md:flex-row md:items-center">
-                    <div className="flex-1">
-                        <h2 className="text-base font-semibold text-gray-800">
-                            Manage Teachers
-                        </h2>
-                        <p className="mt-0.5 text-xs text-gray-500">
-                            View and manage teachers assigned to this batch.
-                        </p>
+            <div className="rounded-lg bg-gradient-to-br from-white to-neutral-50/50 border border-neutral-200 p-6 text-sm text-neutral-600">
+                <div className="flex items-center gap-3 mb-3">
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
+                        <span className="text-white text-xs font-bold">T</span>
                     </div>
-                    <AddTeachers packageSessionId={packageSessionIds} />
+                    <span className="font-medium text-neutral-700">
+                        Teachers
+                    </span>
                 </div>
-                <TeachersList packageSessionId={packageSessionIds ?? ""} />
+                <p className="text-neutral-500">
+                    Teachers content coming soon.
+                </p>
             </div>
         ),
         [TabType.ASSESSMENT]: (
-            <div className="rounded-md bg-white p-3 text-sm text-gray-600 shadow-sm">
-                <Assessments packageSessionId={packageSessionIds ?? ""} />
+            <div className="rounded-lg bg-gradient-to-br from-white to-neutral-50/50 border border-neutral-200 p-6 text-sm text-neutral-600">
+                <div className="flex items-center gap-3 mb-3">
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center">
+                        <span className="text-white text-xs font-bold">A</span>
+                    </div>
+                    <span className="font-medium text-neutral-700">
+                        Assessments
+                    </span>
+                </div>
+                <p className="text-neutral-500">
+                    Assessment content coming soon.
+                </p>
             </div>
         ),
     };
 
-    const isLoading =
-        addSubjectMutation.isPending ||
-        deleteSubjectMutation.isPending ||
-        updateSubjectMutation.isPending ||
-        updateSubjectOrderMutation.isPending;
+    useEffect(() => {
+        const loadModules = async () => {
+            try {
+                const modulesMap = await fetchModules({
+                    subjects: getSubjectDetails(
+                        courseData,
+                        selectedSession,
+                        selectedLevel
+                    ),
+                });
+                setSubjectModulesMap(modulesMap);
 
-    return isLoading ? (
-        <DashboardLoader />
-    ) : (
-        <div className="flex size-full flex-col gap-3 rounded-lg bg-white py-4 text-neutral-700">
-            <Tabs
-                value={selectedTab}
-                onValueChange={handleTabChange}
-                className="w-full"
-            >
-                <div className="overflow-x-auto border-b border-gray-200">
-                    <TabsList
-                        className="h-auto min-w-max flex-nowrap bg-transparent p-0"
-                        style={{ display: "flex", justifyContent: "left" }}
-                    >
+                // Auto-expand all sections by default
+                const allSubjectIds = new Set<string>(
+                    getSubjectDetails(
+                        courseData,
+                        selectedSession,
+                        selectedLevel
+                    ).map((s: SubjectType) => s.id)
+                );
+                const allModuleIds = new Set<string>();
+                const allChapterIds = new Set<string>();
+
+                Object.values(modulesMap).forEach((modules) => {
+                    modules.forEach((mod) => {
+                        allModuleIds.add(mod.module.id);
+                        mod.chapters.forEach((ch) => {
+                            allChapterIds.add(ch.id);
+                            // Load slides for each chapter
+                            getSlidesWithChapterId(ch.id);
+                        });
+                    });
+                });
+
+                setOpenSubjects(allSubjectIds);
+                setOpenModules(allModuleIds);
+                setOpenChapters(allChapterIds);
+            } catch (error) {
+                console.error("Failed to fetch modules:", error);
+                setSubjectModulesMap({});
+            }
+        };
+        loadModules();
+    }, [studyLibraryData, packageSessionId, fetchModules]);
+
+    useEffect(() => {
+        setStudyLibraryData(
+            getSubjectDetails(courseData, selectedSession, selectedLevel)
+        );
+    }, [selectedSession, selectedLevel]);
+
+    useEffect(() => {
+        setNavHeading(
+            <div className="flex items-center gap-2">
+                <div>Study Materials</div>
+            </div>
+        );
+    }, []);
+
+    return (
+        <PullToRefreshWrapper onRefresh={refreshData}>
+            <div className="flex size-full flex-col gap-4 rounded-lg bg-gradient-to-br from-neutral-50/50 to-white p-3 text-neutral-700 md:p-4">
+                <Tabs
+                    value={selectedTab}
+                    onValueChange={handleTabChange}
+                    className="w-full overflow-scroll"
+                >
+                    <TabsList className="h-auto border-b border-neutral-200/80 bg-transparent p-0">
                         {tabs.map((tab) => (
                             <TabsTrigger
                                 key={tab.value}
                                 value={tab.value}
-                                className={`data-[state=active]:text-primary-600 relative flex rounded-none border-b-2 border-transparent px-4 py-2 text-sm font-medium !shadow-none transition-colors duration-200 hover:bg-gray-100 data-[state=active]:border-primary-500 data-[state=active]:bg-primary-50`}
+                                className={`data-[state=active]:text-primary data-[state=active]:border-primary hover:text-primary -mb-px px-3 
+                                py-2 text-sm font-medium transition-all duration-200 
+                                hover:bg-gradient-to-r hover:from-primary-50/60 hover:to-blue-50/40 focus-visible:ring-2 focus-visible:ring-primary-300 focus-visible:ring-offset-1
+                                data-[state=active]:rounded-t-lg data-[state=active]:border-b-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-white data-[state=active]:to-primary-50/30 data-[state=inactive]:text-neutral-500 data-[state=inactive]:hover:rounded-t-lg`}
                             >
                                 {tab.label}
                             </TabsTrigger>
                         ))}
                     </TabsList>
-                </div>
-                <TabsContent
-                    key={selectedTab}
-                    value={selectedTab}
-                    className="mt-4 overflow-hidden rounded-r-md"
-                >
-                    {tabContent[selectedTab as TabType]}
-                </TabsContent>
-            </Tabs>
-        </div>
+                    <TabsContent
+                        key={selectedTab}
+                        value={selectedTab}
+                        className="mt-4 rounded-lg bg-white border border-neutral-200/60 p-4"
+                    >
+                        {tabContent[selectedTab as TabType]}
+                    </TabsContent>
+                </Tabs>
+            </div>
+        </PullToRefreshWrapper>
     );
 };

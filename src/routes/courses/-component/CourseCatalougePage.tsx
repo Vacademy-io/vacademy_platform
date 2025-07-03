@@ -68,7 +68,7 @@ const CourseCatalougePage: React.FC = () => {
     };
 
     useEffect(() => {
-        fetchPackages(searchTerm, sortOption);
+        fetchPackages(searchTerm);
     }, [searchTerm, sortOption]);
 
     const handleApplyFilters = async () => {

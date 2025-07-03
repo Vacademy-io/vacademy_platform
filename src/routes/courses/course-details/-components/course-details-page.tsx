@@ -32,11 +32,11 @@ import {
     AssignmentSlide,
 } from "../../-services/getAllSlides";
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
+import { CourseDetailsRatingsComponent } from "./course-details-ratings-page";
 import {
-    CourseDetailsRatingsComponent,
     getIdByLevelAndSession,
-} from "./course-details-ratings-page";
-import { transformApiDataToCourseData } from "../-utils/helper";
+    transformApiDataToCourseData,
+} from "../-utils/helper";
 import { handleGetAllCourseDetails } from "../-services/get-course-details";
 import axios from "axios";
 import { urlInstituteDetails } from "@/constants/urls";
@@ -45,6 +45,11 @@ import { MyButton } from "@/components/design-system/button";
 import { LoginForm } from "@/components/common/LoginPages/sections/login-form";
 import { CourseStructureDetails } from "./course-structure-details";
 import { handleGetSlideCountDetails } from "../-services/get-slides-count";
+import {
+    BatchForSessionType,
+    InstituteDetailsType,
+} from "@/types/institute-details/institute-details-interface";
+import { CourseStructureResponse } from "@/types/institute-details/course-details-interface";
 
 type SlideType = {
     id: string;
@@ -156,7 +161,7 @@ export const CourseDetailsPage = () => {
         setPackageSessionIdForCurrentLevel,
     ] = useState<string | null>(null);
 
-    const findIdByPackageId = (data: any) => {
+    const findIdByPackageId = (data: BatchForSessionType[]) => {
         const result = data?.find(
             (item) => item.package_dto?.id === searchParams.courseId
         );
@@ -167,7 +172,8 @@ export const CourseDetailsPage = () => {
         null
     );
 
-    const [instituteDetails, setInstituteDetails] = useState(null);
+    const [instituteDetails, setInstituteDetails] =
+        useState<InstituteDetailsType | null>(null);
 
     // ✅ Fetch institute details
     useEffect(() => {
@@ -204,7 +210,8 @@ export const CourseDetailsPage = () => {
 
     const courseDetailsData = useMemo(() => {
         return studyLibraryData?.find(
-            (item) => item.course.id === searchParams.courseId
+            (item: CourseStructureResponse) =>
+                item.course.id === searchParams.courseId
         );
     }, [studyLibraryData]);
 
@@ -586,13 +593,16 @@ export const CourseDetailsPage = () => {
                                     )}
                                 </div>
                             </div>
-
                             <CourseStructureDetails
                                 selectedSession={selectedSession}
                                 selectedLevel={selectedLevel}
                                 courseStructure={form.getValues(
                                     "courseData.courseStructure"
                                 )}
+                                courseData={form.getValues()}
+                                packageSessionId={
+                                    packageSessionIdForCurrentLevel || ""
+                                }
                             />
 
                             {/* What You'll Learn Section */}

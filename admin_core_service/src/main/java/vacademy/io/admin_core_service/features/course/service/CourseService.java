@@ -45,6 +45,7 @@ public class CourseService {
     private final PackageSessionRepository packageSessionRepository;
     private final LearnerInvitationService learnerInvitationService;
     private final FacultyService facultyService;
+
     @Transactional
     public String addCourse(AddCourseDTO addCourseDTO, CustomUserDetails user, String instituteId) {
         PackageEntity savedPackage = null;

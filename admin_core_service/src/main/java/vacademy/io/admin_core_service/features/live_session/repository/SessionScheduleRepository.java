@@ -68,6 +68,7 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
         ss.start_time AS scheduleStartTime,
         ss.last_entry_time AS scheduleLastEntryTime,
         ss.custom_meeting_link AS customMeetingLink,
+        ss.recurrence_type AS recurrenceType,
         s.title AS sessionTitle,
         s.subject AS subject,
         s.start_time AS sessionStartTime,

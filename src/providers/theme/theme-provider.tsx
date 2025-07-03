@@ -4,6 +4,8 @@ import type React from "react";
 import { createContext, useContext, useEffect, useState } from "react";
 import convert from "color-convert";
 import themeData from "@/constants/themes/theme.json";
+import { HOLISTIC_INSTITUTE_ID } from "@/constants/urls";
+import { getInstituteId } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
 
 type ThemeContextType = {
   primaryColor: string;
@@ -119,14 +121,25 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, [primaryColor]);
 
   useEffect(() => {
-    const savedThemeCode = localStorage.getItem("theme-code");
-    const savedCustomColor = localStorage.getItem("theme-custom-color");
+    const initializeTheme = async () => {
+      const instituteId = await getInstituteId();
+      // Check if institute ID matches and set holistic theme
+      if (instituteId === HOLISTIC_INSTITUTE_ID) {
+        console.log("holistic");
+        setPrimaryColor("holistic");
+        return;
+      }
+      const savedThemeCode = localStorage.getItem("theme-code");
+      const savedCustomColor = localStorage.getItem("theme-custom-color");
 
-    if (savedThemeCode) {
-      setPrimaryColor(savedThemeCode);
-    } else if (savedCustomColor) {
-      setPrimaryColor(savedCustomColor);
-    }
+      if (savedThemeCode) {
+        setPrimaryColor(savedThemeCode);
+      } else if (savedCustomColor) {
+        setPrimaryColor(savedCustomColor);
+      }
+    };
+
+    initializeTheme();
   }, []);
 
   return (

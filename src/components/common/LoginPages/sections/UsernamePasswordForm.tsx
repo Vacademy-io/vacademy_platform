@@ -23,6 +23,8 @@ import {
 import { fetchAndStoreInstituteDetails } from "@/services/fetchAndStoreInstituteDetails";
 import { fetchAndStoreStudentDetails } from "@/services/studentDetails";
 import { useTheme } from "@/providers/theme/theme-provider";
+import { HOLISTIC_INSTITUTE_ID } from "@/constants/urls";
+import { useInstituteFeatureStore } from "@/stores/insititute-feature-store";
 type FormValues = z.infer<typeof loginSchema>;
 
 interface UsernameLoginProps {
@@ -32,6 +34,7 @@ export function UsernameLogin({ onSwitchToEmail }: UsernameLoginProps) {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const { setInstituteId } = useInstituteFeatureStore();
   /* eslint-disable-next-line */
   const { redirect } = useSearch<any>({ from: "/login/" });
   const { setPrimaryColor } = useTheme();
@@ -84,8 +87,12 @@ export function UsernameLogin({ onSwitchToEmail }: UsernameLoginProps) {
                   instituteId,
                   userId
                 );
-                console.log("Institute color:", details?.institute_theme_code);
-                setPrimaryColor(details?.institute_theme_code ?? "primary");
+                setInstituteId(instituteId);
+                if (instituteId === HOLISTIC_INSTITUTE_ID) {
+                  setPrimaryColor("holistic");
+                } else {
+                  setPrimaryColor(details?.institute_theme_code ?? "primary");
+                }
               } catch (error) {
                 console.error("Error fetching institute details:", error);
               }
@@ -133,7 +140,7 @@ export function UsernameLogin({ onSwitchToEmail }: UsernameLoginProps) {
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
           {/* Username Field */}
-          <motion.div 
+          <motion.div
             initial={{ y: 10, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ delay: 0.1 }}
@@ -167,7 +174,7 @@ export function UsernameLogin({ onSwitchToEmail }: UsernameLoginProps) {
           </motion.div>
 
           {/* Password Field */}
-          <motion.div 
+          <motion.div
             initial={{ y: 10, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ delay: 0.2 }}
@@ -185,7 +192,9 @@ export function UsernameLogin({ onSwitchToEmail }: UsernameLoginProps) {
                         <div className="flex flex-col gap-1">
                           <Label className="text-subtitle font-regular">
                             Password
-                            <span className="text-subtitle text-danger-600">*</span>
+                            <span className="text-subtitle text-danger-600">
+                              *
+                            </span>
                           </Label>
                           <div className="relative">
                             <Input
@@ -218,7 +227,9 @@ export function UsernameLogin({ onSwitchToEmail }: UsernameLoginProps) {
                           {form.formState.errors.password?.message && (
                             <div className="flex items-center gap-1 pl-1 text-body font-regular text-danger-600">
                               <VscError />
-                              <span className="mt-[3px]">{form.formState.errors.password.message}</span>
+                              <span className="mt-[3px]">
+                                {form.formState.errors.password.message}
+                              </span>
                             </div>
                           )}
                         </div>
@@ -241,7 +252,7 @@ export function UsernameLogin({ onSwitchToEmail }: UsernameLoginProps) {
           </motion.div>
 
           {/* Login Button */}
-          <motion.div 
+          <motion.div
             initial={{ y: 10, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ delay: 0.3 }}
@@ -258,7 +269,11 @@ export function UsernameLogin({ onSwitchToEmail }: UsernameLoginProps) {
                 <div className="flex items-center justify-center space-x-2">
                   <motion.div
                     animate={{ rotate: 360 }}
-                    transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                    transition={{
+                      duration: 1,
+                      repeat: Infinity,
+                      ease: "linear",
+                    }}
                   >
                     <RefreshCw className="w-4 h-4" />
                   </motion.div>
@@ -276,7 +291,7 @@ export function UsernameLogin({ onSwitchToEmail }: UsernameLoginProps) {
       </Form>
 
       {/* Switch to Email Login */}
-      <motion.div 
+      <motion.div
         initial={{ y: 10, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ delay: 0.4 }}

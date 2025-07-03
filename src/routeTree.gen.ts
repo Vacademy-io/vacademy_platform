@@ -13,6 +13,7 @@ import { Route as UserProfileIndexRouteImport } from './routes/user-profile/inde
 import { Route as TermsAndConditionsIndexRouteImport } from './routes/terms-and-conditions/index'
 import { Route as StudyLibraryIndexRouteImport } from './routes/study-library/index'
 import { Route as RegisterIndexRouteImport } from './routes/register/index'
+import { Route as ReferralIndexRouteImport } from './routes/referral/index'
 import { Route as PrivacyPolicyIndexRouteImport } from './routes/privacy-policy/index'
 import { Route as LogoutIndexRouteImport } from './routes/logout/index'
 import { Route as LoginIndexRouteImport } from './routes/login/index'
@@ -21,6 +22,7 @@ import { Route as LearnerInvitationResponseIndexRouteImport } from './routes/lea
 import { Route as InstituteSelectionIndexRouteImport } from './routes/institute-selection/index'
 import { Route as DeleteUserIndexRouteImport } from './routes/delete-user/index'
 import { Route as DashboardIndexRouteImport } from './routes/dashboard/index'
+import { Route as ChangePasswordIndexRouteImport } from './routes/change-password/index'
 import { Route as SessionSelectionPageIndexRouteImport } from './routes/SessionSelectionPage/index'
 import { Route as UserProfileEditIndexRouteImport } from './routes/user-profile/edit/index'
 import { Route as StudyLibraryLiveClassIndexRouteImport } from './routes/study-library/live-class/index'
@@ -67,6 +69,11 @@ const RegisterIndexRoute = RegisterIndexRouteImport.update({
   path: '/register/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ReferralIndexRoute = ReferralIndexRouteImport.update({
+  id: '/referral/',
+  path: '/referral/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PrivacyPolicyIndexRoute = PrivacyPolicyIndexRouteImport.update({
   id: '/privacy-policy/',
   path: '/privacy-policy/',
@@ -106,6 +113,11 @@ const DeleteUserIndexRoute = DeleteUserIndexRouteImport.update({
 const DashboardIndexRoute = DashboardIndexRouteImport.update({
   id: '/dashboard/',
   path: '/dashboard/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ChangePasswordIndexRoute = ChangePasswordIndexRouteImport.update({
+  id: '/change-password/',
+  path: '/change-password/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SessionSelectionPageIndexRoute =
@@ -257,6 +269,7 @@ const StudyLibraryCoursesLevelsSubjectsModulesChaptersSlidesIndexRoute =
 
 export interface FileRoutesByFullPath {
   '/SessionSelectionPage': typeof SessionSelectionPageIndexRoute
+  '/change-password': typeof ChangePasswordIndexRoute
   '/dashboard': typeof DashboardIndexRoute
   '/delete-user': typeof DeleteUserIndexRoute
   '/institute-selection': typeof InstituteSelectionIndexRoute
@@ -265,6 +278,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginIndexRoute
   '/logout': typeof LogoutIndexRoute
   '/privacy-policy': typeof PrivacyPolicyIndexRoute
+  '/referral': typeof ReferralIndexRoute
   '/register': typeof RegisterIndexRoute
   '/study-library': typeof StudyLibraryIndexRoute
   '/terms-and-conditions': typeof TermsAndConditionsIndexRoute
@@ -296,6 +310,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/SessionSelectionPage': typeof SessionSelectionPageIndexRoute
+  '/change-password': typeof ChangePasswordIndexRoute
   '/dashboard': typeof DashboardIndexRoute
   '/delete-user': typeof DeleteUserIndexRoute
   '/institute-selection': typeof InstituteSelectionIndexRoute
@@ -304,6 +319,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginIndexRoute
   '/logout': typeof LogoutIndexRoute
   '/privacy-policy': typeof PrivacyPolicyIndexRoute
+  '/referral': typeof ReferralIndexRoute
   '/register': typeof RegisterIndexRoute
   '/study-library': typeof StudyLibraryIndexRoute
   '/terms-and-conditions': typeof TermsAndConditionsIndexRoute
@@ -336,6 +352,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/SessionSelectionPage/': typeof SessionSelectionPageIndexRoute
+  '/change-password/': typeof ChangePasswordIndexRoute
   '/dashboard/': typeof DashboardIndexRoute
   '/delete-user/': typeof DeleteUserIndexRoute
   '/institute-selection/': typeof InstituteSelectionIndexRoute
@@ -344,6 +361,7 @@ export interface FileRoutesById {
   '/login/': typeof LoginIndexRoute
   '/logout/': typeof LogoutIndexRoute
   '/privacy-policy/': typeof PrivacyPolicyIndexRoute
+  '/referral/': typeof ReferralIndexRoute
   '/register/': typeof RegisterIndexRoute
   '/study-library/': typeof StudyLibraryIndexRoute
   '/terms-and-conditions/': typeof TermsAndConditionsIndexRoute
@@ -377,6 +395,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/SessionSelectionPage'
+    | '/change-password'
     | '/dashboard'
     | '/delete-user'
     | '/institute-selection'
@@ -385,6 +404,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/logout'
     | '/privacy-policy'
+    | '/referral'
     | '/register'
     | '/study-library'
     | '/terms-and-conditions'
@@ -416,6 +436,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/SessionSelectionPage'
+    | '/change-password'
     | '/dashboard'
     | '/delete-user'
     | '/institute-selection'
@@ -424,6 +445,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/logout'
     | '/privacy-policy'
+    | '/referral'
     | '/register'
     | '/study-library'
     | '/terms-and-conditions'
@@ -455,6 +477,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/SessionSelectionPage/'
+    | '/change-password/'
     | '/dashboard/'
     | '/delete-user/'
     | '/institute-selection/'
@@ -463,6 +486,7 @@ export interface FileRouteTypes {
     | '/login/'
     | '/logout/'
     | '/privacy-policy/'
+    | '/referral/'
     | '/register/'
     | '/study-library/'
     | '/terms-and-conditions/'
@@ -495,6 +519,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   SessionSelectionPageIndexRoute: typeof SessionSelectionPageIndexRoute
+  ChangePasswordIndexRoute: typeof ChangePasswordIndexRoute
   DashboardIndexRoute: typeof DashboardIndexRoute
   DeleteUserIndexRoute: typeof DeleteUserIndexRoute
   InstituteSelectionIndexRoute: typeof InstituteSelectionIndexRoute
@@ -503,6 +528,7 @@ export interface RootRouteChildren {
   LoginIndexRoute: typeof LoginIndexRoute
   LogoutIndexRoute: typeof LogoutIndexRoute
   PrivacyPolicyIndexRoute: typeof PrivacyPolicyIndexRoute
+  ReferralIndexRoute: typeof ReferralIndexRoute
   RegisterIndexRoute: typeof RegisterIndexRoute
   StudyLibraryIndexRoute: typeof StudyLibraryIndexRoute
   TermsAndConditionsIndexRoute: typeof TermsAndConditionsIndexRoute
@@ -563,6 +589,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RegisterIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/referral/': {
+      id: '/referral/'
+      path: '/referral'
+      fullPath: '/referral'
+      preLoaderRoute: typeof ReferralIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/privacy-policy/': {
       id: '/privacy-policy/'
       path: '/privacy-policy'
@@ -617,6 +650,13 @@ declare module '@tanstack/react-router' {
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof DashboardIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/change-password/': {
+      id: '/change-password/'
+      path: '/change-password'
+      fullPath: '/change-password'
+      preLoaderRoute: typeof ChangePasswordIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/SessionSelectionPage/': {
@@ -799,6 +839,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   SessionSelectionPageIndexRoute: SessionSelectionPageIndexRoute,
+  ChangePasswordIndexRoute: ChangePasswordIndexRoute,
   DashboardIndexRoute: DashboardIndexRoute,
   DeleteUserIndexRoute: DeleteUserIndexRoute,
   InstituteSelectionIndexRoute: InstituteSelectionIndexRoute,
@@ -807,6 +848,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginIndexRoute: LoginIndexRoute,
   LogoutIndexRoute: LogoutIndexRoute,
   PrivacyPolicyIndexRoute: PrivacyPolicyIndexRoute,
+  ReferralIndexRoute: ReferralIndexRoute,
   RegisterIndexRoute: RegisterIndexRoute,
   StudyLibraryIndexRoute: StudyLibraryIndexRoute,
   TermsAndConditionsIndexRoute: TermsAndConditionsIndexRoute,

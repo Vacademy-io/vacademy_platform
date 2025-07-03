@@ -5,12 +5,15 @@ import { getPublicUrl } from "@/services/upload_file";
 
 interface StoreState {
   sideBarState: sideBarStateType;
-  sideBarOpen:boolean;
+  sideBarOpen: boolean;
   instituteName: string;
   instituteLogoFileUrl: string;
-  setSidebarOpen:()=>void;
+  setSidebarOpen: () => void;
   setSideBarState: (sidebarstate: sideBarStateType) => void;
-  setInstituteDetails: (instituteName : string, instituteLogoFileUrl : string) => void;
+  setInstituteDetails: (
+    instituteName: string,
+    instituteLogoFileUrl: string
+  ) => void;
 }
 
 const useStore = create<StoreState>((set) => ({

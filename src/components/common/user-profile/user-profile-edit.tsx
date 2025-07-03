@@ -20,7 +20,7 @@ import {
   Users,
   GraduationCap,
 } from "@phosphor-icons/react";
-import { STUDENT_DETAIL_EDIT } from "@/constants/urls";
+import { HOLISTIC_INSTITUTE_ID, STUDENT_DETAIL_EDIT } from "@/constants/urls";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { useNavigate } from "@tanstack/react-router";
 import { Preferences } from "@capacitor/preferences";
@@ -32,7 +32,8 @@ import { FormProvider, useForm } from "react-hook-form";
 import { useFileUpload } from "@/hooks/use-file-upload";
 import PhoneInputField from "@/components/design-system/phone-input-field";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
-import { PencilSimpleLine } from "phosphor-react";
+import { GlobeSimple, PencilSimpleLine } from "phosphor-react";
+import { useInstituteFeatureStore } from "@/stores/insititute-feature-store";
 
 // Define the update request body interface
 interface UpdateStudentRequest {
@@ -51,6 +52,7 @@ interface UpdateStudentRequest {
   parents_mobile_number: string;
   parents_email: string;
   face_file_id: string;
+  country: string;
 }
 
 export default function EditProfile() {
@@ -71,6 +73,7 @@ export default function EditProfile() {
     parents_mobile_number: "",
     parents_email: "",
     face_file_id: "",
+    country: "",
   });
 
   const [isLoading, setIsLoading] = useState(false);
@@ -78,6 +81,7 @@ export default function EditProfile() {
   const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const { uploadFile, getPublicUrl } = useFileUpload();
+  const { showForInstitutes } = useInstituteFeatureStore();
 
   const methods = useForm();
   const navigate = useNavigate();
@@ -253,6 +257,7 @@ export default function EditProfile() {
             parents_mobile_number: studentDetails.parents_mobile_number || "",
             parents_email: studentDetails.parents_email || "",
             face_file_id: studentDetails.face_file_id || "",
+            country: studentDetails.country || "",
           });
 
           // Get profile image if face_file_id exists
@@ -315,6 +320,7 @@ export default function EditProfile() {
           parents_mobile_number: formData.parents_mobile_number,
           parents_email: formData.parents_email,
           face_file_id: formData.face_file_id,
+          country: formData.country,
         };
 
         // Get the current stored data
@@ -452,26 +458,28 @@ export default function EditProfile() {
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="institute_name" className="text-xs">
-                College/School Name
-              </Label>
-              <div className="relative">
-                <Input
-                  id="institute_name"
-                  value={formData.institute_name}
-                  onChange={(e) =>
-                    handleChange("institute_name", e.target.value)
-                  }
-                  placeholder="Enter college/school name"
-                  className="h-10 text-sm pl-9"
-                />
-                <GraduationCap
-                  size={18}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500"
-                />
+            {!showForInstitutes([HOLISTIC_INSTITUTE_ID]) && (
+              <div className="space-y-2">
+                <Label htmlFor="institute_name" className="text-xs">
+                  College/School Name
+                </Label>
+                <div className="relative">
+                  <Input
+                    id="institute_name"
+                    value={formData.institute_name}
+                    onChange={(e) =>
+                      handleChange("institute_name", e.target.value)
+                    }
+                    placeholder="Enter college/school name"
+                    className="h-10 text-sm pl-9"
+                  />
+                  <GraduationCap
+                    size={18}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500"
+                  />
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           {/* Contact Information */}
@@ -537,142 +545,174 @@ export default function EditProfile() {
               <MapPin size={18} weight="bold" />
               <h3>Location Details</h3>
             </div>
+            {showForInstitutes([HOLISTIC_INSTITUTE_ID]) ? (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="address_line" className="text-xs">
+                    Country
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      id="country"
+                      value={formData.country}
+                      onChange={(e) => handleChange("country", e.target.value)}
+                      placeholder="Enter country"
+                      className="h-10 text-sm pl-9"
+                    />
+                    <GlobeSimple
+                      size={18}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500"
+                    />
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="address_line" className="text-xs">
+                    Address Line 1
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      id="address_line"
+                      value={formData.address_line}
+                      onChange={(e) =>
+                        handleChange("address_line", e.target.value)
+                      }
+                      placeholder="Enter address"
+                      className="h-10 text-sm pl-9"
+                    />
+                    <Buildings
+                      size={18}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500"
+                    />
+                  </div>
+                </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="address_line" className="text-xs">
-                Address Line 1
-              </Label>
-              <div className="relative">
-                <Input
-                  id="address_line"
-                  value={formData.address_line}
-                  onChange={(e) => handleChange("address_line", e.target.value)}
-                  placeholder="Enter address"
-                  className="h-10 text-sm pl-9"
-                />
-                <Buildings
-                  size={18}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500"
-                />
-              </div>
-            </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="city" className="text-xs">
+                      City/Village
+                    </Label>
+                    <Input
+                      id="city"
+                      value={formData?.city || ""}
+                      onChange={(e) => handleChange("city", e.target.value)}
+                      placeholder="Enter city/village"
+                      className="h-10 text-sm"
+                    />
+                  </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="city" className="text-xs">
-                  City/Village
-                </Label>
-                <Input
-                  id="city"
-                  value={formData?.city || ""}
-                  onChange={(e) => handleChange("city", e.target.value)}
-                  placeholder="Enter city/village"
-                  className="h-10 text-sm"
-                />
-              </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="state" className="text-xs">
+                      State
+                    </Label>
+                    <Input
+                      id="state"
+                      value={formData.state}
+                      onChange={(e) => handleChange("state", e.target.value)}
+                      placeholder="Enter state"
+                      className="h-10 text-sm"
+                    />
+                  </div>
+                </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="state" className="text-xs">
-                  State
-                </Label>
-                <Input
-                  id="state"
-                  value={formData.state}
-                  onChange={(e) => handleChange("state", e.target.value)}
-                  placeholder="Enter state"
-                  className="h-10 text-sm"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="pin_code" className="text-xs">
-                Pincode
-              </Label>
-              <Input
-                id="pin_code"
-                value={formData.pin_code}
-                onChange={(e) => handleChange("pin_code", e.target.value)}
-                placeholder="Enter pincode"
-                className="h-10 text-sm"
-              />
-            </div>
+                <div className="space-y-2">
+                  <Label htmlFor="pin_code" className="text-xs">
+                    Pincode
+                  </Label>
+                  <Input
+                    id="pin_code"
+                    value={formData.pin_code}
+                    onChange={(e) => handleChange("pin_code", e.target.value)}
+                    placeholder="Enter pincode"
+                    className="h-10 text-sm"
+                  />
+                </div>
+              </>
+            )}
           </div>
 
           {/* Parent/Guardian's Details */}
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 text-sm font-medium text-gray-500">
-              <Users size={18} weight="bold" />
-              <h3>Parent/Guardian's Details</h3>
-            </div>
+          {!showForInstitutes([HOLISTIC_INSTITUTE_ID]) && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 text-sm font-medium text-gray-500">
+                <Users size={18} weight="bold" />
+                <h3>Parent/Guardian's Details</h3>
+              </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="father_name" className="text-xs">
-                  Father/Male Guardian's Name
-                </Label>
-                <Input
-                  id="father_name"
-                  value={formData.father_name}
-                  onChange={(e) => handleChange("father_name", e.target.value)}
-                  placeholder="Enter father's name"
-                  className="h-10 text-sm"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="father_name" className="text-xs">
+                    Father/Male Guardian's Name
+                  </Label>
+                  <Input
+                    id="father_name"
+                    value={formData.father_name}
+                    onChange={(e) =>
+                      handleChange("father_name", e.target.value)
+                    }
+                    placeholder="Enter father's name"
+                    className="h-10 text-sm"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="mother_name" className="text-xs">
+                    Mother/Female Guardian's Name
+                  </Label>
+                  <Input
+                    id="mother_name"
+                    value={formData.mother_name}
+                    onChange={(e) =>
+                      handleChange("mother_name", e.target.value)
+                    }
+                    placeholder="Enter mother's name"
+                    className="h-10 text-sm"
+                  />
+                </div>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="mother_name" className="text-xs">
-                  Mother/Female Guardian's Name
+                <Label htmlFor="parents_email" className="text-xs">
+                  Parent/Guardian's Email
                 </Label>
-                <Input
-                  id="mother_name"
-                  value={formData.mother_name}
-                  onChange={(e) => handleChange("mother_name", e.target.value)}
-                  placeholder="Enter mother's name"
-                  className="h-10 text-sm"
-                />
+                <div className="relative">
+                  <Input
+                    id="parents_email"
+                    type="email"
+                    value={formData.parents_email}
+                    onChange={(e) =>
+                      handleChange("parents_email", e.target.value)
+                    }
+                    placeholder="Enter parent's email"
+                    className="h-10 text-sm pl-9"
+                  />
+                  <EnvelopeSimple
+                    size={18}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500"
+                  />
+                </div>
               </div>
-            </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="parents_email" className="text-xs">
-                Parent/Guardian's Email
-              </Label>
-              <div className="relative">
-                <Input
-                  id="parents_email"
-                  type="email"
-                  value={formData.parents_email}
-                  onChange={(e) =>
-                    handleChange("parents_email", e.target.value)
+              <div className="space-y-2">
+                <Label htmlFor="parents_mobile_number" className="text-xs">
+                  Parent/Guardian's Mobile Number
+                </Label>
+                <PhoneInputField
+                  label=""
+                  name="parents_mobile_number"
+                  placeholder="Enter parent's mobile number"
+                  control={methods.control}
+                  value={formData.parents_mobile_number}
+                  country="in"
+                  onChange={(value) =>
+                    handleChange("parents_mobile_number", value)
                   }
-                  placeholder="Enter parent's email"
-                  className="h-10 text-sm pl-9"
-                />
-                <EnvelopeSimple
-                  size={18}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500"
                 />
               </div>
             </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="parents_mobile_number" className="text-xs">
-                Parent/Guardian's Mobile Number
-              </Label>
-              <PhoneInputField
-                label=""
-                name="parents_mobile_number"
-                placeholder="Enter parent's mobile number"
-                control={methods.control}
-                value={formData.parents_mobile_number}
-                country="in"
-                onChange={(value) =>
-                  handleChange("parents_mobile_number", value)
-                }
-              />
-            </div>
-          </div>
+          )}
 
           <div className="pt-4 flex justify-between">
             <MyButton

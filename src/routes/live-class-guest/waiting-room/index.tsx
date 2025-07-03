@@ -9,7 +9,6 @@ import { BackgroundMusic } from "@/routes/study-library/live-class/waiting-room/
 import { SessionStreamingServiceType } from "@/routes/register/live-class/-types/enum";
 import { useMarkAttendance } from "../-hooks/useMarkAttendance";
 import { toast } from "sonner";
-import dayjs from "dayjs";
 
 export const Route = createFileRoute("/live-class-guest/waiting-room/")({
   validateSearch: z.object({
@@ -47,15 +46,22 @@ function GuestWaitingRoomComponent() {
   useEffect(() => {
     if (sessionDetails) {
       const checkSessionStatus = async () => {
-        const now = dayjs();
-        const sessionStart = dayjs(sessionDetails.sessionStartTime);
-        const waitingRoomStart = sessionStart.subtract(
-          sessionDetails.waitingRoomTime,
-          "minute"
+
+        const now = new Date();
+        const sessionDate = new Date(
+          `${sessionDetails?.meetingDate}T${sessionDetails?.scheduleStartTime}`
+        );
+        const waitingRoomStart = new Date(sessionDate);
+        waitingRoomStart.setMinutes(
+          waitingRoomStart.getMinutes() - (sessionDetails?.waitingRoomTime ?? 0)
         );
 
+        // Check if we're in waiting room period or main session
+        const isInWaitingRoom = now >= waitingRoomStart && now < sessionDate;
+        const isInMainSession = now >= sessionDate;
+
         // Case 1: Session has already started.
-        if (now.isAfter(sessionStart) || now.isSame(sessionStart)) {
+        if (isInMainSession) {
           if (sessionDetails.defaultMeetLink) {
             try {
               // Mark attendance before redirecting
@@ -113,8 +119,11 @@ function GuestWaitingRoomComponent() {
             }
           }
         }
+        else if(isInWaitingRoom){
+
+        }
         // Case 2: It's too early for the waiting room.
-        else if (now.isBefore(waitingRoomStart)) {
+        else{
           toast.info("The waiting room is not open yet.", {
             description: `It will open ${sessionDetails.waitingRoomTime} minutes before the session starts.`,
           });

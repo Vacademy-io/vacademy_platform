@@ -53,7 +53,9 @@ function Slides() {
   const overallCompletion = calculateOverallCompletion(slides || []);
 
   useEffect(() => {
+    console.log("📋 [Slides Route] Slides data updated:", slides?.length, "slides");
     if (slides?.length) {
+        console.log("📊 [Slides Route] Setting slides in content store");
         setItems(slides);
 
         // If we have a slideId in URL, find that slide
@@ -62,15 +64,32 @@ function Slides() {
                 (slide: Slide) => slide.id === slideId,
             );
             if (targetSlide) {
+                console.log("🎯 [Slides Route] Setting active slide from URL:", targetSlide.id, `Progress: ${targetSlide.percentage_completed}%`);
                 setActiveItem(targetSlide);
                 return;
             }
         }
 
         // If no slideId or slide not found, set first slide as active
+        console.log("🎯 [Slides Route] Setting first slide as active:", slides[0]?.id, `Progress: ${slides[0]?.percentage_completed}%`);
         setActiveItem(slides[0]);
     }
-}, [slides, slideId]);
+}, [slides, slideId, setItems, setActiveItem]);
+
+  // Update active item when slides data changes (for real-time progress updates)
+  useEffect(() => {
+    if (slides?.length && activeItem) {
+        const updatedActiveItem = slides.find((slide: Slide) => slide.id === activeItem.id);
+        if (updatedActiveItem && updatedActiveItem.percentage_completed !== activeItem.percentage_completed) {
+            console.log("🔄 [Slides Route] Active item progress updated:", {
+                slideId: activeItem.id,
+                oldProgress: activeItem.percentage_completed,
+                newProgress: updatedActiveItem.percentage_completed
+            });
+            setActiveItem(updatedActiveItem);
+        }
+    }
+}, [slides, activeItem, setActiveItem]);
 
   const handleSubjectRoute = () => {
       navigate({

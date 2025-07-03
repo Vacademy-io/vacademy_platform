@@ -141,5 +141,6 @@ export const useSlides = (chapterId: string) => {
     slides: getSlidesQuery.data,
     isLoading: getSlidesQuery.isLoading,
     error: getSlidesQuery.error,
+    refetch: getSlidesQuery.refetch,
   };
 };

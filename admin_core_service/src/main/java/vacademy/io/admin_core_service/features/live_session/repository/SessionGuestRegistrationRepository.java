@@ -15,8 +15,9 @@ public interface SessionGuestRegistrationRepository extends JpaRepository<Sessio
     boolean existsBySessionIdAndEmail(String sessionId, String email);
 
 
+
     @Query(value = """
-        SELECT 
+        SELECT
             sgr.email AS guestEmail,
             sgr.registered_at AS registeredAt,
             lsl.status AS attendanceStatus,

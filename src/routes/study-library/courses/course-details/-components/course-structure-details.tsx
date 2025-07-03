@@ -99,9 +99,8 @@ export const CourseStructureDetails = ({
         chapterId: string,
         slideId: string
     ) => {
-        console.log(slideId);
         navigateTo(
-            `${router.state.location.pathname}/modules/chapters/slides`,
+            `${router.state.location.pathname}/subjects/modules/chapters/slides`,
             {
                 subjectId,
                 moduleId,
@@ -457,7 +456,9 @@ export const CourseStructureDetails = ({
                                                                                         </div>
                                                                                     </CollapsibleTrigger>
                                                                                     <CollapsibleContent>
-                                                                                        <div className="space-y-px ml-5 border-l border-green-200/50 py-1 pl-2 relative">
+                                                                                        <div
+                                                                                            className={`space-y-px ml-5 border-l border-green-200/50 py-1 pl-2 relative `}
+                                                                                        >
                                                                                             <div className="absolute left-0 top-0 w-px h-full bg-gradient-to-b from-green-300/50 to-transparent"></div>
                                                                                             {(
                                                                                                 slidesMap[

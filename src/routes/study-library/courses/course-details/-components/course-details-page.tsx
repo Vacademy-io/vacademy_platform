@@ -34,10 +34,7 @@ import {
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { useQuery } from "@tanstack/react-query";
 import { handleGetSlideCountDetails } from "../-services/get-slides-count";
-import {
-    CourseDetailsRatingsComponent,
-    getIdByLevelAndSession,
-} from "./course-details-ratings-page";
+import { CourseDetailsRatingsComponent } from "./course-details-ratings-page";
 import { transformApiDataToCourseData } from "../-utils/helper";
 import { handleGetAllCourseDetails } from "../-services/get-course-details";
 import axios from "axios";
@@ -48,6 +45,7 @@ import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore
 import { CourseStructureDetails } from "./course-structure-details";
 import { BatchForSessionType } from "@/types/institute-details/institute-details-interface";
 import { CourseStructureResponse } from "@/types/institute-details/course-details-interface";
+import { getIdByLevelAndSession } from "@/routes/courses/course-details/-utils/helper";
 
 type SlideType = {
     id: string;

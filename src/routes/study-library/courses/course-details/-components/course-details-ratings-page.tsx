@@ -87,14 +87,6 @@ function timeAgo(dateString: string) {
     return date.toLocaleDateString();
 }
 
-export function getIdByLevelAndSession(data, sessionId, levelId) {
-    const match = data?.find(
-        (item) => item.level?.id === levelId && item.session?.id === sessionId
-    );
-
-    return match?.id || "";
-}
-
 export function CourseDetailsRatingsComponent({
     packageSessionId,
 }: {

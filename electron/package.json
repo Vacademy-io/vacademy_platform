@@ -1,0 +1,58 @@
+{
+  "name": "Vacademy_Learner",
+  "version": "1.0.7",
+  "description": "An Amazing Capacitor App",
+  "author": {
+    "name": "shreyash jain",
+    "email": "shreyash@vidyayatan.com"
+  },
+  "license": "MIT",
+  "main": "build/src/index.js",
+  "scripts": {
+    "build": "tsc && electron-rebuild",
+    "publish": "npm run build && electron-builder build --win -c ./electron-builder.config.json --publish always",
+    "electron:start-live": "node ./live-runner.js",
+    "electron:start": "npm run build && electron --inspect=5858 ./",
+    "electron:pack": "npm run build && electron-builder build --dir -c ./electron-builder.config.json",
+    "electron:make": "npm run build && electron-builder build -c ./electron-builder.config.json",
+    "electron:make-win": "npm run build && electron-builder build --win -c ./electron-builder.config.json"
+  },
+  "dependencies": {
+    "@capacitor-community/electron": "^5.0.0",
+    "chokidar": "~4.0.3",
+    "electron-is-dev": "~2.0.0",
+    "electron-serve": "~1.1.0",
+    "electron-unhandled": "~4.0.1",
+    "electron-updater": "^5.3.0",
+    "electron-window-state": "^5.0.3"
+  },
+  "devDependencies": {
+    "electron": "^26.2.2",
+    "electron-builder": "~23.6.0",
+    "electron-rebuild": "^3.2.9",
+    "typescript": "^5.0.4"
+  },
+  "keywords": [
+    "capacitor",
+    "electron"
+  ],
+  "plugins": [
+        [
+          "@electron-forge/plugin-webpack",
+          {
+            "mainConfig": "./webpack.main.config.js",
+            "devContentSecurityPolicy": "connect-src 'self' https://backend-stage.vacademy.io 'unsafe-eval'",
+            "renderer": {
+              "config": "./webpack.renderer.config.js",
+              "entryPoints": [
+                {
+                  "html": "./src/index.html",
+                  "js": "./src/renderer.ts",
+                  "name": "main_window"
+                }
+              ]
+            }
+          }
+        ]
+      ]
+}

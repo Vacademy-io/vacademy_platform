@@ -1,50 +1,78 @@
 import React from "react";
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { SidebarGroup } from "@/components/ui/sidebar";
 import { SidebarItemProps } from "../../../../types/layout-container-types";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useRouter } from "@tanstack/react-router";
-import { cn } from "@/lib/utils";
 
 export const NonCollapsibleItem = ({ icon, title, to }: SidebarItemProps) => {
     const [hover, setHover] = useState<boolean>(false);
     const { state } = useSidebar();
     const router = useRouter();
     const currentRoute = router.state.location.pathname;
-    const isActive = currentRoute === to;
 
     const toggleHover = () => setHover(!hover);
+    const isActive = to && currentRoute.includes(to);
+
+    const isExpanded = state === "expanded";
 
     return (
         <Link
             to={to}
-            className={cn(
-                "flex w-full cursor-pointer items-center gap-1 rounded-lg px-4 py-2",
-                hover || isActive ? "bg-white" : "bg-none"
-            )}
+            className={`flex w-[84%] gap-4 mx-auto cursor-pointer items-center rounded-lg px-3 py-2.5 transition-all duration-300 ease-in-out group relative overflow-hidden border ${
+                isActive 
+                    ? "bg-gradient-to-r from-primary-50 to-primary-100/80 text-primary-700 border border-primary-200" 
+                    : "hover:bg-gradient-to-r hover:from-neutral-50 hover:to-primary-50/30 text-neutral-600 hover:text-neutral-800 hover:border-primary-200/50 border border-transparent"
+            }`}
             onMouseEnter={toggleHover}
             onMouseLeave={toggleHover}
         >
-            <div className="flex items-center">
+            {/* Background overlay for active state */}
+            {isActive && (
+                <div className="absolute inset-0 bg-gradient-to-r from-primary-500/5 to-primary-600/10 rounded-lg"></div>
+            )}
+            
+            <div className={`flex-shrink-0 transition-all duration-300 relative z-10 ${
+                isActive ? "scale-110" : hover ? "scale-105" : "scale-100"
+            }`}>
                 {icon &&
                     React.createElement(icon, {
-                        className: cn(
-                            state === "expanded" ? "size-7" : "size-6",
-                            hover || isActive ? "text-primary-500" : "text-neutral-400"
-                        ),
-                        weight: "fill",
+                        className: `transition-colors duration-300 ${
+                            isExpanded ? "size-7" : "size-7"
+                        } ${
+                            isActive 
+                                ? "text-primary-600" 
+                                : hover 
+                                    ? "text-primary-500" 
+                                    : "text-neutral-500"
+                        }`,
+                        weight: "duotone",
                     })}
-                <span
-                    className={cn(
-                        "text-body font-regular",
-                        hover || isActive ? "text-primary-500" : "text-neutral-600",
-                        "group-data-[collapsible=icon]:hidden"
-                    )}
+            </div>
+
+            {isExpanded && (
+                <div
+                    className={`!text-[1rem] !font-normal flex-1 min-w-0 text-left transition-all duration-300 relative z-10 ${
+                        isActive 
+                            ? "text-primary-700 !font-normal" 
+                            : hover 
+                                ? "text-neutral-800 font-medium" 
+                                : "text-neutral-600 font-medium"
+                    } text-sm truncate`}
                 >
                     {title}
-                </span>
-            </div>
+                </div>
+            )}
+            
+            {/* Active indicator */}
+            {isActive && (
+                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-gradient-to-b from-primary-500 to-primary-600 rounded-r-full"></div>
+            )}
+            
+            {/* Hover glow effect */}
+            {(hover || isActive) && (
+                <div className="absolute inset-0 bg-gradient-to-r from-primary-400/5 via-primary-500/10 to-primary-600/5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+            )}
         </Link>
     );
 };

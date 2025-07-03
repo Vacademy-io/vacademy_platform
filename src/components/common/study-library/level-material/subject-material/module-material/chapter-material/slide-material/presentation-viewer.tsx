@@ -1,243 +1,385 @@
 import type React from "react";
-import { useEffect, useState, useRef } from "react";
-import { Excalidraw, THEME } from "@excalidraw/excalidraw";
-import { v4 as uuidv4 } from "uuid";
-import { useTrackingStore } from "@/stores/study-library/pdf-tracking-store";
-import { getISTTime, getEpochTimeInMillis } from "./utils";
+import { useEffect, useState, useRef, useCallback } from "react";
+import { FileX } from "@phosphor-icons/react";
+import { ExcalidrawViewer } from "./ExcalidrawViewer";
+import { Slide } from '@/hooks/study-library/use-slides';
+import { usePresentationTrackingStore } from "@/stores/study-library/presentation-tracking-store";
+import { usePresentationSync } from "@/hooks/study-library/usePresentationSync";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
+import { v4 as uuidv4 } from 'uuid';
 
 interface PresentationViewerProps {
-  presentationUrl: string;
-  documentId?: string;
+  slide: Slide;
 }
 
-const PresentationViewer: React.FC<PresentationViewerProps> = ({
-  presentationUrl,
-  documentId,
-}) => {
-  const [presentationData, setPresentationData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [elapsedTime, setElapsedTime] = useState(0);
+// Helper functions for time management
+const getISTTime = () => new Date().toISOString();
+const getEpochTimeInMillis = () => Date.now();
 
-  const { addActivity } = useTrackingStore();
+const PresentationViewer: React.FC<PresentationViewerProps> = ({ slide }) => {
+  const { addActivity } = usePresentationTrackingStore();
+  const { syncPresentationTrackingData } = usePresentationSync();
   const { activeItem } = useContentStore();
 
+  // Get fileId from slide.document_slide.published_data
+  const fileId = slide.document_slide?.published_data;
+
+  // Activity tracking state
+  const [elapsedTime, setElapsedTime] = useState(0);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
   const activityId = useRef(uuidv4());
   const startTime = useRef(getISTTime());
   const startTimeInMillis = useRef(getEpochTimeInMillis());
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const viewStartTime = useRef<Date>(new Date());
+  const [isFirstView, setIsFirstView] = useState(true);
+  const updateIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  const extractExcalidrawData = (htmlContent: string): any[] => {
-    try {
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(htmlContent, "text/html");
+  // Session tracking
+  const sessionStartTime = useRef<Date>(new Date());
+  const viewSessions = useRef<Array<{
+    id: string;
+    start_time: string;
+    end_time: string;
+    start_time_in_millis: number;
+    end_time_in_millis: number;
+    duration: number;
+  }>>([]);
+  const totalViewingTimeRef = useRef<number>(0);
 
-      // Try <script type="application/json">
-      const jsonScript = doc.querySelector('script[type="application/json"]');
-      if (jsonScript) {
-        const data = JSON.parse(jsonScript.textContent || "{}");
-        if (data.isExcalidraw && Array.isArray(data.elements)) {
-          return data.elements;
-        }
-      }
+  // Verification state for concentration tracking
+  const [showVerification, setShowVerification] = useState(false);
+  const [verificationCountdown, setVerificationCountdown] = useState(59);
+  const [verificationNumbers, setVerificationNumbers] = useState<number[]>([]);
+  const [, setResponseTimesArray] = useState<number[]>([]);
+  const [answeredTimeArray, setAnsweredTimeArray] = useState<number[]>([]);
+  const verificationTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const lastActivityTimeRef = useRef<number>(Date.now());
+  const inactivityTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [isPaused, setIsPaused] = useState(false);
 
-      // Try inline <script> containing 'const excalidrawData ='
-      const scripts = doc.querySelectorAll("script");
-      for (const script of scripts) {
-        const content = script.textContent || "";
-        const match = content.match(
-          /const\s+excalidrawData\s*=\s*(\{[\s\S]*?\});/
-        );
-        if (match && match[1]) {
-          const data = JSON.parse(match[1]);
-          if (data.isExcalidraw && Array.isArray(data.elements)) {
-            return data.elements;
-          }
-        }
-      }
+  // Activity metrics
+  const [tabSwitchCount, setTabSwitchCount] = useState(0);
+  const [missedAnswerCount, setMissedAnswerCount] = useState(0);
+  const [wrongAnswerCount, setWrongAnswerCount] = useState(0);
+  const [isTabHidden, setIsTabHidden] = useState(false);
 
-      // Try a div with data-excalidraw attribute
-      const dataDiv = doc.querySelector("[data-excalidraw]");
-      if (dataDiv) {
-        const data = JSON.parse(
-          dataDiv.getAttribute("data-excalidraw") || "{}"
-        );
-        if (data.isExcalidraw && Array.isArray(data.elements)) {
-          return data.elements;
-        }
-      }
-
-      console.warn("No valid Excalidraw data found.");
-      return [];
-    } catch (err) {
-      console.error("Error extracting Excalidraw data:", err);
-      return [];
+  // Handle user activity to reset inactivity timer
+  const handleUserActivity = useCallback(() => {
+    lastActivityTimeRef.current = Date.now();
+    
+    if (inactivityTimeoutRef.current) {
+      clearTimeout(inactivityTimeoutRef.current);
     }
-  };
 
-  // Fetch presentation data from the URL
-  useEffect(() => {
-    const fetchPresentationData = async () => {
-      try {
-        setLoading(true);
-        const response = await fetch(presentationUrl);
-
-        if (!response.ok) {
-          throw new Error(
-            `Failed to fetch presentation: ${response.statusText}`
-          );
-        }
-
-        const htmlContent = await response.text();
-        const data = extractExcalidrawData(htmlContent);
-        setPresentationData(data);
-        setError(null);
-      } catch (err) {
-        console.error("Error fetching presentation:", err);
-        setError(
-          err instanceof Error ? err.message : "Failed to load presentation"
-        );
-      } finally {
-        setLoading(false);
+    // Set new inactivity timeout for 60 seconds
+    inactivityTimeoutRef.current = setTimeout(() => {
+      if (!showVerification) {
+        triggerVerification();
       }
-    };
+    }, 60000);
+  }, [showVerification]);
 
-    if (presentationUrl) {
-      fetchPresentationData();
-    }
-  }, [presentationUrl]);
+  // Trigger verification popup
+  const triggerVerification = useCallback(() => {
+    const numbers = Array.from({ length: 3 }, () => Math.floor(Math.random() * 10));
+    setVerificationNumbers(numbers);
+    setVerificationCountdown(59);
+    setShowVerification(true);
 
-  // Timer functionality
-  const startTimer = () => {
-    if (timerRef.current) return;
-    timerRef.current = setInterval(() => {
-      setElapsedTime((prev) => prev + 1);
-    }, 1000);
-  };
+         // const startTime = Date.now(); // Future use for response time tracking
 
-  const stopTimer = () => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-  };
-
-  useEffect(() => {
-    startTimer();
-    return () => {
-      stopTimer();
-    };
-  }, []);
-
-  // Track activity
-  useEffect(() => {
-    if (!loading && !error) {
-      addActivity({
-        slide_id: activeItem?.id || "",
-        activity_id: activityId.current,
-        source: "PRESENTATION" as const,
-        source_id: documentId || "",
-        start_time: startTime.current,
-        end_time: getISTTime(),
-        start_time_in_millis: startTimeInMillis.current,
-        end_time_in_millis: getEpochTimeInMillis(),
-        duration: elapsedTime.toString(),
-        page_views: [
-          {
-            id: uuidv4(),
-            page: 1,
-            duration: elapsedTime,
-            start_time: viewStartTime.current.toISOString(),
-            end_time: new Date().toISOString(),
-            start_time_in_millis: viewStartTime.current.getTime(),
-            end_time_in_millis: Date.now(),
-          },
-        ],
-        total_pages_read: 1,
-        sync_status: "STALE",
-        current_page: 1,
-        current_page_start_time_in_millis: viewStartTime.current.getTime(),
-        new_activity: true,
-        concentration_score: {
-          id: activityId.current,
-          concentration_score: 0,
-          tab_switch_count: 0,
-          pause_count: 0,
-          wrong_answer_count: 0,
-          answer_times_in_seconds: [],
-        },
+    // Countdown timer
+    const countdownInterval = setInterval(() => {
+      setVerificationCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(countdownInterval);
+          setShowVerification(false);
+          setMissedAnswerCount(count => count + 1);
+          setIsPaused(true);
+          
+          setTimeout(() => {
+            setIsPaused(false);
+            handleUserActivity();
+          }, 2000);
+          
+          return 0;
+        }
+        return prev - 1;
       });
+    }, 1000);
+
+    verificationTimerRef.current = countdownInterval;
+  }, [handleUserActivity]);
+
+  // Handle verification click
+  const handleVerificationClick = useCallback((clickedIndex: number) => {
+    const endTime = Date.now();
+    const responseTime = endTime - (Date.now() - verificationCountdown * 1000);
+    
+         const targetNumber = Math.max(...verificationNumbers.filter((_, i) => i !== 0 || 
+       (verificationNumbers[0] !== verificationNumbers[1] && verificationNumbers[0] !== verificationNumbers[2])));
+    
+    const isCorrect = verificationNumbers[clickedIndex] === targetNumber;
+    
+    if (isCorrect) {
+      setResponseTimesArray(prev => [...prev, responseTime]);
+      setAnsweredTimeArray(prev => [...prev, Math.round(responseTime / 1000)]);
+    } else {
+      setWrongAnswerCount(count => count + 1);
     }
-  }, [elapsedTime, documentId, loading, error, activeItem?.id, addActivity]);
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-500 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading presentation...</p>
-        </div>
-      </div>
-    );
-  }
+    if (verificationTimerRef.current) {
+      clearTimeout(verificationTimerRef.current);
+    }
+    
+    setShowVerification(false);
+    handleUserActivity();
+  }, [verificationNumbers, verificationCountdown, handleUserActivity]);
 
-  if (error) {
+  // Handle tab visibility changes
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      const isHidden = document.hidden;
+      setIsTabHidden(isHidden);
+      
+      if (isHidden) {
+        setTabSwitchCount(count => count + 1);
+      } else {
+        handleUserActivity();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [handleUserActivity]);
+
+  // Start tracking when component mounts
+  useEffect(() => {
+    if (!fileId) return;
+
+    // Initialize activity tracking
+    setIsFirstView(true);
+    handleUserActivity();
+
+    // Start the activity timer
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => {
+      setElapsedTime(prev => prev + 1);
+    }, 1000);
+
+    // Start the periodic update
+    if (updateIntervalRef.current) clearInterval(updateIntervalRef.current);
+    updateIntervalRef.current = setInterval(() => {
+      if (!isPaused && !isTabHidden) {
+        const now = getEpochTimeInMillis();
+        const duration = Math.round((now - sessionStartTime.current.getTime()) / 1000);
+
+        if (duration >= 10) { // Only record sessions longer than 10 seconds
+          viewSessions.current.push({
+            id: uuidv4(),
+            start_time: new Date(sessionStartTime.current).toISOString(),
+            end_time: new Date(now).toISOString(),
+            start_time_in_millis: sessionStartTime.current.getTime(),
+            end_time_in_millis: now,
+            duration,
+          });
+          
+          sessionStartTime.current = new Date(); // Reset session start time
+        }
+      }
+    }, 30000); // Update every 30 seconds
+
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (updateIntervalRef.current) clearInterval(updateIntervalRef.current);
+      if (verificationTimerRef.current) clearTimeout(verificationTimerRef.current);
+      if (inactivityTimeoutRef.current) clearTimeout(inactivityTimeoutRef.current);
+    };
+  }, [fileId, isPaused, isTabHidden, handleUserActivity]);
+
+     // Update activity tracking data
+   useEffect(() => {
+     if (!fileId) return;
+
+     totalViewingTimeRef.current = viewSessions.current.reduce(
+       (total, session) => total + session.duration,
+       0
+     );
+
+     const activityData = {
+       slide_id: activeItem?.id || "",
+       activity_id: activityId.current,
+       source: "PRESENTATION" as const,
+       source_id: fileId || "",
+       start_time: startTime.current,
+       end_time: getISTTime(),
+       start_time_in_millis: startTimeInMillis.current,
+       end_time_in_millis: getEpochTimeInMillis(),
+       duration: elapsedTime.toString(),
+       view_sessions: viewSessions.current,
+       total_viewing_time: totalViewingTimeRef.current,
+       sync_status: "STALE" as const,
+       current_session_start_time_in_millis: sessionStartTime.current.getTime(),
+       new_activity: isFirstView,
+       concentration_score: {
+         id: activityId.current,
+         concentration_score: 0,
+         tab_switch_count: tabSwitchCount,
+         pause_count: missedAnswerCount,
+         wrong_answer_count: wrongAnswerCount,
+         answer_times_in_seconds: answeredTimeArray,
+       },
+     };
+
+     console.log("💾 [PresentationViewer] Adding activity to store:", {
+       slideId: activityData.slide_id,
+       activityId: activityData.activity_id,
+       isFirstView: isFirstView,
+       viewSessions: viewSessions.current.length,
+       elapsedTime
+     });
+
+     addActivity(activityData, !isFirstView);
+
+     // Immediately sync data when presentation is first viewed to set progress to 100%
+     if (isFirstView) {
+       console.log("🎯 [PresentationViewer] First view detected, triggering immediate sync");
+       
+       // Create an initial view session for immediate tracking
+       if (viewSessions.current.length === 0) {
+         const now = getEpochTimeInMillis();
+         viewSessions.current.push({
+           id: uuidv4(),
+           start_time: new Date().toISOString(),
+           end_time: new Date().toISOString(),
+           start_time_in_millis: now,
+           end_time_in_millis: now,
+           duration: 1, // Minimal duration for initial view
+         });
+         console.log("📊 [PresentationViewer] Created initial view session for immediate tracking");
+       }
+       
+       setIsFirstView(false);
+       // Trigger immediate sync for first-time viewing (reduced delay for promptness)
+       setTimeout(() => {
+         console.log("⏰ [PresentationViewer] Executing immediate sync after delay");
+         syncPresentationTrackingData()
+           .then(() => {
+             console.log("✅ [PresentationViewer] Immediate sync completed successfully");
+           })
+           .catch((error) => {
+             console.error("❌ [PresentationViewer] Immediate sync failed:", error);
+           });
+       }, 500); // Reduced to 500ms for faster response
+     }
+  }, [
+    elapsedTime,
+    fileId,
+    isPaused,
+    answeredTimeArray,
+    tabSwitchCount,
+    missedAnswerCount,
+    wrongAnswerCount,
+    activeItem?.id,
+    addActivity,
+    isFirstView,
+  ]);
+
+     // Sync data periodically
+   useEffect(() => {
+     const syncInterval = setInterval(() => {
+       console.log("🔄 [PresentationViewer] Periodic sync triggered");
+       syncPresentationTrackingData()
+         .then(() => {
+           console.log("✅ [PresentationViewer] Periodic sync completed");
+         })
+         .catch((error) => {
+           console.error("❌ [PresentationViewer] Periodic sync failed:", error);
+         });
+     }, 60000); // Sync every minute
+
+     return () => clearInterval(syncInterval);
+   }, [syncPresentationTrackingData]);
+
+  // If fileId is undefined, show error state
+  if (!fileId) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-center">
-          <div className="text-red-500 mb-4">
-            <svg
-              className="w-12 h-12 mx-auto"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
+      <div className="flex items-center justify-center h-full min-h-[400px] bg-gray-50 rounded-lg border border-gray-200">
+        <div className="text-center space-y-4 p-8 max-w-md mx-auto">
+          <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto">
+            <FileX size={32} weight="duotone" className="text-gray-400" />
           </div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">
-            Failed to Load Presentation
-          </h3>
-          <p className="text-gray-600">{error}</p>
+          <div className="space-y-2">
+            <h3 className="text-lg font-medium text-gray-900">
+              Presentation Not Available
+            </h3>
+            <p className="text-sm text-gray-600">
+              The presentation content could not be loaded at this time.
+            </p>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="w-full h-full">
-      <Excalidraw
-        initialData={{
-          elements: presentationData,
-          appState: {
-            viewModeEnabled: true,
-            gridModeEnabled: false,
-            theme: THEME.LIGHT,
-          },
-        }}
-        viewModeEnabled={true}
-        UIOptions={{
-          canvasActions: {
-            loadScene: false,
-            saveToActiveFile: false,
-            export: false,
-            saveAsImage: false,
-          },
-          tools: {
-            image: false,
-          },
-        }}
-        renderTopRightUI={() => null}
-        detectScroll={false}
-        handleKeyboardGlobally={false}
-      />
+    <div className="relative w-full h-full" onClick={handleUserActivity} onMouseMove={handleUserActivity}>
+      {/* Verification overlay */}
+      {showVerification && (
+        <div className="absolute top-2 left-1/2 transform -translate-x-1/2 w-full max-w-xs z-[10000] animate-in fade-in slide-in-from-top duration-300">
+          <div className="bg-yellow-50 border bg-primary-500 rounded-lg shadow-lg overflow-hidden">
+            <div className="p-2">
+              <div className="mt-1">
+                <p className="text-xs text-neutral-600">
+                  Just ensuring that you are actively learning, please click the
+                  number{" "}
+                  <span className="text-primary-500">
+                    {Math.max(
+                      ...verificationNumbers.filter(
+                                                 (_, i) =>
+                           i !== 0 ||
+                           (verificationNumbers[0] !== verificationNumbers[1] &&
+                             verificationNumbers[0] !== verificationNumbers[2])
+                      )
+                    )}
+                  </span>{" "}
+                  within{" "}
+                  <span className="text-primary-500">
+                    {verificationCountdown}{" "}
+                  </span>
+                  seconds.
+                </p>
+              </div>
+              <div className="mt-2 flex justify-center space-x-2">
+                {verificationNumbers.map((number, index) => (
+                  <button
+                    key={index}
+                    onClick={() => handleVerificationClick(index)}
+                    className="px-2 py-1 rounded-lg text-xs font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 bg-white text-neutral-600 border-xl"
+                  >
+                    {number}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Pause overlay */}
+      {isPaused && (
+        <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999]">
+          <div className="bg-white rounded-lg p-6 max-w-sm mx-4 text-center">
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              Session Paused
+            </h3>
+            <p className="text-sm text-gray-600">
+              Please stay focused while learning. Your session will resume automatically.
+            </p>
+          </div>
+        </div>
+      )}
+
+      <ExcalidrawViewer fileId={fileId} />
     </div>
   );
 };

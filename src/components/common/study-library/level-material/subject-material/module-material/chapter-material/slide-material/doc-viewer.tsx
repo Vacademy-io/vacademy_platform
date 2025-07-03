@@ -19,7 +19,7 @@ export const DocViewer: React.FC<DocViewerProps> = ({ docUrl, documentId, isHtml
   const { activeItem } = useContentStore();
   const { setCurrentPdfPage, navigationTrigger } = useMediaRefsStore();
   const { syncPDFTrackingData } = usePDFSync();
-
+  //const [lastVerificationTime, setLastVerificationTime] = useState(0);
   // Activity tracking state
   const [elapsedTime, setElapsedTime] = useState(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -31,7 +31,7 @@ export const DocViewer: React.FC<DocViewerProps> = ({ docUrl, documentId, isHtml
 
   // Page tracking
   const [currentPage, setCurrentPage] = useState(0);
-  const [totalPages, setTotalPages] = useState(0);
+  //const [totalPages, setTotalPages] = useState(0);
   const pageStartTime = useRef<Date>(new Date());
   const pageViews = useRef<Array<{
     id: string;
@@ -48,7 +48,7 @@ export const DocViewer: React.FC<DocViewerProps> = ({ docUrl, documentId, isHtml
   const [showVerification, setShowVerification] = useState(false);
   const [verificationCountdown, setVerificationCountdown] = useState(59);
   const [verificationNumbers, setVerificationNumbers] = useState<number[]>([]);
-  const [lastVerificationTime, setLastVerificationTime] = useState(0);
+  //const [lastVerificationTime, setLastVerificationTime] = useState(0);
   const [responseTimesArray, setResponseTimesArray] = useState<number[]>([]);
   const [answeredTimeArray, setAnsweredTimeArray] = useState<number[]>([]);
   const verificationTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -68,7 +68,7 @@ export const DocViewer: React.FC<DocViewerProps> = ({ docUrl, documentId, isHtml
 
   // Add state for tab visibility
   const [isTabHidden, setIsTabHidden] = useState(document.hidden);
-  const lastVisibilityState = useRef(document.hidden);
+  //const lastVisibilityState = useRef(document.hidden);
 
   // Save verification data
   const saveVerificationTime = async (time: number) => {
@@ -109,8 +109,8 @@ export const DocViewer: React.FC<DocViewerProps> = ({ docUrl, documentId, isHtml
           key: "doc_verification_time",
         });
         if (value) {
-          const savedTime = Number.parseInt(value, 10);
-          setLastVerificationTime(savedTime);
+          //const savedTime = Number.parseInt(value, 10);
+          // setLastVerificationTime(savedTime);
         }
       } catch (error) {
         console.error("Error loading saved verification data:", error);
@@ -311,7 +311,7 @@ export const DocViewer: React.FC<DocViewerProps> = ({ docUrl, documentId, isHtml
 
     if (index === correctIndex) {
       const currentTimeInSeconds = Math.floor(Date.now() / 1000);
-      setLastVerificationTime(currentTimeInSeconds);
+      //setLastVerificationTime(currentTimeInSeconds);
       saveVerificationTime(currentTimeInSeconds);
 
       const newResponseTimes = [...responseTimesArray, responseTime];
@@ -381,7 +381,7 @@ export const DocViewer: React.FC<DocViewerProps> = ({ docUrl, documentId, isHtml
           () => {
             syncPDFTrackingData();
           },
-          2 * 60 * 1000
+          60 * 1000
         );
       }
     }

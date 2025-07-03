@@ -66,7 +66,7 @@ export const PdfViewerComponent = forwardRef<PdfViewerComponentRef, {
 
   return (
     <Worker workerUrl="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js">
-      <div className="w-full h-[calc(100vh-170px)]">
+      <div className="w-full h-[calc(100vh-170px)] !max-w-none !mx-0 !px-0">
         <Viewer
           fileUrl={pdfUrl}
           onDocumentLoad={handleDocumentLoad}

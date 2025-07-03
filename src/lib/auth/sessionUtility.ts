@@ -6,6 +6,15 @@ import { UnauthorizedResponse } from "@/constants/auth/unauthorizeresponse";
 import { IAccessToken, TokenKey, Tokens } from "@/constants/auth/tokens";
 import { isNullOrEmptyOrUndefined } from "../utils";
 
+// const SSO_CONFIG = {
+//   ADMIN_DOMAIN: "dash.vacademy.io",
+//   LEARNER_DOMAIN: "learner.vacademy.io",
+//   REQUIRED_ROLES: {
+//     ADMIN: ["ADMIN", "TEACHER"],
+//     LEARNER: ["STUDENT"],
+//   },
+// };
+
 // Helper function to get a token from Capacitor Storage
 const getTokenFromStorage = async (
   tokenKey: string
@@ -26,20 +35,6 @@ const setTokenInStorage = async (key: string, token: string): Promise<void> => {
 const removeTokenFromStorage = async (key: string): Promise<void> => {
   await Storage.remove({ key });
 };
-
-// function to store institute ID in Capacitor Storage
-// const setInstituteIdInStorage = async (instituteId: string): Promise<void> => {
-//     await Storage.set({
-//         key: 'instituteId',
-//         value: instituteId,
-//     });
-// };
-
-// function to get institute ID from Capacitor Storage
-// const getInstituteIdFromStorage = async (tokenKey: string): Promise<string | null> => {
-//     const { value } = await Storage.get({ key: 'instituteId' });
-//     return value;
-// };
 
 // Helper function to get a token from Capacitor Storage
 const getInstituteIdFromStorage = async (
@@ -121,17 +116,17 @@ async function refreshTokens(
 
 // Remove tokens from storage and log out
 const removeTokensAndLogout = async (): Promise<void> => {
-    // Remove tokens
-    await removeTokenFromStorage(TokenKey.accessToken);
-    await removeTokenFromStorage(TokenKey.refreshToken);
-    
-    // Remove institute ID
-    await removeInstituteIdFromStorage();
-    // remove all the items from storage
-    await Storage.clear();
+  // Remove tokens
+  await removeTokenFromStorage(TokenKey.accessToken);
+  await removeTokenFromStorage(TokenKey.refreshToken);
 
-    // Redirect to login or handle logout logic
-    console.log("User logged out.");
+  // Remove institute ID
+  await removeInstituteIdFromStorage();
+  // remove all the items from storage
+  await Storage.clear();
+
+  // Redirect to login or handle logout logic
+  console.log("User logged out.");
 };
 
 // Get access token from storage
@@ -146,6 +141,36 @@ export const getRefreshToken = async () => {
   return value;
 };
 
+const handleSSOLogin = (): boolean => {
+  const urlParams = new URLSearchParams(window.location.search);
+  const isSSOLogin = urlParams.get("sso") === "true";
+  if (!isSSOLogin) return false;
+
+  const accessToken = urlParams.get("accessToken");
+  const refreshToken = urlParams.get("refreshToken");
+  const redirectPath = urlParams.get("redirect");
+  try {
+    if (accessToken && refreshToken && !isTokenExpired(accessToken)) {
+      // Set tokens in cookies
+      setTokenInStorage(TokenKey.accessToken, accessToken);
+      setTokenInStorage(TokenKey.refreshToken, refreshToken);
+
+      // Clean up URL
+      const cleanUrl =
+        window.location.pathname +
+        (redirectPath ? `?redirect=${redirectPath}` : "");
+      window.history.replaceState({}, document.title, cleanUrl);
+      return true;
+    } else {
+      console.error("Decrypted tokens are invalid or expired");
+      return false;
+    }
+  } catch (error) {
+    console.error("Error decrypting SSO tokens:", error);
+    return false;
+  }
+};
+
 export {
   refreshTokens,
   removeTokensAndLogout,
@@ -157,4 +182,5 @@ export {
   setInstituteIdInStorage,
   getInstituteIdFromStorage,
   removeInstituteIdFromStorage,
+  handleSSOLogin,
 };

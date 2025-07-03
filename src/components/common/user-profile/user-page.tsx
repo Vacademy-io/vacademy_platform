@@ -11,6 +11,8 @@ import { getPublicUrl } from "@/services/upload_file";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import SessionExpiry from "./sessionExpiery";
 import { User } from "lucide-react";
+import { useInstituteFeatureStore } from "@/stores/insititute-feature-store";
+import { HOLISTIC_INSTITUTE_ID } from "@/constants/urls";
 // import { SessionExpiry } from "./sessionExpiery";
 interface CourseDetails {
   packageName: string;
@@ -28,6 +30,7 @@ export default function ProfilePage() {
   );
   const [isLoading, setIsLoading] = useState(true);
   const [imageUrl, setImageUrl] = useState<string | undefined>(undefined);
+  const { showForInstitutes } = useInstituteFeatureStore();
 
   // Fetch student data from Preferences
   useEffect(() => {
@@ -268,12 +271,16 @@ export default function ProfilePage() {
             <span className="text-xs text-gray-500">Gender:</span>
             <span className="text-xs">{studentData?.gender || "N/A"}</span>
           </div>
-          <div className="flex justify-between">
-            <span className="text-xs text-gray-500">College/School Name:</span>
-            <span className="text-xs">
-              {studentData?.linked_institute_name || "N/A"}
-            </span>
-          </div>
+          {!showForInstitutes([HOLISTIC_INSTITUTE_ID]) && (
+            <div className="flex justify-between">
+              <span className="text-xs text-gray-500">
+                College/School Name:
+              </span>
+              <span className="text-xs">
+                {studentData?.linked_institute_name || "N/A"}
+              </span>
+            </div>
+          )}
         </div>
       </div>
       <Separator className="my-4" />
@@ -301,64 +308,77 @@ export default function ProfilePage() {
         <div className="flex items-center gap-2 mb-3">
           <h3 className="text-sm font-medium">Location Details</h3>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {showForInstitutes([HOLISTIC_INSTITUTE_ID]) ? (
           <div className="flex justify-between">
-            <span className="text-xs text-gray-500">Address Line 1:</span>
-            <span className="text-xs">
-              {studentData?.address_line || "N/A"}
-            </span>
+            <span className="text-xs text-gray-500">Country:</span>
+            <span className="text-xs">{studentData?.country || "N/A"}</span>
           </div>
-          <div className="flex justify-between">
-            <span className="text-xs text-gray-500">City/Village:</span>
-            <span className="text-xs">{studentData?.city || "N/A"}</span>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="flex justify-between">
+              <span className="text-xs text-gray-500">Address Line 1:</span>
+              <span className="text-xs">
+                {studentData?.address_line || "N/A"}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-xs text-gray-500">City/Village:</span>
+              <span className="text-xs">{studentData?.city || "N/A"}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-xs text-gray-500">State:</span>
+              <span className="text-xs">{studentData?.region || "N/A"}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-xs text-gray-500">Pincode:</span>
+              <span className="text-xs">{studentData?.pin_code || "N/A"}</span>
+            </div>
           </div>
-          <div className="flex justify-between">
-            <span className="text-xs text-gray-500">State:</span>
-            <span className="text-xs">{studentData?.region || "N/A"}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-xs text-gray-500">Pincode:</span>
-            <span className="text-xs">{studentData?.pin_code || "N/A"}</span>
-          </div>
-        </div>
+        )}
       </div>
       <Separator className="my-4" />
       {/* Parent/Guardian's Details */}
-      <div className="p-6">
-        <div className="flex items-center gap-2 mb-3">
-          <h3 className="text-sm font-medium">Parent/Guardian's Details</h3>
+      {!showForInstitutes([HOLISTIC_INSTITUTE_ID]) && (
+        <div className="p-6">
+          <div className="flex items-center gap-2 mb-3">
+            <h3 className="text-sm font-medium">Parent/Guardian's Details</h3>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="flex justify-between">
+              <span className="text-xs text-gray-500">
+                Father/Male Guardian's Name:
+              </span>
+              <span className="text-xs">
+                {studentData?.father_name || "N/A"}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-xs text-gray-500">
+                Mother/Female Guardian's Name:
+              </span>
+              <span className="text-xs">
+                {studentData?.mother_name || "N/A"}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-xs text-gray-500">
+                Parent/Guardian's Email:
+              </span>
+              <span className="text-xs">
+                {studentData?.parents_email || "N/A"}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-xs text-gray-500">
+                Parent/Guardian's Mobile Number:
+              </span>
+              <span className="text-xs">
+                {studentData?.parents_mobile_number || "N/A"}
+              </span>
+            </div>
+          </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="flex justify-between">
-            <span className="text-xs text-gray-500">
-              Father/Male Guardian's Name:
-            </span>
-            <span className="text-xs">{studentData?.father_name || "N/A"}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-xs text-gray-500">
-              Mother/Female Guardian's Name:
-            </span>
-            <span className="text-xs">{studentData?.mother_name || "N/A"}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-xs text-gray-500">
-              Parent/Guardian's Email:
-            </span>
-            <span className="text-xs">
-              {studentData?.parents_email || "N/A"}
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-xs text-gray-500">
-              Parent/Guardian's Mobile Number:
-            </span>
-            <span className="text-xs">
-              {studentData?.parents_mobile_number || "N/A"}
-            </span>
-          </div>
-        </div>
-      </div>
+      )}
       {/* Edit Profile Button */}
       <div className="p-2  flex justify-center fixed bottom-0 left-0 w-full bg-white ">
         <MyButton

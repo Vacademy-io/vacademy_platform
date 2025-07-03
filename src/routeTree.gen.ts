@@ -10,8 +10,11 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as UserProfileIndexRouteImport } from './routes/user-profile/index'
+import { Route as TermsAndConditionsIndexRouteImport } from './routes/terms-and-conditions/index'
 import { Route as StudyLibraryIndexRouteImport } from './routes/study-library/index'
 import { Route as RegisterIndexRouteImport } from './routes/register/index'
+import { Route as ReferralIndexRouteImport } from './routes/referral/index'
+import { Route as PrivacyPolicyIndexRouteImport } from './routes/privacy-policy/index'
 import { Route as LogoutIndexRouteImport } from './routes/logout/index'
 import { Route as LoginIndexRouteImport } from './routes/login/index'
 import { Route as LiveClassGuestIndexRouteImport } from './routes/live-class-guest/index'
@@ -20,6 +23,7 @@ import { Route as InstituteSelectionIndexRouteImport } from './routes/institute-
 import { Route as DeleteUserIndexRouteImport } from './routes/delete-user/index'
 import { Route as DashboardIndexRouteImport } from './routes/dashboard/index'
 import { Route as CoursesIndexRouteImport } from './routes/courses/index'
+import { Route as ChangePasswordIndexRouteImport } from './routes/change-password/index'
 import { Route as SessionSelectionPageIndexRouteImport } from './routes/SessionSelectionPage/index'
 import { Route as UserProfileEditIndexRouteImport } from './routes/user-profile/edit/index'
 import { Route as StudyLibraryLiveClassIndexRouteImport } from './routes/study-library/live-class/index'
@@ -34,6 +38,7 @@ import { Route as DashboardNotificationsIndexRouteImport } from './routes/dashbo
 import { Route as CoursesCourseDetailsIndexRouteImport } from './routes/courses/course-details/index'
 import { Route as AssessmentReportsIndexRouteImport } from './routes/assessment/reports/index'
 import { Route as AssessmentExaminationIndexRouteImport } from './routes/assessment/examination/index'
+import { Route as LoginOauthLearnerRouteImport } from './routes/login/oauth/learner'
 import { Route as StudyLibraryLiveClassWaitingRoomIndexRouteImport } from './routes/study-library/live-class/waiting-room/index'
 import { Route as StudyLibraryLiveClassEmbedIndexRouteImport } from './routes/study-library/live-class/embed/index'
 import { Route as StudyLibraryCoursesCourseDetailsIndexRouteImport } from './routes/study-library/courses/course-details/index'
@@ -51,6 +56,11 @@ const UserProfileIndexRoute = UserProfileIndexRouteImport.update({
   path: '/user-profile/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TermsAndConditionsIndexRoute = TermsAndConditionsIndexRouteImport.update({
+  id: '/terms-and-conditions/',
+  path: '/terms-and-conditions/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const StudyLibraryIndexRoute = StudyLibraryIndexRouteImport.update({
   id: '/study-library/',
   path: '/study-library/',
@@ -59,6 +69,16 @@ const StudyLibraryIndexRoute = StudyLibraryIndexRouteImport.update({
 const RegisterIndexRoute = RegisterIndexRouteImport.update({
   id: '/register/',
   path: '/register/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ReferralIndexRoute = ReferralIndexRouteImport.update({
+  id: '/referral/',
+  path: '/referral/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrivacyPolicyIndexRoute = PrivacyPolicyIndexRouteImport.update({
+  id: '/privacy-policy/',
+  path: '/privacy-policy/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LogoutIndexRoute = LogoutIndexRouteImport.update({
@@ -100,6 +120,11 @@ const DashboardIndexRoute = DashboardIndexRouteImport.update({
 const CoursesIndexRoute = CoursesIndexRouteImport.update({
   id: '/courses/',
   path: '/courses/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ChangePasswordIndexRoute = ChangePasswordIndexRouteImport.update({
+  id: '/change-password/',
+  path: '/change-password/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SessionSelectionPageIndexRoute =
@@ -181,6 +206,11 @@ const AssessmentExaminationIndexRoute =
     path: '/assessment/examination/',
     getParentRoute: () => rootRouteImport,
   } as any)
+const LoginOauthLearnerRoute = LoginOauthLearnerRouteImport.update({
+  id: '/login/oauth/learner',
+  path: '/login/oauth/learner',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const StudyLibraryLiveClassWaitingRoomIndexRoute =
   StudyLibraryLiveClassWaitingRoomIndexRouteImport.update({
     id: '/study-library/live-class/waiting-room/',
@@ -254,6 +284,7 @@ const StudyLibraryCoursesCourseDetailsSubjectsModulesChaptersSlidesIndexRoute =
 
 export interface FileRoutesByFullPath {
   '/SessionSelectionPage': typeof SessionSelectionPageIndexRoute
+  '/change-password': typeof ChangePasswordIndexRoute
   '/courses': typeof CoursesIndexRoute
   '/dashboard': typeof DashboardIndexRoute
   '/delete-user': typeof DeleteUserIndexRoute
@@ -262,9 +293,13 @@ export interface FileRoutesByFullPath {
   '/live-class-guest': typeof LiveClassGuestIndexRoute
   '/login': typeof LoginIndexRoute
   '/logout': typeof LogoutIndexRoute
+  '/privacy-policy': typeof PrivacyPolicyIndexRoute
+  '/referral': typeof ReferralIndexRoute
   '/register': typeof RegisterIndexRoute
   '/study-library': typeof StudyLibraryIndexRoute
+  '/terms-and-conditions': typeof TermsAndConditionsIndexRoute
   '/user-profile': typeof UserProfileIndexRoute
+  '/login/oauth/learner': typeof LoginOauthLearnerRoute
   '/assessment/examination': typeof AssessmentExaminationIndexRoute
   '/assessment/reports': typeof AssessmentReportsIndexRoute
   '/courses/course-details': typeof CoursesCourseDetailsIndexRoute
@@ -292,6 +327,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/SessionSelectionPage': typeof SessionSelectionPageIndexRoute
+  '/change-password': typeof ChangePasswordIndexRoute
   '/courses': typeof CoursesIndexRoute
   '/dashboard': typeof DashboardIndexRoute
   '/delete-user': typeof DeleteUserIndexRoute
@@ -300,9 +336,13 @@ export interface FileRoutesByTo {
   '/live-class-guest': typeof LiveClassGuestIndexRoute
   '/login': typeof LoginIndexRoute
   '/logout': typeof LogoutIndexRoute
+  '/privacy-policy': typeof PrivacyPolicyIndexRoute
+  '/referral': typeof ReferralIndexRoute
   '/register': typeof RegisterIndexRoute
   '/study-library': typeof StudyLibraryIndexRoute
+  '/terms-and-conditions': typeof TermsAndConditionsIndexRoute
   '/user-profile': typeof UserProfileIndexRoute
+  '/login/oauth/learner': typeof LoginOauthLearnerRoute
   '/assessment/examination': typeof AssessmentExaminationIndexRoute
   '/assessment/reports': typeof AssessmentReportsIndexRoute
   '/courses/course-details': typeof CoursesCourseDetailsIndexRoute
@@ -331,6 +371,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/SessionSelectionPage/': typeof SessionSelectionPageIndexRoute
+  '/change-password/': typeof ChangePasswordIndexRoute
   '/courses/': typeof CoursesIndexRoute
   '/dashboard/': typeof DashboardIndexRoute
   '/delete-user/': typeof DeleteUserIndexRoute
@@ -339,9 +380,13 @@ export interface FileRoutesById {
   '/live-class-guest/': typeof LiveClassGuestIndexRoute
   '/login/': typeof LoginIndexRoute
   '/logout/': typeof LogoutIndexRoute
+  '/privacy-policy/': typeof PrivacyPolicyIndexRoute
+  '/referral/': typeof ReferralIndexRoute
   '/register/': typeof RegisterIndexRoute
   '/study-library/': typeof StudyLibraryIndexRoute
+  '/terms-and-conditions/': typeof TermsAndConditionsIndexRoute
   '/user-profile/': typeof UserProfileIndexRoute
+  '/login/oauth/learner': typeof LoginOauthLearnerRoute
   '/assessment/examination/': typeof AssessmentExaminationIndexRoute
   '/assessment/reports/': typeof AssessmentReportsIndexRoute
   '/courses/course-details/': typeof CoursesCourseDetailsIndexRoute
@@ -371,6 +416,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/SessionSelectionPage'
+    | '/change-password'
     | '/courses'
     | '/dashboard'
     | '/delete-user'
@@ -379,9 +425,13 @@ export interface FileRouteTypes {
     | '/live-class-guest'
     | '/login'
     | '/logout'
+    | '/privacy-policy'
+    | '/referral'
     | '/register'
     | '/study-library'
+    | '/terms-and-conditions'
     | '/user-profile'
+    | '/login/oauth/learner'
     | '/assessment/examination'
     | '/assessment/reports'
     | '/courses/course-details'
@@ -409,6 +459,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/SessionSelectionPage'
+    | '/change-password'
     | '/courses'
     | '/dashboard'
     | '/delete-user'
@@ -417,9 +468,13 @@ export interface FileRouteTypes {
     | '/live-class-guest'
     | '/login'
     | '/logout'
+    | '/privacy-policy'
+    | '/referral'
     | '/register'
     | '/study-library'
+    | '/terms-and-conditions'
     | '/user-profile'
+    | '/login/oauth/learner'
     | '/assessment/examination'
     | '/assessment/reports'
     | '/courses/course-details'
@@ -447,6 +502,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/SessionSelectionPage/'
+    | '/change-password/'
     | '/courses/'
     | '/dashboard/'
     | '/delete-user/'
@@ -455,9 +511,13 @@ export interface FileRouteTypes {
     | '/live-class-guest/'
     | '/login/'
     | '/logout/'
+    | '/privacy-policy/'
+    | '/referral/'
     | '/register/'
     | '/study-library/'
+    | '/terms-and-conditions/'
     | '/user-profile/'
+    | '/login/oauth/learner'
     | '/assessment/examination/'
     | '/assessment/reports/'
     | '/courses/course-details/'
@@ -486,6 +546,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   SessionSelectionPageIndexRoute: typeof SessionSelectionPageIndexRoute
+  ChangePasswordIndexRoute: typeof ChangePasswordIndexRoute
   CoursesIndexRoute: typeof CoursesIndexRoute
   DashboardIndexRoute: typeof DashboardIndexRoute
   DeleteUserIndexRoute: typeof DeleteUserIndexRoute
@@ -494,9 +555,13 @@ export interface RootRouteChildren {
   LiveClassGuestIndexRoute: typeof LiveClassGuestIndexRoute
   LoginIndexRoute: typeof LoginIndexRoute
   LogoutIndexRoute: typeof LogoutIndexRoute
+  PrivacyPolicyIndexRoute: typeof PrivacyPolicyIndexRoute
+  ReferralIndexRoute: typeof ReferralIndexRoute
   RegisterIndexRoute: typeof RegisterIndexRoute
   StudyLibraryIndexRoute: typeof StudyLibraryIndexRoute
+  TermsAndConditionsIndexRoute: typeof TermsAndConditionsIndexRoute
   UserProfileIndexRoute: typeof UserProfileIndexRoute
+  LoginOauthLearnerRoute: typeof LoginOauthLearnerRoute
   AssessmentExaminationIndexRoute: typeof AssessmentExaminationIndexRoute
   AssessmentReportsIndexRoute: typeof AssessmentReportsIndexRoute
   CoursesCourseDetailsIndexRoute: typeof CoursesCourseDetailsIndexRoute
@@ -532,6 +597,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof UserProfileIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/terms-and-conditions/': {
+      id: '/terms-and-conditions/'
+      path: '/terms-and-conditions'
+      fullPath: '/terms-and-conditions'
+      preLoaderRoute: typeof TermsAndConditionsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/study-library/': {
       id: '/study-library/'
       path: '/study-library'
@@ -544,6 +616,20 @@ declare module '@tanstack/react-router' {
       path: '/register'
       fullPath: '/register'
       preLoaderRoute: typeof RegisterIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/referral/': {
+      id: '/referral/'
+      path: '/referral'
+      fullPath: '/referral'
+      preLoaderRoute: typeof ReferralIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privacy-policy/': {
+      id: '/privacy-policy/'
+      path: '/privacy-policy'
+      fullPath: '/privacy-policy'
+      preLoaderRoute: typeof PrivacyPolicyIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/logout/': {
@@ -600,6 +686,13 @@ declare module '@tanstack/react-router' {
       path: '/courses'
       fullPath: '/courses'
       preLoaderRoute: typeof CoursesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/change-password/': {
+      id: '/change-password/'
+      path: '/change-password'
+      fullPath: '/change-password'
+      preLoaderRoute: typeof ChangePasswordIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/SessionSelectionPage/': {
@@ -700,6 +793,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AssessmentExaminationIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/login/oauth/learner': {
+      id: '/login/oauth/learner'
+      path: '/login/oauth/learner'
+      fullPath: '/login/oauth/learner'
+      preLoaderRoute: typeof LoginOauthLearnerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/study-library/live-class/waiting-room/': {
       id: '/study-library/live-class/waiting-room/'
       path: '/study-library/live-class/waiting-room'
@@ -782,6 +882,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   SessionSelectionPageIndexRoute: SessionSelectionPageIndexRoute,
+  ChangePasswordIndexRoute: ChangePasswordIndexRoute,
   CoursesIndexRoute: CoursesIndexRoute,
   DashboardIndexRoute: DashboardIndexRoute,
   DeleteUserIndexRoute: DeleteUserIndexRoute,
@@ -790,9 +891,13 @@ const rootRouteChildren: RootRouteChildren = {
   LiveClassGuestIndexRoute: LiveClassGuestIndexRoute,
   LoginIndexRoute: LoginIndexRoute,
   LogoutIndexRoute: LogoutIndexRoute,
+  PrivacyPolicyIndexRoute: PrivacyPolicyIndexRoute,
+  ReferralIndexRoute: ReferralIndexRoute,
   RegisterIndexRoute: RegisterIndexRoute,
   StudyLibraryIndexRoute: StudyLibraryIndexRoute,
+  TermsAndConditionsIndexRoute: TermsAndConditionsIndexRoute,
   UserProfileIndexRoute: UserProfileIndexRoute,
+  LoginOauthLearnerRoute: LoginOauthLearnerRoute,
   AssessmentExaminationIndexRoute: AssessmentExaminationIndexRoute,
   AssessmentReportsIndexRoute: AssessmentReportsIndexRoute,
   CoursesCourseDetailsIndexRoute: CoursesCourseDetailsIndexRoute,

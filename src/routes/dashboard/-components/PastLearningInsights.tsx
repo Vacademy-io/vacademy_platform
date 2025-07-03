@@ -43,20 +43,67 @@ export const PastLearningInsights = () => {
     if(isPending) return <DashboardLoader />
 
     return(
-        <div className="flex flex-col gap-6">
-            <div className="flex flex-col">
-                <p className="text-subtitle font-semibold">Past 7 days Learning Insights</p>
-                <p className="text-body font-semibold">Avg. time spent: <span className="text-primary-500">{avgTimeSpent}</span></p>
+        <div className="space-y-3 md:space-y-4">
+            {/* Compact Header Section */}
+            <div className="bg-white border border-neutral-200 rounded-lg p-3 md:p-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-0">
+                    <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 bg-primary-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <svg className="w-4 h-4 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                            </svg>
+                        </div>
+                        <div className="min-w-0">
+                            <h2 className="text-base md:text-lg font-medium text-neutral-900">Learning Analytics</h2>
+                            <p className="text-xs md:text-sm text-neutral-500">Past 7 days performance</p>
+                        </div>
+                    </div>
+                    
+                    {/* Compact Stats */}
+                    <div className="bg-primary-50/50 border border-primary-200 rounded-lg p-2.5 md:p-3 min-w-0 sm:max-w-xs">
+                        <div className="flex items-center gap-2">
+                            <div className="w-1.5 h-1.5 bg-primary-500 rounded-full flex-shrink-0"></div>
+                            <div className="min-w-0">
+                                <p className="text-xs text-neutral-500 font-medium">Avg. Study Time</p>
+                                <p className="text-lg md:text-xl font-light text-neutral-900">{avgTimeSpent}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
-            <div>
-                {/* graph */}
+            {/* Compact Chart Section */}
+            <div className="bg-white border border-neutral-200 rounded-lg p-3 md:p-4">
                 <LineChartComponent userActivity={userActivity} />
             </div>
 
-            <div>
-                {/* table */}
-                <StudentProgressTable userActivity={userActivity} />
+            {/* Compact Table Section */}
+            <div className="bg-white border border-neutral-200 rounded-lg overflow-hidden">
+                {/* Compact Header */}
+                <div className="p-3 md:p-4 border-b border-neutral-200 bg-neutral-50">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0">
+                        <div className="flex items-center gap-2">
+                            <div className="w-6 h-6 bg-neutral-200 rounded flex items-center justify-center">
+                                <svg className="w-3 h-3 text-neutral-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                </svg>
+                            </div>
+                            <div>
+                                <h3 className="text-sm md:text-base font-medium text-neutral-900">Daily Progress</h3>
+                                <p className="text-xs text-neutral-500">Learning session breakdown</p>
+                            </div>
+                        </div>
+                        <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 bg-primary-50 rounded border border-primary-200">
+                            <div className="w-1.5 h-1.5 bg-primary-500 rounded-full"></div>
+                            <span className="text-xs font-medium text-primary-700">Live</span>
+                        </div>
+                    </div>
+                </div>
+                
+                {/* Compact Table Container */}
+                <div className="p-3 md:p-4">
+                    <StudentProgressTable userActivity={userActivity} />
+                </div>
             </div>
         </div>
     )

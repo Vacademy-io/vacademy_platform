@@ -14,10 +14,8 @@ import { useTrackingStore } from "@/stores/study-library/youtube-video-tracking-
 import { getEpochTimeInMillis } from "./utils";
 import { convertTimeToSeconds } from "@/utils/study-library/tracking/convertTimeToSeconds";
 import { formatVideoTime } from "@/utils/study-library/tracking/formatVideoTime";
-import { calculateNetDuration } from "@/utils/study-library/tracking/calculateNetDuration";
 import { useVideoSync } from "@/hooks/study-library/useVideoSync";
-import { MyButton } from "@/components/design-system/button";
-import { MyInput } from "@/components/design-system/input";
+
 import {
   ArrowsOut,
   Check,
@@ -101,8 +99,21 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
     const [currentQuestion, setCurrentQuestion] = useState<any>(null);
     const [showQuestion, setShowQuestion] = useState(false);
     const [answeredQuestions, setAnsweredQuestions] = useState<
-      Record<string, boolean>
+      Record<string, {
+        answered: boolean;
+        selectedOptions: string | string[];
+        isCorrect?: boolean;
+        timestamp: number;
+      }>
     >({});
+
+    // Question mapping for time-based lookup
+    const [timeToQuestionMap, setTimeToQuestionMap] = useState<
+      Array<{
+        time: number;
+        question: NonNullable<CustomVideoPlayerProps["questions"]>[number];
+      }>
+    >([]);
 
     // Verification state
     const [showVerification, setShowVerification] = useState(false);
@@ -165,7 +176,31 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
             key: "video_answered_questions",
           });
           if (value) {
-            setAnsweredQuestions(JSON.parse(value));
+            const stored = JSON.parse(value);
+            // Handle both old and new format
+            const converted: Record<string, {
+              answered: boolean;
+              selectedOptions: string | string[];
+              isCorrect?: boolean;
+              timestamp: number;
+            }> = {};
+            
+            Object.entries(stored).forEach(([key, val]) => {
+              if (typeof val === 'boolean') {
+                // Old format
+                converted[key] = {
+                  answered: val,
+                  selectedOptions: [],
+                  isCorrect: true,
+                  timestamp: Date.now()
+                };
+              } else {
+                // New format
+                converted[key] = val as any;
+              }
+            });
+            
+            setAnsweredQuestions(converted);
           }
         } catch (error) {
           console.error("Error loading answered questions:", error);
@@ -175,12 +210,36 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
       loadAnsweredQuestions();
     }, []);
 
+    // Map questions for time-based lookup
+    useEffect(() => {
+      if (questions && questions.length > 0) {
+        const mapped = questions.map((q) => ({
+          time: q.question_time_in_millis,
+          question: q,
+        }));
+        setTimeToQuestionMap(mapped);
+        console.log("Mapped questions:", mapped);
+      }
+      // Reset answered questions when questions change (new video/slide)
+      setAnsweredQuestions({});
+    }, [questions]);
+
+    // Reset answered questions when video changes
+    useEffect(() => {
+      setAnsweredQuestions({});
+    }, [videoUrl]);
+
     // Save answered question to storage
-    const saveAnsweredQuestion = async (questionId: string) => {
+    const saveAnsweredQuestion = async (questionId: string, selectedOptions: string | string[] = [], isCorrect: boolean = true) => {
       try {
         const newAnsweredQuestions = {
           ...answeredQuestions,
-          [questionId]: true,
+          [questionId]: {
+            answered: true,
+            selectedOptions,
+            isCorrect,
+            timestamp: Date.now()
+          },
         };
         await Preferences.set({
           key: "video_answered_questions",
@@ -201,7 +260,7 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
       // Find a question that should be shown at the current time
       const questionToShow = questions.find((q) => {
         // Skip already answered questions
-        if (answeredQuestions[q.id]) return false;
+        if (answeredQuestions[q.id]?.answered) return false;
 
         // Check if we're within 500ms of the question time
         const questionTime = q.question_time_in_millis;
@@ -220,22 +279,38 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
     }, [questions, showQuestion, answeredQuestions]);
 
     // Handle question submission
-    const handleQuestionSubmit = async () => {
+    const handleQuestionSubmit = async (selectedOption: string | string[]) => {
       if (!currentQuestion) return { success: false };
 
-      // Mark question as answered
-      await saveAnsweredQuestion(currentQuestion.id);
+      // Evaluate the answer (you can enhance this logic)
+      const isCorrect = true; // This should be based on actual evaluation logic
+
+      // Mark question as answered with detailed info
+      await saveAnsweredQuestion(currentQuestion.id, selectedOption, isCorrect);
 
       // Return mock response (in a real app, this would come from the server)
       return {
         success: true,
-        isCorrect: true,
+        isCorrect: isCorrect,
         explanation: "Great job! You've answered correctly.",
       };
     };
 
-    // Handle closing the question overlay
+    // Handle closing the question overlay (skip/close)
     const handleQuestionClose = () => {
+      // Mark question as skipped only if it's skippable
+      if (currentQuestion && currentQuestion.can_skip) {
+        setAnsweredQuestions(prev => ({
+          ...prev,
+          [currentQuestion.id]: {
+            answered: true,
+            selectedOptions: [],
+            isCorrect: false,
+            timestamp: Date.now()
+          }
+        }));
+      }
+
       setShowQuestion(false);
       setCurrentQuestion(null);
 
@@ -648,6 +723,47 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
       }
     }, []);
 
+    // Function to check if user can navigate to a specific time
+    const canNavigateToTime = useCallback((targetTimeSeconds: number) => {
+      const targetTimeMs = targetTimeSeconds * 1000;
+      
+      // Find all questions that come before or at the target time
+      const previousQuestions = timeToQuestionMap.filter(({ time }) => time <= targetTimeMs);
+      
+      // Check if all previous questions that cannot be skipped are answered
+      for (const { question } of previousQuestions) {
+        if (!question.can_skip && !answeredQuestions[question.id]?.answered) {
+          return false; // Cannot navigate forward past unanswered required questions
+        }
+      }
+      
+      return true;
+    }, [timeToQuestionMap, answeredQuestions]);
+
+    // Function to handle question marker click
+    const handleQuestionMarkerClick = useCallback((questionData: any) => {
+      // Check if we can navigate to this question's time
+      const questionTimeSeconds = questionData.question_time_in_millis / 1000;
+      
+      if (!canNavigateToTime(questionTimeSeconds)) {
+        // Show a message that they need to answer previous questions first
+        console.log("Cannot navigate: Please answer previous required questions first");
+        return;
+      }
+
+      // Set the current question and show overlay
+      setCurrentQuestion(questionData);
+      setShowQuestion(true);
+      
+      // Pause the video
+      if (videoRef.current) {
+        videoRef.current.pause();
+        setIsPlayed(false);
+        stopProgressTracking();
+        stopTimer();
+      }
+    }, [canNavigateToTime, stopProgressTracking, stopTimer]);
+
     // Pause video when tab is switched
     useEffect(() => {
       const handleVisibilityChange = () => {
@@ -853,7 +969,7 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
                   console.log("integrate update video activity api now");
                   syncVideoTrackingData();
                 },
-                2 * 60 * 1000
+                60 * 1000
               );
             }
           }
@@ -885,6 +1001,12 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
 
       // Calculate total seconds
       const totalSeconds = minutes * 60 + seconds;
+
+      // Check navigation restrictions for forward seeks
+      if (totalSeconds > currentTime && !canNavigateToTime(totalSeconds)) {
+        console.log("Navigation blocked: Please answer previous required questions first");
+        return;
+      }
 
       // Get video duration
       const videoDuration = videoRef.current.duration;
@@ -947,6 +1069,12 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
       const rect = progressBar.getBoundingClientRect();
       const clickPosition = (e.clientX - rect.left) / rect.width;
       const seekTime = clickPosition * duration;
+
+      // Check navigation restrictions for forward seeks
+      if (seekTime > currentTime && !canNavigateToTime(seekTime)) {
+        console.log("Navigation blocked: Please answer previous required questions first");
+        return;
+      }
 
       videoRef.current.currentTime = seekTime;
       setCurrentTime(seekTime);
@@ -1021,7 +1149,7 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
               console.log("integrate update video activity api now");
               syncVideoTrackingData();
             },
-            2 * 60 * 1000
+            60 * 1000
           );
         }
       }
@@ -1062,22 +1190,36 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
 
     // Render question markers on progress bar
     const renderQuestionMarkers = () => {
-      if (!questions || questions.length === 0 || duration <= 0) return null;
+      if (!timeToQuestionMap || timeToQuestionMap.length === 0 || duration <= 0) return null;
 
-      return questions.map((question) => {
-        const position =
-          (question.question_time_in_millis / 1000 / duration) * 100;
-        const isAnswered = answeredQuestions[question.id];
+      return timeToQuestionMap.map(({ time, question }, index) => {
+        const position = (time / 1000 / duration) * 100;
+        const isAnswered = answeredQuestions[question.id]?.answered;
+        const canSkip = question.can_skip;
 
         return (
-          <div
+          <button
             key={question.id}
-            className={`absolute h-3 w-3 rounded-full -translate-x-1/2 -translate-y-1/2 top-1/2 cursor-pointer ${
-              isAnswered ? "bg-green-500" : "bg-orange-500"
+            className={`absolute w-3 h-3 rounded-full transform -translate-x-1/2 -translate-y-1/2 top-1/2 border-2 border-white shadow-lg transition-all hover:scale-125 z-10 ${
+              isAnswered
+                ? "bg-green-500 hover:bg-green-600"
+                : canSkip
+                  ? "bg-yellow-500 hover:bg-yellow-600"
+                  : "bg-red-500 hover:bg-red-600"
             }`}
-            style={{ left: `${position}%` }}
-            title={`Question: ${question.text_data.content}`}
-          />
+            style={{ left: `${Math.max(1.5, Math.min(98.5, position))}%` }}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleQuestionMarkerClick(question);
+            }}
+            title={`Question ${index + 1}${isAnswered ? " (Answered)" : canSkip ? " (Skippable)" : " (Required)"}: ${question.text_data.content}`}
+          >
+            {isAnswered ? (
+              <span className="text-white text-xs font-bold flex items-center justify-center w-full h-full">✓</span>
+            ) : (
+              <span className="text-white text-xs font-bold flex items-center justify-center w-full h-full">?</span>
+            )}
+          </button>
         );
       });
     };
@@ -1168,6 +1310,128 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
             </div>
           )}
 
+          {/* Top Controls Overlay - Video controls moved to top */}
+          {!isFullscreen && (
+            <div className="absolute top-0 left-0 right-0 z-[999] bg-gradient-to-b from-black/80 via-black/40 to-transparent p-4 pb-8">
+              {/* Video Controls */}
+              <div className="flex gap-2 justify-between items-center w-full mb-4">
+                <div className="w-full flex gap-2 items-center justify-start">
+                  {isPlayed ? (
+                    <button
+                      onClick={togglePlay}
+                      className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all hover:scale-105 backdrop-blur-sm"
+                      disabled={!actualVideoUrl || isLoading}
+                    >
+                      <Pause size={20} weight="fill" />
+                    </button>
+                  ) : (
+                    <button
+                      onClick={togglePlay}
+                      className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all hover:scale-105 backdrop-blur-sm"
+                      disabled={!actualVideoUrl || isLoading}
+                    >
+                      <Play size={20} weight="fill" />
+                    </button>
+                  )}
+
+                  <button
+                    onClick={() => {
+                      if (videoRef.current) {
+                        const newTime = videoRef.current.currentTime - 10;
+                        videoRef.current.currentTime = Math.max(newTime, 0);
+                        setCurrentTime(Math.max(newTime, 0));
+                      }
+                    }}
+                    className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all hover:scale-105 backdrop-blur-sm"
+                    disabled={!actualVideoUrl || isLoading}
+                  >
+                    <Rewind size={18} weight="fill" />
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      if (videoRef.current) {
+                        const newTime = videoRef.current.currentTime + 10;
+                        const duration = videoRef.current.duration;
+                        const finalTime = Math.min(newTime, duration);
+                        
+                        // Check if forward navigation is allowed
+                        if (!canNavigateToTime(finalTime)) {
+                          console.log("Navigation blocked: Please answer previous required questions first");
+                          return;
+                        }
+                        
+                        videoRef.current.currentTime = finalTime;
+                        setCurrentTime(finalTime);
+                      }
+                    }}
+                    className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all hover:scale-105 backdrop-blur-sm"
+                    disabled={!actualVideoUrl || isLoading}
+                  >
+                    <FastForward size={18} weight="fill" />
+                  </button>
+                  
+                  <button
+                    onClick={toggleFullscreen}
+                    className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all hover:scale-105 backdrop-blur-sm"
+                    disabled={
+                      !actualVideoUrl || isLoading || !playerContainerRef.current
+                    }
+                  >
+                    <ArrowsOut size={18} weight="fill" />
+                  </button>
+                </div>
+                
+                {/* Time Jump Controls */}
+                <div className="flex items-center gap-1">
+                  <input
+                    type="text"
+                    placeholder="Min"
+                    value={minutesInput}
+                    onChange={(e) => handleNumericInput(e, setMinutesInput)}
+                    className="w-12 h-8 text-center text-xs bg-white/20 border border-white/30 rounded text-white placeholder-white/70 backdrop-blur-sm"
+                  />
+                  <span className="text-white text-xs">:</span>
+                  <input
+                    type="text"
+                    placeholder="Sec"
+                    value={secondsInput}
+                    onChange={(e) => handleNumericInput(e, setSecondsInput)}
+                    className="w-12 h-8 text-center text-xs bg-white/20 border border-white/30 rounded text-white placeholder-white/70 backdrop-blur-sm"
+                  />
+                  <button
+                    onClick={seekToTimestamp}
+                    className="p-1.5 rounded bg-white/20 hover:bg-white/30 text-white transition-all hover:scale-105 backdrop-blur-sm"
+                    disabled={!actualVideoUrl || isLoading}
+                  >
+                    <Check size={14} weight="fill" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Progress Bar */}
+              <div className="w-full flex flex-col gap-1">
+                <div
+                  className="w-full h-2 bg-white/30 rounded-full cursor-pointer relative"
+                  onClick={handleProgressBarClick}
+                >
+                  <div
+                    className="h-full bg-white rounded-full transition-all duration-150"
+                    style={{
+                      width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%`,
+                    }}
+                  ></div>
+                  {/* Question markers */}
+                  {renderQuestionMarkers()}
+                </div>
+                <div className="flex justify-between text-xs text-white font-medium">
+                  <span>{formatTime(currentTime)}</span>
+                  <span>{formatTime(duration)}</span>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Fullscreen controls overlay */}
           {isFullscreen && showFullscreenControls && (
             <div className="absolute inset-0 z-[9999] flex flex-col justify-between p-4 bg-gradient-to-b from-black/50 via-transparent to-black/50 animate-in fade-in duration-200">
@@ -1221,11 +1485,16 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
                     if (videoRef.current) {
                       const newTime = videoRef.current.currentTime + 10;
                       const duration = videoRef.current.duration;
-                      videoRef.current.currentTime = Math.min(
-                        newTime,
-                        duration
-                      );
-                      setCurrentTime(Math.min(newTime, duration));
+                      const finalTime = Math.min(newTime, duration);
+                      
+                      // Check if forward navigation is allowed
+                      if (!canNavigateToTime(finalTime)) {
+                        console.log("Navigation blocked: Please answer previous required questions first");
+                        return;
+                      }
+                      
+                      videoRef.current.currentTime = finalTime;
+                      setCurrentTime(finalTime);
                     }
                   }}
                   className="p-3 rounded-full bg-black/60 text-white hover:bg-black/80 transition-all hover:scale-105 shadow-lg backdrop-blur-sm border border-white/10"
@@ -1294,127 +1563,15 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
               question={currentQuestion}
               onSubmit={handleQuestionSubmit}
               onClose={handleQuestionClose}
+              onPause={() => {
+                if (videoRef.current) {
+                  videoRef.current.pause();
+                  setIsPlayed(false);
+                }
+              }}
+              previousAnswer={currentQuestion ? answeredQuestions[currentQuestion.id]?.selectedOptions : undefined}
             />
           )}
-        </div>
-
-        {/* Progress Bar and controls - only shown when not in fullscreen */}
-        <div className="w-full flex flex-col gap-1">
-          <div
-            className="w-full h-2 bg-gray-200 rounded-full cursor-pointer relative"
-            onClick={handleProgressBarClick}
-          >
-            <div
-              className="h-full bg-primary-500 rounded-full"
-              style={{
-                width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%`,
-              }}
-            ></div>
-            {/* Question markers */}
-            {renderQuestionMarkers()}
-          </div>
-          <div className="flex justify-between text-xs text-gray-600">
-            <span>{formatTime(currentTime)}</span>
-            <span>{formatTime(duration)}</span>
-          </div>
-        </div>
-
-        <div className="flex gap-2 justify-between items-center w-full">
-          <div className="w-full flex gap-2 items-center justify-start">
-            {isPlayed ? (
-              <MyButton
-                buttonType="secondary"
-                scale="medium"
-                layoutVariant="icon"
-                onClick={togglePlay}
-                disable={!actualVideoUrl || isLoading}
-              >
-                <Pause />
-              </MyButton>
-            ) : (
-              <MyButton
-                buttonType="primary"
-                scale="medium"
-                layoutVariant="icon"
-                onClick={togglePlay}
-                disable={!actualVideoUrl || isLoading}
-              >
-                <Play />
-              </MyButton>
-            )}
-
-            <MyButton
-              buttonType="secondary"
-              scale="medium"
-              layoutVariant="icon"
-              onClick={() => {
-                if (videoRef.current) {
-                  const newTime = videoRef.current.currentTime - 10;
-                  videoRef.current.currentTime = Math.max(newTime, 0);
-                  setCurrentTime(Math.max(newTime, 0));
-                }
-              }}
-              disable={!actualVideoUrl || isLoading}
-            >
-              <Rewind />
-            </MyButton>
-
-            <MyButton
-              buttonType="secondary"
-              scale="medium"
-              layoutVariant="icon"
-              onClick={() => {
-                if (videoRef.current) {
-                  const newTime = videoRef.current.currentTime + 10;
-                  const duration = videoRef.current.duration;
-                  videoRef.current.currentTime = Math.min(newTime, duration);
-                  setCurrentTime(Math.min(newTime, duration));
-                }
-              }}
-              disable={!actualVideoUrl || isLoading}
-            >
-              <FastForward />
-            </MyButton>
-            <MyButton
-              buttonType="secondary"
-              scale="medium"
-              layoutVariant="icon"
-              onClick={toggleFullscreen}
-              disable={
-                !actualVideoUrl || isLoading || !playerContainerRef.current
-              }
-            >
-              <ArrowsOut />
-            </MyButton>
-          </div>
-          <div className="flex items-center gap-1">
-            <MyInput
-              inputType="text"
-              inputPlaceholder="Min"
-              input={minutesInput}
-              onChangeFunction={(e) => handleNumericInput(e, setMinutesInput)}
-              size="small"
-              className="w-12 h-full"
-            />
-            <span>:</span>
-            <MyInput
-              inputType="text"
-              inputPlaceholder="Sec"
-              input={secondsInput}
-              onChangeFunction={(e) => handleNumericInput(e, setSecondsInput)}
-              size="small"
-              className="w-12 h-full"
-            />
-            <MyButton
-              buttonType="secondary"
-              scale="medium"
-              layoutVariant="icon"
-              onClick={seekToTimestamp}
-              disable={!actualVideoUrl || isLoading}
-            >
-              <Check />
-            </MyButton>
-          </div>
         </div>
       </div>
     );

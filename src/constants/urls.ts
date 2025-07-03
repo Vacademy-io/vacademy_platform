@@ -9,11 +9,16 @@ export const GET_ALL_USER_RATINGS = `${BASE_URL}/admin-core-service/open/rating/
 export const GET_ALL_RATING_SUMMARY = `${BASE_URL}/admin-core-service/open/rating/summary`;
 export const GET_COURSE_DETAILS = `${BASE_URL}/admin-core-service/open/packages/v1/package-detail`;
 export const GET_ALL_COURSE_DETAILS = `${BASE_URL}/admin-core-service/open/v1/learner-study-library/init`;
+export const HOLISTIC_INSTITUTE_ID = "bd9f2362-84d1-4e01-9762-a5196f9bac80";
 
 export const LOGIN_URL = `${BASE_URL}/auth-service/learner/v1/login`;
+
 export const LOGIN_URL_GOOGLE_GITHUB = `${BASE_URL}/auth-service/oauth2/authorization`;
+
 export const REQUEST_OTP = `${BASE_URL}/auth-service/learner/v1/request-otp`;
 export const LOGIN_OTP = `${BASE_URL}/auth-service/learner/v1/login-otp`;
+export const FORGOT_PASSWORD = `${BASE_URL}/auth-service/v1/send-password`;
+
 export const REFRESH_TOKEN_URL = `${BASE_URL}/auth-service/learner/v1/refresh-token`;
 export const INSTITUTE_DETAIL = `${BASE_URL}/admin-core-service/learner/v1/details`;
 export const STUDENT_DETAIL = `${BASE_URL}/admin-core-service/learner/info/v1/details`;
@@ -40,6 +45,8 @@ export const ASSESSMENT_SUBMIT_MANUAL = `${BASE_URL}/assessment-service/assessme
 export const ADD_UPDATE_VIDEO_ACTIVITY = `${BASE_URL}/admin-core-service/learner-tracking/v1/add-or-update-video-activity`;
 export const ADD_UPDATE_DOCUMENT_ACTIVITY = `${BASE_URL}/admin-core-service/learner-tracking/v1/add-or-update-document-activity`;
 export const SUBMIT_SLIDE_ANSWERS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/video-question-slide/add-or-update`;
+export const SUBMIT_ASSIGNMENT_SLIDE_ANSWERS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/assignment-slide/add-or-update-assignment-slide-activity-log`;
+export const SUBMIT_QUESTION_SLIDE_ANSWERS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/question-slide/add-or-update-question-slide-activity-log`;
 export const INIT_STUDY_LIBRARY = `${BASE_URL}/admin-core-service/v1/learner-study-library/init-details`;
 export const MODULES_WITH_CHAPTERS = `${BASE_URL}/admin-core-service/open/v1/learner-study-library/modules-with-chapters`;
 export const CHAPTERS_WITH_SLIDES = `${BASE_URL}/admin-core-service/open/v1/learner-study-library/chapters-with-slides`;

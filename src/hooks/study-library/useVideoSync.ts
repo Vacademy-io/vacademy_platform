@@ -9,6 +9,7 @@ import { Preferences } from "@capacitor/preferences";
 import { useRouter } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { z } from "zod";
+import { useSlidesRefresh } from "./useSlidesRefresh";
 
 const STORAGE_KEY = "video_tracking_data";
 const USER_ID_KEY = "StudentDetails";
@@ -19,6 +20,7 @@ export const useVideoSync = () => {
   const router = useRouter();
   const { chapterId, moduleId, subjectId } = router.state.location.search;
   const [packageSessionId, setPackageSessionId] = useState<string | null>(null);
+  const { refreshSlides } = useSlidesRefresh();
 
   useEffect(() => {
     const fetchPackageSessionId = async () => {
@@ -100,6 +102,7 @@ export const useVideoSync = () => {
               activity.new_activity
             );
             try {
+              console.log(`📡 [useVideoSync] Making API call for NEW activity: ${activity.activity_id}`);
               await addUpdateVideoActivity.mutateAsync({
                 slideId: activity.id || "",
                 chapterId: chapterId || "",
@@ -108,15 +111,22 @@ export const useVideoSync = () => {
                 moduleId: moduleId || "",
                 subjectId: subjectId || "",
               });
+              console.log(`✅ [useVideoSync] NEW activity API call successful: ${activity.activity_id}`);
               activity.sync_status = "SYNCED";
               activity.new_activity = false; // Move this here, after successful API call
               updatedActivities.push(activity);
+              
+              // Refresh slides data to get updated progress
+              console.log("🔄 [useVideoSync] Triggering slides refresh after NEW activity...");
+              await refreshSlides();
+              console.log("✅ [useVideoSync] Slides refresh completed after NEW activity");
             } catch (err) {
               console.log("add api call failed: ", err);
             }
           } else {
             if (apiPayload.videos && apiPayload.videos.length > 0) {
               try {
+                console.log(`📡 [useVideoSync] Making API call for UPDATE activity: ${activity.activity_id}`);
                 await addUpdateVideoActivity.mutateAsync({
                   slideId: activity.id || "",
                   chapterId: chapterId || "",
@@ -125,8 +135,14 @@ export const useVideoSync = () => {
                   moduleId: moduleId || "",
                   subjectId: subjectId || "",
                 });
+                console.log(`✅ [useVideoSync] UPDATE activity API call successful: ${activity.activity_id}`);
                 activity.sync_status = "SYNCED";
                 updatedActivities.push(activity);
+                
+                // Refresh slides data to get updated progress
+                console.log("🔄 [useVideoSync] Triggering slides refresh after UPDATE activity...");
+                await refreshSlides();
+                console.log("✅ [useVideoSync] Slides refresh completed after UPDATE activity");
               } catch (err) {
                 console.log("update api call failed: ", err);
               }

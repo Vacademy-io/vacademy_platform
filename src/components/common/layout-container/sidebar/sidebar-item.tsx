@@ -1,9 +1,11 @@
 import * as React from "react";
-import { useSidebar } from "@/components/ui/sidebar";
+import { SidebarMenuItem, useSidebar } from "@/components/ui/sidebar";
 import { Link } from "@tanstack/react-router";
 import { useRouter } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 import { ChevronDownIcon } from "@radix-ui/react-icons";
+import { CollapsibleItem } from "./collapsible-item";
+import { NonCollapsibleItem } from "./non-collapsible-item";
 
 interface SidebarItemProps {
     icon: any;
@@ -89,41 +91,12 @@ export const SidebarItem = ({ icon, title, to, subItems }: SidebarItemProps) => 
     }
 
     return (
-        <div className="w-full px-3">
-            <div
-                className={cn(
-                    "group/menu-item relative w-full px-3",
-                    isActive ? "bg-white" : "bg-none"
-                )}
-            >
-                <Link
-                    to={to}
-                    className={cn(
-                        "flex w-full cursor-pointer items-center gap-1 rounded-lg px-4 py-2",
-                        isActive ? "text-primary-500" : "text-neutral-600"
-                    )}
-                >
-                    <div className="flex items-center gap-4">
-                        {icon &&
-                            React.createElement(icon, {
-                                className: cn(
-                                    state === "expanded" ? "size-7" : "size-6",
-                                    isActive ? "text-primary-500" : "text-neutral-400"
-                                ),
-                                weight: "fill",
-                            })}
-                        <span
-                            className={cn(
-                                "text-body font-regular",
-                                isActive ? "text-primary-500" : "text-neutral-600",
-                                "group-data-[collapsible=icon]:hidden"
-                            )}
-                        >
-                            {title}
-                        </span>
-                    </div>
-                </Link>
-            </div>
-        </div>
+        <SidebarMenuItem className={`transition-all duration-200 ${state === "expanded" ? "w-full" : "w-fit"}`}>
+            {subItems ? (
+                <CollapsibleItem icon={icon} title={title} to={to} subItems={subItems} />
+            ) : (
+                <NonCollapsibleItem icon={icon} title={title} to={to} />
+            )}
+        </SidebarMenuItem>
     );
 };

@@ -6,26 +6,29 @@ import { TokenKey } from "./auth/tokens";
 // import { PrivacyScreen } from "@capacitor-community/privacy-screen";
 
 export function convertToLocalDateTime(utcDate: string): string {
-  if (!utcDate) return '';
+  if (!utcDate) return "";
 
-    const date = new Date(utcDate);
+  const date = new Date(utcDate);
 
-    const options: Intl.DateTimeFormatOptions = {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: true,
-        timeZone: 'UTC', // ← Force UTC output
-    };
+  const options: Intl.DateTimeFormatOptions = {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+    timeZone: "UTC",
+  };
 
-    // Use en-GB for day-month-year ordering
-    const formatted = new Intl.DateTimeFormat('en-GB', options).format(date);
+  const formatted = new Intl.DateTimeFormat("en-GB", options).format(date);
+  const finalString = formatted
+    .replace(",", "")
+    .replace(/\s(am|pm)/i, (match) => match.toUpperCase());
 
-    return formatted.replace(',', '').replace(/\s(am|pm)/i, (match) => match.toUpperCase());
+  return finalString;
 }
+
 export function extractDateTime(utcDate: string) {
   const [date, time] = [
     utcDate.split(" ").slice(0, 3).join(" "),
@@ -42,22 +45,17 @@ export async function getInstituteId() {
   return INSTITUTE_ID;
 }
 
-// protection
-// export const disableProtection = async () => {
-//   await PrivacyScreen.disable();
-// };
-
-// export const enableProtection = async () => {
-//   await PrivacyScreen.enable();
-// };
-
 interface Subject {
   id: string;
   subject_name: string;
 }
 
-export const getSubjectNameById = (subjects: Subject[], id: string | null): string => {
+export const getSubjectNameById = (
+  subjects: Subject[],
+  id: string | null
+): string => {
   const subject = subjects.find((item: Subject) => item.id === id);
+
   return subject?.subject_name || "N/A";
 };
 
@@ -70,5 +68,9 @@ export const formatDuration = (durationInSeconds: number): string => {
     return `${seconds} sec`;
   }
 
-  return `${hours > 0 ? `${hours} hr ` : ""}${minutes > 0 ? `${minutes} min ` : ""}${seconds > 0 ? `${seconds} sec` : ""}`.trim();
+  const formattedDuration = `${hours > 0 ? `${hours} hr ` : ""}${
+    minutes > 0 ? `${minutes} min ` : ""
+  }${seconds > 0 ? `${seconds} sec` : ""}`.trim();
+
+  return formattedDuration;
 };

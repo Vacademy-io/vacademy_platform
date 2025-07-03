@@ -451,14 +451,14 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ documentId, pdfUrl }) => {
       syncPDFTrackingData();
       setIsFirstView(false);
 
-      // Start the 2-minute interval for update notifications
+      // Start the 60-second interval for update notifications
       if (!updateIntervalRef.current) {
         updateIntervalRef.current = setInterval(
           () => {
             syncPDFTrackingData();
           },
-          2 * 60 * 1000
-        ); // 2 minutes in milliseconds
+          60 * 1000
+        ); // 60 seconds in milliseconds
       }
     }
   };

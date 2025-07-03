@@ -4,41 +4,39 @@ import {
   Outlet,
   redirect,
 } from "@tanstack/react-router";
-import React, { Suspense, useEffect } from "react";
+import { useEffect } from "react";
 import {
   AppUpdate,
   AppUpdateAvailability,
 } from "@capawesome/capacitor-app-update";
-import { Capacitor } from '@capacitor/core';
-import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
+
+import { Capacitor } from "@capacitor/core";
 import { toast } from "sonner";
 import { useUpdate } from "@/stores/useUpdate";
 import Favicon from "react-favicon";
 import useStore from "@/components/common/layout-container/sidebar/useSidebar";
 import { Preferences } from "@capacitor/preferences";
 import { useTheme } from "@/providers/theme/theme-provider";
-
-const TanStackRouterDevtools =
-  process.env.NODE_ENV === "production"
-    ? () => null
-    : React.lazy(() =>
-        import("@tanstack/router-devtools").then((res) => ({
-          default: res.TanStackRouterDevtools,
-        }))
-      );
+import { HOLISTIC_INSTITUTE_ID } from "@/constants/urls";
+import { useInstituteFeatureStore } from "@/stores/insititute-feature-store";
 
 const RootComponent = () => {
   const { setUpdateAvailable } = useUpdate();
   const { instituteLogoFileUrl } = useStore();
   const vacademyUrl = "/vacademy-logo.svg";
   const { setPrimaryColor } = useTheme();
+  const { setInstituteId } = useInstituteFeatureStore();
 
   const setPrimaryColorFromStorage = async () => {
     const details = await Preferences.get({ key: "InstituteDetails" });
     const parsedDetails = details.value ? JSON.parse(details.value) : null;
     const themeCode = parsedDetails?.institute_theme_code;
-    if (themeCode) {
-      setPrimaryColor(themeCode);
+    const instituteId = parsedDetails?.id;
+    setInstituteId(instituteId);
+    if (instituteId === HOLISTIC_INSTITUTE_ID) {
+      setPrimaryColor("holistic");
+    } else {
+      setPrimaryColor(themeCode ?? "primary");
     }
   };
 
@@ -47,8 +45,10 @@ const RootComponent = () => {
   };
 
   useEffect(() => {
-    (async () => {
-      if (Capacitor.isNativePlatform()) {
+    const checkForUpdate = async () => {
+      if (Capacitor.getPlatform() === "web") return;
+
+      try {
         const result = await AppUpdate.getAppUpdateInfo();
         if (
           result.updateAvailability === AppUpdateAvailability.UPDATE_AVAILABLE
@@ -59,20 +59,19 @@ const RootComponent = () => {
             await AppUpdate.performImmediateUpdate();
           }
         }
+      } catch (error) {
+        console.error("Error checking app update:", error);
       }
-    })();
+    };
+
+    checkForUpdate();
     setPrimaryColorFromStorage();
   }, []);
 
   return (
     <>
       <Outlet />
-      {/* Development tools */}
-      <Suspense>
-        <TanStackRouterDevtools />
-      </Suspense>
       <Favicon url={getFallbackLogoUrl(instituteLogoFileUrl)} />
-      <ReactQueryDevtools initialIsOpen={false} />
     </>
   );
 };

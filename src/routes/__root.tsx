@@ -17,19 +17,26 @@ import Favicon from "react-favicon";
 import useStore from "@/components/common/layout-container/sidebar/useSidebar";
 import { Preferences } from "@capacitor/preferences";
 import { useTheme } from "@/providers/theme/theme-provider";
+import { HOLISTIC_INSTITUTE_ID } from "@/constants/urls";
+import { useInstituteFeatureStore } from "@/stores/insititute-feature-store";
 
 const RootComponent = () => {
   const { setUpdateAvailable } = useUpdate();
   const { instituteLogoFileUrl } = useStore();
   const vacademyUrl = "/vacademy-logo.svg";
   const { setPrimaryColor } = useTheme();
+  const { setInstituteId } = useInstituteFeatureStore();
 
   const setPrimaryColorFromStorage = async () => {
     const details = await Preferences.get({ key: "InstituteDetails" });
     const parsedDetails = details.value ? JSON.parse(details.value) : null;
     const themeCode = parsedDetails?.institute_theme_code;
-    if (themeCode) {
-      setPrimaryColor(themeCode);
+    const instituteId = parsedDetails?.id;
+    setInstituteId(instituteId);
+    if (instituteId === HOLISTIC_INSTITUTE_ID) {
+      setPrimaryColor("holistic");
+    } else {
+      setPrimaryColor(themeCode ?? "primary");
     }
   };
 

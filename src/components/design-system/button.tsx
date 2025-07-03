@@ -70,8 +70,8 @@ export const MyButton = ({
   return (
     <Button
       className={cn(getButtonClasses(), className)}
-      {...props}
       disabled={disable}
+      {...props}
     >
       {children}
     </Button>

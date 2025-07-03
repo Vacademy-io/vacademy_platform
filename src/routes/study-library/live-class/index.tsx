@@ -12,15 +12,22 @@ import { getPackageSessionId } from "@/utils/study-library/get-list-from-stores/
 import { useMarkAttendance } from "./-hooks/useMarkAttendance";
 import { toast } from "sonner";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Calendar, List, Clock, MapPin, Users, ArrowSquareOut, X } from "phosphor-react";
+import {
+  Calendar,
+  List,
+  Clock,
+  MapPin,
+  Users,
+  ArrowSquareOut,
+} from "phosphor-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogClose,
 } from "@/components/ui/dialog";
+import { calculateDuration } from "@/lib/live-class/utils";
 
 export const Route = createFileRoute("/study-library/live-class/")({
   component: RouteComponent,
@@ -48,15 +55,6 @@ function RouteComponent() {
   }, []);
 
   const { data: sessions, isLoading, error } = useLiveSessions(batchId);
-  console.log("sessions ", sessions);
-  
-  // Debug: Log all session dates for calendar view troubleshooting
-  if (sessions) {
-    console.log("All session dates:", {
-      live: sessions.live_sessions?.map(s => s.meeting_date) || [],
-      upcoming: sessions.upcoming_sessions?.map(s => s.meeting_date) || []
-    });
-  }
 
   useEffect(() => {
     setNavHeading(
@@ -80,9 +78,9 @@ function RouteComponent() {
   };
 
   const formatTime = (time: string) => {
-    const [hours, minutes] = time.split(':');
+    const [hours, minutes] = time.split(":");
     const hour = parseInt(hours);
-    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const ampm = hour >= 12 ? "PM" : "AM";
     const displayHour = hour % 12 || 12;
     return `${displayHour}:${minutes} ${ampm}`;
   };
@@ -156,29 +154,6 @@ function RouteComponent() {
           window.open(session.meeting_link, "_blank", "noopener,noreferrer");
         }
       }
-    }
-  };
-
-  const calculateDuration = (startTime: string, lastEntryTime: string) => {
-    const [startHours, startMinutes] = startTime.split(":").map(Number);
-    const [endHours, endMinutes] = lastEntryTime.split(":").map(Number);
-
-    let durationMinutes =
-      endHours * 60 + endMinutes - (startHours * 60 + startMinutes);
-
-    if (durationMinutes < 0) {
-      durationMinutes += 24 * 60;
-    }
-
-    const hours = Math.floor(durationMinutes / 60);
-    const minutes = durationMinutes % 60;
-
-    if (hours === 0) {
-      return `${minutes} minutes`;
-    } else if (minutes === 0) {
-      return `${hours} hour${hours > 1 ? "s" : ""}`;
-    } else {
-      return `${hours} hour${hours > 1 ? "s" : ""} ${minutes} minutes`;
     }
   };
 
@@ -256,10 +231,10 @@ function RouteComponent() {
     return new Date(year, month, 1).getDay();
   };
 
-  const navigateMonth = (direction: 'prev' | 'next') => {
-    setSelectedDate(prev => {
+  const navigateMonth = (direction: "prev" | "next") => {
+    setSelectedDate((prev) => {
       const newDate = new Date(prev);
-      if (direction === 'prev') {
+      if (direction === "prev") {
         newDate.setMonth(prev.getMonth() - 1);
       } else {
         newDate.setMonth(prev.getMonth() + 1);
@@ -271,28 +246,19 @@ function RouteComponent() {
   const getSessionsForDate = (date: Date) => {
     // Format date as YYYY-MM-DD in local timezone to avoid UTC issues
     const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
     const dateString = `${year}-${month}-${day}`;
-    
+
     const allSessions = [
       ...(sessions?.live_sessions ?? []),
-      ...(sessions?.upcoming_sessions ?? [])
+      ...(sessions?.upcoming_sessions ?? []),
     ];
-    
-    const filteredSessions = allSessions.filter(session => session.meeting_date === dateString);
-    
-    // Debug logging for June 30th specifically
-    if (dateString === '2025-06-30') {
-      console.log('June 30th check:', {
-        dateString,
-        allSessionsCount: allSessions.length,
-        filteredSessionsCount: filteredSessions.length,
-        allSessionDates: allSessions.map(s => s.meeting_date),
-        filteredSessions
-      });
-    }
-    
+
+    const filteredSessions = allSessions.filter(
+      (session) => session.meeting_date === dateString
+    );
+
     return filteredSessions;
   };
 
@@ -306,10 +272,10 @@ function RouteComponent() {
   const renderDayModal = () => {
     if (!selectedDayData) return null;
 
-    const liveSessions = selectedDayData.sessions.filter(session => 
+    const liveSessions = selectedDayData.sessions.filter((session) =>
       sessions?.live_sessions.includes(session)
     );
-    const upcomingSessions = selectedDayData.sessions.filter(session => 
+    const upcomingSessions = selectedDayData.sessions.filter((session) =>
       sessions?.upcoming_sessions.includes(session)
     );
 
@@ -317,18 +283,11 @@ function RouteComponent() {
       <Dialog open={dayModalOpen} onOpenChange={setDayModalOpen}>
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <div className="flex items-center justify-between">
-              <DialogTitle className="text-xl font-semibold text-neutral-800">
-                Classes on {formatDate(selectedDayData.date)}
-              </DialogTitle>
-              <DialogClose asChild>
-                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                  <X size={16} />
-                </Button>
-              </DialogClose>
-            </div>
+            <DialogTitle className="text-xl font-semibold text-neutral-800">
+              Classes on {formatDate(selectedDayData.date)}
+            </DialogTitle>
           </DialogHeader>
-          
+
           <div className="space-y-6 mt-4">
             {liveSessions.length > 0 && (
               <div>
@@ -340,18 +299,28 @@ function RouteComponent() {
                   {liveSessions
                     .sort((a, b) => a.start_time.localeCompare(b.start_time))
                     .map((session) => (
-                      <div key={session.schedule_id} className="p-4 border rounded-lg bg-gradient-to-r from-red-50/50 to-red-100/30 border-red-200">
+                      <div
+                        key={session.schedule_id}
+                        className="p-4 border rounded-lg bg-gradient-to-r from-red-50/50 to-red-100/30 border-red-200"
+                      >
                         <div className="flex justify-between items-start">
                           <div className="flex-1">
-                            <h4 className="font-semibold text-neutral-800 mb-1">{session.title}</h4>
+                            <h4 className="font-semibold text-neutral-800 mb-1">
+                              {session.title}
+                            </h4>
                             <div className="flex items-center gap-4 text-sm text-neutral-600">
                               <div className="flex items-center gap-1">
                                 <Clock size={14} />
-                                <span>{formatTime(session.start_time)} - {formatTime(session.last_entry_time)}</span>
+                                <span>
+                                  {formatTime(session.start_time)} -{" "}
+                                  {formatTime(session.last_entry_time)}
+                                </span>
                               </div>
                               <div className="flex items-center gap-1">
                                 <MapPin size={14} />
-                                <span className="capitalize">{session.subject}</span>
+                                <span className="capitalize">
+                                  {session.subject}
+                                </span>
                               </div>
                             </div>
                           </div>
@@ -385,18 +354,28 @@ function RouteComponent() {
                   {upcomingSessions
                     .sort((a, b) => a.start_time.localeCompare(b.start_time))
                     .map((session) => (
-                      <div key={session.schedule_id} className="p-4 border rounded-lg bg-gradient-to-r from-blue-50/50 to-blue-100/30 border-blue-200">
+                      <div
+                        key={session.schedule_id}
+                        className="p-4 border rounded-lg bg-gradient-to-r from-blue-50/50 to-blue-100/30 border-blue-200"
+                      >
                         <div className="flex justify-between items-start">
                           <div className="flex-1">
-                            <h4 className="font-semibold text-neutral-800 mb-1">{session.title}</h4>
+                            <h4 className="font-semibold text-neutral-800 mb-1">
+                              {session.title}
+                            </h4>
                             <div className="flex items-center gap-4 text-sm text-neutral-600">
                               <div className="flex items-center gap-1">
                                 <Clock size={14} />
-                                <span>{formatTime(session.start_time)} - {formatTime(session.last_entry_time)}</span>
+                                <span>
+                                  {formatTime(session.start_time)} -{" "}
+                                  {formatTime(session.last_entry_time)}
+                                </span>
                               </div>
                               <div className="flex items-center gap-1">
                                 <MapPin size={14} />
-                                <span className="capitalize">{session.subject}</span>
+                                <span className="capitalize">
+                                  {session.subject}
+                                </span>
                               </div>
                             </div>
                           </div>
@@ -410,7 +389,9 @@ function RouteComponent() {
             {selectedDayData.sessions.length === 0 && (
               <div className="text-center py-8">
                 <Clock size={48} className="mx-auto text-neutral-400 mb-3" />
-                <p className="text-neutral-600">No classes scheduled for this day</p>
+                <p className="text-neutral-600">
+                  No classes scheduled for this day
+                </p>
               </div>
             )}
           </div>
@@ -424,66 +405,89 @@ function RouteComponent() {
     const year = getCurrentYear();
     const daysInMonth = getDaysInMonth(month, year);
     const firstDay = getFirstDayOfMonth(month, year);
-    
+
     const monthNames = [
-      "January", "February", "March", "April", "May", "June",
-      "July", "August", "September", "October", "November", "December"
+      "January",
+      "February",
+      "March",
+      "April",
+      "May",
+      "June",
+      "July",
+      "August",
+      "September",
+      "October",
+      "November",
+      "December",
     ];
-    
+
     const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-    
+
     const days = [];
-    
+
     // Empty cells for days before the first day of the month
     for (let i = 0; i < firstDay; i++) {
-      days.push(<div key={`empty-${i}`} className="h-24 border border-neutral-200"></div>);
+      days.push(
+        <div
+          key={`empty-${i}`}
+          className="h-24 border border-neutral-200"
+        ></div>
+      );
     }
-    
+
     // Days of the month
     for (let day = 1; day <= daysInMonth; day++) {
       const currentDate = new Date(year, month, day);
       const sessionsForDay = getSessionsForDate(currentDate);
       const isToday = currentDate.toDateString() === new Date().toDateString();
-      const hasLive = sessionsForDay.some(session => sessions?.live_sessions.includes(session));
+      const hasLive = sessionsForDay.some((session) =>
+        sessions?.live_sessions.includes(session)
+      );
       const sessionCount = sessionsForDay.length;
-      
+
       days.push(
-        <div 
-          key={day} 
+        <div
+          key={day}
           className={`h-24 border border-neutral-200 p-1 transition-all duration-200 hover:bg-neutral-50 cursor-pointer ${
-            isToday ? 'bg-primary-50/50 border-primary-200' : 'bg-white'
-          } ${sessionCount > 0 ? 'hover:shadow-sm' : ''}`}
+            isToday ? "bg-primary-50/50 border-primary-200" : "bg-white"
+          } ${sessionCount > 0 ? "hover:shadow-sm" : ""}`}
           onClick={() => handleDayClick(currentDate, sessionsForDay)}
         >
-          <div className={`text-sm font-medium mb-1 flex items-center justify-between ${
-            isToday ? 'text-primary-700' : 'text-neutral-700'
-          }`}>
+          <div
+            className={`text-sm font-medium mb-1 flex items-center justify-between ${
+              isToday ? "text-primary-700" : "text-neutral-700"
+            }`}
+          >
             <span>{day}</span>
             {sessionCount > 0 && (
-              <div className={`flex items-center gap-1 ${
-                hasLive ? 'text-red-600' : 'text-blue-600'
-              }`}>
-                <div className={`w-2 h-2 rounded-full ${
-                  hasLive 
-                    ? 'bg-gradient-to-r from-red-500 to-red-600 animate-pulse' 
-                    : 'bg-gradient-to-r from-blue-500 to-blue-600'
-                }`}></div>
+              <div
+                className={`flex items-center gap-1 ${
+                  hasLive ? "text-red-600" : "text-blue-600"
+                }`}
+              >
+                <div
+                  className={`w-2 h-2 rounded-full ${
+                    hasLive
+                      ? "bg-gradient-to-r from-red-500 to-red-600 animate-pulse"
+                      : "bg-gradient-to-r from-blue-500 to-blue-600"
+                  }`}
+                ></div>
                 <span className="text-xs font-semibold">{sessionCount}</span>
               </div>
             )}
           </div>
-          
+
           {/* Compact session indicators */}
           <div className="space-y-1">
             {sessionsForDay.slice(0, 1).map((session) => {
               const isLive = sessions?.live_sessions.includes(session);
               return (
-                <div 
+                <div
                   key={session.schedule_id}
                   className={`text-xs p-1 rounded truncate transition-all duration-200 ${
-                    isLive 
-                      ? 'bg-gradient-to-r from-red-500/20 to-red-600/20 text-red-700 border border-red-200' 
-                      : 'bg-gradient-to-r from-blue-500/20 to-blue-600/20 text-blue-700 border border-blue-200'
+                    isLive
+                      ? "bg-gradient-to-r from-red-500/20 to-red-600/20 text-red-700 border border-red-200"
+                      : "bg-gradient-to-r from-blue-500/20 to-blue-600/20 text-blue-700 border border-blue-200"
                   }`}
                   title={`${session.title} - ${session.start_time}`}
                 >
@@ -491,13 +495,15 @@ function RouteComponent() {
                 </div>
               );
             })}
-            
+
             {sessionCount > 1 && (
-              <div className={`text-xs text-center font-medium rounded py-1 ${
-                hasLive 
-                  ? 'bg-red-100/80 text-red-700 border border-red-200' 
-                  : 'bg-blue-100/80 text-blue-700 border border-blue-200'
-              }`}>
+              <div
+                className={`text-xs text-center font-medium rounded py-1 ${
+                  hasLive
+                    ? "bg-red-100/80 text-red-700 border border-red-200"
+                    : "bg-blue-100/80 text-blue-700 border border-blue-200"
+                }`}
+              >
                 +{sessionCount - 1} more
               </div>
             )}
@@ -505,7 +511,7 @@ function RouteComponent() {
         </div>
       );
     }
-    
+
     return (
       <div className="bg-white rounded-lg border border-neutral-200 p-4">
         {/* Calendar Header */}
@@ -517,7 +523,7 @@ function RouteComponent() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => navigateMonth('prev')}
+              onClick={() => navigateMonth("prev")}
               className="border-neutral-300 hover:border-primary-300 hover:bg-primary-50"
             >
               ←
@@ -533,26 +539,29 @@ function RouteComponent() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => navigateMonth('next')}
+              onClick={() => navigateMonth("next")}
               className="border-neutral-300 hover:border-primary-300 hover:bg-primary-50"
             >
               →
             </Button>
           </div>
         </div>
-        
+
         {/* Calendar Grid */}
         <div className="grid grid-cols-7 gap-0">
           {/* Day headers */}
-          {dayNames.map(day => (
-            <div key={day} className="h-10 border border-neutral-200 bg-neutral-100 flex items-center justify-center font-medium text-sm text-neutral-700">
+          {dayNames.map((day) => (
+            <div
+              key={day}
+              className="h-10 border border-neutral-200 bg-neutral-100 flex items-center justify-center font-medium text-sm text-neutral-700"
+            >
               {day}
             </div>
           ))}
           {/* Calendar days */}
           {days}
         </div>
-        
+
         {/* Legend */}
         <div className="flex items-center gap-4 mt-4 text-sm">
           <div className="flex items-center gap-2">
@@ -609,7 +618,11 @@ function RouteComponent() {
 
       <div className="space-y-6">
         {/* View Toggle */}
-        <Tabs value={selectedView} onValueChange={setSelectedView} className="w-full">
+        <Tabs
+          value={selectedView}
+          onValueChange={setSelectedView}
+          className="w-full"
+        >
           <TabsList className="h-auto border-b border-neutral-200/80 bg-transparent p-0">
             <TabsTrigger
               value="list"
@@ -630,34 +643,56 @@ function RouteComponent() {
           <TabsContent value="list" className="mt-6">
             <div className="space-y-8">
               <div>
-                <h2 className="text-xl font-semibold mb-4 text-neutral-800">Live Sessions</h2>
+                <h2 className="text-xl font-semibold mb-4 text-neutral-800">
+                  Live Sessions
+                </h2>
                 {liveSessions.length > 0 ? (
                   <div className="space-y-4 w-full">
-                    {liveSessions.map((session) => renderSession(session, true))}
+                    {liveSessions.map((session) =>
+                      renderSession(session, true)
+                    )}
                   </div>
                 ) : (
                   <div className="text-neutral-600 p-6 bg-gradient-to-br from-neutral-50 to-neutral-100 rounded-lg w-full border border-neutral-200">
                     <div className="text-center">
-                      <Users size={48} className="mx-auto text-neutral-400 mb-3" />
-                      <p className="font-medium">No live sessions at the moment</p>
-                      <p className="text-sm text-neutral-500 mt-1">Check back later or view upcoming sessions</p>
+                      <Users
+                        size={48}
+                        className="mx-auto text-neutral-400 mb-3"
+                      />
+                      <p className="font-medium">
+                        No live sessions at the moment
+                      </p>
+                      <p className="text-sm text-neutral-500 mt-1">
+                        Check back later or view upcoming sessions
+                      </p>
                     </div>
                   </div>
                 )}
               </div>
 
               <div>
-                <h2 className="text-xl font-semibold mb-4 text-neutral-800">Upcoming Sessions</h2>
+                <h2 className="text-xl font-semibold mb-4 text-neutral-800">
+                  Upcoming Sessions
+                </h2>
                 {upcomingSessions.length > 0 ? (
                   <div className="space-y-4 w-full">
-                    {upcomingSessions.map((session) => renderSession(session, false))}
+                    {upcomingSessions.map((session) =>
+                      renderSession(session, false)
+                    )}
                   </div>
                 ) : (
                   <div className="text-neutral-600 p-6 bg-gradient-to-br from-neutral-50 to-neutral-100 rounded-lg w-full border border-neutral-200">
                     <div className="text-center">
-                      <Clock size={48} className="mx-auto text-neutral-400 mb-3" />
-                      <p className="font-medium">No upcoming sessions scheduled</p>
-                      <p className="text-sm text-neutral-500 mt-1">New sessions will appear here when scheduled</p>
+                      <Clock
+                        size={48}
+                        className="mx-auto text-neutral-400 mb-3"
+                      />
+                      <p className="font-medium">
+                        No upcoming sessions scheduled
+                      </p>
+                      <p className="text-sm text-neutral-500 mt-1">
+                        New sessions will appear here when scheduled
+                      </p>
                     </div>
                   </div>
                 )}
@@ -669,7 +704,7 @@ function RouteComponent() {
             {renderCalendarView()}
           </TabsContent>
         </Tabs>
-        
+
         {/* Day Details Modal */}
         {renderDayModal()}
       </div>

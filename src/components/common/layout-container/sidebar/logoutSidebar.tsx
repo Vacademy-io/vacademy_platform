@@ -7,18 +7,30 @@ import {
 import { SidebarMenu } from "@/components/ui/sidebar";
 
 import { SidebarItem } from "./sidebar-item";
-import { HamBurgerSidebarItemsData } from "./utils";
+import { HamBurgerSidebarItemsData, filterHamburgerMenuItems } from "./utils";
 import "./scrollbarStyle.css";
 import useStore from "./useSidebar";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
+import { useEffect, useState } from "react";
 
 export const LogoutSidebar = ({
   sidebarComponent,
 }: {
   sidebarComponent?: React.ReactNode;
 }) => {
-  const { instituteName, instituteLogoFileUrl, sideBarOpen, setSidebarOpen } = useStore();
-  
+  const { instituteName, instituteLogoFileUrl, sideBarOpen, setSidebarOpen } =
+    useStore();
+
+  const [filteredHamburgerItems, setFilteredHamburgerItems] = useState(
+    HamBurgerSidebarItemsData
+  );
+
+  useEffect(() => {
+    filterHamburgerMenuItems(HamBurgerSidebarItemsData).then((data) => {
+      setFilteredHamburgerItems(data);
+    });
+  }, []);
+
   return (
     <Sheet open={sideBarOpen} onOpenChange={setSidebarOpen}>
       <SheetContent
@@ -53,18 +65,18 @@ export const LogoutSidebar = ({
             </div>
           </div>
         </SheetHeader>
-        
+
         <div className="flex-1 px-3 py-4 overflow-y-auto bg-gradient-to-b from-white to-neutral-50/50">
           <SidebarMenu className="space-y-1.5">
             {sidebarComponent
               ? sidebarComponent
-              : HamBurgerSidebarItemsData.map((obj, key) => (
-                  <div 
+              : filteredHamburgerItems.map((obj, key) => (
+                  <div
                     key={key}
                     className="animate-slide-in-right transform transition-all duration-300 hover:scale-[1.01]"
-                    style={{ 
+                    style={{
                       animationDelay: `${key * 40}ms`,
-                      animationFillMode: 'both'
+                      animationFillMode: "both",
                     }}
                   >
                     <div className="relative group">

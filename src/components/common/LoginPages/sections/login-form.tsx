@@ -13,14 +13,25 @@ import { UsernameLogin } from "./UsernamePasswordForm";
 import { Preferences } from "@capacitor/preferences";
 import { FcGoogle } from "react-icons/fc";
 import { GitHubLogoIcon } from "@radix-ui/react-icons";
-import { LOGIN_URL_GOOGLE_GITHUB } from "@/constants/urls";
+import {
+  HOLISTIC_INSTITUTE_ID,
+  LOGIN_URL_GOOGLE_GITHUB,
+} from "@/constants/urls";
 import { toast } from "sonner";
 import { useTheme } from "@/providers/theme/theme-provider";
 import { fetchAndStoreInstituteDetails } from "@/services/fetchAndStoreInstituteDetails";
 import { fetchAndStoreStudentDetails } from "@/services/studentDetails";
 import ClipLoader from "react-spinners/ClipLoader";
-import { Shield, BookOpen, Users, Award, ArrowRight, Sparkles } from "lucide-react";
+import {
+  Shield,
+  BookOpen,
+  Users,
+  Award,
+  ArrowRight,
+  Sparkles,
+} from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useInstituteFeatureStore } from "@/stores/insititute-feature-store";
 
 export const getFromStorage = async (key: string) => {
   const result = await Preferences.get({ key });
@@ -40,10 +51,10 @@ export function LoginForm() {
   const isPublic = urlParams.get("isPublicAssessment");
   const redirect = urlParams.get("redirect");
   const [isEmailLogin, setIsEmailLogin] = useState(isPublic === "true");
+  const { setInstituteId } = useInstituteFeatureStore();
 
   useEffect(() => {
     const handleOAuthCallback = async () => {
-     
       const urlParams = new URLSearchParams(window.location.search);
       const accessToken = urlParams.get("accessToken");
       const refreshToken = urlParams.get("refreshToken");
@@ -51,7 +62,6 @@ export function LoginForm() {
       const message = urlParams.get("message");
 
       if (error) {
-        
         toast.error(decodeURIComponent(message || "Authentication failed."));
         return;
       }
@@ -109,7 +119,7 @@ export function LoginForm() {
       const userId = decodedData?.user;
       const authorityKeys = authorities ? Object.keys(authorities) : [];
 
-      console.log("authorityKeys   :",authorityKeys);
+      console.log("authorityKeys   :", authorityKeys);
 
       if (authorityKeys.length > 1) {
         navigate({
@@ -118,19 +128,23 @@ export function LoginForm() {
         });
         setIsSSOLoading(false);
       } else {
-        const instituteId = authorities ? Object.keys(authorities)[0] : undefined;
+        const instituteId = authorities
+          ? Object.keys(authorities)[0]
+          : undefined;
 
         if (instituteId && userId) {
           try {
-
             // Fetch and store institute details
             const details = await fetchAndStoreInstituteDetails(
               instituteId,
               userId
             );
-           
-
-            setPrimaryColor(details?.institute_theme_code ?? "#E67E22");
+            setInstituteId(instituteId);
+            if (instituteId === HOLISTIC_INSTITUTE_ID) {
+              setPrimaryColor("holistic");
+            } else {
+              setPrimaryColor(details?.institute_theme_code ?? "#E67E22");
+            }
           } catch (error) {
             console.error("Error fetching institute details:", error);
             toast.error("Failed to fetch institute details");
@@ -178,13 +192,15 @@ export function LoginForm() {
 
   const handleOAuthLogin = (provider: "google" | "github") => {
     try {
-        const stateObj = {
+      const stateObj = {
         from: `${window.location.origin}/login`, // ✅ fixed interpolation
         account_type: "",
       };
 
       const base64State = btoa(JSON.stringify(stateObj));
-      const loginUrl = `${LOGIN_URL_GOOGLE_GITHUB}/${provider}?state=${encodeURIComponent(base64State)}`;
+      const loginUrl = `${LOGIN_URL_GOOGLE_GITHUB}/${provider}?state=${encodeURIComponent(
+        base64State
+      )}`;
       window.location.href = loginUrl;
     } catch (error) {
       console.error("Error initiating OAuth login:", error);
@@ -194,35 +210,35 @@ export function LoginForm() {
 
   if (isSSOLoading) {
     return (
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         className="min-h-screen bg-gray-50 flex flex-col items-center justify-center relative overflow-hidden"
       >
         {/* Subtle Background Elements */}
         <div className="absolute inset-0 bg-grid-gray-100 [mask-image:linear-gradient(0deg,white,rgba(255,255,255,0.6))] -z-10" />
-        <motion.div 
-          animate={{ 
+        <motion.div
+          animate={{
             scale: [1, 1.05, 1],
-            rotate: [0, 2, -2, 0] 
+            rotate: [0, 2, -2, 0],
           }}
-          transition={{ 
+          transition={{
             duration: 6,
             repeat: Infinity,
-            ease: "easeInOut" 
+            ease: "easeInOut",
           }}
           className="absolute top-20 left-20 w-24 h-24 bg-gray-200/20 rounded-full blur-xl"
         />
-        <motion.div 
-          animate={{ 
+        <motion.div
+          animate={{
             scale: [1, 1.1, 1],
-            rotate: [0, -2, 2, 0] 
+            rotate: [0, -2, 2, 0],
           }}
-          transition={{ 
+          transition={{
             duration: 8,
             repeat: Infinity,
             ease: "easeInOut",
-            delay: 1 
+            delay: 1,
           }}
           className="absolute bottom-20 right-20 w-32 h-32 bg-gray-300/20 rounded-full blur-xl"
         />
@@ -242,7 +258,7 @@ export function LoginForm() {
               <ClipLoader size={40} color="#374151" />
             </motion.div>
           </div>
-          <motion.h2 
+          <motion.h2
             initial={{ y: 20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ delay: 0.2 }}
@@ -250,7 +266,7 @@ export function LoginForm() {
           >
             Preparing Your Experience
           </motion.h2>
-          <motion.p 
+          <motion.p
             initial={{ y: 20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ delay: 0.4 }}
@@ -267,73 +283,94 @@ export function LoginForm() {
     <div className="min-h-screen bg-gray-50 relative overflow-hidden">
       {/* Subtle Background Pattern */}
       <div className="absolute inset-0 bg-grid-gray-100 [mask-image:linear-gradient(0deg,white,rgba(255,255,255,0.6))] -z-10" />
-      
+
       {/* Subtle Floating Background Elements */}
-      <motion.div 
-        animate={{ 
+      <motion.div
+        animate={{
           x: [0, 20, 0],
           y: [0, -10, 0],
-          rotate: [0, 2, 0] 
+          rotate: [0, 2, 0],
         }}
-        transition={{ 
+        transition={{
           duration: 12,
           repeat: Infinity,
-          ease: "easeInOut" 
+          ease: "easeInOut",
         }}
         className="absolute top-20 left-20 w-48 h-48 bg-gradient-to-br from-gray-200/10 to-gray-300/10 rounded-full blur-3xl"
       />
-      <motion.div 
-        animate={{ 
+      <motion.div
+        animate={{
           x: [0, -20, 0],
           y: [0, 10, 0],
-          rotate: [0, -2, 0] 
+          rotate: [0, -2, 0],
         }}
-        transition={{ 
+        transition={{
           duration: 15,
           repeat: Infinity,
           ease: "easeInOut",
-          delay: 3 
+          delay: 3,
         }}
         className="absolute bottom-20 right-20 w-64 h-64 bg-gradient-to-br from-gray-300/10 to-gray-400/10 rounded-full blur-3xl"
       />
 
       <div className="flex min-h-screen">
         {/* Left Side - Compact Branding & Features */}
-        <motion.div 
+        <motion.div
           initial={{ x: -50, opacity: 0 }}
           animate={{ x: 0, opacity: 1 }}
           transition={{ duration: 0.6, ease: "easeOut" }}
           className="hidden lg:flex lg:w-1/2 xl:w-1/2 flex-col justify-center px-8 xl:px-16"
         >
           {/* Compact Main Heading */}
-          <motion.div 
+          <motion.div
             initial={{ y: 20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ delay: 0.2 }}
             className="mb-8"
           >
             <h1 className="text-4xl xl:text-5xl font-bold text-gray-900 mb-4 leading-tight">
-              Transform Your 
-              <span className="bg-gradient-to-r from-gray-700 to-gray-900 bg-clip-text text-transparent"> Learning</span>
-              <br />Journey
+              Transform Your
+              <span className="bg-gradient-to-r from-gray-700 to-gray-900 bg-clip-text text-transparent">
+                {" "}
+                Learning
+              </span>
+              <br />
+              Journey
             </h1>
             <p className="text-lg text-gray-600 leading-relaxed max-w-lg">
-              Access personalized learning experiences, track your progress, and achieve your educational goals.
+              Access personalized learning experiences, track your progress, and
+              achieve your educational goals.
             </p>
           </motion.div>
 
           {/* Compact Features Grid */}
-          <motion.div 
+          <motion.div
             initial={{ y: 20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ delay: 0.4 }}
             className="grid grid-cols-2 gap-4 mb-8"
           >
             {[
-              { icon: BookOpen, title: "Interactive Learning", desc: "Engaging content & assessments" },
-              { icon: Users, title: "Collaborative Environment", desc: "Connect with peers & instructors" },
-              { icon: Award, title: "Track Progress", desc: "Monitor your achievements" },
-              { icon: Shield, title: "Secure Platform", desc: "Enterprise-grade security" }
+              {
+                icon: BookOpen,
+                title: "Interactive Learning",
+                desc: "Engaging content & assessments",
+              },
+              {
+                icon: Users,
+                title: "Collaborative Environment",
+                desc: "Connect with peers & instructors",
+              },
+              {
+                icon: Award,
+                title: "Track Progress",
+                desc: "Monitor your achievements",
+              },
+              {
+                icon: Shield,
+                title: "Secure Platform",
+                desc: "Enterprise-grade security",
+              },
             ].map((feature, index) => (
               <motion.div
                 key={feature.title}
@@ -344,14 +381,16 @@ export function LoginForm() {
                 className="group p-3 rounded-lg bg-white/60 backdrop-blur-sm border border-gray-200/50 hover:bg-white/80 transition-all duration-200"
               >
                 <feature.icon className="w-6 h-6 text-gray-700 mb-2 group-hover:scale-105 transition-transform duration-200" />
-                <h3 className="font-semibold text-gray-900 mb-1 text-sm">{feature.title}</h3>
+                <h3 className="font-semibold text-gray-900 mb-1 text-sm">
+                  {feature.title}
+                </h3>
                 <p className="text-xs text-gray-600">{feature.desc}</p>
               </motion.div>
             ))}
           </motion.div>
 
           {/* Compact Trust Indicators */}
-          <motion.div 
+          <motion.div
             initial={{ y: 20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ delay: 0.8 }}
@@ -369,7 +408,7 @@ export function LoginForm() {
         </motion.div>
 
         {/* Right Side - Compact Login Form */}
-        <motion.div 
+        <motion.div
           initial={{ x: 50, opacity: 0 }}
           animate={{ x: 0, opacity: 1 }}
           transition={{ duration: 0.6, ease: "easeOut", delay: 0.1 }}
@@ -377,14 +416,14 @@ export function LoginForm() {
         >
           <div className="w-full max-w-lg xl:max-w-xl">
             {/* Compact Login Card */}
-            <motion.div 
+            <motion.div
               initial={{ y: 20, opacity: 0, scale: 0.98 }}
               animate={{ y: 0, opacity: 1, scale: 1 }}
               transition={{ delay: 0.3, duration: 0.4 }}
               className="bg-white/90 backdrop-blur-xl rounded-xl shadow-xl border border-gray-200/50 p-6 lg:p-8 xl:p-10"
             >
               {/* Compact Header */}
-              <motion.div 
+              <motion.div
                 initial={{ y: 10, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 0.5 }}
@@ -399,7 +438,7 @@ export function LoginForm() {
               </motion.div>
 
               {/* Compact OAuth Buttons */}
-              <motion.div 
+              <motion.div
                 initial={{ y: 10, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 0.7 }}
@@ -430,7 +469,7 @@ export function LoginForm() {
               </motion.div>
 
               {/* Compact Divider */}
-              <motion.div 
+              <motion.div
                 initial={{ width: 0, opacity: 0 }}
                 animate={{ width: "100%", opacity: 1 }}
                 transition={{ delay: 0.9, duration: 0.3 }}
@@ -447,7 +486,7 @@ export function LoginForm() {
               </motion.div>
 
               {/* Form Content */}
-              <motion.div 
+              <motion.div
                 initial={{ y: 10, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 1.1 }}
@@ -461,7 +500,9 @@ export function LoginForm() {
                       exit={{ x: -200, opacity: 0 }}
                       transition={{ duration: 0.2 }}
                     >
-                      <EmailLogin onSwitchToUsername={() => setIsEmailLogin(false)} />
+                      <EmailLogin
+                        onSwitchToUsername={() => setIsEmailLogin(false)}
+                      />
                     </motion.div>
                   ) : (
                     <motion.div
@@ -471,14 +512,16 @@ export function LoginForm() {
                       exit={{ x: -200, opacity: 0 }}
                       transition={{ duration: 0.2 }}
                     >
-                      <UsernameLogin onSwitchToEmail={() => setIsEmailLogin(true)} />
+                      <UsernameLogin
+                        onSwitchToEmail={() => setIsEmailLogin(true)}
+                      />
                     </motion.div>
                   )}
                 </AnimatePresence>
               </motion.div>
 
               {/* Compact Security Notice */}
-              <motion.div 
+              <motion.div
                 initial={{ y: 10, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 1.3 }}
@@ -499,7 +542,7 @@ export function LoginForm() {
             </motion.div>
 
             {/* Compact Footer Links */}
-            <motion.div 
+            <motion.div
               initial={{ y: 10, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               transition={{ delay: 1.5 }}

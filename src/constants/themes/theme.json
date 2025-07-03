@@ -116,6 +116,19 @@
         "primary-100": "#B2EBF2",
         "primary-50": "#E0F7FA"
       }
+    },
+    {
+      "code": "holistic",
+      "label": "Holistic Theme",
+      "type": "default",
+      "colors": {
+        "primary-500": "#622335",
+        "primary-400": "#7C4857",
+        "primary-300": "#926773",
+        "primary-200": "#B0919A",
+        "primary-100": "#CBB6BC",
+        "primary-50": "#FFF2EE"
+      }
     }
   ]
 }

@@ -78,21 +78,12 @@ function ModuleMaterialPage() {
         setSubjectName(getSubjectName(subjectId, studyLibraryData) || "");
     }, [studyLibraryData]);
 
-    const handleBackClick = () => {
-        navigate({
-            to: `/study-library/courses/course-details/subjects/modules`,
-            search: {
-                subjectId,
-                courseId,
-                levelId,
-                sessionId,
-            },
-        });
-    };
-
     const heading = (
         <div className="flex items-center gap-4">
-            <CaretLeft onClick={handleBackClick} className="cursor-pointer" />
+            <CaretLeft
+                onClick={() => window.history.back()}
+                className="cursor-pointer"
+            />
             <div>{`${subjectName}`}</div>
         </div>
     );

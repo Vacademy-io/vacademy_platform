@@ -37,7 +37,8 @@ export const Route = createFileRoute(
 
 function ModuleMaterialPage() {
     const navigate = useNavigate();
-    const { subjectId, moduleId } = Route.useSearch();
+    const { courseId, levelId, subjectId, moduleId, sessionId } =
+        Route.useSearch();
     const [currentModuleId, setCurrentModuleId] = useState(moduleId);
     const { setNavHeading } = useNavHeadingStore();
     const { setActiveItem } = useContentStore();
@@ -58,10 +59,13 @@ function ModuleMaterialPage() {
 
     useEffect(() => {
         navigate({
-            to: "/study-library/courses/levels/subjects/modules/chapters",
+            to: "/study-library/courses/course-details/subjects/modules/chapters",
             search: {
+                courseId,
+                levelId,
                 subjectId,
                 moduleId: currentModuleId,
+                sessionId,
             },
             replace: true,
         });
@@ -76,9 +80,12 @@ function ModuleMaterialPage() {
 
     const handleBackClick = () => {
         navigate({
-            to: `/study-library/courses/levels/subjects/modules`,
+            to: `/study-library/courses/course-details/subjects/modules`,
             search: {
                 subjectId,
+                courseId,
+                levelId,
+                sessionId,
             },
         });
     };

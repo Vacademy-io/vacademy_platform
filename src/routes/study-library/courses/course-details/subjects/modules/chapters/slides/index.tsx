@@ -46,7 +46,15 @@ export const Route = createFileRoute(
 });
 
 function Slides() {
-    const { subjectId, moduleId, chapterId, slideId } = Route.useSearch();
+    const {
+        courseId,
+        levelId,
+        subjectId,
+        moduleId,
+        chapterId,
+        slideId,
+        sessionId,
+    } = Route.useSearch();
     const { open } = useSidebar();
     const navigate = useNavigate();
     const { setItems, setActiveItem } = useContentStore();
@@ -76,10 +84,13 @@ function Slides() {
 
     const handleSubjectRoute = () => {
         navigate({
-            to: "/study-library/courses/levels/subjects/modules",
+            to: "/study-library/courses/course-details/subjects/modules",
             params: {},
             search: {
-                subjectId: subjectId,
+                courseId,
+                levelId,
+                subjectId,
+                sessionId,
             },
             hash: "",
         });
@@ -87,11 +98,13 @@ function Slides() {
 
     const handleModuleRoute = () => {
         navigate({
-            to: "/study-library/courses/levels/subjects/modules/chapters",
-            params: {},
+            to: "/study-library/courses/course-details/subjects/modules/chapters",
             search: {
-                subjectId: subjectId,
-                moduleId: moduleId,
+                courseId,
+                levelId,
+                subjectId,
+                moduleId,
+                sessionId,
             },
             hash: "",
         });
@@ -150,10 +163,13 @@ function Slides() {
 
     const handleBackClick = () => {
         navigate({
-            to: `/study-library/courses/levels/subjects/modules/chapters`,
+            to: `/study-library/courses/course-details/subjects/modules/chapters`,
             search: {
+                courseId,
+                levelId,
                 subjectId,
                 moduleId,
+                sessionId,
             },
         });
     };

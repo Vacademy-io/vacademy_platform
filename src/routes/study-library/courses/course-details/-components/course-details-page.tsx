@@ -412,12 +412,14 @@ export const CourseDetailsPage = () => {
                                         <h1 className="mb-4 text-4xl font-bold">
                                             {form.getValues("courseData").title}
                                         </h1>
-                                        <p className="text-lg opacity-90">
-                                            {
-                                                form.getValues("courseData")
-                                                    .description
-                                            }
-                                        </p>
+                                        <p
+                                            className="text-lg opacity-90"
+                                            dangerouslySetInnerHTML={{
+                                                __html:
+                                                    form.getValues("courseData")
+                                                        .description || "",
+                                            }}
+                                        />
                                     </>
                                 )}
                             </div>

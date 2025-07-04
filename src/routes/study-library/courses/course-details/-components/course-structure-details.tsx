@@ -17,7 +17,7 @@ import {
     CollapsibleContent,
     CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { fetchModulesWithChaptersPublic } from "@/services/study-library/getModulesWithChapters";
+import { fetchModulesWithChapters } from "@/services/study-library/getModulesWithChapters";
 import { SubjectType } from "@/stores/study-library/use-study-library-store";
 import { useMutation } from "@tanstack/react-query";
 import {
@@ -131,7 +131,7 @@ export const CourseStructureDetails = ({
             }) => {
                 const results = await Promise.all(
                     currentSubjects?.map(async (subject) => {
-                        const res = await fetchModulesWithChaptersPublic(
+                        const res = await fetchModulesWithChapters(
                             subject.id,
                             packageSessionId
                         );

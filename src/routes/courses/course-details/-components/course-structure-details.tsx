@@ -23,7 +23,7 @@ import { useMutation } from "@tanstack/react-query";
 import {
     fetchSlidesByChapterId,
     Slide,
-} from "@/hooks/study-library/use-slides";
+} from "@/hooks/study-library/use-slides-public";
 import { Button } from "@/components/ui/button";
 import {
     TabType,
@@ -1128,6 +1128,9 @@ export const CourseStructureDetails = ({
                 );
                 const allModuleIds = new Set<string>();
                 const allChapterIds = new Set<string>();
+
+                console.log("allModuleIds", allModuleIds);
+                console.log("allChapterIds", allChapterIds);
 
                 Object.values(modulesMap).forEach((modules) => {
                     modules.forEach((mod) => {

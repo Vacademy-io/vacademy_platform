@@ -1,6 +1,6 @@
 // services/study-library/getModulesWithChapters.ts
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
-import { MODULES_WITH_CHAPTERS } from "@/constants/urls";
+import { MODULES_WITH_CHAPTERS, MODULES_WITH_CHAPTERS_PRIVATE } from "@/constants/urls";
 import { useModulesWithChaptersStore } from "@/stores/study-library/use-modules-with-chapters-store";
 import axios from "axios";
 
@@ -25,7 +25,7 @@ export const fetchModulesWithChapters = async (
     packageSessionId: string
 ) => {
     const response = await authenticatedAxiosInstance.get(
-        MODULES_WITH_CHAPTERS,
+        MODULES_WITH_CHAPTERS_PRIVATE,
         {
             params: {
                 subjectId: subjectId,

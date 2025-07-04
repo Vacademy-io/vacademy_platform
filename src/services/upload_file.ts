@@ -1,4 +1,10 @@
-import { GET_SIGNED_URL, ACKNOWLEDGE, GET_PUBLIC_URL, GET_DETAILS, GET_PUBLIC_URL_PUBLIC } from "@/constants/urls";
+import {
+    GET_SIGNED_URL,
+    ACKNOWLEDGE,
+    GET_PUBLIC_URL,
+    GET_DETAILS,
+    GET_PUBLIC_URL_PUBLIC,
+} from "@/constants/urls";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import axios from "axios";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
@@ -18,10 +24,11 @@ export enum StatusCode {
 
 export const UploadFileInS3 = async (
     file: File | undefined,
-    setIsUploadingFile: React.Dispatch<React.SetStateAction<boolean>> = () => false,
+    setIsUploadingFile: React.Dispatch<React.SetStateAction<boolean>> = () =>
+        false,
     user_id: string,
     source?: string,
-    sourceId?: string,
+    sourceId?: string
 ): Promise<string | undefined> => {
     setIsUploadingFile(true);
     const effectiveSource = source || "FLOOR_DOCUMENTS";
@@ -37,7 +44,7 @@ export const UploadFileInS3 = async (
                 file.name.toLowerCase().replace(/\s+/g, "_"),
                 file.type,
                 effectiveSource,
-                effectiveSourceId,
+                effectiveSourceId
             );
 
             const uploadResponse = await axios({
@@ -65,7 +72,7 @@ const getSignedURL = async (
     file_name: string,
     file_type: string,
     source: string,
-    source_id: string,
+    source_id: string
 ) => {
     // });
     const requestBody = {
@@ -74,29 +81,43 @@ const getSignedURL = async (
         source: source,
         source_id: source_id,
     };
-    const response = await authenticatedAxiosInstance.post(GET_SIGNED_URL, requestBody);
+    const response = await authenticatedAxiosInstance.post(
+        GET_SIGNED_URL,
+        requestBody
+    );
     return response.data;
 };
 
-const acknowledgeUpload = async (file_id: string, user_id: string): Promise<boolean> => {
+const acknowledgeUpload = async (
+    file_id: string,
+    user_id: string
+): Promise<boolean> => {
     const requestBody = {
         file_id: file_id,
         user_id: user_id,
     };
 
-    const response = await authenticatedAxiosInstance.post(ACKNOWLEDGE, requestBody);
+    const response = await authenticatedAxiosInstance.post(
+        ACKNOWLEDGE,
+        requestBody
+    );
 
     return response.data;
 };
 
-export const getPublicUrl = async (fileId: string | undefined | null): Promise<string> => {
+export const getPublicUrl = async (
+    fileId: string | undefined | null
+): Promise<string> => {
     const response = await authenticatedAxiosInstance.get(GET_PUBLIC_URL, {
         params: { fileId, expiryDays: 1 },
     });
     return response?.data;
 };
 
-export const getPublicUrlWithoutLogin = async (fileId: string | undefined | null): Promise<string> => {
+export const getPublicUrlWithoutLogin = async (
+    fileId: string | undefined | null
+): Promise<string> => {
+    if (!fileId) return "";
     const response = await axios.get(GET_PUBLIC_URL_PUBLIC, {
         params: { fileId, expiryDays: 1 },
     });

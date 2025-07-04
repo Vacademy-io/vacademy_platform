@@ -49,8 +49,10 @@ export const SUBMIT_ASSIGNMENT_SLIDE_ANSWERS = `${BASE_URL}/admin-core-service/l
 export const SUBMIT_QUESTION_SLIDE_ANSWERS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/question-slide/add-or-update-question-slide-activity-log`;
 export const INIT_STUDY_LIBRARY = `${BASE_URL}/admin-core-service/v1/learner-study-library/init-details`;
 export const MODULES_WITH_CHAPTERS = `${BASE_URL}/admin-core-service/open/v1/learner-study-library/modules-with-chapters`;
+export const MODULES_WITH_CHAPTERS_PRIVATE = `${BASE_URL}/admin-core-service/v1/learner-study-library/modules-with-chapters`;
 export const CHAPTERS_WITH_SLIDES = `${BASE_URL}/admin-core-service/open/v1/learner-study-library/chapters-with-slides`;
-export const GET_SLIDES = `${BASE_URL}/admin-core-service/open/v1/learner-study-library/slides`;
+export const GET_SLIDES_PUBLIC = `${BASE_URL}/admin-core-service/open/v1/learner-study-library/slides`;
+export const GET_SLIDES = `${BASE_URL}/admin-core-service/v1/learner-study-library/slides`;
 
 export const GET_DETAILS = `${BASE_URL}/media-service/get-details/ids`;
 export const GET_SIGNED_URL = `${BASE_URL}/media-service/get-signed-url`;

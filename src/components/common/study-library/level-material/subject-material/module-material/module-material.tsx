@@ -11,49 +11,56 @@ import { getPackageSessionId } from "@/utils/study-library/get-list-from-stores/
 import { useStudyLibraryStore } from "@/stores/study-library/use-study-library-store";
 
 export const ModuleMaterial = () => {
-  const { setNavHeading } = useNavHeadingStore();
-  const router = useRouter();
-  const searchParams = router.state.location.search;
-  const subjectId: string = searchParams.subjectId || "";
+    const { setNavHeading } = useNavHeadingStore();
+    const router = useRouter();
+    const searchParams = router.state.location.search;
+    const subjectId: string = searchParams.subjectId || "";
 
-  const { modulesWithChaptersData, setModulesWithChaptersData } =
-    useModulesWithChaptersStore();
-  const { studyLibraryData } = useStudyLibraryStore();
+    const { modulesWithChaptersData, setModulesWithChaptersData } =
+        useModulesWithChaptersStore();
+    const { studyLibraryData } = useStudyLibraryStore();
 
-  const handleBackClick = () => {
-    router.navigate({
-      to: `/study-library/courses/levels/subjects`,
-    });
-  };
+    const handleBackClick = () => {
+        router.navigate({
+            to: `/study-library/courses/course-details/subjects`,
+            search: {
+                courseId: searchParams.courseId || "",
+                levelId: searchParams.levelId || "",
+            },
+        });
+    };
 
-  const subjectName = getSubjectName(subjectId, studyLibraryData);
+    const subjectName = getSubjectName(subjectId, studyLibraryData);
 
-  const heading = (
-    <div className="flex items-center gap-2">
-      <div 
-        onClick={handleBackClick} 
-        className="cursor-pointer p-1 rounded-md hover:bg-primary-50 hover:text-primary-600 transition-all duration-200 hover:scale-110"
-      >
-        <CaretLeft className="size-5" />
-      </div>
-      <div className="text-neutral-800 font-medium">{subjectName}</div>
-    </div>
-  );
+    const heading = (
+        <div className="flex items-center gap-2">
+            <div
+                onClick={handleBackClick}
+                className="cursor-pointer p-1 rounded-md hover:bg-primary-50 hover:text-primary-600 transition-all duration-200 hover:scale-110"
+            >
+                <CaretLeft className="size-5" />
+            </div>
+            <div className="text-neutral-800 font-medium">{subjectName}</div>
+        </div>
+    );
 
-  useEffect(() => {
-    setNavHeading(heading);
-  }, []);
+    useEffect(() => {
+        setNavHeading(heading);
+    }, []);
 
-  const refreshModules = async () => {
-    const PackageSessionId = await getPackageSessionId();
+    const refreshModules = async () => {
+        const PackageSessionId = await getPackageSessionId();
 
-    const data = await fetchModulesWithChapters(subjectId, PackageSessionId);
-    setModulesWithChaptersData(data);
-  };
+        const data = await fetchModulesWithChapters(
+            subjectId,
+            PackageSessionId
+        );
+        setModulesWithChaptersData(data);
+    };
 
-  return (
-    <PullToRefreshWrapper onRefresh={refreshModules}>
-      <Modules modules={modulesWithChaptersData} />
-    </PullToRefreshWrapper>
-  );
+    return (
+        <PullToRefreshWrapper onRefresh={refreshModules}>
+            <Modules modules={modulesWithChaptersData} />
+        </PullToRefreshWrapper>
+    );
 };

@@ -19,19 +19,21 @@ export const ChapterSidebarComponent = ({
 }: ChapterSidebarComponentProps) => {
     const router = useRouter();
     const navigate = useNavigate();
-    const { subjectId, moduleId } = router.state.location.search;
+    const { courseId, subjectId, moduleId, levelId, sessionId } =
+        router.state.location.search;
     const { open } = useSidebar();
     const { modulesWithChaptersData } = useModulesWithChaptersStore();
     const { studyLibraryData } = useStudyLibraryStore();
 
-    if ( !subjectId || !moduleId) return <p>Error in route</p>;
-
     const handleSubjectRoute = () => {
         navigate({
-            to: "/study-library/courses/levels/subjects/modules",
+            to: "/study-library/courses/course-details/subjects/modules",
             params: {},
             search: {
-                subjectId: subjectId,
+                courseId: courseId || "",
+                levelId: levelId || "",
+                subjectId: subjectId || "",
+                sessionId: sessionId || "",
             },
             hash: "",
         });
@@ -41,11 +43,13 @@ export const ChapterSidebarComponent = ({
     const [moduleName, setModuleName] = useState("");
     const [truncatedModule, setTruncatedModule] = useState("");
 
-    useEffect(()=>{
-        setSubjectName(getSubjectName(subjectId, studyLibraryData) || "");
-        setModuleName(getModuleName(moduleId, modulesWithChaptersData) || "");
+    useEffect(() => {
+        setSubjectName(getSubjectName(subjectId || "", studyLibraryData) || "");
+        setModuleName(
+            getModuleName(moduleId || "", modulesWithChaptersData) || ""
+        );
         setTruncatedModule(truncateString(moduleName, 10));
-    }, [studyLibraryData, modulesWithChaptersData])
+    }, [studyLibraryData, modulesWithChaptersData]);
 
     return (
         <div className={`flex w-full flex-col gap-4 ${open ? "px-8" : "px-6"}`}>
@@ -57,7 +61,9 @@ export const ChapterSidebarComponent = ({
                 >
                     {subjectName}
                 </p>
-                <ChevronRightIcon className={`size-4 text-neutral-400 ${open ? "visible" : "hidden"}`} />
+                <ChevronRightIcon
+                    className={`size-4 text-neutral-400 ${open ? "visible" : "hidden"}`}
+                />
                 <p className="cursor-pointer text-primary-600 font-medium">
                     {open ? moduleName : truncatedModule}
                 </p>
@@ -75,17 +81,24 @@ export const ChapterSidebarComponent = ({
                                     : "border border-transparent bg-white hover:border-neutral-200 hover:bg-gradient-to-r hover:from-neutral-50/80 hover:to-white text-neutral-600 hover:text-neutral-700 hover:shadow-sm"
                             }`}
                             onClick={() => {
-                                setCurrentModuleId(moduleWithChapters.module.id);
+                                setCurrentModuleId(
+                                    moduleWithChapters.module.id
+                                );
                             }}
                         >
-                            <div className={`flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold transition-all duration-200 ${
-                                moduleWithChapters.module.id == currentModuleId
-                                    ? "bg-gradient-to-br from-primary-500 to-primary-600 text-white shadow-sm"
-                                    : "bg-gradient-to-br from-neutral-200 to-neutral-300 text-neutral-600 group-hover:from-neutral-300 group-hover:to-neutral-400"
-                            }`}>
+                            <div
+                                className={`flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold transition-all duration-200 ${
+                                    moduleWithChapters.module.id ==
+                                    currentModuleId
+                                        ? "bg-gradient-to-br from-primary-500 to-primary-600 text-white shadow-sm"
+                                        : "bg-gradient-to-br from-neutral-200 to-neutral-300 text-neutral-600 group-hover:from-neutral-300 group-hover:to-neutral-400"
+                                }`}
+                            >
                                 M{index + 1}
                             </div>
-                            <p className={`font-medium transition-colors duration-200 ${open ? "visible" : "hidden"}`}>
+                            <p
+                                className={`font-medium transition-colors duration-200 ${open ? "visible" : "hidden"}`}
+                            >
                                 {moduleWithChapters.module.module_name}
                             </p>
                         </div>

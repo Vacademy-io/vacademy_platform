@@ -17,7 +17,7 @@ public class CourseController {
 
     @PostMapping("/add-course/{instituteId}")
     public String addCourse(@RequestBody AddCourseDTO addCourseDTO, @PathVariable("instituteId") String instituteId, @RequestAttribute("user") CustomUserDetails userDetails) {
-        return courseService.addOrUpdateCourse(addCourseDTO, userDetails, instituteId);
+        return courseService.addCourse(addCourseDTO, userDetails, instituteId);
     }
 
     @PutMapping("/update-course/{courseId}")
@@ -32,6 +32,7 @@ public class CourseController {
 
     @PostMapping("/update-course-details/{instituteId}")
     public String updateCourse(@RequestBody AddCourseDTO addCourseDTO, @PathVariable("instituteId") String instituteId, @RequestAttribute("user") CustomUserDetails userDetails) {
-        return courseService.addOrUpdateCourse(addCourseDTO, userDetails, instituteId);
+        return courseService.addOrUpdateCourse(addCourseDTO,instituteId,userDetails);
     }
 }
+

@@ -18,6 +18,7 @@ import vacademy.io.common.institute.entity.PackageEntity;
 import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.common.institute.entity.session.Session;
 
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 
@@ -40,6 +41,7 @@ public class PackageSessionService {
         packageSession = packageRepository.save(packageSession);
         createDefaultInvitationForm(packageSession,instituteId,userDetails);
         facultyService.addFacultyToBatch(addFacultyToCourseDTOS,packageSession.getId(),instituteId);
+        createLearnerInvitationForm(List.of(packageSession),instituteId,userDetails);
     }
 
     @Async
@@ -48,9 +50,21 @@ public class PackageSessionService {
         learnerInvitationService.createLearnerInvitationCode(learnerInvitationDTO,userDetails);
     }
 
-    public PackageSession updatePackageSession(String packageSessionId,String status){
+    public PackageSession updatePackageSession(String packageSessionId,String status,String instituteId,List<AddFacultyToCourseDTO>addFacultyToCourseDTOS){
         PackageSession packageSession = packageRepository.findById(packageSessionId).get();
         packageSession.setStatus(status);
-        return packageRepository.save(packageSession);
+        packageRepository.save(packageSession);
+        facultyService.updateFacultyToSubjectPackageSession(addFacultyToCourseDTOS,packageSessionId,instituteId);
+        return packageSession;
+    }
+
+    @Async
+    public void createLearnerInvitationForm(List<PackageSession>packageSessions,String instituteId,CustomUserDetails userDetails){
+        List<AddLearnerInvitationDTO>addLearnerInvitationDTOS = new ArrayList<>();
+        for(PackageSession packageSession:packageSessions){
+            AddLearnerInvitationDTO addLearnerInvitationDTO = LearnerInvitationDefaultFormGenerator.generateSampleInvitation(packageSession, instituteId);
+            addLearnerInvitationDTOS.add(addLearnerInvitationDTO);
+        }
+        learnerInvitationService.createLearnerInvitationCodes(addLearnerInvitationDTOS,userDetails);
     }
 }

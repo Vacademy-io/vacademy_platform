@@ -5,6 +5,7 @@ import lombok.AllArgsConstructor;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.security.core.parameters.P;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.course.dto.AddFacultyToCourseDTO;
 import vacademy.io.admin_core_service.features.faculty.service.FacultyService;
 import vacademy.io.admin_core_service.features.group.service.GroupService;
@@ -250,5 +251,42 @@ public class SessionService {
             addLearnerInvitationDTOS.add(addLearnerInvitationDTO);
         }
         learnerInvitationService.createLearnerInvitationCodes(addLearnerInvitationDTOS,userDetails);
+    }
+
+    public void addOrUpdateSession(AddNewSessionDTO sessionDTO, PackageEntity packageEntity, String instituteId, CustomUserDetails user) {
+        Session session = resolveSession(sessionDTO);
+        for (AddLevelWithSessionDTO levelDTO : sessionDTO.getLevels()) {
+            levelService.addOrUpdateLevel(levelDTO, session, packageEntity, instituteId, user);
+        }
+    }
+
+    private Session resolveSession(AddNewSessionDTO sessionDTO) {
+        if (sessionDTO.isNewSession()) {
+            Session newSession = new Session(
+                    sessionDTO.getId(),
+                    sessionDTO.getSessionName(),
+                    sessionDTO.getStatus(),
+                    sessionDTO.getStartDate()
+            );
+            return sessionRepository.save(newSession);
+        } else {
+            Session existingSession = sessionRepository.findById(sessionDTO.getId())
+                    .orElseThrow(() -> new VacademyException("Session not found for id " + sessionDTO.getId()));
+
+            updateSessionFields(existingSession, sessionDTO);
+            return sessionRepository.save(existingSession);
+        }
+    }
+
+    private void updateSessionFields(Session session, AddNewSessionDTO sessionDTO) {
+        if (StringUtils.hasText(sessionDTO.getSessionName())) {
+            session.setSessionName(sessionDTO.getSessionName());
+        }
+        if (StringUtils.hasText(sessionDTO.getStatus())) {
+            session.setStatus(sessionDTO.getStatus());
+        }
+        if (sessionDTO.getStartDate() != null) {
+            session.setStartDate(sessionDTO.getStartDate());
+        }
     }
 }

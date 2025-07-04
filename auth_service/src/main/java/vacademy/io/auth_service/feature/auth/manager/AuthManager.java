@@ -19,6 +19,7 @@ import vacademy.io.auth_service.feature.auth.constants.AuthConstants;
 import vacademy.io.auth_service.feature.auth.dto.AuthRequestDto;
 import vacademy.io.auth_service.feature.auth.dto.JwtResponseDto;
 import vacademy.io.auth_service.feature.auth.dto.RegisterRequest;
+import vacademy.io.auth_service.feature.auth.enums.ClientNameEnum;
 import vacademy.io.auth_service.feature.auth.service.AuthService;
 import vacademy.io.auth_service.feature.notification.service.NotificationEmailBody;
 import vacademy.io.auth_service.feature.notification.service.NotificationService;
@@ -195,8 +196,13 @@ public class AuthManager {
     }
 
     public String requestOtp(AuthRequestDto authRequestDTO) {
-        Optional<User> user = userRepository.findTopByEmailOrderByCreatedAtDesc(authRequestDTO.getEmail());
-
+        Optional<User> user = null;
+        if (authRequestDTO.getClientName() != null && authRequestDTO.getClientName().equals(ClientNameEnum.ADMIN.name())) {
+            user = userRepository.findMostRecentUserByRootFlagAndRoleStatusNative(true,List.of(UserRoleStatus.ACTIVE.name()),authRequestDTO.getEmail());
+        }
+        else{
+            user = userRepository.findMostRecentUserByRootFlagAndRoleStatusNative(false,List.of(UserRoleStatus.ACTIVE.name()),authRequestDTO.getEmail());
+        }
         if (user.isEmpty()) {
             throw new UsernameNotFoundException("invalid user request..!!");
         } else {
@@ -213,7 +219,13 @@ public class AuthManager {
 
     public JwtResponseDto loginViaOtp(AuthRequestDto authRequestDTO) {
         validateOtp(authRequestDTO);
-        User user = getUserByEmail(authRequestDTO.getEmail());
+        User user = null;
+        if (authRequestDTO.getClientName() != null && authRequestDTO.getClientName().equals(ClientNameEnum.ADMIN.name())) {
+            user = userRepository.findMostRecentUserByRootFlagAndRoleStatusNative(true,List.of(UserRoleStatus.ACTIVE.name()),authRequestDTO.getEmail()).orElseThrow(() -> new UsernameNotFoundException("invalid user request..!!"));
+        }
+        else{
+            user = userRepository.findMostRecentUserByRootFlagAndRoleStatusNative(false,List.of(UserRoleStatus.ACTIVE.name()),authRequestDTO.getEmail()).orElseThrow(()-> new UsernameNotFoundException("invalid user request..!!"));
+        }
         if (!user.isRootUser()){
             throw new UsernameNotFoundException("invalid user request..!!");
         }
@@ -234,11 +246,6 @@ public class AuthManager {
         if (!isValidOtp) {
             throw new UsernameNotFoundException("invalid user request..!!");
         }
-    }
-
-    private User getUserByEmail(String email) {
-        return userRepository.findTopByEmailOrderByCreatedAtDesc(email)
-                .orElseThrow(() -> new UsernameNotFoundException("invalid user request..!!"));
     }
 
     private JwtResponseDto generateJwtResponse(AuthRequestDto authRequestDTO, User user) {

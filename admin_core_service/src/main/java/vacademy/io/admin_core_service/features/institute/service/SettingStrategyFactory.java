@@ -1,0 +1,39 @@
+package vacademy.io.admin_core_service.features.institute.service;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import vacademy.io.admin_core_service.features.institute.enums.SettingKeyEnums;
+import vacademy.io.common.institute.entity.Institute;
+
+import java.util.HashMap;
+import java.util.Map;
+
+
+
+public class SettingStrategyFactory {
+
+    private final Map<String, IInstituteSettingStrategy> strategies = new HashMap<>();
+
+    public SettingStrategyFactory() {
+        strategies.put(SettingKeyEnums.NAMING_SETTING.name(), new NameSettingStrategy());
+        // strategies.put("branding", new BrandingSettingStrategy(objectMapper));
+        // Add more strategies here
+    }
+
+    private IInstituteSettingStrategy getStrategy(String key) {
+        IInstituteSettingStrategy strategy = strategies.get(key);
+        if (strategy == null) {
+            throw new IllegalArgumentException("No strategy found for key: " + key);
+        }
+        return strategy;
+    }
+
+    public String buildNewSettingAndGetSettingJsonString(Institute institute, Object settingRequest, String key){
+        IInstituteSettingStrategy strategy = getStrategy(key);
+        return strategy.buildInstituteSetting(institute, settingRequest);
+    }
+
+    public String rebuildOldSettingAndGetSettingJsonString(Institute institute, Object settingRequest, String key){
+        IInstituteSettingStrategy strategy = getStrategy(key);
+        return strategy.rebuildInstituteSetting(institute, settingRequest,key);
+    }
+}

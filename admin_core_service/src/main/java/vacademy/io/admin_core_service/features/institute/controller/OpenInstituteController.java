@@ -29,4 +29,11 @@ public class OpenInstituteController {
         return ResponseEntity.ok(instituteInfoDTO);
     }
 
+    @GetMapping("/get/subdomain-or-id")
+    public ResponseEntity<String> getSubdomainForInstitute(@RequestParam(value = "instituteId", required = false) String instituteId,
+                                                           @RequestParam(value = "subdomain", required = false) String subdomain) {
+
+        return instituteInitManager.getInstituteIdOrSubDomain(instituteId, subdomain);
+    }
+
 }

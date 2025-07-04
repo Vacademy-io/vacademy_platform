@@ -122,4 +122,14 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
 
     Optional<StudentSessionInstituteGroupMapping> findTopByUserIdAndInstituteIdOrderByCreatedAtDesc(String userId, String instituteId);
 
+    @Query(value = """
+    SELECT DISTINCT s.user_id
+    FROM student_session_institute_group_mapping s
+    WHERE s.package_session_id = :packageSessionId
+      AND s.status IN (:statusList)
+    """, nativeQuery = true)
+    List<String> findDistinctUserIdsByPackageSessionAndStatus(
+            @Param("packageSessionId") String packageSessionId,
+            @Param("statusList") List<String> statusList
+    );
 }

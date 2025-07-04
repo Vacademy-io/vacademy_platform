@@ -17,8 +17,8 @@ public class ChapterController {
     private final ChapterService chapterService;
 
     @PostMapping("/add-chapter")
-    public ResponseEntity<ChapterDTO> addChapter(@RequestBody ChapterDTO chapterDTO, @RequestAttribute("user") CustomUserDetails user, @RequestParam("moduleId") String moduleId, @RequestParam("commaSeparatedPackageSessionIds") String commaSeparatedPackageSessionIds) {
-        return ResponseEntity.ok(chapterService.addChapter(chapterDTO, moduleId, commaSeparatedPackageSessionIds, user));
+    public ResponseEntity<ChapterDTO> addChapter(@RequestBody ChapterDTO chapterDTO, @RequestAttribute("user") CustomUserDetails user,@RequestParam("subjectId")String subjectId, @RequestParam("moduleId") String moduleId, @RequestParam("commaSeparatedPackageSessionIds") String commaSeparatedPackageSessionIds) {
+        return ResponseEntity.ok(chapterService.addChapter(chapterDTO, moduleId,subjectId,commaSeparatedPackageSessionIds, user));
     }
 
     @PutMapping("/update-chapter")
@@ -42,8 +42,8 @@ public class ChapterController {
     }
 
     @PostMapping("/delete-chapters")
-    public ResponseEntity<String> deleteChapter(@RequestBody List<String> chapterIds, @RequestParam("packageSessionIds") String packageSessionIds, @RequestAttribute("user") CustomUserDetails user) {
-        return ResponseEntity.ok(chapterService.deleteChapter(chapterIds, packageSessionIds, user));
+    public ResponseEntity<String> deleteChapter(@RequestBody List<String> chapterIds,String moduleId,String subjectId, @RequestParam("packageSessionIds") String packageSessionIds, @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(chapterService.deleteChapter(chapterIds,moduleId,subjectId, packageSessionIds, user));
     }
 
     @PostMapping("/copy")
@@ -60,10 +60,20 @@ public class ChapterController {
     public ResponseEntity<String> moveChapter(
             @RequestParam String existingPackageSessionId,
             @RequestParam String newPackageSessionId,
+            @RequestParam String oldModuleId,
+            @RequestParam String oldSubjectId,
             @RequestParam String moduleId,
             @RequestParam String chapterId,
+            @RequestParam String subjectId,
             @RequestAttribute("user") CustomUserDetails user) {
-        String response = chapterService.moveChapter(existingPackageSessionId, newPackageSessionId, moduleId, chapterId, user);
+        String response = chapterService.moveChapter(existingPackageSessionId,
+                oldModuleId,
+                oldSubjectId,
+                newPackageSessionId,
+                moduleId,
+                chapterId,
+                subjectId,
+                user);
         return ResponseEntity.ok(response);
     }
 

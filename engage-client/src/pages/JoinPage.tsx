@@ -34,16 +34,28 @@ export const JoinPage: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-slate-100 via-gray-100 to-stone-200 p-4">
-       <div className="mb-8 flex items-center text-slate-700">
-         <Tv2 size={40} className="text-primary mr-3" />
-         <h1 className="text-4xl font-bold tracking-tight">Engage Platform</h1>
-       </div>
-      <JoinSessionForm onJoin={handleJoinSession} isJoining={isJoining} initialInviteCode={initialInviteCode} />
-       <footer className="mt-12 text-center text-sm text-slate-500">
-          <p>&copy; {new Date().getFullYear()} Your Company Name. All rights reserved.</p>
-          <p>Ready to engage and learn!</p>
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 relative overflow-hidden p-4">
+      {/* Floating background orbs */}
+      <div className="absolute inset-0 bg-gradient-to-r from-blue-900/10 via-transparent to-purple-900/10 pointer-events-none" />
+      <div className="floating-orb top-1/4 left-1/4 w-96 h-96 bg-blue-500/5" />
+      <div className="floating-orb bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/5" style={{ animationDelay: '2s' }} />
+      
+      {/* Main content */}
+      <div className="relative z-10 flex flex-col items-center">
+        <div className="mb-8 flex items-center">
+          <Tv2 size={40} className="text-orange-400 mr-3" />
+          <h1 className="text-4xl font-bold tracking-tight text-white">
+            Engage Platform
+          </h1>
+        </div>
+        
+        <JoinSessionForm onJoin={handleJoinSession} isJoining={isJoining} initialInviteCode={initialInviteCode} />
+        
+        <footer className="mt-12 text-center">
+          <p className="text-white/60 text-xs font-medium">&copy; {new Date().getFullYear()} Your Company Name. All rights reserved.</p>
+          <p className="text-orange-300 font-medium mt-1">Ready to engage and learn!</p>
         </footer>
+      </div>
     </div>
   );
 };

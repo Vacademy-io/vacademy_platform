@@ -43,6 +43,10 @@ public class VideoSlide {
     @Column(name = "published_video_length")
     private Long publishedVideoLengthInMillis;
 
+    private String embeddedType;
+
+    private String embeddedData;
+
     @Column(name = "created_at", insertable = false, updatable = false, columnDefinition = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
     private Timestamp createdAt;
 
@@ -69,6 +73,8 @@ public class VideoSlide {
                 this.publishedVideoLengthInMillis = this.videoLengthInMillis;
             }
         }
+        this.embeddedType = addVideoSlideDTO.getEmbeddedType();
+        this.embeddedData = addVideoSlideDTO.getEmbeddedData();
         this.setSourceType(addVideoSlideDTO.getSourceType());
     }
 

@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.institute.manager;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.group.repository.PackageGroupMappingRepository;
@@ -18,6 +19,7 @@ import vacademy.io.common.institute.dto.*;
 import vacademy.io.common.institute.entity.Institute;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Stream;
 
@@ -54,6 +56,7 @@ public class InstituteInitManager {
         InstituteInfoDTO instituteInfoDTO = new InstituteInfoDTO();
         instituteInfoDTO.setInstituteName(institute.get().getInstituteName());
         instituteInfoDTO.setId(institute.get().getId());
+        instituteInfoDTO.setTags(packageRepository.findAllDistinctTagsByInstituteId(instituteId));
         instituteInfoDTO.setCity(institute.get().getCity());
         instituteInfoDTO.setCountry(institute.get().getCountry());
         instituteInfoDTO.setWebsiteUrl(institute.get().getWebsiteUrl());
@@ -71,7 +74,6 @@ public class InstituteInitManager {
         instituteInfoDTO.setInstituteThemeCode(institute.get().getInstituteThemeCode());
         instituteInfoDTO.setSubModules(instituteModuleService.getSubmoduleIdsForInstitute(institute.get().getId()));
         instituteInfoDTO.setSessions(packageRepository.findDistinctSessionsByInstituteIdAndStatusIn(institute.get().getId(), List.of(PackageSessionStatusEnum.ACTIVE.name())).stream().map((SessionDTO::new)).toList());
-        System.out.println(packageSessionRepository.findPackageSessionsByInstituteId(institute.get().getId(), List.of(PackageSessionStatusEnum.ACTIVE.name())));
         instituteInfoDTO.setBatchesForSessions(packageSessionRepository.findPackageSessionsByInstituteId(institute.get().getId(), List.of(PackageSessionStatusEnum.ACTIVE.name())).stream().map((obj) -> {
             return new PackageSessionDTO(obj);
         }).toList());
@@ -82,9 +84,13 @@ public class InstituteInitManager {
         instituteInfoDTO.setSessionExpiryDays(List.of(30, 180, 360));
         instituteInfoDTO.setLetterHeadFileId(institute.get().getLetterHeadFileId());
         instituteInfoDTO.setPackageGroups(packageGroupMappingRepository.findAllByInstituteId(institute.get().getId()).stream().map((obj)->obj.mapToDTO()).toList());
+        instituteInfoDTO.setSetting(institute.get().getSetting());
+        instituteInfoDTO.setCoverImageFileId(institute.get().getCoverImageFileId());
+        instituteInfoDTO.setCoverTextJson(institute.get().getCoverTextJson());
         return instituteInfoDTO;
     }
 
+    @Transactional
     public InstituteInfoDTO getPublicInstituteDetails(String instituteId) {
 
         Optional<Institute> institute = instituteRepository.findById(instituteId);
@@ -115,6 +121,26 @@ public class InstituteInitManager {
         instituteInfoDTO.setLevels(packageRepository.findDistinctLevelsByInstituteIdAndStatusIn(institute.get().getId(), List.of(PackageSessionStatusEnum.ACTIVE.name())).stream().map((LevelDTO::new)).toList());
         instituteInfoDTO.setPackageGroups(packageGroupMappingRepository.findAllByInstituteId(institute.get().getId()).stream().map((obj)->obj.mapToDTO()).toList());
         instituteInfoDTO.setTags(packageRepository.findAllDistinctTagsByInstituteId(institute.get().getId()));
+        instituteInfoDTO.setCoverImageFileId(institute.get().getCoverImageFileId());
+        instituteInfoDTO.setCoverTextJson(institute.get().getCoverTextJson());
+        instituteInfoDTO.setBatchesForSessions(packageSessionRepository.findPackageSessionsByInstituteId(institute.get().getId(), List.of(PackageSessionStatusEnum.ACTIVE.name())).stream().map((obj) -> {
+            return new PackageSessionDTO(obj);
+        }).toList());
         return instituteInfoDTO;
+    }
+
+    public ResponseEntity<String> getInstituteIdOrSubDomain(String instituteId, String subdomain) {
+        if(Objects.isNull(instituteId) && Objects.isNull(subdomain)) throw new VacademyException("Invalid Request");
+
+        if(Objects.isNull(instituteId)){
+            Optional<Institute> institute = instituteRepository.findBySubdomainLimit1(subdomain);
+            if(institute.isEmpty()) throw new VacademyException("No Institute Found with Subdomain: " + subdomain);
+            return ResponseEntity.ok(institute.get().getId());
+        }
+
+        Optional<Institute> institute = instituteRepository.findById(instituteId);
+        if(institute.isEmpty()) throw new VacademyException("No Institute Found with Id: " +instituteId);
+
+        return ResponseEntity.ok(institute.get().getSubdomain());
     }
 }

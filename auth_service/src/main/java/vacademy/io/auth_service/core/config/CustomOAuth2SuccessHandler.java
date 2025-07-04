@@ -13,6 +13,7 @@ import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
 import org.springframework.stereotype.Component;
 import vacademy.io.auth_service.feature.auth.dto.JwtResponseDto;
+import vacademy.io.auth_service.feature.auth.enums.ClientNameEnum;
 import vacademy.io.auth_service.feature.auth.manager.AdminOAuth2Manager;
 import vacademy.io.auth_service.feature.auth.manager.LearnerOAuth2Manager;
 import vacademy.io.common.auth.entity.OAuth2VendorToUserDetail;

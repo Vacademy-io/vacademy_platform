@@ -75,10 +75,22 @@ public class Institute {
     @Column(name = "letterhead_file_id")
     private String letterHeadFileId;
 
+    @Column(name = "subdomain")
+    private String subdomain;
+
+    @Column(name = "setting_json")
+    private String setting;
+
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Date updatedAt;
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;
+
+    @Column(name = "cover_image_file_id")
+    private String coverImageFileId;
+
+    @Column(name = "cover_text_json")
+    private String coverTextJson;
 
 }

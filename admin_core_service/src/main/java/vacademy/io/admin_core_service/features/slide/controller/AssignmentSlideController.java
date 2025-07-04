@@ -17,8 +17,11 @@ public class AssignmentSlideController {
     public String addAssignmentSlide(@RequestBody SlideDTO slideDTO,
                                      @RequestParam String chapterId,
                                      @RequestParam String instituteId,
+                                     @RequestParam String packageSessionId,
+                                     @RequestParam String subjectId,
+                                     @RequestParam String moduleId,
                                      @RequestAttribute("user") CustomUserDetails userDetails) {
 
-        return assignmentSlideService.addOrUpdateAssignmentSlide(slideDTO, chapterId, userDetails);
+        return assignmentSlideService.addOrUpdateAssignmentSlide(slideDTO, chapterId,packageSessionId,moduleId,subjectId, userDetails);
     }
 }

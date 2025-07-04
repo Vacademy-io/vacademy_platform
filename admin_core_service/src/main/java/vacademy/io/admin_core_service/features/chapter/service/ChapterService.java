@@ -11,6 +11,7 @@ import vacademy.io.admin_core_service.features.chapter.entity.ChapterPackageSess
 import vacademy.io.admin_core_service.features.chapter.enums.ChapterStatus;
 import vacademy.io.admin_core_service.features.chapter.repository.ChapterPackageSessionMappingRepository;
 import vacademy.io.admin_core_service.features.chapter.repository.ChapterRepository;
+import vacademy.io.admin_core_service.features.learner_tracking.service.LearnerTrackingAsyncService;
 import vacademy.io.admin_core_service.features.module.entity.ModuleChapterMapping;
 import vacademy.io.admin_core_service.features.module.entity.SubjectModuleMapping;
 import vacademy.io.admin_core_service.features.module.repository.ModuleChapterMappingRepository;
@@ -37,24 +38,26 @@ public class ChapterService {
     private final ModuleChapterMappingRepository moduleChapterMappingRepository;
     private final SubjectModuleMappingRepository subjectModuleMappingRepository;
     private final SubjectService subjectService;
+    private final LearnerTrackingAsyncService learnerTrackingAsyncService;
 
-    @Transactional
-    public ChapterDTO addChapter(ChapterDTO chapterDTO, String moduleId, String commaSeparatedPackageSessionIds, CustomUserDetails user) {
+    public ChapterDTO addChapter(ChapterDTO chapterDTO, String moduleId,String subjectId, String commaSeparatedPackageSessionIds, CustomUserDetails user) {
         validateRequest(chapterDTO, moduleId, commaSeparatedPackageSessionIds);
         Chapter chapter = saveChapter(chapterDTO);
         Optional<SubjectModuleMapping> subjectModuleMapping = subjectModuleMappingRepository.findByModuleId(moduleId);
         List<Module> modules = null;
         chapterDTO.setId(chapter.getId());
         chapterDTO.setStatus(ChapterStatus.ACTIVE.name());
-        if(!moduleId.trim().equalsIgnoreCase("DEFAULT")){
-            modules = subjectService.processSubjectsAndModules(Arrays.stream(getPackageSessionIds(commaSeparatedPackageSessionIds)).toList(), subjectModuleMapping.get().getSubject(), subjectModuleMapping.get().getModule());
-            processPackageSessionMappings(chapter, commaSeparatedPackageSessionIds, chapterDTO.getChapterOrder());
-        }else{
-            modules = new ArrayList<>();
-            modules.add(subjectModuleMapping.get().getModule());
-            processPackageSessionMappings(chapter, commaSeparatedPackageSessionIds, chapterDTO.getChapterOrder());
+        modules = subjectService.processSubjectsAndModules(Arrays.stream(getPackageSessionIds(commaSeparatedPackageSessionIds)).toList(), subjectModuleMapping.get().getSubject(), subjectModuleMapping.get().getModule());
+        processPackageSessionMappings(chapter, commaSeparatedPackageSessionIds, chapterDTO.getChapterOrder());
+        List<ModuleChapterMapping>moduleChapterMappings = new ArrayList<>();
+        for (Module module:modules){
+            moduleChapterMappings.add(new ModuleChapterMapping(chapter,module));
         }
-        processChapterModuleMapping(chapter, modules);
+        moduleChapterMappingRepository.saveAll(moduleChapterMappings);
+        String[] packageSessionIds = getPackageSessionIds(commaSeparatedPackageSessionIds);
+        for (String packageSessionId:packageSessionIds){
+            learnerTrackingAsyncService.updateLearnerOperationsForBatch("CHAPTER",null,null,chapter.getId(),moduleId,subjectId,packageSessionId);
+        }
         return chapterDTO;
     }
 
@@ -281,7 +284,7 @@ public class ChapterService {
         }
     }
 
-    public String deleteChapter(List<String> chapterIds, String packageSessionIds, CustomUserDetails user) {
+    public String deleteChapter(List<String> chapterIds,String moduleId,String subjectId, String packageSessionIds, CustomUserDetails user) {
         List<ChapterPackageSessionMapping> chapterPackageSessionMappings = chapterPackageSessionMappingRepository.findByChapterIdInAndPackageSessionIdIn(chapterIds, Arrays.stream(getPackageSessionIds(packageSessionIds)).toList());
         List<ChapterPackageSessionMapping> deletedChapterPackageSessionMappings = new ArrayList<>();
         for (ChapterPackageSessionMapping chapterPackageSessionMapping : chapterPackageSessionMappings) {
@@ -289,6 +292,12 @@ public class ChapterService {
             deletedChapterPackageSessionMappings.add(chapterPackageSessionMapping);
         }
         chapterPackageSessionMappingRepository.saveAll(deletedChapterPackageSessionMappings);
+        String[] packageSessionIdsArray = getPackageSessionIds(packageSessionIds);
+        for (String packageSessionId:packageSessionIdsArray){
+           for (String chapterId:chapterIds){
+               learnerTrackingAsyncService.updateLearnerOperationsForBatch("CHAPTER",null,null,chapterId,moduleId,subjectId,packageSessionId);
+           }
+        }
         return "Chapter deleted successfully";
     }
 
@@ -304,9 +313,17 @@ public class ChapterService {
     }
 
 
-    public String moveChapter(String existingPackageSessionId, String newPackageSessionId, String moduleId, String chapterId, CustomUserDetails user) {
-        deleteChapter(List.of(chapterId), existingPackageSessionId, user);
+    public String moveChapter(String existingPackageSessionId,
+                              String oldModuleId,
+                              String oldSubjectId,
+                              String newPackageSessionId,
+                              String moduleId,
+                              String subjectId,
+                              String chapterId,
+                              CustomUserDetails user) {
+        deleteChapter(List.of(chapterId),oldModuleId,oldSubjectId, existingPackageSessionId, user);
         copyChapter(newPackageSessionId, moduleId, chapterId, user);
+        learnerTrackingAsyncService.updateLearnerOperationsForBatch("CHAPTER",null,null,chapterId,moduleId,subjectId,newPackageSessionId);
         return "Chapter moved successfully.";
     }
 

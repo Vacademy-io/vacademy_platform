@@ -18,8 +18,14 @@ public class QuestionSlideActivityLogController {
     private QuestionSlideActivityLogService activityLogService;
 
     @PostMapping("/add-or-update-question-slide-activity-log")
-    public ResponseEntity<String> addOrUpdateQuestionSlideActivityLog(@RequestBody ActivityLogDTO activityLogDTO, String slideId, String userId,@RequestAttribute("user") CustomUserDetails user) {
-        return ResponseEntity.ok(activityLogService.addOrUpdateQuestionSlideActivityLog(activityLogDTO, slideId, userId, user));
+    public ResponseEntity<String> addOrUpdateQuestionSlideActivityLog(@RequestBody ActivityLogDTO activityLogDTO,
+                                                                      @RequestParam String slideId,
+                                                                      @RequestParam String chapterId,
+                                                                      @RequestParam String packageSessionId,
+                                                                      @RequestParam String moduleId,
+                                                                      @RequestParam String subjectId,
+                                                                      String userId,@RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(activityLogService.addOrUpdateQuestionSlideActivityLog(activityLogDTO, slideId,chapterId,packageSessionId,moduleId,subjectId, userId, user));
     }
 
     @GetMapping("/question-slide-activity-logs")

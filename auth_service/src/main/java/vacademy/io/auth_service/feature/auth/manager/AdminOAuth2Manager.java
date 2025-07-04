@@ -54,7 +54,7 @@ public class AdminOAuth2Manager {
 
 
     public JwtResponseDto loginUserByEmail(String email) {
-        Optional<User> userOptional = userRepository.findTopByEmailOrderByCreatedAtDesc(email);
+        Optional<User> userOptional = userRepository.findMostRecentUserByRootFlagAndRoleStatusNative(true, List.of(UserRoleStatus.ACTIVE.name()), email);
         if (userOptional.isEmpty() || !userOptional.get().isRootUser()) {
             throw new UsernameNotFoundException("invalid user request..!!");
         }

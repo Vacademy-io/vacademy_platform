@@ -16,6 +16,7 @@ import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.entity.QuestionAssessmentSectionMapping;
 import vacademy.io.assessment_service.features.assessment.entity.Section;
 import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
+import vacademy.io.assessment_service.features.assessment.enums.AttemptResultStatusEnum;
 import vacademy.io.assessment_service.features.assessment.repository.QuestionAssessmentSectionMappingRepository;
 import vacademy.io.assessment_service.features.assessment.repository.SectionRepository;
 import vacademy.io.assessment_service.features.assessment.repository.StudentAttemptRepository;
@@ -23,6 +24,7 @@ import vacademy.io.assessment_service.features.learner_assessment.constants.Atte
 import vacademy.io.assessment_service.features.learner_assessment.dto.status_json.LearnerAssessmentAttemptDataDto;
 import vacademy.io.assessment_service.features.learner_assessment.dto.status_json.manual.LearnerManualAttemptDataDto;
 import vacademy.io.assessment_service.features.learner_assessment.entity.QuestionWiseMarks;
+import vacademy.io.assessment_service.features.learner_assessment.enums.AssessmentAttemptEnum;
 import vacademy.io.assessment_service.features.learner_assessment.enums.AssessmentAttemptResultEnum;
 import vacademy.io.assessment_service.features.learner_assessment.service.QuestionWiseMarksService;
 import vacademy.io.assessment_service.features.notification.service.AssessmentNotificationService;
@@ -92,6 +94,9 @@ public class StudentAttemptService {
         attempt.setTotalTimeInSeconds(timeElapsedInSeconds);
         attempt.setResultMarks(totalMarks);
         attempt.setResultStatus(AssessmentAttemptResultEnum.COMPLETED.name());
+        if(!attempt.getStatus().equals(AssessmentAttemptEnum.ENDED.name())){
+            attempt.setStatus(AssessmentAttemptEnum.ENDED.name());
+        }
 
         return studentAttemptRepository.save(attempt);
     }
@@ -117,15 +122,7 @@ public class StudentAttemptService {
 
     @Transactional
     public Double calculateTotalMarksForAttemptAndUpdateQuestionWiseMarks(Optional<StudentAttempt> studentAttemptOptional) {
-        try {
-            if (studentAttemptOptional.isEmpty()) throw new VacademyException("Student Attempt Not Found");
-            if (Objects.isNull(studentAttemptOptional.get().getAttemptData()))
-                throw new VacademyException("Attempt Data Not Found");
-
-            return calculateTotalMarks(studentAttemptOptional);
-        } catch (Exception e) {
-            throw new VacademyException("Failed to calculate marks: " + e.getMessage());
-        }
+        return calculateTotalMarks(studentAttemptOptional);
     }
 
     /**
@@ -137,24 +134,29 @@ public class StudentAttemptService {
      * @return The total marks for the learner's attempt.
      * @throws Exception - If any error occurs during the calculation.
      */
-    public double calculateTotalMarks(Optional<StudentAttempt> studentAttemptOptional) throws Exception {
-        double totalMarks = 0.0;
+    public double calculateTotalMarks(Optional<StudentAttempt> studentAttemptOptional){
+        try{
+            double totalMarks = 0.0;
 
-        if (studentAttemptOptional.isEmpty()) {
+            if (studentAttemptOptional.isEmpty()) {
+                return 0.0;
+            }
+
+            StudentAttempt studentAttempt = studentAttemptOptional.get();
+            Assessment assessment = studentAttempt.getRegistration().getAssessment();
+            String attemptData = studentAttempt.getAttemptData();
+
+            List<String> sectionList = attemptDataParserService.extractSectionJsonStrings(attemptData);
+
+            for (String section : sectionList) {
+                totalMarks += calculateMarksForSection(section, attemptData, assessment, studentAttempt);
+            }
+
+            return totalMarks;
+        } catch (Exception e) {
+            log.error("Failed To Calculate Marks: " +e.getMessage());
             return 0.0;
         }
-
-        StudentAttempt studentAttempt = studentAttemptOptional.get();
-        Assessment assessment = studentAttempt.getRegistration().getAssessment();
-        String attemptData = studentAttempt.getAttemptData();
-
-        List<String> sectionList = attemptDataParserService.extractSectionJsonStrings(attemptData);
-
-        for (String section : sectionList) {
-            totalMarks += calculateMarksForSection(section, attemptData, assessment, studentAttempt);
-        }
-
-        return totalMarks;
     }
 
     private double calculateMarksForSection(String sectionJson, String attemptData, Assessment assessment, StudentAttempt studentAttempt) {
@@ -379,5 +381,14 @@ public class StudentAttemptService {
     public Page<ManualAttemptResponseDto> getAllManualAssignedAttempt(String userId, String assessmentId, String instituteId, String name, List<String> evaluationStatus, Pageable pageable) {
         if (Objects.isNull(evaluationStatus)) evaluationStatus = new ArrayList<>();
         return studentAttemptRepository.findAllAssignedAttemptForUserIdWithFilter(userId, instituteId, assessmentId, name, evaluationStatus, pageable);
+    }
+
+    public List<StudentAttempt> getAllLiveAttempt() {
+        return studentAttemptRepository.findByStatusNotIn(List.of(AssessmentAttemptEnum.ENDED.name()));
+    }
+
+    public List<StudentAttempt> getAllAttemptsFromIds(List<String> attemptIds) {
+        return StreamSupport.stream(studentAttemptRepository.findAllById(attemptIds).spliterator(), false)
+                .toList();
     }
 }

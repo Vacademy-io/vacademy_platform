@@ -13,7 +13,7 @@ import vacademy.io.admin_core_service.features.learner_tracking.repository.Video
 import vacademy.io.admin_core_service.features.slide.enums.SlideTypeEnum;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
-import java.util.List;
+import java.util.*;
 
 @Service
 @RequiredArgsConstructor
@@ -22,6 +22,7 @@ public class VideoSlideQuestionTrackingService {
     private final VideoSlideQuestionTrackedRepository videoSlideQuestionTrackedRepository;
     private final ActivityLogRepository activityLogRepository;
     private final ActivityLogService activityLogService;
+
 
     public void saveVideoSlideQuestionLogs(ActivityLog activityLog, List<VideoSlideQuestionActivityLogDTO> questionDTOs) {
         // Remove existing logs for this activity

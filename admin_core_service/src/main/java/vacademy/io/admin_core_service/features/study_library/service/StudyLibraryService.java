@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.chapter.dto.ChapterDTO;
 import vacademy.io.admin_core_service.features.chapter.dto.ChapterDTOWithDetail;
 import vacademy.io.admin_core_service.features.chapter.entity.ChapterPackageSessionMapping;
@@ -14,10 +15,14 @@ import vacademy.io.admin_core_service.features.chapter.repository.ChapterPackage
 import vacademy.io.admin_core_service.features.chapter.repository.ChapterRepository;
 import vacademy.io.admin_core_service.features.course.dto.CourseDTO;
 import vacademy.io.admin_core_service.features.course.dto.CourseDTOWithDetails;
+import vacademy.io.admin_core_service.features.faculty.entity.FacultySubjectPackageSessionMapping;
+import vacademy.io.admin_core_service.features.faculty.enums.FacultyStatusEnum;
+import vacademy.io.admin_core_service.features.faculty.repository.FacultySubjectPackageSessionMappingRepository;
 import vacademy.io.admin_core_service.features.level.repository.LevelRepository;
 import vacademy.io.admin_core_service.features.module.dto.ModuleDTO;
 import vacademy.io.admin_core_service.features.module.repository.ModuleChapterMappingRepository;
 import vacademy.io.admin_core_service.features.module.repository.SubjectModuleMappingRepository;
+import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
 import vacademy.io.admin_core_service.features.packages.enums.PackageStatusEnum;
 import vacademy.io.admin_core_service.features.packages.repository.PackageRepository;
 import vacademy.io.admin_core_service.features.slide.enums.QuestionStatusEnum;
@@ -27,7 +32,9 @@ import vacademy.io.admin_core_service.features.study_library.dto.ChapterDTOWithD
 import vacademy.io.admin_core_service.features.study_library.dto.LevelDTOWithDetails;
 import vacademy.io.admin_core_service.features.study_library.dto.ModuleDTOWithDetails;
 import vacademy.io.admin_core_service.features.study_library.dto.SessionDTOWithDetails;
+import vacademy.io.admin_core_service.features.subject.enums.SubjectStatusEnum;
 import vacademy.io.admin_core_service.features.subject.repository.SubjectRepository;
+import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.dto.SessionDTO;
@@ -39,10 +46,8 @@ import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.common.institute.entity.session.SessionProjection;
 import vacademy.io.common.institute.entity.student.Subject;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 public class StudyLibraryService {
@@ -73,6 +78,12 @@ public class StudyLibraryService {
 
     @Autowired
     private ChapterPackageSessionMappingRepository chapterPackageSessionMappingRepository;
+
+    @Autowired
+    private FacultySubjectPackageSessionMappingRepository facultySubjectPackageSessionMappingRepository;
+
+    @Autowired
+    private AuthService authService;
 
     @Transactional
     public List<CourseDTOWithDetails> getStudyLibraryInitDetails(String instituteId) {
@@ -143,10 +154,18 @@ public class StudyLibraryService {
 
     public LevelDTOWithDetails buildLevelDTOWithDetails(Level level, String packageId, String sessionId) {
         List<Subject> subjects = subjectRepository.findDistinctSubjectsPackageSession(level.getId(), packageId, sessionId);
-        return getLevelDTOWithDetails(subjects, level);
+        List<String> userIds = facultySubjectPackageSessionMappingRepository.findDistinctUserIdsByLevelSessionPackageAndStatuses(level.getId(),
+                sessionId,
+                packageId,
+                List.of(PackageSessionStatusEnum.ACTIVE.name(),PackageSessionStatusEnum.HIDDEN.name()),
+                List.of(FacultyStatusEnum.ACTIVE.name()),
+                List.of(SubjectStatusEnum.ACTIVE.name()));
+
+        List<UserDTO>instructors = authService.getUsersFromAuthServiceByUserIds(userIds);
+        return getLevelDTOWithDetails(subjects, level,instructors);
     }
 
-    public LevelDTOWithDetails getLevelDTOWithDetails(List<Subject> subjects, Level level) {
+    public LevelDTOWithDetails getLevelDTOWithDetails(List<Subject> subjects, Level level,List<UserDTO>instructors) {
         List<SubjectDTO> subjectDTOS = new ArrayList<>();
         for (Subject subject : subjects) {
             SubjectDTO subjectDTO = new SubjectDTO();
@@ -157,7 +176,7 @@ public class StudyLibraryService {
             subjectDTO.setThumbnailId(subject.getThumbnailId());
             subjectDTOS.add(subjectDTO);
         }
-        LevelDTOWithDetails levelDTOWithDetails = new LevelDTOWithDetails(level, subjectDTOS);
+        LevelDTOWithDetails levelDTOWithDetails = new LevelDTOWithDetails(level, subjectDTOS,instructors);
         return levelDTOWithDetails;
     }
 
@@ -215,7 +234,11 @@ public class StudyLibraryService {
 
     public LevelDTOWithDetails buildLevelDTOWithDetails(PackageSession packageSession) {
         List<Subject> subjects = subjectRepository.findDistinctSubjectsByPackageSessionId(packageSession.getId());
-        return getLevelDTOWithDetails(subjects, packageSession.getLevel());
+        List<String>userIds = facultySubjectPackageSessionMappingRepository.findDistinctUserIdsByLevelSessionPackageAndStatuses(packageSession.getLevel().getId(), packageSession.getSession().getId(), packageSession.getPackageEntity().getId(), List.of(PackageSessionStatusEnum.ACTIVE.name(),PackageSessionStatusEnum.HIDDEN.name()), List.of(FacultyStatusEnum.ACTIVE.name()), List.of(SubjectStatusEnum.ACTIVE.name()));
+        List<UserDTO>instructors = authService.getUsersFromAuthServiceByUserIds(userIds
+
+        );
+        return getLevelDTOWithDetails(subjects, packageSession.getLevel(),instructors);
     }
 
     public List<ChapterDTOWithDetails> getChaptersWithSlides(String moduleId, String packageSessionId, CustomUserDetails userDetails) {

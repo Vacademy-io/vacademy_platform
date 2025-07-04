@@ -8,6 +8,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.course.dto.AddFacultyToCourseDTO;
 import vacademy.io.admin_core_service.features.faculty.dto.*;
@@ -206,7 +207,7 @@ public class FacultyService {
                     batchId,
                     null,
                     addFacultyToCourseDTO.getUser().getFullName(),
-                    FacultyStatusEnum.ACTIVE.name()
+                    ! StringUtils.hasText(addFacultyToCourseDTO.getStatus()) ? FacultyStatusEnum.ACTIVE.name() : addFacultyToCourseDTO.getStatus()
             );
             mappings.add(mapping);
         }

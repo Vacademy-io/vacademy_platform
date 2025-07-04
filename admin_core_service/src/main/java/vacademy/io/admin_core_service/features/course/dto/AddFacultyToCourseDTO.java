@@ -10,4 +10,5 @@ import vacademy.io.common.auth.dto.UserDTO;
 public class AddFacultyToCourseDTO {
     private boolean isNewUser;
     private UserDTO user;
+    private String status;
 }

@@ -160,15 +160,54 @@ export const PublicPresentationViewerPage: React.FC = () => {
 
 
   if (loading) {
-    return <div className="flex items-center justify-center h-screen bg-gray-50"><LoadingSpinner text="Loading Presentation..." /></div>;
+    return (
+      <div className="flex items-center justify-center h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 relative overflow-hidden">
+        {/* Floating background orbs */}
+        <div className="absolute inset-0 bg-gradient-to-r from-blue-900/10 via-transparent to-purple-900/10 pointer-events-none" />
+        <div className="floating-orb top-1/4 left-1/4 w-96 h-96 bg-blue-500/5" />
+        <div className="floating-orb bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/5" style={{ animationDelay: '2s' }} />
+        
+        <div className="relative z-10">
+          <LoadingSpinner text="Loading Presentation..." />
+        </div>
+      </div>
+    );
   }
 
   if (error) {
-    return <div className="flex items-center justify-center h-screen bg-gray-50 text-red-600 p-6 text-center"><p className="text-lg">Error: {error}</p></div>;
+    return (
+      <div className="flex items-center justify-center h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 relative overflow-hidden p-6">
+        {/* Floating background orbs */}
+        <div className="absolute inset-0 bg-gradient-to-r from-blue-900/10 via-transparent to-purple-900/10 pointer-events-none" />
+        <div className="floating-orb top-1/4 left-1/4 w-96 h-96 bg-blue-500/5" />
+        <div className="floating-orb bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/5" style={{ animationDelay: '2s' }} />
+        
+        <div className="relative z-10 glassmorphism-card p-6 max-w-lg">
+          <div className="absolute inset-0 bg-gradient-to-r from-red-900/20 to-red-800/15 rounded-xl pointer-events-none" />
+          <div className="relative z-10 text-center">
+            <p className="text-lg text-white/80">Error: {error}</p>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (!presentation || sortedSlides.length === 0) {
-    return <div className="flex items-center justify-center h-screen bg-gray-50 text-gray-700"><p className="text-lg">No presentation data or slides found.</p></div>;
+    return (
+      <div className="flex items-center justify-center h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 relative overflow-hidden">
+        {/* Floating background orbs */}
+        <div className="absolute inset-0 bg-gradient-to-r from-blue-900/10 via-transparent to-purple-900/10 pointer-events-none" />
+        <div className="floating-orb top-1/4 left-1/4 w-96 h-96 bg-blue-500/5" />
+        <div className="floating-orb bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/5" style={{ animationDelay: '2s' }} />
+        
+        <div className="relative z-10 glassmorphism-card p-6">
+          <div className="absolute inset-0 bg-gradient-to-r from-orange-900/20 to-orange-800/15 rounded-xl pointer-events-none" />
+          <div className="relative z-10 text-center">
+            <p className="text-lg text-white/80">No presentation data or slides found.</p>
+          </div>
+        </div>
+      </div>
+    );
   }
   
   const createMarkup = (htmlContent: string | undefined | null) => {
@@ -176,25 +215,30 @@ export const PublicPresentationViewerPage: React.FC = () => {
   };
 
   return (
-    <div className="reveal-container w-screen h-screen bg-gray-100">
-      <div ref={revealElementRef} className="reveal w-full h-full">
+    <div className="reveal-container w-screen h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 relative overflow-hidden">
+      {/* Floating background orbs */}
+      <div className="absolute inset-0 bg-gradient-to-r from-blue-900/10 via-transparent to-purple-900/10 pointer-events-none" />
+      <div className="floating-orb top-1/4 left-1/4 w-96 h-96 bg-blue-500/5" />
+      <div className="floating-orb bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/5" style={{ animationDelay: '2s' }} />
+      
+      <div ref={revealElementRef} className="reveal w-full h-full relative z-10">
         <div className="slides">
           <section className="text-center">
-            <h1 className="text-3xl font-semibold mb-4" dangerouslySetInnerHTML={createMarkup(presentation.title)} />
-            <p className="text-gray-600">Number of slides: {sortedSlides.length}</p>
-            {presentationId && <p className="text-sm text-gray-500 mt-2">ID: {presentationId}</p>}
+            <h1 className="text-3xl font-semibold mb-4 text-white" dangerouslySetInnerHTML={createMarkup(presentation.title)} />
+            <p className="text-white/70">Number of slides: {sortedSlides.length}</p>
+            {presentationId && <p className="text-sm text-white/60 mt-2">ID: {presentationId}</p>}
           </section>
 
           {sortedSlides.map((slide) => (
             <section key={slide.id} data-slide-id={slide.id} data-slide-order={slide.slide_order} className="text-left">
               {slide.title && slide.source.toLowerCase() !== 'question' && 
-                <div className="absolute bottom-2 left-2 px-1.5 py-0.5 bg-gray-100 bg-opacity-80 rounded text-gray-700 z-10 shadow-sm">
+                <div className="absolute bottom-2 left-2 px-2 py-1 bg-white/10 backdrop-blur-sm border border-white/20 rounded-lg text-white z-10 shadow-lg">
                   <h5 className="text-xs font-medium" dangerouslySetInnerHTML={createMarkup(slide.title)} />
                 </div>
               }
 
               {!slide.title && slide.source.toLowerCase() !== 'question' && (
-                <div className="absolute top-2 right-2 px-1.5 py-0.5 bg-gray-100 bg-opacity-80 rounded text-gray-700 z-10 shadow-sm">
+                <div className="absolute top-2 right-2 px-2 py-1 bg-white/10 backdrop-blur-sm border border-white/20 rounded-lg text-white z-10 shadow-lg">
                   <div className="text-base font-medium">Slide {slide.slide_order + 1}</div>
                 </div>
               )}
@@ -212,27 +256,27 @@ export const PublicPresentationViewerPage: React.FC = () => {
               )}
 
               {slide.source.toLowerCase() === 'question' && slide.added_question && (
-                <div className="p-4 h-full flex flex-col">
+                <div className="p-6 h-full flex flex-col">
                   <div className="flex-grow overflow-y-auto pr-2">
-                    <div className="text-base font-semibold mb-5" dangerouslySetInnerHTML={createMarkup(slide.added_question.text?.content)} />
+                                         <div className="text-lg font-semibold mb-6 text-white" dangerouslySetInnerHTML={createMarkup(slide.added_question.text?.content)} />
                     {slide.added_question.options && slide.added_question.options.length > 0 && (
-                      <ul className="list-none pl-0 space-y-1.5 text-base mb-4">
+                      <ul className="list-none pl-0 space-y-3 text-base mb-6">
                         {slide.added_question.options.map(option => (
-                          <li key={option.id} className="p-2 border border-gray-200 rounded bg-gray-50 text-gray-800" dangerouslySetInnerHTML={createMarkup(option.text?.content)} />
+                          <li key={option.id} className="p-3 bg-white/10 border border-white/20 rounded-xl text-white backdrop-blur-sm hover:bg-white/15 transition-all duration-300 ease-out" dangerouslySetInnerHTML={createMarkup(option.text?.content)} />
                         ))}
                       </ul>
                     )}
                   </div>
-                  <p className="text-xs text-gray-500 pt-2 flex-shrink-0 border-t border-gray-200">Question Type: {slide.added_question.question_type}</p>
+                  <p className="text-xs text-white/60 pt-3 flex-shrink-0 border-t border-white/20">Question Type: {slide.added_question.question_type}</p>
                 </div>
               )}
               
               {slide.source.toLowerCase() !== 'excalidraw' && slide.source.toLowerCase() !== 'question' && (
-                 <div className="p-4 h-full flex flex-col justify-center items-center">
-                    <p className="text-gray-700 mb-2">Unsupported or generic slide type: <span className="font-semibold">{slide.source}</span></p>
-                    <details className="w-full max-w-md bg-gray-50 p-2 border rounded">
-                        <summary className="cursor-pointer text-sm text-gray-600">View slide data</summary>
-                        <pre className="text-xs text-left mt-2 p-2 bg-white border rounded overflow-auto max-h-60"><code data-trim data-noescape>
+                 <div className="p-6 h-full flex flex-col justify-center items-center">
+                    <p className="text-white/80 mb-4">Unsupported or generic slide type: <span className="font-semibold accent-text">{slide.source}</span></p>
+                    <details className="w-full max-w-md glassmorphism-card p-3">
+                        <summary className="cursor-pointer text-sm text-white/70 hover:text-white transition-colors duration-200">View slide data</summary>
+                        <pre className="text-xs text-left mt-3 p-3 bg-black/20 border border-white/10 rounded-lg overflow-auto max-h-60 text-white/90 backdrop-blur-sm"><code data-trim data-noescape>
                           {JSON.stringify(slide, null, 2)}
                         </code></pre>
                     </details>

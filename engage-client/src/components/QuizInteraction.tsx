@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Checkbox } from '@/components/ui/checkbox'; // For multiple choice if needed
 import { toast } from 'sonner';
 import { Loader2, Send, Hourglass } from 'lucide-react';
-import { Input } from '@/components/ui/input'; // Added Input
+import { GlassmorphismInput } from '@/components/ui/input'; // Added Input
 import { Textarea } from '@/components/ui/textarea'; // Added Textarea
 
 // Define BASE_URL - move to a config file or env variable later
@@ -152,51 +152,59 @@ export const QuizInteraction: React.FC<QuizInteractionProps> = ({
 
   if (!canAttempt) {
     return (
-      <Card className="w-full max-w-2xl mx-auto shadow-lg my-4 animate-pulse">
-        <CardHeader className="p-4">
-          <CardTitle className="text-lg font-semibold text-slate-800 max-h-[25vh] overflow-y-auto">
+      <Card className="w-full max-w-2xl mx-auto glassmorphism-container my-4 animate-pulse relative overflow-hidden">
+        {/* Yellow accent gradient overlay for completed state */}
+        <div className="absolute inset-0 bg-gradient-to-r from-yellow-900/20 to-amber-900/15 rounded-2xl pointer-events-none" />
+        
+        <CardHeader className="p-4 relative z-10">
+          <CardTitle className="text-lg font-semibold text-white max-h-[25vh] overflow-y-auto">
              <span dangerouslySetInnerHTML={createMarkup(questionData.text?.content || "Question Submitted")} />
           </CardTitle>
-          <CardDescription>You have used all your attempts.</CardDescription>
+          <CardDescription className="text-white/70">You have used all your attempts.</CardDescription>
         </CardHeader>
-        <CardContent className="text-center py-6">
-            <Hourglass className="mx-auto size-12 text-primary mb-4" />
-            <p className="text-lg font-medium text-slate-600">
-                Waiting for the presenter to move to the next slide...
-            </p>
+        <CardContent className="text-center py-6 relative z-10">
+          <div className="flex items-center justify-center w-16 h-16 bg-yellow-400/20 border border-yellow-300/30 rounded-full backdrop-blur-sm mx-auto mb-4">
+            <Hourglass className="size-8 text-yellow-400" />
+          </div>
+          <p className="text-lg font-medium text-white/80">
+            Waiting for the presenter to move to the next slide...
+          </p>
         </CardContent>
-         <CardFooter className="p-4">
-            <p className="text-xs text-slate-500 text-right w-full">
-                Attempts: {submissionCount} / {studentAttemptsAllowed}
-            </p>
+        <CardFooter className="p-4 relative z-10">
+          <p className="text-xs text-white/60 text-right w-full">
+            Attempts: {submissionCount} / {studentAttemptsAllowed}
+          </p>
         </CardFooter>
       </Card>
     );
   }
 
   return (
-    <Card className="w-full max-w-2xl mx-auto shadow-lg my-4">
-      <CardHeader className="p-4">
-        <CardTitle className="text-lg font-semibold text-slate-800 max-h-[30vh] overflow-y-auto">
+    <Card className="w-full max-w-2xl mx-auto glassmorphism-container my-4 relative overflow-hidden">
+      {/* Blue accent gradient overlay for active state */}
+      <div className="absolute inset-0 bg-gradient-to-r from-blue-900/20 to-cyan-900/15 rounded-2xl pointer-events-none" />
+      
+      <CardHeader className="p-4 relative z-10">
+        <CardTitle className="text-lg font-semibold text-white max-h-[30vh] overflow-y-auto">
           <span dangerouslySetInnerHTML={createMarkup(questionData.text?.content || "Question")} />
         </CardTitle>
-        {questionData.question_type && <p className="text-sm text-slate-500 pt-1">Type: {questionData.question_type}</p>}
+        {questionData.question_type && <p className="text-sm text-white/70 pt-1">Type: {questionData.question_type}</p>}
       </CardHeader>
-      <CardContent className="space-y-3 p-4 pt-0 max-h-[45vh] overflow-y-auto">
+      <CardContent className="space-y-3 p-4 pt-0 max-h-[45vh] overflow-y-auto relative z-10">
         {currentQuestionCategory === 'multiple_choice' ? (
           questionData.options.length > 0 ? (
             <RadioGroup
               onValueChange={(value: string) => handleOptionChange(value)}
               value={isMultipleChoice ? undefined : selectedOptionIds[0]}
               disabled={!canAttempt || isSubmitting}
-              className="space-y-1.5"
+              className="space-y-3"
             >
               {questionData.options.map((option) => (
                 <div
                   key={option.id}
-                  className={`flex items-center space-x-2 p-2 rounded-lg border transition-all
-                              ${selectedOptionIds.includes(option.id) ? 'border-primary bg-primary/10 ring-2 ring-primary' : 'border-slate-200 bg-slate-50 hover:border-slate-300'}
-                              ${(!canAttempt || isSubmitting) ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer'}`}
+                  className={`flex items-center space-x-3 p-3 rounded-xl border transition-all duration-300 ease-out backdrop-blur-sm
+                              ${selectedOptionIds.includes(option.id) ? 'border-orange-400/50 bg-orange-900/40 ring-2 ring-orange-400/30' : 'border-white/30 bg-black/40 hover:border-white/40 hover:bg-black/50'}
+                              ${(!canAttempt || isSubmitting) ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer hover:scale-105'}`}
                   onClick={() => !isMultipleChoice && canAttempt && !isSubmitting && handleOptionChange(option.id)}
                 >
                   {isMultipleChoice ? (
@@ -214,45 +222,49 @@ export const QuizInteraction: React.FC<QuizInteractionProps> = ({
                       className="size-4 border-slate-400 data-[state=checked]:border-primary data-[state=checked]:text-primary focus:ring-primary"
                     />
                   )}
-                  <Label htmlFor={`option-${option.id}`} className={`flex-1 text-sm font-medium ${(!canAttempt || isSubmitting) ? 'text-slate-500' : 'text-slate-700'} cursor-pointer`}
+                  <Label htmlFor={`option-${option.id}`} className={`flex-1 text-sm font-medium ${(!canAttempt || isSubmitting) ? 'text-white/50' : 'text-white'} cursor-pointer`}
                     dangerouslySetInnerHTML={createMarkup(option.text.content || `Option ${option.option_order || ''}`)}
                   />
                 </div>
               ))}
             </RadioGroup>
           ) : (
-              <p className="text-slate-500 text-center py-4">No options available for this question.</p>
+              <p className="text-white/60 text-center py-4">No options available for this question.</p>
           )
         ) : currentQuestionCategory === 'text_input' ? (
           questionData.question_type === 'ONE_WORD' || questionData.question_type === 'NUMERICAL' ? (
-            <Input 
+            <GlassmorphismInput 
               type={questionData.question_type === 'NUMERICAL' ? 'number' : 'text'}
               placeholder={`Your ${questionData.question_type === 'NUMERICAL' ? 'numerical' : 'one word'} answer`}
               value={textAnswer}
-              onChange={(e) => setTextAnswer(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTextAnswer(e.target.value)}
               disabled={!canAttempt || isSubmitting}
-              className="mt-2"
+              className="mt-2 bg-black/40 border-white/30 text-white placeholder:text-white/70"
             />
           ) : questionData.question_type === 'LONG_ANSWER' ? (
             <Textarea 
               placeholder="Your detailed answer..."
               value={textAnswer}
-              onChange={(e) => setTextAnswer(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setTextAnswer(e.target.value)}
               disabled={!canAttempt || isSubmitting}
-              className="mt-2 min-h-[100px]"
+              className="mt-2 min-h-[100px] bg-black/40 border border-white/30 text-white placeholder:text-white/70 focus:border-orange-400/50 focus:ring-orange-400/25 backdrop-blur-sm transition-all duration-300 ease-out hover:bg-black/50"
               rows={4}
             />
           ) : null // Should not reach here if currentQuestionCategory is 'text_input' and type is unknown
         ) : (
-          <p className="text-slate-500 text-center py-4">Unsupported question type: {questionData.question_type}</p>
+          <p className="text-white/60 text-center py-4">Unsupported question type: {questionData.question_type}</p>
         )}
 
-        {error && <p className="text-sm font-medium text-destructive">{error}</p>}
-         <p className="text-xs text-slate-500 text-right">
-            Attempts: {submissionCount} / {studentAttemptsAllowed}
+        {error && (
+          <div className="bg-red-500/20 border border-red-400/30 rounded-lg px-3 py-2 backdrop-blur-sm">
+            <p className="text-sm font-medium text-red-300">{error}</p>
+          </div>
+        )}
+        <p className="text-xs text-white/60 text-right">
+          Attempts: {submissionCount} / {studentAttemptsAllowed}
         </p>
       </CardContent>
-      <CardFooter className="p-4">
+      <CardFooter className="p-4 relative z-10">
         <Button
           onClick={handleSubmit}
           disabled={!canAttempt || isSubmitting || 
@@ -260,7 +272,7 @@ export const QuizInteraction: React.FC<QuizInteractionProps> = ({
             (currentQuestionCategory === 'text_input' ? !textAnswer.trim() : false) ||
             (currentQuestionCategory === 'unknown')
           }
-          className="w-full sm:w-auto sm:ml-auto"
+          className="w-full sm:w-auto sm:ml-auto h-10 rounded-xl bg-gradient-to-r from-green-600 to-emerald-700 hover:from-green-700 hover:to-emerald-800 text-white font-semibold backdrop-blur-sm transition-all duration-300 ease-out hover:scale-105 shadow-lg shadow-green-500/25 border-0"
         >
           {isSubmitting ? (
             <Loader2 className="mr-2 size-4 animate-spin" />

@@ -5,21 +5,23 @@ import { cn } from "@/lib/utils";
 import React from "react";
 
 export const LayoutContainer = ({
-  children,
-  className,
-  sidebarComponent,
+    children,
+    className,
+    sidebarComponent,
 }: {
-  children?: React.ReactNode;
-  className?: string;
-  sidebarComponent?: React.ReactNode;
+    children?: React.ReactNode;
+    className?: string;
+    sidebarComponent?: React.ReactNode;
 }) => {
-  return (
-    <>
-        <MySidebar sidebarComponent={sidebarComponent} />
-      <SidebarInset>
-        <Navbar />
-        <div className={cn("m-4 md:m-7 max-w-full", className)}>{children}</div>
-      </SidebarInset>
-    </>
-  );
+    return (
+        <>
+            <MySidebar sidebarComponent={sidebarComponent} />
+            <SidebarInset>
+                <Navbar />
+                <div className={cn("m-4 md:m-7 max-w-full", className)}>
+                    {children}
+                </div>
+            </SidebarInset>
+        </>
+    );
 };

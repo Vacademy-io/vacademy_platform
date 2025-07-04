@@ -7,17 +7,18 @@ import { SidebarItemProps } from "../../../../types/layout-container-types";
 import { useSidebar } from "@/components/ui/sidebar";
 import { Link } from "@tanstack/react-router";
 import { useRouter } from "@tanstack/react-router";
+import { cn } from "@/lib/utils";
 
 export const CollapsibleItem = ({ icon, title, subItems }: SidebarItemProps) => {
     const [hover, setHover] = useState<boolean>(false);
     const { state, toggleSidebar } = useSidebar();
 
-    const toggleHover = () => setHover(!hover);
     const router = useRouter();
-
     const currentRoute = router.state.location.pathname;
     const routeMatches = subItems?.some((item) => item.subItemLink === currentRoute);
     const isExpanded = state === "expanded";
+
+    const toggleHover = () => setHover(!hover);
 
     return (
         <Collapsible
@@ -26,7 +27,10 @@ export const CollapsibleItem = ({ icon, title, subItems }: SidebarItemProps) => 
             onMouseLeave={toggleHover}
         >
             <CollapsibleTrigger
-                className="flex w-full items-center justify-between"
+                className={cn(
+                    "flex w-full items-center justify-between",
+                    hover || routeMatches ? "bg-white" : "bg-none"
+                )}
                 onClick={() => {
                     if (state === "collapsed") toggleSidebar();
                 }}

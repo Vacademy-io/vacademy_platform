@@ -3,7 +3,7 @@ import { toast } from "sonner"; // Assuming you're using sonner for toasts
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { INSTITUTE_DETAIL } from "@/constants/urls";
 
-interface InstituteDetails {
+export interface InstituteDetails {
   institute_name: string;
   id: string;
   country: string;

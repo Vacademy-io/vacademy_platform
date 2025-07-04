@@ -1,11 +1,11 @@
 import { getInstituteId } from "@/constants/helper";
 import { SidebarItemsType } from "../../../../types/layout-container-types";
 import {
-  House,
-  BookOpen,
-  Scroll,
-  SignOut,
-  NotePencil,
+    House,
+    BookOpen,
+    Scroll,
+    SignOut,
+    NotePencil,
 } from "@phosphor-icons/react";
 import {
   CreditCard,

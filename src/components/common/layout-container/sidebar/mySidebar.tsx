@@ -1,14 +1,15 @@
+import React, { useEffect, useState } from "react";
 import {
-  Sidebar,
-  SidebarContent,
-  SidebarHeader,
-  SidebarMenu,
-  SidebarMenuItem,
-  useSidebar,
+    Sidebar,
+    SidebarContent,
+    SidebarHeader,
+    SidebarMenu,
+    SidebarMenuItem,
+    useSidebar,
 } from "@/components/ui/sidebar";
 import {
-  SidebarStateType,
-  sideBarStateType,
+    SidebarStateType,
+    sideBarStateType,
 } from "../../../../types/layout-container-types";
 import { SidebarItem } from "./sidebar-item";
 import {
@@ -20,12 +21,11 @@ import {
 import "./scrollbarStyle.css";
 import useStore from "./useSidebar";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
-import { useEffect, useState } from "react";
 
 export const MySidebar = ({
-  sidebarComponent,
+    sidebarComponent,
 }: {
-  sidebarComponent?: React.ReactNode;
+    sidebarComponent?: React.ReactNode;
 }) => {
   const { state }: SidebarStateType = useSidebar();
   const { sideBarState, instituteName, instituteLogoFileUrl } = useStore();
@@ -96,7 +96,7 @@ export const MySidebar = ({
         </SidebarHeader>
 
         <SidebarMenu
-          className={`flex flex-col px-2 space-y-1 flex-1 transition-all duration-300 ${
+          className={`flex flex-col space-y-1 flex-1 transition-all duration-300 ${
             isExpanded ? "items-stretch" : "items-center"
           }`}
         >

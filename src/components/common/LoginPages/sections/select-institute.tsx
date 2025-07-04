@@ -53,7 +53,7 @@ export function InstituteSelection() {
           toast.error("No token found - Please login first");
           return;
         }
-
+  
         const decodedData = await getTokenDecodedData(token);
         const authorities = decodedData?.authorities;
         const userId = decodedData?.user;
@@ -93,9 +93,10 @@ export function InstituteSelection() {
         setIsLoadingInstitutes(false);
       }
     };
-
+  
     fetchInstitutes();
   }, []);
+  
 
   const onSubmit = async (data: FormValues) => {
     if (!data.instituteId) {

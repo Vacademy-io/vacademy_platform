@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useNavigate, useRouterState } from "@tanstack/react-router";
 import axios from "axios";
 import { Form, FormControl, FormField, FormItem } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
@@ -47,8 +47,10 @@ export function EmailLogin({
   const navigate = useNavigate();
   const otpInputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  /* eslint-disable-next-line */
-  const { redirect } = useSearch<any>({ from: "/login/" });
+
+  const redirect = useRouterState({
+    select: (s) => (s.location.search as Record<string, any>).redirect ?? "/login/",
+  });
 
   const emailForm = useForm<EmailFormValues>({
     resolver: zodResolver(emailSchema),
@@ -148,7 +150,7 @@ export function EmailLogin({
                 });
               } else if (status == 201) {
                 navigate({
-                  to: redirect || "/assessment/examination",
+                  to: typeof redirect === "string" ? redirect : "/assessment/examination",
                 });
               }
             } catch (error) {

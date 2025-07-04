@@ -55,7 +55,6 @@ const RootComponent = () => {
         ) {
           toast.warning("Update available, please update app...");
           setUpdateAvailable(true);
-
           if (result.immediateUpdateAllowed) {
             await AppUpdate.performImmediateUpdate();
           }

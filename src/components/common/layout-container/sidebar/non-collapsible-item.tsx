@@ -7,21 +7,19 @@ import { useRouter } from "@tanstack/react-router";
 
 export const NonCollapsibleItem = ({ icon, title, to }: SidebarItemProps) => {
     const [hover, setHover] = useState<boolean>(false);
-    const toggleHover = () => {
-        setHover(!hover);
-    };
-
+    const { state } = useSidebar();
     const router = useRouter();
     const currentRoute = router.state.location.pathname;
+
+    const toggleHover = () => setHover(!hover);
     const isActive = to && currentRoute.includes(to);
 
-    const { state } = useSidebar();
     const isExpanded = state === "expanded";
 
     return (
         <Link
             to={to}
-            className={`flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2.5 transition-all duration-300 ease-in-out group relative overflow-hidden border ${
+            className={`flex w-[84%] gap-4 mx-auto cursor-pointer items-center rounded-lg px-3 py-2.5 transition-all duration-300 ease-in-out group relative overflow-hidden border ${
                 isActive 
                     ? "bg-gradient-to-r from-primary-50 to-primary-100/80 text-primary-700 border border-primary-200" 
                     : "hover:bg-gradient-to-r hover:from-neutral-50 hover:to-primary-50/30 text-neutral-600 hover:text-neutral-800 hover:border-primary-200/50 border border-transparent"
@@ -40,7 +38,7 @@ export const NonCollapsibleItem = ({ icon, title, to }: SidebarItemProps) => {
                 {icon &&
                     React.createElement(icon, {
                         className: `transition-colors duration-300 ${
-                            isExpanded ? "w-4 h-4" : "w-4 h-4"
+                            isExpanded ? "size-7" : "size-7"
                         } ${
                             isActive 
                                 ? "text-primary-600" 
@@ -54,9 +52,9 @@ export const NonCollapsibleItem = ({ icon, title, to }: SidebarItemProps) => {
 
             {isExpanded && (
                 <div
-                    className={`flex-1 min-w-0 text-left transition-all duration-300 relative z-10 ${
+                    className={`!text-[1rem] !font-normal flex-1 min-w-0 text-left transition-all duration-300 relative z-10 ${
                         isActive 
-                            ? "text-primary-700 font-semibold" 
+                            ? "text-primary-700 !font-normal" 
                             : hover 
                                 ? "text-neutral-800 font-medium" 
                                 : "text-neutral-600 font-medium"

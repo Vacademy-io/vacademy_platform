@@ -2,6 +2,13 @@ export const BASE_URL = "https://backend-stage.vacademy.io";
 //urls
 export const INSTITUTE_ID = "c70f40a5-e4d3-4b6c-a498-e612d0d4b133";
 export const CODE_CIRCLE_INSTITUTE_ID = "dd9b9687-56ee-467a-9fc4-8c5835eae7f9";
+
+export const GET_SLIDES_COUNT = `${BASE_URL}/admin-core-service/open/slide/v1/slide-counts-by-source-type`;
+export const SUBMIT_RATING_URL = `${BASE_URL}/admin-core-service/open/rating`;
+export const GET_ALL_USER_RATINGS = `${BASE_URL}/admin-core-service/open/rating/get-source-ratings`;
+export const GET_ALL_RATING_SUMMARY = `${BASE_URL}/admin-core-service/open/rating/summary`;
+export const GET_COURSE_DETAILS = `${BASE_URL}/admin-core-service/open/packages/v1/package-detail`;
+export const GET_ALL_COURSE_DETAILS = `${BASE_URL}/admin-core-service/open/v1/learner-study-library/init`;
 export const HOLISTIC_INSTITUTE_ID = "bd9f2362-84d1-4e01-9762-a5196f9bac80";
 
 export const LOGIN_URL = `${BASE_URL}/auth-service/learner/v1/login`;
@@ -41,8 +48,9 @@ export const SUBMIT_SLIDE_ANSWERS = `${BASE_URL}/admin-core-service/learner-trac
 export const SUBMIT_ASSIGNMENT_SLIDE_ANSWERS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/assignment-slide/add-or-update-assignment-slide-activity-log`;
 export const SUBMIT_QUESTION_SLIDE_ANSWERS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/question-slide/add-or-update-question-slide-activity-log`;
 export const INIT_STUDY_LIBRARY = `${BASE_URL}/admin-core-service/v1/learner-study-library/init-details`;
-export const MODULES_WITH_CHAPTERS = `${BASE_URL}/admin-core-service/v1/learner-study-library/modules-with-chapters`;
-export const GET_SLIDES = `${BASE_URL}/admin-core-service/v1/learner-study-library/slides`;
+export const MODULES_WITH_CHAPTERS = `${BASE_URL}/admin-core-service/open/v1/learner-study-library/modules-with-chapters`;
+export const CHAPTERS_WITH_SLIDES = `${BASE_URL}/admin-core-service/open/v1/learner-study-library/chapters-with-slides`;
+export const GET_SLIDES = `${BASE_URL}/admin-core-service/open/v1/learner-study-library/slides`;
 
 export const GET_DETAILS = `${BASE_URL}/media-service/get-details/ids`;
 export const GET_SIGNED_URL = `${BASE_URL}/media-service/get-signed-url`;
@@ -77,3 +85,8 @@ export const LIVE_SESSION_GET_EARLIEST_SCHEDULE_ID = `${BASE_URL}/admin-core-ser
 export const ADD_DOUBT = `${BASE_URL}/admin-core-service/institute/v1/doubts/create`;
 export const GET_DOUBTS = `${BASE_URL}/admin-core-service/institute/v1/doubts/get-all`;
 export const GET_USER_BASIC_DETAILS = `${BASE_URL}/auth-service/v1/user-details/get-basic-details`;
+
+export const urlInstituteDetails = `${BASE_URL}/admin-core-service/public/institute/v1/details`;
+export const urlCourseDetails = `${BASE_URL}/admin-core-service/open/packages/v1/search`;
+export const urlPublicCourseDetails = `${BASE_URL}/admin-core-service/packages/v1/search`;
+export const urlInstructor = `${BASE_URL}/auth-service/public/v1/users-of-status`;

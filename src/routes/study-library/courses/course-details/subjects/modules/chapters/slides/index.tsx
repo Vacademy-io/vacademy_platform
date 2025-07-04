@@ -160,23 +160,12 @@ function Slides() {
     );
 
     const { setNavHeading } = useNavHeadingStore();
-
-    const handleBackClick = () => {
-        navigate({
-            to: `/study-library/courses/course-details/subjects/modules/chapters`,
-            search: {
-                courseId,
-                levelId,
-                subjectId,
-                moduleId,
-                sessionId,
-            },
-        });
-    };
-
     const heading = (
         <div className="flex items-center gap-4">
-            <CaretLeft onClick={handleBackClick} className="cursor-pointer" />
+            <CaretLeft
+                onClick={() => window.history.back()}
+                className="cursor-pointer"
+            />
             <div>{`${subjectName} - ${moduleName} - ${chapterName}`}</div>
         </div>
     );

@@ -2,10 +2,10 @@ import { DotOutline, Export } from "@phosphor-icons/react";
 import { MyButton } from "@/components/design-system/button";
 import { Separator } from "@radix-ui/react-separator";
 import {
-  convertToLocalDateTime,
-  extractDateTime,
-  formatDuration,
-  getSubjectNameById,
+    convertToLocalDateTime,
+    extractDateTime,
+    formatDuration,
+    getSubjectNameById,
 } from "@/constants/helper";
 import { ResponseBreakdownComponent } from "./response-breakdown-component";
 import { MarksBreakdownComponent } from "./marks-breakdown-component";
@@ -17,433 +17,459 @@ import { parseHtmlToString } from "@/lib/utils";
 import { Preferences } from "@capacitor/preferences";
 import { useRouter } from "@tanstack/react-router";
 import type {
-  ParsedHistoryState,
-  Report,
-  Section,
-  TestReportDialogProps,
+    ParsedHistoryState,
+    Report,
+    Section,
+    TestReportDialogProps,
 } from "@/types/assessments/assessment-data-type";
 import {
-  EXPORT_ASSESSMENT_REPORT,
-  GET_ASSESSMENT_MARKS,
+    EXPORT_ASSESSMENT_REPORT,
+    GET_ASSESSMENT_MARKS,
 } from "@/constants/urls";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
 import { MarksStatusIndicator } from "./marks-chip";
 import { FileText } from "lucide-react";
 import type {
-  DocumentLoadEvent,
-  PageChangeEvent,
+    DocumentLoadEvent,
+    PageChangeEvent,
 } from "@react-pdf-viewer/core";
 import { PdfViewerComponent } from "../study-library/level-material/subject-material/module-material/chapter-material/slide-material/pdf-viewer-component";
 import { getPublicUrl } from "@/services/upload_file";
 import {
-  renderStudentResponse,
-  renderCorrectAnswer,
-  SectionQuestions,
+    renderStudentResponse,
+    renderCorrectAnswer,
+    SectionQuestions,
 } from "./question-response-renderer";
 
 type TestMarks = {
-  total_achievable_marks: number;
-  section_wise_achievable_marks: Record<string, number>;
+    total_achievable_marks: number;
+    section_wise_achievable_marks: Record<string, number>;
 };
 
 // Function to fetch questions data
 const fetchQuestionsData = async (
-  assessmentId: string,
-  sectionIds: string[]
+    assessmentId: string,
+    sectionIds: string[]
 ) => {
-  try {
-    const response = await authenticatedAxiosInstance.get(
-      "https://backend-stage.vacademy.io/assessment-service/assessment/add-questions/create/v1/questions-of-sections",
-      {
-        params: {
-          assessmentId,
-          sectionIds: sectionIds.join(","),
-        },
-      }
-    );
-    return response.data as SectionQuestions;
-  } catch (error) {
-    console.error("Error fetching questions data:", error);
-    return null;
-  }
+    try {
+        const response = await authenticatedAxiosInstance.get(
+            "https://backend-stage.vacademy.io/assessment-service/assessment/add-questions/create/v1/questions-of-sections",
+            {
+                params: {
+                    assessmentId,
+                    sectionIds: sectionIds.join(","),
+                },
+            }
+        );
+        return response.data as SectionQuestions;
+    } catch (error) {
+        console.error("Error fetching questions data:", error);
+        return null;
+    }
 };
 
 interface InstituteDetails {
-  id: string;
-  name: string;
-  subjects: Array<{
     id: string;
-    subject_name: string;
-  }>;
+    name: string;
+    subjects: Array<{
+        id: string;
+        subject_name: string;
+    }>;
 }
 
 export const TestReportDialog = ({
-  testReport,
-  examType,
-  assessmentDetails,
-  evaluationType,
+    testReport,
+    examType,
+    assessmentDetails,
+    evaluationType,
 }: TestReportDialogProps) => {
-  const report = useRouter();
-  const [instituteDetails, setInstituteDetails] =
-    useState<InstituteDetails | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [questionsData, setQuestionsData] = useState<SectionQuestions | null>(
-    null
-  );
-  const { setNavHeading } = useNavHeadingStore();
-  type PdfFileType = {
-    fileId: string;
-    fileName: string;
-    fileUrl: string;
-    size: number;
-    file: File | null;
-  };
-
-  // Somewhere at the top of your component
-  const [pdfFile, setPdfFile] = useState<PdfFileType | null>(null);
-
-  // const { pdfFile } = useAssessmentStore();
-  // setPdfFile: (file) => set({ pdfFile: file }),
-  const [showPdfPreview, setShowPdfPreview] = useState(false);
-  const [pdfDocumentInfo, setPdfDocumentInfo] = useState({
-    numPages: 0,
-    currentPage: 0,
-  });
-  console.log("pdfDocumentInfo", pdfDocumentInfo);
-
-  // const { state } = report.__store.state.location.state as ParsedHistoryState;
-  // const studentReport: Report = state?.report || {};
-  const locationState = report.__store.state.location
-    .state as unknown as ParsedHistoryState;
-  const defaultReport: Report = {
-    assessment_id: "",
-    attempt_id: "",
-    assessment_name: "",
-    assessment_status: "",
-    subject_id: "",
-    start_time: "",
-    end_time: "",
-    total_marks: 0,
-    duration_in_seconds: 0,
-    sections: {},
-    attempt_date: "",
-    play_mode: "",
-    evaluation_type: "",
-  };
-
-  const studentReport: Report = locationState?.report || defaultReport;
-  const [testMarks, setTestMarks] = useState<TestMarks | null>(null);
-  useEffect(() => {
-    const fetchTestMarks = async () => {
-      const assessmentId = studentReport.assessment_id;
-      try {
-        const response = await authenticatedAxiosInstance({
-          method: "GET",
-          url: GET_ASSESSMENT_MARKS,
-          params: {
-            assessmentId,
-          },
-        });
-        const data = response?.data;
-        setTestMarks(data);
-      } catch (error) {
-        console.error("Error fetching test marks:", error);
-      }
+    const report = useRouter();
+    const [instituteDetails, setInstituteDetails] =
+        useState<InstituteDetails | null>(null);
+    const [isLoading, setIsLoading] = useState(false);
+    const [questionsData, setQuestionsData] = useState<SectionQuestions | null>(
+        null
+    );
+    const { setNavHeading } = useNavHeadingStore();
+    type PdfFileType = {
+        fileId: string;
+        fileName: string;
+        fileUrl: string;
+        size: number;
+        file: File | null;
     };
 
-    fetchTestMarks();
-  }, []);
+    // Somewhere at the top of your component
+    const [pdfFile, setPdfFile] = useState<PdfFileType | null>(null);
 
-  useEffect(() => {
-    const loadQuestionsData = async () => {
-      if (testReport && studentReport?.assessment_id) {
-        // Get all unique section IDs from the test report
-        const sectionIds = Object.keys(testReport.all_sections);
-        const data = await fetchQuestionsData(
-          studentReport.assessment_id,
-          sectionIds
-        );
-        setQuestionsData(data);
-      }
-    };
-
-    loadQuestionsData();
-  }, [testReport, studentReport?.assessment_id]);
-
-  const handleBackClick = () => {
-    report.navigate({
-      to: `/assessment/reports`,
+    // const { pdfFile } = useAssessmentStore();
+    // setPdfFile: (file) => set({ pdfFile: file }),
+    const [showPdfPreview, setShowPdfPreview] = useState(false);
+    const [pdfDocumentInfo, setPdfDocumentInfo] = useState({
+        numPages: 0,
+        currentPage: 0,
     });
-  };
+    console.log("pdfDocumentInfo", pdfDocumentInfo);
 
-  const heading = (
-    <div className="flex items-center gap-2">
-      <CaretLeft onClick={handleBackClick} className="cursor-pointer size-5" />
-      <div>Report</div>
-    </div>
-  );
-
-  useEffect(() => {
-    setNavHeading(heading);
-  }, []);
-
-  useEffect(() => {
-    const fetchInstituteDetails = async () => {
-      const response = await Preferences.get({ key: "InstituteDetails" });
-      setInstituteDetails(response?.value ? JSON.parse(response.value) : null);
+    // const { state } = report.__store.state.location.state as ParsedHistoryState;
+    // const studentReport: Report = state?.report || {};
+    const locationState = report.__store.state.location
+        .state as unknown as ParsedHistoryState;
+    const defaultReport: Report = {
+        assessment_id: "",
+        attempt_id: "",
+        assessment_name: "",
+        assessment_status: "",
+        subject_id: "",
+        start_time: "",
+        end_time: "",
+        total_marks: 0,
+        duration_in_seconds: 0,
+        sections: {},
+        attempt_date: "",
+        play_mode: "",
+        evaluation_type: "",
     };
 
-    fetchInstituteDetails();
-  }, []);
-  const sectionsInfo = assessmentDetails[1]?.saved_data.sections?.map(
-    (section: Section) => ({
-      name: section.name,
-      id: section.id,
-    })
-  );
+    const studentReport: Report = locationState?.report || defaultReport;
+    const [testMarks, setTestMarks] = useState<TestMarks | null>(null);
+    useEffect(() => {
+        const fetchTestMarks = async () => {
+            const assessmentId = studentReport.assessment_id;
+            try {
+                const response = await authenticatedAxiosInstance({
+                    method: "GET",
+                    url: GET_ASSESSMENT_MARKS,
+                    params: {
+                        assessmentId,
+                    },
+                });
+                const data = response?.data;
+                setTestMarks(data);
+            } catch (error) {
+                console.error("Error fetching test marks:", error);
+            }
+        };
 
-  const handleExport = async () => {
-    if (!instituteDetails) return;
+        fetchTestMarks();
+    }, []);
 
-    const assessmentId = studentReport.assessment_id;
-    const attemptId = studentReport.attempt_id;
-    const instituteId = instituteDetails.id;
+    useEffect(() => {
+        const loadQuestionsData = async () => {
+            if (testReport && studentReport?.assessment_id) {
+                // Get all unique section IDs from the test report
+                const sectionIds = Object.keys(testReport.all_sections);
+                const data = await fetchQuestionsData(
+                    studentReport.assessment_id,
+                    sectionIds
+                );
+                setQuestionsData(data);
+            }
+        };
 
-    setIsLoading(true);
+        loadQuestionsData();
+    }, [testReport, studentReport?.assessment_id]);
 
-    try {
-      const response = await authenticatedAxiosInstance({
-        method: "GET",
-        url: EXPORT_ASSESSMENT_REPORT,
-        params: {
-          assessmentId: assessmentId,
-          attemptId: attemptId,
-          instituteId: instituteId,
-        },
-        responseType: "blob",
-      });
+    const heading = (
+        <div className="flex items-center gap-2">
+            <CaretLeft
+                onClick={() => window.history.back()}
+                className="cursor-pointer size-5"
+            />
+            <div>Report</div>
+        </div>
+    );
 
-      // Create a new Blob object using the response data
-      const blob = new Blob([response.data], { type: "application/pdf" });
+    useEffect(() => {
+        setNavHeading(heading);
+    }, []);
 
-      // Create a link element
-      const link = document.createElement("a");
-      link.href = window.URL.createObjectURL(blob); // Create a URL for the blob
-      link.download = "assessment_report.pdf"; // Set the file name
+    useEffect(() => {
+        const fetchInstituteDetails = async () => {
+            const response = await Preferences.get({ key: "InstituteDetails" });
+            setInstituteDetails(
+                response?.value ? JSON.parse(response.value) : null
+            );
+        };
 
-      // Append to the body (required for Firefox)
-      document.body.appendChild(link);
+        fetchInstituteDetails();
+    }, []);
+    const sectionsInfo = assessmentDetails[1]?.saved_data.sections?.map(
+        (section: Section) => ({
+            name: section.name,
+            id: section.id,
+        })
+    );
 
-      // Programmatically click the link to trigger the download
-      link.click();
+    const handleExport = async () => {
+        if (!instituteDetails) return;
 
-      // Clean up and remove the link
-      document.body.removeChild(link);
-    } catch (error) {
-      console.error("Error exporting data:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+        const assessmentId = studentReport.assessment_id;
+        const attemptId = studentReport.attempt_id;
+        const instituteId = instituteDetails.id;
 
-  const [selectedSection, setSelectedSection] = useState(
-    sectionsInfo?.length ? sectionsInfo[0]?.id : undefined
-  );
-  const evaluation_type = evaluationType;
+        setIsLoading(true);
 
-  const evaluated_file_id = testReport?.evaluated_file_id;
-  const currentSectionAllQuestions = testReport?.all_sections[selectedSection!];
-
-  useEffect(() => {
-    if (evaluated_file_id) {
-      const fetchAndSetFile = async () => {
         try {
-          const publicUrl = await getPublicUrl(evaluated_file_id);
+            const response = await authenticatedAxiosInstance({
+                method: "GET",
+                url: EXPORT_ASSESSMENT_REPORT,
+                params: {
+                    assessmentId: assessmentId,
+                    attemptId: attemptId,
+                    instituteId: instituteId,
+                },
+                responseType: "blob",
+            });
 
-          // Assuming you have file details somewhere (like file.name, file.size)
-          setPdfFile({
-            fileId: evaluated_file_id,
-            fileName: "Evaluated File.pdf", // replace this if you have actual name
-            fileUrl: publicUrl,
-            size: 0, // replace this if you have actual file size
-            file: null, // or blob/file object if you have it
-          });
+            // Create a new Blob object using the response data
+            const blob = new Blob([response.data], { type: "application/pdf" });
+
+            // Create a link element
+            const link = document.createElement("a");
+            link.href = window.URL.createObjectURL(blob); // Create a URL for the blob
+            link.download = "assessment_report.pdf"; // Set the file name
+
+            // Append to the body (required for Firefox)
+            document.body.appendChild(link);
+
+            // Programmatically click the link to trigger the download
+            link.click();
+
+            // Clean up and remove the link
+            document.body.removeChild(link);
         } catch (error) {
-          console.error("Error fetching public URL:", error);
+            console.error("Error exporting data:", error);
+        } finally {
+            setIsLoading(false);
         }
-      };
+    };
 
-      fetchAndSetFile();
+    const [selectedSection, setSelectedSection] = useState(
+        sectionsInfo?.length ? sectionsInfo[0]?.id : undefined
+    );
+    const evaluation_type = evaluationType;
+
+    const evaluated_file_id = testReport?.evaluated_file_id;
+    const currentSectionAllQuestions =
+        testReport?.all_sections[selectedSection!];
+
+    useEffect(() => {
+        if (evaluated_file_id) {
+            const fetchAndSetFile = async () => {
+                try {
+                    const publicUrl = await getPublicUrl(evaluated_file_id);
+
+                    // Assuming you have file details somewhere (like file.name, file.size)
+                    setPdfFile({
+                        fileId: evaluated_file_id,
+                        fileName: "Evaluated File.pdf", // replace this if you have actual name
+                        fileUrl: publicUrl,
+                        size: 0, // replace this if you have actual file size
+                        file: null, // or blob/file object if you have it
+                    });
+                } catch (error) {
+                    console.error("Error fetching public URL:", error);
+                }
+            };
+
+            fetchAndSetFile();
+        }
+    }, [evaluated_file_id]);
+    const handleDocumentLoad = (e: DocumentLoadEvent) => {
+        setPdfDocumentInfo((prev) => ({
+            ...prev,
+            numPages: e.doc.numPages,
+        }));
+    };
+
+    const handlePageChange = (e: PageChangeEvent) => {
+        setPdfDocumentInfo((prev) => ({
+            ...prev,
+            currentPage: e.currentPage,
+        }));
+    };
+
+    const handlePreviewPdf = () => {
+        if (pdfFile) {
+            setShowPdfPreview(true);
+        }
+    };
+
+    if (
+        testReport === null ||
+        studentReport === null ||
+        examType === undefined
+    ) {
+        return;
     }
-  }, [evaluated_file_id]);
-  const handleDocumentLoad = (e: DocumentLoadEvent) => {
-    setPdfDocumentInfo((prev) => ({
-      ...prev,
-      numPages: e.doc.numPages,
-    }));
-  };
+    const responseData = {
+        attempted:
+            testReport.question_overall_detail_dto.correctAttempt +
+            testReport.question_overall_detail_dto.partialCorrectAttempt +
+            testReport.question_overall_detail_dto.wrongAttempt,
+        skipped: testReport.question_overall_detail_dto.skippedCount,
+    };
+    const marksData = {
+        correct: testReport.question_overall_detail_dto.correctAttempt,
+        partiallyCorrect:
+            testReport.question_overall_detail_dto.partialCorrectAttempt,
+        wrongResponse: testReport.question_overall_detail_dto.wrongAttempt,
+        skipped: testReport.question_overall_detail_dto.skippedCount,
+    };
+    return (
+        <>
+            <div className="">
+                {/* Test Info Section */}
 
-  const handlePageChange = (e: PageChangeEvent) => {
-    setPdfDocumentInfo((prev) => ({
-      ...prev,
-      currentPage: e.currentPage,
-    }));
-  };
+                <div className="flex flex-col gap-10 p-2">
+                    <div className="flex justify-between">
+                        <div className="flex flex-col gap-4">
+                            <div className="text-h2 font-semibold">
+                                {studentReport.assessment_name}
+                            </div>
+                        </div>
+                        <div className="hidden md:block lg:block">
+                            <MyButton
+                                buttonType="secondary"
+                                scale="large"
+                                layoutVariant="default"
+                                onClick={!isLoading ? handleExport : undefined}
+                            >
+                                <Export />
+                                {isLoading ? (
+                                    <span className="ml-2">Exporting...</span>
+                                ) : (
+                                    <>Export</>
+                                )}
+                            </MyButton>
+                        </div>
+                    </div>
 
-  const handlePreviewPdf = () => {
-    if (pdfFile) {
-      setShowPdfPreview(true);
-    }
-  };
+                    <div className="grid sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 text-body">
+                        <div>
+                            Subject:{" "}
+                            {getSubjectNameById(
+                                instituteDetails?.subjects || [],
+                                studentReport?.subject_id
+                            ) || ""}
+                        </div>
+                        <div>
+                            Attempt Date:{" "}
+                            {
+                                extractDateTime(
+                                    convertToLocalDateTime(
+                                        studentReport.start_time
+                                    )
+                                ).date
+                            }
+                        </div>
+                        {/* <div>Marks: {studentReport.total_marks}</div> */}
+                        <div>
+                            Duration:{" "}
+                            {formatDuration(studentReport.duration_in_seconds)}
+                        </div>
+                        <div>
+                            Start Time:{" "}
+                            {
+                                extractDateTime(
+                                    convertToLocalDateTime(
+                                        studentReport.start_time
+                                    )
+                                ).time
+                            }
+                        </div>
+                        <div>
+                            End Time:{" "}
+                            {
+                                extractDateTime(
+                                    convertToLocalDateTime(
+                                        studentReport.end_time
+                                    )
+                                ).time
+                            }
+                        </div>
+                    </div>
+                </div>
 
-  if (testReport === null || studentReport === null || examType === undefined) {
-    return;
-  }
-  const responseData = {
-    attempted:
-      testReport.question_overall_detail_dto.correctAttempt +
-      testReport.question_overall_detail_dto.partialCorrectAttempt +
-      testReport.question_overall_detail_dto.wrongAttempt,
-    skipped: testReport.question_overall_detail_dto.skippedCount,
-  };
-  const marksData = {
-    correct: testReport.question_overall_detail_dto.correctAttempt,
-    partiallyCorrect:
-      testReport.question_overall_detail_dto.partialCorrectAttempt,
-    wrongResponse: testReport.question_overall_detail_dto.wrongAttempt,
-    skipped: testReport.question_overall_detail_dto.skippedCount,
-  };
-  return (
-    <>
-      <div className="">
-        {/* Test Info Section */}
+                <Separator />
 
-        <div className="flex flex-col gap-10 p-2">
-          <div className="flex justify-between">
-            <div className="flex flex-col gap-4">
-              <div className="text-h2 font-semibold">
-                {studentReport.assessment_name}
-              </div>
-            </div>
-            <div className="hidden md:block lg:block">
-              <MyButton
-                buttonType="secondary"
-                scale="large"
-                layoutVariant="default"
-                onClick={!isLoading ? handleExport : undefined}
-              >
-                <Export />
-                {isLoading ? (
-                  <span className="ml-2">Exporting...</span>
-                ) : (
-                  <>Export</>
-                )}
-              </MyButton>
-            </div>
-          </div>
-
-          <div className="grid sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 text-body">
-            <div>
-              Subject:{" "}
-              {getSubjectNameById(
-                instituteDetails?.subjects || [],
-                studentReport?.subject_id
-              ) || ""}
-            </div>
-            <div>
-              Attempt Date:{" "}
-              {
-                extractDateTime(
-                  convertToLocalDateTime(studentReport.start_time)
-                ).date
-              }
-            </div>
-            {/* <div>Marks: {studentReport.total_marks}</div> */}
-            <div>
-              Duration: {formatDuration(studentReport.duration_in_seconds)}
-            </div>
-            <div>
-              Start Time:{" "}
-              {
-                extractDateTime(
-                  convertToLocalDateTime(studentReport.start_time)
-                ).time
-              }
-            </div>
-            <div>
-              End Time:{" "}
-              {
-                extractDateTime(convertToLocalDateTime(studentReport.end_time))
-                  .time
-              }
-            </div>
-          </div>
-        </div>
-
-        <Separator />
-
-        {/* Charts Section */}
-        <div className="p-6 text-h3 font-semibold text-primary-500">
-          Score Report
-        </div>
-        <div className="flex flex-col md:flex-col lg:flex-row gap-10 lg:gap-20 p-6">
-          <div className=" flex sm:flex-row lg:flex-col items-center gap-20 p-6">
-            <div className="flex flex-col">
-              <h1>Rank</h1>
-              <div className="flex items-center gap-1">
-                {testReport.question_overall_detail_dto.rank === 1 && (
-                  // <Crown className="size-6" />
-                  <Crown />
-                )}
-                <p className="text-neutral-500">
-                  {testReport.question_overall_detail_dto.rank}
-                </p>
-              </div>
-            </div>
-            <div>
-              <h1>Percentile</h1>
-              <p className="text-center text-neutral-500">
-                {testReport.question_overall_detail_dto.percentile}%
-              </p>
-            </div>
-            <div>
-              <h1>Marks</h1>
-              {/* <p className="text-neutral-500">{studentReport.total_marks}/{testMarks.total_achievable_marks}</p> */}
-              <p className="text-neutral-500">
-                {studentReport.total_marks}/
-                {testMarks?.total_achievable_marks ?? "-"}
-              </p>
-            </div>
-          </div>
-          <div className="flex w-full flex-col items-center">
-            <div className="text-h3 font-semibold">Response Breakdown</div>
-            <ResponseBreakdownComponent responseData={responseData} />
-            <div className="flex flex-col pt-8 ">
-              <div className="-mt-14 flex items-center">
-                <DotOutline
-                  weight="fill"
-                  className="size-20 text-success-400"
-                />
-                <p className="-ml-4 text-[14px]">
-                  Attempted: &nbsp;{responseData.attempted}
-                </p>
-              </div>
-              <div className="-mt-12 flex items-center">
-                <DotOutline
-                  weight="fill"
-                  className="size-20 text-neutral-200"
-                />
-                <p className="-ml-4 text-[14px]">
-                  Skipped: &nbsp;{responseData.skipped}
-                </p>
-              </div>
-            </div>
-          </div>
-          <div className="flex w-full flex-col items-center">
-            <div className="text-h3 font-semibold">Marks Breakdown</div>
-            <MarksBreakdownComponent marksData={marksData} />
-            {/* <div className="flex flex-col gap-3 ">
+                {/* Charts Section */}
+                <div className="p-6 text-h3 font-semibold text-primary-500">
+                    Score Report
+                </div>
+                <div className="flex flex-col md:flex-col lg:flex-row gap-10 lg:gap-20 p-6">
+                    <div className=" flex sm:flex-row lg:flex-col items-center gap-20 p-6">
+                        <div className="flex flex-col">
+                            <h1>Rank</h1>
+                            <div className="flex items-center gap-1">
+                                {testReport.question_overall_detail_dto.rank ===
+                                    1 && (
+                                    // <Crown className="size-6" />
+                                    <Crown />
+                                )}
+                                <p className="text-neutral-500">
+                                    {
+                                        testReport.question_overall_detail_dto
+                                            .rank
+                                    }
+                                </p>
+                            </div>
+                        </div>
+                        <div>
+                            <h1>Percentile</h1>
+                            <p className="text-center text-neutral-500">
+                                {
+                                    testReport.question_overall_detail_dto
+                                        .percentile
+                                }
+                                %
+                            </p>
+                        </div>
+                        <div>
+                            <h1>Marks</h1>
+                            {/* <p className="text-neutral-500">{studentReport.total_marks}/{testMarks.total_achievable_marks}</p> */}
+                            <p className="text-neutral-500">
+                                {studentReport.total_marks}/
+                                {testMarks?.total_achievable_marks ?? "-"}
+                            </p>
+                        </div>
+                    </div>
+                    <div className="flex w-full flex-col items-center">
+                        <div className="text-h3 font-semibold">
+                            Response Breakdown
+                        </div>
+                        <ResponseBreakdownComponent
+                            responseData={responseData}
+                        />
+                        <div className="flex flex-col pt-8 ">
+                            <div className="-mt-14 flex items-center">
+                                <DotOutline
+                                    weight="fill"
+                                    className="size-20 text-success-400"
+                                />
+                                <p className="-ml-4 text-[14px]">
+                                    Attempted: &nbsp;{responseData.attempted}
+                                </p>
+                            </div>
+                            <div className="-mt-12 flex items-center">
+                                <DotOutline
+                                    weight="fill"
+                                    className="size-20 text-neutral-200"
+                                />
+                                <p className="-ml-4 text-[14px]">
+                                    Skipped: &nbsp;{responseData.skipped}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="flex w-full flex-col items-center">
+                        <div className="text-h3 font-semibold">
+                            Marks Breakdown
+                        </div>
+                        <MarksBreakdownComponent marksData={marksData} />
+                        {/* <div className="flex flex-col gap-3 ">
               <div className="-mb-8 flex items-center justify-between">
                 <div className="flex items-center">
                   <DotOutline
@@ -516,180 +542,209 @@ export const TestReportDialog = ({
                 </div>
               </div>
             </div> */}
-            <div className="flex flex-col w-full">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center space-x-2">
-                  <DotOutline
-                    size={35}
-                    weight="fill"
-                    className="text-success-400 flex-shrink-0"
-                  />
-                  <p className="text-sm md:text-base">Correct Respondents:</p>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <p className="text-sm md:text-base">{marksData.correct}</p>
-                  <p className="text-sm md:text-base">
-                    {testReport.question_overall_detail_dto.totalCorrectMarks >
-                    0
-                      ? `(+${testReport.question_overall_detail_dto.totalCorrectMarks})`
-                      : `(${testReport.question_overall_detail_dto.totalCorrectMarks})`}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center space-x-2">
-                  <DotOutline
-                    size={35}
-                    weight="fill"
-                    className="text-warning-400 flex-shrink-0"
-                  />
-                  <p className="text-sm md:text-base">
-                    Partially Correct Respondents:
-                  </p>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <p className="text-sm md:text-base">
-                    {marksData.partiallyCorrect}
-                  </p>
-                  <p className="text-sm md:text-base">
-                    {testReport.question_overall_detail_dto.totalPartialMarks >
-                    0
-                      ? `(+${testReport.question_overall_detail_dto.totalPartialMarks})`
-                      : `(${testReport.question_overall_detail_dto.totalPartialMarks})`}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center space-x-2">
-                  <DotOutline
-                    size={35}
-                    weight="fill"
-                    className="text-danger-400 flex-shrink-0"
-                  />
-                  <p className="text-sm md:text-base">Wrong Respondents:</p>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <p className="text-sm md:text-base">
-                    {marksData.wrongResponse}
-                  </p>
-                  <p className="text-sm md:text-base">
-                    {testReport.question_overall_detail_dto
-                      .totalIncorrectMarks > 0
-                      ? `(+${testReport.question_overall_detail_dto.totalIncorrectMarks})`
-                      : `(${testReport.question_overall_detail_dto.totalIncorrectMarks})`}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <DotOutline
-                    size={35}
-                    weight="fill"
-                    className="text-neutral-200 flex-shrink-0"
-                  />
-                  <p className="text-sm md:text-base">Skipped:</p>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <p className="text-sm md:text-base">{marksData.skipped}</p>
-                  <p className="text-sm md:text-base">(0)</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <Separator />
-
-        <Tabs
-          value={selectedSection}
-          onValueChange={setSelectedSection}
-          className=""
-        >
-          <div className="sticky top-0 flex items-center justify-between overflow-auto">
-            <TabsList className="mb-2 mt-6 inline-flex h-auto justify-start gap-4 rounded-none border-b !bg-transparent p-0">
-              {sectionsInfo?.map((section) => (
-                <TabsTrigger
-                  key={section.id}
-                  value={section.id}
-                  className={`flex gap-1.5 rounded-none px-12 py-2 !shadow-none ${
-                    selectedSection === section.id
-                      ? "rounded-t-sm border !border-b-0 border-primary-200 !bg-primary-50"
-                      : "border-none bg-transparent"
-                  }`}
-                  onClick={() => setSelectedSection(section.id)}
-                >
-                  <span
-                    className={`${selectedSection === section.id ? "text-primary-500" : ""}`}
-                  >
-                    {section.name}
-                  </span>
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </div>
-        </Tabs>
-
-        {/* Answer Review Section */}
-        <div className="flex w-full flex-col gap-10 p-2">
-          <div className="flex justify-between">
-            <div className="text-h3 font-semibold text-primary-500">
-              Answer Review
-            </div>
-            {/* Section Marks Display */}
-            <div className="text-primary-500">
-              Section Total Marks:{" "}
-              {
-                testMarks?.section_wise_achievable_marks?.[
-                  selectedSection ?? "0"
-                ]
-              }
-            </div>
-          </div>
-          <div className="flex w-full flex-col gap-10 pb-10 md:pb-0">
-            {currentSectionAllQuestions &&
-            currentSectionAllQuestions.length > 0 ? (
-              currentSectionAllQuestions.map((review, index) => {
-                // Import the renderer functions
-                // const { renderStudentResponse, renderCorrectAnswer } = require("./question-response-renderer")
-
-                return (
-                  <div className="flex w-full flex-col gap-10" key={index}>
-                    <div className="flex w-full flex-col gap-4">
-                      <div className="flex w-full items-start justify-between gap-6 text-subtitle">
-                        <div className="md:flex-row w-full items-start gap-6 text-title">
-                          <div className="flex justify-between w-full">
-                            <div className="">
-                              Question ({index + 1}.)
-                              <span className="ml-2 text-xs text-neutral-500">
-                                {review.question_type}
-                              </span>
+                        <div className="flex flex-col w-full">
+                            <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center space-x-2">
+                                    <DotOutline
+                                        size={35}
+                                        weight="fill"
+                                        className="text-success-400 flex-shrink-0"
+                                    />
+                                    <p className="text-sm md:text-base">
+                                        Correct Respondents:
+                                    </p>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                    <p className="text-sm md:text-base">
+                                        {marksData.correct}
+                                    </p>
+                                    <p className="text-sm md:text-base">
+                                        {testReport.question_overall_detail_dto
+                                            .totalCorrectMarks > 0
+                                            ? `(+${testReport.question_overall_detail_dto.totalCorrectMarks})`
+                                            : `(${testReport.question_overall_detail_dto.totalCorrectMarks})`}
+                                    </p>
+                                </div>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <Clock size={20} />
-                              <p className="text-primary-500">
-                                {review.time_taken_in_seconds} sec
-                              </p>
+
+                            <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center space-x-2">
+                                    <DotOutline
+                                        size={35}
+                                        weight="fill"
+                                        className="text-warning-400 flex-shrink-0"
+                                    />
+                                    <p className="text-sm md:text-base">
+                                        Partially Correct Respondents:
+                                    </p>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                    <p className="text-sm md:text-base">
+                                        {marksData.partiallyCorrect}
+                                    </p>
+                                    <p className="text-sm md:text-base">
+                                        {testReport.question_overall_detail_dto
+                                            .totalPartialMarks > 0
+                                            ? `(+${testReport.question_overall_detail_dto.totalPartialMarks})`
+                                            : `(${testReport.question_overall_detail_dto.totalPartialMarks})`}
+                                    </p>
+                                </div>
                             </div>
-                          </div>
-                          <div>{parseHtmlToString(review.question_name)}</div>
+
+                            <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center space-x-2">
+                                    <DotOutline
+                                        size={35}
+                                        weight="fill"
+                                        className="text-danger-400 flex-shrink-0"
+                                    />
+                                    <p className="text-sm md:text-base">
+                                        Wrong Respondents:
+                                    </p>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                    <p className="text-sm md:text-base">
+                                        {marksData.wrongResponse}
+                                    </p>
+                                    <p className="text-sm md:text-base">
+                                        {testReport.question_overall_detail_dto
+                                            .totalIncorrectMarks > 0
+                                            ? `(+${testReport.question_overall_detail_dto.totalIncorrectMarks})`
+                                            : `(${testReport.question_overall_detail_dto.totalIncorrectMarks})`}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center space-x-2">
+                                    <DotOutline
+                                        size={35}
+                                        weight="fill"
+                                        className="text-neutral-200 flex-shrink-0"
+                                    />
+                                    <p className="text-sm md:text-base">
+                                        Skipped:
+                                    </p>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                    <p className="text-sm md:text-base">
+                                        {marksData.skipped}
+                                    </p>
+                                    <p className="text-sm md:text-base">(0)</p>
+                                </div>
+                            </div>
                         </div>
-                      </div>
-                      <div className="flex w-full items-start gap-6 text-subtitle">
-                        <div className="min-w-[120px]">Your response:</div>
-                        <div className="flex w-full items-start justify-between">
-                          <div
-                            className={`flex w-full rounded-lg p-4 ${
-                              review.answer_status == "CORRECT"
-                                ? "bg-success-50"
-                                : review.answer_status == "INCORRECT"
-                                  ? "bg-danger-100"
-                                  : "bg-neutral-50"
-                            }`}
-                          >
-                            {/* <div>
+                    </div>
+                </div>
+
+                <Separator />
+
+                <Tabs
+                    value={selectedSection}
+                    onValueChange={setSelectedSection}
+                    className=""
+                >
+                    <div className="sticky top-0 flex items-center justify-between overflow-auto">
+                        <TabsList className="mb-2 mt-6 inline-flex h-auto justify-start gap-4 rounded-none border-b !bg-transparent p-0">
+                            {sectionsInfo?.map((section) => (
+                                <TabsTrigger
+                                    key={section.id}
+                                    value={section.id}
+                                    className={`flex gap-1.5 rounded-none px-12 py-2 !shadow-none ${
+                                        selectedSection === section.id
+                                            ? "rounded-t-sm border !border-b-0 border-primary-200 !bg-primary-50"
+                                            : "border-none bg-transparent"
+                                    }`}
+                                    onClick={() =>
+                                        setSelectedSection(section.id)
+                                    }
+                                >
+                                    <span
+                                        className={`${selectedSection === section.id ? "text-primary-500" : ""}`}
+                                    >
+                                        {section.name}
+                                    </span>
+                                </TabsTrigger>
+                            ))}
+                        </TabsList>
+                    </div>
+                </Tabs>
+
+                {/* Answer Review Section */}
+                <div className="flex w-full flex-col gap-10 p-2">
+                    <div className="flex justify-between">
+                        <div className="text-h3 font-semibold text-primary-500">
+                            Answer Review
+                        </div>
+                        {/* Section Marks Display */}
+                        <div className="text-primary-500">
+                            Section Total Marks:{" "}
+                            {
+                                testMarks?.section_wise_achievable_marks?.[
+                                    selectedSection ?? "0"
+                                ]
+                            }
+                        </div>
+                    </div>
+                    <div className="flex w-full flex-col gap-10 pb-10 md:pb-0">
+                        {currentSectionAllQuestions &&
+                        currentSectionAllQuestions.length > 0 ? (
+                            currentSectionAllQuestions.map((review, index) => {
+                                // Import the renderer functions
+                                // const { renderStudentResponse, renderCorrectAnswer } = require("./question-response-renderer")
+
+                                return (
+                                    <div
+                                        className="flex w-full flex-col gap-10"
+                                        key={index}
+                                    >
+                                        <div className="flex w-full flex-col gap-4">
+                                            <div className="flex w-full items-start justify-between gap-6 text-subtitle">
+                                                <div className="md:flex-row w-full items-start gap-6 text-title">
+                                                    <div className="flex justify-between w-full">
+                                                        <div className="">
+                                                            Question (
+                                                            {index + 1}.)
+                                                            <span className="ml-2 text-xs text-neutral-500">
+                                                                {
+                                                                    review.question_type
+                                                                }
+                                                            </span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <Clock size={20} />
+                                                            <p className="text-primary-500">
+                                                                {
+                                                                    review.time_taken_in_seconds
+                                                                }{" "}
+                                                                sec
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        {parseHtmlToString(
+                                                            review.question_name
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="flex w-full items-start gap-6 text-subtitle">
+                                                <div className="min-w-[120px]">
+                                                    Your response:
+                                                </div>
+                                                <div className="flex w-full items-start justify-between">
+                                                    <div
+                                                        className={`flex w-full rounded-lg p-4 ${
+                                                            review.answer_status ==
+                                                            "CORRECT"
+                                                                ? "bg-success-50"
+                                                                : review.answer_status ==
+                                                                    "INCORRECT"
+                                                                  ? "bg-danger-100"
+                                                                  : "bg-neutral-50"
+                                                        }`}
+                                                    >
+                                                        {/* <div>
                               {review.student_response_options &&
                               review.student_response_options.length > 0 ? (
                                 review.student_response_options.map(
@@ -705,97 +760,116 @@ export const TestReportDialog = ({
                                 <p>No response</p>
                               )}
                             </div> */}
-                            {renderStudentResponse(review, questionsData)}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="">
-                        <MarksStatusIndicator
-                          mark={review.mark}
-                          answer_status={
-                            review.answer_status as
-                              | "CORRECT"
-                              | "INCORRECT"
-                              | "PARTIAL_CORRECT"
-                              | "DEFAULT"
-                            // | "PENDING"
-                          }
-                        />
-                      </div>
-                      {review.answer_status !== "CORRECT" && (
-                        <div className="flex w-full items-start gap-6 text-subtitle">
-                          <div className="min-w-[120px]">Correct answer:</div>
-                          <div className="flex w-full items-start justify-between">
-                            <div
-                              className={`flex w-full rounded-lg bg-success-50 p-4`}
-                            >
-                              {renderCorrectAnswer(review, questionsData)}
+                                                        {renderStudentResponse(
+                                                            review,
+                                                            questionsData
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="">
+                                                <MarksStatusIndicator
+                                                    mark={review.mark}
+                                                    answer_status={
+                                                        review.answer_status as
+                                                            | "CORRECT"
+                                                            | "INCORRECT"
+                                                            | "PARTIAL_CORRECT"
+                                                            | "DEFAULT"
+                                                        // | "PENDING"
+                                                    }
+                                                />
+                                            </div>
+                                            {review.answer_status !==
+                                                "CORRECT" && (
+                                                <div className="flex w-full items-start gap-6 text-subtitle">
+                                                    <div className="min-w-[120px]">
+                                                        Correct answer:
+                                                    </div>
+                                                    <div className="flex w-full items-start justify-between">
+                                                        <div
+                                                            className={`flex w-full rounded-lg bg-success-50 p-4`}
+                                                        >
+                                                            {renderCorrectAnswer(
+                                                                review,
+                                                                questionsData
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {review.explanation ? (
+                                                <div className="flex items-start gap-6 text-subtitle">
+                                                    <div className="min-w-[120px]">
+                                                        Explanation:
+                                                    </div>
+                                                    <div>
+                                                        {parseHtmlToString(
+                                                            review.explanation
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className="flex items-start gap-6 text-subtitle">
+                                                    <div className="min-w-[120px]">
+                                                        Explanation:
+                                                    </div>
+                                                    <div>
+                                                        No explanation given
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <Separator />
+                                    </div>
+                                );
+                            })
+                        ) : (
+                            <div className="py-4 text-center text-subtitle">
+                                No answer review available
                             </div>
-                          </div>
-                        </div>
-                      )}
-                      {review.explanation ? (
-                        <div className="flex items-start gap-6 text-subtitle">
-                          <div className="min-w-[120px]">Explanation:</div>
-                          <div>{parseHtmlToString(review.explanation)}</div>
-                        </div>
-                      ) : (
-                        <div className="flex items-start gap-6 text-subtitle">
-                          <div className="min-w-[120px]">Explanation:</div>
-                          <div>No explanation given</div>
-                        </div>
-                      )}
+                        )}
                     </div>
-                    <Separator />
-                  </div>
-                );
-              })
-            ) : (
-              <div className="py-4 text-center text-subtitle">
-                No answer review available
-              </div>
-            )}
-          </div>
-        </div>
-        {evaluation_type === "MANUAL" && pdfFile && (
-          <div className="sticky bottom-0 left-0 right-0 p-4 bg-white shadow-md">
-            <div className="flex justify-center">
-              <MyButton
-                buttonType="primary"
-                scale="large"
-                layoutVariant="default"
-                onClick={handlePreviewPdf}
-                className="flex items-center gap-2"
-              >
-                <FileText className="h-4 w-4" />
-                View PDF
-              </MyButton>
-            </div>
-          </div>
-        )}
-        <div
-          className={`fixed bottom-0 left-0 right-0 p-4 bg-white shadow-md md:hidden lg:hidden ${evaluation_type === "MANUAL" && pdfFile ? "mb-16" : ""}`}
-        >
-          <div className="flex justify-center">
-            <MyButton
-              buttonType="secondary"
-              scale="large"
-              layoutVariant="default"
-              onClick={!isLoading ? handleExport : undefined}
-            >
-              <Export />
-              {isLoading ? (
-                <span className="ml-2">Exporting...</span>
-              ) : (
-                <>Export</>
-              )}
-            </MyButton>
-          </div>
-        </div>
-        {showPdfPreview && pdfFile ? (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-opacity-50 p-4">
-            <div className="bg-white rounded-lg w-full max-w-5xl h-[90vh] flex flex-col">
-              {/* <div className="flex justify-between items-center p-4 border-b">
+                </div>
+                {evaluation_type === "MANUAL" && pdfFile && (
+                    <div className="sticky bottom-0 left-0 right-0 p-4 bg-white shadow-md">
+                        <div className="flex justify-center">
+                            <MyButton
+                                buttonType="primary"
+                                scale="large"
+                                layoutVariant="default"
+                                onClick={handlePreviewPdf}
+                                className="flex items-center gap-2"
+                            >
+                                <FileText className="h-4 w-4" />
+                                View PDF
+                            </MyButton>
+                        </div>
+                    </div>
+                )}
+                <div
+                    className={`fixed bottom-0 left-0 right-0 p-4 bg-white shadow-md md:hidden lg:hidden ${evaluation_type === "MANUAL" && pdfFile ? "mb-16" : ""}`}
+                >
+                    <div className="flex justify-center">
+                        <MyButton
+                            buttonType="secondary"
+                            scale="large"
+                            layoutVariant="default"
+                            onClick={!isLoading ? handleExport : undefined}
+                        >
+                            <Export />
+                            {isLoading ? (
+                                <span className="ml-2">Exporting...</span>
+                            ) : (
+                                <>Export</>
+                            )}
+                        </MyButton>
+                    </div>
+                </div>
+                {showPdfPreview && pdfFile ? (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-opacity-50 p-4">
+                        <div className="bg-white rounded-lg w-full max-w-5xl h-[90vh] flex flex-col">
+                            {/* <div className="flex justify-between items-center p-4 border-b">
                 <Button
                   variant="ghost"
                   onClick={() => setShowPdfPreview(false)}
@@ -803,25 +877,25 @@ export const TestReportDialog = ({
                   <span className="sr-only">Back</span>← Back
                 </Button>
               </div> */}
-              <div className="flex-1 overflow-auto">
-                <PdfViewerComponent
-                  pdfUrl={pdfFile.fileUrl}
-                  handleDocumentLoad={handleDocumentLoad}
-                  handlePageChange={handlePageChange}
-                />
-              </div>
-              <div className="p-4 border-t">
-                <MyButton
-                  buttonType="secondary"
-                  onClick={() => setShowPdfPreview(false)}
-                >
-                  Close
-                </MyButton>
-              </div>
+                            <div className="flex-1 overflow-auto">
+                                <PdfViewerComponent
+                                    pdfUrl={pdfFile.fileUrl}
+                                    handleDocumentLoad={handleDocumentLoad}
+                                    handlePageChange={handlePageChange}
+                                />
+                            </div>
+                            <div className="p-4 border-t">
+                                <MyButton
+                                    buttonType="secondary"
+                                    onClick={() => setShowPdfPreview(false)}
+                                >
+                                    Close
+                                </MyButton>
+                            </div>
+                        </div>
+                    </div>
+                ) : null}
             </div>
-          </div>
-        ) : null}
-      </div>
-    </>
-  );
+        </>
+    );
 };

@@ -69,6 +69,7 @@ const tryGetPublicUrl = async (
 export const transformApiDataToCourseData = async (
     apiData: CourseWithSessionsType
 ) => {
+    if (!apiData) return null;
     try {
         const [coursePreviewImageMediaId, courseBannerMediaId, courseMediaId] =
             await Promise.all([

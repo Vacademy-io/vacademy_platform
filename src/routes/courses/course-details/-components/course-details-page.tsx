@@ -608,82 +608,96 @@ export const CourseDetailsPage = () => {
                             />
 
                             {/* What You'll Learn Section */}
-                            <div className="mb-8">
-                                <h2 className="mb-4 text-2xl font-bold">
-                                    What you&apos;ll learn?
-                                </h2>
-                                <div className="rounded-lg">
-                                    <p
-                                        dangerouslySetInnerHTML={{
-                                            __html:
-                                                form.getValues("courseData")
-                                                    .whatYoullLearn || "",
-                                        }}
-                                    />
+                            {form.getValues("courseData").whatYoullLearn && (
+                                <div className="mb-8">
+                                    <h2 className="mb-4 text-2xl font-bold">
+                                        What you&apos;ll learn?
+                                    </h2>
+                                    <div className="rounded-lg">
+                                        <p
+                                            dangerouslySetInnerHTML={{
+                                                __html:
+                                                    form.getValues("courseData")
+                                                        .whatYoullLearn || "",
+                                            }}
+                                        />
+                                    </div>
                                 </div>
-                            </div>
+                            )}
 
                             {/* About Content Section */}
-                            <div className="mb-8">
-                                <h2 className="mb-4 text-2xl font-bold">
-                                    About this course
-                                </h2>
-                                <div className="rounded-lg">
-                                    <p
-                                        dangerouslySetInnerHTML={{
-                                            __html:
-                                                form.getValues("courseData")
-                                                    .aboutTheCourse || "",
-                                        }}
-                                    />
+                            {form.getValues("courseData").aboutTheCourse && (
+                                <div className="mb-8">
+                                    <h2 className="mb-4 text-2xl font-bold">
+                                        About this course
+                                    </h2>
+                                    <div className="rounded-lg">
+                                        <p
+                                            dangerouslySetInnerHTML={{
+                                                __html:
+                                                    form.getValues("courseData")
+                                                        .aboutTheCourse || "",
+                                            }}
+                                        />
+                                    </div>
                                 </div>
-                            </div>
+                            )}
 
                             {/* Who Should Join Section */}
-                            <div className="mb-8">
-                                <h2 className="mb-4 text-2xl font-bold">
-                                    Who should join?
-                                </h2>
-                                <div className="rounded-lg">
-                                    <p
-                                        dangerouslySetInnerHTML={{
-                                            __html:
-                                                form.getValues("courseData")
-                                                    .whoShouldLearn || "",
-                                        }}
-                                    />
+                            {form.getValues("courseData").whoShouldLearn && (
+                                <div className="mb-8">
+                                    <h2 className="mb-4 text-2xl font-bold">
+                                        Who should join?
+                                    </h2>
+                                    <div className="rounded-lg">
+                                        <p
+                                            dangerouslySetInnerHTML={{
+                                                __html:
+                                                    form.getValues("courseData")
+                                                        .whoShouldLearn || "",
+                                            }}
+                                        />
+                                    </div>
                                 </div>
-                            </div>
+                            )}
 
                             {/* Instructors Section */}
-                            <div className="mb-8">
-                                <h2 className="mb-4 text-2xl font-bold">
-                                    Instructors
-                                </h2>
-                                {form
-                                    .getValues("courseData")
-                                    .instructors.map((instructor, index) => (
-                                        <div
-                                            key={index}
-                                            className="flex gap-4 rounded-lg bg-gray-50 p-4"
-                                        >
-                                            <Avatar className="size-8">
-                                                <AvatarImage
-                                                    src=""
-                                                    alt={instructor.email}
-                                                />
-                                                <AvatarFallback className="bg-[#3B82F6] text-xs font-medium text-white">
-                                                    {getInitials(
-                                                        instructor.email
-                                                    )}
-                                                </AvatarFallback>
-                                            </Avatar>
-                                            <h3 className="text-lg">
-                                                {instructor.name}
-                                            </h3>
-                                        </div>
-                                    ))}
-                            </div>
+                            {form.getValues("courseData").instructors &&
+                                form.getValues("courseData").instructors
+                                    .length > 0 && (
+                                    <div className="mb-8">
+                                        <h2 className="mb-4 text-2xl font-bold">
+                                            Instructors
+                                        </h2>
+                                        {form
+                                            .getValues("courseData")
+                                            .instructors.map(
+                                                (instructor, index) => (
+                                                    <div
+                                                        key={index}
+                                                        className="flex gap-4 rounded-lg bg-gray-50 p-4"
+                                                    >
+                                                        <Avatar className="size-8">
+                                                            <AvatarImage
+                                                                src=""
+                                                                alt={
+                                                                    instructor.email
+                                                                }
+                                                            />
+                                                            <AvatarFallback className="bg-[#3B82F6] text-xs font-medium text-white">
+                                                                {getInitials(
+                                                                    instructor.email
+                                                                )}
+                                                            </AvatarFallback>
+                                                        </Avatar>
+                                                        <h3 className="text-lg">
+                                                            {instructor.name}
+                                                        </h3>
+                                                    </div>
+                                                )
+                                            )}
+                                    </div>
+                                )}
                         </div>
 
                         {/* Right Column - 1/3 width */}

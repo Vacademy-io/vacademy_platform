@@ -7,6 +7,7 @@ import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.faculty.enums.FacultyStatusEnum;
+import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerStatusEnum;
 import vacademy.io.admin_core_service.features.learner_operation.enums.LearnerOperationEnum;
 import vacademy.io.admin_core_service.features.packages.dto.PackageDetailDTO;
 import vacademy.io.admin_core_service.features.packages.dto.PackageDetailProjection;
@@ -177,8 +178,8 @@ public class LearnerPackageService {
             CustomUserDetails user) {
         Page<PackageDetailProjection> learnerPackageDetail;
         if (StringUtils.hasText(learnerPackageFilterDTO.getSearchByName())) {
-            learnerPackageDetail = packageRepository.getIncomplteLearnerPackageDetail(
-                    user.getId(),
+            learnerPackageDetail = packageRepository.getStudentAssignedPackages(
+                    user.getUserId(),
                     learnerPackageFilterDTO.getSearchByName(),
                     instituteId,
                     List.of(PackageStatusEnum.ACTIVE.name()),
@@ -186,11 +187,12 @@ public class LearnerPackageService {
                     List.of(LearnerOperationEnum.PERCENTAGE_PACKAGE_SESSION_COMPLETED.name()),
                     List.of(StatusEnum.ACTIVE.name()),
                     List.of(StatusEnum.ACTIVE.name()),
+                    List.of(LearnerStatusEnum.ACTIVE.name()),
                     pageable
             );
         } else {
-            learnerPackageDetail = packageRepository.getIncompleteLearnerPackages(
-                    user.getId(),
+            learnerPackageDetail = packageRepository.getIncompleteMappedPackages(
+                    user.getUserId(),
                     instituteId,
                     learnerPackageFilterDTO.getLevelIds(),
                     List.of(PackageStatusEnum.ACTIVE.name()),
@@ -200,6 +202,7 @@ public class LearnerPackageService {
                     List.of(StatusEnum.ACTIVE.name()),
                     learnerPackageFilterDTO.getTag(),
                     List.of(StatusEnum.ACTIVE.name()),
+                    List.of(LearnerStatusEnum.ACTIVE.name()),
                     pageable
             );
         }

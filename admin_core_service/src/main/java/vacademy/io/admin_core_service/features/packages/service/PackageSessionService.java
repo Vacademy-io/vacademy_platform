@@ -47,4 +47,10 @@ public class PackageSessionService {
         AddLearnerInvitationDTO learnerInvitationDTO = LearnerInvitationDefaultFormGenerator.generateSampleInvitation(packageSession,instituteId);
         learnerInvitationService.createLearnerInvitationCode(learnerInvitationDTO,userDetails);
     }
+
+    public PackageSession updatePackageSession(String packageSessionId,String status){
+        PackageSession packageSession = packageRepository.findById(packageSessionId).get();
+        packageSession.setStatus(status);
+        return packageRepository.save(packageSession);
+    }
 }

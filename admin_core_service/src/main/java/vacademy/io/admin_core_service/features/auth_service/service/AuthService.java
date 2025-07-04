@@ -45,6 +45,9 @@ public class AuthService {
     }
 
     public List<UserDTO> getUsersFromAuthServiceByUserIds(List<String> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return List.of();
+        }
         try {
             ObjectMapper objectMapper = new ObjectMapper();
             ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(

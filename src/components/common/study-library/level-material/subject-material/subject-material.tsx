@@ -1,8 +1,5 @@
-import { EmptySubjectMaterial } from "@/assets/svgs";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
 import { useEffect, useState } from "react";
-import { SubjectCard } from "./subject-card";
-import { useSidebar } from "@/components/ui/sidebar";
 import { useStudyLibraryStore } from "@/stores/study-library/use-study-library-store";
 import { PullToRefreshWrapper } from "@/components/design-system/pull-to-refresh";
 import { fetchStudyLibraryDetails } from "@/services/study-library/getStudyLibraryDetails";
@@ -69,7 +66,6 @@ export type SubjectModulesMap = { [subjectId: string]: ModuleWithChapters[] };
 export const SubjectMaterial = () => {
     const router = useRouter();
     const { setNavHeading } = useNavHeadingStore();
-    const { open } = useSidebar();
     const { studyLibraryData, setStudyLibraryData } = useStudyLibraryStore();
     const [selectedTab, setSelectedTab] = useState<string>(TabType.OUTLINE);
     const handleTabChange = (value: string) => setSelectedTab(value);
@@ -85,7 +81,7 @@ export const SubjectMaterial = () => {
             const slides = await fetchSlidesByChapterId(chapterId);
             setSlidesMap((prev) => ({ ...prev, [chapterId]: slides }));
         } catch (err) {
-            console.error("err");
+            console.error("err", err);
         }
     };
 
@@ -221,17 +217,21 @@ export const SubjectMaterial = () => {
     const [openSubjects, setOpenSubjects] = useState<Set<string>>(new Set());
     const [openModules, setOpenModules] = useState<Set<string>>(new Set());
     const [openChapters, setOpenChapters] = useState<Set<string>>(new Set());
-
     const toggleOpenState = (
         id: string,
         setter: React.Dispatch<React.SetStateAction<Set<string>>>
     ) => {
         setter((prev) => {
-            const u = new Set(prev);
-            u.has(id) ? u.delete(id) : u.add(id);
-            return u;
+            const updatedSet = new Set(prev);
+            if (updatedSet.has(id)) {
+                updatedSet.delete(id);
+            } else {
+                updatedSet.add(id);
+            }
+            return updatedSet;
         });
     };
+
     const toggleSubject = (id: string) => toggleOpenState(id, setOpenSubjects);
     const toggleModule = (id: string) => toggleOpenState(id, setOpenModules);
     const toggleChapter = (id: string) => toggleOpenState(id, setOpenChapters);

@@ -20,22 +20,12 @@ export const ModuleMaterial = () => {
         useModulesWithChaptersStore();
     const { studyLibraryData } = useStudyLibraryStore();
 
-    const handleBackClick = () => {
-        router.navigate({
-            to: `/study-library/courses/course-details/subjects`,
-            search: {
-                courseId: searchParams.courseId || "",
-                levelId: searchParams.levelId || "",
-            },
-        });
-    };
-
     const subjectName = getSubjectName(subjectId, studyLibraryData);
 
     const heading = (
         <div className="flex items-center gap-2">
             <div
-                onClick={handleBackClick}
+                onClick={() => window.history.back()}
                 className="cursor-pointer p-1 rounded-md hover:bg-primary-50 hover:text-primary-600 transition-all duration-200 hover:scale-110"
             >
                 <CaretLeft className="size-5" />

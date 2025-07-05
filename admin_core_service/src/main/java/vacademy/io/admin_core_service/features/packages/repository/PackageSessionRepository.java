@@ -170,4 +170,11 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
     );
 
     Optional<PackageSession> findByPackageEntityIdAndSessionIdAndLevelId(String packageId, String sessionId, String levelId);
+
+    @Query(value = """
+    SELECT ps.id, ps.level_id, ps.session_id, ps.start_time, ps.updated_at, ps.created_at, ps.status, ps.package_id, ps.group_id
+    FROM package_session ps
+    WHERE ps.id IN (:packageSessionIds)
+    """, nativeQuery = true)
+    List<PackageSession> findPackageSessionsByIds(@Param("packageSessionIds") List<String> packageSessionIds);
 }

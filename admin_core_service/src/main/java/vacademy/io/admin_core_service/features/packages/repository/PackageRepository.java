@@ -1594,6 +1594,28 @@ WHERE
             Pageable pageable
     );
 
+    @Query(value = """
+    SELECT DISTINCT l.* 
+    FROM level l
+    JOIN package_session ps ON l.id = ps.level_id
+    WHERE ps.id IN (:packageSessionIds)
+      AND l.status IN (:statusList)
+      AND ps.status IN (:statusList)
+    """, nativeQuery = true)
+    List<LevelProjection> findDistinctLevelsByPackageSessionIdsAndStatusIn(
+            @Param("packageSessionIds") List<String> packageSessionIds,
+            @Param("statusList") List<String> statusList);
 
+    @Query(value = """
+    SELECT DISTINCT TRIM(tag)
+    FROM package_session ps
+    JOIN package p ON ps.package_id = p.id,
+         LATERAL unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
+    WHERE ps.id IN (:packageSessionIds)
+      AND p.status != 'DELETED'
+      AND p.comma_separated_tags IS NOT NULL
+      AND p.comma_separated_tags != ''
+    """, nativeQuery = true)
+    List<String> findAllDistinctTagsByPackageSessionIds(@Param("packageSessionIds") List<String> packageSessionIds);
 
 }

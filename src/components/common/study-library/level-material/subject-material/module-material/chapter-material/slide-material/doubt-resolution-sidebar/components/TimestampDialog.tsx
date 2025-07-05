@@ -195,15 +195,33 @@ export const TimestampDialog = ({ open, onOpenChange, onTimestampSet, initialTim
     };
 
     return (
-        <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-md">
-                <DialogHeader>
-                    <DialogTitle className="text-primary-500">
-                        {isDocument ? "Set Page Number" : "Set Timestamp"}
-                    </DialogTitle>
+        <div style={{ zIndex: 20000 }} className="relative">
+            <Dialog open={open} onOpenChange={onOpenChange}>
+                <DialogContent 
+                    className="max-w-md z-[20000] fixed bg-white/95 backdrop-blur-xl border border-gray-200/60 shadow-2xl rounded-2xl overflow-hidden" 
+                    style={{ zIndex: 20000 }}
+                >
+                <DialogHeader className="border-b border-gray-100/80 bg-gradient-to-r from-white to-primary-50/30 p-6 pb-4">
+                    <div className="flex items-center gap-3">
+                        <div className="flex items-center justify-center w-8 h-8 bg-gradient-to-br from-primary-500 to-primary-600 rounded-lg shadow-sm">
+                            {isDocument ? (
+                                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                            ) : (
+                                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                            )}
+                        </div>
+                        <DialogTitle className="text-lg font-bold text-gray-900 tracking-tight">
+                            {isDocument ? "Set Page Number" : "Set Timestamp"}
+                        </DialogTitle>
+                    </div>
                 </DialogHeader>
                 
-                <div className="flex gap-2 flex-col justify-between">
+                <div className="p-6 bg-white">
+                    <div className="flex gap-2 flex-col justify-between">
                     {isDocument ? (
                         <div className="flex flex-col gap-2 w-full">
                         <div className="flex items-center justify-between w-full gap-2">
@@ -268,33 +286,37 @@ export const TimestampDialog = ({ open, onOpenChange, onTimestampSet, initialTim
                         </div>
                     )}
                     
-                    {/* Error message display */}
-                    {validationError && (
-                        <div className="text-red-500 text-sm ">
-                            {validationError}
-                        </div>
-                    )}
-                
-                </div>
-                
-                <div className="flex gap-2 justify-between w-full">
-                    <MyButton 
-                        buttonType="secondary" 
-                        scale="medium"
-                        onClick={() => onOpenChange(false)}
-                    >
-                        Cancel
-                    </MyButton>
-                    <MyButton 
-                        buttonType="primary" 
-                        scale="medium"
-                        onClick={handleSubmit}
-                        disable={!isValidInput()}
-                    >
-                        Set {isDocument ? "Page" : "Timestamp"}
-                    </MyButton>
+                        {/* Error message display */}
+                        {validationError && (
+                            <div className="text-red-500 text-sm ">
+                                {validationError}
+                            </div>
+                        )}
+                    
+                    </div>
+                    
+                    <div className="flex gap-2 justify-between w-full mt-6 pt-4 border-t border-gray-100">
+                        <MyButton 
+                            buttonType="secondary" 
+                            scale="medium"
+                            onClick={() => onOpenChange(false)}
+                            className="hover:bg-gray-100 transition-all duration-200"
+                        >
+                            Cancel
+                        </MyButton>
+                        <MyButton 
+                            buttonType="primary" 
+                            scale="medium"
+                            onClick={handleSubmit}
+                            disable={!isValidInput()}
+                            className="bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 shadow-lg hover:shadow-xl transition-all duration-300"
+                        >
+                            Set {isDocument ? "Page" : "Timestamp"}
+                        </MyButton>
+                    </div>
                 </div>
             </DialogContent>
         </Dialog>
+        </div>
     );
 }; 

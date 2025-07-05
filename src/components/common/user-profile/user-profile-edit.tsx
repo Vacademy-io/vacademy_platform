@@ -12,6 +12,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
+import {
   X,
   User,
   EnvelopeSimple,
@@ -19,7 +25,10 @@ import {
   Buildings,
   Users,
   GraduationCap,
+  GlobeSimple,
 } from "@phosphor-icons/react";
+import { Pencil } from "lucide-react";
+
 import { HOLISTIC_INSTITUTE_ID, STUDENT_DETAIL_EDIT } from "@/constants/urls";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { useNavigate } from "@tanstack/react-router";
@@ -27,15 +36,12 @@ import { Preferences } from "@capacitor/preferences";
 import { MyButton } from "@/components/design-system/button";
 import { Loader2 } from "lucide-react";
 import type { Student } from "@/types/user/user-detail";
-// import PhoneInputField from "@/components/phone-input-field";
 import { FormProvider, useForm } from "react-hook-form";
 import { useFileUpload } from "@/hooks/use-file-upload";
 import PhoneInputField from "@/components/design-system/phone-input-field";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
-import { GlobeSimple, PencilSimpleLine } from "phosphor-react";
 import { useInstituteFeatureStore } from "@/stores/insititute-feature-store";
 
-// Define the update request body interface
 interface UpdateStudentRequest {
   user_id: string;
   email: string;
@@ -82,17 +88,15 @@ export default function EditProfile() {
   const [isUploading, setIsUploading] = useState(false);
   const { uploadFile, getPublicUrl } = useFileUpload();
   const { showForInstitutes } = useInstituteFeatureStore();
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   const methods = useForm();
   const navigate = useNavigate();
 
-  // Function to get public URL for face image
   const getProfileImage = async (faceFileId: string) => {
     if (!faceFileId) return null;
-
     try {
-      const url = await getPublicUrl(faceFileId);
-      return url;
+      return await getPublicUrl(faceFileId);
     } catch (error) {
       console.error("Error getting profile image URL:", error);
       return null;
@@ -122,25 +126,20 @@ export default function EditProfile() {
         });
 
         if (existingDetails.value) {
-          // Parse existing details
           const detailsObj = JSON.parse(existingDetails.value);
-
-          // Update just the face_file_id field
           detailsObj.face_file_id = fileId;
 
-          // Save back the updated object
           await Preferences.set({
             key: "StudentDetails",
             value: JSON.stringify(detailsObj),
           });
         }
-        // Update the face_file_id in the form data
+
         setFormData((prev) => ({
           ...prev,
           face_file_id: fileId,
         }));
 
-        // Get and set the public URL for preview
         const url = await getPublicUrl(fileId);
         setProfileImageUrl(url);
       }
@@ -151,127 +150,82 @@ export default function EditProfile() {
     }
   };
 
-  // Fetch student data from Preferences
-  // const handleProfileImageChange = async (
-  //   e: React.ChangeEvent<HTMLInputElement>
-  // ) => {
-  //   const file = e.target.files?.[0];
-  //   if (!file) return;
+  const handleRemoveProfileImage = async () => {
+    try {
+      setIsUploading(true);
 
-  //   try {
-  //     setIsUploading(true);
-  //     const fileId = await uploadFile({
-  //       file,
-  //       setIsUploading,
-  //       userId: formData.user_id,
-  //       source: "PROFILE_PHOTOS",
-  //       sourceId: "STUDENTS",
-  //       publicUrl: true,
-  //     });
+      const existingDetails = await Preferences.get({ key: "StudentDetails" });
+      if (existingDetails.value) {
+        const detailsObj = JSON.parse(existingDetails.value);
+        detailsObj.face_file_id = "";
 
-  //     if (fileId) {
-  //       // Update the face_file_id in formData
-  //       setFormData((prev) => ({
-  //         ...prev,
-  //         face_file_id: fileId,
-  //       }));
+        await Preferences.set({
+          key: "StudentDetails",
+          value: JSON.stringify(detailsObj),
+        });
+      }
 
-  //       // Update existing face_file_id in Capacitor Preferences under 'StudentDetails'
-  //       const existingDetails = await Preferences.get({ key: 'StudentDetails' });
+      setFormData((prev) => ({
+        ...prev,
+        face_file_id: "",
+      }));
 
-  //       if (existingDetails.value) {
-  //         const detailsObj = JSON.parse(existingDetails.value);
-  //         detailsObj.face_file_id = fileId;
-
-  //         await Preferences.set({
-  //           key: 'StudentDetails',
-  //           value: JSON.stringify(detailsObj),
-  //         });
-  //       }
-
-  //       // Get and set the public URL for preview
-  //       const url = await getPublicUrl(fileId);
-  //       setProfileImageUrl(url);
-  //     }
-  //   } catch (error) {
-  //     console.error("Error uploading profile image:", error);
-  //   } finally {
-  //     setIsUploading(false);
-  //   }
-  // };
+      setProfileImageUrl(null);
+    } catch (error) {
+      console.error("Error removing profile image:", error);
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   useEffect(() => {
     const fetchStudentData = async () => {
       try {
         setIsFetching(true);
-        console.log("Fetching student data from Preferences...");
 
         const { value } = await Preferences.get({ key: "StudentDetails" });
-        console.log("Raw student details from Preferences:", value);
-
         if (!value) {
-          console.log("No data found in Preferences with key 'StudentDetails'");
           setIsFetching(false);
           return;
         }
 
-        try {
-          // Parse the JSON data
-          const parsedData = JSON.parse(value);
-          console.log("Parsed student details:", parsedData);
+        const parsedData = JSON.parse(value);
+        let studentDetails: Student;
 
-          // Handle both array and object formats
-          let studentDetails: Student;
+        if (Array.isArray(parsedData)) {
+          if (parsedData.length === 0) return;
+          studentDetails = parsedData[0];
+        } else {
+          studentDetails = parsedData;
+        }
 
-          if (Array.isArray(parsedData)) {
-            if (parsedData.length === 0) {
-              console.log("Student details array is empty");
-              setIsFetching(false);
-              return;
-            }
-            studentDetails = parsedData[0];
-          } else if (typeof parsedData === "object" && parsedData !== null) {
-            studentDetails = parsedData;
-          } else {
-            console.error("Unexpected data format:", parsedData);
-            setIsFetching(false);
-            return;
-          }
+        setStudentData(studentDetails);
 
-          setStudentData(studentDetails);
+        setFormData({
+          user_id: studentDetails.user_id || "",
+          email: studentDetails.email || "",
+          full_name: studentDetails.full_name || "",
+          contact_number: studentDetails.mobile_number || "",
+          gender: studentDetails.gender || "",
+          address_line: studentDetails.address_line || "",
+          city: studentDetails.city || "",
+          state: studentDetails.region || "",
+          pin_code: studentDetails.pin_code || "",
+          institute_name: studentDetails.linked_institute_name || "",
+          father_name: studentDetails.father_name || "",
+          mother_name: studentDetails.mother_name || "",
+          parents_mobile_number: studentDetails.parents_mobile_number || "",
+          parents_email: studentDetails.parents_email || "",
+          face_file_id: studentDetails.face_file_id || "",
+          country: studentDetails.country || "",
+        });
 
-          // Pre-fill the form with student data
-          setFormData({
-            user_id: studentDetails.user_id || "",
-            email: studentDetails.email || "",
-            full_name: studentDetails.full_name || "",
-            contact_number: studentDetails.mobile_number || "",
-            gender: studentDetails.gender || "",
-            address_line: studentDetails.address_line || "",
-            city: studentDetails.city || "",
-            state: studentDetails.region || "",
-            pin_code: studentDetails.pin_code || "",
-            institute_name: studentDetails.linked_institute_name || "",
-            father_name: studentDetails.father_name || "",
-            mother_name: studentDetails.mother_name || "",
-            parents_mobile_number: studentDetails.parents_mobile_number || "",
-            parents_email: studentDetails.parents_email || "",
-            face_file_id: studentDetails.face_file_id || "",
-            country: studentDetails.country || "",
-          });
-
-          // Get profile image if face_file_id exists
-          if (studentDetails.face_file_id) {
-            const imageUrl = await getProfileImage(studentDetails.face_file_id);
-            setProfileImageUrl(imageUrl);
-          }
-
-          console.log("Form data pre-filled:", formData);
-        } catch (parseError) {
-          console.error("Error parsing JSON from Preferences:", parseError);
+        if (studentDetails.face_file_id) {
+          const imageUrl = await getProfileImage(studentDetails.face_file_id);
+          setProfileImageUrl(imageUrl);
         }
       } catch (error) {
-        console.error("Error fetching student data from Preferences:", error);
+        console.error("Error fetching student data:", error);
       } finally {
         setIsFetching(false);
       }
@@ -292,66 +246,37 @@ export default function EditProfile() {
     setIsLoading(true);
 
     try {
-      console.log("Submitting form data:", formData);
+      await authenticatedAxiosInstance.put(STUDENT_DETAIL_EDIT, formData);
 
-      const response = await authenticatedAxiosInstance.put(
-        `${STUDENT_DETAIL_EDIT}`,
-        formData
-      );
-
-      console.log("API response:", response.data);
-
-      // Update the stored data in Preferences
       if (studentData) {
         const updatedStudentData = {
           ...studentData,
-          user_id: formData.user_id,
-          email: formData.email,
-          full_name: formData.full_name,
+          ...formData,
           mobile_number: formData.contact_number,
-          gender: formData.gender,
-          address_line: formData.address_line,
-          city: formData.city,
           region: formData.state,
-          pin_code: formData.pin_code,
           linked_institute_name: formData.institute_name,
-          father_name: formData.father_name,
-          mother_name: formData.mother_name,
-          parents_mobile_number: formData.parents_mobile_number,
-          parents_email: formData.parents_email,
-          face_file_id: formData.face_file_id,
-          country: formData.country,
         };
 
-        // Get the current stored data
         const { value } = await Preferences.get({ key: "StudentDetails" });
 
         if (value) {
-          try {
-            const parsedData = JSON.parse(value);
+          const parsedData = JSON.parse(value);
 
-            // Update the data based on its format
-            if (Array.isArray(parsedData)) {
-              parsedData[0] = updatedStudentData;
-              await Preferences.set({
-                key: "StudentDetails",
-                value: JSON.stringify(parsedData),
-              });
-            } else {
-              await Preferences.set({
-                key: "StudentDetails",
-                value: JSON.stringify(updatedStudentData),
-              });
-            }
-
-            console.log("Updated student data in Preferences");
-          } catch (error) {
-            console.error("Error updating data in Preferences:", error);
+          if (Array.isArray(parsedData)) {
+            parsedData[0] = updatedStudentData;
+            await Preferences.set({
+              key: "StudentDetails",
+              value: JSON.stringify(parsedData),
+            });
+          } else {
+            await Preferences.set({
+              key: "StudentDetails",
+              value: JSON.stringify(updatedStudentData),
+            });
           }
         }
       }
 
-      // Redirect back to profile page after successful update
       navigate({ to: "/user-profile", replace: true });
     } catch (error) {
       console.error("Error updating profile:", error);
@@ -383,7 +308,7 @@ export default function EditProfile() {
         </div>
 
         <form onSubmit={handleSubmit} className="p-4 space-y-6">
-          {/* Profile Image */}
+          {/* Profile Image with Dropdown Menu */}
           <div className="flex justify-center mb-4">
             <div className="relative">
               {profileImageUrl ? (
@@ -397,19 +322,49 @@ export default function EditProfile() {
                   <User size={40} className="text-gray-400" />
                 </div>
               )}
-              <label
-                htmlFor="profile-upload"
-                className="absolute bottom-0 right-0 p-1 rounded-md cursor-pointer bg-gray-100 border border-gray-400"
-              >
+
+              {/* DropdownMenu */}
+              <div className="absolute bottom-0 right-0">
+                <DropdownMenu open={isMenuOpen} onOpenChange={setIsMenuOpen}>
+                  <DropdownMenuTrigger asChild>
+                    <button className="p-1 rounded-md bg-gray-100 border border-gray-400">
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      onSelect={(e) => {
+                        e.preventDefault();
+                        document.getElementById("profile-upload")?.click();
+                        setIsMenuOpen(false); // Close dropdown after file picker triggered
+                      }}
+                    >
+                      Upload New
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onSelect={(e) => {
+                        e.preventDefault();
+                        handleRemoveProfileImage();
+                        setIsMenuOpen(false); // Close dropdown after remove
+                      }}
+                    >
+                      Remove
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
                 <input
                   type="file"
                   id="profile-upload"
                   className="hidden"
                   accept="image/*"
-                  onChange={handleProfileImageChange}
+                  onChange={(e) => {
+                    handleProfileImageChange(e);
+                    setIsMenuOpen(false); // Close dropdown after file is selected
+                  }}
                 />
-                <PencilSimpleLine />
-              </label>
+              </div>
+
               {isUploading && (
                 <div className="absolute inset-0 bg-black bg-opacity-50 rounded-full flex items-center justify-center">
                   <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-white"></div>

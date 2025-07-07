@@ -201,7 +201,7 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                             No courses available
                         </p>
                     ) : (
-                        <div className="grid grid-cols-1 sm:grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div className="grid grid-cols-1 sm:grid-cols-1 lg:grid-cols-2 gap-6 h-fit">
                             {paginatedCourses.map((course, index) => {
                                 const originalIndex =
                                     (currentPage - 1) * itemsPerPage + index;
@@ -212,9 +212,6 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                                 return (
                                     <CourseCard
                                         courseId={course.id}
-                                        package_session_id={
-                                            course.package_session_id
-                                        }
                                         key={index}
                                         package_name={
                                             course.package_name ||
@@ -223,7 +220,6 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                                         level_name={
                                             course.level_name || "Beginner"
                                         }
-                                        thumbnailUrl={currentUrl}
                                         instructors={
                                             course.instructors?.length
                                                 ? course.instructors

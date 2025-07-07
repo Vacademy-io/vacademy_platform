@@ -47,8 +47,7 @@ public class LearnerService {
             student.setParentToMotherMobileNumber(learnerDetailsEditDTO.getParentsMobileNumber());
         if (StringUtils.hasText(learnerDetailsEditDTO.getParentsEmail()))
             student.setParentsEmail(learnerDetailsEditDTO.getParentsEmail());
-        if (StringUtils.hasText(learnerDetailsEditDTO.getFaceFileId()))
-            student.setFaceFileId(learnerDetailsEditDTO.getFaceFileId());
+        student.setFaceFileId(learnerDetailsEditDTO.getFaceFileId());
         instituteStudentRepository.save(student);
         return "success";
     }

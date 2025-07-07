@@ -122,7 +122,7 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
             s.thumbnail_file_id AS thumbnailFileId,
             s.background_score_file_id AS backgroundScoreFileId,
             s.status AS status,
-            s.allow_rewind,
+            s.allow_rewind AS allowRewind,
             ss.recurrence_type AS recurrenceType,
             ss.recurrence_key AS recurrenceKey,
             ss.meeting_date AS meetingDate,

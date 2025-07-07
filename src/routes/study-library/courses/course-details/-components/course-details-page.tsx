@@ -9,6 +9,8 @@ import {
     PlayCircle,
     Question,
     CaretLeft,
+    BookOpen,
+    GraduationCap,
 } from "phosphor-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -357,525 +359,431 @@ export const CourseDetailsPage = () => {
 
     return (
         <>
-            <div className="flex min-h-screen flex-col bg-white w-full">
-                {/* Top Banner */}
-                <div className="relative h-[300px]">
-                    {/* Transparent black overlay */}
-                    {form.watch("courseData").courseBannerMediaId && (
-                        <div className="pointer-events-none absolute inset-0 z-10 bg-black/50" />
-                    )}
-                    {!form.watch("courseData").courseBannerMediaId ? (
-                        <div className="absolute inset-0 z-0 bg-primary-500" />
-                    ) : (
-                        <div className="absolute inset-0 z-0 opacity-70">
-                            <img
-                                src={
-                                    form.watch("courseData").courseBannerMediaId
-                                }
-                                alt="Course Banner"
-                                className="size-full object-cover"
-                                onError={(e) => {
-                                    e.currentTarget.style.display = "none";
-                                    e.currentTarget.parentElement?.classList.add(
-                                        "bg-primary-500"
-                                    );
-                                }}
-                            />
-                        </div>
-                    )}
-                    {/* Primary color overlay with 70% opacity */}
-                    <div className="container relative z-20 mx-auto px-4 py-12 text-white">
-                        <div className="flex items-start justify-between gap-8">
-                            {/* Left side - Title and Description */}
-                            <div className="max-w-2xl">
-                                {!form.watch("courseData").title ? (
-                                    <div className="space-y-4">
-                                        <div className="h-8 w-32 animate-pulse rounded bg-white/20" />
-                                        <div className="h-12 w-3/4 animate-pulse rounded bg-white/20" />
-                                        <div className="h-4 w-full animate-pulse rounded bg-white/20" />
-                                        <div className="h-4 w-2/3 animate-pulse rounded bg-white/20" />
-                                    </div>
-                                ) : (
-                                    <>
-                                        <div className="mb-4 flex gap-2">
-                                            {form
-                                                .getValues("courseData")
-                                                .tags.map((tag, index) => (
-                                                    <span
-                                                        key={index}
-                                                        className="rounded-full bg-blue-600 px-3 py-1 text-sm"
-                                                    >
-                                                        {tag}
-                                                    </span>
-                                                ))}
-                                        </div>
-                                        <h1 className="mb-4 text-4xl font-bold">
-                                            {form.getValues("courseData").title}
-                                        </h1>
-                                        <p
-                                            className="text-lg opacity-90"
-                                            dangerouslySetInnerHTML={{
-                                                __html:
-                                                    form.getValues("courseData")
-                                                        .description || "",
-                                            }}
-                                        />
-                                    </>
-                                )}
-                            </div>
+            <div className="min-h-screen bg-gradient-to-br from-gray-50/80 via-white to-primary-50/20 relative overflow-hidden w-full max-w-full">
+                {/* Animated background elements */}
+                <div className="absolute inset-0 overflow-hidden pointer-events-none">
+                    <div className="absolute top-1/4 left-1/4 w-32 md:w-64 h-32 md:h-64 bg-gradient-to-br from-primary-100/20 to-transparent rounded-full blur-3xl animate-gentle-pulse"></div>
+                    <div className="absolute bottom-1/3 right-1/3 w-40 md:w-80 h-40 md:h-80 bg-gradient-to-br from-primary-50/30 to-transparent rounded-full blur-3xl animate-gentle-pulse" style={{ animationDelay: '2s' }}></div>
+                </div>
 
-                            {/* Right side - Video Player */}
-                            <div className="w-[400px] overflow-hidden rounded-lg shadow-xl">
-                                <div className="relative aspect-video bg-black">
-                                    {!form.watch("courseData").courseMediaId ? (
-                                        <div className="absolute inset-0 flex items-center justify-center">
-                                            <div className="flex size-16 items-center justify-center rounded-full bg-white/20">
-                                                <svg
-                                                    className="size-8 text-white"
-                                                    fill="currentColor"
-                                                    viewBox="0 0 24 24"
-                                                >
-                                                    <path d="M8 5v14l11-7z" />
-                                                </svg>
+                {/* Enhanced Top Banner */}
+                <div className="relative overflow-hidden animate-fade-in-up">
+                    <div className="relative h-[200px] sm:h-[250px] lg:h-[280px]">
+                        {/* Background with overlay */}
+                        {!form.watch("courseData").courseBannerMediaId ? (
+                            <div className="absolute inset-0 z-0 bg-gradient-to-br from-primary-500 via-primary-600 to-primary-700" />
+                        ) : (
+                            <div className="absolute inset-0 z-0">
+                                <img
+                                    src={form.watch("courseData").courseBannerMediaId}
+                                    alt="Course Banner"
+                                    className="w-full h-full object-cover"
+                                    onError={(e) => {
+                                        e.currentTarget.style.display = "none";
+                                        e.currentTarget.parentElement?.classList.add(
+                                            "bg-gradient-to-br", "from-primary-500", "via-primary-600", "to-primary-700"
+                                        );
+                                    }}
+                                />
+                            </div>
+                        )}
+                        
+                        {/* Enhanced gradient overlay */}
+                        <div className="absolute inset-0 z-10 bg-gradient-to-br from-black/40 via-black/30 to-transparent" />
+                        
+                        {/* Floating orb effects */}
+                        <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full blur-3xl opacity-70 -translate-y-2 translate-x-6"></div>
+                        <div className="absolute bottom-0 left-0 w-32 h-32 bg-primary-300/20 rounded-full blur-3xl opacity-50 translate-y-6 -translate-x-6"></div>
+
+                        {/* Content Container */}
+                        <div className="relative z-20 h-full">
+                            <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 h-full flex items-center">
+                                {form.watch("courseData").courseMediaId ? (
+                                    // Layout with video - 3/5 and 2/5 split
+                                    <div className="w-full grid grid-cols-1 lg:grid-cols-5 gap-4 lg:gap-6 items-center">
+                                        {/* Left side - Course Info (3/5) */}
+                                        <div className="lg:col-span-3 text-white animate-fade-in-up">
+                                            {!form.watch("courseData").title ? (
+                                                <div className="space-y-3">
+                                                    <div className="h-5 w-20 animate-pulse rounded bg-white/20" />
+                                                    <div className="h-6 sm:h-8 w-3/4 animate-pulse rounded bg-white/20" />
+                                                    <div className="h-3 w-full animate-pulse rounded bg-white/20" />
+                                                    <div className="h-3 w-2/3 animate-pulse rounded bg-white/20" />
+                                                </div>
+                                            ) : (
+                                                <>
+                                                    {/* Tags */}
+                                                    <div className="mb-2 sm:mb-3 flex flex-wrap gap-1.5">
+                                                        {form.getValues("courseData").tags.map((tag, index) => (
+                                                            <span
+                                                                key={index}
+                                                                className="bg-white/20 backdrop-blur-sm border border-white/30 text-white px-2.5 py-1 rounded-full text-xs font-medium hover:bg-white/30 transition-all duration-300"
+                                                            >
+                                                                {tag}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+
+                                                    {/* Title */}
+                                                    <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold mb-2 sm:mb-3 leading-tight">
+                                                        {form.getValues("courseData").title}
+                                                    </h1>
+
+                                                    {/* Description */}
+                                                    <div 
+                                                        className="text-sm sm:text-base opacity-90 leading-relaxed line-clamp-2"
+                                                        dangerouslySetInnerHTML={{
+                                                            __html: form.getValues("courseData").description || "",
+                                                        }}
+                                                    />
+                                                </>
+                                            )}
+                                        </div>
+
+                                        {/* Right side - Video Player (2/5) */}
+                                        <div className="lg:col-span-2 animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
+                                            <div className="relative overflow-hidden rounded-xl shadow-2xl border border-white/20 bg-black/20 backdrop-blur-sm group">
+                                                <div className="relative aspect-video">
+                                                    <video
+                                                        src={form.watch("courseData").courseMediaId}
+                                                        controls
+                                                        className="w-full h-full object-cover rounded-xl"
+                                                        onError={(e) => {
+                                                            e.currentTarget.style.display = "none";
+                                                            e.currentTarget.parentElement?.classList.add("bg-black");
+                                                        }}
+                                                    >
+                                                        Your browser does not support the video tag.
+                                                    </video>
+                                                </div>
+                                                
+                                                {/* Video overlay gradient */}
+                                                <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent pointer-events-none rounded-xl"></div>
                                             </div>
                                         </div>
-                                    ) : (
-                                        <video
-                                            src={
-                                                form.watch("courseData")
-                                                    .courseMediaId
-                                            }
-                                            controls
-                                            className="size-full rounded-lg object-contain"
-                                            onError={(e) => {
-                                                e.currentTarget.style.display =
-                                                    "none";
-                                                e.currentTarget.parentElement?.classList.add(
-                                                    "bg-black"
-                                                );
-                                            }}
-                                        >
-                                            Your browser does not support the
-                                            video tag.
-                                        </video>
-                                    )}
-                                </div>
+                                    </div>
+                                ) : (
+                                    // Layout without video - full width
+                                    <div className="w-full text-center text-white animate-fade-in-up">
+                                        {!form.watch("courseData").title ? (
+                                            <div className="space-y-4 max-w-3xl mx-auto">
+                                                <div className="h-6 w-32 animate-pulse rounded bg-white/20 mx-auto" />
+                                                <div className="h-8 sm:h-10 w-3/4 animate-pulse rounded bg-white/20 mx-auto" />
+                                                <div className="h-4 w-full animate-pulse rounded bg-white/20" />
+                                                <div className="h-4 w-2/3 animate-pulse rounded bg-white/20 mx-auto" />
+                                            </div>
+                                        ) : (
+                                            <div className="max-w-4xl mx-auto">
+                                                {/* Tags */}
+                                                <div className="mb-3 sm:mb-4 flex flex-wrap gap-2 justify-center">
+                                                    {form.getValues("courseData").tags.map((tag, index) => (
+                                                        <span
+                                                            key={index}
+                                                            className="bg-white/20 backdrop-blur-sm border border-white/30 text-white px-3 py-1.5 rounded-full text-sm font-medium hover:bg-white/30 transition-all duration-300"
+                                                        >
+                                                            {tag}
+                                                        </span>
+                                                    ))}
+                                                </div>
+
+                                                {/* Title */}
+                                                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-3 sm:mb-4 leading-tight">
+                                                    {form.getValues("courseData").title}
+                                                </h1>
+
+                                                {/* Description */}
+                                                <div 
+                                                    className="text-base sm:text-lg opacity-90 leading-relaxed line-clamp-3 max-w-3xl mx-auto"
+                                                    dangerouslySetInnerHTML={{
+                                                        __html: form.getValues("courseData").description || "",
+                                                    }}
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
                 </div>
 
-                {/* Main Content */}
-                <div className="container mx-auto px-4 py-8">
-                    <div className="flex gap-8">
-                        {/* Left Column - 2/3 width */}
-                        <div className="w-2/3 grow">
-                            {/* Session and Level Selectors */}
-                            <div className="container mx-auto px-0 pb-6">
-                                <div className="flex items-center gap-6">
-                                    {sessionOptions.length === 1 ? (
-                                        sessionOptions[0].label !==
-                                            "default" && (
-                                            <div className="flex flex-col gap-2">
-                                                <label className="text-sm font-medium">
-                                                    Session
+                {/* Main Content Container */}
+                <div className="relative z-10 max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 py-4 lg:py-6">
+                    <div className="grid grid-cols-1 xl:grid-cols-4 gap-4 lg:gap-6">
+                        {/* Left Column - Course Content (3/4) */}
+                        <div className="xl:col-span-3 space-y-4 lg:space-y-6">
+                            {/* Enhanced Session and Level Selectors */}
+                            <div className="relative bg-white/80 backdrop-blur-sm border border-gray-200/60 rounded-xl shadow-sm hover:shadow-lg transition-all duration-500 p-3 sm:p-4 group animate-fade-in-up" style={{ animationDelay: '0.1s' }}>
+                                {/* Background gradient overlay */}
+                                <div className="absolute inset-0 bg-gradient-to-br from-primary-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-xl"></div>
+                                
+                                {/* Floating orb effect */}
+                                <div className="absolute top-0 right-0 w-12 h-12 bg-primary-100/20 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-700 -translate-y-1 translate-x-3"></div>
+                                
+                                <div className="relative">
+                                    <div className="flex items-center space-x-2 mb-3">
+                                        <div className="p-1.5 bg-gradient-to-br from-primary-100 to-primary-200 rounded-lg shadow-sm">
+                                            <GraduationCap size={18} className="text-primary-600" weight="duotone" />
+                                        </div>
+                                        <h3 className="text-base font-bold text-gray-900">Course Configuration</h3>
+                                    </div>
+                                    
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 lg:gap-4">
+                                        {/* Session Selector */}
+                                        {sessionOptions.length > 1 || (sessionOptions.length === 1 && sessionOptions[0].label !== "default") ? (
+                                            <div className="space-y-1.5">
+                                                <label className="text-xs font-semibold text-gray-700 flex items-center space-x-1.5">
+                                                    <div className="w-1.5 h-1.5 bg-primary-500 rounded-full"></div>
+                                                    <span>Session</span>
                                                 </label>
-                                                <Select
-                                                    value={selectedSession}
-                                                    onValueChange={
-                                                        handleSessionChange
-                                                    }
-                                                >
-                                                    <SelectTrigger className="w-48">
+                                                <Select value={selectedSession} onValueChange={handleSessionChange}>
+                                                    <SelectTrigger className="h-9 bg-white/80 border-gray-200/60 rounded-lg hover:border-primary-300 focus:border-primary-500 transition-all duration-300">
                                                         <SelectValue placeholder="Select Session" />
                                                     </SelectTrigger>
                                                     <SelectContent>
-                                                        {sessionOptions.map(
-                                                            (option) => (
-                                                                <SelectItem
-                                                                    key={
-                                                                        option._id
-                                                                    }
-                                                                    value={
-                                                                        option.value
-                                                                    }
-                                                                >
-                                                                    {
-                                                                        option.label
-                                                                    }
-                                                                </SelectItem>
-                                                            )
-                                                        )}
+                                                        {sessionOptions.map((option) => (
+                                                            <SelectItem key={option._id} value={option.value}>
+                                                                {option.label}
+                                                            </SelectItem>
+                                                        ))}
                                                     </SelectContent>
                                                 </Select>
                                             </div>
-                                        )
-                                    ) : (
-                                        <div className="flex flex-col gap-2">
-                                            <label className="text-sm font-medium">
-                                                Session
-                                            </label>
-                                            <Select
-                                                value={selectedSession}
-                                                onValueChange={
-                                                    handleSessionChange
-                                                }
-                                            >
-                                                <SelectTrigger className="w-48">
-                                                    <SelectValue placeholder="Select Session" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {sessionOptions.map(
-                                                        (option) => (
-                                                            <SelectItem
-                                                                key={option._id}
-                                                                value={
-                                                                    option.value
-                                                                }
-                                                            >
-                                                                {option.label}
-                                                            </SelectItem>
-                                                        )
-                                                    )}
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                    )}
+                                        ) : null}
 
-                                    {levelOptions.length === 1 ? (
-                                        levelOptions[0].label !== "default" && (
-                                            <div className="flex flex-col gap-2">
-                                                <label className="text-sm font-medium">
-                                                    Level
+                                        {/* Level Selector */}
+                                        {levelOptions.length > 1 || (levelOptions.length === 1 && levelOptions[0].label !== "default") ? (
+                                            <div className="space-y-1.5">
+                                                <label className="text-xs font-semibold text-gray-700 flex items-center space-x-1.5">
+                                                    <div className="w-1.5 h-1.5 bg-primary-500 rounded-full"></div>
+                                                    <span>Level</span>
                                                 </label>
-                                                <Select
-                                                    value={selectedLevel}
-                                                    onValueChange={
-                                                        handleLevelChange
-                                                    }
-                                                    disabled={!selectedSession}
-                                                >
-                                                    <SelectTrigger className="w-48">
+                                                <Select value={selectedLevel} onValueChange={handleLevelChange} disabled={!selectedSession}>
+                                                    <SelectTrigger className="h-9 bg-white/80 border-gray-200/60 rounded-lg hover:border-primary-300 focus:border-primary-500 transition-all duration-300 disabled:opacity-50">
                                                         <SelectValue placeholder="Select Level" />
                                                     </SelectTrigger>
                                                     <SelectContent>
-                                                        {levelOptions.map(
-                                                            (option) => (
-                                                                <SelectItem
-                                                                    key={
-                                                                        option._id
-                                                                    }
-                                                                    value={
-                                                                        option.value
-                                                                    }
-                                                                >
-                                                                    {
-                                                                        option.label
-                                                                    }
-                                                                </SelectItem>
-                                                            )
-                                                        )}
+                                                        {levelOptions.map((option) => (
+                                                            <SelectItem key={option._id} value={option.value}>
+                                                                {option.label}
+                                                            </SelectItem>
+                                                        ))}
                                                     </SelectContent>
                                                 </Select>
                                             </div>
-                                        )
-                                    ) : (
-                                        <div className="flex flex-col gap-2">
-                                            <label className="text-sm font-medium">
-                                                Level
-                                            </label>
-                                            <Select
-                                                value={selectedLevel}
-                                                onValueChange={
-                                                    handleLevelChange
-                                                }
-                                                disabled={!selectedSession}
-                                            >
-                                                <SelectTrigger className="w-48">
-                                                    <SelectValue placeholder="Select Level" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {levelOptions.map(
-                                                        (option) => (
-                                                            <SelectItem
-                                                                key={option._id}
-                                                                value={
-                                                                    option.value
-                                                                }
-                                                            >
-                                                                {option.label}
-                                                            </SelectItem>
-                                                        )
-                                                    )}
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                    )}
+                                        ) : null}
+                                    </div>
                                 </div>
                             </div>
-                            <CourseStructureDetails
-                                selectedSession={selectedSession}
-                                selectedLevel={selectedLevel}
-                                courseStructure={form.getValues(
-                                    "courseData.courseStructure"
+
+                            {/* Course Structure */}
+                            <div className="animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
+                                <CourseStructureDetails
+                                    selectedSession={selectedSession}
+                                    selectedLevel={selectedLevel}
+                                    courseStructure={form.getValues("courseData.courseStructure")}
+                                    courseData={form.getValues()}
+                                    packageSessionId={packageSessionIdForCurrentLevel || ""}
+                                />
+                            </div>
+
+                            {/* Content Sections */}
+                            <div className="space-y-4">
+                                {/* What You'll Learn Section */}
+                                {form.getValues("courseData").whatYoullLearn && (
+                                    <div className="relative bg-white/80 backdrop-blur-sm border border-gray-200/60 rounded-xl shadow-sm hover:shadow-lg transition-all duration-500 p-3 sm:p-4 group animate-fade-in-up" style={{ animationDelay: '0.3s' }}>
+                                        <div className="absolute inset-0 bg-gradient-to-br from-success-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-xl"></div>
+                                        <div className="relative">
+                                            <div className="flex items-center space-x-2 mb-3">
+                                                <div className="p-1.5 bg-gradient-to-br from-success-100 to-success-200 rounded-lg shadow-sm">
+                                                    <BookOpen size={18} className="text-success-600" weight="duotone" />
+                                                </div>
+                                                <h2 className="text-base font-bold text-gray-900">What you'll learn</h2>
+                                            </div>
+                                            <div 
+                                                className="text-sm text-gray-600 leading-relaxed"
+                                                dangerouslySetInnerHTML={{
+                                                    __html: form.getValues("courseData").whatYoullLearn || "",
+                                                }}
+                                            />
+                                        </div>
+                                    </div>
                                 )}
-                                courseData={form.getValues()}
-                                packageSessionId={
-                                    packageSessionIdForCurrentLevel || ""
-                                }
-                            />
-                            {/* What You'll Learn Section */}
-                            {form.getValues("courseData").whatYoullLearn && (
-                                <div className="mb-8">
-                                    <h2 className="mb-4 text-2xl font-bold">
-                                        What you&apos;ll learn?
-                                    </h2>
-                                    <div className="rounded-lg">
-                                        <p
-                                            dangerouslySetInnerHTML={{
-                                                __html:
-                                                    form.getValues("courseData")
-                                                        .whatYoullLearn || "",
-                                            }}
-                                        />
-                                    </div>
-                                </div>
-                            )}
 
-                            {/* About Content Section */}
-                            {form.getValues("courseData").aboutTheCourse && (
-                                <div className="mb-8">
-                                    <h2 className="mb-4 text-2xl font-bold">
-                                        About this course
-                                    </h2>
-                                    <div className="rounded-lg">
-                                        <p
-                                            dangerouslySetInnerHTML={{
-                                                __html:
-                                                    form.getValues("courseData")
-                                                        .aboutTheCourse || "",
-                                            }}
-                                        />
+                                {/* About Course Section */}
+                                {form.getValues("courseData").aboutTheCourse && (
+                                    <div className="relative bg-white/80 backdrop-blur-sm border border-gray-200/60 rounded-xl shadow-sm hover:shadow-lg transition-all duration-500 p-3 sm:p-4 group animate-fade-in-up" style={{ animationDelay: '0.4s' }}>
+                                        <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-xl"></div>
+                                        <div className="relative">
+                                            <div className="flex items-center space-x-2 mb-3">
+                                                <div className="p-1.5 bg-gradient-to-br from-blue-100 to-blue-200 rounded-lg shadow-sm">
+                                                    <File size={18} className="text-blue-600" weight="duotone" />
+                                                </div>
+                                                <h2 className="text-base font-bold text-gray-900">About this course</h2>
+                                            </div>
+                                            <div 
+                                                className="text-sm text-gray-600 leading-relaxed"
+                                                dangerouslySetInnerHTML={{
+                                                    __html: form.getValues("courseData").aboutTheCourse || "",
+                                                }}
+                                            />
+                                        </div>
                                     </div>
-                                </div>
-                            )}
+                                )}
 
-                            {/* Who Should Join Section */}
-                            {form.getValues("courseData").whoShouldLearn && (
-                                <div className="mb-8">
-                                    <h2 className="mb-4 text-2xl font-bold">
-                                        Who should join?
-                                    </h2>
-                                    <div className="rounded-lg">
-                                        <p
-                                            dangerouslySetInnerHTML={{
-                                                __html:
-                                                    form.getValues("courseData")
-                                                        .whoShouldLearn || "",
-                                            }}
-                                        />
+                                {/* Who Should Join Section */}
+                                {form.getValues("courseData").whoShouldLearn && (
+                                    <div className="relative bg-white/80 backdrop-blur-sm border border-gray-200/60 rounded-xl shadow-sm hover:shadow-lg transition-all duration-500 p-3 sm:p-4 group animate-fade-in-up" style={{ animationDelay: '0.5s' }}>
+                                        <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-xl"></div>
+                                        <div className="relative">
+                                            <div className="flex items-center space-x-2 mb-3">
+                                                <div className="p-1.5 bg-gradient-to-br from-purple-100 to-purple-200 rounded-lg shadow-sm">
+                                                    <GraduationCap size={18} className="text-purple-600" weight="duotone" />
+                                                </div>
+                                                <h2 className="text-base font-bold text-gray-900">Who should join</h2>
+                                            </div>
+                                            <div 
+                                                className="text-sm text-gray-600 leading-relaxed"
+                                                dangerouslySetInnerHTML={{
+                                                    __html: form.getValues("courseData").whoShouldLearn || "",
+                                                }}
+                                            />
+                                        </div>
                                     </div>
-                                </div>
-                            )}
+                                )}
 
-                            {/* Instructors Section */}
-                            {form.getValues("courseData").instructors &&
-                                form.getValues("courseData").instructors
-                                    .length > 0 && (
-                                    <div className="mb-8">
-                                        <h2 className="mb-4 text-2xl font-bold">
-                                            Instructors
-                                        </h2>
-                                        {form
-                                            .getValues("courseData")
-                                            .instructors.map(
-                                                (instructor, index) => (
-                                                    <div
-                                                        key={index}
-                                                        className="flex gap-4 rounded-lg bg-gray-50 p-4"
-                                                    >
-                                                        <Avatar className="size-8">
-                                                            <AvatarImage
-                                                                src=""
-                                                                alt={
-                                                                    instructor.email
-                                                                }
-                                                            />
-                                                            <AvatarFallback className="bg-[#3B82F6] text-xs font-medium text-white">
-                                                                {getInitials(
-                                                                    instructor.email
-                                                                )}
+                                {/* Instructors Section */}
+                                {form.getValues("courseData").instructors && form.getValues("courseData").instructors.length > 0 && (
+                                    <div className="relative bg-white/80 backdrop-blur-sm border border-gray-200/60 rounded-xl shadow-sm hover:shadow-lg transition-all duration-500 p-3 sm:p-4 group animate-fade-in-up" style={{ animationDelay: '0.6s' }}>
+                                        <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-xl"></div>
+                                        <div className="relative">
+                                            <div className="flex items-center space-x-2 mb-3">
+                                                <div className="p-1.5 bg-gradient-to-br from-orange-100 to-orange-200 rounded-lg shadow-sm">
+                                                    <ChalkboardTeacher size={18} className="text-orange-600" weight="duotone" />
+                                                </div>
+                                                <h2 className="text-base font-bold text-gray-900">Instructors</h2>
+                                            </div>
+                                            <div className="space-y-2">
+                                                {form.getValues("courseData").instructors.map((instructor, index) => (
+                                                    <div key={index} className="flex items-center gap-3 p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300">
+                                                        <Avatar className="w-8 h-8 border-2 border-white shadow-sm">
+                                                            <AvatarImage src="" alt={instructor.email} />
+                                                            <AvatarFallback className="bg-gradient-to-br from-primary-500 to-primary-600 text-white text-xs font-semibold">
+                                                                {getInitials(instructor.email)}
                                                             </AvatarFallback>
                                                         </Avatar>
-                                                        <h3 className="text-lg">
-                                                            {instructor.name}
-                                                        </h3>
+                                                        <div>
+                                                            <h3 className="text-sm font-semibold text-gray-900">{instructor.name}</h3>
+                                                            <p className="text-xs text-gray-600">{instructor.email}</p>
+                                                        </div>
                                                     </div>
-                                                )
-                                            )}
+                                                ))}
+                                            </div>
+                                        </div>
                                     </div>
                                 )}
+                            </div>
                         </div>
 
-                        {/* Right Column - 1/3 width */}
-                        <div className="w-1/3">
-                            <div className="sticky top-4 rounded-lg border bg-white p-6 shadow-lg">
-                                {/* Course Stats */}
-                                <h2 className="mb-4 text-lg font-bold">
-                                    Scratch Programming Language
-                                </h2>
-                                <div className="space-y-4">
-                                    {levelOptions[0]?.label !== "default" && (
-                                        <div className="flex items-center gap-2">
-                                            <Steps size={18} />
-                                            <span>
-                                                {
-                                                    levelOptions.find(
-                                                        (option) =>
-                                                            option.value ===
-                                                            selectedLevel
-                                                    )?.label
-                                                }
-                                            </span>
+                        {/* Right Column - Course Stats Sidebar (1/4) */}
+                        <div className="xl:col-span-1">
+                            <div className="sticky top-4 space-y-4">
+                                <div className="relative bg-white/80 backdrop-blur-sm border border-gray-200/60 rounded-xl shadow-sm hover:shadow-lg transition-all duration-500 p-3 sm:p-4 group animate-fade-in-up" style={{ animationDelay: '0.7s' }}>
+                                    {/* Background gradient overlay */}
+                                    <div className="absolute inset-0 bg-gradient-to-br from-primary-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-xl"></div>
+                                    
+                                    {/* Floating orb effect */}
+                                    <div className="absolute top-0 right-0 w-12 h-12 bg-primary-100/20 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-700 -translate-y-1 translate-x-3"></div>
+                                    
+                                    <div className="relative">
+                                        {/* Header */}
+                                        <div className="flex items-center space-x-2 mb-4">
+                                            <div className="p-1.5 bg-gradient-to-br from-primary-100 to-primary-200 rounded-lg shadow-sm">
+                                                <Steps size={18} className="text-primary-600" weight="duotone" />
+                                            </div>
+                                            <h2 className="text-base font-bold text-gray-900">Course Overview</h2>
                                         </div>
-                                    )}
-                                    {slideCountQuery.isLoading ? (
-                                        <div className="space-y-2">
-                                            {[1, 2, 3, 4, 5].map((i) => (
-                                                <div
-                                                    key={i}
-                                                    className="h-6 w-32 animate-pulse rounded bg-gray-200"
-                                                />
-                                            ))}
-                                        </div>
-                                    ) : slideCountQuery.error ? (
-                                        <div className="text-sm text-red-500">
-                                            Error loading slide counts
-                                        </div>
-                                    ) : (
-                                        <>
-                                            {slideCountQuery.data?.map(
-                                                (count: SlideCountType) => (
-                                                    <div
-                                                        key={count.source_type}
-                                                        className="flex items-center gap-2"
-                                                    >
-                                                        {count.source_type ===
-                                                            "VIDEO" && (
-                                                            <>
-                                                                <PlayCircle
-                                                                    size={18}
-                                                                />
-                                                                <span>
-                                                                    {
-                                                                        count.slide_count
-                                                                    }{" "}
-                                                                    Video slides
-                                                                </span>
-                                                            </>
-                                                        )}
-                                                        {count.source_type ===
-                                                            "CODE" && (
-                                                            <>
-                                                                <Code
-                                                                    size={18}
-                                                                />
-                                                                <span>
-                                                                    {
-                                                                        count.slide_count
-                                                                    }{" "}
-                                                                    Code slides
-                                                                </span>
-                                                            </>
-                                                        )}
-                                                        {count.source_type ===
-                                                            "PDF" && (
-                                                            <>
-                                                                <FilePdf
-                                                                    size={18}
-                                                                />
-                                                                <span>
-                                                                    {
-                                                                        count.slide_count
-                                                                    }{" "}
-                                                                    PDF slides
-                                                                </span>
-                                                            </>
-                                                        )}
-                                                        {count.source_type ===
-                                                            "DOCUMENT" && (
-                                                            <>
-                                                                <FileDoc
-                                                                    size={18}
-                                                                />
-                                                                <span>
-                                                                    {
-                                                                        count.slide_count
-                                                                    }{" "}
-                                                                    Doc slides
-                                                                </span>
-                                                            </>
-                                                        )}
-                                                        {count.source_type ===
-                                                            "QUESTION" && (
-                                                            <>
-                                                                <Question
-                                                                    size={18}
-                                                                />
-                                                                <span>
-                                                                    {
-                                                                        count.slide_count
-                                                                    }{" "}
-                                                                    Question
-                                                                    slides
-                                                                </span>
-                                                            </>
-                                                        )}
-                                                        {count.source_type ===
-                                                            "ASSIGNMENT" && (
-                                                            <>
-                                                                <File
-                                                                    size={18}
-                                                                />
-                                                                <span>
-                                                                    {
-                                                                        count.slide_count
-                                                                    }{" "}
-                                                                    Assignment
-                                                                    slides
-                                                                </span>
-                                                            </>
-                                                        )}
+
+                                        {/* Course Stats */}
+                                        <div className="space-y-3">
+                                            {/* Level Badge */}
+                                            {levelOptions[0]?.label !== "default" && (
+                                                <div className="flex items-center justify-between p-2.5 bg-gradient-to-r from-primary-50 to-primary-100 rounded-lg border border-primary-200">
+                                                    <div className="flex items-center space-x-2">
+                                                        <Steps size={16} className="text-primary-600" weight="duotone" />
+                                                        <span className="text-xs font-medium text-primary-700">Level</span>
                                                     </div>
-                                                )
-                                            )}
-                                            {form.getValues("courseData")
-                                                .instructors.length > 0 && (
-                                                <div className="flex items-center gap-2">
-                                                    <ChalkboardTeacher
-                                                        size={18}
-                                                    />
-                                                    <span>
-                                                        {form
-                                                            .getValues(
-                                                                "courseData"
-                                                            )
-                                                            .instructors.map(
-                                                                (i) => i.name
-                                                            )
-                                                            .join(", ")}
+                                                    <span className="text-xs font-bold text-primary-800">
+                                                        {levelOptions.find((option) => option.value === selectedLevel)?.label}
                                                     </span>
                                                 </div>
                                             )}
-                                        </>
-                                    )}
+
+                                            {/* Slide Counts */}
+                                            {slideCountQuery.isLoading ? (
+                                                <div className="space-y-2">
+                                                    {[1, 2, 3, 4, 5].map((i) => (
+                                                        <div key={i} className="flex items-center justify-between p-2.5 bg-gray-50 rounded-lg animate-pulse">
+                                                            <div className="h-3 w-16 bg-gray-200 rounded"></div>
+                                                            <div className="h-3 w-6 bg-gray-200 rounded"></div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            ) : slideCountQuery.error ? (
+                                                <div className="p-2.5 bg-red-50 border border-red-200 rounded-lg">
+                                                    <p className="text-xs text-red-600 font-medium">Error loading slide counts</p>
+                                                </div>
+                                            ) : (
+                                                <div className="space-y-2">
+                                                    {slideCountQuery.data?.map((count: SlideCountType) => (
+                                                        <div key={count.source_type} className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300 group/item">
+                                                            <div className="flex items-center space-x-2">
+                                                                {count.source_type === "VIDEO" && <PlayCircle size={16} className="text-blue-600 group-hover/item:scale-110 transition-transform duration-300" weight="duotone" />}
+                                                                {count.source_type === "CODE" && <Code size={16} className="text-green-600 group-hover/item:scale-110 transition-transform duration-300" weight="duotone" />}
+                                                                {count.source_type === "PDF" && <FilePdf size={16} className="text-red-600 group-hover/item:scale-110 transition-transform duration-300" weight="duotone" />}
+                                                                {count.source_type === "DOCUMENT" && <FileDoc size={16} className="text-purple-600 group-hover/item:scale-110 transition-transform duration-300" weight="duotone" />}
+                                                                {count.source_type === "QUESTION" && <Question size={16} className="text-orange-600 group-hover/item:scale-110 transition-transform duration-300" weight="duotone" />}
+                                                                {count.source_type === "ASSIGNMENT" && <File size={16} className="text-indigo-600 group-hover/item:scale-110 transition-transform duration-300" weight="duotone" />}
+                                                                <span className="text-xs font-medium text-gray-700">
+                                                                    {count.source_type === "VIDEO" && "Video slides"}
+                                                                    {count.source_type === "CODE" && "Code slides"}
+                                                                    {count.source_type === "PDF" && "PDF slides"}
+                                                                    {count.source_type === "DOCUMENT" && "Doc slides"}
+                                                                    {count.source_type === "QUESTION" && "Question slides"}
+                                                                    {count.source_type === "ASSIGNMENT" && "Assignment slides"}
+                                                                </span>
+                                                            </div>
+                                                            <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
+                                                                {count.slide_count}
+                                                            </span>
+                                                        </div>
+                                                    ))}
+
+                                                    {/* Instructors Count */}
+                                                    {form.getValues("courseData").instructors.length > 0 && (
+                                                        <div className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300 group/item">
+                                                            <div className="flex items-center space-x-2">
+                                                                <ChalkboardTeacher size={16} className="text-orange-600 group-hover/item:scale-110 transition-transform duration-300" weight="duotone" />
+                                                                <span className="text-xs font-medium text-gray-700">Instructors</span>
+                                                            </div>
+                                                            <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
+                                                                {form.getValues("courseData").instructors.length}
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
-                    <CourseDetailsRatingsComponent
-                        packageSessionId={packageSessionIdForCurrentLevel}
-                    />
+
+                    {/* Ratings Component */}
+                    <div className="mt-6 lg:mt-8 animate-fade-in-up" style={{ animationDelay: '0.8s' }}>
+                        <CourseDetailsRatingsComponent packageSessionId={packageSessionIdForCurrentLevel} />
+                    </div>
                 </div>
             </div>
         </>

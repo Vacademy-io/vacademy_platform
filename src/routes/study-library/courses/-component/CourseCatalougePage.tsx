@@ -200,62 +200,134 @@ const CourseCatalougePage: React.FC = () => {
         fetchPackages(searchTerm, sortOption);
     }, [searchTerm, sortOption, selectedTab, page]);
 
+    // Auto-switch to PROGRESS tab if ALL tab is hidden and current tab is ALL
+    useEffect(() => {
+        if (selectedTab === "ALL" && courseData.totalElements === 0) {
+            setSelectedTab("PROGRESS");
+        }
+    }, [courseData.totalElements, selectedTab]);
+
     return (
-        <div>
+        <div className="min-h-screen bg-gradient-to-br from-gray-50/80 via-white to-primary-50/20 relative overflow-hidden w-full max-w-full">
+            {/* Hero Section */}
             <HeroSection />
-            <Tabs value={selectedTab} onValueChange={setSelectedTab}>
-                <TabsList className="p-0 !bg-transparent mb-4 border-b w-full flex justify-start rounded-none">
-                    <TabsTrigger
-                        value="ALL"
-                        className={`text-md !shadow-none border-b-2 -mb-1 rounded-none font-semibold 
-          ${selectedTab === "ALL" ? "border-primary-500 !text-primary-500" : "border-transparent text-gray-500"}`}
-                    >
-                        All Courses
-                    </TabsTrigger>
-                    <TabsTrigger
-                        value="PROGRESS"
-                        className={`text-md !shadow-none border-b-2 -mb-1 rounded-none font-semibold 
-          ${selectedTab === "PROGRESS" ? "border-primary-500 !text-primary-500" : "border-transparent text-gray-500"}`}
-                    >
-                        In Progress
-                    </TabsTrigger>
-                    <TabsTrigger
-                        value="COMPLETED"
-                        className={`text-md !shadow-none border-b-2 -mb-1 rounded-none font-semibold 
-          ${selectedTab === "COMPLETED" ? "border-primary-500 !text-primary-500" : "border-transparent text-gray-500"}`}
-                    >
-                        Completed
-                    </TabsTrigger>
-                </TabsList>
-                {isLoadingCourse ? (
-                    <DashboardLoader />
-                ) : (
-                    <TabsContent value={selectedTab}>
-                        <CoursesPage
-                            courseData={courseData}
-                            searchTerm={searchTerm}
-                            onSearchChange={setSearchTerm}
-                            sortOption={sortOption}
-                            onSortChange={setSortOption}
-                            selectedLevels={selectedLevels}
-                            setSelectedLevels={setSelectedLevels}
-                            selectedTags={selectedTags}
-                            setSelectedTags={setSelectedTags}
-                            selectedInstructors={selectedInstructors}
-                            setSelectedInstructors={setSelectedInstructors}
-                            onApplyFilters={handleApplyFilters}
-                            clearAllFilters={() => {
-                                setSelectedLevels([]);
-                                setSelectedTags([]);
-                                setSelectedInstructors([]);
-                                fetchPackages();
-                            }}
-                            page={page}
-                            handlePageChange={handlePageChange}
-                        />
-                    </TabsContent>
-                )}
-            </Tabs>
+            
+            {/* Main Content Container */}
+            <div className="relative z-10 max-w-7xl mx-auto p-2 sm:p-3 lg:p-4">
+                <Tabs value={selectedTab} onValueChange={setSelectedTab} className="w-full">
+                    {/* Enhanced Tab Navigation */}
+                    <div className="relative bg-white/80 backdrop-blur-sm border border-gray-200/60 rounded-2xl shadow-sm hover:shadow-lg transition-all duration-500 mb-3 sm:mb-4 overflow-hidden">
+                        {/* Background gradient overlay */}
+                        <div className="absolute inset-0 bg-gradient-to-br from-gray-50/30 via-transparent to-primary-50/20 pointer-events-none"></div>
+                        
+                        {/* Floating orb effect */}
+                        <div className="absolute top-0 right-0 w-12 h-12 bg-primary-100/20 rounded-full blur-2xl opacity-70 -translate-y-2 translate-x-4"></div>
+                        
+                        <div className="relative p-2 sm:p-3">
+                            <TabsList className="relative bg-gray-50/50 backdrop-blur-sm rounded-xl p-1 w-full flex justify-start border border-gray-200/40 shadow-sm">
+                                {/* Only show ALL tab if there are courses */}
+                                {courseData.totalElements > 0 && (
+                                    <TabsTrigger
+                                        value="ALL"
+                                        className={`relative px-3 sm:px-4 py-2 sm:py-2.5 text-sm sm:text-base font-semibold rounded-lg transition-all duration-300 flex-1 sm:flex-none ${
+                                            selectedTab === "ALL" 
+                                                ? "bg-white text-primary-600 shadow-sm border border-primary-200" 
+                                                : "text-gray-600 hover:text-gray-900 hover:bg-white/50"
+                                        }`}
+                                    >
+                                        All Courses
+                                        {selectedTab === "ALL" && (
+                                            <div className="absolute inset-0 bg-gradient-to-r from-primary-500/10 to-primary-600/10 rounded-lg"></div>
+                                        )}
+                                    </TabsTrigger>
+                                )}
+                                <TabsTrigger
+                                    value="PROGRESS"
+                                    className={`relative px-3 sm:px-4 py-2 sm:py-2.5 text-sm sm:text-base font-semibold rounded-lg transition-all duration-300 flex-1 sm:flex-none ${
+                                        selectedTab === "PROGRESS" 
+                                            ? "bg-white text-primary-600 shadow-sm border border-primary-200" 
+                                            : "text-gray-600 hover:text-gray-900 hover:bg-white/50"
+                                    }`}
+                                >
+                                    In Progress
+                                    {selectedTab === "PROGRESS" && (
+                                        <div className="absolute inset-0 bg-gradient-to-r from-primary-500/10 to-primary-600/10 rounded-lg"></div>
+                                    )}
+                                </TabsTrigger>
+                                <TabsTrigger
+                                    value="COMPLETED"
+                                    className={`relative px-3 sm:px-4 py-2 sm:py-2.5 text-sm sm:text-base font-semibold rounded-lg transition-all duration-300 flex-1 sm:flex-none ${
+                                        selectedTab === "COMPLETED" 
+                                            ? "bg-white text-primary-600 shadow-sm border border-primary-200" 
+                                            : "text-gray-600 hover:text-gray-900 hover:bg-white/50"
+                                    }`}
+                                >
+                                    Completed
+                                    {selectedTab === "COMPLETED" && (
+                                        <div className="absolute inset-0 bg-gradient-to-r from-primary-500/10 to-primary-600/10 rounded-lg"></div>
+                                    )}
+                                </TabsTrigger>
+                            </TabsList>
+                        </div>
+                    </div>
+
+                    {/* Tab Content */}
+                    {isLoadingCourse ? (
+                        <div className="relative bg-white/80 backdrop-blur-sm border border-gray-200/60 rounded-2xl shadow-sm p-4 sm:p-6 animate-pulse overflow-hidden">
+                            {/* Background pattern */}
+                            <div className="absolute inset-0 bg-gradient-to-br from-gray-50/30 via-transparent to-primary-50/20 pointer-events-none"></div>
+                            
+                            <div className="relative space-y-6">
+                                <div className="flex items-center space-x-4">
+                                    <div className="w-12 h-12 bg-gray-200 rounded-xl"></div>
+                                    <div className="space-y-2 flex-1">
+                                        <div className="h-6 bg-gray-200 rounded w-3/4"></div>
+                                        <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                    {[1, 2, 3, 4].map((i) => (
+                                        <div key={i} className="bg-gray-100 rounded-xl p-6 space-y-4">
+                                            <div className="h-48 bg-gray-200 rounded-xl"></div>
+                                            <div className="space-y-2">
+                                                <div className="h-6 bg-gray-200 rounded w-3/4"></div>
+                                                <div className="h-4 bg-gray-200 rounded w-full"></div>
+                                                <div className="h-4 bg-gray-200 rounded w-2/3"></div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    ) : (
+                                                 <TabsContent value={selectedTab} className="m-0">
+                             <CoursesPage
+                                 courseData={courseData}
+                                 searchTerm={searchTerm}
+                                 onSearchChange={setSearchTerm}
+                                 sortOption={sortOption}
+                                 onSortChange={setSortOption}
+                                 selectedLevels={selectedLevels}
+                                 setSelectedLevels={setSelectedLevels}
+                                 selectedTags={selectedTags}
+                                 setSelectedTags={setSelectedTags}
+                                 selectedInstructors={selectedInstructors}
+                                 setSelectedInstructors={setSelectedInstructors}
+                                 onApplyFilters={handleApplyFilters}
+                                 clearAllFilters={() => {
+                                     setSelectedLevels([]);
+                                     setSelectedTags([]);
+                                     setSelectedInstructors([]);
+                                     fetchPackages();
+                                 }}
+                                 page={page}
+                                 handlePageChange={handlePageChange}
+                                 showFilters={selectedTab === "ALL"}
+                             />
+                         </TabsContent>
+                    )}
+                </Tabs>
+            </div>
         </div>
     );
 };

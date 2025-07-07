@@ -112,11 +112,6 @@ public class UserService {
 
     public List<UserDTO> getUserDetailsByIds(List<String> userIds) {
 
-        for (String user : userIds) {
-            if (!ifUserExist(user)) {
-                throw new UserNotFoundException("User with Id " + user + " not found");
-            }
-        }
         List<User> users = userRepository.findUserDetailsByIds(userIds);
 
         return users.stream()

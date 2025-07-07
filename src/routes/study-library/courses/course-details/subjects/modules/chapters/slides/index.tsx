@@ -1,3 +1,4 @@
+
 import { LayoutContainer } from "@/components/common/layout-container/layout-container";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { ChevronRightIcon } from "@radix-ui/react-icons";
@@ -125,16 +126,16 @@ function Slides() {
     }, [modulesWithChaptersData, studyLibraryData]);
 
     const SidebarComponent = (
-        <div className="relative w-full max-w-full overflow-hidden h-full">
+        <div className="relative w-full max-w-full h-full">
             {/* Animated background elements */}
             <div className="absolute inset-0 overflow-hidden pointer-events-none">
                 <div className="absolute top-1/4 left-1/4 w-16 md:w-32 h-16 md:h-32 bg-gradient-to-br from-primary-100/20 to-transparent rounded-full blur-3xl animate-gentle-pulse"></div>
                 <div className="absolute bottom-1/3 right-1/3 w-20 md:w-40 h-20 md:h-40 bg-gradient-to-br from-primary-50/30 to-transparent rounded-full blur-3xl animate-gentle-pulse" style={{ animationDelay: '2s' }}></div>
             </div>
 
-            <div className="relative flex flex-col h-full bg-gradient-to-br from-gray-50/80 via-white to-primary-50/20">
-                {/* Fixed Breadcrumb Header */}
-                <div className="flex-shrink-0 bg-white/80 backdrop-blur-sm border-b border-gray-200/60 shadow-sm">
+            <div className="relative h-full bg-gradient-to-br from-gray-50/80 via-white to-primary-50/20">
+                {/* Fixed Breadcrumb Header - Always visible at top */}
+                <div className="absolute top-0 left-0 right-0 z-20 bg-white/80 backdrop-blur-sm border-b border-gray-200/60 shadow-sm">
                     <div className={`${open ? "px-3 sm:px-4" : "px-2 sm:px-3"} py-3`}>
                         <div className="relative group overflow-hidden animate-fade-in-down">
                             {/* Background gradient overlay */}
@@ -179,38 +180,36 @@ function Slides() {
                     </div>
                 </div>
 
-                {/* Scrollable Content Area */}
-                <div className="flex-1 overflow-hidden">
-                    <div className="relative h-full bg-white/80 backdrop-blur-sm hover:shadow-lg transition-all duration-500 group">
+                {/* Fixed Content Header - Always visible below breadcrumb */}
+                <div className="absolute top-[85px] left-0 right-0 z-20 flex items-center space-x-2 p-3 sm:p-4 border-b border-gray-200/60 bg-gradient-to-r from-gray-50/80 to-white/80 animate-fade-in-down" style={{ animationDelay: '0.1s' }}>
+                    <div className="p-1.5 bg-gradient-to-br from-primary-100 to-primary-200 rounded-lg shadow-sm">
+                        <GraduationCap size={16} className="text-primary-600" weight="duotone" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <h3 className="text-sm font-bold text-gray-900 truncate">Chapter Slides</h3>
+                        <p className="text-xs text-gray-600">Interactive learning materials</p>
+                    </div>
+                </div>
+
+                {/* Scrollable Content Area - Only slide cards scroll */}
+                <div className="absolute top-[145px] bottom-[85px] left-0 right-0 overflow-y-auto">
+                    <div className="relative bg-white/80 backdrop-blur-sm hover:shadow-lg transition-all duration-500 group min-h-full">
                         {/* Background gradient overlay */}
                         <div className="absolute inset-0 bg-gradient-to-br from-primary-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
                         
                         {/* Floating orb effect */}
                         <div className="absolute top-0 right-0 w-12 h-12 bg-primary-100/20 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-700 -translate-y-2 translate-x-3"></div>
                         
-                        <div className="relative h-full flex flex-col">
-                            {/* Content Header */}
-                            <div className="flex-shrink-0 flex items-center space-x-2 p-3 sm:p-4 border-b border-gray-200/60 bg-gradient-to-r from-gray-50/80 to-white/80 animate-fade-in-down" style={{ animationDelay: '0.1s' }}>
-                                <div className="p-1.5 bg-gradient-to-br from-primary-100 to-primary-200 rounded-lg shadow-sm">
-                                    <GraduationCap size={16} className="text-primary-600" weight="duotone" />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <h3 className="text-sm font-bold text-gray-900 truncate">Chapter Slides</h3>
-                                    <p className="text-xs text-gray-600">Interactive learning materials</p>
-                                </div>
-                            </div>
-
-                            {/* Scrollable Slides Container */}
-                            <div className="flex-1 overflow-y-auto p-3 sm:p-4 animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
-                                <ChapterSidebarSlides />
-                            </div>
+                        {/* Scrollable Slides Container */}
+                        <div className="relative p-3 sm:p-4 animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
+                            <ChapterSidebarSlides />
                         </div>
                     </div>
                 </div>
 
-                {/* Fixed Progress Footer */}
+                {/* Fixed Progress Footer - Always visible at bottom */}
                 {slides && slides.length > 0 && (
-                    <div className="flex-shrink-0 bg-white/80 backdrop-blur-sm border-t border-gray-200/60 shadow-sm">
+                    <div className="absolute bottom-0 left-0 right-0 z-20 bg-white/80 backdrop-blur-sm border-t border-gray-200/60 shadow-sm">
                         <div className={`${open ? "px-3 sm:px-4" : "px-2 sm:px-3"} py-3`}>
                             <div className="relative p-3 bg-white/80 backdrop-blur-sm border border-gray-200/60 rounded-lg shadow-sm hover:shadow-lg transition-all duration-500 group overflow-hidden animate-fade-in-up">
                                 {/* Background gradient overlay */}

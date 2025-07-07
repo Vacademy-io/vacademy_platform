@@ -37,10 +37,12 @@ public class UserInternalController {
         }
     }
 
+
     @PostMapping("/user-details-list")
     public ResponseEntity<List<UserDTO>> getUserDetailsByIds(@RequestBody List<String> userIds) {
         List<UserDTO> users = userService.getUserDetailsByIds(userIds);
         return ResponseEntity.ok(users);
     }
+
 
 }

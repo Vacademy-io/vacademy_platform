@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import { useCatalogStore } from "../-store/catalogStore";
-import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { handleFetchInstituteDetails } from "../-services/institute-details";
 import { FunnelSimple, CheckCircle, MagnifyingGlass, User, Tag } from 'phosphor-react';
@@ -307,7 +306,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                     />
 
                     <FilterSection
-                        title="Instructors"
+                        title="Authors"
                         items={instructors}
                         selectedItems={selectedInstructors}
                         handleChange={onInstructorChange}

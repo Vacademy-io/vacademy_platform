@@ -10,10 +10,8 @@ interface Instructor {
 
 interface CourseCardProps {
     courseId: string;
-    package_session_id: string;
     package_name: string;
     level_name: string;
-    thumbnailUrl: string;
     instructors: Instructor[];
     rating: number;
     description: string;
@@ -22,16 +20,13 @@ interface CourseCardProps {
     previewImageUrl: string;
 }
 
-const fallbackImage = "/images/placeholder-course.jpg";
 const fallbackInstructorImage =
     "https://api.dicebear.com/7.x/thumbs/svg?seed=anon";
 
 const CourseCard: React.FC<CourseCardProps> = ({
     courseId,
-    package_session_id,
     package_name,
     level_name,
-    thumbnailUrl,
     instructors,
     rating,
     description,
@@ -90,13 +85,9 @@ const CourseCard: React.FC<CourseCardProps> = ({
     };
 
     return (
-        <div className="bg-white rounded-lg shadow-lg overflow-hidden flex flex-col">
-            <div className="w-full h-48 bg-gray-200 flex items-center justify-center relative">
-                {loadingImage ? (
-                    <div className="absolute inset-0 flex items-center justify-center bg-gray-200 bg-opacity-75">
-                        <div className="text-gray-500">Loading...</div>
-                    </div>
-                ) : courseImageUrl ? (
+        <div className="bg-white rounded-lg shadow-lg overflow-hidden flex flex-col h-fit">
+            {courseImageUrl && (
+                <div className="w-full h-48 bg-gray-200 flex items-center justify-center relative">
                     <img
                         src={courseImageUrl}
                         alt={package_name}
@@ -105,17 +96,8 @@ const CourseCard: React.FC<CourseCardProps> = ({
                             loadingImage ? "opacity-0" : "opacity-100"
                         }`}
                     />
-                ) : (
-                    <img
-                        src={fallbackImage}
-                        alt={package_name}
-                        loading="lazy"
-                        className={`w-full h-full object-cover transition-opacity duration-300 ${
-                            loadingImage ? "opacity-0" : "opacity-100"
-                        }`}
-                    />
-                )}
-            </div>
+                </div>
+            )}
 
             <div className="p-4 flex flex-col flex-grow">
                 <div className="flex justify-between items-start mb-2">

@@ -166,7 +166,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
             />
 
             <FilterSection
-                title="Instructors"
+                title="Authors"
                 items={instructors}
                 selectedItems={selectedInstructors}
                 handleChange={onInstructorChange}

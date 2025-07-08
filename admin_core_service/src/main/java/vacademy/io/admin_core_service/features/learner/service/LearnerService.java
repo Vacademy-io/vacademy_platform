@@ -3,11 +3,13 @@ package vacademy.io.admin_core_service.features.learner.service;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository;
 import vacademy.io.admin_core_service.features.learner.dto.LearnerDetailsDTO;
 import vacademy.io.admin_core_service.features.learner.dto.LearnerDetailsEditDTO;
+import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
@@ -19,6 +21,9 @@ import java.util.stream.Collectors;
 public class LearnerService {
     @Autowired
     private InstituteStudentRepository instituteStudentRepository;
+
+    @Autowired
+    private AuthService authService;
 
     public String editLearnerDetails(LearnerDetailsEditDTO learnerDetailsEditDTO, CustomUserDetails user) {
         if (Objects.isNull(learnerDetailsEditDTO)) {
@@ -49,6 +54,13 @@ public class LearnerService {
             student.setParentsEmail(learnerDetailsEditDTO.getParentsEmail());
         student.setFaceFileId(learnerDetailsEditDTO.getFaceFileId());
         instituteStudentRepository.save(student);
+        UserDTO userDTO = new UserDTO();
+        userDTO.setId(learnerDetailsEditDTO.getUserId());
+        userDTO.setFullName(learnerDetailsEditDTO.getFullName());
+        userDTO.setEmail(learnerDetailsEditDTO.getEmail());
+        userDTO.setMobileNumber(learnerDetailsEditDTO.getContactNumber());
+        userDTO.setProfilePicFileId(learnerDetailsEditDTO.getFaceFileId());
+        authService.updateUser(userDTO, learnerDetailsEditDTO.getUserId());
         return "success";
     }
 

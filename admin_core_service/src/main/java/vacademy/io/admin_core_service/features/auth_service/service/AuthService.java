@@ -8,6 +8,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import vacademy.io.admin_core_service.features.auth_service.constants.AuthServiceRoutes;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
@@ -64,4 +66,26 @@ public class AuthService {
             throw new VacademyException(e.getMessage());
         }
     }
+
+    public UserDTO updateUser(UserDTO userDTO,String userId) {
+        if (userDTO == null || userId == null) {
+            throw new VacademyException("User details cannot be null");
+        }
+        try {
+            ObjectMapper objectMapper = new ObjectMapper();
+            ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
+                    clientName,
+                    HttpMethod.PUT.name(),
+                    authServerBaseUrl,
+                    AuthServiceRoutes.UPDATE_USER_ROUTE+"?userId="+userId,
+                    userDTO
+            );
+
+            return objectMapper.readValue(response.getBody(), new TypeReference<UserDTO>() {
+            });
+        } catch (Exception e) {
+            throw new VacademyException(e.getMessage());
+        }
+    }
+
 }

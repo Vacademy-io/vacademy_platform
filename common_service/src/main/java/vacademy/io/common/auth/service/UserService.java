@@ -428,4 +428,10 @@ public class UserService {
         }
         userRepository.updateLastTokenUpdateTime(userIds);
     }
+
+    public UserDTO updateUserDetails(UserDTO userDTO,String userId) {
+        User user = userRepository.findById(userId).orElseThrow(()->new VacademyException("User Not Found with id "+userId));
+        user = updateUser(user,userDTO);
+        return new UserDTO(user);
+    }
 }

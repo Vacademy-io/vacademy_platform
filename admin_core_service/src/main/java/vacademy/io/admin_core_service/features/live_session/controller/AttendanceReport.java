@@ -6,9 +6,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.live_session.dto.AttendanceReportDTO;
+import vacademy.io.admin_core_service.features.live_session.dto.StudentAttendanceDTO;
 import vacademy.io.admin_core_service.features.live_session.service.AttendanceReportService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @RestController
@@ -21,5 +23,13 @@ public class AttendanceReport {
     @GetMapping("/by-session-id")
     ResponseEntity<List<AttendanceReportDTO>> getReportBySessionIds(@RequestParam("sessionId") String sessionId , @RequestParam("scheduleId") String scheduleId , @RequestParam("accessType") String accessType , @RequestAttribute("user") CustomUserDetails user){
         return ResponseEntity.ok(attendanceReportService.generateReport(sessionId , scheduleId , accessType));
+    }
+
+    @GetMapping("/by-batch-session")
+    public ResponseEntity<List<StudentAttendanceDTO>> getAttendanceReportByBatchSessionId(
+            @RequestParam("batchSessionId") String batchSessionId , @RequestParam("startDate") LocalDate start, @RequestParam("endDate") LocalDate end
+    ) {
+        List<StudentAttendanceDTO> report = attendanceReportService.getGroupedAttendanceReport(batchSessionId , start , end);
+        return ResponseEntity.ok(report);
     }
 }

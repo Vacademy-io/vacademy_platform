@@ -38,8 +38,8 @@ public class LiveSessionController {
     }
 
     @GetMapping("/delete")
-    public void deleteLiveSession(@RequestParam("sessionId") String sessionId,
+    public void deleteLiveSession(@RequestParam("sessionId") String sessionId, @RequestParam("type") String type,
                                   @RequestAttribute("user") CustomUserDetails user){
-        getLiveSessionService.deleteLiveSession(sessionId);
+        getLiveSessionService.deleteLiveSession(sessionId , type);
     }
 }

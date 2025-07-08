@@ -121,6 +121,8 @@
     "react-youtube": "^10.1.0",
     "recharts": "^2.15.1",
     "sonner": "^1.7.1",
+    "sweetalert2": "^11.22.2",
+    "sweetalert2-react-content": "^5.1.0",
     "tailwind-merge": "^2.5.5",
     "tailwindcss-animate": "^1.0.7",
     "turndown": "^7.2.0",

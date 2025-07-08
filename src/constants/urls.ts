@@ -92,3 +92,4 @@ export const urlInstituteDetails = `${BASE_URL}/admin-core-service/public/instit
 export const urlCourseDetails = `${BASE_URL}/admin-core-service/open/packages/v1/search`;
 export const urlPublicCourseDetails = `${BASE_URL}/admin-core-service/learner-packages/v1/search`;
 export const urlInstructor = `${BASE_URL}/auth-service/public/v1/users-of-status`;
+export const FEEDBACK_URL = `${BASE_URL}/admin-core-service/rating`;

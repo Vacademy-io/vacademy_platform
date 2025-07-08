@@ -4,10 +4,10 @@ import { LayoutContainer } from "@/components/common/layout-container/layout-con
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
 import { fetchStaticData } from "./-lib/utils";
 import { Helmet } from "react-helmet";
-import { fetchStudentDetails } from "@/services/studentDetails";
-import { getUserId } from "@/constants/getUserId";
-import { getInstituteId } from "@/constants/helper";
-import { Preferences } from "@capacitor/preferences";
+// import { fetchStudentDetails } from "@/services/studentDetails";
+// import { getUserId } from "@/constants/getUserId";
+// import { getInstituteId } from "@/constants/helper";
+// import { Preferences } from "@capacitor/preferences";
 import { getPackageSessionId } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
 import { fetchStudyLibraryDetails } from "@/services/study-library/getStudyLibraryDetails";
 import { useStudyLibraryStore } from "@/stores/study-library/use-study-library-store";
@@ -17,7 +17,7 @@ import {
 } from "./-types/dashboard-data-types";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import { PastLearningInsights } from "./-components/PastLearningInsights";
-import { fetchAndStoreInstituteDetails } from "@/services/fetchAndStoreInstituteDetails";
+// import { fetchAndStoreInstituteDetails } from "@/services/fetchAndStoreInstituteDetails";
 import { useInstituteFeatureStore } from "@/stores/insititute-feature-store";
 import { useLiveSessions } from "../study-library/live-class/-hooks/useLiveSessions";
 import { HOLISTIC_INSTITUTE_ID } from "@/constants/urls";
@@ -48,21 +48,6 @@ import { SessionStreamingServiceType } from "../register/live-class/-types/enum"
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/dashboard/")({
-    beforeLoad: async () => {
-        const instituteId = await getInstituteId();
-        const userId = await getUserId();
-
-        if (!instituteId || !userId) {
-            throw new Error("Institute ID or User ID is missing");
-        }
-        await fetchAndStoreInstituteDetails(instituteId, userId);
-        const response = await fetchStudentDetails(instituteId, userId);
-        const studentDetails = response.data[0];
-        await Preferences.set({
-            key: "studentDetails",
-            value: JSON.stringify(studentDetails),
-        });
-    },
     component: () => {
         return (
             <LayoutContainer>

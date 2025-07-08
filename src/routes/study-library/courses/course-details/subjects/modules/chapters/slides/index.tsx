@@ -66,7 +66,6 @@ function Slides() {
   const { slides } = useSlides(chapterId || "");
   const { studyLibraryData } = useStudyLibraryStore();
   const { modulesWithChaptersData } = useModulesWithChaptersStore();
-
   useEffect(() => {
     if (slides?.length) {
       const feedbackSlide: Slide = {
@@ -78,6 +77,14 @@ function Slides() {
 
       const slidesWithFeedback = [...slides, feedbackSlide];
       setItems(slidesWithFeedback);
+
+      const completion = calculateOverallCompletion(slides);
+
+      // Automatically go to feedback page if course is 100% completed
+      if (completion === 100) {
+        setActiveItem(feedbackSlide);
+        return;
+      }
 
       if (slideId) {
         const targetSlide = slidesWithFeedback.find((s) => s.id === slideId);
@@ -165,11 +172,19 @@ function Slides() {
         {/* Section Title */}
         <div className="absolute top-[85px] left-0 right-0 z-20 flex items-center space-x-2 p-3 sm:p-4 border-b border-gray-200/60 bg-gradient-to-r from-gray-50/80 to-white/80">
           <div className="p-1.5 bg-gradient-to-br from-primary-100 to-primary-200 rounded-lg shadow-sm">
-            <GraduationCap size={16} className="text-primary-600" weight="duotone" />
+            <GraduationCap
+              size={16}
+              className="text-primary-600"
+              weight="duotone"
+            />
           </div>
           <div className="flex-1 min-w-0">
-            <h3 className="text-sm font-bold text-gray-900 truncate">Chapter Slides</h3>
-            <p className="text-xs text-gray-600">Interactive learning materials</p>
+            <h3 className="text-sm font-bold text-gray-900 truncate">
+              Chapter Slides
+            </h3>
+            <p className="text-xs text-gray-600">
+              Interactive learning materials
+            </p>
           </div>
         </div>
 
@@ -224,13 +239,17 @@ function Slides() {
                 <div className="relative flex items-center justify-between">
                   <div className="flex items-center space-x-2">
                     <div className="w-2 h-2 bg-primary-500 rounded-full animate-pulse" />
-                    <span className="text-xs font-semibold text-gray-700">Chapter Progress</span>
+                    <span className="text-xs font-semibold text-gray-700">
+                      Chapter Progress
+                    </span>
                   </div>
                   <div className="flex items-center space-x-2">
                     <div className="w-16 h-1.5 bg-gray-200 rounded-full overflow-hidden">
                       <div
                         className="h-full bg-gradient-to-r from-primary-400 to-primary-600 rounded-full"
-                        style={{ width: `${calculateOverallCompletion(slides)}%` }}
+                        style={{
+                          width: `${calculateOverallCompletion(slides)}%`,
+                        }}
                       />
                     </div>
                     <span className="text-xs font-bold text-primary-600 min-w-[30px]">
@@ -249,7 +268,10 @@ function Slides() {
   const { setNavHeading } = useNavHeadingStore();
   const heading = (
     <div className="flex items-center gap-3">
-      <button onClick={() => window.history.back()} className="p-1.5 rounded-lg hover:bg-gray-100">
+      <button
+        onClick={() => window.history.back()}
+        className="p-1.5 rounded-lg hover:bg-gray-100"
+      >
         <CaretLeft className="w-5 h-5 text-gray-600" />
       </button>
       <div className="flex items-center space-x-2 min-w-0">
@@ -259,7 +281,10 @@ function Slides() {
         <div className="min-w-0">
           <h1 className="text-sm font-bold text-gray-900 truncate">
             {subjectName && moduleName && chapterName
-              ? `${truncateString(subjectName, 12)} • ${truncateString(moduleName, 12)} • ${truncateString(chapterName, 15)}`
+              ? `${truncateString(subjectName, 12)} • ${truncateString(
+                  moduleName,
+                  12
+                )} • ${truncateString(chapterName, 15)}`
               : "Study Materials"}
           </h1>
         </div>
@@ -272,11 +297,18 @@ function Slides() {
   }, [subjectName, moduleName, chapterName]);
 
   return (
-    <LayoutContainer sidebarComponent={SidebarComponent} className="md:my-0 md:mx-3 lg:mx-4">
+    <LayoutContainer
+      sidebarComponent={SidebarComponent}
+      className="md:my-0 md:mx-3 lg:mx-4"
+    >
       <InitStudyLibraryProvider>
         <ModulesWithChaptersProvider subjectId={subjectId}>
           <SidebarProvider defaultOpen={false}>
-            {activeItem?.id === "feedback-slide" ? <FeedbackPage /> : <SlideMaterial />}
+            {activeItem?.id === "feedback-slide" ? (
+              <FeedbackPage />
+            ) : (
+              <SlideMaterial />
+            )}
           </SidebarProvider>
         </ModulesWithChaptersProvider>
       </InitStudyLibraryProvider>

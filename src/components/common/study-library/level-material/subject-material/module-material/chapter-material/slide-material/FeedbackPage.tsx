@@ -1,18 +1,82 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Star } from "lucide-react";
-import { MyButton } from "@/components/design-system/button";// Adjust the path as per your file structure
+import { MyButton } from "@/components/design-system/button";
+import { submitFeedback } from "@/services/feedback/submitFeedback";
+import { getPackageSessionId, getUserId } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
+import Swal from "sweetalert2";
+import withReactContent from "sweetalert2-react-content";
+
+const MySwal = withReactContent(Swal);
 
 export default function FeedbackPage() {
   const [rating, setRating] = useState(0);
   const [hover, setHover] = useState(0);
   const [comments, setComments] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [packageSessionId, setPackageSessionId] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    const fetchUserData = async () => {
+      const id = await getUserId();
+      const sessionId = await getPackageSessionId();
+      setUserId(id);
+      setPackageSessionId(sessionId);
+
+      if (!id || !sessionId) {
+        console.error("❌ user_id or package_session_id missing", { id, sessionId });
+        MySwal.fire("Missing Info", "User or session ID is missing.", "warning");
+      }
+    };
+
+    fetchUserData();
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log({ rating, comments });
-    alert("Thank you for your feedback!");
-    setRating(0);
-    setComments("");
+
+    if (!userId || !packageSessionId) {
+      await MySwal.fire("Error", "Cannot submit feedback — user info is missing.", "error");
+      return;
+    }
+
+    if (!rating || !comments.trim()) {
+      await MySwal.fire("Incomplete", "Please select a rating and write a comment.", "warning");
+      return;
+    }
+
+    const payload = {
+      id: "",
+      points: rating,
+      user_id: userId,
+      likes: 0,
+      dislikes: 0,
+      source_id: packageSessionId,
+      source_type: "PACKAGE_SESSION",
+      text: comments,
+      status: "ACTIVE",
+    };
+
+    try {
+      setLoading(true);
+      await submitFeedback(payload);
+
+      // 🎉 Success Alert
+      await MySwal.fire({
+        title: "Thank you!",
+        text: "Thanks for sharing your thoughts — it means a lot to us!",
+        icon: "success",
+        confirmButtonColor: "#2563eb",
+      });
+
+      setRating(0);
+      setComments("");
+    } catch (error: any) {
+      console.error("❌ Feedback API error:", error);
+      await MySwal.fire("Oops!", error?.response?.data?.message || "Something went wrong. Please try again.", "error");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -54,14 +118,14 @@ export default function FeedbackPage() {
           />
         </div>
 
-        {/* ✅ MyButton used here */}
         <MyButton
           buttonType="primary"
           layoutVariant="default"
           scale="medium"
           type="submit"
+          disable={loading}
         >
-          Submit Feedback
+          {loading ? "Submitting..." : "Submit Feedback"}
         </MyButton>
       </form>
     </div>

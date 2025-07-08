@@ -1,5 +1,5 @@
 'use client';
-
+import { Preferences } from '@capacitor/preferences';
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { useForm } from 'react-hook-form';
@@ -65,7 +65,7 @@ export function InstituteSelection() {
         const userId = decodedData?.user;
 
         if (!authorities || !userId)
-          return toast.error('Invalid token - Please login again');
+          return toast.error('Invalid token  Please login again');
 
         const instituteIds = Object.keys(authorities);
         const instituteList = await Promise.all(
@@ -99,33 +99,47 @@ export function InstituteSelection() {
 
     fetchInstitutes();
   }, []);
+const onSubmit = async (data: FormValues) => {
+  if (!data.instituteId) return toast.error('Please select an institute');
 
-  const onSubmit = async (data: FormValues) => {
-    if (!data.instituteId) return toast.error('Please select an institute');
+  setIsSubmitting(true);
+  try {
+    console.log('✅ Selected instituteId (onSubmit):', data.instituteId);
 
-    setIsSubmitting(true);
-    try {
-      const userId = await getTokenFromStorage(TokenKey.accessToken)
-        .then(getTokenDecodedData)
-        .then((data) => data?.user);
+    // Save selected instituteId
+    await Preferences.set({
+      key: 'selectedInstituteId',
+      value: data.instituteId,
+    });
 
-      if (!userId) return toast.error('User not found');
+    const userId = await getTokenFromStorage(TokenKey.accessToken)
+      .then(getTokenDecodedData)
+      .then((data) => data?.user);
 
-      await fetchAndStoreInstituteDetails(data.instituteId, userId);
-      try {
-        await fetchAndStoreStudentDetails(data.instituteId, userId);
-      } catch {
-        toast.error('Failed to fetch student details');
-      }
-
-      navigate({ to: '/SessionSelectionPage', search: { redirect } });
-    } catch {
-      toast.error('Submission failed');
-    } finally {
-      setIsSubmitting(false);
+    if (!userId) {
+      toast.error('User not found');
+      return;
     }
-  };
 
+    // Step 1: Fetch and store InstituteDetails
+    await fetchAndStoreInstituteDetails(data.instituteId, userId);
+
+    // Step 2: Wait and get updated InstituteDetails from Preferences
+    const { value: instituteRaw } = await Preferences.get({ key: 'InstituteDetails' });
+    if (!instituteRaw) throw new Error('No InstituteDetails found after storing.');
+
+    // Step 3: Fetch and store student details using updated institute data
+    await fetchAndStoreStudentDetails(data.instituteId, userId);
+
+    // Redirect after everything is saved
+    navigate({ to: '/SessionSelectionPage', search: { redirect } });
+  } catch (error) {
+    console.error('❌ Error submitting form:', error);
+    toast.error('Submission failed');
+  } finally {
+    setIsSubmitting(false);
+  }
+};
   if (isLoadingInstitutes) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-gradient-to-br from-purple-50 via-white to-pink-50 z-50">

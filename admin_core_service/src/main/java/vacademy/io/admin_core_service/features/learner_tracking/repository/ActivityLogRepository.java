@@ -46,6 +46,39 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
     Double getPercentageVideoWatched(@Param("slideId") String slideId, @Param("userId") String userId);
 
     @Query(value = """
+    WITH quiz_slide_data AS (
+        SELECT qz.id AS quiz_slide_id, COUNT(DISTINCT qq.id) AS total_questions
+        FROM slide s
+        JOIN quiz_slide qz ON qz.id = s.source_id
+        JOIN quiz_slide_question qq ON qq.quiz_slide_id = qz.id
+        WHERE s.id = :slideId
+          AND s.source_type = 'QUIZ'
+          AND qq.status IN (:quizSlideStatuses)
+        GROUP BY qz.id
+    ),
+    attempted_questions AS (
+        SELECT COUNT(DISTINCT qst.question_id) AS attempted_questions
+        FROM activity_log al
+        JOIN quiz_slide_question_tracked qst ON qst.activity_id = al.id
+        LEFT JOIN quiz_slide_question qq ON qq.id = qst.question_id
+        WHERE al.slide_id = :slideId
+          AND al.user_id = :userId
+          AND qq.quiz_slide_id IS NOT NULL
+    )
+    SELECT
+        CASE
+            WHEN qsd.total_questions = 0 THEN 0
+            ELSE ROUND(100.0 * aq.attempted_questions / qsd.total_questions, 2)
+        END AS percentage_completed
+    FROM quiz_slide_data qsd, attempted_questions aq
+    """, nativeQuery = true)
+    Double getQuizSlideCompletionPercentage(
+            @Param("slideId") String slideId,
+            @Param("quizSlideStatuses") List<String> quizSlideStatuses,
+            @Param("userId") String userId
+    );
+
+    @Query(value = """
     SELECT vt.start_time, vt.end_time
     FROM activity_log a
     JOIN video_tracked vt ON vt.activity_id = a.id
@@ -205,6 +238,14 @@ LEFT JOIN (
     Page<ActivityLog> findActivityLogsWithAssignmentSlide(@Param("userId") String userId,
                                                          @Param("slideId") String slideId,
                                                          Pageable pageable);
+    @Query("""
+            SELECT DISTINCT al FROM ActivityLog al
+            LEFT JOIN FETCH al.quizSlideQuestionTracked qt
+            WHERE al.userId = :userId AND al.slideId = :slideId
+            """)
+    Page<ActivityLog> findActivityLogsWithQuizSlide(@Param("userId") String userId,
+                                                          @Param("slideId") String slideId,
+                                                          Pageable pageable);
 
     @Query("""
     SELECT DISTINCT al FROM ActivityLog al

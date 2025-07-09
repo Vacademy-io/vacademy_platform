@@ -12,15 +12,11 @@ import {
     UserActivityArray,
 } from "../-types/dashboard-data-types";
 import { getStoredDetails } from "@/routes/assessment/examination/-utils.ts/useFetchAssessment";
-import {
-    fetchStudentDetails,
-    getStudentDetails,
-} from "@/services/studentDetails";
+import { fetchStudentDetails } from "@/services/studentDetails";
 import { getInstituteId } from "@/constants/helper";
 
 export const fetchUserData = async () => {
     const studentData = await Preferences.get({ key: "StudentDetails" });
-
     const userData = studentData.value ? JSON.parse(studentData.value) : null;
     return userData;
 };
@@ -42,6 +38,8 @@ export const fetchStaticData = async (
 
     const response1 = await fetchStudentDetails(instituteId || "", userData.id);
     const packageSessionIds = response1?.data?.map(
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-expect-error
         (item) => item.package_session_id
     );
 
@@ -63,9 +61,10 @@ export const fetchStaticData = async (
     try {
         const url = GET_ASSESSMENT_COUNT;
         const response = await authenticatedAxiosInstance({
-            method: "GET",
+            method: "POST",
             url,
-            params: { instituteId: institute_id, batchId: batch_id },
+            params: { instituteId: institute_id },
+            data: packageSessionIds,
         });
         const { test_assigned, homework_assigned } = response.data;
         setTestAssigned(test_assigned);
@@ -111,14 +110,24 @@ export const fetchLast7DaysProgress = async ({
     end_date: string;
 }): Promise<UserActivityArray> => {
     try {
+        const instituteId = await getInstituteId();
         const url = GET_LAST_7_DAYS_PROGRESS;
         const { student } = await getStoredDetails();
+        const response1 = await fetchStudentDetails(
+            instituteId || "",
+            student.id
+        );
+        const packageSessionIds = response1?.data?.map(
+            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+            // @ts-expect-error
+            (item) => item.package_session_id
+        );
         const response = await authenticatedAxiosInstance({
             method: "POST",
             url: url,
             data: {
                 user_id: user_id,
-                package_session_id: student.package_session_id,
+                package_session_ids: packageSessionIds,
                 start_date: start_date,
                 end_date: end_date,
             },

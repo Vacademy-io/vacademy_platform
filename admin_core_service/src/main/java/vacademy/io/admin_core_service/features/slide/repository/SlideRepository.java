@@ -228,57 +228,55 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
     );
 
     @Query(value = """
-                SELECT DISTINCT ON (s.id)\s
-                    s.id AS slideId,\s
-                    s.title AS slideTitle,\s
-                    s.description AS slideDescription,\s
-                    s.source_type AS sourceType,\s
-                    s.status AS status,\s
+                SELECT DISTINCT ON (s.id)
+                    s.id AS slideId,
+                    s.title AS slideTitle,
+                    s.description AS slideDescription,
+                    s.source_type AS sourceType,
+                    s.status AS status,
                     s.image_file_id AS imageFileId,
 
-                    -- Merge both operations into one progressMarker field
                     COALESCE(
                         CASE WHEN lo.operation = 'VIDEO_LAST_TIMESTAMP' THEN CAST(lo.value AS BIGINT) END,
                         CASE WHEN lo.operation = 'DOCUMENT_LAST_PAGE' THEN CAST(lo.value AS BIGINT) END
                     ) AS progressMarker,
 
-                    ps.package_id AS packageId,\s
+                    ps.package_id AS packageId,
                     ps.level_id AS levelId,
                     ch.id AS chapterId,
                     m.id AS moduleId,
                     sub.id AS subjectId
 
-                FROM slide s\s
-                JOIN activity_log al ON al.slide_id = s.id\s
-                JOIN chapter_to_slides cts ON s.id = cts.slide_id AND cts.status IN :chapterSlideStatus \s
-                JOIN chapter ch ON cts.chapter_id = ch.id AND ch.status IN :chapterStatus \s
-                JOIN package_session ps ON ps.id = :packageSessionId AND ps.status IN :packageSessionStatus \s
-                JOIN module_chapter_mapping mtc ON mtc.chapter_id = ch.id \s
-                JOIN modules m ON mtc.module_id = m.id AND m.status IN :moduleStatus\s
-                JOIN subject_module_mapping smm ON smm.module_id = m.id \s
-                JOIN subject sub ON smm.subject_id = sub.id AND sub.status IN :subjectStatus \s
+                FROM slide s
+                JOIN activity_log al ON al.slide_id = s.id
+                JOIN chapter_to_slides cts ON s.id = cts.slide_id AND cts.status IN :chapterSlideStatus
+                JOIN chapter ch ON cts.chapter_id = ch.id AND ch.status IN :chapterStatus
+                JOIN package_session ps ON ps.id IN :packageSessionIds AND ps.status IN :packageSessionStatus
+                JOIN module_chapter_mapping mtc ON mtc.chapter_id = ch.id
+                JOIN modules m ON mtc.module_id = m.id AND m.status IN :moduleStatus
+                JOIN subject_module_mapping smm ON smm.module_id = m.id
+                JOIN subject sub ON smm.subject_id = sub.id AND sub.status IN :subjectStatus
 
-                LEFT JOIN document_slide ds ON ds.id = s.source_id AND s.source_type = 'DOCUMENT'\s
-                LEFT JOIN video vs ON vs.id = s.source_id AND s.source_type = 'VIDEO'\s
-                LEFT JOIN learner_operation lo ON lo.user_id = :userId\s
-                                                  AND lo.source = 'SLIDE'\s
-                                                  AND lo.source_id = s.id \s
+                LEFT JOIN document_slide ds ON ds.id = s.source_id AND s.source_type = 'DOCUMENT'
+                LEFT JOIN video vs ON vs.id = s.source_id AND s.source_type = 'VIDEO'
+                LEFT JOIN learner_operation lo ON lo.user_id = :userId
+                                                  AND lo.source = 'SLIDE'
+                                                  AND lo.source_id = s.id
 
-                WHERE al.user_id = :userId\s
-                AND s.status IN :slideStatus \s
-                AND (al.percentage_watched IS NULL OR al.percentage_watched != 100)\s
+                WHERE al.user_id = :userId
+                AND s.status IN :slideStatus
+                AND (al.percentage_watched IS NULL OR al.percentage_watched != 100)
                 LIMIT 5
             """, nativeQuery = true)
     List<LearnerRecentSlides> findRecentIncompleteSlides(
             @Param("userId") String userId,
-            @Param("packageSessionId") String packageSessionId,
+            @Param("packageSessionIds") List<String> packageSessionIds,
             @Param("slideStatus") List<String> slideStatus,
             @Param("chapterSlideStatus") List<String> chapterSlideStatus,
             @Param("chapterStatus") List<String> chapterStatus,
             @Param("moduleStatus") List<String> moduleStatus,
             @Param("subjectStatus") List<String> subjectStatus,
             @Param("packageSessionStatus") List<String> packageSessionStatus);
-
     @Query(
             value = """
                     SELECT json_agg(slide_data ORDER BY slide_order IS NOT NULL, slide_order, created_at DESC) AS slides

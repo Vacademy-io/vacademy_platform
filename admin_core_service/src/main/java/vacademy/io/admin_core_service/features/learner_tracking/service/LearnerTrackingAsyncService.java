@@ -5,6 +5,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.chapter.enums.ChapterStatus;
+import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
 import vacademy.io.admin_core_service.features.learner_operation.enums.LearnerOperationEnum;
@@ -91,6 +92,23 @@ public class LearnerTrackingAsyncService {
 
         updateLearnerOperationsForChapter(userId, chapterId, moduleId, subjectId, packageSessionId);
     }
+
+    @Transactional
+    @Async
+    public void updateLearnerOperationsForQuiz(String userId, String slideId, String chapterId,
+                                                     String moduleId, String subjectId, String packageSessionId,
+                                                     ActivityLogDTO activityLogDTO) {
+        Double percentageCompleted = activityLogRepository.getQuizSlideCompletionPercentage(slideId,List.of(StatusEnum.ACTIVE.name()),userId);
+        if (percentageCompleted == null){
+            percentageCompleted = 0.0;
+        }
+        learnerOperationService.deleteLearnerOperationByUserIdSourceAndSourceIdAndOperation(userId,LearnerOperationSourceEnum.SLIDE.name(),slideId,LearnerOperationEnum.PERCENTAGE_QUIZ_COMPLETED.name());
+        learnerOperationService.addOrUpdateOperation(userId, LearnerOperationSourceEnum.SLIDE.name(), slideId,
+                LearnerOperationEnum.PERCENTAGE_QUIZ_COMPLETED.name(), String.valueOf(percentageCompleted));
+
+        updateLearnerOperationsForChapter(userId, chapterId, moduleId, subjectId, packageSessionId);
+    }
+
 
     // ==== Video Slide Tracking ====
 

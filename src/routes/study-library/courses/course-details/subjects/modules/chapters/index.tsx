@@ -14,10 +14,9 @@ import { useStudyLibraryStore } from "@/stores/study-library/use-study-library-s
 
 interface ModulesSearchParams {
     courseId: string;
-    levelId: string;
     subjectId: string;
     moduleId: string;
-    sessionId: string;
+    chapterId: string;
 }
 
 export const Route = createFileRoute(
@@ -27,18 +26,16 @@ export const Route = createFileRoute(
     validateSearch: (search: Record<string, unknown>): ModulesSearchParams => {
         return {
             courseId: search.courseId as string,
-            levelId: search.levelId as string,
             subjectId: search.subjectId as string,
             moduleId: search.moduleId as string,
-            sessionId: search.sessionId as string,
+            chapterId: search.moduleId as string,
         };
     },
 });
 
 function ModuleMaterialPage() {
     const navigate = useNavigate();
-    const { courseId, levelId, subjectId, moduleId, sessionId } =
-        Route.useSearch();
+    const { courseId, subjectId, moduleId, chapterId } = Route.useSearch();
     const [currentModuleId, setCurrentModuleId] = useState(moduleId);
     const { setNavHeading } = useNavHeadingStore();
     const { setActiveItem } = useContentStore();
@@ -62,10 +59,9 @@ function ModuleMaterialPage() {
             to: "/study-library/courses/course-details/subjects/modules/chapters",
             search: {
                 courseId,
-                levelId,
                 subjectId,
                 moduleId: currentModuleId,
-                sessionId,
+                chapterId: chapterId || "",
             },
             replace: true,
         });

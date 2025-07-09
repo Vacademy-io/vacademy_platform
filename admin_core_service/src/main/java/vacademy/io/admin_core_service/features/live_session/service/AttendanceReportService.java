@@ -23,6 +23,38 @@ public class AttendanceReportService {
     @Autowired
     private SessionGuestRegistrationRepository sessionGuestRegistrationRepository;
 
+    public Map<String, List<CustomFieldDTO>> getGuestWiseCustomFields(String sessionId) {
+        List<GuestSessionCustomFieldDTO> projections = sessionGuestRegistrationRepository.findGuestCustomFieldsBySessionId(sessionId);
+
+        Map<String, List<CustomFieldDTO>> groupedByGuest = new HashMap<>();
+
+        for (GuestSessionCustomFieldDTO projection : projections) {
+            String guestId = projection.getGuestId();
+
+            CustomFieldDTO dto = new CustomFieldDTO();
+            dto.setId(projection.getCustomFieldId());
+            dto.setFieldKey(projection.getFieldKey());
+            dto.setFieldName(projection.getFieldName());
+            dto.setFieldType(projection.getFieldType());
+            dto.setDefaultValue(projection.getDefaultValue());
+            dto.setConfig(projection.getConfig());
+            dto.setFormOrder(projection.getFormOrder());
+            dto.setIsMandatory(projection.getIsMandatory());
+            dto.setIsFilter(projection.getIsFilter());
+            dto.setIsSortable(projection.getIsSortable());
+            dto.setCreatedAt(projection.getCreatedAt());
+            dto.setUpdatedAt(projection.getUpdatedAt());
+            dto.setSessionId(projection.getLiveSessionId());
+            dto.setLiveSessionId(projection.getLiveSessionId());
+            dto.setCustomFieldValue(projection.getCustomFieldValue());
+            dto.setGuestId(guestId);
+
+            groupedByGuest.computeIfAbsent(guestId, k -> new ArrayList<>()).add(dto);
+        }
+
+        return groupedByGuest;
+    }
+
 
     public List<AttendanceReportDTO> generateReport(String sessionId , String scheduleId , String accessType) {
         if(Objects.equals(accessType, "private"))
@@ -95,8 +127,5 @@ public class AttendanceReportService {
                     .build();
         }
     }
-
-
-
 
 }

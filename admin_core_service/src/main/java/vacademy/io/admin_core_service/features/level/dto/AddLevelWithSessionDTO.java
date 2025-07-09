@@ -18,5 +18,9 @@ public class AddLevelWithSessionDTO {
     private String thumbnailFileId;
     private String packageId;
     private AddGroupDTO group;
+    private String status;
+    private String packageSessionStatus;
+    private String packageSessionId;
+    private boolean newPackageSession;
     private List<AddFacultyToCourseDTO> addFacultyToCourse;
 }

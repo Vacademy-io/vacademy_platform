@@ -112,11 +112,6 @@ public class UserService {
 
     public List<UserDTO> getUserDetailsByIds(List<String> userIds) {
 
-        for (String user : userIds) {
-            if (!ifUserExist(user)) {
-                throw new UserNotFoundException("User with Id " + user + " not found");
-            }
-        }
         List<User> users = userRepository.findUserDetailsByIds(userIds);
 
         return users.stream()
@@ -432,5 +427,11 @@ public class UserService {
             return;
         }
         userRepository.updateLastTokenUpdateTime(userIds);
+    }
+
+    public UserDTO updateUserDetails(UserDTO userDTO,String userId) {
+        User user = userRepository.findById(userId).orElseThrow(()->new VacademyException("User Not Found with id "+userId));
+        user = updateUser(user,userDTO);
+        return new UserDTO(user);
     }
 }

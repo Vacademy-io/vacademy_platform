@@ -3,10 +3,12 @@ package vacademy.io.admin_core_service.features.level.service;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.group.service.GroupService;
 import vacademy.io.admin_core_service.features.learner_invitation.enums.LearnerInvitationSourceTypeEnum;
 import vacademy.io.admin_core_service.features.learner_invitation.services.LearnerInvitationService;
 import vacademy.io.admin_core_service.features.level.dto.AddLevelWithCourseDTO;
+import vacademy.io.admin_core_service.features.level.dto.AddLevelWithSessionDTO;
 import vacademy.io.admin_core_service.features.level.enums.LevelStatusEnum;
 import vacademy.io.admin_core_service.features.level.repository.LevelRepository;
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
@@ -45,6 +47,15 @@ public class LevelService {
             level = getLevel(levelName, durationInDays, thumbnailFileId);
         } else {
             level = getLevelById(id);
+            if (StringUtils.hasText(levelName)){
+                level.setLevelName(levelName);
+            }
+            if (durationInDays != null){
+                level.setDurationInDays(durationInDays);
+            }
+            if (StringUtils.hasText(thumbnailFileId)){
+                level.setThumbnailFileId(thumbnailFileId);
+            }
         }
         return levelRepository.save(level);
     }
@@ -126,5 +137,14 @@ public class LevelService {
         }
     }
 
+
+    public void addOrUpdateLevel(AddLevelWithSessionDTO addLevelWithSessionDTO,Session session,PackageEntity packageEntity,String instituteId,CustomUserDetails user){
+        Level level = createOrAddLevel(addLevelWithSessionDTO.getId(), addLevelWithSessionDTO.getNewLevel(), addLevelWithSessionDTO.getLevelName(), addLevelWithSessionDTO.getDurationInDays(), addLevelWithSessionDTO.getThumbnailFileId());
+        if (addLevelWithSessionDTO.isNewPackageSession()){
+            packageSessionService.createPackageSession(level,session,packageEntity,null,session.getStartDate(),instituteId,user,addLevelWithSessionDTO.getAddFacultyToCourse());
+        }else{
+            packageSessionService.updatePackageSession(addLevelWithSessionDTO.getPackageSessionId(),addLevelWithSessionDTO.getPackageSessionStatus(),instituteId,addLevelWithSessionDTO.getAddFacultyToCourse());
+        }
+    }
 
 }

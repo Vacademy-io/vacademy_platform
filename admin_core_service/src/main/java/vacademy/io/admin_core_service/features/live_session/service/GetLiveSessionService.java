@@ -5,6 +5,7 @@ import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.live_session.dto.GroupedSessionsByDateDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.LiveSessionListDTO;
 import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionRepository;
+import vacademy.io.admin_core_service.features.live_session.repository.SessionScheduleRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 import java.util.*;
@@ -15,7 +16,10 @@ public class GetLiveSessionService {
     @Autowired
     private LiveSessionRepository sessionRepository;
 
-    public List<LiveSessionListDTO> getLiveSession(String instituteId , CustomUserDetails user) {
+    @Autowired
+    private SessionScheduleRepository scheduleRepository;
+
+    public List<LiveSessionListDTO> getLiveSession(String instituteId, CustomUserDetails user) {
 
         List<LiveSessionRepository.LiveSessionListProjection> projections =
                 sessionRepository.findCurrentlyLiveSessions(instituteId);
@@ -214,8 +218,12 @@ public class GetLiveSessionService {
                 .toList();
     }
 
-    public void deleteLiveSession(String sessionId){
-        sessionRepository.softDeleteLiveSessionById(sessionId);
+    public void deleteLiveSession(String sessionId, String type) {
+        if (Objects.equals(type, "session"))
+            sessionRepository.softDeleteLiveSessionById(sessionId);
+        else if (Objects.equals(type, "schedule"))
+            scheduleRepository.deleteById(sessionId);
+
     }
 
 }

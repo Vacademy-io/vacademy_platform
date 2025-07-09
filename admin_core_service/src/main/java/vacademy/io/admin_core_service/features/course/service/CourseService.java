@@ -14,6 +14,7 @@ import vacademy.io.admin_core_service.features.packages.enums.PackageStatusEnum;
 import vacademy.io.admin_core_service.features.packages.repository.PackageInstituteRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
+import vacademy.io.admin_core_service.features.packages.service.PackageService;
 import vacademy.io.admin_core_service.features.packages.service.PackageSessionService;
 import vacademy.io.admin_core_service.features.session.dto.AddNewSessionDTO;
 import vacademy.io.admin_core_service.features.session.service.SessionService;
@@ -42,9 +43,10 @@ public class CourseService {
     private final PackageSessionRepository packageSessionRepository;
     private final LearnerInvitationService learnerInvitationService;
     private final FacultyService facultyService;
+    private final PackageService packageService;
 
     @Transactional
-    public String addOrUpdateCourse(AddCourseDTO addCourseDTO, CustomUserDetails user, String instituteId) {
+    public String addCourse(AddCourseDTO addCourseDTO, CustomUserDetails user, String instituteId) {
         PackageEntity savedPackage;
 
         if (addCourseDTO.getNewCourse()) {
@@ -246,5 +248,10 @@ public class CourseService {
                 LearnerInvitationSourceTypeEnum.PACKAGE_SESSION.name(), packageSessionIds);
 
         return "Course deleted successfully";
+    }
+
+    public String addOrUpdateCourse(AddCourseDTO addCourseDTO,String instituteId,CustomUserDetails userDetails) {
+        packageService.addOrUpdatePackage(addCourseDTO,instituteId,userDetails);
+        return "done!!!";
     }
 }

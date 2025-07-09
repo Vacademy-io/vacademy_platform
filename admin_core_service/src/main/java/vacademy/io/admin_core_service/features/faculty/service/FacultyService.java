@@ -213,4 +213,46 @@ public class FacultyService {
         }
         facultyRepository.saveAll(mappings);
     }
+
+    public void updateFacultyToSubjectPackageSession(List<AddFacultyToCourseDTO> facultyDTOs, String batchId, String instituteId) {
+        if (facultyDTOs == null || facultyDTOs.isEmpty()) {
+            return;
+        }
+
+        List<FacultySubjectPackageSessionMapping> mappings = facultyDTOs.stream()
+                .map(dto -> {
+                    UserDTO teacher = resolveUser(dto, instituteId);
+                    return resolveMapping(dto, teacher, batchId);
+                })
+                .toList();
+
+        facultyRepository.saveAll(mappings);
+    }
+
+    private UserDTO resolveUser(AddFacultyToCourseDTO dto, String instituteId) {
+        return dto.isNewUser() ? inviteUser(dto.getUser(), instituteId) : dto.getUser();
+    }
+
+    private FacultySubjectPackageSessionMapping resolveMapping(AddFacultyToCourseDTO dto, UserDTO teacher, String batchId) {
+        return facultyRepository.findMappingsByUserIdAndPackageSessionIdAndStatusesWithNoSubject(
+                        teacher.getId(),
+                        batchId,
+                        List.of(FacultyStatusEnum.ACTIVE.name()))
+                .map(mapping -> {
+                    mapping.setStatus(determineStatus(dto));
+                    return mapping;
+                })
+                .orElseGet(() -> new FacultySubjectPackageSessionMapping(
+                        teacher.getId(),
+                        batchId,
+                        null,
+                        teacher.getFullName(),
+                        determineStatus(dto)
+                ));
+    }
+
+    private String determineStatus(AddFacultyToCourseDTO dto) {
+        return StringUtils.hasText(dto.getStatus()) ? dto.getStatus() : FacultyStatusEnum.ACTIVE.name();
+    }
+
 }

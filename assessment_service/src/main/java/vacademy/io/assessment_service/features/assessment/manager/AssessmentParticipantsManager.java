@@ -614,7 +614,7 @@ public class AssessmentParticipantsManager {
                 filter.getAttemptType().get(0).equals(UserRegistrationFilterEnum.PENDING.name());
     }
 
-    public Integer getAssessmentCountForUserId(CustomUserDetails user, String instituteId, String batchId) {
+    public Integer getAssessmentCountForUserId(CustomUserDetails user, String instituteId, List<String> batchId) {
         Integer userAssessmentCount = assessmentUserRegistrationRepository.countDistinctAssessmentsByUserAndFilters(
                 user.getId(),
                 instituteId,

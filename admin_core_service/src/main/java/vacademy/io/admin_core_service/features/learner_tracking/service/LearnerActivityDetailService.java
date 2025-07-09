@@ -23,7 +23,7 @@ public class LearnerActivityDetailService {
     public List<DailyTimeSpentProjection> getLearnerAndBatchTimeSpent(ActivityLogFilterDTO activityLogFilterDTO, CustomUserDetails user) {
         return activityLogRepository.getDailyUserAndBatchTimeSpent(
                 activityLogFilterDTO.getUserId(),
-                activityLogFilterDTO.getPackageSessionId(),
+                activityLogFilterDTO.getPackageSessionIds(),
                 activityLogFilterDTO.getStartDate(),
                 activityLogFilterDTO.getEndDate(),
                 List.of(SlideStatus.PUBLISHED.name(),SlideStatus.UNSYNC.name()),

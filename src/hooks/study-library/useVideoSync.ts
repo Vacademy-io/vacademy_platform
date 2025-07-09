@@ -65,7 +65,7 @@ export const useVideoSync = () => {
 
         const apiPayload: TrackingDataType = {
           id: activity.activity_id,
-          source_id: activity.source_id,
+          source_id: '',
           source_type: activity.source,
           user_id: userId,
           slide_id: activeItem?.id || "",

@@ -1,6 +1,8 @@
 package vacademy.io.admin_core_service.features.course.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.api.client.util.Value;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.*;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
@@ -9,13 +11,16 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+@Slf4j
 @Component
 public class GeminiApiClient {
-    private static final String API_KEY = "AIzaSyBNMnQMrQAmInnEvA0buJ6biUJgWQMzGtI";
+
+    @Value("${openrouter.api.key}")
+    private String API_KEY;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    private static final String ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=" + API_KEY;
+    private final String ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=" + API_KEY;
 
     public List<Float> getEmbedding(String serializedContent, String model, String taskType) {
         List<Float> embedding = new ArrayList<>();

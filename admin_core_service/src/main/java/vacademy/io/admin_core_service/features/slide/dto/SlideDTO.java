@@ -20,5 +20,6 @@ public class SlideDTO {
     private DocumentSlideDTO documentSlide;
     private QuestionSlideDTO questionSlide;
     private AssignmentSlideDTO assignmentSlide;
+    private QuizSlideDTO quizSlide;
     private Boolean isLoaded = false;
 }

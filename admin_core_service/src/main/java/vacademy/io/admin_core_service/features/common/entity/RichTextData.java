@@ -24,7 +24,6 @@ public class RichTextData {
 
     public RichTextData(RichTextDataDTO richTextDataDTO) {
         if (richTextDataDTO == null) return;
-        this.id = richTextDataDTO.getId();
         this.type = richTextDataDTO.getType();
         this.content = richTextDataDTO.getContent();
     }

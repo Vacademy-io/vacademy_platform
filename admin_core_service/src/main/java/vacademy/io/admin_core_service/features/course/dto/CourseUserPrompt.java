@@ -11,4 +11,5 @@ import lombok.Setter;
 @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
 public class CourseUserPrompt {
     private String userPrompt;
+    private String courseTree;
 }

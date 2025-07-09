@@ -79,6 +79,7 @@ export const CourseStructureDetails = ({
     packageSessionId: string;
 }) => {
     const router = useRouter();
+    const searchParams = router.state.location.search;
     const navigateTo = (
         pathname: string,
         searchParamsObj: Record<string, string | undefined>
@@ -100,8 +101,9 @@ export const CourseStructureDetails = ({
         slideId: string
     ) => {
         navigateTo(
-            `${router.state.location.pathname}/subjects/modules/chapters/slides`,
+            `/study-library/courses/course-details/subjects/modules/chapters/slides`,
             {
+                courseId: searchParams.courseId,
                 subjectId,
                 moduleId,
                 chapterId,

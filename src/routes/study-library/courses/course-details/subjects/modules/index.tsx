@@ -8,9 +8,8 @@ import { useEffect } from "react";
 
 interface SubjectSearchParams {
     courseId: string;
-    levelId: string;
     subjectId: string;
-    sessionId: string;
+    moduleId: string;
 }
 
 export const Route = createFileRoute(
@@ -20,9 +19,8 @@ export const Route = createFileRoute(
     validateSearch: (search: Record<string, unknown>): SubjectSearchParams => {
         return {
             courseId: search.courseId as string,
-            levelId: search.levelId as string,
             subjectId: search.subjectId as string,
-            sessionId: search.sessionId as string,
+            moduleId: search.moduleId as string,
         };
     },
 });

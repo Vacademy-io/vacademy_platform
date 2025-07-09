@@ -38,8 +38,14 @@ export const calculateAndUpdateTimestamps = (
                 activity.current_start_time_in_epoch / 1000
             ),
             end_time: formatVideoTime(endTimeInEpoch / 1000),
-            start: endTimeInEpoch,
-            end: activity.current_start_time_in_epoch,
+            start:
+                activity.current_start_time_in_epoch > endTimeInEpoch
+                    ? endTimeInEpoch
+                    : activity.current_start_time_in_epoch,
+            end:
+                activity.current_start_time_in_epoch > endTimeInEpoch
+                    ? activity.current_start_time_in_epoch
+                    : endTimeInEpoch,
         };
 
         return {

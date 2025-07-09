@@ -29,4 +29,10 @@ public class CourseController {
     public String deleteCourse(@RequestBody List<String> courseIds, @RequestAttribute("user") CustomUserDetails userDetails) {
         return courseService.deleteCourses(courseIds, userDetails);
     }
+
+    @PostMapping("/update-course-details/{instituteId}")
+    public String updateCourse(@RequestBody AddCourseDTO addCourseDTO, @PathVariable("instituteId") String instituteId, @RequestAttribute("user") CustomUserDetails userDetails) {
+        return courseService.addOrUpdateCourse(addCourseDTO,instituteId,userDetails);
+    }
 }
+

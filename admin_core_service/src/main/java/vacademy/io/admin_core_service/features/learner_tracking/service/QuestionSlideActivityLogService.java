@@ -1,5 +1,7 @@
 package vacademy.io.admin_core_service.features.learner_tracking.service;
 
+import lombok.NoArgsConstructor;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -14,21 +16,13 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 import java.util.List;
 
 @Service
+@RequiredArgsConstructor
 public class QuestionSlideActivityLogService {
 
     private final QuestionSlideTrackedRepository questionSlideTrackedRepository;
     private final ActivityLogRepository activityLogRepository;
     private final ActivityLogService activityLogService;
-
-    @Autowired
-    public QuestionSlideActivityLogService(
-            QuestionSlideTrackedRepository questionSlideTrackedRepository,
-            ActivityLogRepository activityLogRepository,
-            ActivityLogService activityLogService) {
-        this.questionSlideTrackedRepository = questionSlideTrackedRepository;
-        this.activityLogRepository = activityLogRepository;
-        this.activityLogService = activityLogService;
-    }
+    private final LearnerTrackingAsyncService learnerTrackingAsyncService;
 
    public void addQuestionSlideActivityLog(ActivityLog activityLog,List<QuestionSlideActivityLogDTO>questionSlideActivityLogDTOS) {
         questionSlideTrackedRepository.deleteByActivityId(activityLog.getId());
@@ -39,7 +33,7 @@ public class QuestionSlideActivityLogService {
         questionSlideTrackedRepository.saveAll(questionSlideTrackeds);
    }
 
-   public String addOrUpdateQuestionSlideActivityLog(ActivityLogDTO activityLogDTO, String slideId, String userId, CustomUserDetails user) {
+   public String addOrUpdateQuestionSlideActivityLog(ActivityLogDTO activityLogDTO, String slideId,String chapterId,String packageSessionId,String moduleId,String subjectId, String userId, CustomUserDetails user) {
         ActivityLog activityLog = null;
         if (activityLogDTO.isNewActivity()){
             activityLog = activityLogService.saveActivityLog(activityLogDTO, userId, slideId);
@@ -47,6 +41,7 @@ public class QuestionSlideActivityLogService {
             activityLog = activityLogService.updateActivityLog(activityLogDTO);
         }
        addQuestionSlideActivityLog(activityLog,activityLogDTO.getQuestionSlides());
+       learnerTrackingAsyncService.updateLearnerOperationsForQuestion(user.getUserId(), slideId, chapterId, moduleId,subjectId,packageSessionId,activityLogDTO);
        return activityLog.getId();
    }
 

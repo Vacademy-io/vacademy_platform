@@ -62,6 +62,16 @@ public class UserController {
         }
     }
 
+    @PutMapping("/internal/update-user")
+    public ResponseEntity<UserDTO>updateUser(@RequestBody UserDTO userDTO, @RequestParam("userId") String userId) {
+        try {
+            System.out.println("we are here");
+           return ResponseEntity.ok(userService.updateUserDetails(userDTO, userId));
+        } catch (Exception e) {
+            throw new VacademyException(e.getMessage());
+        }
+    }
+
 
     //API to fetch user details correspond to user id
     @GetMapping("/internal/v1/details/{userId}")

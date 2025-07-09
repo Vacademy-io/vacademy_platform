@@ -46,6 +46,49 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
     Double getPercentageVideoWatched(@Param("slideId") String slideId, @Param("userId") String userId);
 
     @Query(value = """
+    WITH quiz_slide_data AS (
+        SELECT qz.id AS quiz_slide_id, COUNT(DISTINCT qq.id) AS total_questions
+        FROM slide s
+        JOIN quiz_slide qz ON qz.id = s.source_id
+        JOIN quiz_slide_question qq ON qq.quiz_slide_id = qz.id
+        WHERE s.id = :slideId
+          AND s.source_type = 'QUIZ'
+          AND qq.status IN (:quizSlideStatuses)
+        GROUP BY qz.id
+    ),
+    attempted_questions AS (
+        SELECT COUNT(DISTINCT qst.question_id) AS attempted_questions
+        FROM activity_log al
+        JOIN quiz_slide_question_tracked qst ON qst.activity_id = al.id
+        LEFT JOIN quiz_slide_question qq ON qq.id = qst.question_id
+        WHERE al.slide_id = :slideId
+          AND al.user_id = :userId
+          AND qq.quiz_slide_id IS NOT NULL
+    )
+    SELECT
+        CASE
+            WHEN qsd.total_questions = 0 THEN 0
+            ELSE ROUND(100.0 * aq.attempted_questions / qsd.total_questions, 2)
+        END AS percentage_completed
+    FROM quiz_slide_data qsd, attempted_questions aq
+    """, nativeQuery = true)
+    Double getQuizSlideCompletionPercentage(
+            @Param("slideId") String slideId,
+            @Param("quizSlideStatuses") List<String> quizSlideStatuses,
+            @Param("userId") String userId
+    );
+
+    @Query(value = """
+    SELECT vt.start_time, vt.end_time
+    FROM activity_log a
+    JOIN video_tracked vt ON vt.activity_id = a.id
+    WHERE a.user_id = :userId
+      AND a.slide_id = :slideId
+    """, nativeQuery = true)
+    List<Object[]> getVideoTrackedIntervals(@Param("slideId") String slideId, @Param("userId") String userId);
+
+
+    @Query(value = """
                 SELECT 
                     COALESCE((COUNT(DISTINCT dt.page_number) * 100.0 / MAX(ds.published_document_total_pages)), 0) AS percentage_watched
                 FROM 
@@ -195,6 +238,14 @@ LEFT JOIN (
     Page<ActivityLog> findActivityLogsWithAssignmentSlide(@Param("userId") String userId,
                                                          @Param("slideId") String slideId,
                                                          Pageable pageable);
+    @Query("""
+            SELECT DISTINCT al FROM ActivityLog al
+            LEFT JOIN FETCH al.quizSlideQuestionTracked qt
+            WHERE al.userId = :userId AND al.slideId = :slideId
+            """)
+    Page<ActivityLog> findActivityLogsWithQuizSlide(@Param("userId") String userId,
+                                                          @Param("slideId") String slideId,
+                                                          Pageable pageable);
 
     @Query("""
     SELECT DISTINCT al FROM ActivityLog al
@@ -1318,73 +1369,73 @@ LEFT JOIN (
 
     @Query(
             value = """
-    WITH date_series AS (
-        SELECT generate_series(
-            CAST(:startDate AS DATE),
-            CAST(:endDate AS DATE),
-            INTERVAL '1 day'
-        ) AS activity_date
-    ),
+WITH date_series AS (
+    SELECT generate_series(
+        CAST(:startDate AS DATE),
+        CAST(:endDate AS DATE),
+        INTERVAL '1 day'
+    ) AS activity_date
+),
 
-    learner_activities AS (
-        SELECT
-            al.user_id,
-            DATE(al.created_at) AS activity_date,
-            EXTRACT(EPOCH FROM (al.end_time - al.start_time)) * 1000 AS activity_duration_millis
-        FROM activity_log al
-
-        -- Join slide
-        JOIN chapter_to_slides ctsm ON al.slide_id = ctsm.slide_id AND ctsm.status IN (:chapterToSlideStatusList)
-        JOIN slide s ON s.id = al.slide_id AND s.status IN (:slideStatusList)
-
-        -- Join chapter
-        JOIN chapter ch ON ch.id = ctsm.chapter_id AND ch.status IN (:chapterStatusList)
-        JOIN chapter_package_session_mapping cpsm 
-            ON cpsm.chapter_id = ch.id 
-            AND cpsm.package_session_id = :packageSessionId 
-            AND cpsm.status IN (:chapterPackageSessionStatusList)
-
-        -- Join module and subject
-        JOIN module_chapter_mapping mcm ON mcm.chapter_id = ch.id
-        JOIN modules m ON m.id = mcm.module_id AND m.status IN (:moduleStatusList)
-        JOIN subject_module_mapping smm ON smm.module_id = m.id
-        JOIN subject subj ON subj.id = smm.subject_id AND subj.status IN (:subjectStatusList)
-        JOIN subject_session ss ON ss.subject_id = subj.id AND ss.session_id = :packageSessionId
-
-        -- Batch users filter
-        JOIN student_session_institute_group_mapping ssigm 
-            ON ssigm.user_id = al.user_id 
-            AND ssigm.package_session_id = :packageSessionId
-            AND ssigm.status IN (:learnerStatusList)
-        WHERE al.created_at BETWEEN :startDate AND :endDate
-    ),
-
-    daily_user_time AS (
-        SELECT
-            user_id,
-            activity_date,
-            SUM(activity_duration_millis) AS time_spent_millis
-        FROM learner_activities
-        GROUP BY user_id, activity_date
-    )
-
+learner_activities AS (
     SELECT
-        ds.activity_date AS activityDate,
-        COALESCE(dut.time_spent_millis, 0) AS timeSpentByUserMillis,
-        (
-            SELECT AVG(d2.time_spent_millis)
-            FROM daily_user_time d2
-            WHERE d2.activity_date = ds.activity_date
-        ) AS avgTimeSpentByBatchMillis
-    FROM date_series ds
-    LEFT JOIN daily_user_time dut ON ds.activity_date = dut.activity_date AND dut.user_id = :userId
-    ORDER BY ds.activity_date
-    """,
+        al.user_id,
+        DATE(al.created_at) AS activity_date,
+        EXTRACT(EPOCH FROM (al.end_time - al.start_time)) * 1000 AS activity_duration_millis
+    FROM activity_log al
+
+    -- Join slide
+    JOIN chapter_to_slides ctsm ON al.slide_id = ctsm.slide_id AND ctsm.status IN (:chapterToSlideStatusList)
+    JOIN slide s ON s.id = al.slide_id AND s.status IN (:slideStatusList)
+
+    -- Join chapter
+    JOIN chapter ch ON ch.id = ctsm.chapter_id AND ch.status IN (:chapterStatusList)
+    JOIN chapter_package_session_mapping cpsm 
+        ON cpsm.chapter_id = ch.id 
+        AND cpsm.package_session_id IN (:packageSessionIds)
+        AND cpsm.status IN (:chapterPackageSessionStatusList)
+
+    -- Join module and subject
+    JOIN module_chapter_mapping mcm ON mcm.chapter_id = ch.id
+    JOIN modules m ON m.id = mcm.module_id AND m.status IN (:moduleStatusList)
+    JOIN subject_module_mapping smm ON smm.module_id = m.id
+    JOIN subject subj ON subj.id = smm.subject_id AND subj.status IN (:subjectStatusList)
+    JOIN subject_session ss ON ss.subject_id = subj.id AND ss.session_id IN (:packageSessionIds)
+
+    -- Batch users filter
+    JOIN student_session_institute_group_mapping ssigm 
+        ON ssigm.user_id = al.user_id 
+        AND ssigm.package_session_id IN (:packageSessionIds)
+        AND ssigm.status IN (:learnerStatusList)
+    WHERE al.created_at BETWEEN :startDate AND :endDate
+),
+
+daily_user_time AS (
+    SELECT
+        user_id,
+        activity_date,
+        SUM(activity_duration_millis) AS time_spent_millis
+    FROM learner_activities
+    GROUP BY user_id, activity_date
+)
+
+SELECT
+    ds.activity_date AS activityDate,
+    COALESCE(dut.time_spent_millis, 0) AS timeSpentByUserMillis,
+    (
+        SELECT AVG(d2.time_spent_millis)
+        FROM daily_user_time d2
+        WHERE d2.activity_date = ds.activity_date
+    ) AS avgTimeSpentByBatchMillis
+FROM date_series ds
+LEFT JOIN daily_user_time dut ON ds.activity_date = dut.activity_date AND dut.user_id = :userId
+ORDER BY ds.activity_date
+""",
             nativeQuery = true
     )
     List<DailyTimeSpentProjection> getDailyUserAndBatchTimeSpent(
             @Param("userId") String userId,
-            @Param("packageSessionId") String packageSessionId,
+            @Param("packageSessionIds") List<String> packageSessionIds,
             @Param("startDate") Timestamp startDate,
             @Param("endDate") Timestamp endDate,
             @Param("slideStatusList") List<String> slideStatusList,
@@ -1395,6 +1446,7 @@ LEFT JOIN (
             @Param("subjectStatusList") List<String> subjectStatusList,
             @Param("learnerStatusList") List<String> learnerStatusList
     );
+
 
 
     @Query(value = """

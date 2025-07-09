@@ -5,5 +5,6 @@ public enum SlideTypeEnum {
     DOCUMENT,
     QUESTION,
     ASSIGNMENT,
-    VIDEO_QUESTION
+    VIDEO_QUESTION,
+    QUIZ
 }

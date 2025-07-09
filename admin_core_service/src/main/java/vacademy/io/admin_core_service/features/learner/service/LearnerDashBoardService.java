@@ -47,7 +47,7 @@ public class LearnerDashBoardService {
     @Value("${assessment.server.baseurl}")
     private String assessmentServerBaseUrl;
 
-    public LeanerDashBoardDetailDTO getLearnerDashBoardDetail(String instituteId, String packageSessionId, CustomUserDetails user) {
+    public LeanerDashBoardDetailDTO getLearnerDashBoardDetail(String instituteId, List<String> packageSessionId, CustomUserDetails user) {
         return new LeanerDashBoardDetailDTO(
                 packageRepository.countDistinctPackagesByUserIdAndInstituteId(user.getUserId(), instituteId),
                 0,

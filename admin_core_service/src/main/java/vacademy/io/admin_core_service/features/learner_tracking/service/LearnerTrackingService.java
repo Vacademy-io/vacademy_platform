@@ -48,17 +48,17 @@ public class LearnerTrackingService {
 
 
     public ActivityLogDTO addOrUpdateDocumentActivityLog(ActivityLogDTO activityLogDTO, String slideId, String chapterId,String packageSessionId,String moduleId,String subjectId, CustomUserDetails user) {
+        activityLogDTO.setUserId(user.getUserId());
         validateActivityLogDTO(activityLogDTO, true); // Validate for documents
         ActivityLog activityLog = activityLogDTO.isNewActivity() ?
                 saveActivityLog(activityLogDTO, slideId, user.getUserId()) :
-                updateActivityLog(activityLogDTO, activityLogDTO.getId());
-
+                updateActivityLog(activityLogDTO, activityLogDTO.getUserId());
         saveDocumentTracking(activityLogDTO, activityLog);
         learnerTrackingAsyncService.updateLearnerOperationsForDocument(user.getUserId(), slideId, chapterId, moduleId,subjectId,packageSessionId,activityLogDTO);
         concentrationScoreService.addConcentrationScore(activityLogDTO.getConcentrationScore(), activityLog);
         return activityLog.toActivityLogDTO();
     }
-
+//
 //    @Transactional
     public ActivityLogDTO addOrUpdateVideoActivityLog(ActivityLogDTO activityLogDTO, String slideId, String chapterId,String moduleId,String subjectId,String packageSessionId, CustomUserDetails user) {
         validateActivityLogDTO(activityLogDTO, false); // Validate for videos

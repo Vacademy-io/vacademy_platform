@@ -46,6 +46,7 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.core.standard_classes.ListService;
 import vacademy.io.common.core.utils.DateUtil;
 import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.common.media.service.FileService;
 import vacademy.io.common.student.dto.BasicParticipantDTO;
 
 import java.io.ByteArrayOutputStream;
@@ -106,6 +107,9 @@ public class AssessmentParticipantsManager {
 
     @Autowired
     AssessmentNotificationService assessmentNotificationService;
+
+    @Autowired
+    private FileService fileService;
 
     @Transactional
     public ResponseEntity<AssessmentSaveResponseDto> saveParticipantsToAssessment(CustomUserDetails user, AssessmentRegistrationsDto assessmentRegistrationsDto, String assessmentId, String instituteId, String type) {
@@ -610,7 +614,7 @@ public class AssessmentParticipantsManager {
                 filter.getAttemptType().get(0).equals(UserRegistrationFilterEnum.PENDING.name());
     }
 
-    public Integer getAssessmentCountForUserId(CustomUserDetails user, String instituteId, String batchId) {
+    public Integer getAssessmentCountForUserId(CustomUserDetails user, String instituteId, List<String> batchId) {
         Integer userAssessmentCount = assessmentUserRegistrationRepository.countDistinctAssessmentsByUserAndFilters(
                 user.getId(),
                 instituteId,
@@ -850,6 +854,10 @@ public class AssessmentParticipantsManager {
      * @param instituteId The ID of the institute.
      */
     private void createParticipantsReportAndSendEmail(List<StudentAttempt> attemptList, Assessment assessment, String instituteId) {
+        if(assessment.getEvaluationType().equals("MANUAL")){
+            handleParticipantsReportCreationForManualAssessment(attemptList, assessment, instituteId);
+            return;
+        }
         Map<StudentAttempt, byte[]> reportMap = new HashMap<>();
         attemptList.forEach(attempt -> {
             // Generate student report details
@@ -867,6 +875,22 @@ public class AssessmentParticipantsManager {
 
             // Convert the PDF stream to a byte array
             byte[] participantPdfReport = pdfOutputStream.toByteArray();
+
+            // Update attempt status
+            updateAttemptDataReleaseData(attempt);
+
+            // Send notification to the student
+            reportMap.put(attempt, participantPdfReport);
+        });
+        sendNotificationToStudent(reportMap, assessment.getId());
+    }
+
+    private void handleParticipantsReportCreationForManualAssessment(List<StudentAttempt> attemptList, Assessment assessment, String instituteId) {
+        Map<StudentAttempt, byte[]> reportMap = new HashMap<>();
+        attemptList.forEach(attempt -> {
+
+            // Convert the PDF stream to a byte array
+            byte[] participantPdfReport = fileService.getFileFromFileId(attempt.getEvaluatedFileId());
 
             // Update attempt status
             updateAttemptDataReleaseData(attempt);

@@ -19,7 +19,7 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
             "                AND cpsm.packageSession.id = :packageSessionId)")
     List<Chapter> findChaptersByModuleIdAndStatusNotDeleted(String moduleId, String packageSessionId);
 
-    @Query(value = """
+    @Query(value = """ 
     SELECT json_agg(module_data) AS module_array
     FROM (
         SELECT json_build_object(
@@ -62,10 +62,10 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
             AND mo.user_id = :userId
         LEFT JOIN module_chapter_mapping mcm ON mcm.module_id = m.id
         LEFT JOIN chapter c ON c.id = mcm.chapter_id AND c.status IN (:chapterStatusList)
-        LEFT JOIN chapter_package_session_mapping cpsm
+        JOIN chapter_package_session_mapping cpsm
             ON cpsm.chapter_id = c.id
-            AND cpsm.status != 'DELETED'
             AND cpsm.package_session_id = :packageSessionId
+            AND cpsm.status IN (:chapterStatusList)
         LEFT JOIN (
             SELECT
                 c.id AS chapter_id,
@@ -101,15 +101,15 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
     ) AS module_data
     """, nativeQuery = true)
     String getModuleChapterProgress(
-        @Param("subjectId") String subjectId,
-        @Param("packageSessionId") String packageSessionId,
-        @Param("userId") String userId,
-        @Param("moduleOperation") String moduleOperation,
-        @Param("chapterOperation") String chapterOperation,
-        @Param("slideStatusList") List<String> slideStatusList,
-        @Param("chapterToSlideStatusList") List<String> chapterToSlideStatusList,
-        @Param("chapterStatusList") List<String> chapterStatusList,
-        @Param("moduleStatusList") List<String> moduleStatusList
+            @Param("subjectId") String subjectId,
+            @Param("packageSessionId") String packageSessionId,
+            @Param("userId") String userId,
+            @Param("moduleOperation") String moduleOperation,
+            @Param("chapterOperation") String chapterOperation,
+            @Param("slideStatusList") List<String> slideStatusList,
+            @Param("chapterToSlideStatusList") List<String> chapterToSlideStatusList,
+            @Param("chapterStatusList") List<String> chapterStatusList,
+            @Param("moduleStatusList") List<String> moduleStatusList
     );
 
 

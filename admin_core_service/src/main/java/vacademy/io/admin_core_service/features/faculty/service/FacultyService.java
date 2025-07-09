@@ -8,6 +8,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.course.dto.AddFacultyToCourseDTO;
 import vacademy.io.admin_core_service.features.faculty.dto.*;
@@ -206,10 +207,52 @@ public class FacultyService {
                     batchId,
                     null,
                     addFacultyToCourseDTO.getUser().getFullName(),
-                    FacultyStatusEnum.ACTIVE.name()
+                    ! StringUtils.hasText(addFacultyToCourseDTO.getStatus()) ? FacultyStatusEnum.ACTIVE.name() : addFacultyToCourseDTO.getStatus()
             );
             mappings.add(mapping);
         }
         facultyRepository.saveAll(mappings);
     }
+
+    public void updateFacultyToSubjectPackageSession(List<AddFacultyToCourseDTO> facultyDTOs, String batchId, String instituteId) {
+        if (facultyDTOs == null || facultyDTOs.isEmpty()) {
+            return;
+        }
+
+        List<FacultySubjectPackageSessionMapping> mappings = facultyDTOs.stream()
+                .map(dto -> {
+                    UserDTO teacher = resolveUser(dto, instituteId);
+                    return resolveMapping(dto, teacher, batchId);
+                })
+                .toList();
+
+        facultyRepository.saveAll(mappings);
+    }
+
+    private UserDTO resolveUser(AddFacultyToCourseDTO dto, String instituteId) {
+        return dto.isNewUser() ? inviteUser(dto.getUser(), instituteId) : dto.getUser();
+    }
+
+    private FacultySubjectPackageSessionMapping resolveMapping(AddFacultyToCourseDTO dto, UserDTO teacher, String batchId) {
+        return facultyRepository.findMappingsByUserIdAndPackageSessionIdAndStatusesWithNoSubject(
+                        teacher.getId(),
+                        batchId,
+                        List.of(FacultyStatusEnum.ACTIVE.name()))
+                .map(mapping -> {
+                    mapping.setStatus(determineStatus(dto));
+                    return mapping;
+                })
+                .orElseGet(() -> new FacultySubjectPackageSessionMapping(
+                        teacher.getId(),
+                        batchId,
+                        null,
+                        teacher.getFullName(),
+                        determineStatus(dto)
+                ));
+    }
+
+    private String determineStatus(AddFacultyToCourseDTO dto) {
+        return StringUtils.hasText(dto.getStatus()) ? dto.getStatus() : FacultyStatusEnum.ACTIVE.name();
+    }
+
 }

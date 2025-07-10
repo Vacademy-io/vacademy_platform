@@ -6,12 +6,15 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.live_session.dto.AttendanceReportDTO;
+import vacademy.io.admin_core_service.features.live_session.dto.CustomFieldDTO;
+import vacademy.io.admin_core_service.features.live_session.dto.GuestSessionCustomFieldDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.StudentAttendanceDTO;
 import vacademy.io.admin_core_service.features.live_session.service.AttendanceReportService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/admin-core-service/live-session-report")
@@ -31,5 +34,10 @@ public class AttendanceReport {
     ) {
         List<StudentAttendanceDTO> report = attendanceReportService.getGroupedAttendanceReport(batchSessionId , start , end);
         return ResponseEntity.ok(report);
+    }
+
+    @GetMapping("/public-registration")
+    public ResponseEntity<Map<String, List<CustomFieldDTO>>> getPublicRegisteredData(@RequestParam("SessionId") String sessionId){
+        return ResponseEntity.ok(attendanceReportService.getGuestWiseCustomFields(sessionId));
     }
 }

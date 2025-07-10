@@ -13,6 +13,8 @@ import vacademy.io.admin_core_service.features.live_session.service.*;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Optional;
+
 @RestController
 @RequestMapping("/admin-core-service/live-session")
 @RequiredArgsConstructor
@@ -37,9 +39,14 @@ public class GetRegistrationData {
     }
 
     @GetMapping("/check-email-registration")
-    ResponseEntity<Boolean> checkEmailRegistration(@RequestParam("email") String email , @RequestParam("sessionId") String sessionId){
-        return ResponseEntity.ok(getRegistrationFromResponseDTO.checkEmailRegistration(email , sessionId));
+    public ResponseEntity<String> checkEmailRegistration(
+            @RequestParam("email") String email,
+            @RequestParam("sessionId") String sessionId
+    ) {
+        Optional<String> registrationId = getRegistrationFromResponseDTO.checkEmailRegistration(email, sessionId);
+        return ResponseEntity.ok(registrationId.orElse(""));
     }
+
 
     @GetMapping("/get-earliest-schedule-id")
     ResponseEntity<String> getEarliestScheduleId(@RequestParam("sessionId") String sessionId){

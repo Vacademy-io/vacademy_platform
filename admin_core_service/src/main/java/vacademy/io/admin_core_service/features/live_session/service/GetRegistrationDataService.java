@@ -3,11 +3,13 @@ package vacademy.io.admin_core_service.features.live_session.service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.live_session.dto.RegistrationFromResponseDTO;
+import vacademy.io.admin_core_service.features.live_session.entity.SessionGuestRegistration;
 import vacademy.io.admin_core_service.features.live_session.repository.CustomFieldRepository;
 import vacademy.io.admin_core_service.features.live_session.repository.SessionGuestRegistrationRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -54,7 +56,10 @@ public class GetRegistrationDataService {
         );
     }
 
-    public Boolean checkEmailRegistration(String email , String sessionId){
-        return sessionGuestRegistrationRepository.existsBySessionIdAndEmail(sessionId, email);
+    public Optional<String> checkEmailRegistration(String email, String sessionId) {
+        return sessionGuestRegistrationRepository
+                .findBySessionIdAndEmail(sessionId, email)
+                .map(SessionGuestRegistration::getId);
     }
+
 }

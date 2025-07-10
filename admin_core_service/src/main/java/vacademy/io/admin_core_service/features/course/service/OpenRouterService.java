@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
@@ -19,17 +20,14 @@ import java.util.Map;
 public class OpenRouterService {
 
     private static final String API_URL = "https://openrouter.ai";
+    private final WebClient webClient;
 
-    private final WebClient webClient = WebClient.builder()
-            .baseUrl(API_URL)
-            .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + getFullToken("or-v1-"))
-            .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-            .build();
-
-    public static String getFullToken(String startWithNumbers) {
-        String staticPrefix = "sk-";
-        String staticSuffix = "f27737b19f34420dda1d945d4ca4f347a63a120d881dca11f5441ca1d6a89b11";
-        return staticPrefix + startWithNumbers + staticSuffix;
+    public OpenRouterService(@Value("${openrouter.api.key}") String apiKey) {
+        this.webClient = WebClient.builder()
+                .baseUrl(API_URL)
+                .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
+                .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                .build();
     }
 
     public Flux<String> streamAnswer(String question) {

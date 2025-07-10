@@ -1,13 +1,16 @@
 package vacademy.io.admin_core_service.features.course.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.api.client.util.Value;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
+import vacademy.io.admin_core_service.features.course.dto.EmbeddingRequest;
+import vacademy.io.admin_core_service.features.course.dto.EmbeddingResponse;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -15,63 +18,46 @@ import java.util.Map;
 @Component
 public class GeminiApiClient {
 
-    @Value("${openrouter.api.key}")
+    @Value("${gemini.api.key}")
     private String API_KEY;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    private final String ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=" + API_KEY;
-
-    public List<Float> getEmbedding(String serializedContent, String model, String taskType) {
-        List<Float> embedding = new ArrayList<>();
-
+    public List<Float> getEmbedding(String content, String taskType, Integer outputDimensionality) {
         try {
-            // Build JSON request body
-            String requestBody = """
-            {
-              "model": "%s",
-              "content": {
-                "parts": [
-                  {
-                    "text": "%s"
-                  }
-                ]
-              },
-              "taskType": "%s"
-            }
-        """.formatted(model, escapeJson(serializedContent), taskType);
+            // Create request DTO
+            EmbeddingRequest request = new EmbeddingRequest();
+            request.setContent(new EmbeddingRequest.Content(new EmbeddingRequest.Part(content)));
+            request.setTaskType(taskType);
+            request.setOutputDimensionality(outputDimensionality);
 
-            // Setup headers
+            // Prepare endpoint
+            String endpoint = String.format("https://generativelanguage.googleapis.com/v1beta/models/%s:embedContent?key=%s", "text-embedding-004", API_KEY);
+
+            // Headers
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
-            HttpEntity<String> requestEntity = new HttpEntity<>(requestBody, headers);
 
-            // Make the request
+            // Request entity
+            HttpEntity<String> requestEntity = new HttpEntity<>(objectMapper.writeValueAsString(request), headers);
+
+            // REST call
             RestTemplate restTemplate = new RestTemplate();
-            ResponseEntity<Map> response = restTemplate.exchange(
-                    ENDPOINT,
+            ResponseEntity<EmbeddingResponse> response = restTemplate.exchange(
+                    endpoint,
                     HttpMethod.POST,
                     requestEntity,
-                    Map.class
+                    EmbeddingResponse.class
             );
 
-            // Parse the embedding values from response
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                Map<String, Object> body = response.getBody();
-                Map<String, Object> embeddingMap = (Map<String, Object>) body.get("embedding");
-                if (embeddingMap != null && embeddingMap.containsKey("values")) {
-                    List<Double> values = (List<Double>) embeddingMap.get("values");
-                    for (Double val : values) {
-                        embedding.add(val.floatValue());
-                    }
-                }
+                return response.getBody().getEmbedding().getValues();
             }
 
         } catch (Exception e) {
-            e.printStackTrace(); // Log the exception properly in production code
+            log.error("Error during embedding generation", e);
         }
-
-        return embedding;
+        return Collections.emptyList();
     }
 
     private String escapeJson(String input) {

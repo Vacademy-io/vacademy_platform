@@ -44,7 +44,7 @@ public class EmbeddingService {
             String taskType = "RETRIEVAL_DOCUMENT";
 
             // 3. Call the Gemini API to get the embedding vector
-            List<Float> embeddingVector = geminiClient.getEmbedding(serializedContent, "models/text-embedding-004", taskType);
+            List<Float> embeddingVector = geminiClient.getEmbedding(serializedContent,  taskType,10);
 
             // 4. Store the embedding in the database
             embeddingRepository.save(createEmbeddingObject(slide.getId(), embeddingVector));
@@ -67,7 +67,7 @@ public class EmbeddingService {
             String taskType = "RETRIEVAL_DOCUMENT";
 
             // 3. Call the Gemini API to get the embedding vector
-            return geminiClient.getEmbedding(serializedContent, "models/text-embedding-004", taskType);
+            return geminiClient.getEmbedding(serializedContent, taskType,10);
         } catch (Exception e) {
             log.error("An unexpected error occurred: {}",e.getMessage());
             return new ArrayList<>();

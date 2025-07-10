@@ -279,7 +279,10 @@ export const SlideMaterial = () => {
               console.log("[SlideMaterial] Creating CodeEditorSlide component");
               setContent(
                 <div className="h-full w-full animate-in fade-in slide-in-from-bottom-4 duration-700">
-                  <CodeEditorSlide published_data={publishedData} />
+                  <CodeEditorSlide
+                    published_data={publishedData}
+                    documentId={activeItem.id}
+                  />
                 </div>
               );
             } else {
@@ -295,7 +298,10 @@ export const SlideMaterial = () => {
             if (publishedData) {
               setContent(
                 <div className="h-full w-full animate-in fade-in slide-in-from-bottom-4 duration-700">
-                  <JupyterNotebookSlide published_data={publishedData} />
+                  <JupyterNotebookSlide
+                    published_data={publishedData}
+                    documentId={activeItem.id}
+                  />
                 </div>
               );
             }
@@ -305,7 +311,10 @@ export const SlideMaterial = () => {
             if (publishedData) {
               setContent(
                 <div className="h-full w-full animate-in fade-in slide-in-from-bottom-4 duration-700">
-                  <ScratchProjectSlide published_data={publishedData} />
+                  <ScratchProjectSlide
+                    published_data={publishedData}
+                    documentId={activeItem.id}
+                  />
                 </div>
               );
             }

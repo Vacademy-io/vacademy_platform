@@ -1,6 +1,7 @@
 package vacademy.io.admin_core_service.features.common.constants;
 
 import vacademy.io.admin_core_service.features.chapter.enums.ChapterStatus;
+import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerStatusEnum;
 import vacademy.io.admin_core_service.features.module.enums.ModuleStatusEnum;
 import vacademy.io.admin_core_service.features.slide.enums.SlideStatus;
@@ -17,4 +18,5 @@ public class ValidStatusListConstants {
     public static final List<String> VALID_SLIDE_STATUSES = List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name(),SlideStatus.DRAFT.name());
     public static final List<String> VALID_LEARNER_STATUSES = List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name());
     public static final List<String> SLIDE_TYPES = List.of(SlideTypeEnum.VIDEO.name(),SlideTypeEnum.DOCUMENT.name());
+    public static final List<String> VALID_QUESTION_STATUSES = List.of(StatusEnum.ACTIVE.name());
 }

@@ -3,7 +3,6 @@ package vacademy.io.admin_core_service.features.slide.repository;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
-import org.springframework.security.core.parameters.P;
 import vacademy.io.admin_core_service.features.slide.dto.*;
 import vacademy.io.admin_core_service.features.slide.entity.Slide;
 
@@ -834,37 +833,88 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
     );
 
     @Query(value = """
-    SELECT
-        s.source_type AS sourceType,
-        COUNT(DISTINCT s.id) AS slideCount
-    FROM slide s
-    JOIN chapter_to_slides cs ON cs.slide_id = s.id
-    JOIN chapter c ON c.id = cs.chapter_id
-    JOIN module_chapter_mapping mcm ON mcm.chapter_id = c.id
-    JOIN modules m ON m.id = mcm.module_id
-    JOIN subject_module_mapping smm ON smm.module_id = m.id
-    JOIN subject sub ON sub.id = smm.subject_id
-    JOIN subject_session ss ON ss.subject_id = sub.id
-    JOIN chapter_package_session_mapping cpsm ON cpsm.chapter_id = c.id
-    WHERE
-        ss.session_id = :sessionId
-        AND cpsm.package_session_id = :sessionId
-        AND sub.status IN :subjectStatusList
-        AND m.status IN :moduleStatusList
-        AND c.status IN :chapterStatusList
-        AND cs.status IN :slideStatusList
-        AND s.status IN :slideStatusList
-        AND cpsm.status IN :chapterPackageStatusList
-    GROUP BY s.source_type
+SELECT 
+    s.source_type AS sourceType,
+    COUNT(DISTINCT s.id) AS slideCount,
+    SUM(
+        CASE 
+            WHEN s.source_type = 'VIDEO' THEN 
+                ROUND(COALESCE(vs.published_video_length, 0) / 60000.0, 2)
+            WHEN s.source_type = 'DOCUMENT' THEN 
+                CASE 
+                    WHEN ds.subtype = 'PDF' THEN 
+                        LEAST(ds.total_pages * 3, 120)
+                    ELSE 10
+                END
+            WHEN s.source_type = 'QUESTION' THEN 
+                5
+            WHEN s.source_type = 'ASSIGNMENT' THEN 
+                COALESCE(COUNT(DISTINCT asq.id) * 3, 0)
+            WHEN s.source_type = 'QUIZ' THEN 
+                COALESCE(COUNT(DISTINCT qsq.id) * 2, 0)
+            ELSE 0
+        END
+    ) AS totalReadTimeMinutes
+
+FROM slide s
+LEFT JOIN video vs 
+    ON vs.id = s.id AND s.source_type = 'VIDEO'
+
+LEFT JOIN document_slide ds 
+    ON ds.id = s.id AND s.source_type = 'DOCUMENT'
+
+LEFT JOIN assignment_slide asld 
+    ON asld.id = s.id AND s.source_type = 'ASSIGNMENT'
+LEFT JOIN assignment_slide_question asq 
+    ON asq.assignment_slide_id = asld.id 
+    AND asq.status IN :assignmentQuestionStatusList
+
+LEFT JOIN quiz_slide qs 
+    ON qs.id = s.id AND s.source_type = 'QUIZ'
+LEFT JOIN quiz_slide_question qsq 
+    ON qsq.quiz_slide_id = qs.id 
+    AND qsq.status IN :questionStatusList
+
+JOIN chapter_to_slides cs 
+    ON cs.slide_id = s.id
+JOIN chapter c 
+    ON c.id = cs.chapter_id
+JOIN module_chapter_mapping mcm 
+    ON mcm.chapter_id = c.id
+JOIN modules m 
+    ON m.id = mcm.module_id
+JOIN subject_module_mapping smm 
+    ON smm.module_id = m.id
+JOIN subject sub 
+    ON sub.id = smm.subject_id
+JOIN subject_session ss 
+    ON ss.subject_id = sub.id
+JOIN chapter_package_session_mapping cpsm 
+    ON cpsm.chapter_id = c.id
+
+WHERE
+    ss.session_id = :sessionId
+    AND cpsm.package_session_id = :sessionId
+    AND sub.status IN :subjectStatusList
+    AND m.status IN :moduleStatusList
+    AND c.status IN :chapterStatusList
+    AND cs.status IN :slideStatusList
+    AND s.status IN :slideStatusList
+    AND cpsm.status IN :chapterPackageStatusList
+
+GROUP BY s.source_type
 """, nativeQuery = true)
-    List<SlideTypeCountProjection> getSlideCountsBySourceType(
+    List<SlideTypeReadTimeProjection> getSlideReadTimeSummaryBySourceType(
             @Param("sessionId") String sessionId,
             @Param("subjectStatusList") List<String> subjectStatusList,
             @Param("moduleStatusList") List<String> moduleStatusList,
             @Param("chapterStatusList") List<String> chapterStatusList,
             @Param("slideStatusList") List<String> slideStatusList,
-            @Param("chapterPackageStatusList") List<String> chapterPackageStatusList
+            @Param("chapterPackageStatusList") List<String> chapterPackageStatusList,
+            @Param("assignmentQuestionStatusList") List<String> assignmentQuestionStatusList,
+            @Param("questionStatusList") List<String> questionStatusList
     );
+
     @Query(value = """
     SELECT json_agg(slide_data ORDER BY slide_order IS NOT NULL, slide_order, created_at DESC) AS slides
     FROM (

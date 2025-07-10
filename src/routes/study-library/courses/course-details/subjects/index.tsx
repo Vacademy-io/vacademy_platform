@@ -6,22 +6,20 @@ import { Helmet } from "react-helmet";
 
 interface LevelSearchParams {
     courseId: string;
-    levelId: string;
+    subjectId: string;
 }
 
-export const Route = createFileRoute("/study-library/courses/course-details/subjects/")(
-    {
-        component: RouteComponent,
-        validateSearch: (
-            search: Record<string, unknown>
-        ): LevelSearchParams => {
-            return {
-                courseId: search.courseId as string,
-                levelId: search.levelId as string,
-            };
-        },
-    }
-);
+export const Route = createFileRoute(
+    "/study-library/courses/course-details/subjects/"
+)({
+    component: RouteComponent,
+    validateSearch: (search: Record<string, unknown>): LevelSearchParams => {
+        return {
+            courseId: search.courseId as string,
+            subjectId: search.subjectId as string,
+        };
+    },
+});
 
 function RouteComponent() {
     return (

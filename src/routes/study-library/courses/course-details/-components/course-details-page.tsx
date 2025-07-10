@@ -482,6 +482,9 @@ export const CourseDetailsPage = () => {
                                                             ).courseMediaId
                                                         }
                                                         controls
+                                                        controlsList="nodownload noremoteplayback"
+                                                        disablePictureInPicture
+                                                        disableRemotePlayback
                                                         className="w-full h-full object-cover rounded-xl"
                                                         onError={(e) => {
                                                             e.currentTarget.style.display =

@@ -2,9 +2,13 @@ import { useEffect, useState } from "react";
 import { Star } from "lucide-react";
 import { MyButton } from "@/components/design-system/button";
 import { submitFeedback } from "@/services/feedback/submitFeedback";
-import { getPackageSessionId, getUserId } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
 import Swal from "sweetalert2";
 import withReactContent from "sweetalert2-react-content";
+import { Preferences } from "@capacitor/preferences";
+import axios from "axios";
+import { useRouter } from "@tanstack/react-router";
+import { getUserId } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
+import { urlInstituteDetails } from "@/constants/urls";
 
 const MySwal = withReactContent(Swal);
 
@@ -16,27 +20,55 @@ export default function FeedbackPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [packageSessionId, setPackageSessionId] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchUserData = async () => {
-      const id = await getUserId();
-      const sessionId = await getPackageSessionId();
-      setUserId(id);
-      setPackageSessionId(sessionId);
+  const router = useRouter();
+  const searchParams = router.state.location.search;
 
-      if (!id || !sessionId) {
-        console.error("❌ user_id or package_session_id missing", { id, sessionId });
-        MySwal.fire("Missing Info", "User or session ID is missing.", "warning");
+  useEffect(() => {
+    const fetchUserAndPackageSession = async () => {
+      const id = await getUserId();
+      setUserId(id);
+
+      const instituteResult = await Preferences.get({ key: "InstituteId" });
+      const instituteId = instituteResult.value;
+
+      if (!instituteId || !searchParams.courseId) {
+        console.error("Missing instituteId or courseId");
+        MySwal.fire("Missing Info", "Institute ID or Course ID is missing.", "warning");
+        return;
+      }
+
+      try {
+        const response = await axios.get(`${urlInstituteDetails}/${instituteId}`);
+        const batches = response.data?.batches_for_sessions;
+
+        const matched = batches.find(
+          (item: any) => item.package_dto?.id === searchParams.courseId
+        );
+
+        if (matched?.id) {
+          setPackageSessionId(matched.id);
+        } else {
+          console.error("❌ No matching packageSessionId found");
+          MySwal.fire("Error", "Course is not linked to any session.", "error");
+        }
+      } catch (error) {
+        console.error("❌ Failed to fetch package session:", error);
+        MySwal.fire("Oops!", "Unable to fetch session data", "error");
+      }
+
+      if (!id) {
+        MySwal.fire("Missing Info", "User ID is missing", "warning");
       }
     };
 
-    fetchUserData();
+    fetchUserAndPackageSession();
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!userId || !packageSessionId) {
-      await MySwal.fire("Error", "Cannot submit feedback — user info is missing.", "error");
+      await MySwal.fire("Error", "Cannot submit feedback — user or session ID is missing.", "error");
       return;
     }
 
@@ -61,7 +93,6 @@ export default function FeedbackPage() {
       setLoading(true);
       await submitFeedback(payload);
 
-      // 🎉 Success Alert
       await MySwal.fire({
         title: "Thank you!",
         text: "Thanks for sharing your thoughts — it means a lot to us!",

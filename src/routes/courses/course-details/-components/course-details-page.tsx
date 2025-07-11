@@ -1,5 +1,5 @@
 import { Steps } from "@phosphor-icons/react";
-import { useRouter } from "@tanstack/react-router";
+import { useNavigate, useRouter } from "@tanstack/react-router";
 import {
     ChalkboardTeacher,
     Code,
@@ -42,7 +42,10 @@ import axios from "axios";
 import { urlInstituteDetails } from "@/constants/urls";
 import CourseListHeader from "../../-component/CourseListHeader";
 import { MyButton } from "@/components/design-system/button";
-import { LoginForm } from "@/components/common/LoginPages/sections/login-form";
+import {
+    getFromStorage,
+    LoginForm,
+} from "@/components/common/LoginPages/sections/login-form";
 import { CourseStructureDetails } from "./course-structure-details";
 import { handleGetSlideCountDetails } from "../-services/get-slides-count";
 import {
@@ -50,6 +53,9 @@ import {
     InstituteDetailsType,
 } from "@/types/institute-details/institute-details-interface";
 import { CourseStructureResponse } from "@/types/institute-details/course-details-interface";
+import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
+import { isNullOrEmptyOrUndefined } from "@/lib/utils";
+import { TokenKey } from "@/constants/auth/tokens";
 
 type SlideType = {
     id: string;
@@ -151,6 +157,7 @@ const mockCourses: Course[] = [
 ];
 
 export const CourseDetailsPage = () => {
+    const navigate = useNavigate();
     const [selectedSession, setSelectedSession] = useState<string>("");
     const [selectedLevel, setSelectedLevel] = useState<string>("");
     const router = useRouter();
@@ -333,6 +340,24 @@ export const CourseDetailsPage = () => {
         ...handleGetSlideCountDetails(packageSessionIds || ""),
         enabled: !!packageSessionIds,
     });
+
+    useEffect(() => {
+        const redirectToDashboardIfAuthenticated = async () => {
+            const token = await getTokenFromStorage(TokenKey.accessToken);
+            const studentDetails = await getFromStorage("StudentDetails");
+            const instituteDetails = await getFromStorage("InstituteDetails");
+
+            if (
+                !isNullOrEmptyOrUndefined(token) &&
+                !isNullOrEmptyOrUndefined(studentDetails) &&
+                !isNullOrEmptyOrUndefined(instituteDetails)
+            ) {
+                navigate({ to: "/dashboard" });
+            }
+        };
+
+        redirectToDashboardIfAuthenticated();
+    }, [navigate]);
 
     return (
         <>

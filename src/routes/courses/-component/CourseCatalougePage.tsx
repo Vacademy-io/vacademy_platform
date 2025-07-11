@@ -6,15 +6,20 @@ import CoursesPage from "./CoursesPage.tsx";
 import HeroSectionCourseCatalog from "./HeroSectionCourseCatalog.tsx";
 import { useCatalogStore } from "../-store/catalogStore.ts";
 import axios from "axios";
-import { useSearch } from "@tanstack/react-router";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import {
     urlInstituteDetails,
     urlCourseDetails,
     urlInstructor,
 } from "@/constants/urls.ts";
 import CourseListHeader from "./CourseListHeader.tsx";
+import { getTokenFromStorage } from "@/lib/auth/sessionUtility.ts";
+import { TokenKey } from "@/constants/auth/tokens.ts";
+import { getFromStorage } from "@/components/common/LoginPages/sections/login-form.tsx";
+import { isNullOrEmptyOrUndefined } from "@/lib/utils.ts";
 
 const CourseCatalougePage: React.FC = () => {
+    const navigate = useNavigate();
     const { setCourseData, instituteData, setInstituteData, setInstructors } =
         useCatalogStore();
 
@@ -153,6 +158,24 @@ const CourseCatalougePage: React.FC = () => {
 
         fetchInstructor();
     }, [instituteId]); // ✅ Add dependency
+
+    useEffect(() => {
+        const redirectToDashboardIfAuthenticated = async () => {
+            const token = await getTokenFromStorage(TokenKey.accessToken);
+            const studentDetails = await getFromStorage("StudentDetails");
+            const instituteDetails = await getFromStorage("InstituteDetails");
+
+            if (
+                !isNullOrEmptyOrUndefined(token) &&
+                !isNullOrEmptyOrUndefined(studentDetails) &&
+                !isNullOrEmptyOrUndefined(instituteDetails)
+            ) {
+                navigate({ to: "/dashboard" });
+            }
+        };
+
+        redirectToDashboardIfAuthenticated();
+    }, [navigate]);
 
     return (
         <div>

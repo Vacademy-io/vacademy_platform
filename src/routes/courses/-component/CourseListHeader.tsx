@@ -6,9 +6,13 @@ import { LoginForm } from "@/components/common/LoginPages/sections/login-form";
 const CourseListHeader = ({
     fileId,
     instituteId,
+    type,
+    courseId,
 }: {
     fileId?: string;
     instituteId?: string;
+    type?: string;
+    courseId?: string;
 }) => {
     const [imgUrl, setImgUrl] = useState("");
     const [logoLoading, setLogoLoading] = useState<boolean>(false);
@@ -106,7 +110,7 @@ const CourseListHeader = ({
                             </button>
                         </DialogTrigger>
                         <DialogContent>
-                            <LoginForm variant="dialog" />
+                            <LoginForm type={type} courseId={courseId} />
                         </DialogContent>
                     </Dialog>
                     <button className="px-3 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition">

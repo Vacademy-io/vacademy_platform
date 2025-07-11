@@ -365,6 +365,8 @@ export const CourseDetailsPage = () => {
                 <CourseListHeader
                     fileId={instituteDetails?.institute_logo_file_id || ""}
                     instituteId={instituteDetails?.id}
+                    type="courseDetailsPage"
+                    courseId={searchParams.courseId || ""}
                 />
                 {/* Top Banner */}
                 <div className="relative h-[300px]">
@@ -829,7 +831,10 @@ export const CourseDetailsPage = () => {
                                         </MyButton>
                                     </DialogTrigger>
                                     <DialogContent>
-                                        <LoginForm />
+                                        <LoginForm
+                                            type="courseDetailsPage"
+                                            courseId={searchParams.courseId}
+                                        />
                                     </DialogContent>
                                 </Dialog>
                             </div>

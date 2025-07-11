@@ -4,216 +4,202 @@ import { STUDENT_DETAIL } from "@/constants/urls";
 import { Batch, Institute, Student } from "@/types/user/user-detail";
 
 // 🔍 API call to fetch student details
-export const fetchStudentDetails = async (instituteId: string, userId: string) => {
-  console.log("📡 Calling fetchStudentDetails with:", { instituteId, userId });
+export const fetchStudentDetails = async (
+    instituteId: string,
+    userId: string
+) => {
+    console.log("📡 Calling fetchStudentDetails with:", {
+        instituteId,
+        userId,
+    });
 
-  const response = await authenticatedAxiosInstance({
-    method: "GET",
-    url: STUDENT_DETAIL,
-    params: { instituteId, userId },
-  });
+    const response = await authenticatedAxiosInstance({
+        method: "GET",
+        url: STUDENT_DETAIL,
+        params: { instituteId, userId },
+    });
 
-  console.log("📥 Received student details API response:", response.status, response.data);
-  return response;
+    console.log(
+        "📥 Received student details API response:",
+        response.status,
+        response.data
+    );
+    return response;
 };
 
 // ⚙️ React Query config
 export const getStudentDetails = (instituteId?: string, userId?: string) => {
-  return {
-    queryKey: ["STUDENT_DETAILS", instituteId, userId],
-    queryFn: async () => {
-      console.log("🔁 queryFn triggered");
+    return {
+        queryKey: ["STUDENT_DETAILS", instituteId, userId],
+        queryFn: async () => {
+            console.log("🔁 queryFn triggered");
 
-      if (!instituteId || !userId) {
-        console.warn("⚠️ Institute ID or User ID missing");
-        throw new Error("Institute ID and User ID are required");
-      }
+            if (!instituteId || !userId) {
+                console.warn("⚠️ Institute ID or User ID missing");
+                throw new Error("Institute ID and User ID are required");
+            }
 
-      const data = await fetchStudentDetails(instituteId, userId);
-      return data;
-    },
-    staleTime: 1000,
-    refetchInterval: 1000,
-  };
+            const data = await fetchStudentDetails(instituteId, userId);
+            return data;
+        },
+        staleTime: 1000,
+        refetchInterval: 1000,
+    };
 };
 
 // 🔐 Fetch and store student details + sessions
 export const fetchAndStoreStudentDetails = async (
-  instituteId: string,
-  userId: string
+    instituteId: string,
+    userId: string
 ) => {
-  try {
-    console.log("🚀 fetchAndStoreStudentDetails called:", { instituteId, userId });
+    try {
+        const { queryFn } = getStudentDetails(instituteId, userId);
+        const response = await queryFn();
 
-    const { queryFn } = getStudentDetails(instituteId, userId);
-    const response = await queryFn();
+        if (response.status === 200) {
+            const students: Student[] = response.data;
 
-    console.log("✅ API response received with status:", response.status);
+            await Preferences.set({
+                key: "students",
+                value: JSON.stringify(students),
+            });
 
-    if (response.status === 200) {
-      const students: Student[] = response.data;
-      console.log("👨‍🎓 Students fetched:", students);
+            if (students.length > 0) {
+                await Preferences.set({
+                    key: "StudentDetails",
+                    value: JSON.stringify(students[0]),
+                });
+            }
 
-      await Preferences.set({
-        key: "students",
-        value: JSON.stringify(students),
-      });
-      console.log("💾 Stored 'students' in Preferences");
+            const instituteData = await Preferences.get({
+                key: "InstituteDetails",
+            });
 
-      if (students.length > 0) {
-        await Preferences.set({
-          key: "StudentDetails",
-          value: JSON.stringify(students[0]),
-        });
-        console.log("💾 Stored first student in 'StudentDetails'");
-      }
+            if (!instituteData.value)
+                throw new Error("No institute data found!");
 
-      const instituteData = await Preferences.get({ key: "InstituteDetails" });
-      console.log("🏢 InstituteDetails from Preferences:", instituteData);
+            const institute: Institute = JSON.parse(instituteData.value);
 
-      if (!instituteData.value) throw new Error("No institute data found!");
+            if (!institute.batches_for_sessions)
+                throw new Error("No batches found in institute details!");
 
-      const institute: Institute = JSON.parse(instituteData.value);
+            const packageSessionIds = students.map((s) => s.package_session_id);
+            const matchedSessions = institute.batches_for_sessions.filter(
+                (batch: Batch) => packageSessionIds.includes(batch.id)
+            );
 
-      if (!institute.batches_for_sessions)
-        throw new Error("No batches found in institute details!");
+            await Preferences.set({
+                key: "sessionList",
+                value: JSON.stringify(matchedSessions),
+            });
 
-      const packageSessionIds = students.map((s) => s.package_session_id);
-      const matchedSessions = institute.batches_for_sessions.filter((batch: Batch) =>
-        packageSessionIds.includes(batch.id)
-      );
+            await storeMappedSessions();
+        } else if (response.status === 201) {
+            const student: Student = response.data[0];
 
-      console.log("🎯 Matched sessions:", matchedSessions);
+            await Preferences.set({
+                key: "StudentDetails",
+                value: JSON.stringify(student),
+            });
+            await Preferences.set({
+                key: "students",
+                value: JSON.stringify([student]),
+            });
+        }
 
-      await Preferences.set({
-        key: "sessionList",
-        value: JSON.stringify(matchedSessions),
-      });
-      console.log("💾 Stored 'sessionList' in Preferences");
-
-      await storeMappedSessions();
-    } else if (response.status === 201) {
-      const student: Student = response.data[0];
-
-      await Preferences.set({
-        key: "StudentDetails",
-        value: JSON.stringify(student),
-      });
-      await Preferences.set({
-        key: "students",
-        value: JSON.stringify([student]),
-      });
-
-      console.log("💾 Stored single student response (201) in Preferences");
+        return response.status;
+    } catch (error) {
+        console.error("❌ Failed to fetch and store student details:", error);
+        throw error;
     }
-
-    // ✅ Confirmation logs
-    console.log("🧾 Final Stored StudentDetails:", await Preferences.get({ key: "StudentDetails" }));
-    console.log("🧾 Final Stored students:", await Preferences.get({ key: "students" }));
-
-    return response.status;
-  } catch (error) {
-    console.error("❌ Failed to fetch and store student details:", error);
-    throw error;
-  }
 };
 
 // 🗂️ Store mapped sessions
 const storeMappedSessions = async () => {
-  try {
-    console.log("📦 storeMappedSessions called");
+    try {
+        const studentData = await Preferences.get({ key: "students" });
 
-    const studentData = await Preferences.get({ key: "students" });
-    console.log("📂 Retrieved students from Preferences:", studentData.value);
+        const students: Student[] = studentData.value
+            ? JSON.parse(studentData.value)
+            : [];
 
-    const students: Student[] = studentData.value ? JSON.parse(studentData.value) : [];
+        const instituteData = await Preferences.get({
+            key: "InstituteDetails",
+        });
 
-    const instituteData = await Preferences.get({ key: "InstituteDetails" });
-    console.log("🏢 Retrieved InstituteDetails:", instituteData.value);
+        if (!instituteData.value) throw new Error("No institute data found!");
 
-    if (!instituteData.value) throw new Error("No institute data found!");
+        const institute: Institute = JSON.parse(instituteData.value);
+        const sessionIds = students.map((s) => s.package_session_id);
 
-    const institute: Institute = JSON.parse(instituteData.value);
-    const sessionIds = students.map((s) => s.package_session_id);
+        const matchedSessions =
+            institute.batches_for_sessions?.filter((batch: Batch) =>
+                sessionIds.includes(batch.id)
+            ) || [];
 
-    const matchedSessions =
-      institute.batches_for_sessions?.filter((batch: Batch) =>
-        sessionIds.includes(batch.id)
-      ) || [];
-
-    console.log("🎯 Mapped sessions for students:", matchedSessions);
-
-    await Preferences.set({
-      key: "sessionList",
-      value: JSON.stringify(matchedSessions),
-    });
-
-    console.log("💾 Stored sessionList via storeMappedSessions()");
-  } catch (error) {
-    console.error("❌ Error in storeMappedSessions:", error);
-  }
+        await Preferences.set({
+            key: "sessionList",
+            value: JSON.stringify(matchedSessions),
+        });
+    } catch (error) {
+        console.error("❌ Error in storeMappedSessions:", error);
+    }
 };
 
 // 🧠 Get stored students
 export const getStoredStudentDetails = async (): Promise<Student[] | null> => {
-  try {
-    const { value } = await Preferences.get({ key: "students" });
-    console.log("📥 getStoredStudentDetails ->", value);
-    return value ? (JSON.parse(value) as Student[]) : null;
-  } catch (error) {
-    console.error("❌ Error parsing stored student details:", error);
-    return null;
-  }
+    try {
+        const { value } = await Preferences.get({ key: "students" });
+        return value ? (JSON.parse(value) as Student[]) : null;
+    } catch (error) {
+        console.error("❌ Error parsing stored student details:", error);
+        return null;
+    }
 };
 
 // 📚 Get matched sessions from Preferences
 export const getMappedSessions = async (): Promise<Batch[] | null> => {
-  try {
-    console.log("🔎 getMappedSessions called");
+    try {
+        let studentData = await Preferences.get({ key: "students" });
 
-    let studentData = await Preferences.get({ key: "students" });
-    console.log("📥 students:", studentData.value);
+        if (!studentData.value) {
+            studentData = await Preferences.get({ key: "StudentDetails" });
 
-    if (!studentData.value) {
-      studentData = await Preferences.get({ key: "StudentDetails" });
-      console.log("📥 fallback StudentDetails:", studentData.value);
+            if (!studentData.value) {
+                return null;
+            }
+        }
 
-      if (!studentData.value) {
-        console.warn("⚠️ No student data found in Preferences");
+        const student: Student = JSON.parse(studentData.value);
+
+        const instituteData = await Preferences.get({
+            key: "InstituteDetails",
+        });
+
+        if (!instituteData.value) {
+            return null;
+        }
+
+        const institute: Institute = JSON.parse(instituteData.value);
+
+        if (
+            !institute.batches_for_sessions ||
+            institute.batches_for_sessions.length === 0
+        ) {
+            return null;
+        }
+
+        const matchedSessions = institute.batches_for_sessions.filter(
+            (batch: Batch) => batch.id === student.package_session_id
+        );
+
+        if (matchedSessions.length === 0) {
+            return null;
+        }
+
+        return matchedSessions;
+    } catch (error) {
+        console.error("❌ Error mapping sessions:", error);
         return null;
-      }
     }
-
-    const student: Student = JSON.parse(studentData.value);
-
-    const instituteData = await Preferences.get({ key: "InstituteDetails" });
-    console.log("🏢 InstituteDetails:", instituteData.value);
-
-    if (!instituteData.value) {
-      console.warn("⚠️ No institute data available");
-      return null;
-    }
-
-    const institute: Institute = JSON.parse(instituteData.value);
-
-    if (!institute.batches_for_sessions || institute.batches_for_sessions.length === 0) {
-      console.warn("⚠️ No batches found in institute");
-      return null;
-    }
-
-    const matchedSessions = institute.batches_for_sessions.filter(
-      (batch: Batch) => batch.id === student.package_session_id
-    );
-
-    if (matchedSessions.length === 0) {
-      console.warn("⚠️ No matching sessions found for student's package_session_id");
-      return null;
-    }
-
-    console.log("✅ Found matching sessions:", matchedSessions);
-    return matchedSessions;
-  } catch (error) {
-    console.error("❌ Error mapping sessions:", error);
-    return null;
-  }
 };

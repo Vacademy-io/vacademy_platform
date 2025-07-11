@@ -42,10 +42,15 @@ export const setToStorage = async (key: string, value: string) => {
     await Preferences.set({ key, value });
 };
 
-export function LoginForm() {
+export function LoginForm({
+    type,
+    courseId,
+}: {
+    type?: string;
+    courseId?: string;
+}) {
     const navigate = useNavigate();
     const { setPrimaryColor } = useTheme();
-
     const urlParams = new URLSearchParams(window.location.search);
     const [isSSOLoading, setIsSSOLoading] = useState(false);
     const isPublic = urlParams.get("isPublicAssessment");
@@ -252,7 +257,9 @@ export function LoginForm() {
     }
 
     return (
-        <div className="min-h-screen bg-gray-50 relative overflow-hidden">
+        <div
+            className={`${type ? "h-[400px] overflow-auto" : "min-h-screen overflow-hidden"}  bg-gray-50 relative `}
+        >
             {/* Subtle Background Pattern */}
             <div className="absolute inset-0 bg-grid-gray-100 [mask-image:linear-gradient(0deg,white,rgba(255,255,255,0.6))] -z-10" />
 
@@ -287,106 +294,109 @@ export function LoginForm() {
 
             <div className="flex min-h-screen">
                 {/* Left Side - Compact Branding & Features */}
-                <motion.div
-                    initial={{ x: -50, opacity: 0 }}
-                    animate={{ x: 0, opacity: 1 }}
-                    transition={{ duration: 0.6, ease: "easeOut" }}
-                    className="hidden lg:flex lg:w-1/2 xl:w-1/2 flex-col justify-center px-8 xl:px-16"
-                >
-                    {/* Compact Main Heading */}
+                {!type && (
                     <motion.div
-                        initial={{ y: 20, opacity: 0 }}
-                        animate={{ y: 0, opacity: 1 }}
-                        transition={{ delay: 0.2 }}
-                        className="mb-8"
+                        initial={{ x: -50, opacity: 0 }}
+                        animate={{ x: 0, opacity: 1 }}
+                        transition={{ duration: 0.6, ease: "easeOut" }}
+                        className="hidden lg:flex lg:w-1/2 xl:w-1/2 flex-col justify-center px-8 xl:px-16"
                     >
-                        <h1 className="text-4xl xl:text-5xl font-bold text-gray-900 mb-4 leading-tight">
-                            Transform Your
-                            <span className="bg-gradient-to-r from-gray-700 to-gray-900 bg-clip-text text-transparent">
-                                {" "}
-                                Learning
-                            </span>
-                            <br />
-                            Journey
-                        </h1>
-                        <p className="text-lg text-gray-600 leading-relaxed max-w-lg">
-                            Access personalized learning experiences, track your
-                            progress, and achieve your educational goals.
-                        </p>
-                    </motion.div>
+                        {/* Compact Main Heading */}
+                        <motion.div
+                            initial={{ y: 20, opacity: 0 }}
+                            animate={{ y: 0, opacity: 1 }}
+                            transition={{ delay: 0.2 }}
+                            className="mb-8"
+                        >
+                            <h1 className="text-4xl xl:text-5xl font-bold text-gray-900 mb-4 leading-tight">
+                                Transform Your
+                                <span className="bg-gradient-to-r from-gray-700 to-gray-900 bg-clip-text text-transparent">
+                                    {" "}
+                                    Learning
+                                </span>
+                                <br />
+                                Journey
+                            </h1>
+                            <p className="text-lg text-gray-600 leading-relaxed max-w-lg">
+                                Access personalized learning experiences, track
+                                your progress, and achieve your educational
+                                goals.
+                            </p>
+                        </motion.div>
 
-                    {/* Compact Features Grid */}
-                    <motion.div
-                        initial={{ y: 20, opacity: 0 }}
-                        animate={{ y: 0, opacity: 1 }}
-                        transition={{ delay: 0.4 }}
-                        className="grid grid-cols-2 gap-4 mb-8"
-                    >
-                        {[
-                            {
-                                icon: BookOpen,
-                                title: "Interactive Learning",
-                                desc: "Engaging content & assessments",
-                            },
-                            {
-                                icon: Users,
-                                title: "Collaborative Environment",
-                                desc: "Connect with peers & instructors",
-                            },
-                            {
-                                icon: Award,
-                                title: "Track Progress",
-                                desc: "Monitor your achievements",
-                            },
-                            {
-                                icon: Shield,
-                                title: "Secure Platform",
-                                desc: "Enterprise-grade security",
-                            },
-                        ].map((feature, index) => (
-                            <motion.div
-                                key={feature.title}
-                                initial={{ scale: 0.9, opacity: 0 }}
-                                animate={{ scale: 1, opacity: 1 }}
-                                transition={{ delay: 0.6 + index * 0.05 }}
-                                whileHover={{ scale: 1.02 }}
-                                className="group p-3 rounded-lg bg-white/60 backdrop-blur-sm border border-gray-200/50 hover:bg-white/80 transition-all duration-200"
-                            >
-                                <feature.icon className="w-6 h-6 text-gray-700 mb-2 group-hover:scale-105 transition-transform duration-200" />
-                                <h3 className="font-semibold text-gray-900 mb-1 text-sm">
-                                    {feature.title}
-                                </h3>
-                                <p className="text-xs text-gray-600">
-                                    {feature.desc}
-                                </p>
-                            </motion.div>
-                        ))}
-                    </motion.div>
+                        {/* Compact Features Grid */}
+                        <motion.div
+                            initial={{ y: 20, opacity: 0 }}
+                            animate={{ y: 0, opacity: 1 }}
+                            transition={{ delay: 0.4 }}
+                            className="grid grid-cols-2 gap-4 mb-8"
+                        >
+                            {[
+                                {
+                                    icon: BookOpen,
+                                    title: "Interactive Learning",
+                                    desc: "Engaging content & assessments",
+                                },
+                                {
+                                    icon: Users,
+                                    title: "Collaborative Environment",
+                                    desc: "Connect with peers & instructors",
+                                },
+                                {
+                                    icon: Award,
+                                    title: "Track Progress",
+                                    desc: "Monitor your achievements",
+                                },
+                                {
+                                    icon: Shield,
+                                    title: "Secure Platform",
+                                    desc: "Enterprise-grade security",
+                                },
+                            ].map((feature, index) => (
+                                <motion.div
+                                    key={feature.title}
+                                    initial={{ scale: 0.9, opacity: 0 }}
+                                    animate={{ scale: 1, opacity: 1 }}
+                                    transition={{ delay: 0.6 + index * 0.05 }}
+                                    whileHover={{ scale: 1.02 }}
+                                    className="group p-3 rounded-lg bg-white/60 backdrop-blur-sm border border-gray-200/50 hover:bg-white/80 transition-all duration-200"
+                                >
+                                    <feature.icon className="w-6 h-6 text-gray-700 mb-2 group-hover:scale-105 transition-transform duration-200" />
+                                    <h3 className="font-semibold text-gray-900 mb-1 text-sm">
+                                        {feature.title}
+                                    </h3>
+                                    <p className="text-xs text-gray-600">
+                                        {feature.desc}
+                                    </p>
+                                </motion.div>
+                            ))}
+                        </motion.div>
 
-                    {/* Compact Trust Indicators */}
-                    <motion.div
-                        initial={{ y: 20, opacity: 0 }}
-                        animate={{ y: 0, opacity: 1 }}
-                        transition={{ delay: 0.8 }}
-                        className="flex items-center space-x-6 text-sm text-gray-500"
-                    >
-                        <div className="flex items-center space-x-2">
-                            <Shield className="w-4 h-4" />
-                            <span>ISO 27001 Certified</span>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                            <Sparkles className="w-4 h-4" />
-                            <span>99.9% Uptime</span>
-                        </div>
+                        {/* Compact Trust Indicators */}
+                        <motion.div
+                            initial={{ y: 20, opacity: 0 }}
+                            animate={{ y: 0, opacity: 1 }}
+                            transition={{ delay: 0.8 }}
+                            className="flex items-center space-x-6 text-sm text-gray-500"
+                        >
+                            <div className="flex items-center space-x-2">
+                                <Shield className="w-4 h-4" />
+                                <span>ISO 27001 Certified</span>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                                <Sparkles className="w-4 h-4" />
+                                <span>99.9% Uptime</span>
+                            </div>
+                        </motion.div>
                     </motion.div>
-                </motion.div>
+                )}
 
                 {/* Right Side - Compact Login Form */}
                 <motion.div
                     initial={{ x: 50, opacity: 0 }}
                     animate={{ x: 0, opacity: 1 }}
                     transition={{ duration: 0.6, ease: "easeOut", delay: 0.1 }}
-                    className="w-full lg:w-1/2 xl:w-1/2 flex items-center justify-center p-4 lg:p-8 xl:p-12"
+                    className={`w-full ${type ? "p-4 bg-white" : "lg:w-1/2 xl:w-1/2  p-4 lg:p-8 xl:p-12 "}  flex items-center justify-center`}
                 >
                     <div className="w-full max-w-lg xl:max-w-xl">
                         {/* Compact Login Card */}
@@ -394,7 +404,7 @@ export function LoginForm() {
                             initial={{ y: 20, opacity: 0, scale: 0.98 }}
                             animate={{ y: 0, opacity: 1, scale: 1 }}
                             transition={{ delay: 0.3, duration: 0.4 }}
-                            className="bg-white/90 backdrop-blur-xl rounded-xl shadow-xl border border-gray-200/50 p-6 lg:p-8 xl:p-10"
+                            className={`bg-white/90 backdrop-blur-xl rounded-xl ${type ? "" : "shadow-xl border border-gray-200/50 p-6 lg:p-8 xl:p-10"}  `}
                         >
                             {/* Compact Header */}
                             <motion.div
@@ -482,6 +492,8 @@ export function LoginForm() {
                                                 onSwitchToUsername={() =>
                                                     setIsEmailLogin(false)
                                                 }
+                                                type={type}
+                                                courseId={courseId}
                                             />
                                         </motion.div>
                                     ) : (
@@ -496,6 +508,8 @@ export function LoginForm() {
                                                 onSwitchToEmail={() =>
                                                     setIsEmailLogin(true)
                                                 }
+                                                type={type}
+                                                courseId={courseId}
                                             />
                                         </motion.div>
                                     )}

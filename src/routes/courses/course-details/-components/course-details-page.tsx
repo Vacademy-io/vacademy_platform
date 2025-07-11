@@ -366,6 +366,7 @@ export const CourseDetailsPage = () => {
                     fileId={instituteDetails?.institute_logo_file_id || ""}
                     instituteId={instituteDetails?.id}
                     type="courseDetailsPage"
+                    courseId={searchParams.courseId || ""}
                 />
                 {/* Top Banner */}
                 <div className="relative h-[300px]">

@@ -29,9 +29,14 @@ type FormValues = z.infer<typeof loginSchema>;
 
 interface UsernameLoginProps {
     onSwitchToEmail: () => void;
-    variant?: string;
+    type?: string;
+    courseId?: string;
 }
-export function UsernameLogin({ onSwitchToEmail }: UsernameLoginProps) {
+export function UsernameLogin({
+    onSwitchToEmail,
+    type,
+    courseId,
+}: UsernameLoginProps) {
     const navigate = useNavigate();
     const [isLoading, setIsLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
@@ -89,6 +94,7 @@ export function UsernameLogin({ onSwitchToEmail }: UsernameLoginProps) {
                         navigate({
                             to: "/institute-selection",
                             search: { redirect: redirect || "/dashboard/" },
+                            state: { type, courseId },
                         });
                     } else {
                         // Get the single institute ID
@@ -143,6 +149,7 @@ export function UsernameLogin({ onSwitchToEmail }: UsernameLoginProps) {
                         navigate({
                             to: "/SessionSelectionPage",
                             search: { redirect: redirect || "/dashboard" },
+                            state: { type, courseId },
                         });
                     }
                 } catch (error) {

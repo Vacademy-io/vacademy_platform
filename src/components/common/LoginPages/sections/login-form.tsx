@@ -42,10 +42,15 @@ export const setToStorage = async (key: string, value: string) => {
     await Preferences.set({ key, value });
 };
 
-export function LoginForm({ type }: { type?: string }) {
+export function LoginForm({
+    type,
+    courseId,
+}: {
+    type?: string;
+    courseId?: string;
+}) {
     const navigate = useNavigate();
     const { setPrimaryColor } = useTheme();
-
     const urlParams = new URLSearchParams(window.location.search);
     const [isSSOLoading, setIsSSOLoading] = useState(false);
     const isPublic = urlParams.get("isPublicAssessment");
@@ -487,6 +492,8 @@ export function LoginForm({ type }: { type?: string }) {
                                                 onSwitchToUsername={() =>
                                                     setIsEmailLogin(false)
                                                 }
+                                                type={type}
+                                                courseId={courseId}
                                             />
                                         </motion.div>
                                     ) : (
@@ -501,6 +508,8 @@ export function LoginForm({ type }: { type?: string }) {
                                                 onSwitchToEmail={() =>
                                                     setIsEmailLogin(true)
                                                 }
+                                                type={type}
+                                                courseId={courseId}
                                             />
                                         </motion.div>
                                     )}

@@ -1122,7 +1122,7 @@ export const CourseDetailsPage = () => {
                                             scale="large"
                                             buttonType="primary"
                                             layoutVariant="default"
-                                            className="mt-4 !min-w-full !w-full text-xs h-8"
+                                            className="mt-2 !min-w-full !w-full text-xs h-8"
                                         >
                                             Enroll
                                         </MyButton>

@@ -316,7 +316,7 @@ public class UserService {
 
             updateIfNotNull(request.getEmail(), userOptional.get()::setEmail);
             updateIfNotNull(request.getMobileNumber(), userOptional.get()::setMobileNumber);
-            updateIfNotNull(request.getProfilePicFileId(), userOptional.get()::setProfilePicFileId);
+            userOptional.get().setProfilePicFileId(request.getProfilePicFileId());
             updateIfNotNull(request.getPinCode(), userOptional.get()::setPinCode);
             updateIfNotNull(request.getCity(), userOptional.get()::setCity);
             updateIfNotNull(request.getGender(), userOptional.get()::setGender);

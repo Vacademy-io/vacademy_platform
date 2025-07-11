@@ -48,6 +48,7 @@ import { CourseStructureDetails } from "./course-structure-details";
 import { BatchForSessionType } from "@/types/institute-details/institute-details-interface";
 import { CourseStructureResponse } from "@/types/institute-details/course-details-interface";
 import { getIdByLevelAndSession } from "@/routes/courses/course-details/-utils/helper";
+import { MyButton } from "@/components/design-system/button";
 
 type SlideType = {
     id: string;
@@ -1116,6 +1117,15 @@ export const CourseDetailsPage = () => {
                                                 </div>
                                             )}
                                         </div>
+                                        <MyButton
+                                            type="button"
+                                            scale="large"
+                                            buttonType="primary"
+                                            layoutVariant="default"
+                                            className="mt-4 !min-w-full !w-full text-xs h-8"
+                                        >
+                                            Enroll
+                                        </MyButton>
                                     </div>
                                 </div>
                             </div>

@@ -5,7 +5,8 @@ import com.fasterxml.jackson.databind.annotation.JsonNaming;
 
 
 @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
-public interface SlideTypeCountProjection {
+public interface SlideTypeReadTimeProjection {
     String getSourceType();
     Long getSlideCount();
+    Double getTotalReadTimeMinutes();
 }

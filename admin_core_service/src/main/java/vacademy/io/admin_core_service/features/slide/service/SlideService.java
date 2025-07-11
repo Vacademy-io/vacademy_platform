@@ -586,6 +586,8 @@ public class SlideService {
         );
     }
 
+
+
     public List<SlideTypeReadTimeProjection> getSlideCountsBySourceTypeForLearner(
             String sessionId
     ) {
@@ -596,7 +598,7 @@ public class SlideService {
                 ValidStatusListConstants.ACTIVE_CHAPTERS,
                 ValidStatusListConstants.VALID_LEARNER_STATUSES,
                 ValidStatusListConstants.ACTIVE_CHAPTERS,
-                ValidStatusListConstants.VALID_QUESTION_STATUSES,
+                ValidStatusListConstants.VALID_SLIDE_STATUSES_FOR_LEARNER,
                 ValidStatusListConstants.VALID_QUESTION_STATUSES
         );
     }

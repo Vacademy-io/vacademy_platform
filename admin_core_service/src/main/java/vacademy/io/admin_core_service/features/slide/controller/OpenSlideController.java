@@ -22,7 +22,7 @@ public class OpenSlideController {
     public ResponseEntity<List<SlideTypeReadTimeProjection>> getSlideCountsBySourceType(
         @RequestParam String packageSessionId
     ) {
-        List<SlideTypeReadTimeProjection> result = slideService.getSlideCountsBySourceType(packageSessionId);
+        List<SlideTypeReadTimeProjection> result = slideService.getSlideCountsBySourceTypeForLearner(packageSessionId);
         return ResponseEntity.ok(result);
     }
 

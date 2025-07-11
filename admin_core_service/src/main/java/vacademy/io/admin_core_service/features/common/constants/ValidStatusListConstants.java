@@ -19,4 +19,5 @@ public class ValidStatusListConstants {
     public static final List<String> VALID_LEARNER_STATUSES = List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name());
     public static final List<String> SLIDE_TYPES = List.of(SlideTypeEnum.VIDEO.name(),SlideTypeEnum.DOCUMENT.name());
     public static final List<String> VALID_QUESTION_STATUSES = List.of(StatusEnum.ACTIVE.name());
+    public static final List<String> VALID_SLIDE_STATUSES_FOR_LEARNER = List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name());
 }

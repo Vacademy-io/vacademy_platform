@@ -365,6 +365,7 @@ export const CourseDetailsPage = () => {
                 <CourseListHeader
                     fileId={instituteDetails?.institute_logo_file_id || ""}
                     instituteId={instituteDetails?.id}
+                    type="courseDetailsPage"
                 />
                 {/* Top Banner */}
                 <div className="relative h-[300px]">

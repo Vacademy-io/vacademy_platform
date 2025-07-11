@@ -182,6 +182,7 @@ const CourseCatalougePage: React.FC = () => {
             <CourseListHeader
                 fileId={instituteData?.institute_logo_file_id || ""}
                 instituteId={instituteData?.id}
+                type="coursesPage"
             />
             <HeroSectionCourseCatalog />
             <CoursesPage

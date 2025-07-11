@@ -831,7 +831,10 @@ export const CourseDetailsPage = () => {
                                         </MyButton>
                                     </DialogTrigger>
                                     <DialogContent>
-                                        <LoginForm />
+                                        <LoginForm
+                                            type="courseDetailsPage"
+                                            courseId={searchParams.courseId}
+                                        />
                                     </DialogContent>
                                 </Dialog>
                             </div>

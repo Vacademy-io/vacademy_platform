@@ -4,6 +4,7 @@ import {
     GET_ALL_USER_RATINGS,
     SUBMIT_RATING_URL,
 } from "@/constants/urls";
+import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import {
     getTokenDecodedData,
     getTokenFromStorage,
@@ -17,7 +18,7 @@ export const handleSubmitRating = async (
 ) => {
     const accessToken = await getTokenFromStorage(TokenKey.accessToken);
     const tokenData = getTokenDecodedData(accessToken);
-    const response = await axios({
+    const response = await authenticatedAxiosInstance({
         method: "POST",
         url: SUBMIT_RATING_URL,
         data: {
@@ -44,7 +45,7 @@ export const handleUpdateRating = async (
 ) => {
     const accessToken = await getTokenFromStorage(TokenKey.accessToken);
     const tokenData = getTokenDecodedData(accessToken);
-    const response = await axios({
+    const response = await authenticatedAxiosInstance({
         method: "PUT",
         url: SUBMIT_RATING_URL,
         data: {

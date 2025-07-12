@@ -45,12 +45,14 @@ const CourseCatalougePage: React.FC = () => {
         totalElements: 0,
         totalPages: 0,
     });
-    const [progressCourses, setProgressCourses] = useState<CoursePackageResponse>({
-        ...allCourses,
-    });
-    const [completedCourses, setCompletedCourses] = useState<CoursePackageResponse>({
-        ...allCourses,
-    });
+    const [progressCourses, setProgressCourses] =
+        useState<CoursePackageResponse>({
+            ...allCourses,
+        });
+    const [completedCourses, setCompletedCourses] =
+        useState<CoursePackageResponse>({
+            ...allCourses,
+        });
     const [searchTerm, setSearchTerm] = useState("");
     const [sortOption, setSortOption] = useState("Newest");
 
@@ -60,7 +62,12 @@ const CourseCatalougePage: React.FC = () => {
         []
     );
 
-    const fetchTabCourses = async (tabType: string, setData: (data: CoursePackageResponse) => void, search = "", sort = "Newest") => {
+    const fetchTabCourses = async (
+        tabType: string,
+        setData: (data: CoursePackageResponse) => void,
+        search = "",
+        sort = "Newest"
+    ) => {
         try {
             const instituteId = await getInstituteId();
             const response = await authenticatedAxiosInstance.post(
@@ -125,7 +132,13 @@ const CourseCatalougePage: React.FC = () => {
     useEffect(() => {
         fetchAllTabs();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [searchTerm, sortOption, selectedLevels, selectedTags, selectedInstructors]);
+    }, [
+        searchTerm,
+        sortOption,
+        selectedLevels,
+        selectedTags,
+        selectedInstructors,
+    ]);
 
     // ✅ Fetch institute details
     useEffect(() => {
@@ -157,7 +170,13 @@ const CourseCatalougePage: React.FC = () => {
                 const response = await axios.post(
                     urlInstructor,
                     {
-                        roles: ["TEACHER", "ADMIN"],
+                        roles: [
+                            "TEACHER",
+                            "ADMIN",
+                            "COURSE CREATOR",
+                            "ASSESSMENT CREATOR",
+                            "EVALUATOR",
+                        ],
                         status: ["ACTIVE"],
                     },
                     {
@@ -213,28 +232,24 @@ const CourseCatalougePage: React.FC = () => {
                                         )}
                                     </TabsTrigger>
                                 )}
-                                {progressCourses.content.length > 0 && (
-                                    <TabsTrigger
-                                        value="PROGRESS"
-                                        className={`relative px-3 sm:px-4 py-2 sm:py-2.5 text-sm sm:text-base font-semibold rounded-lg transition-all duration-300 flex-1 sm:flex-none ${selectedTab === "PROGRESS" ? "bg-white text-primary-600 shadow-sm border border-primary-200" : "text-gray-600 hover:text-gray-900 hover:bg-white/50"}`}
-                                    >
-                                        In Progress
-                                        {selectedTab === "PROGRESS" && (
-                                            <div className="absolute inset-0 bg-gradient-to-r from-primary-500/10 to-primary-600/10 rounded-lg"></div>
-                                        )}
-                                    </TabsTrigger>
-                                )}
-                                {completedCourses.content.length > 0 && (
-                                    <TabsTrigger
-                                        value="COMPLETED"
-                                        className={`relative px-3 sm:px-4 py-2 sm:py-2.5 text-sm sm:text-base font-semibold rounded-lg transition-all duration-300 flex-1 sm:flex-none ${selectedTab === "COMPLETED" ? "bg-white text-primary-600 shadow-sm border border-primary-200" : "text-gray-600 hover:text-gray-900 hover:bg-white/50"}`}
-                                    >
-                                        Completed
-                                        {selectedTab === "COMPLETED" && (
-                                            <div className="absolute inset-0 bg-gradient-to-r from-primary-500/10 to-primary-600/10 rounded-lg"></div>
-                                        )}
-                                    </TabsTrigger>
-                                )}
+                                <TabsTrigger
+                                    value="PROGRESS"
+                                    className={`relative px-3 sm:px-4 py-2 sm:py-2.5 text-sm sm:text-base font-semibold rounded-lg transition-all duration-300 flex-1 sm:flex-none ${selectedTab === "PROGRESS" ? "bg-white text-primary-600 shadow-sm border border-primary-200" : "text-gray-600 hover:text-gray-900 hover:bg-white/50"}`}
+                                >
+                                    In Progress
+                                    {selectedTab === "PROGRESS" && (
+                                        <div className="absolute inset-0 bg-gradient-to-r from-primary-500/10 to-primary-600/10 rounded-lg"></div>
+                                    )}
+                                </TabsTrigger>
+                                <TabsTrigger
+                                    value="COMPLETED"
+                                    className={`relative px-3 sm:px-4 py-2 sm:py-2.5 text-sm sm:text-base font-semibold rounded-lg transition-all duration-300 flex-1 sm:flex-none ${selectedTab === "COMPLETED" ? "bg-white text-primary-600 shadow-sm border border-primary-200" : "text-gray-600 hover:text-gray-900 hover:bg-white/50"}`}
+                                >
+                                    Completed
+                                    {selectedTab === "COMPLETED" && (
+                                        <div className="absolute inset-0 bg-gradient-to-r from-primary-500/10 to-primary-600/10 rounded-lg"></div>
+                                    )}
+                                </TabsTrigger>
                             </TabsList>
                         </div>
                     </div>
@@ -258,6 +273,7 @@ const CourseCatalougePage: React.FC = () => {
                             page={allCourses.number}
                             handlePageChange={() => {}}
                             showFilters={selectedTab === "ALL"}
+                            selectedTab={selectedTab}
                         />
                     </TabsContent>
                     <TabsContent value="PROGRESS" className="m-0">
@@ -278,6 +294,7 @@ const CourseCatalougePage: React.FC = () => {
                             page={progressCourses.number}
                             handlePageChange={() => {}}
                             showFilters={false}
+                            selectedTab={selectedTab}
                         />
                     </TabsContent>
                     <TabsContent value="COMPLETED" className="m-0">
@@ -298,6 +315,7 @@ const CourseCatalougePage: React.FC = () => {
                             page={completedCourses.number}
                             handlePageChange={() => {}}
                             showFilters={false}
+                            selectedTab={selectedTab}
                         />
                     </TabsContent>
                 </Tabs>

@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from "react";
-import { StarIcon, ChevronRight, Play, BookOpen, Users, Clock } from "lucide-react";
+import { ChevronRight, Play, BookOpen, Users, Clock } from "lucide-react";
 import { useRouter } from "@tanstack/react-router";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
-import { Star, Trophy, Medal } from 'phosphor-react';
+import { Star } from "phosphor-react";
+import { ProgressBar } from "@/components/ui/custom-progress-bar";
 
 interface Instructor {
     id: string;
@@ -14,13 +15,15 @@ interface CourseCardProps {
     courseId: string;
     package_name: string;
     level_name: string;
-    thumbnailUrl: string | null;
+   
     instructors: Instructor[];
     rating: number;
     description: string;
+    percentageCompleted: number;
     tags: string[];
     studentCount?: number;
     previewImageUrl: string;
+    selectedTab: string;
 }
 
 const fallbackInstructorImage =
@@ -30,13 +33,14 @@ const CourseCard: React.FC<CourseCardProps> = ({
     courseId,
     package_name,
     level_name,
-    thumbnailUrl,
     instructors,
     rating,
     description,
+    percentageCompleted,
     tags,
     studentCount,
     previewImageUrl,
+    selectedTab,
 }) => {
     const [courseImageUrl, setCourseImageUrl] = useState<string | null>(null);
     const [loadingImage, setLoadingImage] = useState(true);
@@ -62,7 +66,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
             setCourseImageUrl(null);
             return;
         }
-        
+
         setLoadingImage(true);
         try {
             const url = await getPublicUrlWithoutLogin(previewImageUrl);
@@ -96,10 +100,10 @@ const CourseCard: React.FC<CourseCardProps> = ({
         <div className="group relative overflow-hidden bg-white/80 backdrop-blur-sm border border-gray-200/60 rounded-2xl shadow-sm hover:shadow-2xl transition-all duration-500 hover:scale-[1.02] flex flex-col w-full max-w-full animate-fade-in-up">
             {/* Background gradient overlay */}
             <div className="absolute inset-0 bg-gradient-to-br from-primary-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-2xl"></div>
-            
+
             {/* Floating orb effects */}
             <div className="absolute top-0 right-0 w-16 h-16 bg-primary-100/20 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-700 -translate-y-2 translate-x-4"></div>
-            
+
             {/* Image Container - Only show if there's an image or loading */}
             {(loadingImage || courseImageUrl) && (
                 <div className="relative w-full h-48 sm:h-52 bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center overflow-hidden rounded-t-2xl">
@@ -107,7 +111,10 @@ const CourseCard: React.FC<CourseCardProps> = ({
                     {courseImageUrl && (
                         <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
                             <div className="bg-white/90 backdrop-blur-sm rounded-full p-3 transform scale-0 group-hover:scale-100 transition-transform duration-300">
-                                <Play size={24} className="text-primary-600 ml-1" />
+                                <Play
+                                    size={24}
+                                    className="text-primary-600 ml-1"
+                                />
                             </div>
                         </div>
                     )}
@@ -116,7 +123,9 @@ const CourseCard: React.FC<CourseCardProps> = ({
                         <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200">
                             <div className="flex flex-col items-center space-y-3">
                                 <div className="w-8 h-8 border-2 border-primary-500 border-t-transparent rounded-full animate-spin"></div>
-                                <div className="text-xs text-gray-500 font-medium">Loading content...</div>
+                                <div className="text-xs text-gray-500 font-medium">
+                                    Loading content...
+                                </div>
                             </div>
                         </div>
                     ) : courseImageUrl ? (
@@ -167,18 +176,25 @@ const CourseCard: React.FC<CourseCardProps> = ({
                                 <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-success-500 rounded-full border-2 border-white"></div>
                             </div>
                             <div className="min-w-0 flex-1">
-                                <p className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Instructor</p>
+                                <p className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">
+                                    Instructor
+                                </p>
                                 <div className="text-sm font-semibold text-gray-800 truncate">
                                     {instructors.map((instructor, index) => (
                                         <span key={instructor.id}>
                                             {instructor.full_name}
-                                            {index !== instructors.length - 1 ? ", " : ""}
+                                            {index !== instructors.length - 1
+                                                ? ", "
+                                                : ""}
                                         </span>
                                     ))}
                                 </div>
                             </div>
                         </div>
-                        <Users size={16} className="text-primary-500 flex-shrink-0" />
+                        <Users
+                            size={16}
+                            className="text-primary-500 flex-shrink-0"
+                        />
                     </div>
                 )}
 
@@ -220,14 +236,18 @@ const CourseCard: React.FC<CourseCardProps> = ({
                                 />
                             ))}
                         </div>
-                        <span className="text-sm font-bold text-gray-900">{ratingValue.toFixed(1)}</span>
+                        <span className="text-sm font-bold text-gray-900">
+                            {ratingValue.toFixed(1)}
+                        </span>
                     </div>
-                    
+
                     <div className="flex items-center space-x-4 text-xs text-gray-600">
                         {studentCount !== undefined && (
                             <div className="flex items-center space-x-1">
                                 <Users size={14} />
-                                <span className="font-medium">{studentCount}</span>
+                                <span className="font-medium">
+                                    {studentCount}
+                                </span>
                             </div>
                         )}
                         <div className="flex items-center space-x-1">
@@ -236,7 +256,17 @@ const CourseCard: React.FC<CourseCardProps> = ({
                         </div>
                     </div>
                 </div>
-
+                {selectedTab === "PROGRESS" && (
+                    <div className="mb-4 -mt-1 flex items-center gap-2">
+                        <ProgressBar value={percentageCompleted} />
+                        <span>
+                            {percentageCompleted
+                                ? percentageCompleted.toFixed(2)
+                                : 0}
+                            %
+                        </span>
+                    </div>
+                )}
                 {/* Action button */}
                 <button
                     className="relative mt-auto w-full overflow-hidden bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 text-white py-3 px-4 rounded-xl font-semibold text-sm transition-all duration-300 transform hover:scale-[1.02] hover:shadow-lg group/btn flex items-center justify-center space-x-2"
@@ -244,12 +274,18 @@ const CourseCard: React.FC<CourseCardProps> = ({
                 >
                     {/* Shimmer effect */}
                     <div className="absolute inset-0 -skew-x-12 -translate-x-full group-hover/btn:translate-x-full bg-gradient-to-r from-transparent via-white/20 to-transparent transition-transform duration-700"></div>
-                    
-                    <BookOpen size={16} className="transition-transform duration-300 group-hover/btn:scale-110" />
+
+                    <BookOpen
+                        size={16}
+                        className="transition-transform duration-300 group-hover/btn:scale-110"
+                    />
                     <span>View Course</span>
-                    <ChevronRight size={16} className="transition-transform duration-300 group-hover/btn:translate-x-1" />
+                    <ChevronRight
+                        size={16}
+                        className="transition-transform duration-300 group-hover/btn:translate-x-1"
+                    />
                 </button>
-                
+
                 {/* Progress indicator */}
                 <div className="absolute bottom-0 left-0 h-1 bg-gradient-to-r from-primary-400 to-primary-600 w-0 group-hover:w-full transition-all duration-700 ease-out rounded-b-2xl"></div>
             </div>

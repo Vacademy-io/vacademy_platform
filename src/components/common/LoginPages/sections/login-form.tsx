@@ -136,10 +136,7 @@ export function LoginForm({
                     toast.error("Invalid user data received");
                 }
 
-                navigate({
-                    to: "/SessionSelectionPage",
-                    search: { redirect: redirect || "/dashboard" },
-                });
+                navigate({ to: "/dashboard" });
             }
         } catch {
             toast.error("Failed to process user data");

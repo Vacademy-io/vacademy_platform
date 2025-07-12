@@ -273,11 +273,7 @@ export const DoubtResolutionSidebar = () => {
                     >
                         <Plus size={20} />
                         Ask a Doubt
-                        {activeItem?.source_type === "VIDEO" && (
-                            <span className="text-xs bg-white/20 px-2 py-1 rounded-full">
-                                with timestamp
-                            </span>
-                        )}
+                    
                     </MyButton>
                 )}
             </div>

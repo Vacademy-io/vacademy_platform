@@ -85,6 +85,12 @@ jobs:
           method: kubeconfig
           kubeconfig: ${{ secrets.VACADEMY_STAGE_KUBECONFIG}}
 
+      - name: Set Secrets of application file
+        run: |
+          kubectl set env deployment/admin-core-service \
+            GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+            OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+
       - name: Restart deployment
         id: restart-deployment
         env:

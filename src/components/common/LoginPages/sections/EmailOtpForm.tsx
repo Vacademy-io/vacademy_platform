@@ -155,12 +155,9 @@ export function EmailLogin({
                                 userId
                             );
                             if (status == 200) {
+                                // Redirect to dashboard
                                 navigate({
-                                    to: "/SessionSelectionPage",
-                                    search: {
-                                        redirect: redirect || "/dashboard",
-                                    },
-                                    state: { type, courseId },
+                                    to: "/dashboard",
                                 });
                             } else if (status == 201) {
                                 navigate({

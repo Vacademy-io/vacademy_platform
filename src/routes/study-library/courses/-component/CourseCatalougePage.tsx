@@ -273,6 +273,7 @@ const CourseCatalougePage: React.FC = () => {
                             page={allCourses.number}
                             handlePageChange={() => {}}
                             showFilters={selectedTab === "ALL"}
+                            selectedTab={selectedTab}
                         />
                     </TabsContent>
                     <TabsContent value="PROGRESS" className="m-0">
@@ -293,6 +294,7 @@ const CourseCatalougePage: React.FC = () => {
                             page={progressCourses.number}
                             handlePageChange={() => {}}
                             showFilters={false}
+                            selectedTab={selectedTab}
                         />
                     </TabsContent>
                     <TabsContent value="COMPLETED" className="m-0">
@@ -313,6 +315,7 @@ const CourseCatalougePage: React.FC = () => {
                             page={completedCourses.number}
                             handlePageChange={() => {}}
                             showFilters={false}
+                            selectedTab={selectedTab}
                         />
                     </TabsContent>
                 </Tabs>

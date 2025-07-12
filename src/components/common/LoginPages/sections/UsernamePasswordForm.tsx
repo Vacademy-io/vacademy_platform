@@ -145,11 +145,9 @@ export function UsernameLogin({
                             );
                         }
 
-                        // Redirect to SessionSelectionPage
+                        // Redirect to dashboard
                         navigate({
-                            to: "/SessionSelectionPage",
-                            search: { redirect: redirect || "/dashboard" },
-                            state: { type, courseId },
+                            to: "/dashboard",
                         });
                     }
                 } catch (error) {

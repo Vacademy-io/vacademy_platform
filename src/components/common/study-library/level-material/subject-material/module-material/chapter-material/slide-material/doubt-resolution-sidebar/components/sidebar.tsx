@@ -121,13 +121,23 @@ export const DoubtResolutionSidebar = () => {
     };
 
     const handleTimestampEdit = () => {
-        setShowTimestampDialog(true);
+        // Only allow timestamp editing for video slides
+        if (activeItem?.source_type === "VIDEO") {
+            setShowTimestampDialog(true);
+        }
     };
 
     const handleAskDoubtClick = () => {
         setTimestamp(undefined);
         setFormattedTime(undefined);
-        setShowTimestampDialog(true);
+        
+        // Only show timestamp dialog for video slides
+        if (activeItem?.source_type === "VIDEO") {
+            setShowTimestampDialog(true);
+        } else {
+            // For non-video slides, directly show the doubt input
+            setShowInput(true);
+        }
     };
 
    if (isPending) return <DashboardLoader />
@@ -156,7 +166,9 @@ export const DoubtResolutionSidebar = () => {
                         </div>
                         <div className="flex flex-col">
                             <h1 className="text-xl font-bold text-gray-900 leading-tight">Doubt Resolution</h1>
-                            <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Ask & Learn</p>
+                            <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                {activeItem?.source_type === "VIDEO" ? "Video Timestamp Support" : "General Support"}
+                            </p>
                         </div>
                     </div>
                     <button 
@@ -219,7 +231,7 @@ export const DoubtResolutionSidebar = () => {
                 {showInput ? (
                     <div className="flex gap-3 w-full">
                         <div className="flex flex-col gap-3 flex-1">
-                            {timestamp !== undefined && formattedTime && (
+                            {activeItem?.source_type === "VIDEO" && timestamp !== undefined && formattedTime && (
                                 <div className="flex items-center gap-2">
                                     <TimestampChip
                                         timestamp={timestamp}
@@ -261,6 +273,11 @@ export const DoubtResolutionSidebar = () => {
                     >
                         <Plus size={20} />
                         Ask a Doubt
+                        {activeItem?.source_type === "VIDEO" && (
+                            <span className="text-xs bg-white/20 px-2 py-1 rounded-full">
+                                with timestamp
+                            </span>
+                        )}
                     </MyButton>
                 )}
             </div>
@@ -274,12 +291,14 @@ export const DoubtResolutionSidebar = () => {
           />
         )}
 
-        <TimestampDialog
-            open={showTimestampDialog}
-            onOpenChange={setShowTimestampDialog}
-            onTimestampSet={handleTimestampSet}
-            initialTimestamp={timestamp}
-        />
+        {activeItem?.source_type === "VIDEO" && (
+            <TimestampDialog
+                open={showTimestampDialog}
+                onOpenChange={setShowTimestampDialog}
+                onTimestampSet={handleTimestampSet}
+                initialTimestamp={timestamp}
+            />
+        )}
       </>
    )
 }

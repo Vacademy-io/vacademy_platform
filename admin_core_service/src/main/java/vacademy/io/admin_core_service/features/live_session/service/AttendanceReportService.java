@@ -55,6 +55,48 @@ public class AttendanceReportService {
         return groupedByGuest;
     }
 
+    public StudentAttendanceReportDTO getStudentReport(String userId, String batchId, LocalDate start, LocalDate end) {
+        List<ScheduleAttendanceProjection> projections = liveSessionParticipantRepository
+                .findAttendanceForUserInBatch(batchId, userId, start, end);
+
+        List<ScheduleDetailDTO> scheduleDetails = new ArrayList<>();
+        int presentCount = 0;
+
+        for (ScheduleAttendanceProjection projection : projections) {
+            ScheduleDetailDTO dto = new ScheduleDetailDTO();
+            dto.setScheduleId(projection.getScheduleId());
+            dto.setMeetingDate(projection.getMeetingDate());
+            dto.setStartTime(projection.getStartTime());
+            dto.setLastEntryTime(projection.getLastEntryTime());
+            dto.setSessionId(projection.getSessionId());
+            dto.setSessionTitle(projection.getSessionTitle());
+            dto.setSubject(projection.getSubject());
+            dto.setSessionStatus(projection.getSessionStatus());
+            dto.setAccessLevel(projection.getAccessLevel());
+
+            String attendanceStatus = projection.getAttendanceStatus();
+            dto.setAttendanceStatus(attendanceStatus);
+
+            if ("PRESENT".equalsIgnoreCase(attendanceStatus)) {
+                presentCount++;
+            }
+
+            scheduleDetails.add(dto);
+        }
+
+        double attendancePercentage = projections.isEmpty()
+                ? 0.0
+                : ((double) presentCount / projections.size()) * 100.0;
+
+        StudentAttendanceReportDTO report = new StudentAttendanceReportDTO();
+        report.setUserId(userId);
+        report.setAttendancePercentage(attendancePercentage);
+        report.setSchedules(scheduleDetails);
+
+        return report;
+    }
+
+
 
     public List<AttendanceReportDTO> generateReport(String sessionId , String scheduleId , String accessType) {
         if(Objects.equals(accessType, "private"))

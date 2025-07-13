@@ -71,12 +71,14 @@ export const CourseStructureDetails = ({
     courseStructure,
     courseData,
     packageSessionId,
+    selectedTab,
 }: {
     selectedSession: string;
     selectedLevel: string;
     courseStructure: number;
     courseData: CourseDetailsFormValues;
     packageSessionId: string;
+    selectedTab: string;
 }) => {
     const router = useRouter();
     const searchParams = router.state.location.search;
@@ -88,8 +90,8 @@ export const CourseStructureDetails = ({
 
     const [studyLibraryData, setStudyLibraryData] = useState<SubjectType[]>([]);
 
-    const [selectedTab, setSelectedTab] = useState<string>(TabType.OUTLINE);
-    const handleTabChange = (value: string) => setSelectedTab(value);
+    const [selectedStructureTab, setSelectedStructureTab] = useState<string>(TabType.OUTLINE);
+    const handleTabChange = (value: string) => setSelectedStructureTab(value);
     const [subjectModulesMap, setSubjectModulesMap] =
         useState<SubjectModulesMap>({});
     const [slidesMap, setSlidesMap] = useState<Record<string, Slide[]>>({});
@@ -100,16 +102,20 @@ export const CourseStructureDetails = ({
         chapterId: string,
         slideId: string
     ) => {
-        navigateTo(
-            `/study-library/courses/course-details/subjects/modules/chapters/slides`,
-            {
-                courseId: searchParams.courseId,
-                subjectId,
-                moduleId,
-                chapterId,
-                slideId,
-            }
-        );
+        // Only allow navigation for enrolled courses (PROGRESS/COMPLETED tabs)
+        if (selectedTab === "PROGRESS" || selectedTab === "COMPLETED") {
+            navigateTo(
+                `/study-library/courses/course-details/subjects/modules/chapters/slides`,
+                {
+                    courseId: searchParams.courseId,
+                    subjectId,
+                    moduleId,
+                    chapterId,
+                    slideId,
+                }
+            );
+        }
+        // For ALL tab, do nothing (view-only mode)
     };
 
     const getSlidesWithChapterId = async (chapterId: string) => {
@@ -1085,7 +1091,11 @@ export const CourseStructureDetails = ({
                                                                                                     key={
                                                                                                         slide.id
                                                                                                     }
-                                                                                                    className="group flex cursor-pointer items-center gap-1.5 px-2 py-1 text-xs text-neutral-500 rounded hover:bg-gradient-to-r hover:from-amber-50/60 hover:to-orange-50/40 hover:border-amber-200/40 border border-transparent transition-all duration-200"
+                                                                                                    className={`group flex items-center gap-1.5 px-2 py-1 text-xs text-neutral-500 rounded border border-transparent transition-all duration-200 ${
+                                                                                                        selectedTab === "PROGRESS" || selectedTab === "COMPLETED" 
+                                                                                                            ? "cursor-pointer hover:bg-gradient-to-r hover:from-amber-50/60 hover:to-orange-50/40 hover:border-amber-200/40" 
+                                                                                                            : "cursor-default opacity-60"
+                                                                                                    }`}
                                                                                                     onClick={() => {
                                                                                                         handleSlideNavigation(
                                                                                                             subject.id,
@@ -1235,7 +1245,7 @@ export const CourseStructureDetails = ({
         <PullToRefreshWrapper onRefresh={refreshData}>
             <div className="flex size-full flex-col gap-4 rounded-lg bg-gradient-to-br from-neutral-50/50 to-white py-4 text-neutral-700">
                 <Tabs
-                    value={selectedTab}
+                    value={selectedStructureTab}
                     onValueChange={handleTabChange}
                     className="w-full overflow-scroll"
                 >
@@ -1254,11 +1264,11 @@ export const CourseStructureDetails = ({
                         ))}
                     </TabsList>
                     <TabsContent
-                        key={selectedTab}
-                        value={selectedTab}
+                        key={selectedStructureTab}
+                        value={selectedStructureTab}
                         className="mt-4 rounded-lg bg-white border border-neutral-200/60 p-4"
                     >
-                        {tabContent[selectedTab as TabType]}
+                        {tabContent[selectedStructureTab as TabType]}
                     </TabsContent>
                 </Tabs>
             </div>

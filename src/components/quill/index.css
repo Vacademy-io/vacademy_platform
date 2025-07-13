@@ -102,3 +102,38 @@
     border-radius: 4px;
     padding: 0.4rem;
 }
+
+/* Doubt Resolution Editor Specific Styles */
+.doubt-resolution-editor .ql-editor {
+    max-height: 300px;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+.doubt-resolution-editor .ql-editor::-webkit-scrollbar {
+    width: 6px;
+}
+
+.doubt-resolution-editor .ql-editor::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 3px;
+}
+
+.doubt-resolution-editor .ql-editor::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 3px;
+}
+
+.doubt-resolution-editor .ql-editor::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+}
+
+/* Ensure images in doubt resolution editor don't overflow */
+.doubt-resolution-editor .ql-editor img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 0.5rem 0;
+    border-radius: 4px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}

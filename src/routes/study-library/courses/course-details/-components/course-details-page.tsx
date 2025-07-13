@@ -171,6 +171,10 @@ export const CourseDetailsPage = () => {
     const router = useRouter();
     const searchParams = router.state.location.search;
     const [instituteId, setInstituteId] = useState<string | null>(null);
+    const [enrolledSessions, setEnrolledSessions] = useState<any[]>([]);
+    
+    // Get selectedTab from route params, default to "ALL" if not provided
+    const selectedTab = searchParams.selectedTab || "ALL";
 
     useEffect(() => {
         const fetchInstituteAndUserId = async () => {
@@ -178,6 +182,15 @@ export const CourseDetailsPage = () => {
                 key: "InstituteId",
             });
             setInstituteId(instituteResult.value || null);
+
+            // Fetch user's enrolled sessions
+            const sessionListResult = await Preferences.get({
+                key: "sessionList",
+            });
+            if (sessionListResult.value) {
+                const sessionList = JSON.parse(sessionListResult.value);
+                setEnrolledSessions(Array.isArray(sessionList) ? sessionList : [sessionList]);
+            }
         };
 
         fetchInstituteAndUserId();
@@ -277,17 +290,34 @@ export const CourseDetailsPage = () => {
         { _id: string; value: string; label: string }[]
     >([]);
 
-    // Convert sessions to select options format
+    // Convert sessions to select options format - filter based on selectedTab
     const sessionOptions = useMemo(() => {
         const sessions = form.getValues("courseData")?.sessions || [];
-        return sessions.map((session) => ({
-            _id: session.sessionDetails.id,
-            value: session.sessionDetails.id,
-            label: session.sessionDetails.session_name,
-        }));
-    }, [form.watch("courseData.sessions")]);
+        
+        // For PROGRESS and COMPLETED tabs, only show enrolled sessions
+        // For ALL tab, show all available sessions
+        if (selectedTab === "PROGRESS" || selectedTab === "COMPLETED") {
+            const enrolledSessionIds = enrolledSessions.map(enrolled => enrolled.session?.id || enrolled.id);
+            const filteredSessions = sessions.filter(session => 
+                enrolledSessionIds.includes(session.sessionDetails.id)
+            );
+            
+            return filteredSessions.map((session) => ({
+                _id: session.sessionDetails.id,
+                value: session.sessionDetails.id,
+                label: session.sessionDetails.session_name,
+            }));
+        } else {
+            // For ALL tab, show all sessions
+            return sessions.map((session) => ({
+                _id: session.sessionDetails.id,
+                value: session.sessionDetails.id,
+                label: session.sessionDetails.session_name,
+            }));
+        }
+    }, [form.watch("courseData.sessions"), enrolledSessions, selectedTab]);
 
-    // Update level options when session changes
+    // Update level options when session changes - filter based on selectedTab
     const handleSessionChange = (sessionId: string) => {
         setSelectedSession(sessionId);
         const sessions = form.getValues("courseData")?.sessions || [];
@@ -296,13 +326,44 @@ export const CourseDetailsPage = () => {
         );
 
         if (selectedSessionData) {
-            const newLevelOptions = selectedSessionData.levelDetails.map(
-                (level) => ({
-                    _id: level.id,
-                    value: level.id,
-                    label: level.name,
-                })
-            );
+            let newLevelOptions;
+            
+            // For PROGRESS and COMPLETED tabs, only show enrolled levels
+            if (selectedTab === "PROGRESS" || selectedTab === "COMPLETED") {
+                // Find the enrolled session to get enrolled level IDs
+                const enrolledSession = enrolledSessions.find(enrolled => 
+                    (enrolled.session?.id || enrolled.id) === sessionId
+                );
+                
+                let enrolledLevelIds: string[] = [];
+                if (enrolledSession) {
+                    // Extract level ID from enrolled session
+                    enrolledLevelIds = [enrolledSession.level?.id || enrolledSession.level_id].filter(Boolean);
+                }
+
+                // Filter levels based on enrollment
+                const filteredLevels = selectedSessionData.levelDetails.filter(level =>
+                    enrolledLevelIds.includes(level.id)
+                );
+
+                newLevelOptions = filteredLevels.map(
+                    (level) => ({
+                        _id: level.id,
+                        value: level.id,
+                        label: level.name,
+                    })
+                );
+            } else {
+                // For ALL tab, show all levels
+                newLevelOptions = selectedSessionData.levelDetails.map(
+                    (level) => ({
+                        _id: level.id,
+                        value: level.id,
+                        label: level.name,
+                    })
+                );
+            }
+            
             setLevelOptions(newLevelOptions);
 
             // Select the first level when session changes
@@ -319,7 +380,7 @@ export const CourseDetailsPage = () => {
         setSelectedLevel(levelId);
     };
 
-    // Set initial session and its levels
+    // Set initial session and its levels - auto-select if only one option
     useEffect(() => {
         if (
             sessionOptions.length > 0 &&
@@ -591,127 +652,151 @@ export const CourseDetailsPage = () => {
                                         </h3>
                                     </div>
 
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 lg:gap-4">
-                                        {/* Session Selector */}
-
-                                        {sessionOptions && (
-                                            <div className="space-y-1.5">
-                                                <label className="text-xs font-semibold text-gray-700 flex items-center space-x-1.5">
-                                                    <div className="w-1.5 h-1.5 bg-primary-500 rounded-full"></div>
-                                                    <span>Session</span>
-                                                </label>
-                                                {sessionOptions.length === 1 ? (
-                                                    sessionOptions[0]?.label !==
-                                                        "default" && (
-                                                        <div className="flex flex-col gap-2">
-                                                            <label className="text-sm font-medium">
-                                                                {
-                                                                    sessionOptions[0]
-                                                                        ?.label
-                                                                }
-                                                            </label>
-                                                        </div>
-                                                    )
-                                                ) : (
-                                                    <div className="flex flex-col gap-2">
-                                                        <Select
-                                                            value={
-                                                                selectedSession
-                                                            }
-                                                            onValueChange={
-                                                                handleSessionChange
-                                                            }
-                                                        >
-                                                            <SelectTrigger>
-                                                                <SelectValue placeholder="Select Session" />
-                                                            </SelectTrigger>
-                                                            <SelectContent>
-                                                                {sessionOptions.map(
-                                                                    (
-                                                                        option
-                                                                    ) => (
-                                                                        <SelectItem
-                                                                            key={
-                                                                                option._id
-                                                                            }
-                                                                            value={
-                                                                                option.value
-                                                                            }
-                                                                        >
-                                                                            {
-                                                                                option.label
-                                                                            }
-                                                                        </SelectItem>
-                                                                    )
-                                                                )}
-                                                            </SelectContent>
-                                                        </Select>
+                                    {sessionOptions && sessionOptions.length > 0 ? (
+                                        <div>
+                                            {/* Preview notice for ALL tab */}
+                                            {selectedTab === "ALL" && (
+                                                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                                    <div className="flex items-center space-x-2">
+                                                        <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                                                        <span className="text-sm font-medium text-blue-800">
+                                                            Course Preview Mode
+                                                        </span>
                                                     </div>
-                                                )}
-                                            </div>
-                                        )}
+                                                    <p className="text-xs text-blue-700 mt-1">
+                                                        Browse course structure. Enroll to access lessons and materials.
+                                                    </p>
+                                                </div>
+                                            )}
 
-                                        {/* Level Selector */}
-                                        {levelOptions && (
-                                            <div className="space-y-1.5">
-                                                <label className="text-xs font-semibold text-gray-700 flex items-center space-x-1.5">
-                                                    <div className="w-1.5 h-1.5 bg-primary-500 rounded-full"></div>
-                                                    <span>Level</span>
-                                                </label>
-                                                {levelOptions.length === 1 ? (
-                                                    levelOptions[0]?.label !==
-                                                        "default" && (
-                                                        <div className="flex flex-col gap-2">
-                                                            <label className="text-sm font-medium">
-                                                                {
-                                                                    levelOptions[0]
-                                                                        ?.label
-                                                                }
-                                                            </label>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 lg:gap-4">
+                                                {/* Session Selector */}
+                                                {sessionOptions && sessionOptions.length > 0 && (
+                                                <div className="space-y-1.5">
+                                                    <label className="text-xs font-semibold text-gray-700 flex items-center space-x-1.5">
+                                                        <div className="w-1.5 h-1.5 bg-primary-500 rounded-full"></div>
+                                                        <span>Session</span>
+                                                    </label>
+                                                    {sessionOptions.length === 1 ? (
+                                                        <div className="p-2.5 bg-gray-50/80 rounded-lg border border-gray-200">
+                                                            <span className="text-sm font-medium text-gray-900">
+                                                                {sessionOptions[0]?.label}
+                                                            </span>
                                                         </div>
-                                                    )
-                                                ) : (
-                                                    <div className="flex flex-col gap-2">
-                                                        <Select
-                                                            value={
-                                                                selectedLevel
-                                                            }
-                                                            onValueChange={
-                                                                handleLevelChange
-                                                            }
-                                                            disabled={
-                                                                !selectedSession
-                                                            }
-                                                        >
-                                                            <SelectTrigger>
-                                                                <SelectValue placeholder="Select Level" />
-                                                            </SelectTrigger>
-                                                            <SelectContent>
-                                                                {levelOptions.map(
-                                                                    (
-                                                                        option
-                                                                    ) => (
-                                                                        <SelectItem
-                                                                            key={
-                                                                                option._id
-                                                                            }
-                                                                            value={
-                                                                                option.value
-                                                                            }
-                                                                        >
-                                                                            {
-                                                                                option.label
-                                                                            }
-                                                                        </SelectItem>
-                                                                    )
-                                                                )}
-                                                            </SelectContent>
-                                                        </Select>
-                                                    </div>
-                                                )}
+                                                    ) : (
+                                                        <div className="flex flex-col gap-2">
+                                                            <Select
+                                                                value={
+                                                                    selectedSession
+                                                                }
+                                                                onValueChange={
+                                                                    handleSessionChange
+                                                                }
+                                                            >
+                                                                <SelectTrigger>
+                                                                    <SelectValue placeholder="Select Session" />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    {sessionOptions.map(
+                                                                        (
+                                                                            option
+                                                                        ) => (
+                                                                            <SelectItem
+                                                                                key={
+                                                                                    option._id
+                                                                                }
+                                                                                value={
+                                                                                    option.value
+                                                                                }
+                                                                            >
+                                                                                {
+                                                                                    option.label
+                                                                                }
+                                                                            </SelectItem>
+                                                                        )
+                                                                    )}
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            {/* Level Selector */}
+                                            {levelOptions && levelOptions.length > 0 && (
+                                                <div className="space-y-1.5">
+                                                    <label className="text-xs font-semibold text-gray-700 flex items-center space-x-1.5">
+                                                        <div className="w-1.5 h-1.5 bg-primary-500 rounded-full"></div>
+                                                        <span>Level</span>
+                                                    </label>
+                                                    {levelOptions.length === 1 ? (
+                                                        <div className="p-2.5 bg-gray-50/80 rounded-lg border border-gray-200">
+                                                            <span className="text-sm font-medium text-gray-900">
+                                                                {levelOptions[0]?.label}
+                                                            </span>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="flex flex-col gap-2">
+                                                            <Select
+                                                                value={
+                                                                    selectedLevel
+                                                                }
+                                                                onValueChange={
+                                                                    handleLevelChange
+                                                                }
+                                                                disabled={
+                                                                    !selectedSession
+                                                                }
+                                                            >
+                                                                <SelectTrigger>
+                                                                    <SelectValue placeholder="Select Level" />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    {levelOptions.map(
+                                                                        (
+                                                                            option
+                                                                        ) => (
+                                                                            <SelectItem
+                                                                                key={
+                                                                                    option._id
+                                                                                }
+                                                                                value={
+                                                                                    option.value
+                                                                                }
+                                                                            >
+                                                                                {
+                                                                                    option.label
+                                                                                }
+                                                                            </SelectItem>
+                                                                        )
+                                                                    )}
+                                                                </SelectContent>
+                                                                            </Select>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            )}
                                             </div>
-                                        )}
-                                    </div>
+                                        </div>
+                                    ) : (
+                                        <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                                            <div className="flex items-center space-x-2">
+                                                <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
+                                                <span className="text-sm font-medium text-yellow-800">
+                                                    {selectedTab === "ALL" 
+                                                        ? "No sessions available for this course"
+                                                        : "You are not enrolled in any sessions for this course"
+                                                    }
+                                                </span>
+                                            </div>
+                                            <p className="text-xs text-yellow-700 mt-1">
+                                                {selectedTab === "ALL" 
+                                                    ? "This course may not have any active sessions configured."
+                                                    : "Please contact your instructor or administrator to get enrolled."
+                                                }
+                                            </p>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
@@ -730,6 +815,7 @@ export const CourseDetailsPage = () => {
                                     packageSessionId={
                                         packageSessionIdForCurrentLevel || ""
                                     }
+                                    selectedTab={selectedTab}
                                 />
                             </div>
 
@@ -937,8 +1023,7 @@ export const CourseDetailsPage = () => {
                                         {/* Course Stats */}
                                         <div className="space-y-3">
                                             {/* Level Badge */}
-                                            {levelOptions[0]?.label !==
-                                                "default" && (
+                                            {levelOptions.length > 0 && selectedLevel && (
                                                 <div className="flex items-center justify-between p-2.5 bg-gradient-to-r from-primary-50 to-primary-100 rounded-lg border border-primary-200">
                                                     <div className="flex items-center space-x-2">
                                                         <Steps
@@ -1117,15 +1202,18 @@ export const CourseDetailsPage = () => {
                                                 </div>
                                             )}
                                         </div>
-                                        <MyButton
-                                            type="button"
-                                            scale="large"
-                                            buttonType="primary"
-                                            layoutVariant="default"
-                                            className="mt-2 !min-w-full !w-full text-xs h-8"
-                                        >
-                                            Enroll
-                                        </MyButton>
+                                        {/* Only show enroll button for ALL tab (catalog view) */}
+                                        {selectedTab === "ALL" && (
+                                            <MyButton
+                                                type="button"
+                                                scale="large"
+                                                buttonType="primary"
+                                                layoutVariant="default"
+                                                className="mt-2 !min-w-full !w-full text-xs h-8"
+                                            >
+                                                Enroll
+                                            </MyButton>
+                                        )}
                                     </div>
                                 </div>
                             </div>

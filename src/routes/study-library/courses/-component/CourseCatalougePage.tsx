@@ -16,7 +16,7 @@ import { CoursePackageResponse } from "@/types/course-catalog/course-catalog-lis
 
 const CourseCatalougePage: React.FC = () => {
     const { setInstituteData, setInstructors } = useCatalogStore();
-    const [selectedTab, setSelectedTab] = useState("ALL");
+    const [selectedTab, setSelectedTab] = useState("PROGRESS");
     const [allCourses, setAllCourses] = useState<CoursePackageResponse>({
         content: [],
         empty: false,
@@ -200,55 +200,40 @@ const CourseCatalougePage: React.FC = () => {
     }, []);
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-gray-50/80 via-white to-primary-50/20 relative overflow-hidden w-full max-w-full">
+        <div className="bg-gray-50 min-h-screen">
             {/* Hero Section */}
             <HeroSection />
 
             {/* Main Content Container */}
-            <div className="relative z-10 max-w-7xl mx-auto p-2 sm:p-3 lg:p-4">
+            <div className="max-w-7xl mx-auto p-4">
                 <Tabs
                     value={selectedTab}
                     onValueChange={setSelectedTab}
                     className="w-full"
                 >
-                    {/* Enhanced Tab Navigation */}
-                    <div className="relative bg-white/80 backdrop-blur-sm border border-gray-200/60 rounded-2xl shadow-sm hover:shadow-lg transition-all duration-500 mb-3 sm:mb-4 overflow-hidden">
-                        {/* Background gradient overlay */}
-                        <div className="absolute inset-0 bg-gradient-to-br from-gray-50/30 via-transparent to-primary-50/20 pointer-events-none"></div>
-
-                        {/* Floating orb effect */}
-                        <div className="absolute top-0 right-0 w-12 h-12 bg-primary-100/20 rounded-full blur-2xl opacity-70 -translate-y-2 translate-x-4"></div>
-
-                        <div className="relative p-2 sm:p-3">
-                            <TabsList className="relative bg-gray-50/50 backdrop-blur-sm rounded-xl p-1 w-full flex justify-start border border-gray-200/40 shadow-sm">
+                    {/* Tab Navigation */}
+                    <div className="bg-white border border-gray-200 rounded-lg shadow-sm mb-4">
+                        <div className="p-4">
+                            <TabsList className="bg-gray-50 p-1 w-full sm:w-auto">
                                 {allCourses.content.length > 0 && (
                                     <TabsTrigger
                                         value="ALL"
-                                        className={`relative px-3 sm:px-4 py-2 sm:py-2.5 text-sm sm:text-base font-semibold rounded-lg transition-all duration-300 flex-1 sm:flex-none ${selectedTab === "ALL" ? "bg-white text-primary-600 shadow-sm border border-primary-200" : "text-gray-600 hover:text-gray-900 hover:bg-white/50"}`}
+                                        className="flex-1 sm:flex-none px-4 py-2 text-sm font-medium"
                                     >
                                         All Courses
-                                        {selectedTab === "ALL" && (
-                                            <div className="absolute inset-0 bg-gradient-to-r from-primary-500/10 to-primary-600/10 rounded-lg"></div>
-                                        )}
                                     </TabsTrigger>
                                 )}
                                 <TabsTrigger
                                     value="PROGRESS"
-                                    className={`relative px-3 sm:px-4 py-2 sm:py-2.5 text-sm sm:text-base font-semibold rounded-lg transition-all duration-300 flex-1 sm:flex-none ${selectedTab === "PROGRESS" ? "bg-white text-primary-600 shadow-sm border border-primary-200" : "text-gray-600 hover:text-gray-900 hover:bg-white/50"}`}
+                                    className="flex-1 sm:flex-none px-4 py-2 text-sm font-medium"
                                 >
                                     In Progress
-                                    {selectedTab === "PROGRESS" && (
-                                        <div className="absolute inset-0 bg-gradient-to-r from-primary-500/10 to-primary-600/10 rounded-lg"></div>
-                                    )}
                                 </TabsTrigger>
                                 <TabsTrigger
                                     value="COMPLETED"
-                                    className={`relative px-3 sm:px-4 py-2 sm:py-2.5 text-sm sm:text-base font-semibold rounded-lg transition-all duration-300 flex-1 sm:flex-none ${selectedTab === "COMPLETED" ? "bg-white text-primary-600 shadow-sm border border-primary-200" : "text-gray-600 hover:text-gray-900 hover:bg-white/50"}`}
+                                    className="flex-1 sm:flex-none px-4 py-2 text-sm font-medium"
                                 >
                                     Completed
-                                    {selectedTab === "COMPLETED" && (
-                                        <div className="absolute inset-0 bg-gradient-to-r from-primary-500/10 to-primary-600/10 rounded-lg"></div>
-                                    )}
                                 </TabsTrigger>
                             </TabsList>
                         </div>

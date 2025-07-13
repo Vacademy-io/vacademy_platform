@@ -229,10 +229,10 @@ export const DoubtResolutionSidebar = () => {
           {/* Enhanced Footer */}
           <div className="border-t border-gray-200/80 bg-white/95 backdrop-blur-md p-6 flex-shrink-0">
                 {showInput ? (
-                    <div className="flex gap-3 w-full">
-                        <div className="flex flex-col gap-3 flex-1">
+                    <div className="flex gap-3 w-full max-h-[40vh]">
+                        <div className="flex flex-col gap-3 flex-1 min-h-0">
                             {activeItem?.source_type === "VIDEO" && timestamp !== undefined && formattedTime && (
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 flex-shrink-0">
                                     <TimestampChip
                                         timestamp={timestamp}
                                         formattedTime={formattedTime}
@@ -240,15 +240,16 @@ export const DoubtResolutionSidebar = () => {
                                     />
                                 </div>
                             )}
-                            <div className="relative">
+                            <div className="flex-1 min-h-0 overflow-hidden">
                                 <MainViewQuillEditor
                                     value={doubt}
                                     onChange={setDoubt}
                                     className="w-full min-h-[100px] rounded-xl border border-gray-200 focus-within:border-primary-300 transition-colors"
+                                    isDoubtResolution={true}
                                 />
                             </div>
                         </div>
-                        <div className="flex flex-col gap-2 items-center justify-end">
+                        <div className="flex flex-col gap-2 items-center justify-end flex-shrink-0">
                             <AddDoubt 
                                 doubtText={doubt} 
                                 refetch={refetch} 

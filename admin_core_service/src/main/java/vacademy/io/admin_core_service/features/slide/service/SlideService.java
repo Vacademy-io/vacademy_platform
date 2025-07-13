@@ -571,29 +571,35 @@ public class SlideService {
         }
     }
 
-    public List<SlideTypeCountProjection> getSlideCountsBySourceType(
+    public List<SlideTypeReadTimeProjection> getSlideCountsBySourceType(
             String sessionId
     ) {
-        return slideRepository.getSlideCountsBySourceType(
+        return slideRepository.getSlideReadTimeSummaryBySourceType(
                 sessionId,
                 ValidStatusListConstants.ACTIVE_SUBJECTS,
                 ValidStatusListConstants.ACTIVE_MODULES,
                 ValidStatusListConstants.ACTIVE_CHAPTERS,
                 ValidStatusListConstants.VALID_SLIDE_STATUSES,
-                ValidStatusListConstants.ACTIVE_CHAPTERS
+                ValidStatusListConstants.ACTIVE_CHAPTERS,
+                ValidStatusListConstants.VALID_QUESTION_STATUSES,
+                ValidStatusListConstants.VALID_QUESTION_STATUSES
         );
     }
 
-    public List<SlideTypeCountProjection> getSlideCountsBySourceTypeForLearner(
+
+
+    public List<SlideTypeReadTimeProjection> getSlideCountsBySourceTypeForLearner(
             String sessionId
     ) {
-        return slideRepository.getSlideCountsBySourceType(
+        return slideRepository.getSlideReadTimeSummaryBySourceType(
                 sessionId,
                 ValidStatusListConstants.ACTIVE_SUBJECTS,
                 ValidStatusListConstants.ACTIVE_MODULES,
                 ValidStatusListConstants.ACTIVE_CHAPTERS,
                 ValidStatusListConstants.VALID_LEARNER_STATUSES,
-                ValidStatusListConstants.ACTIVE_CHAPTERS
+                ValidStatusListConstants.ACTIVE_CHAPTERS,
+                ValidStatusListConstants.VALID_SLIDE_STATUSES_FOR_LEARNER,
+                ValidStatusListConstants.VALID_QUESTION_STATUSES
         );
     }
 }

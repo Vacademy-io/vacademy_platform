@@ -1,6 +1,7 @@
 package vacademy.io.media_service.ai;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
@@ -15,14 +16,11 @@ public class DeepSeekApiService {
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final String apiUrl = "https://openrouter.ai/api/v1/chat/completions";
 
+    @Value("${openrouter.api.key}")
+    private String API_KEY;
+
     public DeepSeekApiService() {
 
-    }
-
-    public static String getFullToken(String startWithNumbers) {
-        String staticPrefix = "sk-";
-        String staticSuffix = "f27737b19f34420dda1d945d4ca4f347a63a120d881dca11f5441ca1d6a89b11";
-        return staticPrefix + startWithNumbers + staticSuffix;
     }
 
     public DeepSeekResponse getChatCompletion(String modelName, String userInput, int maxTokens) {
@@ -30,7 +28,7 @@ public class DeepSeekApiService {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
-        headers.set("Authorization", "Bearer " + getFullToken("or-v1-"));
+        headers.set("Authorization", "Bearer " + API_KEY);
 
         // Prepare messages
         List<Map<String, String>> messages = new ArrayList<>();

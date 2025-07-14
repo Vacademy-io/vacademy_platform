@@ -1,4 +1,4 @@
-package vacademy.io.admin_core_service.features.course.entity;
+package vacademy.io.media_service.course.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

@@ -10,6 +10,7 @@ import vacademy.io.admin_core_service.features.institute.repository.InstituteRep
 import vacademy.io.admin_core_service.features.learner_invitation.enums.LearnerInvitationSourceTypeEnum;
 import vacademy.io.admin_core_service.features.learner_invitation.services.LearnerInvitationService;
 import vacademy.io.admin_core_service.features.level.service.LevelService;
+import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
 import vacademy.io.admin_core_service.features.packages.enums.PackageStatusEnum;
 import vacademy.io.admin_core_service.features.packages.repository.PackageInstituteRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageRepository;
@@ -50,7 +51,7 @@ public class CourseService {
         PackageEntity savedPackage;
 
         if (addCourseDTO.getNewCourse()) {
-            savedPackage = getCourse(addCourseDTO);
+            savedPackage = getCourse(addCourseDTO,instituteId);
         } else {
             savedPackage = packageRepository.findById(addCourseDTO.getId())
                     .orElseThrow(() -> new VacademyException("Course not found"));
@@ -98,9 +99,14 @@ public class CourseService {
         }
     }
 
-    public PackageEntity getCourse(AddCourseDTO addCourseDTO) {
+    public PackageEntity getCourse(AddCourseDTO addCourseDTO,String instituteId) {
         validateRequest(addCourseDTO);
-
+        Optional<PackageEntity>optionalPackageEntity = packageRepository.findTopByPackageNameAndSessionStatusAndInstitute(addCourseDTO.getCourseName(),
+                Arrays.asList(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
+                Arrays.asList(PackageStatusEnum.ACTIVE.name()), instituteId);
+        if (optionalPackageEntity.isPresent()) {
+            return optionalPackageEntity.get();
+        }
         PackageEntity packageEntity = new PackageEntity();
         packageEntity.setPackageName(addCourseDTO.getCourseName());
         packageEntity.setThumbnailFileId(addCourseDTO.getThumbnailFileId());

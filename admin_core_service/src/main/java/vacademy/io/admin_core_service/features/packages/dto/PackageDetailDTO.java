@@ -34,4 +34,5 @@ public class PackageDetailDTO {
     private String levelName;
     private List<UserDTO> instructors;
     private List<String>levelIds;
+    private Long readTimeInMinutes;
 }

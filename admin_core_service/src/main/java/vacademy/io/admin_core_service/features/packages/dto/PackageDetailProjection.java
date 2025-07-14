@@ -27,4 +27,5 @@ public interface PackageDetailProjection {
     String getLevelName();
     List<String> getFacultyUserIds();
     List<String>getLevelIds();
+    Long getReadTimeInMinutes();
 }

@@ -9,7 +9,7 @@ on:
 
 jobs:
   build-and-deploy:
-    runs-on: [ubuntu-latest]
+    runs-on: [ ubuntu-latest ]
     steps:
       - name: Checkout source
         uses: actions/checkout@v3
@@ -28,6 +28,7 @@ jobs:
           mkdir -p ~/.m2
           echo "<settings><servers><server><id>github</id><username>shreyash-jain</username><password>${JAVA_TOKEN}</password></server></servers></settings>" > ~/.m2/settings.xml
 
+
       - name: Build Project
         working-directory: ./admin_core_service
         env:
@@ -36,6 +37,9 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: mvn -s settings.xml clean install -DskipTests
 
+      # To push to ECR you need to login through us-east-1
+      # https://github.com/aws-actions/amazon-ecr-login/issues/587
+      # https://github.com/aws-actions/amazon-ecr-login?tab=readme-ov-file#troubleshooting
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v3
         with:
@@ -59,25 +63,25 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.JAVA_TOKEN }}
           GITHUB_ACTOR: shreyash-jain
           JAVA_TOKEN: ${{ secrets.JAVA_TOKEN }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
           docker build -t $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG . --build-arg GITHUB_TOKEN=${GITHUB_TOKEN} --build-arg JAVA_TOKEN=${JAVA_TOKEN}
           docker push $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG
           echo "Docker Image Link = $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG"
 
+      # Get the KUBECONFIG from : https://cloud.linode.com/kubernetes/clusters/189301/summary
+
+      # TODO: This kubeconfig is global kubeconfig with access to whole cluster
+      # In production refrain from using this and use k8s service account with limited access
+      # Each service account has permissions like IAM and each has its own kubeconfig
+      # replace global kubeconfig with service account's kubeconfig
+      # https://www.linode.com/content/terraforming-kubernetes-github-actions/
+      # https://nicwortel.nl/blog/2022/continuous-deployment-to-kubernetes-with-github-actions
       - name: Connect to LKE kubernetes cluster
         id: connect-to-k8s-cluster
         uses: Azure/k8s-set-context@v4.0.0
         with:
           method: kubeconfig
-          kubeconfig: ${{ secrets.VACADEMY_STAGE_KUBECONFIG }}
-
-      - name: Set Secrets of application file
-        run: |
-          kubectl set env deployment/admin-core-service \
-            GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }} \
-            OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}
+          kubeconfig: ${{ secrets.VACADEMY_STAGE_KUBECONFIG}}
 
       - name: Restart deployment
         id: restart-deployment

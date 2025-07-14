@@ -64,6 +64,7 @@ jobs:
           S3_AWS_ACCESS_KEY: ${{ secrets.S3_AWS_ACCESS_KEY }}
           S3_AWS_ACCESS_SECRET: ${{ secrets.S3_AWS_ACCESS_SECRET }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
           docker build -t $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG . --build-arg GITHUB_TOKEN=${GITHUB_TOKEN} --build-arg JAVA_TOKEN=${JAVA_TOKEN}
           docker push $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG
@@ -90,6 +91,7 @@ jobs:
             S3_AWS_ACCESS_KEY=${{ secrets.S3_AWS_ACCESS_KEY }} \
             DEEPSEEK_API_KEY=${{ secrets.DEEPSEEK_API_KEY }} \
             S3_AWS_ACCESS_SECRET=${{ secrets.S3_AWS_ACCESS_SECRET }}
+            OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}
 
       - name: Restart deployment
         id: restart-deployment

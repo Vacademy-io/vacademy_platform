@@ -90,7 +90,7 @@ jobs:
           kubectl set env deployment/media-service \
             S3_AWS_ACCESS_KEY=${{ secrets.S3_AWS_ACCESS_KEY }} \
             DEEPSEEK_API_KEY=${{ secrets.DEEPSEEK_API_KEY }} \
-            S3_AWS_ACCESS_SECRET=${{ secrets.S3_AWS_ACCESS_SECRET }}
+            S3_AWS_ACCESS_SECRET=${{ secrets.S3_AWS_ACCESS_SECRET }} \
             OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}
 
       - name: Restart deployment

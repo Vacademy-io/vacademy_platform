@@ -1,6 +1,5 @@
-package vacademy.io.admin_core_service.features.course.dto;
+package vacademy.io.media_service.course.dto;
 
-import lombok.Data;
 import lombok.Getter;
 import lombok.Setter;
 

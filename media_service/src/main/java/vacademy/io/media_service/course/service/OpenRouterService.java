@@ -1,4 +1,4 @@
-package vacademy.io.admin_core_service.features.course.service;
+package vacademy.io.media_service.course.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -30,9 +30,9 @@ public class OpenRouterService {
                 .build();
     }
 
-    public Flux<String> streamAnswer(String question) {
+    public Flux<String> streamAnswer(String question, String model) {
         Map<String, Object> payload = Map.of(
-                "model", "deepseek/deepseek-r1-0528:free",
+                "model", model!=null ? model : "google/gemini-2.5-pro",
                 "stream", true,
                 "messages", List.of(Map.of("role", "user", "content", question))
         );

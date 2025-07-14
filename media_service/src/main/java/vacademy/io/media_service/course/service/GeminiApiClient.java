@@ -1,4 +1,4 @@
-package vacademy.io.admin_core_service.features.course.service;
+package vacademy.io.media_service.course.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -6,13 +6,11 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
-import vacademy.io.admin_core_service.features.course.dto.EmbeddingRequest;
-import vacademy.io.admin_core_service.features.course.dto.EmbeddingResponse;
+import vacademy.io.media_service.course.dto.EmbeddingRequest;
+import vacademy.io.media_service.course.dto.EmbeddingResponse;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 
 @Slf4j
 @Component

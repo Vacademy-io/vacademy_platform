@@ -53,26 +53,38 @@ public class CourseWithAiManager {
      * @return A Flux<String> that emits structural JSON chunks, followed by content update JSONs.
      */
     public Flux<String> generateCourseWithAi(String instituteId, CourseUserPrompt courseUserPrompt, String model) {
-        log.info("Starting course generation process for instituteId: {}", instituteId);
+        log.info("Start streaming course generation for instituteId: {}", instituteId);
 
         String userPrompt = courseUserPrompt.getUserPrompt();
         String existingCourseJson = courseUserPrompt.getCourseTree();
 
-        // Prepare context for the AI prompt based on existing course data and user input
         Map<String, Object> promptContext = preparePromptContext(existingCourseJson, userPrompt);
         String finalPrompt = applyTemplateVariables(CoursePromptTemplate.getGenerateCourseWithAiTemplate(), promptContext);
-        log.debug("Generated AI prompt for structural generation:\n{}", finalPrompt);
 
-        // Phase 1: Stream structural generation, accumulate it, and then process
-        return openRouterService.streamAnswer(finalPrompt, model)
-                .scan(new StringBuilder(), StringBuilder::append) // Accumulate all incoming chunks
-                .map(StringBuilder::toString) // Convert accumulated StringBuilder to String
-                .doOnNext(accumulatedChunk -> log.trace("Streaming initial course structure chunk (accumulated): {}", accumulatedChunk)) // Use trace for very frequent logging
-                .last() // Get the complete, final structural JSON response
-                .flatMapMany(this::processAiStructuralResponse) // Process the full JSON and orchestrate content generation
-                .doOnError(e -> log.error("Overall error during course generation process: {}", e.getMessage(), e))
-                .doOnComplete(() -> log.info("Course generation and content population process completed successfully for instituteId: {}", instituteId));
+        Flux<String> aiStream = openRouterService.streamAnswer(finalPrompt, model)
+                .doOnSubscribe(sub -> log.info("Subscribed to AI streaming response"));
+
+        // Shared stream for both:
+        Flux<String> cachedAiStream = aiStream.cache(); // Important to cache for multi-subscriber reuse
+
+        Flux<String> contentGenerationFlux = cachedAiStream
+                .reduce(new StringBuilder(), StringBuilder::append)
+                .map(StringBuilder::toString)
+                .flatMapMany(fullJson -> {
+                    try {
+                        return processAiStructuralResponse(fullJson);
+                    } catch (Exception e) {
+                        log.error("Error extracting or processing structural response: {}", e.getMessage(), e);
+                        return Flux.error(new RuntimeException("Structure parse failed", e));
+                    }
+                })
+                .doOnComplete(() -> log.info("Post-stream content generation completed"))
+                .doOnError(e -> log.error("Content generation failed: {}", e.getMessage(), e));
+
+        // Merge both: 1) the raw stream and 2) content generation from todos
+        return Flux.merge(cachedAiStream, contentGenerationFlux);
     }
+
 
     /**
      * Prepares the map of variables to inject into the AI prompt template.

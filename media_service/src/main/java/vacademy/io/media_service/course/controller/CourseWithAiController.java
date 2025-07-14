@@ -29,6 +29,7 @@ public class CourseWithAiController {
         // Spring WebFlux will handle sending each piece of data as it arrives.
         try{
             return courseWithAiManager.generateCourseWithAi( instituteId, courseUserPrompt, model);
+
         } catch (Exception e) {
             throw new RuntimeException(e);
         }

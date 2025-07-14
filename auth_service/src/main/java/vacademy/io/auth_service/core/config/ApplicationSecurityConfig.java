@@ -53,7 +53,9 @@ public class ApplicationSecurityConfig {
             "/auth-service/internal/v1/user-roles/users-of-status",
             "/auth-service/oauth2/**",
             "/auth-service/login/**",
-            "/auth-service/public/v1/**"
+            "/auth-service/public/v1/**",
+            "/auth-service/v1/request-otp",
+            "/auth-service/v1/login",
     };
 
     @Autowired

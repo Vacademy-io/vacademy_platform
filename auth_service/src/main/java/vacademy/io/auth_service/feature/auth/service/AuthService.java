@@ -50,15 +50,14 @@ public class AuthService {
 
     @Transactional
     public User createUser(RegisterRequest registerRequest, Set<UserRole> roles) {
-
-        User user = User.builder()
+        User user = userRepository.findLatestUserByEmail(registerRequest.getEmail()).orElse(User.builder()
                 .fullName(registerRequest.getFullName())
                 .username(registerRequest.getUserName())
                 .email(registerRequest.getEmail())
                 .password(registerRequest.getPassword())
                 .roles(roles)
                 .isRootUser(true)
-                .build();
+                .build());
 
         for (UserRole role : roles) {
             role.setUser(user);

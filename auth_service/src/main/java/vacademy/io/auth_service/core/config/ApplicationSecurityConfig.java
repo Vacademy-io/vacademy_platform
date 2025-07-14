@@ -55,6 +55,7 @@ public class ApplicationSecurityConfig {
             "/auth-service/login/**",
             "/auth-service/public/v1/**",
             "/auth-service/v1/request-otp",
+            "/auth-service/v1/login-otp",
             "/auth-service/v1/login",
     };
 

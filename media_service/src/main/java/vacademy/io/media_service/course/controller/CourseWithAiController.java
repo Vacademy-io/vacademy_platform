@@ -30,6 +30,7 @@ public class CourseWithAiController {
         try{
             return courseWithAiManager.generateCourseWithAi( instituteId, courseUserPrompt, model);
 
+
         } catch (Exception e) {
             throw new RuntimeException(e);
         }

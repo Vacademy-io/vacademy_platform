@@ -8,6 +8,7 @@ import org.springframework.stereotype.Repository;
 import vacademy.io.admin_core_service.features.live_session.controller.AttendanceReport;
 import vacademy.io.admin_core_service.features.live_session.dto.AttendanceReportDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.AttendanceReportProjection;
+import vacademy.io.admin_core_service.features.live_session.dto.ScheduleAttendanceProjection;
 import vacademy.io.admin_core_service.features.live_session.entity.LiveSessionParticipants;
 
 import java.time.LocalDate;
@@ -102,5 +103,45 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
             @Param("startDate") LocalDate startDate,
             @Param("endDate") LocalDate endDate
     );
+
+    @Query(value = """
+    SELECT DISTINCT ON (ss.id, ls.id)
+        ss.id AS scheduleId,
+        ss.meeting_date AS meetingDate,
+        ss.start_time AS startTime,
+        ss.last_entry_time AS lastEntryTime,
+        ls.id AS sessionId,
+        ls.title AS sessionTitle,
+        ls.subject AS subject,
+        ls.status AS sessionStatus,
+        ls.access_level AS accessLevel,
+        COALESCE(lsl.status, 'ABSENT') AS attendanceStatus
+    FROM live_session_participants lsp
+    JOIN session_schedules ss ON ss.session_id = lsp.session_id
+    JOIN live_session ls ON ls.id = lsp.session_id AND ls.status = 'LIVE'
+    LEFT JOIN LATERAL (
+        SELECT status, details, created_at
+        FROM live_session_logs
+        WHERE session_id = lsp.session_id
+          AND schedule_id = ss.id
+          AND user_source_type = 'USER'
+          AND user_source_id = :userId
+          AND log_type = 'ATTENDANCE_RECORDED'
+        ORDER BY created_at DESC
+        LIMIT 1
+    ) lsl ON TRUE
+    WHERE
+        lsp.source_type = 'BATCH'
+        AND lsp.source_id = :batchId
+        AND ss.meeting_date BETWEEN :startDate AND :endDate
+    ORDER BY ss.id, ls.id
+    """, nativeQuery = true)
+    List<ScheduleAttendanceProjection> findAttendanceForUserInBatch(
+            @Param("batchId") String batchId,
+            @Param("userId") String userId,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate
+    );
+
 
 }

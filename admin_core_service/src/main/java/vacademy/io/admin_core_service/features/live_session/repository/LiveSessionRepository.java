@@ -62,8 +62,6 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
     JOIN session_schedules ss ON s.id = ss.session_id
     WHERE s.status = 'LIVE'
       AND ss.meeting_date = CAST((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata') AS date)
-      AND CAST((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata') AS time) >= ss.start_time
-      AND CAST((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata') AS time) <= ss.last_entry_time
       AND s.institute_id = :instituteId
     """, nativeQuery = true)
     List<LiveSessionRepository.LiveSessionListProjection> findCurrentlyLiveSessions(@Param("instituteId") String instituteId);

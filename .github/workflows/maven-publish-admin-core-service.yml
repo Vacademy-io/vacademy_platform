@@ -33,8 +33,6 @@ jobs:
         working-directory: ./admin_core_service
         env:
           JAVA_TOKEN: ${{ secrets.JAVA_TOKEN }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: mvn -s settings.xml clean install -DskipTests
 
       # To push to ECR you need to login through us-east-1

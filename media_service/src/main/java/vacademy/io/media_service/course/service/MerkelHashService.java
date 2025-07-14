@@ -1,4 +1,4 @@
-package vacademy.io.admin_core_service.features.course.service;
+package vacademy.io.media_service.course.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;

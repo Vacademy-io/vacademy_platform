@@ -124,4 +124,7 @@ public interface UserRepository extends CrudRepository<User, String> {
     @Transactional
     @Query("UPDATE User u SET u.lastTokenUpdateTime = CURRENT_TIMESTAMP WHERE u.id IN :userIds")
     void updateLastTokenUpdateTime(@Param("userIds") List<String> userIds);
+
+    @Query("SELECT u FROM User u WHERE u.email = :email ORDER BY u.createdAt DESC")
+    Optional<User> findLatestUserByEmail(@Param("email") String email);
 }

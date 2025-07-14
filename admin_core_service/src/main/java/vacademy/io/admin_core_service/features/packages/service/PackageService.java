@@ -24,10 +24,7 @@ import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.dto.PackageDTO;
 import vacademy.io.common.institute.entity.PackageEntity;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -181,7 +178,7 @@ public class PackageService {
     public void addOrUpdatePackage(AddCourseDTO addCourseDTO,String instituteId,CustomUserDetails userDetails) {
         PackageEntity packageEntity = null;
         if (addCourseDTO.getNewCourse()){
-            packageEntity = getCourse(addCourseDTO);
+            packageEntity = getCourse(addCourseDTO,instituteId);
         }else{
             packageEntity = packageRepository.findById(addCourseDTO.getId()).orElseThrow(() -> new VacademyException("Package not found"));
             updateCourse(addCourseDTO, packageEntity);
@@ -191,7 +188,13 @@ public class PackageService {
         }
     }
 
-    public PackageEntity getCourse(AddCourseDTO addCourseDTO) {
+    public PackageEntity getCourse(AddCourseDTO addCourseDTO,String instituteId) {
+        Optional<PackageEntity>optionalPackageEntity = packageRepository.findTopByPackageNameAndSessionStatusAndInstitute(addCourseDTO.getCourseName(),
+                Arrays.asList(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
+                Arrays.asList(PackageStatusEnum.ACTIVE.name()), instituteId);
+        if (optionalPackageEntity.isPresent()) {
+            return optionalPackageEntity.get();
+        }
         PackageEntity packageEntity = new PackageEntity();
         packageEntity.setPackageName(addCourseDTO.getCourseName());
         packageEntity.setThumbnailFileId(addCourseDTO.getThumbnailFileId());

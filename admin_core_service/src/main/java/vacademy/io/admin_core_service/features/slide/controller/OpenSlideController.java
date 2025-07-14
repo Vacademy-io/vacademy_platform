@@ -6,7 +6,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import vacademy.io.admin_core_service.features.slide.dto.SlideTypeCountProjection;
+import vacademy.io.admin_core_service.features.slide.dto.SlideTypeReadTimeProjection;
 import vacademy.io.admin_core_service.features.slide.service.SlideService;
 
 import java.util.List;
@@ -19,18 +19,18 @@ public class OpenSlideController {
     private SlideService slideService;
 
     @GetMapping("/slide-counts-by-source-type")
-    public ResponseEntity<List<SlideTypeCountProjection>> getSlideCountsBySourceType(
+    public ResponseEntity<List<SlideTypeReadTimeProjection>> getSlideCountsBySourceType(
         @RequestParam String packageSessionId
     ) {
-        List<SlideTypeCountProjection> result = slideService.getSlideCountsBySourceType(packageSessionId);
+        List<SlideTypeReadTimeProjection> result = slideService.getSlideCountsBySourceTypeForLearner(packageSessionId);
         return ResponseEntity.ok(result);
     }
 
     @GetMapping("/learner-slide-counts-by-source-type")
-    public ResponseEntity<List<SlideTypeCountProjection>> getLearnerSlideCountsBySourceType(
+    public ResponseEntity<List<SlideTypeReadTimeProjection>> getLearnerSlideCountsBySourceType(
         @RequestParam String packageSessionId
     ) {
-        List<SlideTypeCountProjection> result = slideService.getSlideCountsBySourceTypeForLearner(packageSessionId);
+        List<SlideTypeReadTimeProjection> result = slideService.getSlideCountsBySourceTypeForLearner(packageSessionId);
         return ResponseEntity.ok(result);
     }
 }

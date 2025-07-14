@@ -61,6 +61,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.JAVA_TOKEN }}
           GITHUB_ACTOR: shreyash-jain
           JAVA_TOKEN: ${{ secrets.JAVA_TOKEN }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          
         run: |
           docker build -t $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG . --build-arg GITHUB_TOKEN=${GITHUB_TOKEN} --build-arg JAVA_TOKEN=${JAVA_TOKEN}
           docker push $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG
@@ -80,6 +83,12 @@ jobs:
         with:
           method: kubeconfig
           kubeconfig: ${{ secrets.VACADEMY_STAGE_KUBECONFIG}}
+
+      - name: Deploy to Kubernetes
+        run: |
+            kubectl set env deployment/admin-core-service \
+              GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }} \
+              OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }} 
 
       - name: Restart deployment
         id: restart-deployment

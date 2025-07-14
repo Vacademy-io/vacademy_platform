@@ -1,16 +1,13 @@
 package vacademy.io.admin_core_service.features.slide.controller;
 
 import lombok.AllArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.slide.dto.*;
-import vacademy.io.admin_core_service.features.slide.service.SlideMetaDataService;
 import vacademy.io.admin_core_service.features.slide.service.SlideService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 import java.util.List;
-import java.util.Optional;
 
 @RestController
 @RequestMapping("/admin-core-service/slide/v1")
@@ -104,18 +101,18 @@ public class SlideController {
     }
 
     @GetMapping("/slide-counts-by-source-type")
-    public ResponseEntity<List<SlideTypeCountProjection>> getSlideCountsBySourceType(
+    public ResponseEntity<List<SlideTypeReadTimeProjection>> getSlideCountsBySourceType(
         @RequestParam String packageSessionId
     ) {
-        List<SlideTypeCountProjection> result = slideService.getSlideCountsBySourceType(packageSessionId);
+        List<SlideTypeReadTimeProjection> result = slideService.getSlideCountsBySourceType(packageSessionId);
         return ResponseEntity.ok(result);
     }
 
     @GetMapping("/learner-slide-counts-by-source-type")
-    public ResponseEntity<List<SlideTypeCountProjection>> getLearnerSlideCountsBySourceType(
+    public ResponseEntity<List<SlideTypeReadTimeProjection>> getLearnerSlideCountsBySourceType(
         @RequestParam String packageSessionId
     ) {
-        List<SlideTypeCountProjection> result = slideService.getSlideCountsBySourceTypeForLearner(packageSessionId);
+        List<SlideTypeReadTimeProjection> result = slideService.getSlideCountsBySourceTypeForLearner(packageSessionId);
         return ResponseEntity.ok(result);
     }
 

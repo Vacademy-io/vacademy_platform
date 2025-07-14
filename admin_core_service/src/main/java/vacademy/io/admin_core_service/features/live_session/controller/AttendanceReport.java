@@ -5,10 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import vacademy.io.admin_core_service.features.live_session.dto.AttendanceReportDTO;
-import vacademy.io.admin_core_service.features.live_session.dto.CustomFieldDTO;
-import vacademy.io.admin_core_service.features.live_session.dto.GuestSessionCustomFieldDTO;
-import vacademy.io.admin_core_service.features.live_session.dto.StudentAttendanceDTO;
+import vacademy.io.admin_core_service.features.live_session.dto.*;
 import vacademy.io.admin_core_service.features.live_session.service.AttendanceReportService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
@@ -40,4 +37,10 @@ public class AttendanceReport {
     public ResponseEntity<Map<String, List<CustomFieldDTO>>> getPublicRegisteredData(@RequestParam("SessionId") String sessionId){
         return ResponseEntity.ok(attendanceReportService.getGuestWiseCustomFields(sessionId));
     }
+
+    @GetMapping("/student-report")
+    public ResponseEntity<StudentAttendanceReportDTO> getStudentReport(@RequestParam("userId") String userId , @RequestParam("batchId") String batchId , @RequestParam("startDate") LocalDate start, @RequestParam("endDate") LocalDate end){
+        return ResponseEntity.ok(attendanceReportService.getStudentReport(userId , batchId , start ,end));
+    }
+
 }

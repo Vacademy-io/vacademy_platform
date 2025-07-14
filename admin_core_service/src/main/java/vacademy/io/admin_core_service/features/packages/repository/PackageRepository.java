@@ -1618,4 +1618,21 @@ WHERE
     """, nativeQuery = true)
     List<String> findAllDistinctTagsByPackageSessionIds(@Param("packageSessionIds") List<String> packageSessionIds);
 
+    @Query("""
+    SELECT p 
+    FROM PackageEntity p
+    JOIN PackageSession ps ON ps.packageEntity = p
+    JOIN PackageInstitute pi ON pi.packageEntity = p
+    WHERE LOWER(TRIM(p.packageName)) = LOWER(TRIM(:packageName))
+      AND ps.status IN :sessionStatuses
+      AND p.status IN :packageStatuses
+      AND pi.instituteEntity.id = :instituteId
+    ORDER BY p.createdAt DESC
+    """)
+    Optional<PackageEntity> findTopByPackageNameAndSessionStatusAndInstitute(
+            @Param("packageName") String packageName,
+            @Param("sessionStatuses") List<String> sessionStatuses,
+            @Param("packageStatuses") List<String> packageStatuses,
+            @Param("instituteId") String instituteId
+    );
 }

@@ -93,3 +93,5 @@ export const urlCourseDetails = `${BASE_URL}/admin-core-service/open/packages/v1
 export const urlPublicCourseDetails = `${BASE_URL}/admin-core-service/learner-packages/v1/search`;
 export const urlInstructor = `${BASE_URL}/auth-service/public/v1/users-of-status`;
 export const FEEDBACK_URL = `${BASE_URL}/admin-core-service/rating`;
+
+export const SUBMIT_QUIZ_SLIDE_ACTIVITY_LOG = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/quiz-slide/add-or-update-quiz-slide-activity-log`;

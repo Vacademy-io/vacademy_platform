@@ -3,6 +3,11 @@ import { CheckCircle } from "lucide-react";
 import { MyInput } from "@/components/design-system/input";
 import { MyButton } from "@/components/design-system/button";
 import { Textarea } from "@/components/ui/textarea";
+import { useSubmitQuizSlideActivityLog } from "@/services/study-library/tracking-api/submit-quiz-slide-activity-log";
+import { QuizSlideActivityLogPayload } from "@/types/quiz-slide-activity-log";
+import { getUserId } from "@/constants/getUserId";
+import { v4 as uuidv4 } from "uuid";
+import { toast } from "sonner";
 
 interface Option {
   id: string;
@@ -30,6 +35,58 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({ questions, onAnswer, onC
   const [current, setCurrent] = useState(0);
   const [answers, setAnswers] = useState<{ [questionId: string]: string | number | string[] }>({});
   const [numericErrors, setNumericErrors] = useState<{ [questionId: string]: string }>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const submitQuizMutation = useSubmitQuizSlideActivityLog();
+
+  // Helper to get URL params
+  const getUrlParams = () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    return {
+      slideId: urlParams.get("slideId") || "",
+      chapterId: urlParams.get("chapterId") || "",
+      moduleId: urlParams.get("moduleId") || "",
+      subjectId: urlParams.get("subjectId") || "",
+      packageSessionId: urlParams.get("sessionId") || "",
+    };
+  };
+
+  // Helper to build payload
+  const buildQuizPayload = async (): Promise<QuizSlideActivityLogPayload> => {
+    const userId = (await getUserId()) || "";
+    const { slideId } = getUrlParams();
+    const now = Date.now();
+    return {
+      id: uuidv4(),
+      source_id: slideId,
+      source_type: "QUIZ",
+      user_id: userId,
+      slide_id: slideId,
+      start_time_in_millis: now - 60000, // Example: started 1 min ago
+      end_time_in_millis: now,
+      percentage_watched: 100,
+      videos: [],
+      documents: [],
+      question_slides: [],
+      assignment_slides: [],
+      video_slides_questions: [],
+      new_activity: true,
+      concentration_score: {
+        id: uuidv4(),
+        concentration_score: 100,
+        tab_switch_count: 0,
+        pause_count: 0,
+        answer_times_in_seconds: [],
+      },
+      quiz_sides: questions.map((q) => ({
+        id: uuidv4(),
+        response_json: JSON.stringify({ answer: answers[q.id] }),
+        response_status: "SUBMITTED",
+        activity_id: slideId,
+        question_id: q.id,
+      })),
+    };
+  };
 
   if (!questions || questions.length === 0) {
     return (
@@ -94,11 +151,35 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({ questions, onAnswer, onC
     if (current > 0) setCurrent(current - 1);
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (current < total - 1) {
       setCurrent(current + 1);
-    } else if (onComplete) {
-      onComplete();
+    } else {
+      // On Finish: submit quiz
+      setIsSubmitting(true);
+      try {
+        const { slideId, chapterId, moduleId, subjectId, packageSessionId } = getUrlParams();
+        const userId = (await getUserId()) || "";
+        const payload = await buildQuizPayload();
+        await submitQuizMutation.mutateAsync({
+          slideId,
+          chapterId,
+          moduleId,
+          subjectId,
+          packageSessionId,
+          userId,
+          requestPayload: payload,
+        });
+        console.log("Quiz submitted successfully");
+        toast.success("Quiz submitted successfully!", {
+          className: "text-center"
+        });
+        if (onComplete) onComplete();
+      } catch (err) {
+        console.error("Quiz submission failed", err);
+      } finally {
+        setIsSubmitting(false);
+      }
     }
   };
 
@@ -315,12 +396,12 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({ questions, onAnswer, onC
         <MyButton
           buttonType="primary"
           scale="medium"
-          disable={!isAnswered()}
+          disable={!isAnswered() || isSubmitting}
           onClick={handleNext}
           className="flex items-center justify-center min-w-[120px] space-x-2"
         >
-          <span>{current === total - 1 ? "Finish" : "Next"}</span>
-          {current !== total - 1 && <span>→</span>}
+          <span>{isSubmitting ? "Submitting..." : current === total - 1 ? "Finish" : "Next"}</span>
+          {current !== total - 1 && !isSubmitting && <span>→</span>}
         </MyButton>
       </div>
     </div>

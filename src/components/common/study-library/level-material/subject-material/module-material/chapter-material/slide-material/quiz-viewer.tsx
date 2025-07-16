@@ -350,14 +350,18 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({ questions, onAnswer, onC
     <div className="w-full min-h-[80vh] bg-white rounded-xl shadow-lg p-4 sm:p-8">
       {/* Question X of Y and Progress bar */}
       <div className="mb-8">
-        <div className="mb-2">
+        <div className="mb-2 flex items-center justify-between">
           <span className="text-sm text-gray-700 font-medium">Question {current + 1} of {total}</span>
+          <span className="ml-auto text-xs text-primary-600 font-medium" style={{ minWidth: 80, textAlign: 'right' }}>
+            {questionType.replace(/_/g, ' ')}
+          </span>
         </div>
-        <div className="w-full h-3 rounded-full overflow-hidden bg-primary-100">
+        <div className="w-full h-3 rounded-full overflow-hidden bg-gray-200 relative">
           <div
-            className="h-3 rounded-full transition-all duration-500 ease-out bg-gradient-to-r from-primary-500 to-primary-300"
+            className="h-3 rounded-full transition-all duration-500 ease-out bg-gradient-to-r from-primary-400 to-primary-600 absolute left-0 top-0"
             style={{ width: `${progress}%` }}
           />
+          {/* The gray background is already present as bg-gray-200 */}
         </div>
       </div>
 

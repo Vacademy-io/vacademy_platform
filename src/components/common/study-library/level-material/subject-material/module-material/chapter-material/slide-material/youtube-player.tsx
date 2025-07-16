@@ -1375,7 +1375,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       {/* Video player container with verification overlay */}
       <div
         ref={playerContainerRef}
-        className="aspect-video w-full relative h-full items-center flex justify-center overflow-hidden bg-black rounded-lg group"
+        className="aspect-video w-full relative min-h-[200px] sm:min-h-[250px] md:min-h-[300px] lg:h-full items-center flex justify-center overflow-hidden bg-black rounded-lg group"
         onMouseMove={handleMouseMoveOnVideo}
         onMouseEnter={handleMouseMoveOnVideo}
         onDoubleClick={handleDoubleClick}

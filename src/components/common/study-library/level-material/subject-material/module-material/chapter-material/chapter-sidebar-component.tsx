@@ -52,30 +52,30 @@ export const ChapterSidebarComponent = ({
     }, [studyLibraryData, modulesWithChaptersData]);
 
     return (
-        <div className={`flex w-full flex-col gap-4 ${open ? "px-8" : "px-6"}`}>
+        <div className={`flex w-full flex-col gap-2 sm:gap-4 ${open ? "px-4 sm:px-6 lg:px-8" : "px-3 sm:px-4 lg:px-6"}`}>
             {/* Breadcrumb */}
-            <div className="flex flex-wrap items-center gap-2 text-sm">
+            <div className="flex flex-wrap items-center gap-1 sm:gap-2 text-xs sm:text-sm">
                 <p
-                    className={`cursor-pointer text-neutral-500 hover:text-primary-600 transition-colors duration-200 ${open ? "visible" : "hidden"}`}
+                    className={`cursor-pointer text-neutral-500 hover:text-primary-600 transition-colors duration-200 ${open ? "visible" : "hidden sm:visible"}`}
                     onClick={handleSubjectRoute}
                 >
                     {subjectName}
                 </p>
                 <ChevronRightIcon
-                    className={`size-4 text-neutral-400 ${open ? "visible" : "hidden"}`}
+                    className={`size-3 sm:size-4 text-neutral-400 ${open ? "visible" : "hidden sm:visible"}`}
                 />
                 <p className="cursor-pointer text-primary-600 font-medium">
-                    {open ? moduleName : truncatedModule}
+                    {open ? moduleName : truncateString(moduleName, window.innerWidth < 640 ? 12 : 10)}
                 </p>
             </div>
 
             {/* Module List */}
-            <div className="space-y-2">
+            <div className="flex flex-col gap-1 sm:gap-2">
                 {modulesWithChaptersData &&
                     modulesWithChaptersData.map((moduleWithChapters, index) => (
                         <div
                             key={index}
-                            className={`group flex w-full items-center gap-3 rounded-lg transition-all duration-200 px-3 py-2.5 hover:cursor-pointer ${
+                            className={`group flex w-full items-center gap-2 sm:gap-3 rounded-lg transition-all duration-200 px-2 sm:px-3 py-2 sm:py-2.5 hover:cursor-pointer ${
                                 moduleWithChapters.module.id == currentModuleId
                                     ? "border border-primary-200/80 bg-gradient-to-r from-primary-50/80 to-blue-50/60 text-primary-700 shadow-sm"
                                     : "border border-transparent bg-white hover:border-neutral-200 hover:bg-gradient-to-r hover:from-neutral-50/80 hover:to-white text-neutral-600 hover:text-neutral-700 hover:shadow-sm"
@@ -87,7 +87,7 @@ export const ChapterSidebarComponent = ({
                             }}
                         >
                             <div
-                                className={`flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold transition-all duration-200 ${
+                                className={`flex items-center justify-center w-6 h-6 sm:w-8 sm:h-8 rounded-full text-xs font-bold transition-all duration-200 ${
                                     moduleWithChapters.module.id ==
                                     currentModuleId
                                         ? "bg-gradient-to-br from-primary-500 to-primary-600 text-white shadow-sm"
@@ -97,9 +97,9 @@ export const ChapterSidebarComponent = ({
                                 M{index + 1}
                             </div>
                             <p
-                                className={`font-medium transition-colors duration-200 ${open ? "visible" : "hidden"}`}
+                                className={`font-medium transition-colors duration-200 text-xs sm:text-sm ${open ? "visible" : "hidden sm:visible"}`}
                             >
-                                {moduleWithChapters.module.module_name}
+                                {truncateString(moduleWithChapters.module.module_name, window.innerWidth < 640 ? 20 : 15)}
                             </p>
                         </div>
                     ))}

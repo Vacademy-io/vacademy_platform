@@ -152,20 +152,21 @@ export const DoubtResolutionSidebar = () => {
             fixed top-0 right-0 h-full z-[10000]
             transition-transform duration-300 ease-in-out
             ${open ? "translate-x-0" : "translate-x-full"}
-            w-[35vw] min-w-[400px] max-w-[500px]
+            w-full sm:w-[90vw] md:w-[70vw] lg:w-[60vw] xl:w-[35vw] 
+            min-w-[280px] sm:min-w-[320px] lg:min-w-[400px] max-w-[500px]
             bg-gradient-to-b from-white to-slate-50/30 shadow-2xl border-l border-gray-200/60 backdrop-blur-xl 
             flex flex-col overflow-hidden
           `} 
         >
                       {/* Enhanced Professional Header */}
-          <div className="border-b border-gray-200/80 bg-white/95 backdrop-blur-md p-6 flex-shrink-0">
+          <div className="border-b border-gray-200/80 bg-white/95 backdrop-blur-md p-3 sm:p-4 lg:p-6 flex-shrink-0">
                 <div className="flex items-center justify-between w-full">
-                    <div className="flex items-center gap-3">
-                        <div className="flex items-center justify-center w-10 h-10 bg-gradient-to-br from-primary-500 to-primary-600 rounded-xl shadow-lg">
-                            <ChatText size={20} className="text-white" />
+                    <div className="flex items-center gap-2 sm:gap-3">
+                        <div className="flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-primary-500 to-primary-600 rounded-xl shadow-lg">
+                            <ChatText size={16} className="sm:w-5 sm:h-5 text-white" />
                         </div>
                         <div className="flex flex-col">
-                            <h1 className="text-xl font-bold text-gray-900 leading-tight">Doubt Resolution</h1>
+                            <h1 className="text-lg sm:text-xl font-bold text-gray-900 leading-tight">Doubt Resolution</h1>
                             <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
                                 {activeItem?.source_type === "VIDEO" ? "Video Timestamp Support" : "General Support"}
                             </p>
@@ -177,7 +178,7 @@ export const DoubtResolutionSidebar = () => {
                     >
                         <X size={18} className="text-gray-600 group-hover:text-gray-800" />
                     </button>
-                              </div>
+                </div>
           </div>
 
           {/* Enhanced Content Area */}

@@ -64,7 +64,15 @@ function Slides() {
                 id: "feedback-slide",
                 title: "Give Feedback",
                 source_type: "FEEDBACK",
+                source_id: "",
+                image_file_id: "",
+                description: "Provide feedback for this chapter",
+                status: "ACTIVE",
+                slide_order: slides.length + 1,
                 percentage_completed: 0,
+                is_loaded: true,
+                new_slide: false,
+                progress_marker: 0,
             };
 
             const slidesWithFeedback = [...slides, feedbackSlide];
@@ -125,14 +133,14 @@ function Slides() {
                 {/* Header */}
                 <div className="absolute top-0 left-0 right-0 z-20 bg-white/80 backdrop-blur-sm border-b border-gray-200/60 shadow-sm">
                     <div
-                        className={`${open ? "px-3 sm:px-4" : "px-2 sm:px-3"} py-3`}
+                        className={`${open ? "px-2 sm:px-3 md:px-4" : "px-1 sm:px-2 md:px-3"} py-2 sm:py-3`}
                     >
                         <div className="relative group overflow-hidden animate-fade-in-down">
-                            <div className="flex items-center space-x-2 mb-2">
-                                <div className="p-1 bg-gradient-to-br from-primary-100 to-primary-200 rounded-lg shadow-sm">
+                            <div className="flex items-center space-x-1 sm:space-x-2 mb-1 sm:mb-2">
+                                <div className="p-0.5 sm:p-1 bg-gradient-to-br from-primary-100 to-primary-200 rounded-lg shadow-sm">
                                     <BookOpen
-                                        size={14}
-                                        className="text-primary-600"
+                                        size={12}
+                                        className="sm:w-3.5 sm:h-3.5 text-primary-600"
                                         weight="duotone"
                                     />
                                 </div>
@@ -140,27 +148,27 @@ function Slides() {
                                     Learning Path
                                 </span>
                             </div>
-                            <div className="flex flex-wrap items-center gap-1 text-gray-600">
+                            <div className="flex flex-wrap items-center gap-0.5 sm:gap-1 text-gray-600">
                                 <button
                                     className={`text-xs font-medium hover:text-primary-600 ${
-                                        open ? "block" : "hidden"
+                                        open ? "block" : "hidden sm:block"
                                     }`}
                                     onClick={handleSubjectRoute}
                                 >
-                                    {truncateString(subjectName, open ? 15 : 8)}
+                                    {truncateString(subjectName, open ? (window.innerWidth < 640 ? 20 : 15) : 8)}
                                 </button>
-                                <ChevronRightIcon className="w-3 h-3 text-gray-400" />
+                                <ChevronRightIcon className="w-2 h-2 sm:w-3 sm:h-3 text-gray-400" />
                                 <button
                                     className={`text-xs font-medium hover:text-primary-600 ${
-                                        open ? "block" : "hidden"
+                                        open ? "block" : "hidden sm:block"
                                     }`}
                                     onClick={handleModuleRoute}
                                 >
-                                    {truncateString(moduleName, open ? 15 : 8)}
+                                    {truncateString(moduleName, open ? (window.innerWidth < 640 ? 20 : 15) : 8)}
                                 </button>
-                                <ChevronRightIcon className="w-3 h-3 text-gray-400" />
-                                <span className="text-xs font-bold text-primary-600 bg-primary-50 px-2 py-0.5 rounded-md">
-                                    {open ? chapterName : truncatedChapterName}
+                                <ChevronRightIcon className="w-2 h-2 sm:w-3 sm:h-3 text-gray-400" />
+                                <span className="text-xs font-bold text-primary-600 bg-primary-50 px-1 sm:px-2 py-0.5 rounded-md">
+                                    {open ? (window.innerWidth < 640 ? chapterName : truncatedChapterName) : truncatedChapterName}
                                 </span>
                             </div>
                         </div>
@@ -168,16 +176,16 @@ function Slides() {
                 </div>
 
                 {/* Section Title */}
-                <div className="absolute top-[85px] left-0 right-0 z-20 flex items-center space-x-2 p-3 sm:p-4 border-b border-gray-200/60 bg-gradient-to-r from-gray-50/80 to-white/80">
-                    <div className="p-1.5 bg-gradient-to-br from-primary-100 to-primary-200 rounded-lg shadow-sm">
+                <div className="absolute top-[70px] sm:top-[85px] left-0 right-0 z-20 flex items-center space-x-1 sm:space-x-2 p-2 sm:p-3 md:p-4 border-b border-gray-200/60 bg-gradient-to-r from-gray-50/80 to-white/80">
+                    <div className="p-1 sm:p-1.5 bg-gradient-to-br from-primary-100 to-primary-200 rounded-lg shadow-sm">
                         <GraduationCap
-                            size={16}
-                            className="text-primary-600"
+                            size={14}
+                            className="sm:w-4 sm:h-4 text-primary-600"
                             weight="duotone"
                         />
                     </div>
                     <div className="flex-1 min-w-0">
-                        <h3 className="text-sm font-bold text-gray-900 truncate">
+                        <h3 className="text-xs sm:text-sm font-bold text-gray-900 truncate">
                             Chapter Slides
                         </h3>
                         <p className="text-xs text-gray-600">
@@ -206,14 +214,23 @@ function Slides() {
                                 buttonType="text"
                                 scale="medium"
                                 layoutVariant="default"
-                                onClick={() =>
-                                    setActiveItem({
+                                onClick={() => {
+                                    const feedbackSlide: Slide = {
                                         id: "feedback-slide",
                                         title: "Feedback",
                                         source_type: "FEEDBACK",
-                                        percentage_completed: null,
-                                    })
-                                }
+                                        source_id: "",
+                                        image_file_id: "",
+                                        description: "Provide feedback for this chapter",
+                                        status: "ACTIVE",
+                                        slide_order: slides?.length ? slides.length + 1 : 1,
+                                        percentage_completed: 0,
+                                        is_loaded: true,
+                                        new_slide: false,
+                                        progress_marker: 0,
+                                    };
+                                    setActiveItem(feedbackSlide);
+                                }}
                                 className={`
                   w-full 
                   mb-3 
@@ -268,30 +285,44 @@ function Slides() {
 
     const { setNavHeading } = useNavHeadingStore();
     const heading = (
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 w-full min-w-0">
             <button
                 onClick={() => window.history.back()}
-                className="p-1.5 rounded-lg hover:bg-gray-100"
+                className="p-1 sm:p-1.5 rounded-lg hover:bg-gray-100 flex-shrink-0"
             >
-                <CaretLeft className="w-5 h-5 text-gray-600" />
+                <CaretLeft className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600" />
             </button>
-            <div className="flex items-center space-x-2 min-w-0">
-                <div className="p-1 bg-gradient-to-br from-primary-100 to-primary-200 rounded-md shadow-sm">
+            <div className="flex items-center space-x-1 sm:space-x-2 min-w-0 flex-1">
+                <div className="p-0.5 sm:p-1 bg-gradient-to-br from-primary-100 to-primary-200 rounded-md shadow-sm flex-shrink-0">
                     <BookOpen
-                        size={14}
-                        className="text-primary-600"
+                        size={12}
+                        className="sm:w-3.5 sm:h-3.5 text-primary-600"
                         weight="duotone"
                     />
                 </div>
-                <div className="min-w-0">
-                    <h1 className="text-sm font-bold text-gray-900 truncate">
-                        {subjectName && moduleName && chapterName
-                            ? `${truncateString(subjectName, 12)} • ${truncateString(
-                                  moduleName,
-                                  12
-                              )} • ${truncateString(chapterName, 15)}`
-                            : "Study Materials"}
-                    </h1>
+                <div className="min-w-0 flex-1">
+                    {/* Mobile: Stack vertically, Desktop: Single line */}
+                    <div className="block sm:hidden">
+                        <h1 className="text-xs font-bold text-gray-900 truncate mb-0.5">
+                            {truncateString(chapterName || "Study Materials", 25)}
+                        </h1>
+                        <p className="text-xs text-gray-600 truncate">
+                            {subjectName && moduleName 
+                                ? `${truncateString(subjectName, 15)} • ${truncateString(moduleName, 15)}`
+                                : "Learning Path"
+                            }
+                        </p>
+                    </div>
+                    <div className="hidden sm:block">
+                        <h1 className="text-sm font-bold text-gray-900 truncate">
+                            {subjectName && moduleName && chapterName
+                                ? `${truncateString(subjectName, window.innerWidth < 768 ? 8 : window.innerWidth < 1024 ? 12 : 18)} • ${truncateString(
+                                      moduleName,
+                                      window.innerWidth < 768 ? 8 : window.innerWidth < 1024 ? 12 : 18
+                                  )} • ${truncateString(chapterName, window.innerWidth < 768 ? 10 : window.innerWidth < 1024 ? 15 : 25)}`
+                                : "Study Materials"}
+                        </h1>
+                    </div>
                 </div>
             </div>
         </div>

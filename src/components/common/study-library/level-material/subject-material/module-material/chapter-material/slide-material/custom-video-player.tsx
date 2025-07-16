@@ -1364,7 +1364,7 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
                 {/* Video player container with verification overlay */}
                 <div
                     ref={playerContainerRef}
-                    className="aspect-video w-full relative h-full items-center flex justify-center overflow-hidden"
+                    className="aspect-video w-full relative min-h-[200px] sm:min-h-[250px] md:min-h-[300px] lg:h-full items-center flex justify-center overflow-hidden rounded-lg"
                     onMouseMove={handleMouseMove}
                 >
                     {/* Verification overlay - only shown in fullscreen */}

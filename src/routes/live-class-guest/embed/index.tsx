@@ -13,6 +13,22 @@ export const Route = createFileRoute("/live-class-guest/embed/")({
   component: GuestEmbedComponent,
 });
 
+// Helper to extract YouTube video ID from various URL formats
+const extractYouTubeVideoId = (url: string | undefined): string | undefined => {
+  if (!url) return undefined;
+
+  const regexList = [
+    /(?:youtube\.com\/.*[?&]v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/,
+  ];
+
+  for (const regex of regexList) {
+    const match = url.match(regex);
+    if (match && match[1]) return match[1];
+  }
+
+  return url.length === 11 ? url : undefined;
+};
+
 function GuestEmbedComponent() {
   const { sessionId } = Route.useSearch();
   const {
@@ -24,11 +40,19 @@ function GuestEmbedComponent() {
   const renderEmbededSession = () => {
     if (!sessionDetails?.linkType) return null;
 
-    if (sessionDetails.linkType === LinkType.YOUTUBE) {
-      // Extract video ID from URL if it's a full YouTube URL
-      const videoId =
-        sessionDetails.defaultMeetLink?.split("v=")[1] ||
-        sessionDetails.defaultMeetLink;
+    if (
+      sessionDetails.linkType === LinkType.YOUTUBE ||
+      sessionDetails.linkType === LinkType.YOUTUBE_RECORDED
+    ) {
+      const videoId = extractYouTubeVideoId(sessionDetails.defaultMeetLink);
+
+      if (!videoId) {
+        return (
+          <div className="text-center text-red-500">
+            Invalid YouTube link provided.
+          </div>
+        );
+      }
 
       return (
         <div className="w-full h-full">
@@ -37,9 +61,18 @@ function GuestEmbedComponent() {
       );
     }
 
+    if (
+      sessionDetails.linkType === LinkType.ZOOM ||
+      sessionDetails.linkType === LinkType.ZOOM_RECORDED
+    ) {
+      return <ZoomEmbedPlayer recordingUrl={sessionDetails.defaultMeetLink} />;
+    }
+
+    /* Legacy handling
     if (sessionDetails.linkType === LinkType.ZOOM_RECORDED) {
       return <ZoomEmbedPlayer recordingUrl={sessionDetails.defaultMeetLink} />;
     }
+    */
 
     return null;
   };

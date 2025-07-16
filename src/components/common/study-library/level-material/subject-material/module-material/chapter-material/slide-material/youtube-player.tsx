@@ -30,6 +30,8 @@ import {
   Pause,
   Play,
   Rewind,
+  SpeakerSimpleHigh,
+  SpeakerSimpleX,
   X,
   Gauge,
 } from "@phosphor-icons/react";
@@ -164,6 +166,52 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     []
   );
   const [concentrationScore, setConcentrationScore] = useState(100); // Start with perfect score
+
+  // Sound control state
+  const [isMuted, setIsMuted] = useState(false);
+  const [volume, setVolume] = useState(100);
+  const [prevVolume, setPrevVolume] = useState(100);
+
+  const toggleMute = useCallback(() => {
+    if (!player) return;
+    try {
+      if (player.isMuted() || volume === 0) {
+        // Unmute – restore previous volume or default 100
+        const newVol = prevVolume > 0 ? prevVolume : 100;
+        player.setVolume(newVol);
+        player.unMute();
+        setVolume(newVol);
+        setIsMuted(false);
+      } else {
+        // Mute – store current volume then set to 0
+        setPrevVolume(volume);
+        player.setVolume(0);
+        player.mute();
+        setVolume(0);
+        setIsMuted(true);
+      }
+    } catch (err) {
+      console.error("Error toggling mute", err);
+    }
+  }, [player, volume, prevVolume]);
+
+  // Volume slider handler
+  const changeVolume = (v: number) => {
+    if (!player) return;
+    try {
+      setVolume(v);
+      player.setVolume(v);
+      if (v === 0) {
+        player.mute();
+        setIsMuted(true);
+      } else {
+        player.unMute();
+        setIsMuted(false);
+      }
+    } catch (err) {
+      console.error("Error setting volume", err);
+    }
+  };
 
   const [timeToQuestionMap, setTimeToQuestionMap] = useState<
     Array<{
@@ -770,22 +818,38 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         // Create a style element
         const style = iframeDocument.createElement("style");
         style.textContent = `
-            .ytp-chrome-top,
-            .ytp-chrome-bottom,
-            .ytp-watermark,
-            .ytp-show-cards-title,
-            .ytp-youtube-button,
-            .ytp-embed-title,
-            .ytp-embed-owner,
-            .ytp-share-button,
-            .ytp-watch-later-button,
-            .ytp-more-videos-overlay,
-            .ytp-pause-overlay,
-            .ytp-related-on-pause-container,
-            .ytp-endscreen-content,
-            .ytp-ce-element {
+              /* Hide YouTube branding & chrome */
+              .ytp-chrome-top,
+              .ytp-chrome-bottom,
+              .ytp-watermark,
+              .ytp-youtube-button,
+              .ytp-embed-title,
+              .ytp-embed-owner,
+              .ytp-show-cards-title,
+              .ytp-share-button,
+              .ytp-watch-later-button,
+
+              /* Hide pause / end overlays and related videos */
+              .ytp-more-videos-overlay,
+              .ytp-pause-overlay,
+              .ytp-related-on-pause-container,
+              .ytp-endscreen-content,
+              .ytp-ce-element,
+              .ytp-ce-video,
+              .ytp-ce-element-overlay,
+              .ytp-ce-channel,
+              .ytp-ce-expanding-overlay,
+              .ytp-suggestion-overlay,
+              .ytp-videowall-still,
+              .ytp-iv-clickcard,
+              .ytp-iv-video-content,
+              .ytp-cards-button,
+              .ytp-cards-teaser,
+              .ytp-carousel-shelf {
                 display: none !important;
-            }
+                opacity: 0 !important;
+                visibility: hidden !important;
+              }
             `;
 
         // Append style to iframe head
@@ -870,6 +934,16 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     console.log("Player ready");
     setPlayer(event.target);
     setPlayerReady(true);
+
+    // Initialise mute state
+    try {
+      setIsMuted(event.target.isMuted());
+    } catch {}
+
+    // Initialize volume level
+    try {
+      setVolume(event.target.getVolume());
+    } catch {}
 
     // Get the iframe element
     try {
@@ -1335,6 +1409,52 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     setCurrentTime(seekTime);
   };
 
+  /* -----------------------------------------------------------
+   * Keyboard shortcuts
+   * ---------------------------------------------------------*/
+
+  useEffect(() => {
+    if (!playerReady || !player) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Prevent shortcuts when an input element is focused
+      const target = e.target as HTMLElement;
+      const tag = target?.tagName?.toLowerCase();
+      if (tag === "input" || tag === "textarea" || target?.isContentEditable) {
+        return;
+      }
+
+      const isSpace = e.key === " " || e.key === "Space" || e.key === "Spacebar";
+      if (isSpace || e.key === "Enter") {
+        e.preventDefault();
+        if (isPlayed) {
+          togglePause();
+        } else {
+          togglePlay();
+        }
+        return;
+      }
+
+      switch (e.key) {
+        case "ArrowRight":
+          e.preventDefault();
+          // Skip forward 5 seconds
+          seekToTimestamp(Math.min(duration, currentTime + 5), true);
+          break;
+        case "ArrowLeft":
+          e.preventDefault();
+          // Skip backward 5 seconds
+          seekToTimestamp(Math.max(0, currentTime - 5), true);
+          break;
+        default:
+          break;
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [playerReady, player, currentTime, duration, isPlayed, togglePlay, togglePause, seekToTimestamp]);
+
   return (
     <div className="w-full flex flex-col items-center gap-4">
       {/* Non-fullscreen verification overlay - shown outside the player */}
@@ -1493,6 +1613,30 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
               >
                 <FastForward size={22} weight="bold" />
               </button>
+
+              {/* Mute / Unmute in fullscreen */}
+              <button
+                onClick={toggleMute}
+                className="p-3 rounded-full bg-black/60 text-white hover:bg-black/80 transition-all hover:scale-105 shadow-lg backdrop-blur-sm border border-white/10"
+                aria-label="Toggle mute"
+              >
+                {isMuted ? (
+                  <SpeakerSimpleX size={22} weight="bold" />
+                ) : (
+                  <SpeakerSimpleHigh size={22} weight="bold" />
+                )}
+              </button>
+
+              {/* Volume slider fullscreen */}
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={volume}
+                onChange={(e) => changeVolume(Number(e.target.value))}
+                className="h-2 w-32 accent-primary-500 cursor-pointer"
+                aria-label="Volume"
+              />
             </div>
           </div>
         )}
@@ -1515,10 +1659,10 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
 
         {/* Top Progress Bar */}
         {!isFullscreen && (
-          <div className={`absolute top-0 left-0 right-0 z-[999] transition-all duration-300 ${
-            showControls ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2'
+          <div className={`absolute bottom-0 left-0 right-0 z-[999] transition-all duration-300 ${
+            showControls ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'
           }`}>
-            <div className="bg-gradient-to-b from-black/80 via-black/40 to-transparent p-4 pb-8">
+            <div className="bg-gradient-to-t from-black/80 via-black/40 to-transparent p-4 pt-8">
               {/* Professional Video Controls Overlay */}
               <div className="flex items-center justify-between mb-4">
                 {/* Left Controls */}
@@ -1584,6 +1728,28 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                   >
                     <FastForward size={18} weight="fill" />
                   </button>
+
+                  {/* Mute / Unmute */}
+                  <button
+                    onClick={toggleMute}
+                    className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all hover:scale-105 backdrop-blur-sm"
+                  >
+                    {isMuted ? (
+                      <SpeakerSimpleX size={18} weight="fill" />
+                    ) : (
+                      <SpeakerSimpleHigh size={18} weight="fill" />
+                    )}
+                  </button>
+
+                  {/* Volume Slider */}
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={volume}
+                    onChange={(e) => changeVolume(Number(e.target.value))}
+                    className="h-2 w-24 accent-primary-500 cursor-pointer"
+                  />
                 </div>
 
                 {/* Right Controls */}
@@ -1605,7 +1771,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                     
                     {/* Speed Options Dropdown */}
                     {showSpeedOptions && (
-                      <div className="absolute top-full right-0 mt-2 bg-black/90 backdrop-blur-sm rounded-lg shadow-lg border border-white/20 py-2 z-50 min-w-[80px]">
+                      <div className="absolute bottom-full right-0 mb-2 bg-black/90 backdrop-blur-sm rounded-lg shadow-lg border border-white/20 py-2 z-50 min-w-[80px]">
                         <div className="px-3 py-1 text-xs font-medium text-white/70 border-b border-white/20 mb-1">
                           Speed
                         </div>
@@ -1702,6 +1868,33 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
             className="h-full w-full"
             onStateChange={onStateChange}
           />
+        </div>
+
+        {/* Click / pause overlay */}
+        <div
+          className={`absolute inset-0 z-[500] cursor-pointer transition-colors duration-200 flex items-center justify-center ${
+            isPlayed ? "bg-transparent" : "bg-black/70 backdrop-blur-sm"
+          }`}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (isPlayed) {
+              togglePause();
+            } else {
+              togglePlay();
+            }
+          }}
+          onDoubleClick={(e) => {
+            e.stopPropagation();
+            toggleFullscreen();
+          }}
+        >
+          {!isPlayed && (
+            <button
+              className="p-4 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all hover:scale-105 backdrop-blur-sm"
+            >
+              <Play size={32} weight="fill" />
+            </button>
+          )}
         </div>
 
         {/* Question Overlay */}

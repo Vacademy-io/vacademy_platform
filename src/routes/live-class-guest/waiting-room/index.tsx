@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { z } from "zod";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useSessionDetails } from "../-hooks/useSessionDetails";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { CountdownTimer } from "@/routes/study-library/live-class/waiting-room/-components/CountdownTimer";
@@ -20,7 +20,7 @@ export const Route = createFileRoute("/live-class-guest/waiting-room/")({
 
 function GuestWaitingRoomComponent() {
   const [thumbnail, setThumbnail] = useState<string | null>(null);
-  const { sessionId, guestId   } = Route.useSearch();
+  const { sessionId, guestId } = Route.useSearch();
   const navigate = useNavigate();
   const { mutateAsync: markAttendance } = useMarkAttendance();
   const {
@@ -28,6 +28,7 @@ function GuestWaitingRoomComponent() {
     isLoading,
     error,
   } = useSessionDetails(sessionId);
+  const [sessionStarted, setSessionStarted] = useState(false);
 
   const fetchThumbnail = async () => {
     if (sessionDetails?.thumbnailFileId) {
@@ -42,108 +43,117 @@ function GuestWaitingRoomComponent() {
     }
   }, [sessionDetails]);
 
-  // Handle session start
-  useEffect(() => {
-    if (sessionDetails) {
-      const checkSessionStatus = async () => {
+  // Handle session redirect
+  const handleSessionRedirect = useCallback(async () => {
+    if (!sessionDetails || !sessionDetails.defaultMeetLink || sessionStarted) return;
 
-        const now = new Date();
-        const sessionDate = new Date(
-          `${sessionDetails?.meetingDate}T${sessionDetails?.scheduleStartTime}`
+    try {
+      setSessionStarted(true); // Prevent multiple redirects
+      // Mark attendance before redirecting
+      await markAttendance({
+        sessionId: sessionDetails.sessionId,
+        scheduleId: sessionId,
+        userSourceType: "EXTERNAL_USER",
+        userSourceId: guestId,
+        details: "Guest joined live class from waiting room",
+      });
+
+      if (
+        sessionDetails.sessionStreamingServiceType ===
+        SessionStreamingServiceType.EMBED
+      ) {
+        navigate({
+          to: "/live-class-guest/embed",
+          search: { sessionId },
+        });
+      } else {
+        window.open(
+          sessionDetails.defaultMeetLink,
+          "_blank",
+          "noopener,noreferrer"
         );
-        const waitingRoomStart = new Date(sessionDate);
-        waitingRoomStart.setMinutes(
-          waitingRoomStart.getMinutes() - (sessionDetails?.waitingRoomTime ?? 0)
+        // Navigate back to registration page
+        navigate({
+          to: "/register/live-class",
+          search: { sessionId: sessionDetails.sessionId },
+        });
+      }
+    } catch (error) {
+      console.error("Failed to mark attendance:", error);
+      toast.error("Failed to mark attendance");
+      // Still proceed with redirection
+      if (
+        sessionDetails.sessionStreamingServiceType ===
+        SessionStreamingServiceType.EMBED
+      ) {
+        navigate({
+          to: "/live-class-guest/embed",
+          search: { sessionId },
+        });
+      } else {
+        window.open(
+          sessionDetails.defaultMeetLink,
+          "_blank",
+          "noopener,noreferrer"
         );
-
-        // Check if we're in waiting room period or main session
-        const isInWaitingRoom = now >= waitingRoomStart && now < sessionDate;
-        const isInMainSession = now >= sessionDate;
-
-        // Case 1: Session has already started.
-        if (isInMainSession) {
-          if (sessionDetails.defaultMeetLink) {
-            try {
-              // Mark attendance before redirecting
-              await markAttendance({
-                sessionId: sessionDetails.sessionId,
-                scheduleId: sessionId,
-                userSourceType: "EXTERNAL_USER",
-                userSourceId: guestId,
-                details: "Guest joined live class from waiting room",
-              });
-
-              if (
-                sessionDetails.sessionStreamingServiceType ===
-                SessionStreamingServiceType.EMBED
-              ) {
-                navigate({
-                  to: "/live-class-guest/embed",
-                  search: { sessionId },
-                });
-              } else {
-                window.open(
-                  sessionDetails.defaultMeetLink,
-                  "_blank",
-                  "noopener,noreferrer"
-                );
-                // Navigate back to registration page
-                navigate({
-                  to: "/register/live-class",
-                  search: { sessionId: sessionDetails.sessionId },
-                });
-              }
-            } catch (error) {
-              console.error("Failed to mark attendance:", error);
-              toast.error("Failed to mark attendance");
-              // Still proceed with redirection
-              if (
-                sessionDetails.sessionStreamingServiceType ===
-                SessionStreamingServiceType.EMBED
-              ) {
-                navigate({
-                  to: "/live-class-guest/embed",
-                  search: { sessionId },
-                });
-              } else {
-                window.open(
-                  sessionDetails.defaultMeetLink,
-                  "_blank",
-                  "noopener,noreferrer"
-                );
-                navigate({
-                  to: "/register/live-class",
-                  search: { sessionId: sessionDetails.sessionId },
-                });
-              }
-            }
-          }
-        }
-        else if(isInWaitingRoom){
-
-        }
-        // Case 2: It's too early for the waiting room.
-        else{
-          toast.info("The waiting room is not open yet.", {
-            description: `It will open ${sessionDetails.waitingRoomTime} minutes before the session starts.`,
-          });
-          navigate({
-            to: "/register/live-class",
-            search: { sessionId: sessionDetails.sessionId },
-          });
-        }
-        // Case 3: We are in the waiting room window. Let the component render.
-      };
-
-      // Check immediately
-      checkSessionStatus();
-
-      // Check every 30 seconds
-      const timer = setInterval(checkSessionStatus, 30000);
-
-      return () => clearInterval(timer);
+        navigate({
+          to: "/register/live-class",
+          search: { sessionId: sessionDetails.sessionId },
+        });
+      }
     }
-  }, [sessionDetails, navigate, markAttendance, sessionId]);
+  }, [sessionDetails, navigate, markAttendance, sessionId, guestId, sessionStarted]);
+
+  // Handle session start with more frequent checks
+  useEffect(() => {
+    if (!sessionDetails) return;
+
+    const checkSessionStatus = () => {
+      const now = new Date();
+      const sessionDate = new Date(
+        `${sessionDetails?.meetingDate}T${sessionDetails?.scheduleStartTime}`
+      );
+      const waitingRoomStart = new Date(sessionDate);
+      waitingRoomStart.setMinutes(
+        waitingRoomStart.getMinutes() - (sessionDetails?.waitingRoomTime ?? 0)
+      );
+
+      // Check if we're in waiting room period or main session
+      const isInWaitingRoom = now >= waitingRoomStart && now < sessionDate;
+      const isInMainSession = now >= sessionDate;
+
+      // Case 1: Session has already started.
+      if (isInMainSession) {
+        handleSessionRedirect();
+      }
+      // Case 2: It's too early for the waiting room.
+      else if (!isInWaitingRoom) {
+        toast.info("The waiting room is not open yet.", {
+          description: `It will open ${sessionDetails.waitingRoomTime} minutes before the session starts.`,
+        });
+        navigate({
+          to: "/register/live-class",
+          search: { sessionId: sessionDetails.sessionId },
+        });
+      }
+      // Case 3: We are in the waiting room window. Let the component render.
+    };
+
+    // Check immediately
+    checkSessionStatus();
+
+    // Check every second instead of every 30 seconds
+    const timer = setInterval(checkSessionStatus, 1000);
+
+    return () => clearInterval(timer);
+  }, [sessionDetails, navigate, handleSessionRedirect]);
+
+  // Handle timer complete event
+  const handleTimerComplete = () => {
+    if (sessionDetails) {
+      handleSessionRedirect();
+    }
+  };
 
   if (isLoading) {
     return <DashboardLoader />;
@@ -169,6 +179,7 @@ function GuestWaitingRoomComponent() {
             <CountdownTimer
               startTime={`${sessionDetails.meetingDate}T${sessionDetails.scheduleStartTime}`}
               waitingRoomTime={sessionDetails.waitingRoomTime}
+              onTimeUp={handleTimerComplete}
             />
           )}
         </div>

@@ -3,11 +3,13 @@ import { useEffect, useState } from "react";
 interface CountdownTimerProps {
   startTime: string;
   waitingRoomTime: number;
+  onTimeUp?: () => void; // Add callback for when time is up
 }
 
 export function CountdownTimer({
   startTime,
   waitingRoomTime,
+  onTimeUp,
 }: CountdownTimerProps) {
   const [timeLeft, setTimeLeft] = useState<{
     hours: number;
@@ -51,14 +53,17 @@ export function CountdownTimer({
       const newTimeLeft = calculateTimeLeft();
       setTimeLeft(newTimeLeft);
 
-      // If time is up, clear the interval
+      // If time is up, clear the interval and trigger callback
       if (!newTimeLeft) {
         clearInterval(timer);
+        if (onTimeUp) {
+          onTimeUp();
+        }
       }
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [startTime, waitingRoomTime]);
+  }, [startTime, waitingRoomTime, onTimeUp]);
 
   if (!timeLeft) {
     return null;

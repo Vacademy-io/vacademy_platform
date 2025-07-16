@@ -9,6 +9,25 @@ import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { LinkType } from "@/routes/register/live-class/-types/enum";
 import YouTubePlayerWrapper from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/youtube-player";
 import ZoomEmbedPlayer from "./-components/ZoomEnbedPlayer";
+
+// Helper to extract YouTube video ID from various URL formats
+const extractYouTubeVideoId = (url: string | undefined): string | undefined => {
+  if (!url) return undefined;
+
+  // Regular expressions to capture the 11-character YouTube video ID
+  const regexList = [
+    /(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|embed)\/|.*[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/, // Standard YouTube URLs
+  ];
+
+  for (const regex of regexList) {
+    const match = url.match(regex);
+    if (match && match[1]) return match[1];
+  }
+
+  // If regex fails and the string length is 11 we assume it's already an ID
+  return url.length === 11 ? url : undefined;
+};
+
 export const Route = createFileRoute("/study-library/live-class/embed/")({
   validateSearch: z.object({
     sessionId: z.string(),
@@ -36,11 +55,19 @@ function EmbedComponent() {
   const renderEmbededSession = () => {
     if (!sessionDetails?.linkType) return null;
 
-    if (sessionDetails.linkType === LinkType.YOUTUBE) {
-      // Extract video ID from URL if it's a full YouTube URL
-      const videoId =
-        sessionDetails.defaultMeetLink?.split("v=")[1] ||
-        sessionDetails.defaultMeetLink;
+    if (
+      sessionDetails.linkType === LinkType.YOUTUBE ||
+      sessionDetails.linkType === LinkType.YOUTUBE_RECORDED
+    ) {
+      const videoId = extractYouTubeVideoId(sessionDetails.defaultMeetLink);
+
+      if (!videoId) {
+        return (
+          <div className="text-center text-red-500">
+            Invalid YouTube link provided.
+          </div>
+        );
+      }
 
       return (
         <div className="w-full h-full">
@@ -49,7 +76,10 @@ function EmbedComponent() {
       );
     }
 
-    if (sessionDetails.linkType === LinkType.ZOOM_RECORDED) {
+    if (
+      sessionDetails.linkType === LinkType.ZOOM ||
+      sessionDetails.linkType === LinkType.ZOOM_RECORDED
+    ) {
       return <ZoomEmbedPlayer recordingUrl={sessionDetails.defaultMeetLink} />;
     }
 

@@ -21,6 +21,8 @@ import { JupyterNotebookSlide } from "./jupyter-notebook-slide";
 import { ScratchProjectSlide } from "./scratch-project-slide";
 import { SplitScreenVideoSlide } from "./split-screen-video-slide";
 import { useDoubtSidebarStore } from "@/stores/study-library/doubt-sidebar-store";
+import QuizViewer from "./quiz-viewer";
+import { Slide } from "@/hooks/study-library/use-slides";
 
 export const SlideMaterial = () => {
   const { activeItem } = useContentStore();
@@ -112,17 +114,6 @@ export const SlideMaterial = () => {
       // Add artificial delay for smooth loading experience
       await new Promise((resolve) => setTimeout(resolve, 300));
 
-      console.log(
-        "[SlideMaterial] Loading slide with source_type:",
-        activeItem.source_type,
-        "activeItem:",
-        activeItem
-      );
-      console.log("[SlideMaterial] document_slide:", activeItem.document_slide);
-      console.log(
-        "[SlideMaterial] document_slide type:",
-        activeItem.document_slide?.type
-      );
       switch (activeItem.source_type) {
         case "VIDEO": {
           if (generationId !== loadGenerationRef.current) return;
@@ -199,7 +190,92 @@ export const SlideMaterial = () => {
           break;
         }
 
+        case "QUIZ": {
+          // Support for new quiz slide structure
+          const slideWithQuiz = activeItem as Slide & { quiz_slide?: unknown };
+          const quizSlide = slideWithQuiz.quiz_slide as { questions?: unknown[] } | undefined;
+          const questions = Array.isArray(quizSlide?.questions) ? quizSlide!.questions : [];
+
+          // Map questions to QuizViewer format
+          const mappedQuestions = questions.map((q: unknown) => {
+            const question = q as {
+              id: string;
+              parent_rich_text?: { content?: string };
+              options?: Array<{ id?: string; text?: { content?: string } }>;
+              question_type?: string;
+            };
+            return {
+              id: question.id,
+              text_data: { content: question.parent_rich_text?.content || "" },
+              question_type: question.question_type,
+              options: Array.isArray(question.options) && question.options.length > 0
+                ? question.options.map((opt, idx) => ({
+                    id: opt.id || String(idx),
+                    text: { content: opt.text?.content || "Option" },
+                  }))
+                : [
+                    // If no options, provide a default for numeric/text input
+                    { id: "input", text: { content: "(Enter your answer)" } }
+                  ]
+            };
+          });
+
+          setContent(
+            <QuizViewer
+              questions={mappedQuestions}
+              onAnswer={async (questionId, selectedOptionId) => {
+                // Send/save answer data here if needed
+                await handleQuestionSubmit(String(selectedOptionId));
+              }}
+              onComplete={() => {
+                // Optionally handle quiz completion
+              }}
+            />
+          );
+          break;
+        }
+
         case "QUESTION": {
+          // Fallback: if quiz_slide is present, use it
+          const slideWithQuiz = activeItem as Slide & { quiz_slide?: unknown };
+          const quizSlide = slideWithQuiz.quiz_slide as { questions?: unknown[] } | undefined;
+          if (quizSlide && Array.isArray(quizSlide.questions)) {
+            const questions = quizSlide.questions;
+            const mappedQuestions = questions.map((q: unknown) => {
+              const question = q as {
+                id: string;
+                parent_rich_text?: { content?: string };
+                options?: Array<{ id?: string; text?: { content?: string } }>;
+                question_type?: string;
+              };
+              return {
+                id: question.id,
+                text_data: { content: question.parent_rich_text?.content || "" },
+                question_type: question.question_type,
+                options: Array.isArray(question.options) && question.options.length > 0
+                  ? question.options.map((opt, idx) => ({
+                      id: opt.id || String(idx),
+                      text: { content: opt.text?.content || "Option" },
+                    }))
+                  : [
+                      { id: "input", text: { content: "(Enter your answer)" } }
+                    ]
+              };
+            });
+            setContent(
+              <QuizViewer
+                questions={mappedQuestions}
+                onAnswer={async (questionId, selectedOptionId) => {
+                  await handleQuestionSubmit(String(selectedOptionId));
+                }}
+                onComplete={() => {
+                  // Optionally handle quiz completion
+                }}
+              />
+            );
+            break;
+          }
+          // Legacy: single question slide
           if (activeItem.question_slide) {
             setContent(
               <div className="h-full w-full animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -209,6 +285,29 @@ export const SlideMaterial = () => {
                     onSubmit={handleQuestionSubmit}
                   />
                 </div>
+              </div>
+            );
+          } else {
+            setContent(
+              <div className="flex h-[500px] flex-col items-center justify-center rounded-lg py-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="bg-red-50 rounded-full p-6 transition-transform duration-300">
+                  <svg
+                    className="w-8 h-8 text-red-500"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                </div>
+                <p className="text-red-500 mt-4 animate-in fade-in duration-700 delay-200 text-center">
+                  Quiz data not available
+                </p>
               </div>
             );
           }

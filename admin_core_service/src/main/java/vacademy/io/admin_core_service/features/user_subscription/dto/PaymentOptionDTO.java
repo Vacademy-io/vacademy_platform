@@ -20,4 +20,5 @@ public class PaymentOptionDTO {
     private String type;
     private boolean requireApproval;
     private List<PaymentPlanDTO> paymentPlans;
+    private String paymentOptionMetadataJson;
 }

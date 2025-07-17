@@ -18,7 +18,7 @@ public class PaymentOptionController {
     private PaymentOptionService paymentOptionService;
 
     @PostMapping
-    public ResponseEntity<Boolean> savePaymentOption(PaymentOptionDTO paymentOptionDTO) {
+    public ResponseEntity<Boolean> savePaymentOption(@RequestBody PaymentOptionDTO paymentOptionDTO) {
         return ResponseEntity.ok(paymentOptionService.savePaymentOption(paymentOptionDTO));
     }
 

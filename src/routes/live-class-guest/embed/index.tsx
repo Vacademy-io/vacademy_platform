@@ -21,26 +21,50 @@ function GuestEmbedComponent() {
     error,
   } = useSessionDetails(sessionId);
 
+  // Utility: extract the 11-character YouTube ID from any common URL form
+  const extractYouTubeVideoId = (url: string): string | null => {
+    if (!url) return null;
+    const regExp =
+      /(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|v\/))([a-zA-Z0-9_-]{11})/;
+    const match = url.match(regExp);
+    return match ? match[1] : null;
+  };
+
   const renderEmbededSession = () => {
     if (!sessionDetails?.linkType) return null;
 
-    if (sessionDetails.linkType === LinkType.YOUTUBE) {
-      // Extract video ID from URL if it's a full YouTube URL
+    // ----- YouTube (live or recorded) -----
+    if (
+      sessionDetails.linkType === LinkType.YOUTUBE ||
+      sessionDetails.linkType === LinkType.YOUTUBE_RECORDED
+    ) {
       const videoId =
-        sessionDetails.defaultMeetLink?.split("v=")[1] ||
+        extractYouTubeVideoId(sessionDetails.defaultMeetLink) ||
         sessionDetails.defaultMeetLink;
 
+      const allowPlayPause = (
+        (sessionDetails as any)?.allowPlayPause ??
+        (sessionDetails as any)?.isPlayPauseEnabled ??
+        (sessionDetails as any)?.playPauseEnabled ??
+        (sessionDetails as any)?.enablePlayPause ??
+        true
+      );
       return (
         <div className="w-full h-full">
-          <YouTubePlayerWrapper videoId={videoId} />
+          <YouTubePlayerWrapper videoId={videoId} allowPlayPause={allowPlayPause} />
         </div>
       );
     }
 
-    if (sessionDetails.linkType === LinkType.ZOOM_RECORDED) {
+    // ----- Zoom (live or recorded) -----
+    if (
+      sessionDetails.linkType === LinkType.ZOOM_RECORDED ||
+      sessionDetails.linkType === LinkType.ZOOM
+    ) {
       return <ZoomEmbedPlayer recordingUrl={sessionDetails.defaultMeetLink} />;
     }
 
+    // TODO: handle Google Meet etc.
     return null;
   };
 

@@ -70,6 +70,10 @@ export default function LiveClassRegistrationPage() {
   );
   const [registrationResponse, setRegistrationResponse] = useState<string>("");
   const { mutateAsync: registerGuestUser } = useLiveSessionGuestRegistration();
+  const [verifiedEmail, setVerifiedEmail] = useState<string>("");
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [isUserAlreadyRegistered, setIsUserAlreadyRegistered] =
+    useState<boolean>(false);
 
   const { mutateAsync: markAttendance } = useMarkAttendance();
 
@@ -107,14 +111,14 @@ export default function LiveClassRegistrationPage() {
       const isInWaitingRoom = now >= waitingRoomStart && now < sessionDate;
       const isInMainSession = now >= sessionDate;
       console.log(sessionDate, waitingRoomStart);
-      console.log("iswaiting room " , isInWaitingRoom);
+      console.log("iswaiting room ", isInWaitingRoom);
 
       const handleSessionNavigation = async () => {
         console.log(sessionDetails?.defaultMeetLink);
         console.log(isInWaitingRoom);
         console.log(isInWaitingRoom && sessionDetails?.defaultMeetLink);
         if (isInWaitingRoom) {
-          console.log('here ')
+          console.log("here ");
           console.log(earliestScheduleId);
           console.log(registrationResponse);
           await navigate({
@@ -171,7 +175,18 @@ export default function LiveClassRegistrationPage() {
   const schema = generateZodSchema(data?.customFields);
   const form = useForm({
     resolver: zodResolver(schema),
+    defaultValues: {
+      // Set verified email as default value
+      email: verifiedEmail,
+    },
   });
+
+  // Update form email when verified email changes
+  useEffect(() => {
+    if (verifiedEmail) {
+      form.setValue("email", verifiedEmail);
+    }
+  }, [verifiedEmail, form]);
   const verificationForm = useForm({
     resolver: zodResolver(verifyEmailSchema),
     defaultValues: {
@@ -188,7 +203,7 @@ export default function LiveClassRegistrationPage() {
 
   const onSubmit = async (formValues: RegistrationFormValues) => {
     let payload;
-    const email = String(formValues.email)
+    const email = String(formValues.email);
     try {
       payload = transformToGuestRegistrationDTO(
         formValues,
@@ -205,14 +220,14 @@ export default function LiveClassRegistrationPage() {
       const response = await registerGuestUser(payload);
       setRegistrationResponse(response);
       if (response) {
-         await Storage.set({
-            key : "live-session-email",
-            value: email, // Directly store the token without stringifying
-          });
-         await Storage.set({
-            key : "live-session-guestId",
-            value: response, // Directly store the token without stringifying
-          });
+        await Storage.set({
+          key: "live-session-email",
+          value: email, // Directly store the token without stringifying
+        });
+        await Storage.set({
+          key: "live-session-guestId",
+          value: response, // Directly store the token without stringifying
+        });
         toast.success("Registration successful");
         fetchSessionDetail(earliestScheduleId || "");
       }
@@ -240,12 +255,14 @@ export default function LiveClassRegistrationPage() {
       });
 
       if (response.data === true) {
-        toast.success("Email already registered");
+        setIsUserAlreadyRegistered(true);
+        toast.success("OTP successful - User already registered");
         if (sessionId) {
           fetchSessionDetail(earliestScheduleId || "");
         }
       } else {
-        toast.error("Email not registered");
+        setIsUserAlreadyRegistered(false);
+        toast.success("Email registered and OTP successful");
       }
     } catch (error) {
       console.error("Failed to check email registration:", error);
@@ -292,7 +309,8 @@ export default function LiveClassRegistrationPage() {
       );
 
       if (response.status === 200) {
-        toast.success("OTP verified successfully");
+        // Store verified email for later use
+        setVerifiedEmail(email);
         checkEmailRegistration(email);
         handleCloseAlertDialog();
       } else {
@@ -487,9 +505,20 @@ export default function LiveClassRegistrationPage() {
                                     required={responseField.mandatory}
                                     size="large"
                                     label={responseField.fieldName}
+                                    disabled={
+                                      responseField.fieldKey === "email" &&
+                                      verifiedEmail !== ""
+                                    }
                                     {...field}
                                   />
                                 </FormControl>
+                                {responseField.fieldKey === "email" &&
+                                  verifiedEmail !== "" && (
+                                    <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
+                                      <span>✓</span> Email verified and
+                                      auto-filled
+                                    </p>
+                                  )}
                               </FormItem>
                             )}
                           />

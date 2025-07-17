@@ -72,6 +72,7 @@ interface YouTubePlayerProps {
     question_type?: string;
     auto_evaluation_json?: string;
   }>;
+  allowPlayPause?: boolean; // If false, play/pause controls are disabled
 }
 
 export const formatTime = (timeInSeconds: number) => {
@@ -85,6 +86,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   onTimeUpdate,
   ms = 0,
   questions = [],
+  allowPlayPause = true,
 }) => {
   const { activeItem } = useContentStore();
   const { addActivity } = useTrackingStore();
@@ -129,6 +131,9 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [showSpeedOptions, setShowSpeedOptions] = useState(false);
   const speedOptions = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+
+  // Volume control state
+  const [volume, setVolume] = useState(100); // 0 - 100
 
   // UI control states
   const [showControls, setShowControls] = useState(true);
@@ -833,6 +838,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   };
 
   const togglePause = () => {
+    if (!allowPlayPause) return;
     setIsPlayed(false);
     console.log("video is paused");
     if (player) {
@@ -859,6 +865,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   };
 
   const togglePlay = () => {
+    if (!allowPlayPause) return;
     setIsPlayed(true);
     console.log("Video is played");
     if (player) player.playVideo();
@@ -870,6 +877,12 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     console.log("Player ready");
     setPlayer(event.target);
     setPlayerReady(true);
+    try {
+      const vol = await event.target.getVolume();
+      setVolume(typeof vol === "number" ? vol : 100);
+    } catch (err) {
+      console.error("Error getting initial volume", err);
+    }
 
     // Get the iframe element
     try {
@@ -1196,6 +1209,19 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     }
   }, [player, playerReady]);
 
+  // Handle volume change
+  const handleVolumeChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const newVolume = parseInt(e.target.value, 10);
+    setVolume(newVolume);
+    if (player) {
+      try {
+        player.setVolume(newVolume);
+      } catch (err) {
+        console.error("Error setting volume", err);
+      }
+    }
+  }, [player]);
+
   // Toggle speed options dropdown
   const toggleSpeedOptions = useCallback(() => {
     setShowSpeedOptions(prev => !prev);
@@ -1258,6 +1284,26 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     }
   }, [player, playerReady]);
 
+  // Toggle play / pause on SINGLE click anywhere on the video (but ignore clicks on inner controls)
+  const handleSingleClick = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      // Prevent toggle if the click originated from a descendant element (e.g.
+      // the control buttons). We only want pure clicks on the video surface.
+      if (event.target !== event.currentTarget) return;
+
+      if (!player || !playerReady) return;
+
+      if (!allowPlayPause) return;
+
+      if (isPlayed) {
+        togglePause();
+      } else {
+        togglePlay();
+      }
+    },
+    [player, playerReady, isPlayed, togglePause, togglePlay, allowPlayPause]
+  );
+ 
   // Handle mouse movement to show/hide controls
   const handleMouseMoveOnVideo = useCallback(() => {
     console.log("Mouse move detected, isFullscreen:", isFullscreen);
@@ -1379,6 +1425,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         onMouseMove={handleMouseMoveOnVideo}
         onMouseEnter={handleMouseMoveOnVideo}
         onDoubleClick={handleDoubleClick}
+        onClick={handleSingleClick}
       >
         {/* Verification overlay - only shown in fullscreen */}
         {showVerification && isFullscreen && (
@@ -1461,7 +1508,8 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
               {isPlayed ? (
                 <button
                   onClick={togglePause}
-                  className="p-4 rounded-full bg-black/60 text-white hover:bg-black/80 transition-all hover:scale-105 shadow-lg backdrop-blur-sm border border-white/10"
+                  className={`p-4 rounded-full bg-black/60 text-white transition-all shadow-lg backdrop-blur-sm border border-white/10 ${allowPlayPause ? 'hover:bg-black/80 hover:scale-105' : 'opacity-50 cursor-not-allowed'}`}
+                  disabled={!allowPlayPause}
                   aria-label="Pause"
                 >
                   <Pause size={28} weight="bold" />
@@ -1469,7 +1517,8 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
               ) : (
                 <button
                   onClick={togglePlay}
-                  className="p-4 rounded-full bg-black/60 text-white hover:bg-black/80 transition-all hover:scale-105 shadow-lg backdrop-blur-sm border border-white/10"
+                  className={`p-4 rounded-full bg-black/60 text-white transition-all shadow-lg backdrop-blur-sm border border-white/10 ${allowPlayPause ? 'hover:bg-black/80 hover:scale-105' : 'opacity-50 cursor-not-allowed'}`}
+                  disabled={!allowPlayPause}
                   aria-label="Play"
                 >
                   <Play size={28} weight="bold" />
@@ -1527,16 +1576,16 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                   {isPlayed ? (
                     <button
                       onClick={togglePause}
-                      className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all hover:scale-105 backdrop-blur-sm"
-                      disabled={!playerReady}
+                      className={`p-2 rounded-full text-white transition-all backdrop-blur-sm ${allowPlayPause ? 'bg-white/20 hover:bg-white/30' : 'bg-white/10 opacity-50 cursor-not-allowed'}`}
+                      disabled={!allowPlayPause}
                     >
                       <Pause size={20} weight="fill" />
                     </button>
                   ) : (
                     <button
                       onClick={togglePlay}
-                      className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all hover:scale-105 backdrop-blur-sm"
-                      disabled={!playerReady}
+                      className={`p-2 rounded-full text-white transition-all backdrop-blur-sm ${allowPlayPause ? 'bg-white/20 hover:bg-white/30' : 'bg-white/10 opacity-50 cursor-not-allowed'}`}
+                      disabled={!allowPlayPause}
                     >
                       <Play size={20} weight="fill" />
                     </button>
@@ -1588,6 +1637,18 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
 
                 {/* Right Controls */}
                 <div className="flex items-center gap-3">
+                  {/* Volume Slider */}
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={volume}
+                      onChange={handleVolumeChange}
+                      className="h-1 w-24 cursor-pointer accent-primary-500"
+                    />
+                  </div>
+
                   {/* Playback Speed Control */}
                   <div className="relative speed-control-container">
                     <button
@@ -1775,11 +1836,12 @@ interface YouTubePlayerWrapperProps {
     auto_evaluation_json?: string;
   }>;
   ms?: number;
+  allowPlayPause?: boolean;
 }
 
 // This is a wrapper component that exposes the YouTube player methods
 const YouTubePlayerWrapper = forwardRef<any, YouTubePlayerWrapperProps>(
-  ({ videoId, onTimeUpdate, questions, ms }, ref) => {
+  ({ videoId, onTimeUpdate, questions, ms, allowPlayPause }, ref) => {
     const playerRef = useRef<any>(null);
 
     // Expose methods to parent component
@@ -1826,6 +1888,7 @@ const YouTubePlayerWrapper = forwardRef<any, YouTubePlayerWrapperProps>(
         onTimeUpdate={handleTimeUpdate}
         questions={questions}
         ms={ms}
+        allowPlayPause={allowPlayPause}
       />
     );
   }

@@ -12,6 +12,7 @@ import vacademy.io.admin_core_service.features.learner_invitation.util.LearnerIn
 import vacademy.io.admin_core_service.features.packages.enums.PackageStatusEnum;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Group;
 import vacademy.io.common.institute.entity.Level;
 import vacademy.io.common.institute.entity.PackageEntity;
@@ -68,5 +69,9 @@ public class PackageSessionService {
             addLearnerInvitationDTOS.add(addLearnerInvitationDTO);
         }
         learnerInvitationService.createLearnerInvitationCodes(addLearnerInvitationDTOS,userDetails);
+    }
+
+    public PackageSession findById(String id){
+        return packageRepository.findById(id).orElseThrow(()->new VacademyException("Package Session not found"));
     }
 }

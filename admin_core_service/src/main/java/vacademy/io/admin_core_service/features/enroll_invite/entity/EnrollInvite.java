@@ -9,6 +9,7 @@ import lombok.Getter; // Added for consistency
 import lombok.NoArgsConstructor; // Added for consistency
 import lombok.Setter; // Added for consistency
 import org.hibernate.annotations.UuidGenerator; // Assuming UUID generation for IDs
+import vacademy.io.admin_core_service.features.enroll_invite.dto.EnrollInviteDTO;
 
 import java.sql.Date;
 import java.sql.Timestamp;
@@ -63,4 +64,19 @@ public class EnrollInvite {
 
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Timestamp updatedAt;
+
+    public EnrollInvite(EnrollInviteDTO enrollInviteDTO) {
+        this.id = enrollInviteDTO.getId();
+        this.name = enrollInviteDTO.getName();
+        this.endDate = enrollInviteDTO.getEndDate();
+        this.startDate = enrollInviteDTO.getStartDate();
+        this.inviteCode = enrollInviteDTO.getInviteCode();
+        this.status = enrollInviteDTO.getStatus();
+        this.instituteId = enrollInviteDTO.getInstituteId();
+        this.vendor = enrollInviteDTO.getVendor();
+        this.vendorId = enrollInviteDTO.getVendorId();
+        this.currency = enrollInviteDTO.getCurrency();
+        this.tag = enrollInviteDTO.getTag();
+        this.webPageMetaDataJson = enrollInviteDTO.getWebPageMetaDataJson();
+    }
 }

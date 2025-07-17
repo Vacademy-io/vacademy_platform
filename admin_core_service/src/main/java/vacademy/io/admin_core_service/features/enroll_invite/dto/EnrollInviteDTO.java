@@ -1,13 +1,15 @@
 package vacademy.io.admin_core_service.features.enroll_invite.dto;
 
-import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentOptionDTO;
+import lombok.Data;
 
-import java.util.Date;
+import java.sql.Date;
+import java.util.List;
 
+@Data
 public class EnrollInviteDTO {
     private String id;
     private String name;
-    private Date startDate;
+    private java.sql.Date startDate;
     private Date endDate;
     private String inviteCode;
     private String status;
@@ -17,5 +19,5 @@ public class EnrollInviteDTO {
     private String currency;
     private String tag;
     private String webPageMetaDataJson;
-    private PaymentOptionDTO paymentOption;
+    private List<PackageSessionToPaymentOptionDTO> packageSessionToPaymentOptions;
 }

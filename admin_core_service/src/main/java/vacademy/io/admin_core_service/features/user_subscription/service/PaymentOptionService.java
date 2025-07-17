@@ -9,6 +9,7 @@ import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentOpti
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentOptionRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.List;
 import java.util.Optional;
@@ -43,4 +44,7 @@ public class PaymentOptionService {
         return paymentOptionRepository.findTopByFiltersWithPlans(source,sourceId,tag,statuses,statuses);
     }
 
+    public PaymentOption findById(String id){
+        return paymentOptionRepository.findById(id).orElseThrow(()->new VacademyException("Payment Option not found"));
+    }
 }

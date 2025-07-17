@@ -1,0 +1,75 @@
+# Environment Variables Template for Vacademy Learner Dashboard
+# Copy this content to a .env file and update the values as needed
+
+# ===========================================
+# API Configuration
+# ===========================================
+VITE_API_BASE_URL=https://backend-stage.vacademy.io
+VITE_INSTITUTE_ID=c70f40a5-e4d3-4b6c-a498-e612d0d4b133
+
+# ===========================================
+# Firebase Configuration
+# Get these values from your Firebase project settings
+# ===========================================
+VITE_FIREBASE_API_KEY=your_firebase_api_key_here
+VITE_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your_project_id
+VITE_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
+VITE_FIREBASE_MESSAGING_SENDER_ID=123456789012
+VITE_FIREBASE_APP_ID=1:123456789012:web:abcdef123456
+VITE_FIREBASE_MEASUREMENT_ID=G-XXXXXXXXXX
+
+# ===========================================
+# Analytics Configuration
+# ===========================================
+VITE_AMPLITUDE_API_KEY=your_amplitude_api_key_here
+
+# ===========================================
+# App Configuration
+# ===========================================
+VITE_APP_NAME=Vacademy Learner
+VITE_APP_VERSION=1.0.3
+VITE_ENVIRONMENT=production
+
+# ===========================================
+# Feature Flags
+# ===========================================
+VITE_ENABLE_ANALYTICS=true
+VITE_ENABLE_PUSH_NOTIFICATIONS=true
+VITE_ENABLE_PROCTORING=true
+
+# ===========================================
+# Debug Settings (for development)
+# ===========================================
+VITE_DEBUG_MODE=false
+VITE_LOG_LEVEL=error
+
+# ===========================================
+# Docker-specific Configuration
+# ===========================================
+# Container port (internal)
+CONTAINER_PORT=80
+
+# Host port for development
+HOST_PORT=3000
+
+# Nginx worker processes (auto = number of CPU cores)
+NGINX_WORKER_PROCESSES=auto
+
+# ===========================================
+# Production Environment Overrides
+# Uncomment and modify for production deployment
+# ===========================================
+# VITE_API_BASE_URL=https://api.vacademy.io
+# VITE_ENVIRONMENT=production
+# VITE_DEBUG_MODE=false
+# VITE_LOG_LEVEL=error
+
+# ===========================================
+# Development Environment Overrides
+# Uncomment and modify for development
+# ===========================================
+# VITE_API_BASE_URL=http://localhost:8080
+# VITE_ENVIRONMENT=development
+# VITE_DEBUG_MODE=true
+# VITE_LOG_LEVEL=debug 

@@ -22,3 +22,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Docker
+.env
+.env.local
+.env.production
+.env.development
+docker-compose.override.yml
+logs/

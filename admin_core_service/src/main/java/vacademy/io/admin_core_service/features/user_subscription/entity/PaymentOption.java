@@ -42,6 +42,9 @@ public class PaymentOption {
     @Column(name = "type")
     private String type;
 
+    @Column(name = "payment_option_metadata_json")
+    private String paymentOptionMetadataJson;
+
     @Column(name = "require_approval")
     private boolean requireApproval = true;
 
@@ -66,7 +69,7 @@ public class PaymentOption {
         this.tag = paymentOptionDTO.getTag();
         this.type = paymentOptionDTO.getType();
         this.requireApproval = paymentOptionDTO.isRequireApproval();
-
+        this.paymentOptionMetadataJson = paymentOptionDTO.getPaymentOptionMetadataJson();
         if (paymentOptionDTO.getPaymentPlans() != null && !paymentOptionDTO.getPaymentPlans().isEmpty()) {
             this.paymentPlans = paymentOptionDTO.getPaymentPlans()
                     .stream()
@@ -85,6 +88,7 @@ public class PaymentOption {
                 .sourceId(this.sourceId)
                 .tag(this.tag)
                 .type(this.type)
+                .paymentOptionMetadataJson(this.paymentOptionMetadataJson)
                 .requireApproval(this.requireApproval)
                 .paymentPlans(this.paymentPlans != null
                         ? this.paymentPlans.stream()

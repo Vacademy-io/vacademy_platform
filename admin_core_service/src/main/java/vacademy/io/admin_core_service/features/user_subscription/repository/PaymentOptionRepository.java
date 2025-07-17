@@ -7,6 +7,7 @@ import org.springframework.stereotype.Repository;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface PaymentOptionRepository extends JpaRepository<PaymentOption, String> {
@@ -46,6 +47,29 @@ public interface PaymentOptionRepository extends JpaRepository<PaymentOption, St
             @Param("paymentPlanStatuses") List<String> paymentPlanStatuses,
             @Param("requireApproval") boolean requireApproval,
             @Param("notRequireApproval") boolean notRequireApproval
+    );
+
+    @Query("""
+    SELECT DISTINCT po
+    FROM PaymentOption po
+    LEFT JOIN FETCH po.paymentPlans pp
+    WHERE (:source IS NULL OR po.source = :source)
+      AND (:sourceId IS NULL OR po.sourceId = :sourceId)
+      AND (:tag IS NULL OR po.tag = :tag)
+      AND (:paymentOptionStatus IS NULL OR po.status IN :paymentOptionStatus)
+      AND (
+            :planStatuses IS NULL
+            OR pp IS NULL
+            OR pp.status IN :planStatuses
+          )
+    ORDER BY po.createdAt DESC
+""")
+    Optional<PaymentOption> findTopByFiltersWithPlans(
+            @Param("source") String source,
+            @Param("sourceId") String sourceId,
+            @Param("tag") String tag,
+            @Param("paymentOptionStatus") List<String> paymentOptionStatus,
+            @Param("planStatuses") List<String> planStatuses
     );
 
 }

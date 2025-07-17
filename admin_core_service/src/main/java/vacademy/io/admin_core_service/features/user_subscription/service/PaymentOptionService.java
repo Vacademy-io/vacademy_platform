@@ -11,6 +11,7 @@ import vacademy.io.admin_core_service.features.user_subscription.repository.Paym
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class PaymentOptionService {
@@ -36,6 +37,10 @@ public class PaymentOptionService {
                 paymentOptionFilterDTO.isNotRequireApproval()
                 );
         return paymentOptions.stream().map(PaymentOption::mapToPaymentOptionDTO).toList();
+    }
+
+    public Optional<PaymentOption> getPaymentOption(String source, String sourceId,String tag,List<String>statuses){
+        return paymentOptionRepository.findTopByFiltersWithPlans(source,sourceId,tag,statuses,statuses);
     }
 
 }

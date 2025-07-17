@@ -50,6 +50,8 @@ public class CouponCode {
     @Column(name = "allowed_email_ids")
     private String allowedEmailIds;
 
+    private boolean isUniversal;
+
     @Column(name = "tag")
     private String tag;
 

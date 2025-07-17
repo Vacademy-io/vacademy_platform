@@ -7,19 +7,12 @@ import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite
 import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionLearnerInvitationToPaymentOption;
 import vacademy.io.admin_core_service.features.enroll_invite.enums.EnrollInviteTag;
 import vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollInviteRepository;
-import vacademy.io.admin_core_service.features.user_subscription.entity.AppliedCouponDiscount;
-import vacademy.io.admin_core_service.features.user_subscription.entity.EnrollInviteDiscountOption;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
-import vacademy.io.admin_core_service.features.user_subscription.enums.CouponCodeSource;
-import vacademy.io.admin_core_service.features.user_subscription.enums.CouponCodeTag;
 import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentOptionSource;
 import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentOptionTag;
-import vacademy.io.admin_core_service.features.user_subscription.repository.AppliedCouponDiscountRepository;
 import vacademy.io.admin_core_service.features.user_subscription.service.AppliedCouponDiscountService;
 import vacademy.io.admin_core_service.features.user_subscription.service.EnrollInviteDiscountOptionService;
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentOptionService;
-import vacademy.io.common.auth.model.CustomUserDetails;
-import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.session.PackageSession;
 
 import java.security.SecureRandom;
@@ -28,7 +21,7 @@ import java.util.List;
 import java.util.Optional;
 
 @Service
-public class EnrollInviteService {
+public class DefaultEnrollInviteService {
 
     @Autowired
     private EnrollInviteRepository repository;
@@ -79,7 +72,7 @@ public class EnrollInviteService {
             PackageSessionLearnerInvitationToPaymentOption packageSessionLearnerInvitationToPaymentOption = new PackageSessionLearnerInvitationToPaymentOption(enrollInvite, packageSession, paymentOption,StatusEnum.ACTIVE.name());
             packageSessionLearnerInvitationToPaymentOption = packageSessionLearnerInvitationToPaymentOptionService.create(packageSessionLearnerInvitationToPaymentOption);
         } else {
-            throw new VacademyException("No default payment option found to create package session enroll invite!!!");
+            return;
         }
 
         repository.save(enrollInvite);

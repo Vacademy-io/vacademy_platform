@@ -8,7 +8,7 @@ import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessi
 import java.util.List;
 
 @Repository
-public interface DiscountOptionRepository extends JpaRepository<EnrollInviteDiscountOption, String> {
+public interface EnrollInviteDiscountOptionRepository extends JpaRepository<EnrollInviteDiscountOption, String> {
     // Example: Find discount options related to a specific invitation
     List<EnrollInviteDiscountOption> findByPackageSessionLearnerInvitationToPaymentOption(PackageSessionLearnerInvitationToPaymentOption invitation);
 

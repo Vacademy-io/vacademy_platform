@@ -15,8 +15,8 @@ import java.time.LocalDateTime;
 @Getter
 @Setter
 @Entity
-@Table(name = "discount_option")
-public class DiscountOption {
+@Table(name = "enroll_invite_discount_option")
+public class EnrollInviteDiscountOption {
     @Id
     @UuidGenerator
     private String id;
@@ -24,10 +24,6 @@ public class DiscountOption {
     @ManyToOne
     @JoinColumn(name = "package_session_learner_invitation_to_payment_option_id")
     private PackageSessionLearnerInvitationToPaymentOption packageSessionLearnerInvitationToPaymentOption;
-
-    @ManyToOne
-    @JoinColumn(name = "payment_plan_id")
-    private PaymentPlan paymentPlan;
 
     @ManyToOne
     @JoinColumn(name = "discount_id")
@@ -38,4 +34,16 @@ public class DiscountOption {
 
     @Column(name = "updated_at", insertable = false, updatable = false)
     private LocalDateTime updatedAt;
+
+    @Column(name = "status")
+    private String status;
+
+    public EnrollInviteDiscountOption(PackageSessionLearnerInvitationToPaymentOption packageSessionLearnerInvitationToPaymentOption,
+                                      AppliedCouponDiscount discount,
+                                      String status) {
+        this.packageSessionLearnerInvitationToPaymentOption = packageSessionLearnerInvitationToPaymentOption;
+        this.discount = discount;
+        this.status = status;
+    }
+
 }

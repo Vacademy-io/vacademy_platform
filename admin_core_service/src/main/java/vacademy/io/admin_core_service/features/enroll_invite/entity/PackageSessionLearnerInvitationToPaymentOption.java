@@ -43,4 +43,11 @@ public class PackageSessionLearnerInvitationToPaymentOption {
 
     @Column(name = "updated_at", insertable = false, updatable = false)
     private LocalDateTime updatedAt;
+
+    public PackageSessionLearnerInvitationToPaymentOption(EnrollInvite enrollInvite, PackageSession packageSession, PaymentOption paymentOption,String status) {
+        this.enrollInvite = enrollInvite;
+        this.packageSession = packageSession;
+        this.paymentOption = paymentOption;
+        this.status = status;
+    }
 }

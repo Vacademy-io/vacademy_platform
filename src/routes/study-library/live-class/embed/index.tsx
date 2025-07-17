@@ -9,25 +9,6 @@ import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { LinkType } from "@/routes/register/live-class/-types/enum";
 import YouTubePlayerWrapper from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/youtube-player";
 import ZoomEmbedPlayer from "./-components/ZoomEnbedPlayer";
-
-// Helper to extract YouTube video ID from various URL formats
-const extractYouTubeVideoId = (url: string | undefined): string | undefined => {
-  if (!url) return undefined;
-
-  // Regular expressions to capture the 11-character YouTube video ID
-  const regexList = [
-    /(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|embed)\/|.*[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/, // Standard YouTube URLs
-  ];
-
-  for (const regex of regexList) {
-    const match = url.match(regex);
-    if (match && match[1]) return match[1];
-  }
-
-  // If regex fails and the string length is 11 we assume it's already an ID
-  return url.length === 11 ? url : undefined;
-};
-
 export const Route = createFileRoute("/study-library/live-class/embed/")({
   validateSearch: z.object({
     sessionId: z.string(),
@@ -52,37 +33,50 @@ function EmbedComponent() {
     }
   }, [sessionDetails, setNavHeading]);
 
+  // Helper to safely extract a YouTube video ID from various URL formats
+  const extractYouTubeVideoId = (url: string): string | null => {
+    if (!url) return null;
+    const regExp =
+      /(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|v\/))([a-zA-Z0-9_-]{11})/;
+    const match = url.match(regExp);
+    return match ? match[1] : null;
+  };
+
   const renderEmbededSession = () => {
     if (!sessionDetails?.linkType) return null;
 
+    // --- YouTube & recorded YouTube links ---
     if (
       sessionDetails.linkType === LinkType.YOUTUBE ||
       sessionDetails.linkType === LinkType.YOUTUBE_RECORDED
     ) {
-      const videoId = extractYouTubeVideoId(sessionDetails.defaultMeetLink);
+      const videoId =
+        extractYouTubeVideoId(sessionDetails.defaultMeetLink) ||
+        sessionDetails.defaultMeetLink; // fallback
 
-      if (!videoId) {
-        return (
-          <div className="text-center text-red-500">
-            Invalid YouTube link provided.
-          </div>
-        );
-      }
-
+      const allowPlayPause = (
+        (sessionDetails as any)?.allowPlayPause ??
+        (sessionDetails as any)?.isPlayPauseEnabled ??
+        (sessionDetails as any)?.playPauseEnabled ??
+        (sessionDetails as any)?.enablePlayPause ??
+        true
+      );
       return (
         <div className="w-full h-full">
-          <YouTubePlayerWrapper videoId={videoId} />
+          <YouTubePlayerWrapper videoId={videoId} allowPlayPause={allowPlayPause} />
         </div>
       );
     }
 
+    // --- Zoom recorded links ---
     if (
-      sessionDetails.linkType === LinkType.ZOOM ||
-      sessionDetails.linkType === LinkType.ZOOM_RECORDED
+      sessionDetails.linkType === LinkType.ZOOM_RECORDED ||
+      sessionDetails.linkType === LinkType.ZOOM
     ) {
       return <ZoomEmbedPlayer recordingUrl={sessionDetails.defaultMeetLink} />;
     }
 
+    // TODO: handle other link types (Google Meet, etc.)
     return null;
   };
 

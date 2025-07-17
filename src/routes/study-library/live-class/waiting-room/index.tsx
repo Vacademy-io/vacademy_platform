@@ -3,7 +3,7 @@ import { Helmet } from "react-helmet";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { z } from "zod";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { useSessionDetails } from "../-hooks/useSessionDetails";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { CountdownTimer } from "./-components/CountdownTimer";
@@ -33,7 +33,6 @@ function WaitingRoomComponent() {
     isLoading,
     error,
   } = useSessionDetails(sessionId);
-  const [sessionStarted, setSessionStarted] = useState(false);
 
   const fetchThumbnail = async () => {
     if (sessionDetails?.thumbnailFileId) {
@@ -49,93 +48,78 @@ function WaitingRoomComponent() {
     }
   }, [sessionDetails]);
 
-  // Handle session redirect
-  const handleSessionRedirect = useCallback(async () => {
-    if (!sessionDetails || !sessionDetails.defaultMeetLink || sessionStarted) return;
-
-    try {
-      setSessionStarted(true); // Prevent multiple redirects
-      // Mark attendance before redirecting
-      await markAttendance({
-        sessionId: sessionDetails.sessionId,
-        scheduleId: sessionId,
-        userSourceType: "USER",
-        userSourceId: "",
-        details: "Joined live class from waiting room",
-      });
-
-      // Redirect to the meeting when session starts
-      if (
-        sessionDetails.sessionStreamingServiceType ===
-        SessionStreamingServiceType.EMBED
-      ) {
-        navigate({
-          to: "/study-library/live-class/embed",
-          search: { sessionId: sessionId },
-        });
-      } else {
-        window.open(
-          sessionDetails.defaultMeetLink,
-          "_blank",
-          "noopener,noreferrer"
-        );
-        // Navigate back to live classes page
-        navigate({ to: "/study-library/live-class" });
-      }
-    } catch (error) {
-      console.error("Failed to mark attendance:", error);
-      toast.error("Failed to mark attendance");
-
-      // Still proceed with redirection even if attendance marking fails
-      if (
-        sessionDetails.sessionStreamingServiceType ===
-        SessionStreamingServiceType.EMBED
-      ) {
-        navigate({
-          to: "/study-library/live-class/embed",
-          search: { sessionId: sessionId },
-        });
-      } else {
-        window.open(
-          sessionDetails.defaultMeetLink,
-          "_blank",
-          "noopener,noreferrer"
-        );
-        navigate({ to: "/study-library/live-class" });
-      }
-    }
-  }, [sessionDetails, navigate, markAttendance, sessionId, sessionStarted]);
-
-  // Handle session start with more frequent checks
+  // Handle session start
   useEffect(() => {
-    if (!sessionDetails) return;
-
-    const checkSessionStart = () => {
-      const now = new Date();
-      const sessionStart = new Date(
-        `${sessionDetails.meetingDate}T${sessionDetails.scheduleStartTime}`
-      );
-
-      if (now >= sessionStart && sessionDetails.defaultMeetLink) {
-        handleSessionRedirect();
-      }
-    };
-
-    // Check immediately
-    checkSessionStart();
-
-    // Check every second instead of every 30 seconds
-    const timer = setInterval(checkSessionStart, 1000);
-
-    return () => clearInterval(timer);
-  }, [sessionDetails, handleSessionRedirect]);
-
-  // Handle timer complete event
-  const handleTimerComplete = () => {
     if (sessionDetails) {
-      handleSessionRedirect();
+      const checkSessionStart = async () => {
+        const now = new Date();
+        const sessionStart = new Date(
+          `${sessionDetails.meetingDate}T${sessionDetails.scheduleStartTime}`
+        );
+
+        if (now >= sessionStart && sessionDetails.defaultMeetLink) {
+          try {
+            // Mark attendance before redirecting
+            await markAttendance({
+              sessionId: sessionDetails.sessionId,
+              scheduleId: sessionId,
+              userSourceType: "USER",
+              userSourceId: "",
+              details: "Joined live class from waiting room",
+            });
+
+            // Redirect to the meeting when session starts
+            if (
+              sessionDetails.sessionStreamingServiceType ===
+              SessionStreamingServiceType.EMBED
+            ) {
+              navigate({
+                to: "/study-library/live-class/embed",
+                search: { sessionId: sessionId },
+              });
+            } else {
+              window.open(
+                sessionDetails.defaultMeetLink,
+                "_blank",
+                "noopener,noreferrer"
+              );
+              // Navigate back to live classes page
+              navigate({ to: "/study-library/live-class" });
+            }
+          } catch (error) {
+            console.error("Failed to mark attendance:", error);
+            toast.error("Failed to mark attendance");
+
+            // Still proceed with redirection even if attendance marking fails
+            if (
+              sessionDetails.sessionStreamingServiceType ===
+              SessionStreamingServiceType.EMBED
+            ) {
+              navigate({
+                to: "/study-library/live-class/embed",
+                search: { sessionId: sessionId },
+              });
+            } else {
+              window.open(
+                sessionDetails.defaultMeetLink,
+                "_blank",
+                "noopener,noreferrer"
+              );
+              navigate({ to: "/study-library/live-class" });
+            }
+          }
+        }
+      };
+
+      // Check immediately
+      checkSessionStart();
+
+      // Check every 30 seconds
+      const timer = setInterval(checkSessionStart, 30000);
+
+      return () => clearInterval(timer);
     }
-  };
+  }, [sessionDetails, navigate, markAttendance, sessionId]);
 
   if (isLoading) {
     return <DashboardLoader />;
@@ -168,7 +152,6 @@ function WaitingRoomComponent() {
             <CountdownTimer
               startTime={`${sessionDetails.meetingDate}T${sessionDetails.scheduleStartTime}`}
               waitingRoomTime={sessionDetails.waitingRoomTime}
-              onTimeUp={handleTimerComplete}
             />
           )}
         </div>

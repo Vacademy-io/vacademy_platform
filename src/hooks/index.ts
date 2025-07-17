@@ -1,4 +1,5 @@
 import { useProctoring } from '@/hooks/proctoring/useProctoring';
+import { useAnalytics } from './useAnalytics';
 // import { useCopyDisable } from './hooks/useCopyDisable'
 // import { useDevToolDetection } from './hooks/useDevToolDetection'
 // import { useDisableContextMenu } from './hooks/useDisableContextMenu'
@@ -15,6 +16,7 @@ export {
   //   useFullScreenDetection,
   //   useIntersectionObserver,
   useProctoring,
+  useAnalytics,
   //   useSelectionDisable,
   //   useTabFocusDetection,
 }

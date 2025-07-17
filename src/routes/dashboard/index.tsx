@@ -4,6 +4,7 @@ import { LayoutContainer } from "@/components/common/layout-container/layout-con
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
 import { fetchStaticData } from "./-lib/utils";
 import { Helmet } from "react-helmet";
+import { useAnalytics } from "@/hooks/useAnalytics";
 // import { fetchStudentDetails } from "@/services/studentDetails";
 // import { getUserId } from "@/constants/getUserId";
 // import { getInstituteId } from "@/constants/helper";
@@ -37,6 +38,7 @@ import {
     FileText,
     PencilSimple,
     ChartLine,
+    Bell,
 } from "phosphor-react";
 import { Button } from "@/components/ui/button";
 import { MyButton } from "@/components/design-system/button";
@@ -253,6 +255,9 @@ export function DashboardComponent() {
         isLoading: isLoadingLiveSessions,
         refetch: refetchLiveSessions,
     } = useLiveSessions(batchId || "");
+    
+    // Initialize analytics tracking
+    const { trackPageView, track, trackCourseEnrolled, trackLessonStarted } = useAnalytics();
 
     const handleGetStudyLibraryData = async () => {
         try {
@@ -265,6 +270,17 @@ export function DashboardComponent() {
     };
 
     const handleResumeClick = (slide: DashboardSlide) => {
+        // Track lesson resumed
+        trackLessonStarted(slide.slide_id, slide.slide_title, slide.subject_id);
+        track('Resume Learning', {
+            slideId: slide.slide_id,
+            slideTitle: slide.slide_title,
+            subjectId: slide.subject_id,
+            moduleId: slide.module_id,
+            chapterId: slide.chapter_id,
+            sourceType: slide.source_type,
+        });
+        
         setActiveItem({
             id: slide.slide_id,
             source_id: "",
@@ -314,6 +330,9 @@ export function DashboardComponent() {
                     fetchStaticData(setUsername, setTestAssignedCount, setHomeworkAssignedCount, setData),
                     handleGetStudyLibraryData(),
                 ]);
+                
+                // Track dashboard page view
+                trackPageView('Dashboard');
             } catch (error) {
                 console.error("Error initializing dashboard:", error);
             } finally {
@@ -325,6 +344,16 @@ export function DashboardComponent() {
     }, []);
 
     const handleJoinSession = async (session: SessionDetails) => {
+        // Track live session join attempt
+        track('Live Session Join Attempted', {
+            sessionId: session.session_id,
+            sessionTitle: session.title,
+            scheduleId: session.schedule_id,
+            streamingType: session.session_streaming_service_type,
+            meetingDate: session.meeting_date,
+            startTime: session.start_time,
+        });
+        
         const now = new Date();
         const sessionDate = new Date(`${session.meeting_date}T${session.start_time}`);
         const waitingRoomStart = new Date(sessionDate);
@@ -334,6 +363,10 @@ export function DashboardComponent() {
         const isInMainSession = now >= sessionDate;
 
         if (isInWaitingRoom) {
+            track('Live Session Waiting Room Entered', {
+                sessionId: session.session_id,
+                sessionTitle: session.title,
+            });
             navigate({
                 to: "/study-library/live-class/waiting-room",
                 search: { sessionId: session.schedule_id },
@@ -346,6 +379,14 @@ export function DashboardComponent() {
                     userSourceType: "USER",
                     userSourceId: "",
                     details: "Joined live class directly",
+                });
+
+                // Track successful live session join
+                track('Live Session Joined Successfully', {
+                    sessionId: session.session_id,
+                    sessionTitle: session.title,
+                    streamingType: session.session_streaming_service_type,
+                    joinMethod: session.session_streaming_service_type === SessionStreamingServiceType.EMBED ? 'embed' : 'external_link',
                 });
 
                 if (session.session_streaming_service_type === SessionStreamingServiceType.EMBED) {
@@ -449,7 +490,13 @@ export function DashboardComponent() {
                                     title="Courses"
                                     count={data?.courses || 0}
                                     icon={BookOpen}
-                                    onClick={() => navigate({ to: '/study-library/courses' })}
+                                    onClick={() => {
+                                        track('Dashboard Card Clicked', { 
+                                            cardType: 'Courses', 
+                                            count: data?.courses || 0 
+                                        });
+                                        navigate({ to: '/study-library/courses' });
+                                    }}
                                     gradient="from-blue-500/10 to-primary-500/10"
                                     isLoading={isLoading}
                                 />
@@ -457,7 +504,13 @@ export function DashboardComponent() {
                                     title="Assignments"
                                     count={homeworkAssignedCount}
                                     icon={PencilSimple}
-                                    onClick={() => navigate({ to: '/homework/list' })}
+                                    onClick={() => {
+                                        track('Dashboard Card Clicked', { 
+                                            cardType: 'Assignments', 
+                                            count: homeworkAssignedCount 
+                                        });
+                                        navigate({ to: '/homework/list' });
+                                    }}
                                     gradient="from-green-500/10 to-emerald-500/10"
                                     isLoading={isLoading}
                                 />
@@ -465,7 +518,13 @@ export function DashboardComponent() {
                                     title="Evaluations"
                                     count={testAssignedCount}
                                     icon={Trophy}
-                                    onClick={() => navigate({ to: '/assessment/examination' })}
+                                    onClick={() => {
+                                        track('Dashboard Card Clicked', { 
+                                            cardType: 'Evaluations', 
+                                            count: testAssignedCount 
+                                        });
+                                        navigate({ to: '/assessment/examination' });
+                                    }}
                                     gradient="from-purple-500/10 to-pink-500/10"
                                     isLoading={isLoading}
                                 />
@@ -481,6 +540,34 @@ export function DashboardComponent() {
                         <div className="animate-fade-in-up" style={{ animationDelay: '0.6s' }}>
                             <PastLearningInsights />
                         </div>
+
+                        {/* Developer Test Section - Only in development */}
+                        {process.env.NODE_ENV === 'development' && (
+                            <div className="animate-fade-in-up" style={{ animationDelay: '0.8s' }}>
+                                <Card className="border-2 border-dashed border-orange-300 bg-orange-50/50">
+                                    <CardContent className="p-4">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center space-x-3">
+                                                <div className="p-2 bg-orange-100 rounded-lg">
+                                                    <Bell size={16} className="text-orange-600" weight="duotone" />
+                                                </div>
+                                                <div>
+                                                    <h3 className="font-semibold text-orange-900">🧪 Developer Testing</h3>
+                                                    <p className="text-sm text-orange-700">Test push notification functionality</p>
+                                                </div>
+                                            </div>
+                                            <MyButton
+                                                buttonType="secondary"
+                                                scale="small"
+                                                onClick={() => navigate({ to: '/notifications-test' })}
+                                            >
+                                                Test Notifications
+                                            </MyButton>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            </div>
+                        )}
                     </>
                 )}
 

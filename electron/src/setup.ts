@@ -6,11 +6,12 @@ import {
 } from '@capacitor-community/electron';
 import chokidar from 'chokidar';
 import type { MenuItemConstructorOptions } from 'electron';
-import { app, BrowserWindow, Menu, MenuItem, nativeImage, Tray, session, globalShortcut } from 'electron';
+import { app, BrowserWindow, Menu, MenuItem, nativeImage, Tray, session, globalShortcut, Notification, ipcMain } from 'electron';
 import electronIsDev from 'electron-is-dev';
 import electronServe from 'electron-serve';
 import windowStateKeeper from 'electron-window-state';
 import { join } from 'path';
+import notifier from 'node-notifier';
 
 // Define components for a watcher to detect when the webapp is changed so we can reload in Dev mode.
 const reloadWatcher = {
@@ -87,6 +88,116 @@ export class ElectronCapacitorApp {
       directory: join(app.getAppPath(), 'app'),
       scheme: this.customScheme,
     });
+
+    // Setup notification handlers
+    this.setupNotificationHandlers();
+  }
+
+  private setupNotificationHandlers(): void {
+    // Handle show notification requests from renderer
+    ipcMain.handle('show-notification', (event, notificationData) => {
+      this.showNotification(notificationData);
+    });
+
+    // Handle notification permission check
+    ipcMain.handle('check-notification-permission', () => {
+      return 'granted'; // Desktop notifications are always available
+    });
+
+    // Handle notification settings
+    ipcMain.handle('get-notification-settings', () => {
+      return {
+        enabled: true,
+        sound: true,
+        badge: true
+      };
+    });
+
+    // Handle badge count updates
+    ipcMain.handle('set-badge-count', (event, count) => {
+      this.setBadgeCount(count);
+      return true;
+    });
+
+    // Handle clearing badges
+    ipcMain.handle('clear-badge', () => {
+      this.setBadgeCount(0);
+      return true;
+    });
+  }
+
+  private showNotification(notificationData: any): void {
+    const { title, body, imageUrl, actionUrl } = notificationData;
+
+    try {
+      // Use Electron's built-in Notification API (Windows 10+, macOS)
+      if (Notification.isSupported()) {
+        const notification = new Notification({
+          title: title || 'Vacademy Learner',
+          body: body || '',
+          icon: imageUrl || join(app.getAppPath(), 'assets', 'icon-192.webp'),
+          silent: false,
+          urgency: 'normal'
+        });
+
+        notification.on('click', () => {
+          // Bring app to focus when notification is clicked
+          if (this.MainWindow) {
+            this.MainWindow.show();
+            this.MainWindow.focus();
+          }
+
+          // Handle action URL if provided
+          if (actionUrl && this.MainWindow) {
+            this.MainWindow.webContents.send('notification-clicked', { actionUrl });
+          }
+        });
+
+        notification.show();
+      } else {
+        // Fallback to node-notifier for older systems
+        notifier.notify({
+          title: title || 'Vacademy Learner',
+          message: body || '',
+          icon: imageUrl || join(app.getAppPath(), 'assets', 'icon-192.webp'),
+          sound: true,
+          wait: false,
+          timeout: 10
+        }, (err, response, metadata) => {
+          if (err) {
+            console.error('Notification error:', err);
+          }
+          
+          // Handle notification click
+          if (response === 'activate') {
+            if (this.MainWindow) {
+              this.MainWindow.show();
+              this.MainWindow.focus();
+            }
+          }
+        });
+      }
+    } catch (error) {
+      console.error('Error showing notification:', error);
+    }
+  }
+
+  private setBadgeCount(count: number): void {
+    try {
+      if (process.platform === 'darwin') {
+        app.setBadgeCount(count);
+      } else if (process.platform === 'win32') {
+        // Windows doesn't support badge count in the same way
+        // but we can update the window title to show unread count
+        if (this.MainWindow) {
+          const baseTitle = 'Vacademy Learner';
+          const title = count > 0 ? `${baseTitle} (${count})` : baseTitle;
+          this.MainWindow.setTitle(title);
+        }
+      }
+    } catch (error) {
+      console.error('Error setting badge count:', error);
+    }
   }
 
   // Helper function to load in the app.

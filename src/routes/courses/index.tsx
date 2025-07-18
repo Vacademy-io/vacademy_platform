@@ -30,11 +30,19 @@ function CoursesContainerComponent() {
     const navigate = useNavigate();
     const search = useSearch({ from: "/courses/" });
     const subdomain = getSubdomain(window.location.hostname);
-    const { data: apiResult, isLoading, error } = useSuspenseQuery(
+    const {
+        data: apiResult,
+        isLoading,
+        error,
+    } = useSuspenseQuery(
         handleGetInstituteIdBySubdomain({
             subdomain: subdomain || "",
         })
     );
+
+    console.log("error", error);
+    console.log("subdomain", subdomain);
+
     useEffect(() => {
         if (
             !isLoading &&

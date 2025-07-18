@@ -1,0 +1,29 @@
+package vacademy.io.notification_service.features.firebase_notifications.repository;
+import org.springframework.data.jpa.repository.JpaRepository;
+import vacademy.io.notification_service.features.firebase_notifications.entity.FcmToken;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+import java.util.Optional;
+
+@Repository
+public interface FcmTokenRepository extends JpaRepository<FcmToken, Long> {
+
+    List<FcmToken> findByUserIdAndIsActiveTrue(String userId);
+
+    Optional<FcmToken> findByTokenAndIsActiveTrue(String token);
+
+    Optional<FcmToken> findByUserIdAndDeviceIdAndIsActiveTrue(String userId, String deviceId);
+
+    @Modifying
+    @Query("UPDATE FcmToken f SET f.isActive = false WHERE f.userId = :userId AND f.deviceId = :deviceId")
+    void deactivateTokenByUserIdAndDeviceId(String userId, String deviceId);
+
+    @Modifying
+    @Query("UPDATE FcmToken f SET f.isActive = false WHERE f.token = :token")
+    void deactivateTokenByToken(String token);
+
+    List<FcmToken> findByIsActiveTrue();
+}

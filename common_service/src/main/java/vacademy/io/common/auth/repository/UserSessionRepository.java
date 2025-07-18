@@ -15,11 +15,13 @@ import java.util.Optional;
 @Repository
 public interface UserSessionRepository extends JpaRepository<UserSession, String> {
 
-    // Find active sessions
-    @Query("SELECT COUNT(DISTINCT u.userId) FROM UserSession u WHERE u.instituteId = :instituteId AND u.isActive = true AND u.lastActivityTime >= :cutoffTime")
+    // Find active sessions - Using native query with UUID casting
+    @Query(value = "SELECT COUNT(DISTINCT u.user_id) FROM user_session u WHERE u.institute_id = CAST(:instituteId AS UUID) AND u.is_active = true AND u.last_activity_time >= :cutoffTime", 
+           nativeQuery = true)
     Long countActiveUsersInInstitute(@Param("instituteId") String instituteId, @Param("cutoffTime") LocalDateTime cutoffTime);
 
-    @Query("SELECT u FROM UserSession u WHERE u.instituteId = :instituteId AND u.isActive = true AND u.lastActivityTime >= :cutoffTime")
+    @Query(value = "SELECT * FROM user_session u WHERE u.institute_id = CAST(:instituteId AS UUID) AND u.is_active = true AND u.last_activity_time >= :cutoffTime", 
+           nativeQuery = true)
     List<UserSession> findActiveSessionsInInstitute(@Param("instituteId") String instituteId, @Param("cutoffTime") LocalDateTime cutoffTime);
 
     // Find user's active sessions
@@ -47,21 +49,26 @@ public interface UserSessionRepository extends JpaRepository<UserSession, String
     @Query("UPDATE UserSession u SET u.isActive = false, u.logoutTime = :logoutTime WHERE u.isActive = true AND u.lastActivityTime < :cutoffTime")
     void endInactiveSessions(@Param("cutoffTime") LocalDateTime cutoffTime, @Param("logoutTime") LocalDateTime logoutTime);
 
-    // Analytics queries
-    @Query("SELECT u.deviceType, COUNT(u) FROM UserSession u WHERE u.instituteId = :instituteId AND u.loginTime >= :startTime GROUP BY u.deviceType")
+    // Analytics queries - Using native query with UUID casting
+    @Query(value = "SELECT u.device_type, COUNT(u.*) FROM user_session u WHERE u.institute_id = CAST(:instituteId AS UUID) AND u.login_time >= :startTime GROUP BY u.device_type", 
+           nativeQuery = true)
     List<Object[]> getDeviceUsageStats(@Param("instituteId") String instituteId, @Param("startTime") LocalDateTime startTime);
 
-    @Query("SELECT AVG(u.sessionDurationMinutes) FROM UserSession u WHERE u.instituteId = :instituteId AND u.sessionDurationMinutes IS NOT NULL AND u.loginTime >= :startTime")
+    @Query(value = "SELECT AVG(u.session_duration_minutes) FROM user_session u WHERE u.institute_id = CAST(:instituteId AS UUID) AND u.session_duration_minutes IS NOT NULL AND u.login_time >= :startTime", 
+           nativeQuery = true)
     Double getAverageSessionDuration(@Param("instituteId") String instituteId, @Param("startTime") LocalDateTime startTime);
 
-    @Query("SELECT DATE(u.loginTime), COUNT(DISTINCT u.userId) FROM UserSession u WHERE u.instituteId = :instituteId AND u.loginTime >= :startTime GROUP BY DATE(u.loginTime) ORDER BY DATE(u.loginTime)")
+    @Query(value = "SELECT DATE(u.login_time), COUNT(DISTINCT u.user_id) FROM user_session u WHERE u.institute_id = CAST(:instituteId AS UUID) AND u.login_time >= :startTime GROUP BY DATE(u.login_time) ORDER BY DATE(u.login_time)", 
+           nativeQuery = true)
     List<Object[]> getDailyUniqueLogins(@Param("instituteId") String instituteId, @Param("startTime") LocalDateTime startTime);
 
-    // Real-time monitoring
-    @Query("SELECT COUNT(u) FROM UserSession u WHERE u.instituteId = :instituteId AND u.isActive = true")
+    // Real-time monitoring - Using native query with UUID casting
+    @Query(value = "SELECT COUNT(u.*) FROM user_session u WHERE u.institute_id = CAST(:instituteId AS UUID) AND u.is_active = true", 
+           nativeQuery = true)
     Long countCurrentlyActiveUsers(@Param("instituteId") String instituteId);
 
-    @Query("SELECT u.userId, u.lastActivityTime FROM UserSession u WHERE u.instituteId = :instituteId AND u.isActive = true ORDER BY u.lastActivityTime DESC")
+    @Query(value = "SELECT u.user_id, u.last_activity_time FROM user_session u WHERE u.institute_id = CAST(:instituteId AS UUID) AND u.is_active = true ORDER BY u.last_activity_time DESC", 
+           nativeQuery = true)
     List<Object[]> getCurrentlyActiveUsersWithLastActivity(@Param("instituteId") String instituteId);
 
     // Session history for user

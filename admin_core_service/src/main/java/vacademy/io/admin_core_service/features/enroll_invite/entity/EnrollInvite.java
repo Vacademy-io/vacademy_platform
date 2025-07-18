@@ -79,4 +79,21 @@ public class EnrollInvite {
         this.tag = enrollInviteDTO.getTag();
         this.webPageMetaDataJson = enrollInviteDTO.getWebPageMetaDataJson();
     }
+
+    public EnrollInviteDTO toEnrollInviteDTO() {
+        EnrollInviteDTO enrollInviteDTO = new EnrollInviteDTO();
+        enrollInviteDTO.setId(id);
+        enrollInviteDTO.setName(name);
+        enrollInviteDTO.setEndDate(endDate);
+        enrollInviteDTO.setStartDate(startDate);
+        enrollInviteDTO.setInviteCode(inviteCode);
+        enrollInviteDTO.setStatus(status);
+        enrollInviteDTO.setInstituteId(instituteId);
+        enrollInviteDTO.setVendor(vendor);
+        enrollInviteDTO.setVendorId(vendorId);
+        enrollInviteDTO.setCurrency(currency);
+        enrollInviteDTO.setTag(tag);
+        enrollInviteDTO.setWebPageMetaDataJson(webPageMetaDataJson);
+        return enrollInviteDTO;
+    }
 }

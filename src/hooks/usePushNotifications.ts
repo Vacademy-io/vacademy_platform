@@ -35,9 +35,9 @@ export const usePushNotifications = () => {
       
       // Get stored token or generate new one for web
       let storedToken = await pushNotificationService.getStoredToken();
-      
-      // For web platform, try to get FCM token if no stored token
-      if (!storedToken && Capacitor.getPlatform() === 'web') {
+
+      // For web platform, try to get FCM token if no stored token **and** permission granted
+      if (!storedToken && Capacitor.getPlatform() === 'web' && permissions.receive === 'granted') {
         const { getFirebaseToken } = await import('@/services/firebase-config');
         const fcmToken = await getFirebaseToken();
         if (fcmToken) {

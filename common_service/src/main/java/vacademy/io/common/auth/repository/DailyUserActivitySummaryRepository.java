@@ -16,47 +16,56 @@ public interface DailyUserActivitySummaryRepository extends JpaRepository<DailyU
     // Find summary for specific user and date
     Optional<DailyUserActivitySummary> findByUserIdAndInstituteIdAndActivityDate(String userId, String instituteId, LocalDate activityDate);
 
-    // Institute-wide analytics
-    @Query("SELECT SUM(d.totalSessions), SUM(d.totalActivityTimeMinutes), SUM(d.totalApiCalls) " +
-           "FROM DailyUserActivitySummary d WHERE d.instituteId = :instituteId AND d.activityDate = :date")
+    // Institute-wide analytics - Using native query with UUID casting
+    @Query(value = "SELECT SUM(d.total_sessions), SUM(d.total_activity_time_minutes), SUM(d.total_api_calls) " +
+           "FROM daily_user_activity_summary d WHERE d.institute_id = CAST(:instituteId AS UUID) AND d.activity_date = :date", 
+           nativeQuery = true)
     Object[] getInstituteActivitySummaryForDate(@Param("instituteId") String instituteId, @Param("date") LocalDate date);
 
-    @Query("SELECT COUNT(DISTINCT d.userId) FROM DailyUserActivitySummary d WHERE d.instituteId = :instituteId AND d.activityDate = :date")
+    @Query(value = "SELECT COUNT(DISTINCT d.user_id) FROM daily_user_activity_summary d WHERE d.institute_id = CAST(:instituteId AS UUID) AND d.activity_date = :date", 
+           nativeQuery = true)
     Long countActiveUsersForDate(@Param("instituteId") String instituteId, @Param("date") LocalDate date);
 
-    // Trending data
-    @Query("SELECT d.activityDate, COUNT(DISTINCT d.userId), SUM(d.totalSessions), SUM(d.totalApiCalls) " +
-           "FROM DailyUserActivitySummary d WHERE d.instituteId = :instituteId AND d.activityDate BETWEEN :startDate AND :endDate " +
-           "GROUP BY d.activityDate ORDER BY d.activityDate")
+    // Trending data - Using native query with UUID casting
+    @Query(value = "SELECT d.activity_date, COUNT(DISTINCT d.user_id), SUM(d.total_sessions), SUM(d.total_api_calls) " +
+           "FROM daily_user_activity_summary d WHERE d.institute_id = CAST(:instituteId AS UUID) AND d.activity_date BETWEEN :startDate AND :endDate " +
+           "GROUP BY d.activity_date ORDER BY d.activity_date", 
+           nativeQuery = true)
     List<Object[]> getActivityTrendData(@Param("instituteId") String instituteId, @Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
 
-    // Most active users in date range
-    @Query("SELECT d.userId, SUM(d.totalSessions), SUM(d.totalActivityTimeMinutes), SUM(d.totalApiCalls) " +
-           "FROM DailyUserActivitySummary d WHERE d.instituteId = :instituteId AND d.activityDate BETWEEN :startDate AND :endDate " +
-           "GROUP BY d.userId ORDER BY SUM(d.totalSessions) DESC")
+    // Most active users in date range - Using native query with UUID casting
+    @Query(value = "SELECT d.user_id, SUM(d.total_sessions), SUM(d.total_activity_time_minutes), SUM(d.total_api_calls) " +
+           "FROM daily_user_activity_summary d WHERE d.institute_id = CAST(:instituteId AS UUID) AND d.activity_date BETWEEN :startDate AND :endDate " +
+           "GROUP BY d.user_id ORDER BY SUM(d.total_sessions) DESC", 
+           nativeQuery = true)
     List<Object[]> getMostActiveUsersInDateRange(@Param("instituteId") String instituteId, @Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
 
-    // Service usage trends
-    @Query("SELECT d.servicesUsed FROM DailyUserActivitySummary d WHERE d.instituteId = :instituteId AND d.activityDate BETWEEN :startDate AND :endDate")
+    // Service usage trends - Using native query with UUID casting
+    @Query(value = "SELECT d.services_used FROM daily_user_activity_summary d WHERE d.institute_id = CAST(:instituteId AS UUID) AND d.activity_date BETWEEN :startDate AND :endDate", 
+           nativeQuery = true)
     List<String> getServicesUsedInDateRange(@Param("instituteId") String instituteId, @Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
 
-    // Device usage trends
-    @Query("SELECT d.deviceTypesUsed FROM DailyUserActivitySummary d WHERE d.instituteId = :instituteId AND d.activityDate BETWEEN :startDate AND :endDate")
+    // Device usage trends - Using native query with UUID casting
+    @Query(value = "SELECT d.device_types_used FROM daily_user_activity_summary d WHERE d.institute_id = CAST(:instituteId AS UUID) AND d.activity_date BETWEEN :startDate AND :endDate", 
+           nativeQuery = true)
     List<String> getDeviceTypesUsedInDateRange(@Param("instituteId") String instituteId, @Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
 
-    // Average session duration trends
-    @Query("SELECT d.activityDate, AVG(d.totalActivityTimeMinutes / CASE WHEN d.totalSessions = 0 THEN 1 ELSE d.totalSessions END) " +
-           "FROM DailyUserActivitySummary d WHERE d.instituteId = :instituteId AND d.activityDate BETWEEN :startDate AND :endDate " +
-           "GROUP BY d.activityDate ORDER BY d.activityDate")
+    // Average session duration trends - Using native query with UUID casting
+    @Query(value = "SELECT d.activity_date, AVG(d.total_activity_time_minutes / CASE WHEN d.total_sessions = 0 THEN 1 ELSE d.total_sessions END) " +
+           "FROM daily_user_activity_summary d WHERE d.institute_id = CAST(:instituteId AS UUID) AND d.activity_date BETWEEN :startDate AND :endDate " +
+           "GROUP BY d.activity_date ORDER BY d.activity_date", 
+           nativeQuery = true)
     List<Object[]> getAverageSessionDurationTrend(@Param("instituteId") String instituteId, @Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
 
-    // Peak activity hours
-    @Query("SELECT d.peakActivityHour, COUNT(d) FROM DailyUserActivitySummary d WHERE d.instituteId = :instituteId AND d.activityDate BETWEEN :startDate AND :endDate " +
-           "GROUP BY d.peakActivityHour ORDER BY COUNT(d) DESC")
+    // Peak activity hours - Using native query with UUID casting
+    @Query(value = "SELECT d.peak_activity_hour, COUNT(d.*) FROM daily_user_activity_summary d WHERE d.institute_id = CAST(:instituteId AS UUID) AND d.activity_date BETWEEN :startDate AND :endDate " +
+           "GROUP BY d.peak_activity_hour ORDER BY COUNT(d.*) DESC", 
+           nativeQuery = true)
     List<Object[]> getPeakActivityHours(@Param("instituteId") String instituteId, @Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
 
-    // User engagement metrics
-    @Query("SELECT COUNT(d) FROM DailyUserActivitySummary d WHERE d.instituteId = :instituteId AND d.userId = :userId AND d.activityDate BETWEEN :startDate AND :endDate")
+    // User engagement metrics - Using native query with UUID casting
+    @Query(value = "SELECT COUNT(d.*) FROM daily_user_activity_summary d WHERE d.institute_id = CAST(:instituteId AS UUID) AND d.user_id = :userId AND d.activity_date BETWEEN :startDate AND :endDate", 
+           nativeQuery = true)
     Long getUserEngagementDays(@Param("userId") String userId, @Param("instituteId") String instituteId, @Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
 
     // Get user activity summaries for date range

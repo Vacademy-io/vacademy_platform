@@ -1,14 +1,20 @@
 package vacademy.io.admin_core_service.features.enroll_invite.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
+import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.common.dto.InstituteCustomFieldDTO;
 import vacademy.io.admin_core_service.features.common.enums.CustomFieldTypeEnum;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.common.service.InstituteCustomFiledService;
 import vacademy.io.admin_core_service.features.enroll_invite.dto.EnrollInviteDTO;
+import vacademy.io.admin_core_service.features.enroll_invite.dto.EnrollInviteFilterDTO;
 import vacademy.io.admin_core_service.features.enroll_invite.dto.PackageSessionToPaymentOptionDTO;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionLearnerInvitationToPaymentOption;
@@ -16,6 +22,7 @@ import vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollIn
 import vacademy.io.admin_core_service.features.packages.service.PackageSessionService;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentOptionService;
+import vacademy.io.common.core.standard_classes.ListService;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.session.PackageSession;
 
@@ -110,5 +117,22 @@ public class EnrollInviteService {
         if (dto.getPaymentOption() == null || dto.getPaymentOption().getId() == null || dto.getPaymentOption().getId().isBlank()) {
             throw new VacademyException("paymentOption.id is required in packageSessionToPaymentOptions.");
         }
+    }
+
+    public Page<EnrollInviteDTO> getEnrollInvitesByInstituteIdAndFilters(String instituteId, EnrollInviteFilterDTO enrollInviteFilterDTO,int pageNo,int pageSize) {
+        Sort sortColumns = ListService.createSortObject(enrollInviteFilterDTO.getSortColumns());
+        Pageable pageable = PageRequest.of(pageNo, pageSize);
+        Page<EnrollInvite>enrollInvites = null;
+        if (StringUtils.hasText(enrollInviteFilterDTO.getSearchName())){
+            enrollInvites = repository.getEnrollInvitesByInstituteIdAndSearchName(instituteId,enrollInviteFilterDTO.getSearchName(),List.of(StatusEnum.ACTIVE.name()),pageable);
+        }else{
+            enrollInvites = repository.getEnrollInvitesByInstituteIdAndFilters(instituteId,
+                    enrollInviteFilterDTO.getPackageSessionIds(),
+                    enrollInviteFilterDTO.getPaymentOptionIds(),
+                    enrollInviteFilterDTO.getTags(),
+                    List.of(StatusEnum.ACTIVE.name()),
+                    pageable);
+        }
+        return enrollInvites.map(EnrollInvite::toEnrollInviteDTO);
     }
 }

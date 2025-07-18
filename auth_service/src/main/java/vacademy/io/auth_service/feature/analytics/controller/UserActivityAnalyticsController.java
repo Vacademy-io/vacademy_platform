@@ -46,7 +46,6 @@ public class UserActivityAnalyticsController {
             @RequestAttribute("user") CustomUserDetails user) {
         
         UserActivityAnalyticsDto analytics = userActivityTrackingService.getInstituteAnalytics(instituteId);
-        
         ActiveUsersResponse response = ActiveUsersResponse.builder()
                 .currentlyActive(analytics.getCurrentlyActiveUsers())
                 .last5Minutes(analytics.getActiveUsersLast5Minutes())

@@ -82,7 +82,7 @@ export const formatTime = (timeInSeconds: number) => {
   return `${minutes}:${seconds < 10 ? "0" : ""}${seconds}`;
 };
 
-export const SessionYouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
+export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   videoId,
   onTimeUpdate,
   ms = 0,
@@ -1899,7 +1899,7 @@ interface YouTubePlayerWrapperProps {
 }
 
 // This is a wrapper component that exposes the YouTube player methods
-const SessionYouTubePlayerWrapper = forwardRef<any, YouTubePlayerWrapperProps>(
+const YouTubePlayerWrapper = forwardRef<any, YouTubePlayerWrapperProps>(
   ({ videoId, onTimeUpdate, questions, ms, allowPlayPause, allowRewind }, ref) => {
     const playerRef = useRef<any>(null);
 
@@ -1942,7 +1942,7 @@ const SessionYouTubePlayerWrapper = forwardRef<any, YouTubePlayerWrapperProps>(
     };
 
     return (
-      <SessionYouTubePlayerComp
+      <YouTubePlayerComp
         videoId={videoId}
         onTimeUpdate={handleTimeUpdate}
         questions={questions}
@@ -1954,5 +1954,5 @@ const SessionYouTubePlayerWrapper = forwardRef<any, YouTubePlayerWrapperProps>(
   }
 );
 
-SessionYouTubePlayerWrapper.displayName = "SessionYouTubePlayerWrapper";
-export default SessionYouTubePlayerWrapper;
+YouTubePlayerWrapper.displayName = "YouTubePlayerWrapper";
+export default YouTubePlayerWrapper;

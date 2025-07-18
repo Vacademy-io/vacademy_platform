@@ -4,15 +4,13 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { handleGetInstituteIdBySubdomain } from "./-services/courses-services";
 import { useEffect } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import RootErrorComponent from "@/components/core/deafult-error";
+import RootNotFoundComponent from "@/components/core/default-not-found";
 
 export const Route = createFileRoute("/courses/")({
     component: CoursesContainerComponent,
     validateSearch: (search) => {
         return {
-            instituteId:
-                (search.instituteId as string) ??
-                "dd9b9687-56ee-467a-9fc4-8c5835eae7f9",
+            instituteId: search.instituteId as string,
         };
     },
 });
@@ -30,36 +28,34 @@ function CoursesContainerComponent() {
     const navigate = useNavigate();
     const search = useSearch({ from: "/courses/" });
     const subdomain = getSubdomain(window.location.hostname);
-    const {
-        data: apiResult,
-        isLoading,
-        error,
-    } = useSuspenseQuery(
+
+    // Always call the hook, but only use result if needed
+    const { data: apiResult, isLoading } = useSuspenseQuery(
         handleGetInstituteIdBySubdomain({
-            subdomain: subdomain || "",
+            subdomain: !search.instituteId ? subdomain || "" : "__skip__",
         })
     );
-
-    console.log("error", error);
-    console.log("subdomain", subdomain);
+    const shouldFetchInstituteId = !search.instituteId;
 
     useEffect(() => {
         if (
+            shouldFetchInstituteId &&
             !isLoading &&
             apiResult &&
-            apiResult.id &&
-            search.instituteId !== apiResult.id
+            apiResult !== "Data not found"
         ) {
             navigate({
                 to: "/courses",
-                search: { ...search, instituteId: apiResult.id },
+                search: { ...search, instituteId: apiResult },
                 replace: true,
             });
         }
-    }, [apiResult, isLoading, search, navigate]);
-    if (error) {
-        return <RootErrorComponent />;
+    }, [apiResult, isLoading, search, navigate, shouldFetchInstituteId]);
+
+    if (shouldFetchInstituteId && apiResult === "Data not found") {
+        return <RootNotFoundComponent />;
     }
+
     return (
         <div className="min-h-screen bg-white">
             <CourseCatalougePage />

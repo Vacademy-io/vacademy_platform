@@ -91,3 +91,6 @@
 /community_service/target
 /notification_service/target
 /media_service/target
+
+# VS Code launch configurations with sensitive environment variables
+.vscode/launch.json

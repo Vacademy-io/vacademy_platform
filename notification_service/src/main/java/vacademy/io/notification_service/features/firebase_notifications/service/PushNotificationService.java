@@ -18,7 +18,7 @@ public class PushNotificationService {
 
     private static final Logger logger = LoggerFactory.getLogger(PushNotificationService.class);
 
-    @Autowired
+    @Autowired(required = false)
     private FirebaseMessaging firebaseMessaging;
 
     @Autowired
@@ -28,6 +28,11 @@ public class PushNotificationService {
      * Send push notification to a specific user
      */
     public void sendNotificationToUser(String userId, String title, String body, Map<String, String> data) {
+        if (firebaseMessaging == null) {
+            logger.warn("Firebase is not initialized. Cannot send push notification to user: {}", userId);
+            return;
+        }
+        
         List<FcmToken> userTokens = fcmTokenRepository.findByUserIdAndIsActiveTrue(userId);
         
         if (userTokens.isEmpty()) {
@@ -44,6 +49,11 @@ public class PushNotificationService {
      * Send push notification to a specific FCM token
      */
     public void sendNotificationToToken(String fcmToken, String title, String body, Map<String, String> data) {
+        if (firebaseMessaging == null) {
+            logger.warn("Firebase is not initialized. Cannot send push notification to token: {}", fcmToken);
+            return;
+        }
+        
         try {
             Message.Builder messageBuilder = Message.builder()
                 .setToken(fcmToken)

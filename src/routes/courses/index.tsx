@@ -4,6 +4,7 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { handleGetInstituteIdBySubdomain } from "./-services/courses-services";
 import { useEffect } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
+import RootErrorComponent from "@/components/core/deafult-error";
 
 export const Route = createFileRoute("/courses/")({
     component: CoursesContainerComponent,
@@ -29,8 +30,7 @@ function CoursesContainerComponent() {
     const navigate = useNavigate();
     const search = useSearch({ from: "/courses/" });
     const subdomain = getSubdomain(window.location.hostname);
-    console.log(window.location);
-    const { data: apiResult, isLoading } = useSuspenseQuery(
+    const { data: apiResult, isLoading, error } = useSuspenseQuery(
         handleGetInstituteIdBySubdomain({
             subdomain: subdomain || "",
         })
@@ -49,6 +49,9 @@ function CoursesContainerComponent() {
             });
         }
     }, [apiResult, isLoading, search, navigate]);
+    if (error) {
+        return <RootErrorComponent />;
+    }
     return (
         <div className="min-h-screen bg-white">
             <CourseCatalougePage />

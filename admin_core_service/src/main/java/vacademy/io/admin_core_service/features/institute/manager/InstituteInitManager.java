@@ -134,13 +134,12 @@ public class InstituteInitManager {
 
         if(Objects.isNull(instituteId)){
             Optional<Institute> institute = instituteRepository.findBySubdomainLimit1(subdomain);
-            if(institute.isEmpty()) throw new VacademyException("No Institute Found with Subdomain: " + subdomain);
+            if(institute.isEmpty()) return ResponseEntity.ok("Data not found");
             return ResponseEntity.ok(institute.get().getId());
         }
 
         Optional<Institute> institute = instituteRepository.findById(instituteId);
-        if(institute.isEmpty()) throw new VacademyException("No Institute Found with Id: " +instituteId);
-
+        if(institute.isEmpty()) return ResponseEntity.ok("Data not found");
         return ResponseEntity.ok(institute.get().getSubdomain());
     }
 }

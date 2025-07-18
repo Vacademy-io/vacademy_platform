@@ -13,8 +13,10 @@ import java.util.Optional;
 @Repository
 public interface DailyUserActivitySummaryRepository extends JpaRepository<DailyUserActivitySummary, String> {
 
-    // Find summary for specific user and date
-    Optional<DailyUserActivitySummary> findByUserIdAndInstituteIdAndActivityDate(String userId, String instituteId, LocalDate activityDate);
+    // Find summary for specific user and date - Cast UUID column to TEXT for comparison with VARCHAR parameter
+    @Query(value = "SELECT * FROM daily_user_activity_summary d WHERE d.user_id = :userId AND CAST(d.institute_id AS TEXT) = :instituteId AND d.activity_date = :activityDate", 
+           nativeQuery = true)
+    Optional<DailyUserActivitySummary> findByUserIdAndInstituteIdAndActivityDate(@Param("userId") String userId, @Param("instituteId") String instituteId, @Param("activityDate") LocalDate activityDate);
 
     // Institute-wide analytics - Cast UUID column to TEXT for comparison with VARCHAR parameter
     @Query(value = "SELECT SUM(d.total_sessions), SUM(d.total_activity_time_minutes), SUM(d.total_api_calls) " +
@@ -68,8 +70,12 @@ public interface DailyUserActivitySummaryRepository extends JpaRepository<DailyU
            nativeQuery = true)
     Long getUserEngagementDays(@Param("userId") String userId, @Param("instituteId") String instituteId, @Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
 
-    // Get user activity summaries for date range
-    List<DailyUserActivitySummary> findByInstituteIdAndActivityDateBetweenOrderByActivityDate(String instituteId, LocalDate startDate, LocalDate endDate);
+    // Get user activity summaries for date range - Cast UUID column to TEXT for comparison with VARCHAR parameter
+    @Query(value = "SELECT * FROM daily_user_activity_summary d WHERE CAST(d.institute_id AS TEXT) = :instituteId AND d.activity_date BETWEEN :startDate AND :endDate ORDER BY d.activity_date", 
+           nativeQuery = true)
+    List<DailyUserActivitySummary> findByInstituteIdAndActivityDateBetweenOrderByActivityDate(@Param("instituteId") String instituteId, @Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
     
-    List<DailyUserActivitySummary> findByUserIdAndInstituteIdAndActivityDateBetweenOrderByActivityDate(String userId, String instituteId, LocalDate startDate, LocalDate endDate);
+    @Query(value = "SELECT * FROM daily_user_activity_summary d WHERE d.user_id = :userId AND CAST(d.institute_id AS TEXT) = :instituteId AND d.activity_date BETWEEN :startDate AND :endDate ORDER BY d.activity_date", 
+           nativeQuery = true)
+    List<DailyUserActivitySummary> findByUserIdAndInstituteIdAndActivityDateBetweenOrderByActivityDate(@Param("userId") String userId, @Param("instituteId") String instituteId, @Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
 } 

@@ -33,7 +33,6 @@ public class UserActivityAnalyticsController {
     public ResponseEntity<Long> getRealTimeActiveUsers(
             @RequestParam("instituteId") String instituteId,
             @RequestAttribute("user") CustomUserDetails user) {
-        
         UserActivityAnalyticsDto analytics = userActivityTrackingService.getInstituteAnalytics(instituteId);
         return ResponseEntity.ok(analytics.getCurrentlyActiveUsers());
     }

@@ -6,6 +6,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -17,6 +18,7 @@ import vacademy.io.common.auth.entity.UserActivity;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.auth.repository.UserActivityRepository;
 import vacademy.io.common.auth.service.JwtService;
+import vacademy.io.common.auth.service.UserActivityTrackingService;
 import vacademy.io.common.exceptions.ExpiredTokenException;
 import vacademy.io.common.exceptions.VacademyException;
 
@@ -33,11 +35,16 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     private UserActivityRepository userActivityRepository;
     @Autowired
     private JwtService jwtService; // Inject JwtService dependency
+    
+    @Autowired(required = false)
+    private UserActivityTrackingService userActivityTrackingService;
+    
+    @Value("${spring.application.name:unknown-service}")
+    private String serviceName;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
         // Retrieve Authorization header from the request
-
         final String authHeader = request.getHeader("Authorization");
         final String instituteId = request.getHeader("clientId");
 
@@ -50,6 +57,13 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         try {
             // Extract JWT token from the header (remove "Bearer ")
             final String jwt = authHeader.substring(7);
+            
+            // Generate session token from JWT for activity tracking
+            String sessionToken = generateSessionIdFromJwt(jwt);
+            
+            // Set request attributes for UserDetailsService to use
+            request.setAttribute("serviceName", serviceName);
+            request.setAttribute("sessionToken", sessionToken);
 
             // Extract user email from the JWT using JwtService
             final String usernameWithInstituteId = instituteId + "@" + jwtService.extractUsername(jwt);
@@ -62,12 +76,15 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
                 boolean isTokenExpired = jwtService.isTokenExpired(jwt);
                 if (isTokenExpired) throw new ExpiredTokenException("Expired Token");
+                
+                // Track authentication attempt
+                long startTime = System.currentTimeMillis();
+                
                 // Load user details using user email
                 CustomUserDetails userDetails = (CustomUserDetails) userDetailsService.loadUserByUsername(usernameWithInstituteId);
 
                 // Pass User ID with request
                 request.setAttribute("user", userDetails);
-
 
                 // Validate the JWT token using user details and JwtService
                 if (jwtService.isTokenValid(jwt, userDetails)) {
@@ -80,6 +97,41 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
                     // Set the authentication object in SecurityContextHolder
                     SecurityContextHolder.getContext().setAuthentication(authToken);
+                    
+                    // Track successful JWT authentication activity
+                    if (userActivityTrackingService != null) {
+                        try {
+                            long responseTime = System.currentTimeMillis() - startTime;
+                            String ipAddress = getClientIpAddress(request);
+                            String userAgent = request.getHeader("User-Agent");
+                            String endpoint = request.getRequestURI();
+                            
+                            userActivityTrackingService.logUserActivity(
+                                userDetails.getUserId(),
+                                instituteId,
+                                serviceName,
+                                endpoint,
+                                "JWT_AUTHENTICATION",
+                                sessionToken,
+                                ipAddress,
+                                userAgent,
+                                200,
+                                responseTime
+                            );
+                            
+                            // Create or update session
+                            userActivityTrackingService.createOrUpdateSession(
+                                userDetails.getUserId(),
+                                instituteId,
+                                sessionToken,
+                                ipAddress,
+                                userAgent
+                            );
+                            
+                        } catch (Exception e) {
+                            log.debug("Error tracking JWT authentication activity: {}", e.getMessage());
+                        }
+                    }
                 }
             }
 
@@ -104,6 +156,32 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         } catch (Exception e) {
             log.error(e.getMessage());
         }
+    }
+
+    /**
+     * Generate a consistent session ID from JWT token
+     */
+    private String generateSessionIdFromJwt(String jwt) {
+        // Generate a consistent session ID from the JWT token
+        // Use the first part of the token to ensure consistency across requests
+        return "jwt_session_" + Integer.toHexString(jwt.hashCode());
+    }
+
+    /**
+     * Extract client IP address from request
+     */
+    private String getClientIpAddress(HttpServletRequest request) {
+        String xForwardedForHeader = request.getHeader("X-Forwarded-For");
+        if (xForwardedForHeader != null && !xForwardedForHeader.isEmpty()) {
+            return xForwardedForHeader.split(",")[0].trim();
+        }
+        
+        String xRealIpHeader = request.getHeader("X-Real-IP");
+        if (xRealIpHeader != null && !xRealIpHeader.isEmpty()) {
+            return xRealIpHeader;
+        }
+        
+        return request.getRemoteAddr();
     }
 
 }

@@ -1,29 +1,25 @@
 package vacademy.io.notification_service.features.firebase_notifications.entity;
 
-
 import java.time.LocalDateTime;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
+import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.PreUpdate;
 
 import java.util.UUID;
 
-
-@Entity(name = "fcm_tokens")
-
+@Entity
+@Table(name = "fcm_tokens")
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class FcmToken {
 
     @Id
     @Column(name = "id", nullable = false, unique = true, length = 255)
-    private String id; // Use String for the primary key
-
+    private String id;
 
     @Column(name = "user_id", nullable = false)
     private String userId;
@@ -46,9 +42,6 @@ public class FcmToken {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    // Constructors
-    public FcmToken() {}
-
     public FcmToken(String userId, String token, String platform, String deviceId) {
         this.id = UUID.randomUUID().toString();
         this.userId = userId;
@@ -60,33 +53,24 @@ public class FcmToken {
         this.updatedAt = LocalDateTime.now();
     }
 
-    // Getters and Setters
-    public String getId() { return id; }
-    public void setId(String id) { this.id = id; }
-
-    public String getUserId() { return userId; }
-    public void setUserId(String userId) { this.userId = userId; }
-
-    public String getToken() { return token; }
-    public void setToken(String token) { this.token = token; }
-
-    public String getPlatform() { return platform; }
-    public void setPlatform(String platform) { this.platform = platform; }
-
-    public String getDeviceId() { return deviceId; }
-    public void setDeviceId(String deviceId) { this.deviceId = deviceId; }
-
-    public Boolean getIsActive() { return isActive; }
-    public void setIsActive(Boolean isActive) { this.isActive = isActive; }
-
-    public LocalDateTime getCreatedAt() { return createdAt; }
-    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
-
-    public LocalDateTime getUpdatedAt() { return updatedAt; }
-    public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
+    @PrePersist
+    protected void onCreate() {
+        if (id == null) {
+            id = UUID.randomUUID().toString();
+        }
+        if (createdAt == null) {
+            createdAt = LocalDateTime.now();
+        }
+        if (updatedAt == null) {
+            updatedAt = LocalDateTime.now();
+        }
+        if (isActive == null) {
+            isActive = true;
+        }
+    }
 
     @PreUpdate
-    public void preUpdate() {
-        this.updatedAt = LocalDateTime.now();
+    protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
     }
 }

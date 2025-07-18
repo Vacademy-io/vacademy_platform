@@ -2,66 +2,113 @@ package vacademy.io.admin_core_service.features.enroll_invite.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.CollectionUtils;
+import vacademy.io.admin_core_service.features.common.dto.InstituteCustomFieldDTO;
+import vacademy.io.admin_core_service.features.common.enums.CustomFieldTypeEnum;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
+import vacademy.io.admin_core_service.features.common.service.InstituteCustomFiledService;
 import vacademy.io.admin_core_service.features.enroll_invite.dto.EnrollInviteDTO;
 import vacademy.io.admin_core_service.features.enroll_invite.dto.PackageSessionToPaymentOptionDTO;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionLearnerInvitationToPaymentOption;
-import vacademy.io.admin_core_service.features.enroll_invite.enums.EnrollInviteTag;
 import vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollInviteRepository;
 import vacademy.io.admin_core_service.features.packages.service.PackageSessionService;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
-import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentOptionSource;
-import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentOptionTag;
-import vacademy.io.admin_core_service.features.user_subscription.service.AppliedCouponDiscountService;
-import vacademy.io.admin_core_service.features.user_subscription.service.EnrollInviteDiscountOptionService;
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentOptionService;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.session.PackageSession;
 
-import java.sql.Date;
 import java.util.List;
-import java.util.Optional;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 @Service
 public class EnrollInviteService {
-    @Autowired
-    private EnrollInviteRepository repository;
 
-    @Autowired
-    private AppliedCouponDiscountService appliedCouponDiscountService;
+    @Autowired private EnrollInviteRepository repository;
+    @Autowired private PaymentOptionService paymentOptionService;
+    @Autowired private PackageSessionLearnerInvitationToPaymentOptionService packageSessionLearnerInvitationToPaymentOptionService;
+    @Autowired private PackageSessionService packageSessionService;
+    @Autowired private InstituteCustomFiledService instituteCustomFiledService;
 
-    @Autowired
-    private EnrollInviteCoursePreviewService enrollInviteCoursePreviewService;
-
-    @Autowired
-    private PaymentOptionService paymentOptionService;
-
-    @Autowired
-    private PackageSessionLearnerInvitationToPaymentOptionService packageSessionLearnerInvitationToPaymentOptionService;
-
-    @Autowired
-    private EnrollInviteDiscountOptionService enrollInviteDiscountOptionService;
-
-    @Autowired
-    private PackageSessionService packageSessionService;
-
-    public String createEnrollInvite(EnrollInviteDTO enrollInviteDTO){
-        EnrollInvite enrollInvite = new EnrollInvite(enrollInviteDTO);
-        if (enrollInviteDTO.getPackageSessionToPaymentOptions() == null || enrollInviteDTO.getPackageSessionToPaymentOptions().isEmpty()) {
-            throw new VacademyException("Package session to payment options cannot be empty");
+    /**
+     * Creates an EnrollInvite along with its associated custom fields and package-to-payment mappings.
+     *
+     * <p>Validation Rules:
+     * <ul>
+     * <li>enrollInviteDTO must not be null.</li>
+     * <li>packageSessionToPaymentOptions must not be null or empty.</li>
+     * <li>Each mapping must contain a non-null paymentOption.id and packageSessionId.</li>
+     * <li>All referenced PaymentOption and PackageSession entities must exist in the database.</li>
+     * </ul>
+     *
+     * @param enrollInviteDTO The data transfer object containing the enroll invite details.
+     * @return The ID of the newly persisted EnrollInvite.
+     * @throws VacademyException if validation fails.
+     */
+    @Transactional
+    public String createEnrollInvite(EnrollInviteDTO enrollInviteDTO) {
+        // 1. Validate initial payload
+        if (enrollInviteDTO == null) {
+            throw new VacademyException("EnrollInvite payload cannot be null.");
         }
-        enrollInvite = repository.save(enrollInvite);
-        List<PackageSessionToPaymentOptionDTO>packageSessionToPaymentOptionDTOS = enrollInviteDTO.getPackageSessionToPaymentOptions();
-        List<PackageSessionLearnerInvitationToPaymentOption>packageSessionLearnerInvitationToPaymentOptions = new  java.util.ArrayList<>();
-        for(PackageSessionToPaymentOptionDTO packageSessionToPaymentOptionDTO : packageSessionToPaymentOptionDTOS){
-            PaymentOption paymentOption = paymentOptionService.findById(packageSessionToPaymentOptionDTO.getPaymentOption().getId());
-            PackageSession packageSession = packageSessionService.findById(packageSessionToPaymentOptionDTO.getPackageSessionId());
-            PackageSessionLearnerInvitationToPaymentOption packageSessionLearnerInvitationToPaymentOption = new PackageSessionLearnerInvitationToPaymentOption(enrollInvite,packageSession,paymentOption,StatusEnum.ACTIVE.name());
-            packageSessionLearnerInvitationToPaymentOptions.add(packageSessionLearnerInvitationToPaymentOption);
+        List<PackageSessionToPaymentOptionDTO> mappingDTOs = enrollInviteDTO.getPackageSessionToPaymentOptions();
+        if (CollectionUtils.isEmpty(mappingDTOs)) {
+            throw new VacademyException("Package session to payment options cannot be empty.");
         }
-        packageSessionLearnerInvitationToPaymentOptionService.createPackageSessionLearnerInvitationToPaymentOptions(packageSessionLearnerInvitationToPaymentOptions);
-        repository.save(enrollInvite);
-        return enrollInvite.getId();
+
+        // 2. Persist the core EnrollInvite entity
+        EnrollInvite enrollInviteToSave = new EnrollInvite(enrollInviteDTO);
+        final EnrollInvite savedEnrollInvite = repository.save(enrollInviteToSave);
+
+        // 3. Attach and persist custom fields, if any
+        if (!CollectionUtils.isEmpty(enrollInviteDTO.getInstituteCustomFields())) {
+            List<InstituteCustomFieldDTO> customFieldsToSave = enrollInviteDTO.getInstituteCustomFields().stream()
+                    .filter(Objects::nonNull)
+                    .peek(cf -> {
+                        cf.setType(CustomFieldTypeEnum.ENROLL_INVITE.name());
+                        cf.setTypeId(savedEnrollInvite.getId());
+                    })
+                    .collect(Collectors.toList());
+            instituteCustomFiledService.addCustomFields(customFieldsToSave);
+        }
+
+        // 4. Build and persist the mapping entities between PackageSession and PaymentOption
+        List<PackageSessionLearnerInvitationToPaymentOption> mappingEntities = mappingDTOs.stream()
+                .filter(Objects::nonNull)
+                .map(dto -> {
+                    validateMappingDTO(dto);
+                    PaymentOption paymentOption = paymentOptionService.findById(dto.getPaymentOption().getId());
+                    PackageSession packageSession = packageSessionService.findById(dto.getPackageSessionId());
+
+                    return new PackageSessionLearnerInvitationToPaymentOption(
+                            savedEnrollInvite,
+                            packageSession,
+                            paymentOption,
+                            StatusEnum.ACTIVE.name()
+                    );
+                })
+                .collect(Collectors.toList());
+
+        if (mappingEntities.isEmpty()) {
+            // This case would only be hit if the original list contained only null elements
+            throw new VacademyException("No valid packageSession-paymentOption mappings were provided.");
+        }
+        packageSessionLearnerInvitationToPaymentOptionService.createPackageSessionLearnerInvitationToPaymentOptions(mappingEntities);
+
+        return savedEnrollInvite.getId();
+    }
+
+    /**
+     * Validates an individual mapping DTO.
+     */
+    private void validateMappingDTO(PackageSessionToPaymentOptionDTO dto) {
+        if (dto.getPackageSessionId() == null || dto.getPackageSessionId().isBlank()) {
+            throw new VacademyException("packageSessionId is required in packageSessionToPaymentOptions.");
+        }
+        if (dto.getPaymentOption() == null || dto.getPaymentOption().getId() == null || dto.getPaymentOption().getId().isBlank()) {
+            throw new VacademyException("paymentOption.id is required in packageSessionToPaymentOptions.");
+        }
     }
 }

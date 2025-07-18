@@ -1,14 +1,10 @@
-package vacademy.io.admin_core_service.features.live_session.repository;
+package vacademy.io.admin_core_service.features.common.repository;
 
-import jakarta.transaction.Transactional;
-import lombok.Getter;
-import lombok.Setter;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
-import vacademy.io.admin_core_service.features.live_session.dto.RegistrationFromResponseDTO;
-import vacademy.io.admin_core_service.features.live_session.entity.CustomFields;
+import vacademy.io.admin_core_service.features.common.entity.CustomFields;
 
 import java.time.LocalDateTime;
 import java.util.List;

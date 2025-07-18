@@ -1,4 +1,4 @@
-package vacademy.io.admin_core_service.features.live_session.entity;
+package vacademy.io.admin_core_service.features.common.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -9,9 +9,9 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.UuidGenerator;
+import vacademy.io.admin_core_service.features.common.dto.InstituteCustomFieldDTO;
 
 import java.sql.Date;
-import java.sql.Timestamp;
 
 @Entity
 @Table(name = "institute_custom_fields")
@@ -43,5 +43,13 @@ public class InstituteCustomField {
 
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Date updatedAt;
+
+    public InstituteCustomField(InstituteCustomFieldDTO instituteCustomFieldDTO){
+        this.id = instituteCustomFieldDTO.getId();
+        this.instituteId = instituteCustomFieldDTO.getInstituteId();
+        this.customFieldId = instituteCustomFieldDTO.getCustomField().getId();
+        this.type = instituteCustomFieldDTO.getType();
+        this.typeId = instituteCustomFieldDTO.getTypeId();
+    }
 }
 

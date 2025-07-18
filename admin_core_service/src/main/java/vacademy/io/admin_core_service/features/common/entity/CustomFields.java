@@ -1,11 +1,9 @@
-package vacademy.io.admin_core_service.features.live_session.entity;
+package vacademy.io.admin_core_service.features.common.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
-import org.hibernate.annotations.GenericGenerator;
-import org.hibernate.annotations.UuidGenerator;
+import vacademy.io.admin_core_service.features.common.dto.CustomFieldDTO;
 
-import java.time.LocalDateTime;
 import java.util.Date;
 
 @Entity
@@ -52,4 +50,17 @@ public class CustomFields {
 
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Date updatedAt;
+
+    public CustomFields(CustomFieldDTO customFieldDTO) {
+        this.id = customFieldDTO.getId();
+        this.fieldKey = customFieldDTO.getFieldKey();
+        this.fieldName = customFieldDTO.getFieldName();
+        this.fieldType = customFieldDTO.getFieldType();
+        this.defaultValue = customFieldDTO.getDefaultValue();
+        this.config = customFieldDTO.getConfig();
+        this.formOrder = customFieldDTO.getFormOrder();
+        this.isMandatory = customFieldDTO.getIsMandatory();
+        this.isFilter = customFieldDTO.getIsFilter();
+        this.isSortable = customFieldDTO.getIsSortable();
+    }
 }

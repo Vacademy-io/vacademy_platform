@@ -1,4 +1,4 @@
-package vacademy.io.admin_core_service.features.live_session.entity;
+package vacademy.io.admin_core_service.features.common.entity;
 
 import jakarta.persistence.*;
         import lombok.*;

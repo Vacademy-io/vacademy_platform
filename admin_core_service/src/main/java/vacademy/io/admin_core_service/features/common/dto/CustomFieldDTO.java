@@ -1,4 +1,4 @@
-package vacademy.io.admin_core_service.features.live_session.dto;
+package vacademy.io.admin_core_service.features.common.dto;
 
 import lombok.Getter;
 import lombok.Setter;

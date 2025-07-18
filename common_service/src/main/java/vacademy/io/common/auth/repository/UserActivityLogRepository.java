@@ -12,47 +12,47 @@ import java.util.List;
 @Repository
 public interface UserActivityLogRepository extends JpaRepository<UserActivityLog, String> {
 
-    // Activity count queries - Using native query (institute_id is VARCHAR, not UUID)
-    @Query(value = "SELECT COUNT(DISTINCT u.user_id) FROM user_activity_log u WHERE u.institute_id = :instituteId AND u.created_at >= :startTime", 
+    // Activity count queries - Cast UUID column to TEXT for comparison with VARCHAR parameter
+    @Query(value = "SELECT COUNT(DISTINCT u.user_id) FROM user_activity_log u WHERE CAST(u.institute_id AS TEXT) = :instituteId AND u.created_at >= :startTime", 
            nativeQuery = true)
     Long countActiveUsersInInstituteSince(@Param("instituteId") String instituteId, @Param("startTime") LocalDateTime startTime);
 
-    @Query(value = "SELECT COUNT(u.*) FROM user_activity_log u WHERE u.institute_id = :instituteId AND u.created_at >= :startTime", 
+    @Query(value = "SELECT COUNT(u.*) FROM user_activity_log u WHERE CAST(u.institute_id AS TEXT) = :instituteId AND u.created_at >= :startTime", 
            nativeQuery = true)
     Long countActivityInInstituteSince(@Param("instituteId") String instituteId, @Param("startTime") LocalDateTime startTime);
 
-    // Service usage analytics - Using native query (institute_id is VARCHAR, not UUID)
-    @Query(value = "SELECT u.service_name, COUNT(u.*) FROM user_activity_log u WHERE u.institute_id = :instituteId AND u.created_at >= :startTime GROUP BY u.service_name ORDER BY COUNT(u.*) DESC", 
+    // Service usage analytics - Cast UUID column to TEXT for comparison with VARCHAR parameter
+    @Query(value = "SELECT u.service_name, COUNT(u.*) FROM user_activity_log u WHERE CAST(u.institute_id AS TEXT) = :instituteId AND u.created_at >= :startTime GROUP BY u.service_name ORDER BY COUNT(u.*) DESC", 
            nativeQuery = true)
     List<Object[]> getServiceUsageStats(@Param("instituteId") String instituteId, @Param("startTime") LocalDateTime startTime);
 
-    // Peak hours analysis - Using native query (institute_id is VARCHAR, not UUID)
-    @Query(value = "SELECT EXTRACT(HOUR FROM u.created_at), COUNT(u.*) FROM user_activity_log u WHERE u.institute_id = :instituteId AND u.created_at >= :startTime GROUP BY EXTRACT(HOUR FROM u.created_at) ORDER BY COUNT(u.*) DESC", 
+    // Peak hours analysis - Cast UUID column to TEXT for comparison with VARCHAR parameter
+    @Query(value = "SELECT EXTRACT(HOUR FROM u.created_at), COUNT(u.*) FROM user_activity_log u WHERE CAST(u.institute_id AS TEXT) = :instituteId AND u.created_at >= :startTime GROUP BY EXTRACT(HOUR FROM u.created_at) ORDER BY COUNT(u.*) DESC", 
            nativeQuery = true)
     List<Object[]> getPeakHoursActivity(@Param("instituteId") String instituteId, @Param("startTime") LocalDateTime startTime);
 
-    // Most active users - Using native query (institute_id is VARCHAR, not UUID)
-    @Query(value = "SELECT u.user_id, COUNT(u.*) FROM user_activity_log u WHERE u.institute_id = :instituteId AND u.created_at >= :startTime GROUP BY u.user_id ORDER BY COUNT(u.*) DESC", 
+    // Most active users - Cast UUID column to TEXT for comparison with VARCHAR parameter
+    @Query(value = "SELECT u.user_id, COUNT(u.*) FROM user_activity_log u WHERE CAST(u.institute_id AS TEXT) = :instituteId AND u.created_at >= :startTime GROUP BY u.user_id ORDER BY COUNT(u.*) DESC", 
            nativeQuery = true)
     List<Object[]> getMostActiveUsers(@Param("instituteId") String instituteId, @Param("startTime") LocalDateTime startTime);
 
-    // User activity timeline - Using native query (institute_id is VARCHAR, not UUID)
-    @Query(value = "SELECT * FROM user_activity_log u WHERE u.user_id = :userId AND u.institute_id = :instituteId AND u.created_at >= :startTime ORDER BY u.created_at DESC", 
+    // User activity timeline - Cast UUID column to TEXT for comparison with VARCHAR parameter
+    @Query(value = "SELECT * FROM user_activity_log u WHERE u.user_id = :userId AND CAST(u.institute_id AS TEXT) = :instituteId AND u.created_at >= :startTime ORDER BY u.created_at DESC", 
            nativeQuery = true)
     List<UserActivityLog> getUserActivityTimeline(@Param("userId") String userId, @Param("instituteId") String instituteId, @Param("startTime") LocalDateTime startTime);
 
-    // Device type analytics - Using native query (institute_id is VARCHAR, not UUID)
-    @Query(value = "SELECT u.device_type, COUNT(DISTINCT u.user_id) FROM user_activity_log u WHERE u.institute_id = :instituteId AND u.created_at >= :startTime GROUP BY u.device_type", 
+    // Device type analytics - Cast UUID column to TEXT for comparison with VARCHAR parameter
+    @Query(value = "SELECT u.device_type, COUNT(DISTINCT u.user_id) FROM user_activity_log u WHERE CAST(u.institute_id AS TEXT) = :instituteId AND u.created_at >= :startTime GROUP BY u.device_type", 
            nativeQuery = true)
     List<Object[]> getDeviceTypeUsage(@Param("instituteId") String instituteId, @Param("startTime") LocalDateTime startTime);
 
-    // Daily activity trends - Using native query (institute_id is VARCHAR, not UUID)
-    @Query(value = "SELECT DATE(u.created_at), COUNT(DISTINCT u.user_id) FROM user_activity_log u WHERE u.institute_id = :instituteId AND u.created_at >= :startTime GROUP BY DATE(u.created_at) ORDER BY DATE(u.created_at)", 
+    // Daily activity trends - Cast UUID column to TEXT for comparison with VARCHAR parameter
+    @Query(value = "SELECT DATE(u.created_at), COUNT(DISTINCT u.user_id) FROM user_activity_log u WHERE CAST(u.institute_id AS TEXT) = :instituteId AND u.created_at >= :startTime GROUP BY DATE(u.created_at) ORDER BY DATE(u.created_at)", 
            nativeQuery = true)
     List<Object[]> getDailyActiveUsersTrend(@Param("instituteId") String instituteId, @Param("startTime") LocalDateTime startTime);
 
-    // Response time analytics - Using native query (institute_id is VARCHAR, not UUID)
-    @Query(value = "SELECT u.service_name, AVG(u.response_time_ms), COUNT(u.*) FROM user_activity_log u WHERE u.institute_id = :instituteId AND u.created_at >= :startTime AND u.response_time_ms IS NOT NULL GROUP BY u.service_name", 
+    // Response time analytics - Cast UUID column to TEXT for comparison with VARCHAR parameter
+    @Query(value = "SELECT u.service_name, AVG(u.response_time_ms), COUNT(u.*) FROM user_activity_log u WHERE CAST(u.institute_id AS TEXT) = :instituteId AND u.created_at >= :startTime AND u.response_time_ms IS NOT NULL GROUP BY u.service_name", 
            nativeQuery = true)
     List<Object[]> getServicePerformanceStats(@Param("instituteId") String instituteId, @Param("startTime") LocalDateTime startTime);
 

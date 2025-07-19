@@ -30,7 +30,7 @@
     <servers>
         <server>
             <id>github</id>
-            <username>shreyash-jain</username>
+            <username>${env.GITHUB_USERNAME}</username>
             <password>${env.JAVA_TOKEN}</password>
             <configuration>
                 <httpHeaders>

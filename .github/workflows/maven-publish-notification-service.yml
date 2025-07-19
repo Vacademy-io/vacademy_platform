@@ -23,16 +23,18 @@ jobs:
       - name: Authenticate GitHub Package Registry
         env:
           JAVA_TOKEN: ${{ secrets.JAVA_TOKEN }}
+          GITHUB_USERNAME: ${{ secrets.GITHUB_USERNAME }}
         run: |
-          echo "${JAVA_TOKEN}" | docker login ghcr.io -u shreyash-jain --password-stdin
+          echo "${JAVA_TOKEN}" | docker login ghcr.io -u ${GITHUB_USERNAME} --password-stdin
           mkdir -p ~/.m2
-          echo "<settings><servers><server><id>github</id><username>shreyash-jain</username><password>${JAVA_TOKEN}</password></server></servers></settings>" > ~/.m2/settings.xml
+          echo "<settings><servers><server><id>github</id><username>${GITHUB_USERNAME}</username><password>${JAVA_TOKEN}</password></server></servers></settings>" > ~/.m2/settings.xml
 
 
       - name: Build Project
         working-directory: ./notification_service
         env:
           JAVA_TOKEN: ${{ secrets.JAVA_TOKEN }}
+          GITHUB_USERNAME: ${{ secrets.GITHUB_USERNAME }}
         run: mvn -s settings.xml clean install -DskipTests
 
       # To push to ECR you need to login through us-east-1
@@ -59,12 +61,12 @@ jobs:
           IMAGE_TAG: latest
           REPOSITORY: notification-service/notification-service-repo
           GITHUB_TOKEN: ${{ secrets.JAVA_TOKEN }}
-          GITHUB_ACTOR: shreyash-jain
+          GITHUB_USERNAME: ${{ secrets.GITHUB_USERNAME }}
           JAVA_TOKEN: ${{ secrets.JAVA_TOKEN }}
           AWS_MAIL_USERNAME: ${{ secrets.AWS_MAIL_USERNAME }}
           AWS_MAIL_PASSWORD: ${{ secrets.AWS_MAIL_PASSWORD }}
         run: |
-          docker build -t $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG . --build-arg GITHUB_TOKEN=${GITHUB_TOKEN} --build-arg JAVA_TOKEN=${JAVA_TOKEN}
+          docker build -t $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG . --build-arg GITHUB_TOKEN=${GITHUB_TOKEN} --build-arg GITHUB_USERNAME=${GITHUB_USERNAME} --build-arg JAVA_TOKEN=${JAVA_TOKEN}
           docker push $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG
           echo "Docker Image Link = $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG"
 

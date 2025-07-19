@@ -10,6 +10,7 @@ ARG JAVA_TOKEN
 
 # Set environment variables
 ENV JAVA_TOKEN=$JAVA_TOKEN
+ENV GITHUB_USERNAME=$GITHUB_USERNAME
 
 # Copy the Maven settings file
 COPY settings.xml ./

@@ -119,9 +119,10 @@ public class RatingService {
         Sort sort = ListService.createSortObject(ratingFilterDTO.getSortColumns());
         Pageable pageable = PageRequest.of(pageNo, pageSize, sort);
 
-        Page<Rating> ratingsPage = ratingRepository.findRatingsBySourceExcludingDeleted(
+        Page<Rating> ratingsPage = ratingRepository.findBySourceTypeAndSourceIdAndStatusNotIn(
             ratingFilterDTO.getSourceType(),
             ratingFilterDTO.getSourceId(),
+            List.of(StatusEnum.DELETED.name()),
             pageable
         );
 

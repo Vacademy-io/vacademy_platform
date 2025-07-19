@@ -110,6 +110,24 @@ public class RatingService {
         return mapRatingPageToDetailDTO(ratingsPage);
     }
 
+    public Page<RatingDetailDTO> getRatingsForSourceExcludingDeleted(
+        RatingFilterDTO ratingFilterDTO,
+        int pageNo,
+        int pageSize,
+        CustomUserDetails userDetails
+    ) {
+        Sort sort = ListService.createSortObject(ratingFilterDTO.getSortColumns());
+        Pageable pageable = PageRequest.of(pageNo, pageSize, sort);
+
+        Page<Rating> ratingsPage = ratingRepository.findRatingsBySourceExcludingDeleted(
+            ratingFilterDTO.getSourceType(),
+            ratingFilterDTO.getSourceId(),
+            pageable
+        );
+
+        return mapRatingPageToDetailDTO(ratingsPage);
+    }
+
     public RatingSummaryProjection getRatingSummaryProjectionForSource(String sourceType, String sourceId) {
         return ratingRepository.getRatingSummary(sourceId, sourceType, List.of(StatusEnum.ACTIVE.name()));
     }

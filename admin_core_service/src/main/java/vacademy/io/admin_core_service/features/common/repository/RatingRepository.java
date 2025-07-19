@@ -144,4 +144,24 @@ public interface RatingRepository extends JpaRepository<Rating, String> {
         @Param("sourceId") String sourceId
     );
 
+    @Query(value = """
+    SELECT * FROM rating
+    WHERE source_type = :sourceType
+      AND source_id = :sourceId
+      AND status != 'DELETED'
+    ORDER BY created_at DESC
+    """,
+        countQuery = """
+    SELECT COUNT(*) FROM rating
+    WHERE source_type = :sourceType
+      AND source_id = :sourceId
+      AND status != 'DELETED'
+    """,
+        nativeQuery = true)
+    Page<Rating> findRatingsBySourceExcludingDeleted(
+        @Param("sourceType") String sourceType,
+        @Param("sourceId") String sourceId,
+        Pageable pageable
+    );
+
 }

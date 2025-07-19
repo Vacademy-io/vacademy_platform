@@ -1022,7 +1022,7 @@ SELECT
                 COALESCE(qqc.question_count, 0) * 2
             ELSE 0
         END
-    ) AS totalReadTimeMinutes
+    ) AS readTimeInMinutes
 
 FROM slide s
 LEFT JOIN video vs
@@ -1119,7 +1119,7 @@ SELECT
                 COALESCE(qqc.question_count, 0) * 2
             ELSE 0
         END
-    ) AS totalReadTimeMinutes
+    ) AS readTimeInMinutes
 
 FROM slide s
 LEFT JOIN video vs

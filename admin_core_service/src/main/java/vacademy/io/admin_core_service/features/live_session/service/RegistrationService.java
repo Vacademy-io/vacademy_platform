@@ -4,13 +4,10 @@ import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.live_session.dto.GuestRegistrationRequestDTO;
-import vacademy.io.admin_core_service.features.live_session.dto.LiveSessionStep1RequestDTO;
-import vacademy.io.admin_core_service.features.live_session.entity.CustomFieldValues;
-import vacademy.io.admin_core_service.features.live_session.entity.LiveSession;
+import vacademy.io.admin_core_service.features.common.entity.CustomFieldValues;
 import vacademy.io.admin_core_service.features.live_session.entity.SessionGuestRegistration;
 import vacademy.io.admin_core_service.features.live_session.repository.CustomFieldValuesRepository;
 import vacademy.io.admin_core_service.features.live_session.repository.SessionGuestRegistrationRepository;
-import vacademy.io.common.auth.model.CustomUserDetails;
 
 import java.time.LocalDateTime;
 import java.util.UUID;

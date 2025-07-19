@@ -109,7 +109,6 @@ public class AuthManager {
             throw new VacademyException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to register user institutes due to service unavailability: " + e.getMessage());
         }
 
-
         List<Role> allRoles = getAllUserRoles(registerRequest.getUserRoles());
         Set<UserRole> userRoleSet = new HashSet<>();
 

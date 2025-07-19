@@ -6,6 +6,7 @@ import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
+import vacademy.io.admin_core_service.features.chapter.enums.ChapterStatus;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.faculty.enums.FacultyStatusEnum;
 import vacademy.io.admin_core_service.features.level.enums.LevelStatusEnum;
@@ -15,6 +16,8 @@ import vacademy.io.admin_core_service.features.packages.dto.LearnerPackageFilter
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
 import vacademy.io.admin_core_service.features.packages.enums.PackageStatusEnum;
 import vacademy.io.admin_core_service.features.packages.repository.PackageRepository;
+import vacademy.io.admin_core_service.features.slide.enums.QuestionStatusEnum;
+import vacademy.io.admin_core_service.features.slide.enums.SlideStatus;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.core.standard_classes.ListService;
 import vacademy.io.common.exceptions.VacademyException;
@@ -54,6 +57,10 @@ public class OpenPackageService {
                     List.of(LevelStatusEnum.ACTIVE.name()),
                     List.of(StatusEnum.ACTIVE.name()),
                     List.of(StatusEnum.ACTIVE.name()),
+                    List.of(QuestionStatusEnum.ACTIVE.name()),
+                    List.of(QuestionStatusEnum.ACTIVE.name()),
+                    List.of(SlideStatus.DRAFT.name(), SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
+                    List.of(ChapterStatus.ACTIVE.name()),
                     pageable
             );
         }else{
@@ -67,6 +74,10 @@ public class OpenPackageService {
                     learnerPackageFilterDTO.getTag(),
                     List.of(LevelStatusEnum.ACTIVE.name()),
                     List.of(StatusEnum.ACTIVE.name()),
+                    List.of(QuestionStatusEnum.ACTIVE.name()),
+                    List.of(QuestionStatusEnum.ACTIVE.name()),
+                    List.of(SlideStatus.DRAFT.name(), SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
+                    List.of(ChapterStatus.ACTIVE.name()),
                     pageable
             );
         }
@@ -111,7 +122,8 @@ public class OpenPackageService {
                     projection.getLevelId(),
                     projection.getLevelName(),
                     instructors,
-                    projection.getLevelIds()
+                    projection.getLevelIds(),
+                    projection.getReadTimeInMinutes()
             );
         }).toList();
 
@@ -163,7 +175,8 @@ public class OpenPackageService {
                 projection.getLevelId(),
                 projection.getLevelName(),
                 instructors,
-                projection.getLevelIds()
+                projection.getLevelIds(),
+                projection.getReadTimeInMinutes()
         );
 
         return dto;

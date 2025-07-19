@@ -5,6 +5,7 @@ import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
+import vacademy.io.admin_core_service.features.chapter.enums.ChapterStatus;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.faculty.enums.FacultyStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerStatusEnum;
@@ -15,6 +16,8 @@ import vacademy.io.admin_core_service.features.packages.dto.LearnerPackageFilter
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
 import vacademy.io.admin_core_service.features.packages.enums.PackageStatusEnum;
 import vacademy.io.admin_core_service.features.packages.repository.PackageRepository;
+import vacademy.io.admin_core_service.features.slide.enums.QuestionStatusEnum;
+import vacademy.io.admin_core_service.features.slide.enums.SlideStatus;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.core.standard_classes.ListService;
@@ -92,7 +95,8 @@ public class LearnerPackageService {
                     projection.getLevelId(),
                     projection.getLevelName(),
                     instructors,
-                    projection.getLevelIds()
+                    projection.getLevelIds(),
+                    projection.getReadTimeInMinutes()
             );
         }).toList();
 
@@ -115,6 +119,10 @@ public class LearnerPackageService {
                     List.of(LearnerOperationEnum.PERCENTAGE_PACKAGE_SESSION_COMPLETED.name()),
                     List.of(StatusEnum.ACTIVE.name()),
                     List.of(StatusEnum.ACTIVE.name()),
+                    List.of(QuestionStatusEnum.ACTIVE.name()),
+                    List.of(QuestionStatusEnum.ACTIVE.name()),
+                    List.of(SlideStatus.DRAFT.name(), SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
+                    List.of(ChapterStatus.ACTIVE.name()),
                     pageable
             );
         } else {
@@ -129,6 +137,10 @@ public class LearnerPackageService {
                     List.of(StatusEnum.ACTIVE.name()),
                     learnerPackageFilterDTO.getTag(),
                     List.of(StatusEnum.ACTIVE.name()),
+                    List.of(QuestionStatusEnum.ACTIVE.name()),
+                    List.of(QuestionStatusEnum.ACTIVE.name()),
+                    List.of(SlideStatus.DRAFT.name(), SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
+                    List.of(ChapterStatus.ACTIVE.name()),
                     pageable
             );
         }
@@ -151,6 +163,10 @@ public class LearnerPackageService {
                     List.of(LearnerOperationEnum.PERCENTAGE_PACKAGE_SESSION_COMPLETED.name()),
                     List.of(StatusEnum.ACTIVE.name()),
                     List.of(StatusEnum.ACTIVE.name()),
+                    List.of(QuestionStatusEnum.ACTIVE.name()),
+                    List.of(QuestionStatusEnum.ACTIVE.name()),
+                    List.of(SlideStatus.DRAFT.name(), SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
+                    List.of(ChapterStatus.ACTIVE.name()),
                     pageable
             );
         } else {
@@ -165,6 +181,10 @@ public class LearnerPackageService {
                     List.of(StatusEnum.ACTIVE.name()),
                     learnerPackageFilterDTO.getTag(),
                     List.of(StatusEnum.ACTIVE.name()),
+                    List.of(QuestionStatusEnum.ACTIVE.name()),
+                    List.of(QuestionStatusEnum.ACTIVE.name()),
+                    List.of(SlideStatus.DRAFT.name(), SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
+                    List.of(ChapterStatus.ACTIVE.name()),
                     pageable
             );
         }
@@ -188,6 +208,10 @@ public class LearnerPackageService {
                     List.of(StatusEnum.ACTIVE.name()),
                     List.of(StatusEnum.ACTIVE.name()),
                     List.of(LearnerStatusEnum.ACTIVE.name()),
+                    List.of(QuestionStatusEnum.ACTIVE.name()),
+                    List.of(QuestionStatusEnum.ACTIVE.name()),
+                    List.of(SlideStatus.DRAFT.name(), SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
+                    List.of(ChapterStatus.ACTIVE.name()),
                     pageable
             );
         } else {
@@ -203,6 +227,10 @@ public class LearnerPackageService {
                     learnerPackageFilterDTO.getTag(),
                     List.of(StatusEnum.ACTIVE.name()),
                     List.of(LearnerStatusEnum.ACTIVE.name()),
+                    List.of(QuestionStatusEnum.ACTIVE.name()),
+                    List.of(QuestionStatusEnum.ACTIVE.name()),
+                    List.of(SlideStatus.DRAFT.name(), SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
+                    List.of(ChapterStatus.ACTIVE.name()),
                     pageable
             );
         }
@@ -258,7 +286,8 @@ public class LearnerPackageService {
                 projection.getLevelId(),
                 projection.getLevelName(),
                 instructors,
-                projection.getLevelIds()
+                projection.getLevelIds(),
+                projection.getReadTimeInMinutes()
         );
 
         return dto;

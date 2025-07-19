@@ -15,6 +15,12 @@ import vacademy.io.common.auth.constants.AuthConstant;
 import vacademy.io.common.auth.dto.UserServiceDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
+import org.springframework.web.context.request.RequestAttributes;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
+
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpSession;
 
 @Component
 @Slf4j
@@ -32,11 +38,21 @@ public class UserDetailsRestServiceImpl implements UserDetailsService {
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
 
         log.debug("Entering in loadUserByUsername Method...");
+        
+        // Extract session token from SecurityContext if available
+        String sessionToken = extractSessionToken();
+        
+        // Build endpoint URL with service name and optional session token
+        String endpoint = AuthConstant.userServiceRoute 
+            + "?userName=" + username 
+            + "&serviceName=" + clientName
+            + (sessionToken != null ? "&sessionToken=" + sessionToken : "");
+            
         ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
                 clientName,
                 HttpMethod.GET.name(),
                 authServerBaseUrl,
-                AuthConstant.userServiceRoute + "?userName=" + username,
+                endpoint,
                 null);
 
         ObjectMapper objectMapper = new ObjectMapper();
@@ -48,5 +64,47 @@ public class UserDetailsRestServiceImpl implements UserDetailsService {
         } catch (JsonProcessingException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    /**
+     * Extract session token from current security context
+     * This can be enhanced based on your session management strategy
+     */
+    private String extractSessionToken() {
+        try {
+            // First, try to get from request attributes (set by JWT filter)
+            RequestAttributes requestAttributes = RequestContextHolder.getRequestAttributes();
+            if (requestAttributes instanceof ServletRequestAttributes) {
+                HttpServletRequest request = ((ServletRequestAttributes) requestAttributes).getRequest();
+                
+                // Check if JWT filter set the session token
+                String sessionToken = (String) request.getAttribute("sessionToken");
+                if (sessionToken != null) {
+                    return sessionToken;
+                }
+                
+                // Fallback: Extract from Authorization header
+                String authHeader = request.getHeader("Authorization");
+                if (authHeader != null && authHeader.startsWith("Bearer ")) {
+                    return generateSessionIdFromToken(authHeader.substring(7));
+                }
+                
+                // Fallback: HTTP session
+                HttpSession session = request.getSession(false);
+                if (session != null) {
+                    return session.getId();
+                }
+            }
+            
+            return null;
+        } catch (Exception e) {
+            log.debug("Could not extract session token: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    private String generateSessionIdFromToken(String token) {
+        // Generate consistent session ID from JWT token
+        return "session_" + Integer.toHexString(token.hashCode());
     }
 }

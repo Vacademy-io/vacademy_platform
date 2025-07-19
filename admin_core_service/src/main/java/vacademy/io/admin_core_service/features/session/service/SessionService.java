@@ -3,10 +3,10 @@ package vacademy.io.admin_core_service.features.session.service;
 import jakarta.transaction.Transactional;
 import lombok.AllArgsConstructor;
 import org.springframework.scheduling.annotation.Async;
-import org.springframework.security.core.parameters.P;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.course.dto.AddFacultyToCourseDTO;
+import vacademy.io.admin_core_service.features.enroll_invite.service.DefaultEnrollInviteService;
 import vacademy.io.admin_core_service.features.faculty.service.FacultyService;
 import vacademy.io.admin_core_service.features.group.service.GroupService;
 import vacademy.io.admin_core_service.features.learner_invitation.dto.AddLearnerInvitationDTO;
@@ -26,7 +26,6 @@ import vacademy.io.admin_core_service.features.session.repository.SessionReposit
 import vacademy.io.admin_core_service.features.subject.service.SubjectService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
-import vacademy.io.common.institute.dto.LevelDTO;
 import vacademy.io.common.institute.dto.PackageDTO;
 import vacademy.io.common.institute.dto.SessionDTO;
 import vacademy.io.common.institute.entity.Group;
@@ -49,6 +48,7 @@ public class SessionService {
     private final SubjectService subjectService;
     private final LearnerInvitationService learnerInvitationService;
     private final GroupService groupService;
+    private final DefaultEnrollInviteService defaultEnrollInviteService;
 
     private final FacultyService facultyService;
 
@@ -153,7 +153,7 @@ public class SessionService {
 
         List<PackageSession> packageSessions = new ArrayList<>();
         for (AddLevelWithSessionDTO levelDTO : addNewSessionDTO.getLevels()) {
-            PackageSession packageSession = createPackageSession(levelDTO, session, addNewSessionDTO.getStartDate());
+            PackageSession packageSession = createPackageSession(levelDTO, session, addNewSessionDTO.getStartDate(),instituteId);
             facultyService.addFacultyToBatch(levelDTO.getAddFacultyToCourse(),packageSession.getId(),instituteId);
             packageSessions.add(packageSession);
         }
@@ -179,7 +179,7 @@ public class SessionService {
 
         List<PackageSession> packageSessions = new ArrayList<>();
         for (AddLevelWithSessionDTO levelDTO : addNewSessionDTO.getLevels()) {
-            PackageSession packageSession = createPackageSession(levelDTO, session, addNewSessionDTO.getStartDate());
+            PackageSession packageSession = createPackageSession(levelDTO, session, addNewSessionDTO.getStartDate(),instituteId);
             packageSessions.add(packageSession);
         }
         this.createLearnerInvitationForm(packageSessions, instituteId, user);
@@ -190,7 +190,7 @@ public class SessionService {
     }
 
 
-    private PackageSession createPackageSession(AddLevelWithSessionDTO levelDTO, Session session, java.util.Date startDate) {
+    private PackageSession createPackageSession(AddLevelWithSessionDTO levelDTO, Session session, java.util.Date startDate,String instituteId) {
         Level level = levelService.createOrAddLevel(
                 levelDTO.getId(),
                 levelDTO.getNewLevel(),
@@ -210,6 +210,7 @@ public class SessionService {
         packageSession.setStartTime(startDate);
         packageSession.setGroup(group);
         packageSessionRepository.save(packageSession);
+        defaultEnrollInviteService.createDefaultEnrollInvite(packageSession,instituteId);
         return packageSession;
     }
 

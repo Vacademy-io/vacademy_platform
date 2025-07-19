@@ -591,7 +591,7 @@ public class SlideService {
     public List<SlideTypeReadTimeProjection> getSlideCountsBySourceTypeForLearner(
             String sessionId
     ) {
-        return slideRepository.getSlideReadTimeSummaryBySourceType(
+        return slideRepository.getSlideReadTimeSummaryBySourceTypeForLearner(
                 sessionId,
                 ValidStatusListConstants.ACTIVE_SUBJECTS,
                 ValidStatusListConstants.ACTIVE_MODULES,

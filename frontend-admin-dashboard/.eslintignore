@@ -1,9 +1,0 @@
-node_modules
-
-**/.next/**
-**/_next/**
-**/dist/**
-**/build/**
-**/coverage/**
-**/__tmp__/**
-**/excalidraw/**

@@ -48,9 +48,10 @@ public class UserInstituteService {
     private PackageRepository packageRepository;
     @Autowired
     private SubjectPackageSessionRepository subjectPackageSessionRepository;
-
     @Autowired
     private InstituteSettingService instituteSettingService;
+    @Autowired
+    private InstituteDefaultUserSubscriptionService instituteDefaultUserSubscriptionService;
 
     public static InstituteInfoDTO getInstituteDetails(Institute institute) {
         InstituteInfoDTO instituteInfoDTO = new InstituteInfoDTO();
@@ -91,7 +92,7 @@ public class UserInstituteService {
                 }
 
                 createInstituteSubModulesMapping(allSubModules, savedInstitute);
-
+                instituteDefaultUserSubscriptionService.createDefaultPaymentOption(institute.getId());
                 return new InstituteIdAndNameDTO(savedInstitute.getId(), savedInstitute.getInstituteName());
             }
 

@@ -47,6 +47,14 @@ public class RatingController {
         return ResponseEntity.ok(ratingService.getRatingsForSource(ratingFilterDTO,pageNo,pageSize, user));
     }
 
+    @PostMapping("/get-source-ratings-admin")
+    public ResponseEntity<Page<RatingDetailDTO>> getSourceRatingsAdmin(@RequestBody RatingFilterDTO ratingFilterDTO,
+                                                                       @RequestParam(defaultValue = PageConstants.DEFAULT_PAGE_NUMBER) int pageNo,
+                                                                       @RequestParam(defaultValue = PageConstants.DEFAULT_PAGE_SIZE) int pageSize,
+                                                                       @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(ratingService.getRatingsForSourceExcludingDeleted(ratingFilterDTO,pageNo,pageSize, user));
+    }
+
     @GetMapping("/summary")
     public ResponseEntity<RatingSummaryProjection> getSourceRatingsSummary(String sourceType,
                                                                            String sourceId,

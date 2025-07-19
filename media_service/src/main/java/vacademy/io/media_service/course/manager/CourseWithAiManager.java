@@ -6,10 +6,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
+import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.publisher.SignalType;
+import reactor.core.publisher.Sinks;
 import vacademy.io.media_service.course.constant.CoursePromptTemplate;
 import vacademy.io.media_service.course.dto.CourseUserPrompt;
 import vacademy.io.media_service.course.service.EmbeddingService;
@@ -21,6 +25,7 @@ import vacademy.io.media_service.util.JsonUtils;
 import java.util.List;
 import java.util.Map;
 import java.util.Spliterators;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
@@ -33,13 +38,15 @@ public class CourseWithAiManager {
     private final MerkelHashService merkelHashService;
     private final ObjectMapper objectMapper;
     private final ContentGenerationFactory contentGenerationFactory;
+    private final ActiveCourseGenerationManager activeCourseGenerationManager;
 
-    public CourseWithAiManager(OpenRouterService openRouterService, EmbeddingService embeddingService, MerkelHashService merkelHashService, ObjectMapper objectMapper, ContentGenerationFactory contentGenerationFactory) {
+    public CourseWithAiManager(OpenRouterService openRouterService, EmbeddingService embeddingService, MerkelHashService merkelHashService, ObjectMapper objectMapper, ContentGenerationFactory contentGenerationFactory, ActiveCourseGenerationManager activeCourseGenerationManager) {
         this.openRouterService = openRouterService;
         this.embeddingService = embeddingService;
         this.merkelHashService = merkelHashService;
         this.objectMapper = objectMapper;
         this.contentGenerationFactory = contentGenerationFactory;
+        this.activeCourseGenerationManager = activeCourseGenerationManager;
     }
 
     /**
@@ -53,37 +60,44 @@ public class CourseWithAiManager {
      * @return A Flux<String> that emits structural JSON chunks, followed by content update JSONs.
      */
     public Flux<String> generateCourseWithAi(String instituteId, CourseUserPrompt courseUserPrompt, String model) {
-        log.info("Start streaming course generation for instituteId: {}", instituteId);
+        String requestId = UUID.randomUUID().toString(); // 🔑 unique ID
 
+        // 1. Build prompt
         String userPrompt = courseUserPrompt.getUserPrompt();
         String existingCourseJson = courseUserPrompt.getCourseTree();
-
         Map<String, Object> promptContext = preparePromptContext(existingCourseJson, userPrompt);
         String finalPrompt = applyTemplateVariables(CoursePromptTemplate.getGenerateCourseWithAiTemplate(), promptContext);
 
+        // 2. Create stream
         Flux<String> aiStream = openRouterService.streamAnswer(finalPrompt, model)
-                .doOnSubscribe(sub -> log.info("Subscribed to AI streaming response"));
+                .doOnSubscribe(sub -> log.info("Subscribed to AI streaming response for {}", requestId));
 
-        // Shared stream for both:
-        Flux<String> cachedAiStream = aiStream.cache(); // Important to cache for multi-subscriber reuse
+        Sinks.Many<String> sink = Sinks.many().multicast().onBackpressureBuffer();
+        Disposable disposable = aiStream
+                .doOnError(sink::tryEmitError)
+                .doOnComplete(sink::tryEmitComplete)
+                .subscribe(sink::tryEmitNext);
+
+        // Register sink and disposable for force-stopping
+        activeCourseGenerationManager.register(requestId, disposable, sink);
+
+        Flux<String> cachedAiStream = sink.asFlux();
 
         Flux<String> contentGenerationFlux = cachedAiStream
                 .reduce(new StringBuilder(), StringBuilder::append)
                 .map(StringBuilder::toString)
-                .flatMapMany(fullJson -> {
-                    try {
-                        return processAiStructuralResponse(fullJson);
-                    } catch (Exception e) {
-                        log.error("Error extracting or processing structural response: {}", e.getMessage(), e);
-                        return Flux.error(new RuntimeException("Structure parse failed", e));
-                    }
-                })
-                .doOnComplete(() -> log.info("Post-stream content generation completed"))
-                .doOnError(e -> log.error("Content generation failed: {}", e.getMessage(), e));
+                .flatMapMany(this::processAiStructuralResponse);
 
-        // Merge both: 1) the raw stream and 2) content generation from todos
-        return Flux.merge(cachedAiStream, contentGenerationFlux);
+        // Initial JSON metadata to be sent as the first SSE event
+        String metadataJson = "```json {{\"requestId\": \"" + requestId + "\"}}```";
+
+        // Final SSE stream
+        return Flux.concat(
+                Flux.just(metadataJson),
+                Flux.merge(cachedAiStream, contentGenerationFlux)
+        ).doFinally(signal -> activeCourseGenerationManager.cancel(requestId));
     }
+
 
 
     /**
@@ -137,44 +151,48 @@ public class CourseWithAiManager {
      */
     private Flux<String> processAiStructuralResponse(String fullStructuralJson) {
         try {
-            String validJson = JsonUtils.extractFinalJsonBlock(fullStructuralJson);
+            String validJson = JsonUtils.extractAndSanitizeFinalJsonBlock(fullStructuralJson);
             JsonNode rootNode = objectMapper.readTree(validJson);
             JsonNode todosNode = rootNode.get("todos");
 
-            // Always emit the full structural JSON as the first event for the client
+            // Emit full structural response first
             Flux<String> structuralUpdateFlux = Flux.just(fullStructuralJson)
                     .doOnSubscribe(s -> log.info("Emitting the complete structural JSON response to client."));
 
-            // If there are "todos", process them for content generation
             if (todosNode != null && todosNode.isArray() && todosNode.size() > 0) {
                 log.info("Found {} 'todo' items in AI structural response. Initiating content generation.", todosNode.size());
 
                 List<Mono<String>> contentGenerationMonos = StreamSupport.stream(
                                 Spliterators.spliteratorUnknownSize(todosNode.elements(), 0), false)
-                        .map(this::processSingleTodoForContent) // Create a Mono for each todo
+                        .map(this::processSingleTodoForContent)
                         .collect(Collectors.toList());
 
-                // Merge all content generation Monos to run them in parallel.
-                // The order of completion for these will be non-deterministic.
-                Flux<String> contentUpdatesFlux = Flux.merge(contentGenerationMonos)
-                        .doOnComplete(() -> log.info("All 'todo' content generation tasks have completed."));
-
-                // Concatenate the structural flux with the content updates flux
-                return structuralUpdateFlux.concatWith(contentUpdatesFlux);
+                return Flux.merge(contentGenerationMonos)
+                        .doOnComplete(() -> log.info("All 'todo' content generation tasks have completed."))
+                        .startWith(structuralUpdateFlux);
             } else {
                 log.info("No 'todo' items found in AI structural response. Content generation phase skipped.");
-                return structuralUpdateFlux; // No todos, just emit the structural JSON
+                return structuralUpdateFlux;
             }
-        } catch (JsonProcessingException e) {
-            log.error("Failed to parse full structural JSON response from AI: {}", e.getMessage(), e);
-            // If parsing fails, emit the raw response and then an error to signal failure
-            return Flux.just(fullStructuralJson)
-                    .concatWith(Flux.error(new RuntimeException("Error parsing AI structural response: " + e.getMessage(), e)));
         } catch (Exception e) {
-            log.error("An unexpected error occurred during AI structural response processing: {}", e.getMessage(), e);
-            return Flux.error(new RuntimeException("Unexpected error during AI response processing: " + e.getMessage(), e));
+            log.error("Exception in AI structural response processing: {}", e.getMessage(), e);
+
+            // Return fallback dummy JSON if any exception occurs
+            ObjectNode dummyJson = objectMapper.createObjectNode();
+            dummyJson.put("explanation", "");
+            dummyJson.set("todos", objectMapper.createArrayNode());
+
+            try {
+                String fallbackJson = objectMapper.writeValueAsString(dummyJson);
+                return Flux.just(fallbackJson);
+            } catch (JsonProcessingException jpe) {
+                log.error("Failed to serialize fallback dummy JSON: {}", jpe.getMessage(), jpe);
+                // As last resort, return minimal hardcoded string
+                return Flux.just("{\"explanation\":\"\",\"todos\":[]}");
+            }
         }
     }
+
 
     /**
      * Processes a single 'todo' JSON node to initiate content generation for a slide.
@@ -222,62 +240,6 @@ public class CourseWithAiManager {
      */
     private Mono<String> generateSlideContent(String slidePath, String slideType, String contentPrompt, String actionType, String title) {
         return contentGenerationFactory.getContentBasedOnType(slideType,actionType,slidePath,contentPrompt,title);
-    }
-
-    /**
-     * Formats the generated slide content into a standardized JSON string for client updates.
-     * This JSON is designed to be consumed by the frontend to update specific slides.
-     *
-     * @param slidePath        The path of the slide.
-     * @param slideType        The type of the slide (e.g., "DOCUMENT", "YOUTUBE").
-     * @param actionType       The action to be performed (e.g., "ADD", "UPDATE").
-     * @param generatedContent The content generated by the AI for the slide.
-     * @return A JSON string representing the slide content update event.
-     */
-    private String formatSlideContentUpdate(String slidePath, String slideType, String actionType, String generatedContent) {
-        ObjectNode contentUpdate = objectMapper.createObjectNode();
-        contentUpdate.put("type", "SLIDE_CONTENT_UPDATE"); // Event type for client
-        contentUpdate.put("path", slidePath);
-        contentUpdate.put("actionType", actionType);
-        contentUpdate.put("slideType", slideType);
-
-        if ("DOCUMENT".equalsIgnoreCase(slideType)) {
-            contentUpdate.put("contentData", generatedContent);
-        } else if ("YOUTUBE".equalsIgnoreCase(slideType)) {
-            try {
-                // Assuming YouTube content generation provides a JSON with video details
-                JsonNode youtubeDetails = objectMapper.readTree(generatedContent);
-                contentUpdate.set("youtubeDetails", youtubeDetails);
-            } catch (JsonProcessingException e) {
-                log.warn("Failed to parse YouTube content JSON for slide {}. Storing raw string: {}", slidePath, e.getMessage());
-                contentUpdate.put("contentData", generatedContent); // Fallback if parsing fails
-            }
-        } else {
-            log.warn("Unknown slide type '{}' for slide {}. Storing raw contentData.", slideType, slidePath);
-            contentUpdate.put("contentData", generatedContent); // Generic fallback for unknown types
-        }
-        return contentUpdate.toString();
-    }
-
-    /**
-     * Creates an error message formatted as a slide content update event.
-     * This allows the client to display an error for a specific slide without breaking the stream.
-     *
-     * @param slidePath    The path of the slide where the error occurred.
-     * @param slideType    The type of the slide.
-     * @param actionType   The action attempted.
-     * @param errorMessage The detailed error message.
-     * @return A JSON string representing a slide content error event.
-     */
-    private String formatErrorSlideContentUpdate(String slidePath, String slideType, String actionType, String errorMessage) {
-        ObjectNode errorUpdate = objectMapper.createObjectNode();
-        errorUpdate.put("type", "SLIDE_CONTENT_ERROR"); // Event type for client
-        errorUpdate.put("path", slidePath);
-        errorUpdate.put("actionType", actionType);
-        errorUpdate.put("slideType", slideType);
-        errorUpdate.put("errorMessage", "Failed to generate content: " + errorMessage);
-        errorUpdate.put("contentData", "Error generating content for this slide. Please try again or contact support."); // User-friendly message
-        return errorUpdate.toString();
     }
 
     /**
@@ -363,4 +325,16 @@ public class CourseWithAiManager {
         }
     }
 
+    public ResponseEntity<String> forceStopAiResponse(String generationId) {
+        boolean stopped = activeCourseGenerationManager.cancel(generationId);
+        if (stopped) {
+            return ResponseEntity.ok("Streaming stopped for requestId: " + generationId);
+        } else {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("No active stream with requestId: " + generationId);
+        }
+    }
+
+    public ResponseEntity<String> getCourseStructure(String courseId, String instituteId) {
+        return ResponseEntity.ok("Done");
+    }
 }

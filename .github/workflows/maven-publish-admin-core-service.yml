@@ -23,7 +23,7 @@ jobs:
       - name: Authenticate GitHub Package Registry
         env:
           JAVA_TOKEN: ${{ secrets.JAVA_TOKEN }}
-          ACCESS_ACCESS_GITHUB_USERNAME: ${{ secrets.ACCESS_GITHUB_USERNAME }}
+          ACCESS_GITHUB_USERNAME: ${{ secrets.ACCESS_GITHUB_USERNAME }}
         run: |
           echo "${JAVA_TOKEN}" | docker login ghcr.io -u ${ACCESS_GITHUB_USERNAME} --password-stdin
           mkdir -p ~/.m2

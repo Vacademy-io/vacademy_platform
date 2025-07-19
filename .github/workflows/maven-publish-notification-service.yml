@@ -88,8 +88,19 @@ jobs:
       - name: Deploy to Kubernetes
         run: |
           kubectl set env deployment/notification-service \
+            DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
+            DB_USERNAME=${{ secrets.DB_USERNAME }} \
+            APP_USERNAME=${{ secrets.APP_USERNAME }} \
+            APP_PASSWORD=${{ secrets.APP_PASSWORD }} \
+            AUTH_SERVER_BASE_URL=${{ secrets.AUTH_SERVER_BASE_URL }} \
+            CLOUD_FRONT_URL=${{ secrets.CLOUD_FRONT_URL }} \
+            NOTIFICATION_SERVICE_DB_URL=${{ secrets.NOTIFICATION_SERVICE_DB_URL }} \
+            MAIL_HOST=${{ secrets.MAIL_HOST }} \
+            MAIL_PORT=${{ secrets.MAIL_PORT }} \
             AWS_MAIL_USERNAME=${{ secrets.AWS_MAIL_USERNAME }} \
-            AWS_MAIL_PASSWORD=${{ secrets.AWS_MAIL_PASSWORD }}
+            AWS_MAIL_PASSWORD=${{ secrets.AWS_MAIL_PASSWORD }} \
+            SES_SENDER_EMAIL=${{ secrets.SES_SENDER_EMAIL }} \
+            WHATSAPP_ACCESS_TOKEN=${{ secrets.WHATSAPP_ACCESS_TOKEN }}
 
       - name: Restart deployment
         id: restart-deployment

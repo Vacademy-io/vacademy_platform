@@ -71,9 +71,18 @@ jobs:
           method: kubeconfig
           kubeconfig: ${{ secrets.VACADEMY_STAGE_KUBECONFIG }}
 
-      - name: Set Google & GitHub Auth Env Vars in Deployment
+      - name: Set Environment Variables in Deployment
         run: |
           kubectl set env deployment/auth-service \
+            DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
+            DB_USERNAME=${{ secrets.DB_USERNAME }} \
+            APP_USERNAME=${{ secrets.APP_USERNAME }} \
+            APP_PASSWORD=${{ secrets.APP_PASSWORD }} \
+            AUTH_SERVER_BASE_URL=${{ secrets.AUTH_SERVER_BASE_URL }} \
+            ADMIN_CORE_SERVICE_BASE_URL=${{ secrets.ADMIN_CORE_SERVICE_BASE_URL }} \
+            NOTIFICATION_SERVER_BASE_URL=${{ secrets.NOTIFICATION_SERVER_BASE_URL }} \
+            CLOUD_FRONT_URL=${{ secrets.CLOUD_FRONT_URL }} \
+            AUTH_SERVICE_DB_URL=${{ secrets.AUTH_SERVICE_DB_URL }} \
             GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }} \
             GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }} \
             OAUTH_GITHUB_CLIENT_ID=${{ secrets.OAUTH_GITHUB_CLIENT_ID }} \

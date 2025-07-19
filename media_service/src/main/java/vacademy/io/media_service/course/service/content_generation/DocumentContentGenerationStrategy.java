@@ -26,10 +26,10 @@ public class DocumentContentGenerationStrategy extends IContentGenerationStrateg
     @Override
     public Mono<String> generateContent(String prompt, String slideType, String slidePath, String actionType, String title) {
         try{
-            setSlideType("DOCUMENT");
+            setSlideType(SlideTypeEnums.DOCUMENT.name());
             setSuccess(true);
 
-            return openRouterService.streamAnswer(prompt, "google/gemini-2.5-flash-preview-05-20") // Streams chunks from the content AI
+            return openRouterService.streamAnswer(prompt, "google/gemini-2.5-flash-lite-preview-06-17") // Streams chunks from the content AI
                     .collect(Collectors.joining()) // Aggregates all chunks into a single String
                     .map(generatedContent -> formatSlideContentUpdate(slidePath, slideType, actionType, generatedContent)) // Format as a client-friendly JSON update
                     .doOnError(e -> log.error("Error during AI call for slide content {}: {}", slidePath, e.getMessage())) // Log specific AI call errors

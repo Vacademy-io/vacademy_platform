@@ -28,11 +28,22 @@ public class CourseWithAiController {
         // The manager now returns a Flux, which is directly returned to the client.
         // Spring WebFlux will handle sending each piece of data as it arrives.
         try{
+//            Mono<String> response = courseWithAiManager.generateCourseWithAi( instituteId, courseUserPrompt, model).collect(Collectors.joining());
             return courseWithAiManager.generateCourseWithAi( instituteId, courseUserPrompt, model);
-
-
+//            return ResponseEntity.ok(response.block());
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
+    }
+
+    @GetMapping("force-stop/response")
+    ResponseEntity<String> forceStopResponse(@RequestParam("generationId") String generationId){
+        return courseWithAiManager.forceStopAiResponse(generationId);
+    }
+
+    @GetMapping("json-structure")
+    ResponseEntity<String> getCourseStructure(@RequestParam("courseId") String courseId,
+                                              @RequestParam("instituteId") String instituteId){
+        return courseWithAiManager.getCourseStructure(courseId, instituteId);
     }
 }

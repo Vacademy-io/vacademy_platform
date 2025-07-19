@@ -86,7 +86,7 @@ export default function FeedbackPage() {
       source_id: packageSessionId,
       source_type: "PACKAGE_SESSION",
       text: comments,
-      status: "ACTIVE",
+      status: "PENDING",
     };
 
     try {

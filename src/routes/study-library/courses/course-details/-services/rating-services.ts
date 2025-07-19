@@ -29,7 +29,7 @@ export const handleSubmitRating = async (
             source_id,
             source_type: "PACKAGE_SESSION",
             text: desc,
-            status: "ACTIVE",
+            status: "PENDING",
         },
     });
     return response?.data;

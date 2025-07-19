@@ -568,7 +568,7 @@ export function CourseDetailsRatingsComponent({
                                                             source_id:
                                                                 packageSessionId ||
                                                                 "",
-                                                            status: "ACTIVE",
+                                                            status: "PENDING",
                                                             likes:
                                                                 review.likes +
                                                                 1,
@@ -599,7 +599,7 @@ export function CourseDetailsRatingsComponent({
                                                             source_id:
                                                                 packageSessionId ||
                                                                 "",
-                                                            status: "ACTIVE",
+                                                            status: "PENDING",
                                                             likes: review.likes,
                                                             dislikes:
                                                                 review.dislikes +

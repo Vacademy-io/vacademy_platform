@@ -30,6 +30,7 @@ import { useRouter } from "@tanstack/react-router";
 import { MyButton } from "@/components/design-system/button";
 import { Textarea } from "@/components/ui/textarea";
 
+
 // Types for API Response
 interface User {
     id: string;
@@ -81,7 +82,7 @@ const transformRatingToReview = (rating: Rating): Review => {
         },
         createdAt: rating.created_at,
         rating: rating.points,
-        description: rating.text,
+        description: rating.text || "No review text provided",
         likes: rating.likes,
         dislikes: rating.dislikes,
     };
@@ -128,6 +129,10 @@ export function CourseDetailsRatingsComponent({
     // Transform API data to reviews format
     const reviews = ratingData?.content.map(transformRatingToReview) || [];
     const totalPages = ratingData?.totalPages || 0;
+    
+    // Debug: Log the reviews data to see what we're getting
+    console.log("Reviews data:", reviews);
+    console.log("Original rating data:", ratingData?.content);
 
     const [feedbackText, setFeedbackText] = useState("");
     const [selectedRating, setSelectedRating] = useState<number | null>(null);
@@ -506,19 +511,23 @@ export function CourseDetailsRatingsComponent({
                                         <Avatar className="w-10 h-10 border-2 border-white shadow-lg">
                                             {review.user.avatarUrl ? (
                                                 <AvatarImage
-                                                    src={review.user.avatarUrl}
+                                                    src={`https://api.codecircle.in/admin-core-service/file/${review.user.avatarUrl}`}
                                                     alt={review.user.name}
+                                                    onError={(e) => {
+                                                        // Hide the image on error and show fallback
+                                                        e.currentTarget.style.display = 'none';
+                                                        e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                                                    }}
                                                 />
-                                            ) : (
-                                                <AvatarFallback className="bg-gradient-to-br from-primary-500 to-primary-600 text-white font-semibold">
-                                                    {review.user.name
-                                                        .split(" ")
-                                                        .map((n) => n[0])
-                                                        .join("")
-                                                        .slice(0, 2)
-                                                        .toUpperCase()}
-                                                </AvatarFallback>
-                                            )}
+                                            ) : null}
+                                            <AvatarFallback className={`bg-gradient-to-br from-primary-500 to-primary-600 text-white font-semibold ${review.user.avatarUrl ? 'hidden' : ''}`}>
+                                                {review.user.name
+                                                    .split(" ")
+                                                    .map((n) => n[0])
+                                                    .join("")
+                                                    .slice(0, 2)
+                                                    .toUpperCase()}
+                                            </AvatarFallback>
                                         </Avatar>
                                         <div className="flex-1 min-w-0">
                                             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-2">
@@ -547,11 +556,13 @@ export function CourseDetailsRatingsComponent({
                                     </div>
 
                                     {/* Review Content */}
-                                    <div className="mb-3">
-                                        <p className="text-gray-700 leading-relaxed text-xs sm:text-sm">
-                                            {review.description}
-                                        </p>
-                                    </div>
+                                    {review.description && review.description !== "No review text provided" && (
+                                        <div className="mb-3">
+                                            <p className="text-gray-700 leading-relaxed text-xs sm:text-sm">
+                                                {review.description}
+                                            </p>
+                                        </div>
+                                    )}
 
                                     {/* Action Buttons */}
                                     <div className="flex items-center justify-between">
@@ -568,7 +579,7 @@ export function CourseDetailsRatingsComponent({
                                                             source_id:
                                                                 packageSessionId ||
                                                                 "",
-                                                            status: "PENDING",
+                                                            status: "ACTIVE",
                                                             likes:
                                                                 review.likes +
                                                                 1,
@@ -599,7 +610,7 @@ export function CourseDetailsRatingsComponent({
                                                             source_id:
                                                                 packageSessionId ||
                                                                 "",
-                                                            status: "PENDING",
+                                                            status: "ACTIVE",
                                                             likes: review.likes,
                                                             dislikes:
                                                                 review.dislikes +

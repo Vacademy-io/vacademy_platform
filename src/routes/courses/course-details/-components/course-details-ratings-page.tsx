@@ -347,7 +347,7 @@ export function CourseDetailsRatingsComponent({
                                                 rating: review.rating,
                                                 source_id:
                                                     packageSessionId || "",
-                                                status: "PENDING",
+                                                status: "ACTIVE",
                                                 likes: review.likes + 1,
                                                 dislikes: review.dislikes,
                                             });

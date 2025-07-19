@@ -15,10 +15,12 @@ import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.common.service.InstituteCustomFiledService;
 import vacademy.io.admin_core_service.features.enroll_invite.dto.EnrollInviteDTO;
 import vacademy.io.admin_core_service.features.enroll_invite.dto.EnrollInviteFilterDTO;
+import vacademy.io.admin_core_service.features.enroll_invite.dto.EnrollInviteWithSessionsProjection;
 import vacademy.io.admin_core_service.features.enroll_invite.dto.PackageSessionToPaymentOptionDTO;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionLearnerInvitationToPaymentOption;
 import vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollInviteRepository;
+import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
 import vacademy.io.admin_core_service.features.packages.service.PackageSessionService;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentOptionService;
@@ -119,20 +121,26 @@ public class EnrollInviteService {
         }
     }
 
-    public Page<EnrollInviteDTO> getEnrollInvitesByInstituteIdAndFilters(String instituteId, EnrollInviteFilterDTO enrollInviteFilterDTO,int pageNo,int pageSize) {
+    public Page<EnrollInviteWithSessionsProjection> getEnrollInvitesByInstituteIdAndFilters(String instituteId, EnrollInviteFilterDTO enrollInviteFilterDTO, int pageNo, int pageSize) {
         Sort sortColumns = ListService.createSortObject(enrollInviteFilterDTO.getSortColumns());
         Pageable pageable = PageRequest.of(pageNo, pageSize);
-        Page<EnrollInvite>enrollInvites = null;
+        Page<EnrollInviteWithSessionsProjection>enrollInvites = null;
         if (StringUtils.hasText(enrollInviteFilterDTO.getSearchName())){
-            enrollInvites = repository.getEnrollInvitesByInstituteIdAndSearchName(instituteId,enrollInviteFilterDTO.getSearchName(),List.of(StatusEnum.ACTIVE.name()),pageable);
+            enrollInvites = repository.getEnrollInvitesByInstituteIdAndSearchName(instituteId,
+                    enrollInviteFilterDTO.getSearchName(),
+                    List.of(StatusEnum.ACTIVE.name()),
+                    List.of(PackageSessionStatusEnum.ACTIVE.name()
+                            ,PackageSessionStatusEnum.HIDDEN.name()),
+                    pageable);
         }else{
-            enrollInvites = repository.getEnrollInvitesByInstituteIdAndFilters(instituteId,
+            enrollInvites = repository.getEnrollInvitesWithFilters(instituteId,
                     enrollInviteFilterDTO.getPackageSessionIds(),
                     enrollInviteFilterDTO.getPaymentOptionIds(),
                     enrollInviteFilterDTO.getTags(),
                     List.of(StatusEnum.ACTIVE.name()),
+                    List.of(PackageSessionStatusEnum.ACTIVE.name(),PackageSessionStatusEnum.HIDDEN.name()),
                     pageable);
         }
-        return enrollInvites.map(EnrollInvite::toEnrollInviteDTO);
+        return enrollInvites;
     }
 }

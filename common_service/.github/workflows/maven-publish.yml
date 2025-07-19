@@ -28,5 +28,5 @@ jobs:
         run: mvn --batch-mode deploy
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          GITHUB_USERNAME: ${{ secrets.GITHUB_USERNAME }}
+          ACCESS_GITHUB_USERNAME: ${{ secrets.ACCESS_GITHUB_USERNAME }}
 

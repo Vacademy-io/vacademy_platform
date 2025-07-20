@@ -143,4 +143,11 @@ public class EnrollInviteService {
         }
         return enrollInvites;
     }
+
+    public EnrollInviteDTO findByEnrollInviteId(String enrollInviteId,String instituteId) {
+        EnrollInvite enrollInvite = repository.findById(enrollInviteId).orElseThrow(()->new VacademyException("EnrollInvite not found"));
+        EnrollInviteDTO enrollInviteDTO = enrollInvite.toEnrollInviteDTO();
+        enrollInviteDTO.setInstituteCustomFields(instituteCustomFiledService.findCustomFieldsAsJson(instituteId, CustomFieldTypeEnum.ENROLL_INVITE.name(), enrollInviteId));
+        return enrollInviteDTO;
+    }
 }

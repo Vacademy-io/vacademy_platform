@@ -145,7 +145,13 @@ public class SessionService {
         Session session;
 
         if (addNewSessionDTO.isNewSession()) {
-            session = sessionRepository.save(new Session(null, addNewSessionDTO.getSessionName(), addNewSessionDTO.getStatus(),addNewSessionDTO.getStartDate()));
+            Optional<Session>optionalSession = sessionRepository.findLatestSessionByNameAndInstitute(addNewSessionDTO.getSessionName(),instituteId,List.of(SessionStatusEnum.ACTIVE.name()));
+            if (optionalSession.isPresent()){
+                session = optionalSession.get();
+            }
+           else{
+                session = sessionRepository.save(new Session(null, addNewSessionDTO.getSessionName(), addNewSessionDTO.getStatus(),addNewSessionDTO.getStartDate()));
+            }
         } else {
             session = sessionRepository.findById(addNewSessionDTO.getId())
                     .orElseThrow(() -> new VacademyException("Session not found for id " + addNewSessionDTO.getId()));
@@ -196,7 +202,8 @@ public class SessionService {
                 levelDTO.getNewLevel(),
                 levelDTO.getLevelName(),
                 levelDTO.getDurationInDays(),
-                levelDTO.getThumbnailFileId()
+                levelDTO.getThumbnailFileId(),
+                instituteId
         );
 
         PackageEntity packageEntity = packageRepository.findById(levelDTO.getPackageId())

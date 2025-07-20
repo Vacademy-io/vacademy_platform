@@ -30,4 +30,9 @@ public class EnrollInviteController {
                                                                                    @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok(enrollInviteService.getEnrollInvitesByInstituteIdAndFilters(instituteId,enrollInviteFilterDTO,pageNo,pageSize));
     }
+
+    @GetMapping("/{instituteId}/{enrollInviteId}")
+    public ResponseEntity<EnrollInviteDTO>getEnrollInvite(@PathVariable("instituteId") String instituteId,@PathVariable("enrollInviteId") String enrollInviteId) {
+        return ResponseEntity.ok(enrollInviteService.findByEnrollInviteId(enrollInviteId,instituteId));
+    }
 }

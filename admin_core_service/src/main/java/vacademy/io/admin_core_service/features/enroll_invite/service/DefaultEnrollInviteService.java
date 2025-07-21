@@ -13,7 +13,10 @@ import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentOp
 import vacademy.io.admin_core_service.features.user_subscription.service.AppliedCouponDiscountService;
 import vacademy.io.admin_core_service.features.user_subscription.service.EnrollInviteDiscountOptionService;
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentOptionService;
+import vacademy.io.common.institute.entity.Level;
+import vacademy.io.common.institute.entity.PackageEntity;
 import vacademy.io.common.institute.entity.session.PackageSession;
+import vacademy.io.common.institute.entity.session.Session;
 
 import java.security.SecureRandom;
 import java.sql.Date;
@@ -79,7 +82,21 @@ public class DefaultEnrollInviteService {
     }
 
     private String getNameForDefaultEnrollInvite(PackageSession packageSession) {
-        return "To do name";
+        // Formate is level_name + package_name + session_name
+        Level level = packageSession.getLevel();
+        Session session = packageSession.getSession();
+        PackageEntity packageEntity = packageSession.getPackageEntity();
+        StringBuilder sb = new StringBuilder();
+        if(level != null && !level.getId().equalsIgnoreCase("DEFAULT")) {
+            sb.append(level.getLevelName() + " ");
+        }
+        if (packageEntity != null && !packageEntity.getId().equalsIgnoreCase("DEFAULT")) {
+            sb.append(packageEntity.getPackageName() + " ");
+        }
+        if (session != null && !session.getId().equalsIgnoreCase("DEFAULT")) {
+            sb.append(session.getSessionName() + " ");
+        }
+        return sb.toString().trim();
     }
 
     private String getInviteCode() {

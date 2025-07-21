@@ -125,7 +125,7 @@ public class EnrollInviteService {
 
     public Page<EnrollInviteWithSessionsProjection> getEnrollInvitesByInstituteIdAndFilters(String instituteId, EnrollInviteFilterDTO enrollInviteFilterDTO, int pageNo, int pageSize) {
         Sort sortColumns = ListService.createSortObject(enrollInviteFilterDTO.getSortColumns());
-        Pageable pageable = PageRequest.of(pageNo, pageSize);
+        Pageable pageable = PageRequest.of(pageNo, pageSize,sortColumns);
         Page<EnrollInviteWithSessionsProjection>enrollInvites = null;
         if (StringUtils.hasText(enrollInviteFilterDTO.getSearchName())){
             enrollInvites = repository.getEnrollInvitesByInstituteIdAndSearchName(instituteId,
@@ -197,6 +197,10 @@ public class EnrollInviteService {
         removeDefaultTag(packageSessionId);
         addDefaultTag(enrollInviteId);
         return enrollInviteId;
+    }
+
+    public List<EnrollInviteDTO> findByPaymentOptionIds(List<String>paymentOptionIds){
+        return packageSessionEnrollInviteToPaymentOptionService.findByPaymentOptionId(paymentOptionIds);
     }
 
 }

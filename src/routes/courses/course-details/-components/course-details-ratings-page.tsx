@@ -1,7 +1,5 @@
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { ThumbsUp, ThumbsDown, Trash } from "phosphor-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { MyPagination } from "@/components/design-system/pagination";
 import { AxiosError } from "axios";
 import { toast } from "sonner";
@@ -19,6 +17,7 @@ import { StarRatingComponent } from "@/components/common/star-rating-component";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { ProgressBar } from "@/components/ui/custom-progress-bar";
 import { getPublicUrl } from "@/services/upload_file";
+import { ReviewItem, type Review } from "@/components/common/review-item";
 
 // Types for API Response
 interface User {
@@ -47,19 +46,7 @@ interface PaginatedResponse {
     size: number;
 }
 
-// Type for transformed review data
-interface Review {
-    id: string;
-    user: {
-        name: string;
-        avatarUrl: string;
-    };
-    createdAt: string;
-    rating: number;
-    description: string;
-    likes: number;
-    dislikes: number;
-}
+
 
 // Helper function to transform API data to Review format
 const transformRatingToReview = (rating: Rating): Review => {
@@ -119,31 +106,42 @@ export function CourseDetailsRatingsComponent({
 
     // State to store avatar URLs
     const [avatarUrls, setAvatarUrls] = useState<Record<string, string>>({});
+    const fetchedUrlsRef = useRef<Set<string>>(new Set());
 
-    // Fetch avatar URLs when reviews change
+    // Fetch avatar URLs when reviews change (only for new reviews)
     useEffect(() => {
         const fetchAvatarUrls = async () => {
-            const urlPromises = reviews
-                .filter(review => review.user.avatarUrl)
-                .map(async (review) => {
-                    try {
-                        const url = await getPublicUrl(review.user.avatarUrl);
-                        return { reviewId: review.id, url };
-                    } catch (error) {
-                        return { reviewId: review.id, url: "" };
-                    }
-                });
+            // Only fetch URLs for reviews that we haven't fetched before
+            const reviewsNeedingUrls = reviews.filter(
+                review => review.user.avatarUrl && !fetchedUrlsRef.current.has(review.id)
+            );
+
+            if (reviewsNeedingUrls.length === 0) return;
+
+            const urlPromises = reviewsNeedingUrls.map(async (review) => {
+                try {
+                    const url = await getPublicUrl(review.user.avatarUrl);
+                    // Mark this review as fetched
+                    fetchedUrlsRef.current.add(review.id);
+                    return { reviewId: review.id, url };
+                } catch (error) {
+                    // Mark this review as fetched even if it failed
+                    fetchedUrlsRef.current.add(review.id);
+                    return { reviewId: review.id, url: "" };
+                }
+            });
 
             const results = await Promise.all(urlPromises);
-            const urls: Record<string, string> = {};
+            const newUrls: Record<string, string> = {};
             
             results.forEach(({ reviewId, url }) => {
                 if (url) {
-                    urls[reviewId] = url;
+                    newUrls[reviewId] = url;
                 }
             });
             
-            setAvatarUrls(urls);
+            // Merge with existing URLs instead of replacing
+            setAvatarUrls(prev => ({ ...prev, ...newUrls }));
         };
 
         if (reviews.length > 0) {
@@ -180,11 +178,37 @@ export function CourseDetailsRatingsComponent({
             );
         },
         onSuccess: () => {
-            queryClient.invalidateQueries({
-                queryKey: ["GET_ALL_USER_COURSE_RATINGS"],
-            });
+            // No need to invalidate queries since we're using optimistic updates
+            // The UI is already updated optimistically
         },
-        onError: (error: unknown) => {
+        onError: (error: unknown, variables) => {
+            // Revert optimistic updates on error
+            queryClient.setQueryData(
+                ["GET_ALL_USER_COURSE_RATINGS", page, 10, { source_id: packageSessionId || "", source_type: "PACKAGE_SESSION" }],
+                (oldData: any) => {
+                    if (!oldData) return oldData;
+                    
+                    // Find the original review to revert changes
+                    const originalReview = reviews.find(r => r.id === variables.id);
+                    if (!originalReview) return oldData;
+
+                    return {
+                        ...oldData,
+                        content: oldData.content.map((rating: any) => 
+                            rating.id === variables.id 
+                                ? { 
+                                    ...rating, 
+                                    likes: originalReview.likes,
+                                    dislikes: originalReview.dislikes,
+                                    status: "ACTIVE" // Revert status if it was deleted
+                                }
+                                : rating
+                        ),
+                        totalElements: oldData.totalElements + (variables.status === "DELETED" ? 1 : 0) // Revert total count if deleted
+                    };
+                }
+            );
+
             if (error instanceof AxiosError) {
                 toast.error(
                     error?.response?.data?.ex || "Failed to submit rating",
@@ -205,6 +229,88 @@ export function CourseDetailsRatingsComponent({
 
     const handlePageChange = (pageNo: number) => {
         setPage(pageNo);
+    };
+
+    // Handler functions for ReviewItem with optimistic updates
+    const handleLike = (reviewId: string) => {
+        const review = reviews.find(r => r.id === reviewId);
+        if (review) {
+            // Update the query cache optimistically
+            queryClient.setQueryData(
+                ["GET_ALL_USER_COURSE_RATINGS", page, 10, { source_id: packageSessionId || "", source_type: "PACKAGE_SESSION" }],
+                (oldData: any) => ({
+                    ...oldData,
+                    content: oldData.content.map((rating: any) => 
+                        rating.id === reviewId 
+                            ? { ...rating, likes: rating.likes + 1 }
+                            : rating
+                    )
+                })
+            );
+
+            handleUpdateRatingMutation.mutate({
+                id: review.id,
+                rating: review.rating,
+                source_id: packageSessionId || "",
+                status: "ACTIVE",
+                likes: review.likes + 1,
+                dislikes: review.dislikes,
+                text: review.description,
+            });
+        }
+    };
+
+    const handleDislike = (reviewId: string) => {
+        const review = reviews.find(r => r.id === reviewId);
+        if (review) {
+            // Update the query cache optimistically
+            queryClient.setQueryData(
+                ["GET_ALL_USER_COURSE_RATINGS", page, 10, { source_id: packageSessionId || "", source_type: "PACKAGE_SESSION" }],
+                (oldData: any) => ({
+                    ...oldData,
+                    content: oldData.content.map((rating: any) => 
+                        rating.id === reviewId 
+                            ? { ...rating, dislikes: rating.dislikes + 1 }
+                            : rating
+                    )
+                })
+            );
+
+            handleUpdateRatingMutation.mutate({
+                id: review.id,
+                rating: review.rating,
+                source_id: packageSessionId || "",
+                status: "ACTIVE",
+                likes: review.likes,
+                dislikes: review.dislikes + 1,
+                text: review.description,
+            });
+        }
+    };
+
+    const handleDelete = (reviewId: string) => {
+        const review = reviews.find(r => r.id === reviewId);
+        if (review) {
+            // Update the query cache optimistically
+            queryClient.setQueryData(
+                ["GET_ALL_USER_COURSE_RATINGS", page, 10, { source_id: packageSessionId || "", source_type: "PACKAGE_SESSION" }],
+                (oldData: any) => ({
+                    ...oldData,
+                    content: oldData.content.filter((rating: any) => rating.id !== reviewId),
+                    totalElements: oldData.totalElements - 1
+                })
+            );
+
+            handleUpdateRatingMutation.mutate({
+                id: review.id,
+                rating: review.rating,
+                source_id: packageSessionId || "",
+                status: "DELETED",
+                likes: review.likes,
+                dislikes: review.dislikes,
+                text: review.description,
+            });
+        }
     };
 
     if (isLoading || !packageSessionId) return <DashboardLoader />;
@@ -332,116 +438,16 @@ export function CourseDetailsRatingsComponent({
                     </div>
                 ) : (
                     reviews.map((review) => (
-                        <div
+                        <ReviewItem
                             key={review.id}
-                            className="flex flex-col rounded-lg border bg-white p-5 md:items-start md:gap-4"
-                        >
-                            {/* Avatar */}
-                            <div className="flex shrink-0 items-center justify-center gap-2">
-                                <Avatar>
-                                    {avatarUrls[review.id] ? (
-                                        <AvatarImage
-                                            src={avatarUrls[review.id]}
-                                            alt={review.user.name}
-                                        />
-                                    ) : (
-                                        <AvatarFallback>
-                                            {review.user.name
-                                                .split(" ")
-                                                .map((n) => n[0])
-                                                .join("")
-                                                .slice(0, 2)
-                                                .toUpperCase()}
-                                        </AvatarFallback>
-                                    )}
-                                </Avatar>
-                                <div className="flex flex-col">
-                                    <span className="font-semibold text-neutral-800">
-                                        {review.user.name}
-                                    </span>
-                                    <span className="mt-0.5 text-xs text-neutral-400">
-                                        {timeAgo(review.createdAt)}
-                                    </span>
-                                </div>
-                            </div>
-                            <div className="flex flex-col">
-                                <div className="mt-1 flex items-center gap-2">
-                                    <StarRatingComponent
-                                        score={review.rating * 20}
-                                        starColor={true}
-                                    />
-                                </div>
-                                <div className="mt-2 text-neutral-700">
-                                    {review.description}
-                                </div>
-                                <div className="mt-3 flex items-center justify-start gap-4">
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="flex items-center gap-1 text-neutral-500 hover:text-blue-600"
-                                        onClick={() => {
-                                            handleUpdateRatingMutation.mutate({
-                                                id: review.id,
-                                                rating: review.rating,
-                                                source_id:
-                                                    packageSessionId || "",
-                                                status: "ACTIVE",
-                                                likes: review.likes + 1,
-                                                dislikes: review.dislikes,
-                                                text: review.description,
-                                            });
-                                        }}
-                                    >
-                                        <ThumbsUp size={18} />
-                                        <span className="text-xs">
-                                            {review.likes}
-                                        </span>
-                                    </Button>
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="flex items-center gap-1 text-neutral-500 hover:text-red-500"
-                                        onClick={() => {
-                                            handleUpdateRatingMutation.mutate({
-                                                id: review.id,
-                                                rating: review.rating,
-                                                source_id:
-                                                    packageSessionId || "",
-                                                status: "ACTIVE",
-                                                likes: review.likes,
-                                                dislikes: review.dislikes + 1,
-                                                text: review.description,
-                                            });
-                                        }}
-                                    >
-                                        <ThumbsDown size={18} />
-                                        <span className="text-xs">
-                                            {review.dislikes}
-                                        </span>
-                                    </Button>
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="flex items-center gap-1 text-neutral-400 hover:text-red-600"
-                                        onClick={() => {
-                                            handleUpdateRatingMutation.mutate({
-                                                id: review.id,
-                                                rating: review.rating,
-                                                source_id:
-                                                    packageSessionId || "",
-                                                status: "DELETED",
-                                                likes: review.likes,
-                                                dislikes: review.dislikes,
-                                                text: review.description,
-                                            });
-                                        }}
-                                    >
-                                        <Trash size={18} />
-                                        <span className="text-xs">Delete</span>
-                                    </Button>
-                                </div>
-                            </div>
-                        </div>
+                            review={review}
+                            avatarUrl={avatarUrls[review.id]}
+                            onLike={handleLike}
+                            onDislike={handleDislike}
+                            onDelete={handleDelete}
+                            showActions={true}
+                            variant="default"
+                        />
                     ))
                 )}
                 {totalPages > 1 && (

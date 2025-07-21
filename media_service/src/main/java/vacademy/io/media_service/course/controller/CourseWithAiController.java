@@ -21,16 +21,16 @@ public class CourseWithAiController {
     }
 
 
-    @PostMapping(value = "/generate", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    Flux<String> generateCourse(@RequestBody CourseUserPrompt courseUserPrompt,
+    @PostMapping(value = "/generate", produces = MediaType.APPLICATION_JSON_VALUE)
+    ResponseEntity<String> generateCourse(@RequestBody CourseUserPrompt courseUserPrompt,
                                 @RequestParam("instituteId") String instituteId,
                                 @RequestParam("model") String model){
         // The manager now returns a Flux, which is directly returned to the client.
         // Spring WebFlux will handle sending each piece of data as it arrives.
         try{
-//            Mono<String> response = courseWithAiManager.generateCourseWithAi( instituteId, courseUserPrompt, model).collect(Collectors.joining());
-            return courseWithAiManager.generateCourseWithAi( instituteId, courseUserPrompt, model);
-//            return ResponseEntity.ok(response.block());
+            Mono<String> response = courseWithAiManager.generateCourseWithAi( instituteId, courseUserPrompt, model).collect(Collectors.joining());
+//            return courseWithAiManager.generateCourseWithAi( instituteId, courseUserPrompt, model);
+            return ResponseEntity.ok(response.block());
         } catch (Exception e) {
             throw new RuntimeException(e);
         }

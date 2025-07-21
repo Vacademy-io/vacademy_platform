@@ -86,7 +86,7 @@ public class CoursePromptTemplate {
                 {{
                   "name": "STRING",
                   "title": "STRING"'
-                  "type": "DOCUMENT" | "VIDEO" | "PDF",
+                  "type": "DOCUMENT" | "VIDEO" | "PDF" | "ASSESSMENT",
                   "path": "STRING",
                   "keyword": "STRING",
                   "model": "STRING",
@@ -141,7 +141,7 @@ public class CoursePromptTemplate {
             - This is a list of tasks for content generation, one for each SLIDE that needs content generated or updated.
             - Each `todo` object must include:
               - `name`: A descriptive name for the content generation task (e.g., "Generate Async/Await Slide Content").
-              - `type`: The type of slide (`DOCUMENT` || `VIDEO` || `PDF` || `EXCALIDRAW_IMAGE`).
+              - `type`: The type of slide (`DOCUMENT` || `VIDEO` || `PDF` || `EXCALIDRAW_IMAGE` || `ASSESSMENT`).
               - `title`: Generate Title For the Slide Content
               - `keyword`: Generate a search keyword
                         - For `VIDEO` generate `keyword` such that it can be searched on YOUTUBE
@@ -151,6 +151,7 @@ public class CoursePromptTemplate {
                        - for `DOCUMENT' generation use `google/gemini-2.5-pro'
                        - for 'VIDEO' generation use `google/gemini-2.5-flash-preview-05-20`
                        - for 'PDF' generation use 'google/gemini-2.5-pro'
+                       - for 'ASSESSMENT' generation use 'google/gemini-2.5-pro'
               - `actionType`: `ADD` if the slide is newly added and needs initial content, `UPDATE` if the slide already exists and its content needs to be re-generated or improved.
               - `prompt`: A **very clear and detailed prompt** for an AI to generate the specific content for this slide. This prompt should include:
                 - The slide's topic.
@@ -158,6 +159,7 @@ public class CoursePromptTemplate {
                 - Specific requirements for `DOCUMENT` type (e.g., "detailed explanation (150-250 words), markdown formatting, code snippets, real-world examples").
                 - Specific requirements for `VIDEO` type (e.g., "high-quality, relevant video link, short informative description, title matching slide topic").
                 - Specific requirements for `PDF` type (e.g., "detailed explanation (150-250 words), markdown formatting, real-world examples").
+                - Specific requirements for `ASSESSMENT`. Prompt must include number of questions(2-10 questions) and should have topic in the prompt.
                 - Any specific analogies or examples to include.
                 - The minimum word count for `DOCUMENT` or `PDF` slides (100 words).
               - `order`: A number indicating the order in which these `todo` items should ideally be processed.

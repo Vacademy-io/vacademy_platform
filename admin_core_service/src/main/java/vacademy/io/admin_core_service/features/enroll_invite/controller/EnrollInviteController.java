@@ -36,6 +36,11 @@ public class EnrollInviteController {
         return ResponseEntity.ok(enrollInviteService.findByEnrollInviteId(enrollInviteId,instituteId));
     }
 
+    @GetMapping("/default/{instituteId}/{packageSessionId}")
+    public ResponseEntity<EnrollInviteDTO>getDefaultEnrollInvite(@PathVariable("instituteId") String instituteId,@PathVariable("packageSessionId") String packageSessionId) {
+        return ResponseEntity.ok(enrollInviteService.findDefaultEnrollInviteByPackageSessionId(packageSessionId,instituteId));
+    }
+
     @PutMapping("/update-default-enroll-invite-config")
     public ResponseEntity<String>updateDefaultEnrollInviteConfig(@RequestParam("enrollInviteId") String enrollInviteId,@RequestParam("packageSessionId") String packageSessionId) {
         return ResponseEntity.ok(enrollInviteService.updateDefaultEnrollInviteConfig(enrollInviteId,packageSessionId));

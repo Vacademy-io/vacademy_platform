@@ -155,6 +155,19 @@ public class EnrollInviteService {
         return enrollInviteDTO;
     }
 
+    public EnrollInviteDTO findDefaultEnrollInviteByPackageSessionId(String packageSessionId,String instituteId) {
+        EnrollInvite enrollInvite = repository.findLatestForPackageSessionWithFilters(
+                packageSessionId,
+                List.of(StatusEnum.ACTIVE.name()),
+                List.of(EnrollInviteTag.DEFAULT.name()),
+                List.of(StatusEnum.ACTIVE.name())).orElseThrow(()->new VacademyException("EnrollInvite not found"));
+        EnrollInviteDTO enrollInviteDTO = enrollInvite.toEnrollInviteDTO();
+        enrollInviteDTO.setInstituteCustomFields(instituteCustomFiledService.findCustomFieldsAsJson(instituteId, CustomFieldTypeEnum.ENROLL_INVITE.name(), enrollInvite.getId()));
+        List<PackageSessionToPaymentOptionDTO>packageSessionToPaymentOptionDTOS = packageSessionEnrollInviteToPaymentOptionService.findByInvite(enrollInvite);
+        enrollInviteDTO.setPackageSessionToPaymentOptions(packageSessionToPaymentOptionDTOS);
+        return enrollInviteDTO;
+    }
+
     private void removeDefaultTag(String packageSessionId) {
         Optional<EnrollInvite>optionalEnrollInvite = repository.findLatestForPackageSessionWithFilters(
                 packageSessionId,

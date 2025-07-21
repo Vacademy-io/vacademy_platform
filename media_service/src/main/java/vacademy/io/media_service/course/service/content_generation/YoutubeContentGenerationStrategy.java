@@ -52,7 +52,7 @@ public class YoutubeContentGenerationStrategy extends IContentGenerationStrategy
 
         try {
             JsonNode youtubeDetails = objectMapper.readTree(youtubeContent);
-            contentUpdate.set("youtubeDetails", youtubeDetails);
+            contentUpdate.set("contentData", youtubeDetails);
         } catch (JsonProcessingException e) {
             log.warn("Failed to parse YouTube content JSON for slide {}: {}", slidePath, e.getMessage());
             contentUpdate.put("contentData", youtubeContent); // fallback

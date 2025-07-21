@@ -20,12 +20,14 @@ public class ContentGenerationFactory {
             DocumentContentGenerationStrategy docStrategy,
             YoutubeContentGenerationStrategy ytStrategy,
             PdfContentGenerationStrategy pdfStrategy,
-            ExcaliDrawImageContentGenerationStrategy imageStrategy
+            ExcaliDrawImageContentGenerationStrategy imageStrategy,
+            AssignmentContentGeneration assessmentStrategy
     ) {
         strategies.put(SlideTypeEnums.DOCUMENT.name(), docStrategy);
         strategies.put(SlideTypeEnums.VIDEO.name(), ytStrategy);
         strategies.put(SlideTypeEnums.PDF.name(), pdfStrategy);
         strategies.put(SlideTypeEnums.EXCALIDRAW_IMAGE.name(), imageStrategy);
+        strategies.put(SlideTypeEnums.ASSESSMENT.name(), assessmentStrategy);
     }
 
     public IContentGenerationStrategy getStrategy(String slideType) {

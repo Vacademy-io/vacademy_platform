@@ -1,14 +1,10 @@
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
-    ThumbsUp,
-    ThumbsDown,
-    Trash,
     Star,
     ChatCircle,
     TrendUp,
 } from "phosphor-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { MyPagination } from "@/components/design-system/pagination";
 import { AxiosError } from "axios";
 import { toast } from "sonner";
@@ -30,6 +26,7 @@ import { useRouter } from "@tanstack/react-router";
 import { MyButton } from "@/components/design-system/button";
 import { Textarea } from "@/components/ui/textarea";
 import { getPublicUrl } from "@/services/upload_file";
+import { ReviewItem, type Review } from "@/components/common/review-item";
 
 
 // Types for API Response
@@ -57,20 +54,6 @@ interface PaginatedResponse {
     totalElements: number;
     number: number;
     size: number;
-}
-
-// Type for transformed review data
-interface Review {
-    id: string;
-    user: {
-        name: string;
-        avatarUrl: string;
-    };
-    createdAt: string;
-    rating: number;
-    description: string;
-    likes: number;
-    dislikes: number;
 }
 
 // Helper function to transform API data to Review format
@@ -135,31 +118,42 @@ export function CourseDetailsRatingsComponent({
 
     // State to store avatar URLs
     const [avatarUrls, setAvatarUrls] = useState<Record<string, string>>({});
+    const fetchedUrlsRef = useRef<Set<string>>(new Set());
 
-    // Fetch avatar URLs when reviews change
+    // Fetch avatar URLs when reviews change (only for new reviews)
     useEffect(() => {
         const fetchAvatarUrls = async () => {
-            const urlPromises = reviews
-                .filter(review => review.user.avatarUrl)
-                .map(async (review) => {
-                    try {
-                        const url = await getPublicUrl(review.user.avatarUrl);
-                        return { reviewId: review.id, url };
-                    } catch (error) {
-                        return { reviewId: review.id, url: "" };
-                    }
-                });
+            // Only fetch URLs for reviews that we haven't fetched before
+            const reviewsNeedingUrls = reviews.filter(
+                review => review.user.avatarUrl && !fetchedUrlsRef.current.has(review.id)
+            );
+
+            if (reviewsNeedingUrls.length === 0) return;
+
+            const urlPromises = reviewsNeedingUrls.map(async (review) => {
+                try {
+                    const url = await getPublicUrl(review.user.avatarUrl);
+                    // Mark this review as fetched
+                    fetchedUrlsRef.current.add(review.id);
+                    return { reviewId: review.id, url };
+                } catch (error) {
+                    // Mark this review as fetched even if it failed
+                    fetchedUrlsRef.current.add(review.id);
+                    return { reviewId: review.id, url: "" };
+                }
+            });
 
             const results = await Promise.all(urlPromises);
-            const urls: Record<string, string> = {};
+            const newUrls: Record<string, string> = {};
             
             results.forEach(({ reviewId, url }) => {
                 if (url) {
-                    urls[reviewId] = url;
+                    newUrls[reviewId] = url;
                 }
             });
             
-            setAvatarUrls(urls);
+            // Merge with existing URLs instead of replacing
+            setAvatarUrls(prev => ({ ...prev, ...newUrls }));
         };
 
         if (reviews.length > 0) {
@@ -200,11 +194,37 @@ export function CourseDetailsRatingsComponent({
             );
         },
         onSuccess: () => {
-            queryClient.invalidateQueries({
-                queryKey: ["GET_ALL_USER_COURSE_RATINGS"],
-            });
+            // No need to invalidate queries since we're using optimistic updates
+            // The UI is already updated optimistically
         },
-        onError: (error: unknown) => {
+        onError: (error: unknown, variables) => {
+            // Revert optimistic updates on error
+            queryClient.setQueryData(
+                ["GET_ALL_USER_COURSE_RATINGS", page, 10, { source_id: packageSessionId || "", source_type: "PACKAGE_SESSION" }],
+                (oldData: any) => {
+                    if (!oldData) return oldData;
+                    
+                    // Find the original review to revert changes
+                    const originalReview = reviews.find(r => r.id === variables.id);
+                    if (!originalReview) return oldData;
+
+                    return {
+                        ...oldData,
+                        content: oldData.content.map((rating: any) => 
+                            rating.id === variables.id 
+                                ? { 
+                                    ...rating, 
+                                    likes: originalReview.likes,
+                                    dislikes: originalReview.dislikes,
+                                    status: "ACTIVE" // Revert status if it was deleted
+                                }
+                                : rating
+                        ),
+                        totalElements: oldData.totalElements + (variables.status === "DELETED" ? 1 : 0) // Revert total count if deleted
+                    };
+                }
+            );
+
             if (error instanceof AxiosError) {
                 toast.error(
                     error?.response?.data?.ex || "Failed to submit rating",
@@ -229,6 +249,105 @@ export function CourseDetailsRatingsComponent({
 
     const handleStarClick = (rating: number) => {
         setSelectedRating(rating);
+    };
+
+    // Handler functions for ReviewItem with optimistic updates
+    const handleLike = (reviewId: string) => {
+        const review = reviews.find(r => r.id === reviewId);
+        if (review) {
+            // Optimistically update the UI
+            const updatedReviews = reviews.map(r => 
+                r.id === reviewId 
+                    ? { ...r, likes: r.likes + 1 }
+                    : r
+            );
+            
+            // Update the query cache optimistically
+            queryClient.setQueryData(
+                ["GET_ALL_USER_COURSE_RATINGS", page, 10, { source_id: packageSessionId || "", source_type: "PACKAGE_SESSION" }],
+                (oldData: any) => ({
+                    ...oldData,
+                    content: oldData.content.map((rating: any) => 
+                        rating.id === reviewId 
+                            ? { ...rating, likes: rating.likes + 1 }
+                            : rating
+                    )
+                })
+            );
+
+            handleUpdateRatingMutation.mutate({
+                id: review.id,
+                rating: review.rating,
+                source_id: packageSessionId || "",
+                status: "ACTIVE",
+                likes: review.likes + 1,
+                dislikes: review.dislikes,
+                text: review.description,
+            });
+        }
+    };
+
+    const handleDislike = (reviewId: string) => {
+        const review = reviews.find(r => r.id === reviewId);
+        if (review) {
+            // Optimistically update the UI
+            const updatedReviews = reviews.map(r => 
+                r.id === reviewId 
+                    ? { ...r, dislikes: r.dislikes + 1 }
+                    : r
+            );
+            
+            // Update the query cache optimistically
+            queryClient.setQueryData(
+                ["GET_ALL_USER_COURSE_RATINGS", page, 10, { source_id: packageSessionId || "", source_type: "PACKAGE_SESSION" }],
+                (oldData: any) => ({
+                    ...oldData,
+                    content: oldData.content.map((rating: any) => 
+                        rating.id === reviewId 
+                            ? { ...rating, dislikes: rating.dislikes + 1 }
+                            : rating
+                    )
+                })
+            );
+
+            handleUpdateRatingMutation.mutate({
+                id: review.id,
+                rating: review.rating,
+                source_id: packageSessionId || "",
+                status: "ACTIVE",
+                likes: review.likes,
+                dislikes: review.dislikes + 1,
+                text: review.description,
+            });
+        }
+    };
+
+    const handleDelete = (reviewId: string) => {
+        const review = reviews.find(r => r.id === reviewId);
+        if (review) {
+            // Optimistically update the UI
+            const updatedReviews = reviews.filter(r => r.id !== reviewId);
+            
+            // Update the query cache optimistically
+            queryClient.setQueryData(
+                ["GET_ALL_USER_COURSE_RATINGS", page, 10, { source_id: packageSessionId || "", source_type: "PACKAGE_SESSION" }],
+                (oldData: any) => ({
+                    ...oldData,
+                    content: oldData.content.filter((rating: any) => rating.id !== reviewId),
+                    totalElements: oldData.totalElements - 1
+                })
+            );
+
+            handleUpdateRatingMutation.mutate({
+                id: review.id,
+                rating: review.rating,
+                source_id: packageSessionId || "",
+                status: "DELETED",
+                likes: review.likes,
+                dislikes: review.dislikes,
+                text: review.description,
+            });
+        }
     };
 
     const handleSubmitRatingMutation = useMutation({
@@ -530,174 +649,20 @@ export function CourseDetailsRatingsComponent({
                         reviews.map((review, index) => (
                             <div
                                 key={review.id}
-                                className="relative bg-white/80 backdrop-blur-sm border border-gray-200/60 rounded-xl shadow-sm hover:shadow-lg transition-all duration-500 p-3 sm:p-4 group/review overflow-hidden animate-fade-in-up"
+                                className="animate-fade-in-up"
                                 style={{
                                     animationDelay: `${0.3 + index * 0.1}s`,
                                 }}
                             >
-                                {/* Background gradient overlay */}
-                                <div className="absolute inset-0 bg-gradient-to-br from-primary-500/5 to-transparent opacity-0 group-hover/review:opacity-100 transition-opacity duration-500 rounded-xl"></div>
-
-                                {/* Floating orb effect */}
-                                <div className="absolute top-0 right-0 w-10 h-10 bg-primary-100/20 rounded-full blur-2xl opacity-0 group-hover/review:opacity-100 transition-opacity duration-700 -translate-y-1 translate-x-3"></div>
-
-                                <div className="relative">
-                                    {/* User Info */}
-                                    <div className="flex items-center space-x-3 mb-3">
-                                        <Avatar className="w-10 h-10 border-2 border-white shadow-lg">
-                                            {avatarUrls[review.id] ? (
-                                                <AvatarImage
-                                                    src={avatarUrls[review.id]}
-                                                    alt={review.user.name}
-                                                    onError={(e) => {
-                                                        // Hide the image on error and show fallback
-                                                        e.currentTarget.style.display = 'none';
-                                                        e.currentTarget.nextElementSibling?.classList.remove('hidden');
-                                                    }}
-                                                />
-                                            ) : null}
-                                            <AvatarFallback className="bg-gradient-to-br from-primary-500 to-primary-600 text-white font-semibold">
-                                                {review.user.name
-                                                    .split(" ")
-                                                    .map((n) => n[0])
-                                                    .join("")
-                                                    .slice(0, 2)
-                                                    .toUpperCase()}
-                                            </AvatarFallback>
-                                        </Avatar>
-                                        <div className="flex-1 min-w-0">
-                                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-2">
-                                                <div>
-                                                    <h4 className="text-sm font-semibold text-gray-900 truncate">
-                                                        {review.user.name}
-                                                    </h4>
-                                                    <p className="text-xs text-gray-500 flex items-center space-x-1">
-                                                        <span>
-                                                            {timeAgo(
-                                                                review.createdAt
-                                                            )}
-                                                        </span>
-                                                    </p>
-                                                </div>
-                                                <div className="flex items-center space-x-1.5">
-                                                    <StarRatingComponent
-                                                        score={
-                                                            review.rating * 20
-                                                        }
-                                                        starColor={true}
-                                                    />
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Review Content */}
-                                    {review.description && review.description !== "No review text provided" && (
-                                        <div className="mb-3">
-                                            <p className="text-gray-700 leading-relaxed text-xs sm:text-sm">
-                                                {review.description}
-                                            </p>
-                                        </div>
-                                    )}
-
-                                    {/* Action Buttons */}
-                                    <div className="flex items-center justify-between">
-                                        <div className="flex items-center space-x-1 sm:space-x-2">
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                className="flex items-center space-x-1.5 text-gray-500 hover:text-success-600 hover:bg-success-50 transition-all duration-300 rounded-lg px-2.5 py-1"
-                                                onClick={() => {
-                                                    handleUpdateRatingMutation.mutate(
-                                                        {
-                                                            id: review.id,
-                                                            rating: review.rating,
-                                                            source_id:
-                                                                packageSessionId ||
-                                                                "",
-                                                            status: "ACTIVE",
-                                                            likes:
-                                                                review.likes +
-                                                                1,
-                                                            dislikes:
-                                                                review.dislikes,
-                                                            text: review.description,
-                                                        }
-                                                    );
-                                                }}
-                                            >
-                                                <ThumbsUp
-                                                    size={14}
-                                                    weight="duotone"
-                                                />
-                                                <span className="text-xs font-medium">
-                                                    {review.likes}
-                                                </span>
-                                            </Button>
-
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                className="flex items-center space-x-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 transition-all duration-300 rounded-lg px-2.5 py-1"
-                                                onClick={() => {
-                                                    handleUpdateRatingMutation.mutate(
-                                                        {
-                                                            id: review.id,
-                                                            rating: review.rating,
-                                                            source_id:
-                                                                packageSessionId ||
-                                                                "",
-                                                            status: "ACTIVE",
-                                                            likes: review.likes,
-                                                            dislikes:
-                                                                review.dislikes +
-                                                                1,
-                                                            text: review.description,
-                                                        }
-                                                    );
-                                                }}
-                                            >
-                                                <ThumbsDown
-                                                    size={14}
-                                                    weight="duotone"
-                                                />
-                                                <span className="text-xs font-medium">
-                                                    {review.dislikes}
-                                                </span>
-                                            </Button>
-                                        </div>
-
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            className="flex items-center space-x-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 transition-all duration-300 rounded-lg px-2.5 py-1"
-                                            onClick={() => {
-                                                handleUpdateRatingMutation.mutate(
-                                                    {
-                                                        id: review.id,
-                                                        rating: review.rating,
-                                                        source_id:
-                                                            packageSessionId ||
-                                                            "",
-                                                        status: "DELETED",
-                                                        likes: review.likes,
-                                                        dislikes:
-                                                            review.dislikes,
-                                                        text: review.description,
-                                                    }
-                                                );
-                                            }}
-                                        >
-                                            <Trash size={14} weight="duotone" />
-                                            <span className="text-xs font-medium">
-                                                Delete
-                                            </span>
-                                        </Button>
-                                    </div>
-                                </div>
-
-                                {/* Progress indicator */}
-                                <div className="absolute bottom-0 left-0 h-0.5 bg-gradient-to-r from-primary-400 to-primary-600 w-0 group-hover/review:w-full transition-all duration-700 ease-out rounded-b-xl"></div>
+                                <ReviewItem
+                                    review={review}
+                                    avatarUrl={avatarUrls[review.id]}
+                                    onLike={handleLike}
+                                    onDislike={handleDislike}
+                                    onDelete={handleDelete}
+                                    showActions={true}
+                                    variant="default"
+                                />
                             </div>
                         ))
                     )}

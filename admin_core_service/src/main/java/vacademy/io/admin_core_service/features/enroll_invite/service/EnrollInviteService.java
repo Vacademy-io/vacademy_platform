@@ -19,6 +19,7 @@ import vacademy.io.admin_core_service.features.enroll_invite.dto.EnrollInviteWit
 import vacademy.io.admin_core_service.features.enroll_invite.dto.PackageSessionToPaymentOptionDTO;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionLearnerInvitationToPaymentOption;
+import vacademy.io.admin_core_service.features.enroll_invite.enums.EnrollInviteTag;
 import vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollInviteRepository;
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
 import vacademy.io.admin_core_service.features.packages.service.PackageSessionService;
@@ -30,6 +31,7 @@ import vacademy.io.common.institute.entity.session.PackageSession;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -152,4 +154,36 @@ public class EnrollInviteService {
         enrollInviteDTO.setPackageSessionToPaymentOptions(packageSessionToPaymentOptionDTOS);
         return enrollInviteDTO;
     }
+
+    private void removeDefaultTag(String packageSessionId) {
+        Optional<EnrollInvite>optionalEnrollInvite = repository.findLatestForPackageSessionWithFilters(
+                packageSessionId,
+                List.of(StatusEnum.ACTIVE.name()),
+                List.of(EnrollInviteTag.DEFAULT.name()),
+                List.of(StatusEnum.ACTIVE.name()));
+        if (optionalEnrollInvite.isPresent()) {
+            EnrollInvite enrollInvite = optionalEnrollInvite.get();
+            enrollInvite.setTag(null);
+            repository.save(enrollInvite);
+        }
+    }
+
+    private void addDefaultTag(String enrollInviteId) {
+        Optional<EnrollInvite>optionalEnrollInvite = repository.findById(enrollInviteId);
+        if (optionalEnrollInvite.isPresent()) {
+            EnrollInvite enrollInvite = optionalEnrollInvite.get();
+            enrollInvite.setTag(EnrollInviteTag.DEFAULT.name());
+            repository.save(enrollInvite);
+        }else{
+            throw new VacademyException("EnrollInvite not found");
+        }
+    }
+
+    @Transactional
+    public String updateDefaultEnrollInviteConfig(String enrollInviteId,String packageSessionId) {
+        removeDefaultTag(packageSessionId);
+        addDefaultTag(enrollInviteId);
+        return enrollInviteId;
+    }
+
 }

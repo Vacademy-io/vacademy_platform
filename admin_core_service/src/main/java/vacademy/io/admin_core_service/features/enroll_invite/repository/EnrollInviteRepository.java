@@ -113,4 +113,23 @@ public interface EnrollInviteRepository extends JpaRepository<EnrollInvite, Stri
             @Param("packageSessionStatuses") List<String> packageSessionStatuses,
             Pageable pageable
     );
+
+    @Query(value = """
+        SELECT ei.*
+        FROM enroll_invite ei
+        INNER JOIN package_session_learner_invitation_to_payment_option m
+            ON m.enroll_invite_id = ei.id
+        WHERE m.package_session_id = :packageSessionId
+          AND ei.status IN (:enrollInviteStatusList)
+          AND ei.tag IN (:tagList)
+          AND m.status IN (:mappingStatusList)
+        ORDER BY ei.created_at DESC
+        LIMIT 1
+    """, nativeQuery = true)
+    Optional<EnrollInvite> findLatestForPackageSessionWithFilters(
+            @Param("packageSessionId") String packageSessionId,
+            @Param("enrollInviteStatusList") List<String> enrollInviteStatusList,
+            @Param("tagList") List<String> tagList,
+            @Param("mappingStatusList") List<String> mappingStatusList
+    );
 }

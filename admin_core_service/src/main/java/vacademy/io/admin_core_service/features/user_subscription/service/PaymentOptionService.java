@@ -7,6 +7,7 @@ import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentOptionDTO;
 import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentOptionFilterDTO;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
+import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentOptionTag;
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentOptionRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
@@ -42,6 +43,27 @@ public class PaymentOptionService {
 
     public Optional<PaymentOption> getPaymentOption(String source, String sourceId,String tag,List<String>statuses){
         return paymentOptionRepository.findTopByFiltersWithPlans(source,sourceId,tag,statuses,statuses);
+    }
+
+    private void changeDefaultPaymentOption(String source,String sourceId){
+        Optional<PaymentOption>optionalPaymentOption = getPaymentOption(source,sourceId, PaymentOptionTag.DEFAULT.name(), List.of(StatusEnum.ACTIVE.name()));
+        if(optionalPaymentOption.isPresent()){
+            PaymentOption paymentOption = optionalPaymentOption.get();
+            paymentOption.setTag(null);
+            paymentOptionRepository.save(paymentOption);
+        }
+    }
+
+    private void makeDefaultPaymentOption(String paymentOptionId){
+        PaymentOption paymentOption = findById(paymentOptionId);
+        paymentOption.setTag(PaymentOptionTag.DEFAULT.name());
+        paymentOptionRepository.save(paymentOption);
+    }
+
+    public String makeDefaultPaymentOption(String paymentOptionId,String source,String sourceId){
+        changeDefaultPaymentOption(source,sourceId);
+        makeDefaultPaymentOption(paymentOptionId);
+        return "success";
     }
 
     public PaymentOption findById(String id){

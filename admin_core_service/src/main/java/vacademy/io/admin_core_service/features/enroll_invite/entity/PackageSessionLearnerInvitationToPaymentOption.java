@@ -6,6 +6,7 @@ import lombok.Getter; // Added for consistency
 import lombok.NoArgsConstructor; // Added for consistency
 import lombok.Setter; // Added for consistency
 import org.hibernate.annotations.UuidGenerator;
+import vacademy.io.admin_core_service.features.enroll_invite.dto.PackageSessionToPaymentOptionDTO;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption; // Import PaymentOption
 import vacademy.io.common.institute.entity.session.PackageSession; // Import PackageSession
 
@@ -44,10 +45,17 @@ public class PackageSessionLearnerInvitationToPaymentOption {
     @Column(name = "updated_at", insertable = false, updatable = false)
     private LocalDateTime updatedAt;
 
-    public PackageSessionLearnerInvitationToPaymentOption(EnrollInvite enrollInvite, PackageSession packageSession, PaymentOption paymentOption,String status) {
+    public PackageSessionLearnerInvitationToPaymentOption(EnrollInvite enrollInvite, PackageSession packageSession, PaymentOption paymentOption, String status) {
         this.enrollInvite = enrollInvite;
         this.packageSession = packageSession;
         this.paymentOption = paymentOption;
         this.status = status;
+    }
+
+    public PackageSessionToPaymentOptionDTO mapToPackageSessionToPaymentOptionDTO() {
+        return PackageSessionToPaymentOptionDTO.builder().
+                packageSessionId(this.packageSession.getId())
+                .paymentOption(this.paymentOption.mapToPaymentOptionDTO())
+                .build();
     }
 }

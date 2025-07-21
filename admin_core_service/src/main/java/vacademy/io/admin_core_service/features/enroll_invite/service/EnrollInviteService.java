@@ -37,7 +37,7 @@ public class EnrollInviteService {
 
     @Autowired private EnrollInviteRepository repository;
     @Autowired private PaymentOptionService paymentOptionService;
-    @Autowired private PackageSessionLearnerInvitationToPaymentOptionService packageSessionLearnerInvitationToPaymentOptionService;
+    @Autowired private PackageSessionEnrollInviteToPaymentOptionService packageSessionEnrollInviteToPaymentOptionService;
     @Autowired private PackageSessionService packageSessionService;
     @Autowired private InstituteCustomFiledService instituteCustomFiledService;
 
@@ -104,7 +104,7 @@ public class EnrollInviteService {
             // This case would only be hit if the original list contained only null elements
             throw new VacademyException("No valid packageSession-paymentOption mappings were provided.");
         }
-        packageSessionLearnerInvitationToPaymentOptionService.createPackageSessionLearnerInvitationToPaymentOptions(mappingEntities);
+        packageSessionEnrollInviteToPaymentOptionService.createPackageSessionLearnerInvitationToPaymentOptions(mappingEntities);
 
         return savedEnrollInvite.getId();
     }
@@ -148,6 +148,8 @@ public class EnrollInviteService {
         EnrollInvite enrollInvite = repository.findById(enrollInviteId).orElseThrow(()->new VacademyException("EnrollInvite not found"));
         EnrollInviteDTO enrollInviteDTO = enrollInvite.toEnrollInviteDTO();
         enrollInviteDTO.setInstituteCustomFields(instituteCustomFiledService.findCustomFieldsAsJson(instituteId, CustomFieldTypeEnum.ENROLL_INVITE.name(), enrollInviteId));
+        List<PackageSessionToPaymentOptionDTO>packageSessionToPaymentOptionDTOS = packageSessionEnrollInviteToPaymentOptionService.findByInvite(enrollInvite);
+        enrollInviteDTO.setPackageSessionToPaymentOptions(packageSessionToPaymentOptionDTOS);
         return enrollInviteDTO;
     }
 }

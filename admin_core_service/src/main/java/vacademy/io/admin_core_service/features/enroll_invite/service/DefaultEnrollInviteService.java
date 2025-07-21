@@ -36,7 +36,7 @@ public class DefaultEnrollInviteService {
     private PaymentOptionService paymentOptionService;
 
     @Autowired
-    private PackageSessionLearnerInvitationToPaymentOptionService packageSessionLearnerInvitationToPaymentOptionService;
+    private PackageSessionEnrollInviteToPaymentOptionService packageSessionEnrollInviteToPaymentOptionService;
 
     @Autowired
     private EnrollInviteDiscountOptionService enrollInviteDiscountOptionService;
@@ -69,8 +69,8 @@ public class DefaultEnrollInviteService {
             if (paymentOption.getPaymentPlans() != null && !paymentOption.getPaymentPlans().isEmpty()) {
                 enrollInvite.setCurrency(paymentOption.getPaymentPlans().get(0).getCurrency());
             }
-            PackageSessionLearnerInvitationToPaymentOption packageSessionLearnerInvitationToPaymentOption = new PackageSessionLearnerInvitationToPaymentOption(enrollInvite, packageSession, paymentOption,StatusEnum.ACTIVE.name());
-            packageSessionLearnerInvitationToPaymentOption = packageSessionLearnerInvitationToPaymentOptionService.create(packageSessionLearnerInvitationToPaymentOption);
+            PackageSessionLearnerInvitationToPaymentOption packageSessionEnrollInviteToPaymentOption = new PackageSessionLearnerInvitationToPaymentOption(enrollInvite, packageSession, paymentOption,StatusEnum.ACTIVE.name());
+            packageSessionEnrollInviteToPaymentOption = packageSessionEnrollInviteToPaymentOptionService.create(packageSessionEnrollInviteToPaymentOption);
         } else {
             return;
         }

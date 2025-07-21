@@ -1,7 +1,7 @@
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { ThumbsUp, ThumbsDown, Trash } from "phosphor-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { MyPagination } from "@/components/design-system/pagination";
 import { AxiosError } from "axios";
 import { toast } from "sonner";
@@ -18,6 +18,7 @@ import {
 import { StarRatingComponent } from "@/components/common/star-rating-component";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { ProgressBar } from "@/components/ui/custom-progress-bar";
+import { getPublicUrl } from "@/services/upload_file";
 
 // Types for API Response
 interface User {
@@ -116,6 +117,40 @@ export function CourseDetailsRatingsComponent({
     const reviews = ratingData?.content.map(transformRatingToReview) || [];
     const totalPages = ratingData?.totalPages || 0;
 
+    // State to store avatar URLs
+    const [avatarUrls, setAvatarUrls] = useState<Record<string, string>>({});
+
+    // Fetch avatar URLs when reviews change
+    useEffect(() => {
+        const fetchAvatarUrls = async () => {
+            const urlPromises = reviews
+                .filter(review => review.user.avatarUrl)
+                .map(async (review) => {
+                    try {
+                        const url = await getPublicUrl(review.user.avatarUrl);
+                        return { reviewId: review.id, url };
+                    } catch (error) {
+                        return { reviewId: review.id, url: "" };
+                    }
+                });
+
+            const results = await Promise.all(urlPromises);
+            const urls: Record<string, string> = {};
+            
+            results.forEach(({ reviewId, url }) => {
+                if (url) {
+                    urls[reviewId] = url;
+                }
+            });
+            
+            setAvatarUrls(urls);
+        };
+
+        if (reviews.length > 0) {
+            fetchAvatarUrls();
+        }
+    }, [reviews]);
+
     const handleUpdateRatingMutation = useMutation({
         mutationFn: async ({
             id,
@@ -124,6 +159,7 @@ export function CourseDetailsRatingsComponent({
             status,
             likes,
             dislikes,
+            text,
         }: {
             id: string;
             rating: number;
@@ -131,6 +167,7 @@ export function CourseDetailsRatingsComponent({
             status: string;
             likes: number;
             dislikes: number;
+            text?: string;
         }) => {
             return handleUpdateRating(
                 id,
@@ -138,7 +175,8 @@ export function CourseDetailsRatingsComponent({
                 source_id,
                 status,
                 likes,
-                dislikes
+                dislikes,
+                text
             );
         },
         onSuccess: () => {
@@ -301,9 +339,9 @@ export function CourseDetailsRatingsComponent({
                             {/* Avatar */}
                             <div className="flex shrink-0 items-center justify-center gap-2">
                                 <Avatar>
-                                    {review.user.avatarUrl ? (
+                                    {avatarUrls[review.id] ? (
                                         <AvatarImage
-                                            src={review.user.avatarUrl}
+                                            src={avatarUrls[review.id]}
                                             alt={review.user.name}
                                         />
                                     ) : (
@@ -350,6 +388,7 @@ export function CourseDetailsRatingsComponent({
                                                 status: "ACTIVE",
                                                 likes: review.likes + 1,
                                                 dislikes: review.dislikes,
+                                                text: review.description,
                                             });
                                         }}
                                     >
@@ -371,6 +410,7 @@ export function CourseDetailsRatingsComponent({
                                                 status: "ACTIVE",
                                                 likes: review.likes,
                                                 dislikes: review.dislikes + 1,
+                                                text: review.description,
                                             });
                                         }}
                                     >
@@ -392,6 +432,7 @@ export function CourseDetailsRatingsComponent({
                                                 status: "DELETED",
                                                 likes: review.likes,
                                                 dislikes: review.dislikes,
+                                                text: review.description,
                                             });
                                         }}
                                     >

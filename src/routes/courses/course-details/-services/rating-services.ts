@@ -40,7 +40,8 @@ export const handleUpdateRating = async (
     source_id: string,
     status: string,
     likes: number,
-    dislikes: number
+    dislikes: number,
+    text?: string
 ) => {
     const accessToken = await getTokenFromStorage(TokenKey.accessToken);
     const tokenData = getTokenDecodedData(accessToken);
@@ -56,6 +57,7 @@ export const handleUpdateRating = async (
             source_id,
             source_type: "PACKAGE_SESSION",
             status,
+            text,
         },
     });
     return response?.data;

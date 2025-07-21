@@ -1,6 +1,8 @@
 package vacademy.io.admin_core_service.features.enroll_invite.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionLearnerInvitationToPaymentOption;
@@ -12,5 +14,16 @@ public interface PackageSessionLearnerInvitationToPaymentOptionRepository extend
     List<PackageSessionLearnerInvitationToPaymentOption> findByEnrollInviteAndStatusIn(
             EnrollInvite enrollInvite,
             List<String> statusList
+    );
+
+    @Query("SELECT psl " +
+            "FROM PackageSessionLearnerInvitationToPaymentOption psl " +
+            "WHERE psl.paymentOption.id IN :paymentOptionIds " +
+            "AND psl.enrollInvite.status IN :enrollInviteStatuses " +
+            "AND psl.status IN :invitationStatuses")
+    List<PackageSessionLearnerInvitationToPaymentOption> findByCriteria(
+            @Param("paymentOptionIds") List<String> paymentOptionIds,
+            @Param("enrollInviteStatuses") List<String> enrollInviteStatuses,
+            @Param("invitationStatuses") List<String> invitationStatuses
     );
 }

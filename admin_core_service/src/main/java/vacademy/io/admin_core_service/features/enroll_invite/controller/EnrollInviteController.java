@@ -11,6 +11,8 @@ import vacademy.io.admin_core_service.features.enroll_invite.service.EnrollInvit
 import vacademy.io.common.auth.config.PageConstants;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/admin-core-service/v1/enroll-invite")
 public class EnrollInviteController {
@@ -44,5 +46,10 @@ public class EnrollInviteController {
     @PutMapping("/update-default-enroll-invite-config")
     public ResponseEntity<String>updateDefaultEnrollInviteConfig(@RequestParam("enrollInviteId") String enrollInviteId,@RequestParam("packageSessionId") String packageSessionId) {
         return ResponseEntity.ok(enrollInviteService.updateDefaultEnrollInviteConfig(enrollInviteId,packageSessionId));
+    }
+
+    @PostMapping("get-by-payment-option-ids")
+    public List<EnrollInviteDTO>getByPaymentOptionIds(@RequestBody List<String> paymentOptionIds) {
+        return enrollInviteService.findByPaymentOptionIds(paymentOptionIds);
     }
 }

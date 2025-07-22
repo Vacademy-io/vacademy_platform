@@ -49,6 +49,7 @@ import { BatchForSessionType } from "@/types/institute-details/institute-details
 import { CourseStructureResponse } from "@/types/institute-details/course-details-interface";
 import { getIdByLevelAndSession } from "@/routes/courses/course-details/-utils/helper";
 import { MyButton } from "@/components/design-system/button";
+import { DonationDialog } from "./DonationDialog";
 
 type SlideType = {
     id: string;
@@ -171,7 +172,7 @@ export const CourseDetailsPage = () => {
     const router = useRouter();
     const searchParams = router.state.location.search;
     const [instituteId, setInstituteId] = useState<string | null>(null);
-    const [enrolledSessions, setEnrolledSessions] = useState<any[]>([]);
+    const [enrolledSessions, setEnrolledSessions] = useState<unknown[]>([]);
     
     // Get selectedTab from route params, default to "ALL" if not provided
     const selectedTab = searchParams.selectedTab || "ALL";
@@ -297,7 +298,7 @@ export const CourseDetailsPage = () => {
         // For PROGRESS and COMPLETED tabs, only show enrolled sessions
         // For ALL tab, show all available sessions
         if (selectedTab === "PROGRESS" || selectedTab === "COMPLETED") {
-            const enrolledSessionIds = enrolledSessions.map(enrolled => enrolled.session?.id || enrolled.id);
+            const enrolledSessionIds = enrolledSessions.map(enrolled => (enrolled as any).session?.id || (enrolled as any).id);
             const filteredSessions = sessions.filter(session => 
                 enrolledSessionIds.includes(session.sessionDetails.id)
             );
@@ -332,13 +333,13 @@ export const CourseDetailsPage = () => {
             if (selectedTab === "PROGRESS" || selectedTab === "COMPLETED") {
                 // Find the enrolled session to get enrolled level IDs
                 const enrolledSession = enrolledSessions.find(enrolled => 
-                    (enrolled.session?.id || enrolled.id) === sessionId
+                    ((enrolled as any).session?.id || (enrolled as any).id) === sessionId
                 );
                 
                 let enrolledLevelIds: string[] = [];
                 if (enrolledSession) {
                     // Extract level ID from enrolled session
-                    enrolledLevelIds = [enrolledSession.level?.id || enrolledSession.level_id].filter(Boolean);
+                    enrolledLevelIds = [(enrolledSession as any).level?.id || (enrolledSession as any).level_id].filter(Boolean);
                 }
 
                 // Filter levels based on enrollment
@@ -419,8 +420,17 @@ export const CourseDetailsPage = () => {
         enabled: !!packageSessionIds,
     });
 
+    const [donationDialogOpen, setDonationDialogOpen] = useState(false);
+
     return (
         <>
+            {/* Donation Dialog */}
+            <DonationDialog
+                open={donationDialogOpen}
+                onOpenChange={setDonationDialogOpen}
+                onContinue={() => setDonationDialogOpen(false)}
+                onSkip={() => setDonationDialogOpen(false)}
+            />
             <div className="min-h-screen bg-gradient-to-br from-gray-50/80 via-white to-primary-50/20 relative overflow-hidden w-full max-w-full">
                 {/* Animated background elements */}
                 <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -1210,6 +1220,7 @@ export const CourseDetailsPage = () => {
                                                 buttonType="primary"
                                                 layoutVariant="default"
                                                 className="mt-2 !min-w-full !w-full text-xs h-8"
+                                                onClick={() => setDonationDialogOpen(true)}
                                             >
                                                 Enroll
                                             </MyButton>

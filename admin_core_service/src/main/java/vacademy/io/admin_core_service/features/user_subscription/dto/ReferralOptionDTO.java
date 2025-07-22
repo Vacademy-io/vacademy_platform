@@ -5,19 +5,22 @@ import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.Builder;
 import lombok.Data;
 
-@Data
+import java.util.Date;
+
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+@Data
 @Builder
-public class PaymentPlanDTO {
+public class ReferralOptionDTO {
     private String id;
     private String name;
     private String status;
-    private Integer validityInDays;
-    private double actualPrice;
-    private double elevatedPrice;
-    private String currency;
-    private String description;
+    private String source;
+    private String sourceId;
+    private String referrerDiscountJson;
+    private String refereeDiscountJson;
+    private Integer referrerVestingDays;
     private String tag;
-    private String featureJson;
-    private ReferralOptionDTO referralOption;
+    private String description;
+    private Date createdAt;
+    private Date updatedAt;
 }

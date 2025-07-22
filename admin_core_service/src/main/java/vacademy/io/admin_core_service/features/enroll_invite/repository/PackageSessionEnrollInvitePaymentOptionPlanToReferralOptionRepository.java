@@ -1,0 +1,9 @@
+package vacademy.io.admin_core_service.features.enroll_invite.repository;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionEnrollInvitePaymentOptionPlanToReferralOption;
+
+@Repository
+public interface PackageSessionEnrollInvitePaymentOptionPlanToReferralOptionRepository extends JpaRepository<PackageSessionEnrollInvitePaymentOptionPlanToReferralOption, String> {
+}

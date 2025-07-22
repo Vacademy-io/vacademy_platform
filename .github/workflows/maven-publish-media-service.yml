@@ -69,6 +69,7 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }} \
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }} \
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          UNSPLASH_ACCESS_KEY: ${{ secrets.UNSPLASH_ACCESS_KEY }}
 
         run: |
           docker build -t $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG . --build-arg GITHUB_TOKEN=${GITHUB_TOKEN} --build-arg ACCESS_GITHUB_USERNAME=${ACCESS_GITHUB_USERNAME} --build-arg JAVA_TOKEN=${JAVA_TOKEN}
@@ -108,6 +109,7 @@ jobs:
             OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }} \
             GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }} \
             YOUTUBE_API_KEY=${{ secrets.YOUTUBE_API_KEY }} \
+            UNSPLASH_ACCESS_KEY=${{ secrets.UNSPLASH_ACCESS_KEY }} \
             DEEPSEEK_API_KEY=${{ secrets.DEEPSEEK_API_KEY }} 
 
       - name: Restart deployment

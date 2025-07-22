@@ -7,6 +7,7 @@ import org.springframework.stereotype.Repository;
 import vacademy.io.common.institute.entity.Level;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface LevelRepository extends JpaRepository<Level, String> {
@@ -29,5 +30,21 @@ public interface LevelRepository extends JpaRepository<Level, String> {
             @Param("packageId") String packageId
     );
 
-
+    @Query(value = """
+    SELECT l.* 
+    FROM level l
+    JOIN package_session ps ON l.id = ps.level_id
+    JOIN package_institute pi ON ps.package_id = pi.package_id
+    WHERE pi.institute_id = :instituteId
+      AND LOWER(l.level_name) = LOWER(:name)
+      AND (:statusList IS NULL OR l.status IN (:statusList))
+      AND (:statusList IS NULL OR ps.status IN (:statusList))
+    ORDER BY l.created_at DESC
+    LIMIT 1
+""", nativeQuery = true)
+    Optional<Level> findLatestLevelByNameAndInstitute(
+            @Param("name") String name,
+            @Param("instituteId") String instituteId,
+            @Param("statusList") List<String> statusList
+    );
 }

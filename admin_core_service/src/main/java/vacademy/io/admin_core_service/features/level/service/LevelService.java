@@ -41,10 +41,10 @@ public class LevelService {
     private final LearnerInvitationService learnerInvitationService;
     private final GroupService groupService;
 
-    public Level createOrAddLevel(String id, boolean newLevel, String levelName, Integer durationInDays, String thumbnailFileId) {
+    public Level createOrAddLevel(String id, boolean newLevel, String levelName, Integer durationInDays, String thumbnailFileId,String instituteId) {
         Level level = null;
         if (newLevel) {
-            level = getLevel(levelName, durationInDays, thumbnailFileId);
+            level = getLevel(levelName, durationInDays, thumbnailFileId,instituteId);
         } else {
             level = getLevelById(id);
             if (StringUtils.hasText(levelName)){
@@ -60,7 +60,11 @@ public class LevelService {
         return levelRepository.save(level);
     }
 
-    private Level getLevel(String levelName, Integer durationInDays, String thumbnailFileId) {
+    private Level getLevel(String levelName, Integer durationInDays, String thumbnailFileId,String instituteId) {
+        Optional<Level>optionalLevel = levelRepository.findLatestLevelByNameAndInstitute(levelName,instituteId,List.of(LevelStatusEnum.ACTIVE.name()));
+        if (optionalLevel.isPresent()) {
+            return optionalLevel.get();
+        }
         Level level = new Level();
         level.setLevelName(levelName);
         level.setDurationInDays(durationInDays);
@@ -83,7 +87,7 @@ public class LevelService {
         if (optionalSession.isEmpty()) {
             throw new VacademyException("Session not found");
         }
-        Level level = createOrAddLevel(addLevelWithCourseDTO.getId(), addLevelWithCourseDTO.getNewLevel(), addLevelWithCourseDTO.getLevelName(), addLevelWithCourseDTO.getDurationInDays(), addLevelWithCourseDTO.getThumbnailFileId());
+        Level level = createOrAddLevel(addLevelWithCourseDTO.getId(), addLevelWithCourseDTO.getNewLevel(), addLevelWithCourseDTO.getLevelName(), addLevelWithCourseDTO.getDurationInDays(), addLevelWithCourseDTO.getThumbnailFileId(),instituteId);
         Group group = null;
         if (addLevelWithCourseDTO.getGroup() != null) {
             group = groupService.addGroup(addLevelWithCourseDTO.getGroup());
@@ -139,7 +143,7 @@ public class LevelService {
 
 
     public void addOrUpdateLevel(AddLevelWithSessionDTO addLevelWithSessionDTO,Session session,PackageEntity packageEntity,String instituteId,CustomUserDetails user){
-        Level level = createOrAddLevel(addLevelWithSessionDTO.getId(), addLevelWithSessionDTO.getNewLevel(), addLevelWithSessionDTO.getLevelName(), addLevelWithSessionDTO.getDurationInDays(), addLevelWithSessionDTO.getThumbnailFileId());
+        Level level = createOrAddLevel(addLevelWithSessionDTO.getId(), addLevelWithSessionDTO.getNewLevel(), addLevelWithSessionDTO.getLevelName(), addLevelWithSessionDTO.getDurationInDays(), addLevelWithSessionDTO.getThumbnailFileId(),instituteId);
         if (addLevelWithSessionDTO.isNewPackageSession()){
             packageSessionService.createPackageSession(level,session,packageEntity,null,session.getStartDate(),instituteId,user,addLevelWithSessionDTO.getAddFacultyToCourse());
         }else{

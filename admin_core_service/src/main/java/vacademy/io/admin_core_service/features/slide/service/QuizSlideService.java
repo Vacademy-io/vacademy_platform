@@ -93,14 +93,7 @@ public class QuizSlideService {
 
     public void updateData(QuizSlideDTO dto, QuizSlide quizSlide) {
         quizSlide.setQuestions(dto.getQuestions().stream().map(q -> new QuizSlideQuestion(q,quizSlide)).toList());
-        List<RichTextDataDTO> richTextDataList = new ArrayList<>();
-        if (dto.getDescription() != null) {
-            if (quizSlide.getDescriptionRichText() != null) {
-                richTextDataList.add(dto.getDescription());
-            }else{
-                quizSlide.setDescriptionRichText(new RichTextData(dto.getDescription()));
-            }
-        }
+        quizSlide.setDescriptionRichText(new RichTextData(dto.getDescription()));
         addOrUpdateQuestionsInBulk(quizSlide, dto.getQuestions());
     }
 

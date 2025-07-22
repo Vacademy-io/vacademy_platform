@@ -124,6 +124,7 @@ public class ModuleService {
         return moduleDTO;
     }
 
+    @Transactional
     public String deleteModule(List<String> moduleIds,String subjectId,String packageSessionId, CustomUserDetails user) {
         if (moduleIds == null || moduleIds.isEmpty()) {
             throw new VacademyException("Module IDs cannot be null or empty");

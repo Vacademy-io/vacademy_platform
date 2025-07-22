@@ -549,9 +549,9 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                             'can_skip', q.can_skip,
                                             'auto_evaluation_json', q.auto_evaluation_json,
                                             'evaluation_type', q.evaluation_type,
-                                            'text_data', json_build_object('id', q_text_rt.id, 'type', q_text_rt.type, 'content', q_text_rt.content),
+                                            'text', json_build_object('id', q_text_rt.id, 'type', q_text_rt.type, 'content', q_text_rt.content),
                                             'parent_rich_text', CASE WHEN q.parent_rich_text_id IS NOT NULL THEN json_build_object('id', q_parent_rt.id, 'type', q_parent_rt.type, 'content', q_parent_rt.content) ELSE NULL END,
-                                            'explanation_text_data', CASE WHEN q.explanation_text_id IS NOT NULL THEN json_build_object('id', q_exp_rt.id, 'type', q_exp_rt.type, 'content', q_exp_rt.content) ELSE NULL END,
+                                            'explanation_text', CASE WHEN q.explanation_text_id IS NOT NULL THEN json_build_object('id', q_exp_rt.id, 'type', q_exp_rt.type, 'content', q_exp_rt.content) ELSE NULL END,
                                             'options', COALESCE((
                                                 SELECT json_agg(
                                                     json_build_object(
@@ -898,9 +898,9 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                             'can_skip', q.can_skip,
                                             'auto_evaluation_json', q.auto_evaluation_json,
                                             'evaluation_type', q.evaluation_type,
-                                            'text_data', json_build_object('id', q_text_rt.id, 'type', q_text_rt.type, 'content', q_text_rt.content),
+                                            'text', json_build_object('id', q_text_rt.id, 'type', q_text_rt.type, 'content', q_text_rt.content),
                                             'parent_rich_text', CASE WHEN q.parent_rich_text_id IS NOT NULL THEN json_build_object('id', q_parent_rt.id, 'type', q_parent_rt.type, 'content', q_parent_rt.content) ELSE NULL END,
-                                            'explanation_text_data', CASE WHEN q.explanation_text_id IS NOT NULL THEN json_build_object('id', q_exp_rt.id, 'type', q_exp_rt.type, 'content', q_exp_rt.content) ELSE NULL END,
+                                            'explanation_text', CASE WHEN q.explanation_text_id IS NOT NULL THEN json_build_object('id', q_exp_rt.id, 'type', q_exp_rt.type, 'content', q_exp_rt.content) ELSE NULL END,
                                             'options', COALESCE((
                                                 SELECT json_agg(
                                                     json_build_object(
@@ -1450,9 +1450,9 @@ GROUP BY
                                 'can_skip', q.can_skip,
                                 'auto_evaluation_json', q.auto_evaluation_json,
                                 'evaluation_type', q.evaluation_type,
-                                'text_data', json_build_object('id', q_text_rt.id, 'type', q_text_rt.type, 'content', q_text_rt.content),
+                                'text', json_build_object('id', q_text_rt.id, 'type', q_text_rt.type, 'content', q_text_rt.content),
                                 'parent_rich_text', CASE WHEN q.parent_rich_text_id IS NOT NULL THEN json_build_object('id', q_parent_rt.id, 'type', q_parent_rt.type, 'content', q_parent_rt.content) ELSE NULL END,
-                                'explanation_text_data', CASE WHEN q.explanation_text_id IS NOT NULL THEN json_build_object('id', q_exp_rt.id, 'type', q_exp_rt.type, 'content', q_exp_rt.content) ELSE NULL END,
+                                'explanation_text', CASE WHEN q.explanation_text_id IS NOT NULL THEN json_build_object('id', q_exp_rt.id, 'type', q_exp_rt.type, 'content', q_exp_rt.content) ELSE NULL END,
                                 'options', COALESCE((
                                     SELECT json_agg(
                                         json_build_object(

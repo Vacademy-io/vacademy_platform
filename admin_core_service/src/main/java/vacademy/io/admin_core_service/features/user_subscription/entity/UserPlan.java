@@ -39,7 +39,7 @@ public class UserPlan {
 
     @ManyToOne
     @JoinColumn(name = "package_session_learner_invitation_to_payment_option_id")
-    private PackageSessionLearnerInvitationToPaymentOption packageSessionLearnerInvitationToPaymentOption;
+    private PackageSessionLearnerInvitationToPaymentOption packageSessionEnrollInviteToPaymentOption;
 
     @Column(name = "status")
     private String status;

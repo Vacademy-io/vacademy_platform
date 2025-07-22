@@ -26,4 +26,9 @@ public interface PackageSessionLearnerInvitationToPaymentOptionRepository extend
             @Param("enrollInviteStatuses") List<String> enrollInviteStatuses,
             @Param("invitationStatuses") List<String> invitationStatuses
     );
+
+    List<PackageSessionLearnerInvitationToPaymentOption> findByEnrollInvite_IdInAndStatusIn(
+            List<String> enrollInviteIds,
+            List<String> statusList
+    );
 }

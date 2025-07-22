@@ -2095,4 +2095,21 @@ GROUP BY
             @Param("packageStatuses") List<String> packageStatuses,
             @Param("instituteId") String instituteId
     );
+
+    // Methods for teacher approval workflow
+    @Query("SELECT p FROM PackageEntity p WHERE p.createdByUserId = :createdByUserId AND p.status IN :statuses ORDER BY p.createdAt DESC")
+    List<PackageEntity> findByCreatedByUserIdAndStatusIn(
+            @Param("createdByUserId") String createdByUserId, 
+            @Param("statuses") List<String> statuses
+    );
+
+    @Query("SELECT p FROM PackageEntity p WHERE p.status = :status ORDER BY p.createdAt DESC")
+    List<PackageEntity> findByStatus(@Param("status") String status);
+
+    @Query("SELECT p FROM PackageEntity p WHERE p.originalCourseId = :originalCourseId AND p.createdByUserId = :createdByUserId AND p.status = :status")
+    List<PackageEntity> findByOriginalCourseIdAndCreatedByUserIdAndStatus(
+            @Param("originalCourseId") String originalCourseId, 
+            @Param("createdByUserId") String createdByUserId, 
+            @Param("status") String status);
+
 }

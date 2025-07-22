@@ -146,6 +146,7 @@ services:
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-dummy_openrouter_key}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-dummy_gemini_key}
       - YOUTUBE_API_KEY=${YOUTUBE_API_KEY:-dummy_youtube_key}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-dummy_deepseek_key}
     depends_on:
       - postgres
       - auth-service

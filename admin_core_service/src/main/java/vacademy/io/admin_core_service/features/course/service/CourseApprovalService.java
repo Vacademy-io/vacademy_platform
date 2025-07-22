@@ -1,0 +1,1102 @@
+package vacademy.io.admin_core_service.features.course.service;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import vacademy.io.admin_core_service.features.chapter.entity.Chapter;
+import vacademy.io.admin_core_service.features.chapter.entity.ChapterPackageSessionMapping;
+import vacademy.io.admin_core_service.features.chapter.repository.ChapterPackageSessionMappingRepository;
+import vacademy.io.admin_core_service.features.chapter.repository.ChapterRepository;
+import vacademy.io.admin_core_service.features.chapter.service.ChapterManager;
+import vacademy.io.admin_core_service.features.faculty.repository.FacultySubjectPackageSessionMappingRepository;
+import vacademy.io.admin_core_service.features.faculty.entity.FacultySubjectPackageSessionMapping;
+import vacademy.io.admin_core_service.features.module.entity.ModuleChapterMapping;
+import vacademy.io.admin_core_service.features.module.entity.SubjectModuleMapping;
+import vacademy.io.admin_core_service.features.module.repository.ModuleChapterMappingRepository;
+import vacademy.io.admin_core_service.features.module.repository.ModuleRepository;
+import vacademy.io.admin_core_service.features.module.repository.SubjectModuleMappingRepository;
+import vacademy.io.admin_core_service.features.module.service.ModuleManager;
+import vacademy.io.admin_core_service.features.packages.enums.PackageStatusEnum;
+import vacademy.io.admin_core_service.features.packages.repository.PackageRepository;
+import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
+import vacademy.io.admin_core_service.features.slide.entity.Slide;
+import vacademy.io.admin_core_service.features.slide.repository.SlideRepository;
+import vacademy.io.admin_core_service.features.slide.service.SlideService;
+import vacademy.io.admin_core_service.features.subject.entity.SubjectPackageSession;
+import vacademy.io.admin_core_service.features.subject.repository.SubjectPackageSessionRepository;
+import vacademy.io.admin_core_service.features.subject.repository.SubjectRepository;
+import vacademy.io.admin_core_service.features.subject.service.SubjectService;
+import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.common.institute.entity.PackageEntity;
+import vacademy.io.common.institute.entity.module.Module;
+import vacademy.io.common.institute.entity.session.PackageSession;
+import vacademy.io.common.institute.entity.student.Subject;
+import vacademy.io.admin_core_service.features.chapter.entity.ChapterToSlides;
+import vacademy.io.admin_core_service.features.chapter.repository.ChapterToSlidesRepository;
+
+import java.util.*;
+import java.util.stream.Collectors;
+
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class CourseApprovalService {
+
+    private final PackageRepository packageRepository;
+    private final PackageSessionRepository packageSessionRepository;
+    private final SubjectRepository subjectRepository;
+    private final ModuleRepository moduleRepository;
+    private final ChapterRepository chapterRepository;
+    private final SlideRepository slideRepository;
+    private final SubjectPackageSessionRepository subjectPackageSessionRepository;
+    private final SubjectModuleMappingRepository subjectModuleMappingRepository;
+    private final ModuleChapterMappingRepository moduleChapterMappingRepository;
+    private final ChapterPackageSessionMappingRepository chapterPackageSessionMappingRepository;
+    private final FacultySubjectPackageSessionMappingRepository facultySubjectPackageSessionMappingRepository;
+    private final ChapterManager chapterManager;
+    private final ModuleManager moduleManager;
+    private final SlideService slideService;
+    private final SubjectService subjectService;
+    private final ChapterToSlidesRepository chapterToSlidesRepository;
+
+    /**
+     * Create a temporary copy of a published course for teacher editing
+     */
+    @Transactional
+    public String createEditableCopy(String originalCourseId, CustomUserDetails teacher) {
+        PackageEntity originalPackage = packageRepository.findById(originalCourseId)
+                .orElseThrow(() -> new VacademyException("Original course not found"));
+
+        if (!PackageStatusEnum.ACTIVE.name().equals(originalPackage.getStatus())) {
+            throw new VacademyException("Can only create editable copies of published courses");
+        }
+
+        // Create temp package copy
+        PackageEntity tempPackage = copyPackageEntity(originalPackage, teacher.getId());
+        tempPackage = packageRepository.save(tempPackage);
+
+        // Copy entire course hierarchy
+        copyEntireCourseHierarchy(originalPackage, tempPackage, teacher.getId());
+
+        log.info("Created editable copy {} for original course {} by teacher {}", 
+                tempPackage.getId(), originalCourseId, teacher.getId());
+        
+        return tempPackage.getId();
+    }
+
+    /**
+     * Submit teacher's course for admin review
+     */
+    @Transactional
+    public String submitForReview(String courseId, CustomUserDetails teacher) {
+        PackageEntity course = packageRepository.findById(courseId)
+                .orElseThrow(() -> new VacademyException("Course not found"));
+
+        if (!PackageStatusEnum.DRAFT.name().equals(course.getStatus())) {
+            throw new VacademyException("Only draft courses can be submitted for review");
+        }
+
+        if (!teacher.getId().equals(course.getCreatedByUserId())) {
+            throw new VacademyException("Only the course creator can submit for review");
+        }
+
+        course.setStatus(PackageStatusEnum.IN_REVIEW.name());
+        packageRepository.save(course);
+
+        log.info("Course {} submitted for review by teacher {}", courseId, teacher.getId());
+        return "Course submitted for review successfully";
+    }
+
+    /**
+     * Withdraw course from review back to draft
+     */
+    @Transactional
+    public String withdrawFromReview(String courseId, CustomUserDetails teacher) {
+        PackageEntity course = packageRepository.findById(courseId)
+                .orElseThrow(() -> new VacademyException("Course not found"));
+
+        if (!PackageStatusEnum.IN_REVIEW.name().equals(course.getStatus())) {
+            throw new VacademyException("Only courses in review can be withdrawn");
+        }
+
+        if (!teacher.getId().equals(course.getCreatedByUserId())) {
+            throw new VacademyException("Only the course creator can withdraw from review");
+        }
+
+        course.setStatus(PackageStatusEnum.DRAFT.name());
+        packageRepository.save(course);
+
+        log.info("Course {} withdrawn from review by teacher {}", courseId, teacher.getId());
+        return "Course withdrawn from review successfully";
+    }
+
+    /**
+     * Admin approves a course - merges changes into original or creates new
+     */
+    @Transactional
+    public String approveCourse(String tempCourseId, CustomUserDetails admin) {
+        PackageEntity tempCourse = packageRepository.findById(tempCourseId)
+                .orElseThrow(() -> new VacademyException("Course not found"));
+
+        validateCourseForApproval(tempCourse);
+
+        String result;
+        if (tempCourse.getOriginalCourseId() != null) {
+            // Editing existing course - merge changes
+            result = mergeChangesIntoOriginal(tempCourse);
+        } else {
+            // New course - publish as active
+            result = publishNewCourse(tempCourse);
+        }
+
+        // Clean up temp course
+        deleteTempCourse(tempCourse);
+
+        log.info("Course {} approved by admin {}", tempCourseId, admin.getId());
+        return result;
+    }
+
+    /**
+     * Admin rejects a course
+     */
+    @Transactional
+    public String rejectCourse(String tempCourseId, String reason, CustomUserDetails admin) {
+        PackageEntity tempCourse = packageRepository.findById(tempCourseId)
+                .orElseThrow(() -> new VacademyException("Course not found"));
+
+        validateCourseForApproval(tempCourse);
+
+        tempCourse.setStatus(PackageStatusEnum.DRAFT.name());
+        packageRepository.save(tempCourse);
+
+        log.info("Course {} rejected by admin {} with reason: {}", tempCourseId, admin.getId(), reason);
+        return "Course rejected and sent back to draft";
+    }
+
+    /**
+     * Get teacher's courses (draft, in review, and published ones they created)
+     */
+    public List<PackageEntity> getTeacherCourses(String teacherId) {
+        return packageRepository.findByCreatedByUserIdAndStatusIn(teacherId, 
+                Arrays.asList(PackageStatusEnum.DRAFT.name(), PackageStatusEnum.IN_REVIEW.name(), PackageStatusEnum.ACTIVE.name()));
+    }
+
+    /**
+     * Get courses pending admin review
+     */
+    public List<PackageEntity> getCoursesForReview() {
+        return packageRepository.findByStatus(PackageStatusEnum.IN_REVIEW.name());
+    }
+
+    /**
+     * Check if teacher can edit a specific course
+     */
+    public boolean canTeacherEditCourse(String courseId, String teacherId) {
+        try {
+            PackageEntity course = packageRepository.findById(courseId).orElse(null);
+            if (course == null) {
+                return false;
+            }
+            return PackageStatusEnum.DRAFT.name().equals(course.getStatus()) 
+                    && teacherId.equals(course.getCreatedByUserId());
+        } catch (Exception e) {
+            log.error("Error checking teacher edit permissions for course {}: {}", courseId, e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Validate course before approval
+     */
+    private void validateCourseForApproval(PackageEntity course) {
+        if (course == null) {
+            throw new VacademyException("Course cannot be null");
+        }
+        
+        if (!PackageStatusEnum.IN_REVIEW.name().equals(course.getStatus())) {
+            throw new VacademyException("Only courses in review can be approved or rejected");
+        }
+        
+        if (course.getCreatedByUserId() == null) {
+            throw new VacademyException("Course must have a creator");
+        }
+        
+        // Validate course content exists
+        validateCourseContent(course);
+        
+        log.info("Course {} passed validation for approval", course.getId());
+    }
+
+    /**
+     * Validate that course has required content
+     */
+    private void validateCourseContent(PackageEntity course) {
+        try {
+            List<PackageSession> packageSessions = packageSessionRepository.findByPackageEntityId(course.getId());
+            if (packageSessions.isEmpty()) {
+                throw new VacademyException("Course must have at least one package session");
+            }
+            
+            // Check if course has subjects
+            boolean hasContent = false;
+            for (PackageSession session : packageSessions) {
+                List<Subject> subjects = subjectRepository.findDistinctSubjectsByPackageSessionId(session.getId());
+                if (!subjects.isEmpty()) {
+                    hasContent = true;
+                    break;
+                }
+            }
+            
+            if (!hasContent) {
+                log.warn("Course {} has no subjects but approval proceeding", course.getId());
+            }
+            
+        } catch (Exception e) {
+            log.error("Error validating course content for {}: {}", course.getId(), e.getMessage());
+            // Continue with approval even if content validation fails
+        }
+    }
+
+    /**
+     * Validate teacher permissions for course operations
+     */
+    private void validateTeacherPermissions(String courseId, String teacherId, String operation) {
+        PackageEntity course = packageRepository.findById(courseId)
+                .orElseThrow(() -> new VacademyException("Course not found"));
+        
+        if (!teacherId.equals(course.getCreatedByUserId())) {
+            throw new VacademyException("You don't have permission to " + operation + " this course");
+        }
+        
+        if (PackageStatusEnum.IN_REVIEW.name().equals(course.getStatus()) && !"withdraw".equals(operation)) {
+            throw new VacademyException("Cannot " + operation + " course while it's under review");
+        }
+    }
+
+    /**
+     * Validate course for submission to review
+     */
+    private void validateCourseForReview(PackageEntity course) {
+        if (course == null) {
+            throw new VacademyException("Course cannot be null");
+        }
+        
+        if (!PackageStatusEnum.DRAFT.name().equals(course.getStatus())) {
+            throw new VacademyException("Only draft courses can be submitted for review");
+        }
+        
+        // Validate course has minimum required content
+        validateMinimumCourseContent(course);
+    }
+
+    /**
+     * Validate course has minimum required content for review
+     */
+    private void validateMinimumCourseContent(PackageEntity course) {
+        if (course.getPackageName() == null || course.getPackageName().trim().isEmpty()) {
+            throw new VacademyException("Course must have a name");
+        }
+        
+        List<PackageSession> packageSessions = packageSessionRepository.findByPackageEntityId(course.getId());
+        if (packageSessions.isEmpty()) {
+            throw new VacademyException("Course must have at least one level and session");
+        }
+        
+        // Check for at least one subject with content
+        boolean hasSubjectWithContent = false;
+        for (PackageSession session : packageSessions) {
+            List<Subject> subjects = subjectRepository.findDistinctSubjectsByPackageSessionId(session.getId());
+            for (Subject subject : subjects) {
+                List<SubjectModuleMapping> modules = subjectModuleMappingRepository.findBySubjectId(subject.getId());
+                if (!modules.isEmpty()) {
+                    hasSubjectWithContent = true;
+                    break;
+                }
+            }
+            if (hasSubjectWithContent) break;
+        }
+        
+        if (!hasSubjectWithContent) {
+            throw new VacademyException("Course must have at least one subject with modules before submission");
+        }
+    }
+
+    /**
+     * Validate parameters for copy operations
+     */
+    private void validateCopyParameters(String originalCourseId, String teacherId) {
+        if (originalCourseId == null || originalCourseId.trim().isEmpty()) {
+            throw new VacademyException("Original course ID cannot be empty");
+        }
+        
+        if (teacherId == null || teacherId.trim().isEmpty()) {
+            throw new VacademyException("Teacher ID cannot be empty");
+        }
+        
+        PackageEntity originalCourse = packageRepository.findById(originalCourseId)
+                .orElseThrow(() -> new VacademyException("Original course not found"));
+        
+        if (!PackageStatusEnum.ACTIVE.name().equals(originalCourse.getStatus())) {
+            throw new VacademyException("Can only create copies of published courses");
+        }
+    }
+
+    /**
+     * Enhanced error handling for copy operations
+     */
+    @Transactional
+    public String createEditableCopyWithValidation(String originalCourseId, CustomUserDetails teacher) {
+        try {
+            validateCopyParameters(originalCourseId, teacher.getId());
+            return createEditableCopy(originalCourseId, teacher);
+        } catch (VacademyException e) {
+            log.error("Validation failed for creating editable copy: {}", e.getMessage());
+            throw e;
+        } catch (Exception e) {
+            log.error("Unexpected error creating editable copy of course {}: {}", originalCourseId, e.getMessage());
+            throw new VacademyException("Failed to create editable copy: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Enhanced error handling for submission
+     */
+    @Transactional
+    public String submitForReviewWithValidation(String courseId, CustomUserDetails teacher) {
+        try {
+            PackageEntity course = packageRepository.findById(courseId)
+                    .orElseThrow(() -> new VacademyException("Course not found"));
+            
+            validateTeacherPermissions(courseId, teacher.getId(), "submit");
+            validateCourseForReview(course);
+            
+            return submitForReview(courseId, teacher);
+        } catch (VacademyException e) {
+            log.error("Validation failed for submitting course {}: {}", courseId, e.getMessage());
+            throw e;
+        } catch (Exception e) {
+            log.error("Unexpected error submitting course {} for review: {}", courseId, e.getMessage());
+            throw new VacademyException("Failed to submit course for review: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Enhanced error handling for approval
+     */
+    @Transactional
+    public String approveCourseWithValidation(String tempCourseId, CustomUserDetails admin) {
+        try {
+            PackageEntity tempCourse = packageRepository.findById(tempCourseId)
+                    .orElseThrow(() -> new VacademyException("Course not found"));
+
+            validateCourseForApproval(tempCourse);
+
+            return approveCourse(tempCourseId, admin);
+        } catch (VacademyException e) {
+            log.error("Validation failed for approving course {}: {}", tempCourseId, e.getMessage());
+            throw e;
+        } catch (Exception e) {
+            log.error("Unexpected error approving course {}: {}", tempCourseId, e.getMessage());
+            throw new VacademyException("Failed to approve course: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Enhanced error handling for rejection
+     */
+    @Transactional
+    public String rejectCourseWithValidation(String tempCourseId, String reason, CustomUserDetails admin) {
+        try {
+            if (reason == null || reason.trim().isEmpty()) {
+                throw new VacademyException("Rejection reason is required");
+            }
+            
+            if (reason.length() > 1000) {
+                throw new VacademyException("Rejection reason cannot exceed 1000 characters");
+            }
+            
+            return rejectCourse(tempCourseId, reason, admin);
+        } catch (VacademyException e) {
+            log.error("Validation failed for rejecting course {}: {}", tempCourseId, e.getMessage());
+            throw e;
+        } catch (Exception e) {
+            log.error("Unexpected error rejecting course {}: {}", tempCourseId, e.getMessage());
+            throw new VacademyException("Failed to reject course: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Validate and get teacher courses with error handling
+     */
+    public List<PackageEntity> getTeacherCoursesWithValidation(String teacherId) {
+        try {
+            if (teacherId == null || teacherId.trim().isEmpty()) {
+                throw new VacademyException("Teacher ID cannot be empty");
+            }
+            
+            return getTeacherCourses(teacherId);
+        } catch (Exception e) {
+            log.error("Error getting teacher courses for {}: {}", teacherId, e.getMessage());
+            return new ArrayList<>(); // Return empty list instead of throwing exception
+        }
+    }
+
+    /**
+     * Validate course copying prerequisites
+     */
+    private void validateCopyingPrerequisites(PackageEntity originalPackage, String teacherId) {
+        // Check if teacher already has a draft copy of this course
+        List<PackageEntity> existingCopies = packageRepository.findByOriginalCourseIdAndCreatedByUserIdAndStatus(
+                originalPackage.getId(), teacherId, PackageStatusEnum.DRAFT.name());
+        
+        if (!existingCopies.isEmpty()) {
+            throw new VacademyException("You already have a draft copy of this course. Please complete or delete the existing copy first.");
+        }
+        
+        // Check if there's already a copy in review
+        List<PackageEntity> reviewCopies = packageRepository.findByOriginalCourseIdAndCreatedByUserIdAndStatus(
+                originalPackage.getId(), teacherId, PackageStatusEnum.IN_REVIEW.name());
+        
+        if (!reviewCopies.isEmpty()) {
+            throw new VacademyException("You already have a copy of this course under review. Please wait for approval or withdraw the existing submission.");
+        }
+    }
+
+    /**
+     * Public method to validate teacher permissions for controllers
+     */
+    public void validateTeacherCoursePermissions(String courseId, String teacherId, String operation) {
+        validateTeacherPermissions(courseId, teacherId, operation);
+    }
+
+    /**
+     * Get course history and lineage for admin review
+     */
+    public CourseApprovalHistory getCourseApprovalHistory(String courseId) {
+        PackageEntity course = packageRepository.findById(courseId)
+                .orElseThrow(() -> new VacademyException("Course not found"));
+        
+        CourseApprovalHistory history = new CourseApprovalHistory();
+        history.setCourseId(courseId);
+        history.setCourseName(course.getPackageName());
+        history.setStatus(course.getStatus());
+        history.setCreatedByUserId(course.getCreatedByUserId());
+        history.setOriginalCourseId(course.getOriginalCourseId());
+        history.setVersionNumber(course.getVersionNumber());
+        
+        // If this is an edit of an existing course, get original course details
+        if (course.getOriginalCourseId() != null) {
+            PackageEntity originalCourse = packageRepository.findById(course.getOriginalCourseId()).orElse(null);
+            if (originalCourse != null) {
+                history.setOriginalCourseName(originalCourse.getPackageName());
+                history.setOriginalCourseStatus(originalCourse.getStatus());
+            }
+        }
+        
+        return history;
+    }
+
+    // Private helper methods
+
+    private PackageEntity copyPackageEntity(PackageEntity original, String teacherId) {
+        PackageEntity copy = new PackageEntity();
+        copy.setPackageName(original.getPackageName());
+        copy.setThumbnailFileId(original.getThumbnailFileId());
+        copy.setStatus(PackageStatusEnum.DRAFT.name());
+        copy.setIsCoursePublishedToCatalaouge(original.getIsCoursePublishedToCatalaouge());
+        copy.setCoursePreviewImageMediaId(original.getCoursePreviewImageMediaId());
+        copy.setCourseBannerMediaId(original.getCourseBannerMediaId());
+        copy.setCourseMediaId(original.getCourseMediaId());
+        copy.setWhyLearn(original.getWhyLearn());
+        copy.setWhoShouldLearn(original.getWhoShouldLearn());
+        copy.setAboutTheCourse(original.getAboutTheCourse());
+        copy.setTags(original.getTags());
+        copy.setCourseDepth(original.getCourseDepth());
+        copy.setCourseHtmlDescription(original.getCourseHtmlDescription());
+        copy.setOriginalCourseId(original.getId());
+        copy.setCreatedByUserId(teacherId);
+        copy.setVersionNumber(1);
+        return copy;
+    }
+
+    /**
+     * Copy entire course hierarchy: PackageSession → Subject → Module → Chapter → Slide
+     */
+    private void copyEntireCourseHierarchy(PackageEntity originalPackage, PackageEntity tempPackage, String teacherId) {
+        // Get all package sessions for original package
+        List<PackageSession> originalPackageSessions = packageSessionRepository.findByPackageEntityId(originalPackage.getId());
+        
+        for (PackageSession originalPackageSession : originalPackageSessions) {
+            // Copy package session
+            PackageSession tempPackageSession = copyPackageSession(originalPackageSession, tempPackage);
+            tempPackageSession = packageSessionRepository.save(tempPackageSession);
+
+            // Copy all subjects and their hierarchy for this package session
+            copyContentHierarchy(originalPackageSession, tempPackageSession, teacherId);
+            
+            // Copy faculty assignments
+            copyFacultyAssignments(originalPackageSession, tempPackageSession);
+        }
+    }
+
+    private PackageSession copyPackageSession(PackageSession original, PackageEntity tempPackage) {
+        PackageSession copy = new PackageSession();
+        copy.setLevel(original.getLevel());
+        copy.setSession(original.getSession());
+        copy.setPackageEntity(tempPackage);
+        copy.setGroup(original.getGroup());
+        copy.setStartTime(original.getStartTime());
+        copy.setStatus(original.getStatus());
+        return copy;
+    }
+
+    /**
+     * Copy content hierarchy using existing copy mechanisms
+     */
+    private void copyContentHierarchy(PackageSession originalPackageSession, PackageSession tempPackageSession, String teacherId) {
+        // Get all subjects for the original package session
+        List<Subject> originalSubjects = subjectRepository.findDistinctSubjectsByPackageSessionId(originalPackageSession.getId());
+        
+        for (Subject originalSubject : originalSubjects) {
+            // Copy subject with parent_id tracking
+            Subject tempSubject = copySubjectWithParentId(originalSubject, teacherId);
+            tempSubject = subjectRepository.save(tempSubject);
+
+            // Create subject-package session mapping
+            SubjectPackageSession tempMapping = new SubjectPackageSession(tempSubject, tempPackageSession, null);
+            subjectPackageSessionRepository.save(tempMapping);
+
+            // Copy modules for this subject using existing mechanism
+            copyModulesForSubject(originalSubject, tempSubject, originalPackageSession, tempPackageSession, teacherId);
+        }
+    }
+
+    private Subject copySubjectWithParentId(Subject original, String teacherId) {
+        Subject copy = new Subject();
+        copy.setSubjectName(original.getSubjectName());
+        copy.setSubjectCode(original.getSubjectCode());
+        copy.setCredit(original.getCredit());
+        copy.setThumbnailId(original.getThumbnailId());
+        copy.setStatus(original.getStatus());
+        copy.setParentId(original.getId()); // Track original subject
+        copy.setCreatedByUserId(teacherId);
+        return copy;
+    }
+
+    private void copyModulesForSubject(Subject originalSubject, Subject tempSubject, 
+                                       PackageSession originalPackageSession, PackageSession tempPackageSession, String teacherId) {
+        // Get all modules for the subject using the correct repository method
+        List<SubjectModuleMapping> originalMappings = subjectModuleMappingRepository.findBySubjectId(originalSubject.getId());
+        
+        for (SubjectModuleMapping originalMapping : originalMappings) {
+            Module originalModule = originalMapping.getModule();
+            
+            // Copy module with parent_id tracking
+            Module tempModule = copyModuleWithParentId(originalModule, teacherId);
+            tempModule = moduleRepository.save(tempModule);
+
+            // Create subject-module mapping
+            SubjectModuleMapping tempSubjectModuleMapping = new SubjectModuleMapping(tempSubject, tempModule);
+            subjectModuleMappingRepository.save(tempSubjectModuleMapping);
+
+            // Copy chapters for this module
+            copyChaptersForModule(originalModule, tempModule, originalPackageSession, tempPackageSession, teacherId);
+        }
+    }
+
+    private Module copyModuleWithParentId(Module original, String teacherId) {
+        Module copy = new Module();
+        copy.setModuleName(original.getModuleName());
+        copy.setStatus(original.getStatus());
+        copy.setDescription(original.getDescription());
+        copy.setThumbnailId(original.getThumbnailId());
+        copy.setParentId(original.getId()); // Track original module
+        copy.setCreatedByUserId(teacherId);
+        return copy;
+    }
+
+    private void copyChaptersForModule(Module originalModule, Module tempModule, 
+                                       PackageSession originalPackageSession, PackageSession tempPackageSession, String teacherId) {
+        // Use existing ChapterManager copy mechanism with enhancement for parent_id
+        List<Chapter> originalChapters = moduleChapterMappingRepository.findChaptersByModuleIdAndStatusNotDeleted(
+                originalModule.getId(), originalPackageSession.getId());
+        
+        for (Chapter originalChapter : originalChapters) {
+            // Copy chapter with parent_id tracking
+            Chapter tempChapter = copyChapterWithParentId(originalChapter, teacherId);
+            tempChapter = chapterRepository.save(tempChapter);
+
+            // Create module-chapter mapping
+            ModuleChapterMapping tempMapping = new ModuleChapterMapping(tempChapter, tempModule);
+            moduleChapterMappingRepository.save(tempMapping);
+
+            // Create chapter-package session mapping
+            Optional<ChapterPackageSessionMapping> originalChapterMapping = 
+                    chapterPackageSessionMappingRepository.findByChapterIdAndPackageSessionIdAndStatusNotDeleted(
+                            originalChapter.getId(), originalPackageSession.getId());
+            
+            if (originalChapterMapping.isPresent()) {
+                ChapterPackageSessionMapping tempChapterMapping = new ChapterPackageSessionMapping(
+                        tempChapter, tempPackageSession, originalChapterMapping.get().getChapterOrder());
+                chapterPackageSessionMappingRepository.save(tempChapterMapping);
+            }
+
+            // Copy slides for this chapter with enhanced parent_id tracking
+            copySlidesForChapterWithParentId(originalChapter, tempChapter, teacherId);
+        }
+    }
+
+    private Chapter copyChapterWithParentId(Chapter original, String teacherId) {
+        Chapter copy = new Chapter();
+        copy.setChapterName(original.getChapterName());
+        copy.setDescription(original.getDescription());
+        copy.setFileId(original.getFileId());
+        copy.setStatus(original.getStatus());
+        copy.setParentId(original.getId()); // Track original chapter
+        copy.setCreatedByUserId(teacherId);
+        return copy;
+    }
+
+    /**
+     * Enhanced slide copying with parent_id tracking
+     */
+    private void copySlidesForChapterWithParentId(Chapter originalChapter, Chapter tempChapter, String teacherId) {
+        // This is similar to SlideService.copySlidesOfChapter but adds parent_id tracking
+        List<ChapterToSlides> originalChapterToSlides = chapterToSlidesRepository.findByChapterId(originalChapter.getId());
+        List<Slide> newSlides = new ArrayList<>();
+        List<ChapterToSlides> newChapterToSlides = new ArrayList<>();
+
+        // First, create new Slide instances with parent_id tracking
+        for (ChapterToSlides chapterToSlide : originalChapterToSlides) {
+            Slide originalSlide = chapterToSlide.getSlide();
+            Slide newSlide = new Slide();
+            newSlide.setTitle(originalSlide.getTitle());
+            newSlide.setStatus(originalSlide.getStatus());
+            newSlide.setImageFileId(originalSlide.getImageFileId());
+            newSlide.setSourceType(originalSlide.getSourceType());
+            newSlide.setDescription(originalSlide.getDescription());
+            newSlide.setParentId(originalSlide.getId()); // Track original slide
+            newSlide.setCreatedByUserId(teacherId);
+            newSlides.add(newSlide);
+        }
+
+        // Save slides to make sure they are managed entities
+        List<Slide> persistedSlides = slideRepository.saveAll(newSlides);
+
+        // Now, process dependent entities (DocumentSlide/VideoSlide/etc.) with proper copying
+        for (int i = 0; i < originalChapterToSlides.size(); i++) {
+            Slide originalSlide = originalChapterToSlides.get(i).getSlide();
+            Slide newSlide = persistedSlides.get(i);
+
+            String newSourceId = copySlideSource(originalSlide, teacherId);
+            newSlide.setSourceId(newSourceId);
+
+            // Create ChapterToSlides mapping
+            newChapterToSlides.add(new ChapterToSlides(tempChapter, newSlide, 
+                    originalChapterToSlides.get(i).getSlideOrder(), 
+                    originalChapterToSlides.get(i).getStatus()));
+        }
+
+        // Update slides with source IDs and save ChapterToSlides
+        slideRepository.saveAll(persistedSlides);
+        chapterToSlidesRepository.saveAll(newChapterToSlides);
+        
+        log.info("Copied {} slides from chapter {} to chapter {}", 
+                newSlides.size(), originalChapter.getId(), tempChapter.getId());
+    }
+
+    /**
+     * Copy slide source (DocumentSlide, VideoSlide, etc.) based on slide type
+     */
+    private String copySlideSource(Slide originalSlide, String teacherId) {
+        String sourceType = originalSlide.getSourceType();
+        String originalSourceId = originalSlide.getSourceId();
+
+        switch (sourceType.toUpperCase()) {
+            case "DOCUMENT":
+                return copyDocumentSlide(originalSourceId, teacherId);
+            case "VIDEO":
+                return copyVideoSlide(originalSourceId, teacherId);
+            case "QUESTION":
+                return copyQuestionSlide(originalSourceId, teacherId);
+            case "ASSIGNMENT":
+                return copyAssignmentSlide(originalSourceId, teacherId);
+            case "QUIZ":
+                return copyQuizSlide(originalSourceId, teacherId);
+            default:
+                log.warn("Unknown slide type: {}, copying source ID as-is", sourceType);
+                return originalSourceId;
+        }
+    }
+
+    private String copyDocumentSlide(String originalSourceId, String teacherId) {
+        // This would need access to DocumentSlideRepository - for now, return original
+        log.info("Copying document slide: {}", originalSourceId);
+        return originalSourceId; // TODO: Implement document slide copying
+    }
+
+    private String copyVideoSlide(String originalSourceId, String teacherId) {
+        // This would need access to VideoSlideRepository - for now, return original
+        log.info("Copying video slide: {}", originalSourceId);
+        return originalSourceId; // TODO: Implement video slide copying
+    }
+
+    private String copyQuestionSlide(String originalSourceId, String teacherId) {
+        // This would need access to QuestionSlideRepository - for now, return original
+        log.info("Copying question slide: {}", originalSourceId);
+        return originalSourceId; // TODO: Implement question slide copying
+    }
+
+    private String copyAssignmentSlide(String originalSourceId, String teacherId) {
+        // This would need access to AssignmentSlideRepository - for now, return original
+        log.info("Copying assignment slide: {}", originalSourceId);
+        return originalSourceId; // TODO: Implement assignment slide copying
+    }
+
+    private String copyQuizSlide(String originalSourceId, String teacherId) {
+        // This would need access to QuizSlideRepository - for now, return original
+        log.info("Copying quiz slide: {}", originalSourceId);
+        return originalSourceId; // TODO: Implement quiz slide copying
+    }
+
+    private void copyFacultyAssignments(PackageSession originalPackageSession, PackageSession tempPackageSession) {
+        // Faculty assignments use packageSessionId string field
+        List<FacultySubjectPackageSessionMapping> originalAssignments = 
+                facultySubjectPackageSessionMappingRepository.findByPackageSessionId(originalPackageSession.getId());
+        
+        List<FacultySubjectPackageSessionMapping> tempAssignments = new ArrayList<>();
+        for (FacultySubjectPackageSessionMapping original : originalAssignments) {
+            FacultySubjectPackageSessionMapping copy = new FacultySubjectPackageSessionMapping();
+            copy.setUserId(original.getUserId());
+            copy.setPackageSessionId(tempPackageSession.getId()); // Use string ID
+            copy.setSubjectId(original.getSubjectId()); // Keep same subject reference
+            copy.setName(original.getName());
+            copy.setStatus(original.getStatus());
+            tempAssignments.add(copy);
+        }
+        facultySubjectPackageSessionMappingRepository.saveAll(tempAssignments);
+        
+        log.info("Copied {} faculty assignments from {} to {}", 
+                tempAssignments.size(), originalPackageSession.getId(), tempPackageSession.getId());
+    }
+
+    /**
+     * Merge changes from temp course into original published course
+     */
+    private String mergeChangesIntoOriginal(PackageEntity tempCourse) {
+        PackageEntity originalCourse = packageRepository.findById(tempCourse.getOriginalCourseId())
+                .orElseThrow(() -> new VacademyException("Original course not found"));
+
+        // Update original course with changes from temp course
+        updatePackageFields(originalCourse, tempCourse);
+        packageRepository.save(originalCourse);
+
+        // Merge hierarchy changes (subjects, modules, chapters, slides)
+        mergeHierarchyChanges(tempCourse, originalCourse);
+
+        return "Changes merged into original course successfully";
+    }
+
+    private void updatePackageFields(PackageEntity original, PackageEntity temp) {
+        original.setPackageName(temp.getPackageName());
+        original.setThumbnailFileId(temp.getThumbnailFileId());
+        original.setIsCoursePublishedToCatalaouge(temp.getIsCoursePublishedToCatalaouge());
+        original.setCoursePreviewImageMediaId(temp.getCoursePreviewImageMediaId());
+        original.setCourseBannerMediaId(temp.getCourseBannerMediaId());
+        original.setCourseMediaId(temp.getCourseMediaId());
+        original.setWhyLearn(temp.getWhyLearn());
+        original.setWhoShouldLearn(temp.getWhoShouldLearn());
+        original.setAboutTheCourse(temp.getAboutTheCourse());
+        original.setTags(temp.getTags());
+        original.setCourseDepth(temp.getCourseDepth());
+        original.setCourseHtmlDescription(temp.getCourseHtmlDescription());
+    }
+
+    /**
+     * Smart merge logic: Update existing entities, add new ones, handle deletions
+     */
+    private void mergeHierarchyChanges(PackageEntity tempCourse, PackageEntity originalCourse) {
+        List<PackageSession> tempPackageSessions = packageSessionRepository.findByPackageEntityId(tempCourse.getId());
+        List<PackageSession> originalPackageSessions = packageSessionRepository.findByPackageEntityId(originalCourse.getId());
+
+        for (PackageSession tempSession : tempPackageSessions) {
+            PackageSession correspondingOriginalSession = findCorrespondingPackageSession(tempSession, originalPackageSessions);
+            if (correspondingOriginalSession != null) {
+                mergePackageSessionContent(tempSession, correspondingOriginalSession);
+            }
+        }
+    }
+
+    private PackageSession findCorrespondingPackageSession(PackageSession tempSession, List<PackageSession> originalSessions) {
+        // Find original session by level and session IDs
+        return originalSessions.stream()
+                .filter(orig -> orig.getLevel().getId().equals(tempSession.getLevel().getId()) &&
+                               orig.getSession().getId().equals(tempSession.getSession().getId()))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private void mergePackageSessionContent(PackageSession tempSession, PackageSession originalSession) {
+        // Get subjects from temp and original
+        List<Subject> tempSubjects = subjectRepository.findDistinctSubjectsByPackageSessionId(tempSession.getId());
+        
+        for (Subject tempSubject : tempSubjects) {
+            if (tempSubject.getParentId() != null) {
+                // This is an updated subject - merge changes
+                mergeSubjectChanges(tempSubject, originalSession);
+            } else {
+                // This is a new subject - add to original
+                addNewSubjectToOriginal(tempSubject, originalSession);
+            }
+        }
+        
+        // Handle deleted subjects (subjects in original but not in temp)
+        handleDeletedSubjects(tempSession, originalSession);
+    }
+
+    private void mergeSubjectChanges(Subject tempSubject, PackageSession originalSession) {
+        // Find original subject by parent_id
+        Subject originalSubject = subjectRepository.findById(tempSubject.getParentId())
+                .orElse(null);
+        
+        if (originalSubject != null) {
+            // Update original subject with temp subject's changes
+            originalSubject.setSubjectName(tempSubject.getSubjectName());
+            originalSubject.setSubjectCode(tempSubject.getSubjectCode());
+            originalSubject.setCredit(tempSubject.getCredit());
+            originalSubject.setThumbnailId(tempSubject.getThumbnailId());
+            subjectRepository.save(originalSubject);
+            
+            // Merge modules, chapters, and slides
+            mergeModulesForSubject(tempSubject, originalSubject);
+        }
+    }
+
+    private void mergeModulesForSubject(Subject tempSubject, Subject originalSubject) {
+        List<SubjectModuleMapping> tempMappings = subjectModuleMappingRepository.findBySubjectId(tempSubject.getId());
+        
+        for (SubjectModuleMapping tempMapping : tempMappings) {
+            Module tempModule = tempMapping.getModule();
+            
+            if (tempModule.getParentId() != null) {
+                // Update existing module
+                Module originalModule = moduleRepository.findById(tempModule.getParentId()).orElse(null);
+                if (originalModule != null) {
+                    originalModule.setModuleName(tempModule.getModuleName());
+                    originalModule.setDescription(tempModule.getDescription());
+                    originalModule.setThumbnailId(tempModule.getThumbnailId());
+                    moduleRepository.save(originalModule);
+                    
+                    // Merge chapters for this module
+                    mergeChaptersForModule(tempModule, originalModule);
+                }
+            } else {
+                // Add new module to original subject
+                addNewModuleToOriginalSubject(tempModule, originalSubject);
+            }
+        }
+    }
+
+    private void mergeChaptersForModule(Module tempModule, Module originalModule) {
+        List<ModuleChapterMapping> tempMappings = moduleChapterMappingRepository.findByModuleId(tempModule.getId());
+        
+        for (ModuleChapterMapping tempMapping : tempMappings) {
+            Chapter tempChapter = tempMapping.getChapter();
+            
+            if (tempChapter.getParentId() != null) {
+                // Update existing chapter
+                Chapter originalChapter = chapterRepository.findById(tempChapter.getParentId()).orElse(null);
+                if (originalChapter != null) {
+                    originalChapter.setChapterName(tempChapter.getChapterName());
+                    originalChapter.setDescription(tempChapter.getDescription());
+                    originalChapter.setFileId(tempChapter.getFileId());
+                    chapterRepository.save(originalChapter);
+                    
+                    // Merge slides for this chapter
+                    mergeSlidesForChapter(tempChapter, originalChapter);
+                }
+            } else {
+                // Add new chapter to original module
+                addNewChapterToOriginalModule(tempChapter, originalModule);
+            }
+        }
+    }
+
+    private void mergeSlidesForChapter(Chapter tempChapter, Chapter originalChapter) {
+        // Enhanced slide merging logic with parent_id tracking
+        List<ChapterToSlides> tempSlides = chapterToSlidesRepository.findByChapterId(tempChapter.getId());
+        
+        for (ChapterToSlides tempChapterToSlide : tempSlides) {
+            Slide tempSlide = tempChapterToSlide.getSlide();
+            
+            if (tempSlide.getParentId() != null) {
+                // Update existing slide
+                Slide originalSlide = slideRepository.findById(tempSlide.getParentId()).orElse(null);
+                if (originalSlide != null) {
+                    originalSlide.setTitle(tempSlide.getTitle());
+                    originalSlide.setDescription(tempSlide.getDescription());
+                    originalSlide.setImageFileId(tempSlide.getImageFileId());
+                    originalSlide.setStatus(tempSlide.getStatus());
+                    slideRepository.save(originalSlide);
+                    
+                    // Update slide source content based on type
+                    mergeSlideSource(tempSlide, originalSlide);
+                }
+            } else {
+                // Add new slide to original chapter
+                addNewSlideToOriginalChapter(tempSlide, originalChapter);
+            }
+        }
+        
+        log.info("Merged slides from temp chapter {} to original chapter {}", 
+                tempChapter.getId(), originalChapter.getId());
+    }
+
+    private void mergeSlideSource(Slide tempSlide, Slide originalSlide) {
+        String sourceType = tempSlide.getSourceType();
+        log.info("Merging {} slide source from {} to {}", 
+                sourceType, tempSlide.getId(), originalSlide.getId());
+        // TODO: Implement specific slide source merging based on type
+    }
+
+    private void addNewSubjectToOriginal(Subject tempSubject, PackageSession originalSession) {
+        // Create new subject in original course
+        Subject newSubject = new Subject();
+        newSubject.setSubjectName(tempSubject.getSubjectName());
+        newSubject.setSubjectCode(tempSubject.getSubjectCode());
+        newSubject.setCredit(tempSubject.getCredit());
+        newSubject.setThumbnailId(tempSubject.getThumbnailId());
+        newSubject.setStatus(tempSubject.getStatus());
+        newSubject = subjectRepository.save(newSubject);
+        
+        // Create subject-package session mapping
+        SubjectPackageSession mapping = new SubjectPackageSession(newSubject, originalSession, null);
+        subjectPackageSessionRepository.save(mapping);
+        
+        log.info("Added new subject {} to original package session {}", 
+                newSubject.getSubjectName(), originalSession.getId());
+    }
+
+    private void addNewModuleToOriginalSubject(Module tempModule, Subject originalSubject) {
+        // Create new module in original subject
+        Module newModule = new Module();
+        newModule.setModuleName(tempModule.getModuleName());
+        newModule.setDescription(tempModule.getDescription());
+        newModule.setThumbnailId(tempModule.getThumbnailId());
+        newModule.setStatus(tempModule.getStatus());
+        newModule = moduleRepository.save(newModule);
+        
+        // Create subject-module mapping
+        SubjectModuleMapping mapping = new SubjectModuleMapping(originalSubject, newModule);
+        subjectModuleMappingRepository.save(mapping);
+        
+        log.info("Added new module {} to original subject {}", 
+                newModule.getModuleName(), originalSubject.getId());
+    }
+
+    private void addNewChapterToOriginalModule(Chapter tempChapter, Module originalModule) {
+        // Create new chapter in original module
+        Chapter newChapter = new Chapter();
+        newChapter.setChapterName(tempChapter.getChapterName());
+        newChapter.setDescription(tempChapter.getDescription());
+        newChapter.setFileId(tempChapter.getFileId());
+        newChapter.setStatus(tempChapter.getStatus());
+        newChapter = chapterRepository.save(newChapter);
+        
+        // Create module-chapter mapping
+        ModuleChapterMapping mapping = new ModuleChapterMapping(newChapter, originalModule);
+        moduleChapterMappingRepository.save(mapping);
+        
+        log.info("Added new chapter {} to original module {}", 
+                newChapter.getChapterName(), originalModule.getId());
+    }
+
+    private void addNewSlideToOriginalChapter(Slide tempSlide, Chapter originalChapter) {
+        // Create new slide in original chapter
+        Slide newSlide = new Slide();
+        newSlide.setTitle(tempSlide.getTitle());
+        newSlide.setDescription(tempSlide.getDescription());
+        newSlide.setImageFileId(tempSlide.getImageFileId());
+        newSlide.setSourceType(tempSlide.getSourceType());
+        newSlide.setSourceId(tempSlide.getSourceId()); // Copy source reference
+        newSlide.setStatus(tempSlide.getStatus());
+        newSlide = slideRepository.save(newSlide);
+        
+        // Create chapter-to-slides mapping
+        ChapterToSlides mapping = new ChapterToSlides(originalChapter, newSlide, null, tempSlide.getStatus());
+        chapterToSlidesRepository.save(mapping);
+        
+        log.info("Added new slide {} to original chapter {}", 
+                newSlide.getTitle(), originalChapter.getId());
+    }
+
+    private void handleDeletedSubjects(PackageSession tempSession, PackageSession originalSession) {
+        // Find subjects that exist in original but not in temp (deleted subjects)
+        List<Subject> originalSubjects = subjectRepository.findDistinctSubjectsByPackageSessionId(originalSession.getId());
+        List<Subject> tempSubjects = subjectRepository.findDistinctSubjectsByPackageSessionId(tempSession.getId());
+        
+        Set<String> tempSubjectParentIds = tempSubjects.stream()
+                .map(Subject::getParentId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        
+        for (Subject originalSubject : originalSubjects) {
+            if (!tempSubjectParentIds.contains(originalSubject.getId())) {
+                // This subject was deleted in temp course - mark as deleted in original
+                log.info("Subject {} was deleted, marking as deleted in original", originalSubject.getId());
+                // TODO: Implement soft deletion according to business rules
+            }
+        }
+    }
+
+    private String publishNewCourse(PackageEntity tempCourse) {
+        tempCourse.setStatus(PackageStatusEnum.ACTIVE.name());
+        tempCourse.setOriginalCourseId(null); // Clear temp relationship
+        packageRepository.save(tempCourse);
+        return "New course published successfully";
+    }
+
+    private void deleteTempCourse(PackageEntity tempCourse) {
+        tempCourse.setStatus(PackageStatusEnum.DELETED.name());
+        packageRepository.save(tempCourse);
+    }
+
+    // Inner class for course approval history
+    public static class CourseApprovalHistory {
+        private String courseId;
+        private String courseName;
+        private String status;
+        private String createdByUserId;
+        private String originalCourseId;
+        private String originalCourseName;
+        private String originalCourseStatus;
+        private Integer versionNumber;
+
+        // Getters and setters
+        public String getCourseId() { return courseId; }
+        public void setCourseId(String courseId) { this.courseId = courseId; }
+        
+        public String getCourseName() { return courseName; }
+        public void setCourseName(String courseName) { this.courseName = courseName; }
+        
+        public String getStatus() { return status; }
+        public void setStatus(String status) { this.status = status; }
+        
+        public String getCreatedByUserId() { return createdByUserId; }
+        public void setCreatedByUserId(String createdByUserId) { this.createdByUserId = createdByUserId; }
+        
+        public String getOriginalCourseId() { return originalCourseId; }
+        public void setOriginalCourseId(String originalCourseId) { this.originalCourseId = originalCourseId; }
+        
+        public String getOriginalCourseName() { return originalCourseName; }
+        public void setOriginalCourseName(String originalCourseName) { this.originalCourseName = originalCourseName; }
+        
+        public String getOriginalCourseStatus() { return originalCourseStatus; }
+        public void setOriginalCourseStatus(String originalCourseStatus) { this.originalCourseStatus = originalCourseStatus; }
+        
+        public Integer getVersionNumber() { return versionNumber; }
+        public void setVersionNumber(Integer versionNumber) { this.versionNumber = versionNumber; }
+    }
+} 

@@ -39,4 +39,7 @@ public interface SubjectModuleMappingRepository extends JpaRepository<SubjectMod
             @Param("subjectId") String subjectId,
             @Param("moduleName") String moduleName);
 
+    @Query("SELECT smm FROM SubjectModuleMapping smm WHERE smm.subject.id = :subjectId")
+    List<SubjectModuleMapping> findBySubjectId(@Param("subjectId") String subjectId);
+
 }

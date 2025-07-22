@@ -41,15 +41,24 @@ public class TeacherCourseService {
         PackageEntity savedPackage = null;
 
         if (addCourseDTO.getNewCourse()) {
-            PackageEntity packageEntity = getCourse(addCourseDTO);
+            PackageEntity packageEntity = getCourse(addCourseDTO, user.getId()); // Pass user ID
             savedPackage = packageRepository.save(packageEntity);
         } else {
-            savedPackage = packageRepository.findById(addCourseDTO.getId()).orElseThrow(() -> new VacademyException("Course not found"));
+            savedPackage = packageRepository.findById(addCourseDTO.getId())
+                    .orElseThrow(() -> new VacademyException("Course not found"));
+            
+            // Verify teacher can edit this course
+            if (!canTeacherEdit(savedPackage, user.getId())) {
+                throw new VacademyException("You don't have permission to edit this course");
+            }
         }
+        
         createPackageInstitute(savedPackage, instituteId);
+        
         for(AddNewSessionDTO addNewSessionDTO : addCourseDTO.getSessions()) {
-            teacherSessionService.addSession(savedPackage,addNewSessionDTO);
+            teacherSessionService.addSession(savedPackage, addNewSessionDTO);
         }
+        
         return savedPackage.getId();
     }
 
@@ -61,8 +70,7 @@ public class TeacherCourseService {
         return packageInstituteRepository.save(packageInstitute);
     }
 
-
-    public PackageEntity getCourse(AddCourseDTO addCourseDTO) {
+    public PackageEntity getCourse(AddCourseDTO addCourseDTO, String teacherId) {
         PackageEntity packageEntity = new PackageEntity();
         packageEntity.setPackageName(addCourseDTO.getCourseName());
         packageEntity.setThumbnailFileId(addCourseDTO.getThumbnailFileId());
@@ -74,6 +82,11 @@ public class TeacherCourseService {
         packageEntity.setWhyLearn(addCourseDTO.getWhyLearnHtml());
         packageEntity.setWhoShouldLearn(addCourseDTO.getWhoShouldLearnHtml());
         packageEntity.setAboutTheCourse(addCourseDTO.getAboutTheCourseHtml());
+        
+        // Set created by teacher ID for approval workflow
+        packageEntity.setCreatedByUserId(teacherId);
+        packageEntity.setVersionNumber(1);
+        
         if (addCourseDTO.getTags() != null && !addCourseDTO.getTags().isEmpty()) {
             packageEntity.setTags(addCourseDTO.getTags().stream()
                     .map(String::toLowerCase)
@@ -83,5 +96,74 @@ public class TeacherCourseService {
         packageEntity.setCourseDepth(addCourseDTO.getCourseDepth());
         packageEntity.setCourseHtmlDescription(addCourseDTO.getCourseHtmlDescription());
         return packageEntity;
+    }
+
+    /**
+     * Check if teacher can edit a course
+     * - Course must be in DRAFT status
+     * - Course must be created by the teacher
+     */
+    private boolean canTeacherEdit(PackageEntity course, String teacherId) {
+        return PackageStatusEnum.DRAFT.name().equals(course.getStatus()) 
+                && teacherId.equals(course.getCreatedByUserId());
+    }
+
+    /**
+     * Update an existing course (only if teacher owns it and it's in DRAFT)
+     */
+    public String updateCourse(String courseId, AddCourseDTO addCourseDTO, CustomUserDetails user) {
+        PackageEntity course = packageRepository.findById(courseId)
+                .orElseThrow(() -> new VacademyException("Course not found"));
+
+        if (!canTeacherEdit(course, user.getId())) {
+            throw new VacademyException("You don't have permission to edit this course");
+        }
+
+        updateCourseFields(course, addCourseDTO);
+        packageRepository.save(course);
+        
+        return "Course updated successfully";
+    }
+
+    private void updateCourseFields(PackageEntity course, AddCourseDTO addCourseDTO) {
+        if (addCourseDTO.getCourseName() != null) {
+            course.setPackageName(addCourseDTO.getCourseName());
+        }
+        if (addCourseDTO.getThumbnailFileId() != null) {
+            course.setThumbnailFileId(addCourseDTO.getThumbnailFileId());
+        }
+        if (addCourseDTO.getIsCoursePublishedToCatalaouge() != null) {
+            course.setIsCoursePublishedToCatalaouge(addCourseDTO.getIsCoursePublishedToCatalaouge());
+        }
+        if (addCourseDTO.getCoursePreviewImageMediaId() != null) {
+            course.setCoursePreviewImageMediaId(addCourseDTO.getCoursePreviewImageMediaId());
+        }
+        if (addCourseDTO.getCourseBannerMediaId() != null) {
+            course.setCourseBannerMediaId(addCourseDTO.getCourseBannerMediaId());
+        }
+        if (addCourseDTO.getCourseMediaId() != null) {
+            course.setCourseMediaId(addCourseDTO.getCourseMediaId());
+        }
+        if (addCourseDTO.getWhyLearnHtml() != null) {
+            course.setWhyLearn(addCourseDTO.getWhyLearnHtml());
+        }
+        if (addCourseDTO.getWhoShouldLearnHtml() != null) {
+            course.setWhoShouldLearn(addCourseDTO.getWhoShouldLearnHtml());
+        }
+        if (addCourseDTO.getAboutTheCourseHtml() != null) {
+            course.setAboutTheCourse(addCourseDTO.getAboutTheCourseHtml());
+        }
+        if (addCourseDTO.getTags() != null && !addCourseDTO.getTags().isEmpty()) {
+            course.setTags(addCourseDTO.getTags().stream()
+                    .map(String::toLowerCase)
+                    .map(String::trim)
+                    .collect(Collectors.joining(",")));
+        }
+        if (addCourseDTO.getCourseDepth() != null) {
+            course.setCourseDepth(addCourseDTO.getCourseDepth());
+        }
+        if (addCourseDTO.getCourseHtmlDescription() != null) {
+            course.setCourseHtmlDescription(addCourseDTO.getCourseHtmlDescription());
+        }
     }
 }

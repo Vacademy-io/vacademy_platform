@@ -1,6 +1,8 @@
 package vacademy.io.admin_core_service.features.module.entity;
 
 import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
 import org.hibernate.annotations.UuidGenerator;
 import vacademy.io.admin_core_service.features.chapter.entity.Chapter;
 import vacademy.io.common.institute.entity.module.Module;
@@ -9,6 +11,8 @@ import java.sql.Timestamp;
 
 @Entity
 @Table(name = "module_chapter_mapping")
+@Getter
+@Setter
 public class ModuleChapterMapping {
 
     @Id

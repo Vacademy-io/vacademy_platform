@@ -46,6 +46,11 @@ public class Subject {
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;
 
+    @Column(name = "parent_id")
+    private String parentId;
+
+    @Column(name = "created_by_user_id")
+    private String createdByUserId;
 
     public SubjectTopLevelDto getSubjectTopLevelDto(){
         return SubjectTopLevelDto.builder()

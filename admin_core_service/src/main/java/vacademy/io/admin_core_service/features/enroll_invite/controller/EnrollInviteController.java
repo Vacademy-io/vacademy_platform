@@ -52,4 +52,10 @@ public class EnrollInviteController {
     public List<EnrollInviteDTO>getByPaymentOptionIds(@RequestBody List<String> paymentOptionIds) {
         return enrollInviteService.findByPaymentOptionIds(paymentOptionIds);
     }
+
+    @DeleteMapping("/enroll-invites")
+    private ResponseEntity<String>deleteEnrollInvites(@RequestBody List<String>enrollInviteIds) {
+        return ResponseEntity.ok(enrollInviteService.deleteEnrollInvites(enrollInviteIds));
+    }
+
 }

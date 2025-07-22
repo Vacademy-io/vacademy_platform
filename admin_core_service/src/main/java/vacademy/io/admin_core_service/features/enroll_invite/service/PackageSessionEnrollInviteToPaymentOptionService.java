@@ -59,4 +59,13 @@ public class PackageSessionEnrollInviteToPaymentOptionService {
                 })
                 .collect(Collectors.toList());
     }
+
+    public String deleteByEnrollInviteIds(List<String> enrollInviteIds) {
+        List<PackageSessionLearnerInvitationToPaymentOption> packageSessionLearnerInvitationToPaymentOptions = packageSessionLearnerInvitationToPaymentOptionRepository.findByEnrollInvite_IdInAndStatusIn(enrollInviteIds,List.of(StatusEnum.ACTIVE.name()));
+        for (PackageSessionLearnerInvitationToPaymentOption packageSessionLearnerInvitationToPaymentOption : packageSessionLearnerInvitationToPaymentOptions) {
+            packageSessionLearnerInvitationToPaymentOption.setStatus(StatusEnum.DELETED.name());
+        }
+        packageSessionLearnerInvitationToPaymentOptionRepository.saveAll(packageSessionLearnerInvitationToPaymentOptions);
+        return "Enroll invites deleted successfully";
+    }
 }

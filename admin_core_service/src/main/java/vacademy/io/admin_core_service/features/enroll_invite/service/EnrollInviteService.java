@@ -203,4 +203,14 @@ public class EnrollInviteService {
         return packageSessionEnrollInviteToPaymentOptionService.findByPaymentOptionId(paymentOptionIds);
     }
 
+    @Transactional
+    public String deleteEnrollInvites(List<String>enrollInviteIds) {
+        List<EnrollInvite>enrollInvites = repository.findAllById(enrollInviteIds);
+        for (EnrollInvite enrollInvite : enrollInvites) {
+            enrollInvite.setStatus(StatusEnum.DELETED.name());
+        }
+        repository.saveAll(enrollInvites);
+        packageSessionEnrollInviteToPaymentOptionService.deleteByEnrollInviteIds(enrollInviteIds);
+        return "Enroll invites deleted successfully";
+    }
 }

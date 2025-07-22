@@ -18,17 +18,24 @@ import vacademy.io.admin_core_service.features.enroll_invite.dto.EnrollInviteFil
 import vacademy.io.admin_core_service.features.enroll_invite.dto.EnrollInviteWithSessionsProjection;
 import vacademy.io.admin_core_service.features.enroll_invite.dto.PackageSessionToPaymentOptionDTO;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
+import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionEnrollInvitePaymentOptionPlanToReferralOption;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionLearnerInvitationToPaymentOption;
 import vacademy.io.admin_core_service.features.enroll_invite.enums.EnrollInviteTag;
 import vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollInviteRepository;
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
 import vacademy.io.admin_core_service.features.packages.service.PackageSessionService;
+import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentPlanDTO;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
+import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
+import vacademy.io.admin_core_service.features.user_subscription.entity.ReferralOption;
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentOptionService;
+import vacademy.io.admin_core_service.features.user_subscription.service.PaymentPlanService;
+import vacademy.io.admin_core_service.features.user_subscription.service.ReferralOptionService;
 import vacademy.io.common.core.standard_classes.ListService;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.session.PackageSession;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -42,7 +49,9 @@ public class EnrollInviteService {
     @Autowired private PackageSessionEnrollInviteToPaymentOptionService packageSessionEnrollInviteToPaymentOptionService;
     @Autowired private PackageSessionService packageSessionService;
     @Autowired private InstituteCustomFiledService instituteCustomFiledService;
-
+    @Autowired private ReferralOptionService referralOptionService;
+    @Autowired private PaymentPlanService paymentPlanService;
+    @Autowired private PackageSessionEnrollInvitePaymentOptionPlanToReferralOptionService packageSessionEnrollInvitePaymentOptionPlanToReferralOptionService;
     /**
      * Creates an EnrollInvite along with its associated custom fields and package-to-payment mappings.
      *
@@ -93,12 +102,13 @@ public class EnrollInviteService {
                     PaymentOption paymentOption = paymentOptionService.findById(dto.getPaymentOption().getId());
                     PackageSession packageSession = packageSessionService.findById(dto.getPackageSessionId());
 
-                    return new PackageSessionLearnerInvitationToPaymentOption(
+                    PackageSessionLearnerInvitationToPaymentOption packageSessionLearnerInvitationToPaymentOption = new PackageSessionLearnerInvitationToPaymentOption(
                             savedEnrollInvite,
                             packageSession,
                             paymentOption,
                             StatusEnum.ACTIVE.name()
                     );
+                    return packageSessionLearnerInvitationToPaymentOption;
                 })
                 .collect(Collectors.toList());
 
@@ -107,9 +117,62 @@ public class EnrollInviteService {
             throw new VacademyException("No valid packageSession-paymentOption mappings were provided.");
         }
         packageSessionEnrollInviteToPaymentOptionService.createPackageSessionLearnerInvitationToPaymentOptions(mappingEntities);
-
+        validateAndSaveReferralOption(mappingEntities, mappingDTOs);
         return savedEnrollInvite.getId();
     }
+
+    private void validateAndSaveReferralOption(
+            List<PackageSessionLearnerInvitationToPaymentOption> savedMappings,
+            List<PackageSessionToPaymentOptionDTO> originalDTOs) {
+
+        // Ensure the lists are workable and have the same size.
+        if (CollectionUtils.isEmpty(savedMappings) || CollectionUtils.isEmpty(originalDTOs) || savedMappings.size() != originalDTOs.size()) {
+            // Or throw an exception, as this indicates a programming error.
+            return;
+        }
+
+        // A list to hold all the new referral mappings we need to create.
+        List<PackageSessionEnrollInvitePaymentOptionPlanToReferralOption> referralsToSave = new ArrayList<>();
+
+        for (int i = 0; i < originalDTOs.size(); i++) {
+            PackageSessionToPaymentOptionDTO dto = originalDTOs.get(i);
+            PackageSessionLearnerInvitationToPaymentOption persistedParent = savedMappings.get(i);
+
+            // Check if the DTO has payment plans with referral options.
+            if (Objects.isNull(dto.getPaymentOption()) || CollectionUtils.isEmpty(dto.getPaymentOption().getPaymentPlans())) {
+                continue; // Skip to the next DTO.
+            }
+
+            // For each payment plan in the DTO, create the referral mapping.
+            for (PaymentPlanDTO planDTO : dto.getPaymentOption().getPaymentPlans()) {
+                if (Objects.nonNull(planDTO.getReferralOption()) && StringUtils.hasText(planDTO.getReferralOption().getId())) {
+
+                    // Fetch the entities needed for the mapping.
+                    Optional<PaymentPlan> optionalPlan = paymentPlanService.findById(planDTO.getId());
+                    Optional<ReferralOption> optionalReferral = referralOptionService.getReferralOption(planDTO.getReferralOption().getId());
+
+                    // If both exist, create the child mapping entity and add it to our list.
+                    if (optionalPlan.isPresent() && optionalReferral.isPresent()) {
+                        // This is the critical step: we create the child entity...
+                        PackageSessionEnrollInvitePaymentOptionPlanToReferralOption childEntity =
+                                new PackageSessionEnrollInvitePaymentOptionPlanToReferralOption(
+                                        persistedParent, // ...using the PARENT that is ALREADY SAVED.
+                                        optionalReferral.get(),
+                                        optionalPlan.get(),
+                                        StatusEnum.ACTIVE.name()
+                                );
+                        referralsToSave.add(childEntity);
+                    }
+                }
+            }
+        }
+
+        // Save all the newly created referral mapping entities in a single batch operation.
+        if (!referralsToSave.isEmpty()) {
+            packageSessionEnrollInvitePaymentOptionPlanToReferralOptionService.saveInBulk(referralsToSave); // Assumes a service method that takes a list.
+        }
+    }
+
 
     /**
      * Validates an individual mapping DTO.

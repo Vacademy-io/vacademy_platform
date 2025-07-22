@@ -1,0 +1,28 @@
+package vacademy.io.admin_core_service.features.enroll_invite.service;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
+import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionEnrollInvitePaymentOptionPlanToReferralOption;
+import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionLearnerInvitationToPaymentOption;
+import vacademy.io.admin_core_service.features.enroll_invite.repository.PackageSessionEnrollInvitePaymentOptionPlanToReferralOptionRepository;
+import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
+import vacademy.io.admin_core_service.features.user_subscription.entity.ReferralOption;
+
+import java.util.List;
+
+@Service
+public class PackageSessionEnrollInvitePaymentOptionPlanToReferralOptionService {
+
+    @Autowired
+    private PackageSessionEnrollInvitePaymentOptionPlanToReferralOptionRepository packageSessionEnrollInvitePaymentOptionPlanToReferralOptionRepository;
+
+    public void createAndSaveMapping(PackageSessionLearnerInvitationToPaymentOption packageSessionLearnerInvitationToPaymentOption, PaymentPlan paymentPlan, ReferralOption referralOption) {
+        PackageSessionEnrollInvitePaymentOptionPlanToReferralOption packageSessionEnrollInvitePaymentOptionPlanToReferralOption = new PackageSessionEnrollInvitePaymentOptionPlanToReferralOption(packageSessionLearnerInvitationToPaymentOption,referralOption,paymentPlan, StatusEnum.ACTIVE.name());
+        packageSessionEnrollInvitePaymentOptionPlanToReferralOptionRepository.save(packageSessionEnrollInvitePaymentOptionPlanToReferralOption);
+    }
+
+    public void saveInBulk(List<PackageSessionEnrollInvitePaymentOptionPlanToReferralOption> packageSessionEnrollInvitePaymentOptionPlanToReferralOptions) {
+        packageSessionEnrollInvitePaymentOptionPlanToReferralOptionRepository.saveAll(packageSessionEnrollInvitePaymentOptionPlanToReferralOptions);
+    }
+}

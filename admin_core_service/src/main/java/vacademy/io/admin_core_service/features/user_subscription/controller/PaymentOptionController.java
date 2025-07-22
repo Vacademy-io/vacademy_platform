@@ -35,4 +35,9 @@ public class PaymentOptionController {
         return ResponseEntity.ok(paymentOptionService.makeDefaultPaymentOption(paymentOptionId,source,sourceId));
     }
 
+    @DeleteMapping
+    public ResponseEntity<String> deletePaymentOptions(@RequestBody List<String> paymentOptionIds, @RequestAttribute("user") CustomUserDetails userDetails) {
+        return ResponseEntity.ok(paymentOptionService.deletePaymentOption(paymentOptionIds,userDetails));
+    }
+
 }

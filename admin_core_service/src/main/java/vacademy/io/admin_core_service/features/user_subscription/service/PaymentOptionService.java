@@ -69,4 +69,13 @@ public class PaymentOptionService {
     public PaymentOption findById(String id){
         return paymentOptionRepository.findById(id).orElseThrow(()->new VacademyException("Payment Option not found"));
     }
+
+    public String deletePaymentOption(List<String> paymentOptionIds,CustomUserDetails userDetails){
+        List<PaymentOption>paymentOptions = paymentOptionRepository.findAllById(paymentOptionIds);
+        for (PaymentOption paymentOption : paymentOptions) {
+            paymentOption.setStatus(StatusEnum.DELETED.name());
+        }
+        paymentOptionRepository.saveAll(paymentOptions);
+        return "success";
+    }
 }

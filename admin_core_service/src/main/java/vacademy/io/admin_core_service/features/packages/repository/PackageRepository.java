@@ -879,7 +879,6 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("levelStatus") List<String> levelStatus,
             @Param("facultySubjectSessionStatus") List<String> facultySubjectSessionStatus,
             @Param("ratingStatuses") List<String> ratingStatuses,
-
             @Param("assignmentQuestionStatusList") List<String> assignmentQuestionStatusList,
             @Param("questionStatusList") List<String> questionStatusList,
             @Param("slideStatusList") List<String> slideStatusList,

@@ -18,6 +18,8 @@ import vacademy.io.common.institute.entity.PackageInstitute;
 import vacademy.io.common.institute.entity.session.Session;
 
 import java.util.stream.Collectors;
+import org.springframework.util.StringUtils;
+import java.util.Objects;
 
 @Service
 public class TeacherCourseService {
@@ -37,28 +39,38 @@ public class TeacherCourseService {
     @Autowired
     private TeacherSessionService teacherSessionService;
 
-    public String addCourse(AddCourseDTO addCourseDTO, CustomUserDetails user, String instituteId) {
+    public String addCourse(AddCourseDTO addCourseDTO, CustomUserDetails userDetails, String instituteId) {
+        // Ensure status is set to DRAFT for teacher courses (approval workflow)
+        if (!StringUtils.hasText(addCourseDTO.getStatus())) {
+            addCourseDTO.setStatus(PackageStatusEnum.DRAFT.name());
+        }
+        
+        // Set created_by_user_id from user context if not already set
+        if (!StringUtils.hasText(addCourseDTO.getCreatedByUserId()) && userDetails != null) {
+            addCourseDTO.setCreatedByUserId(userDetails.getId());
+        }
+        
         PackageEntity savedPackage = null;
 
         if (addCourseDTO.getNewCourse()) {
-            PackageEntity packageEntity = getCourse(addCourseDTO, user.getId()); // Pass user ID
+            PackageEntity packageEntity = getCourse(addCourseDTO, userDetails.getId()); // Pass user ID
             savedPackage = packageRepository.save(packageEntity);
         } else {
             savedPackage = packageRepository.findById(addCourseDTO.getId())
-                    .orElseThrow(() -> new VacademyException("Course not found"));
+                    .orElseThrow(() -> new VacademyException("Package not found"));
             
             // Verify teacher can edit this course
-            if (!canTeacherEdit(savedPackage, user.getId())) {
+            if (!canTeacherEdit(savedPackage, userDetails.getId())) {
                 throw new VacademyException("You don't have permission to edit this course");
             }
         }
-        
+
         createPackageInstitute(savedPackage, instituteId);
-        
+
         for(AddNewSessionDTO addNewSessionDTO : addCourseDTO.getSessions()) {
             teacherSessionService.addSession(savedPackage, addNewSessionDTO);
         }
-        
+
         return savedPackage.getId();
     }
 
@@ -74,7 +86,33 @@ public class TeacherCourseService {
         PackageEntity packageEntity = new PackageEntity();
         packageEntity.setPackageName(addCourseDTO.getCourseName());
         packageEntity.setThumbnailFileId(addCourseDTO.getThumbnailFileId());
-        packageEntity.setStatus(PackageStatusEnum.DRAFT.name());
+        
+        // Set status from DTO or default to DRAFT for teacher approval workflow
+        if (StringUtils.hasText(addCourseDTO.getStatus())) {
+            packageEntity.setStatus(addCourseDTO.getStatus());
+        } else {
+            packageEntity.setStatus(PackageStatusEnum.DRAFT.name());
+        }
+        
+        // Set created by user ID - prefer DTO value or use teacherId
+        if (StringUtils.hasText(addCourseDTO.getCreatedByUserId())) {
+            packageEntity.setCreatedByUserId(addCourseDTO.getCreatedByUserId());
+        } else {
+            packageEntity.setCreatedByUserId(teacherId);
+        }
+        
+        // Set original course ID if this is a copy
+        if (StringUtils.hasText(addCourseDTO.getOriginalCourseId())) {
+            packageEntity.setOriginalCourseId(addCourseDTO.getOriginalCourseId());
+        }
+        
+        // Set version number from DTO or default to 1
+        if (addCourseDTO.getVersionNumber() != null) {
+            packageEntity.setVersionNumber(addCourseDTO.getVersionNumber());
+        } else {
+            packageEntity.setVersionNumber(1);
+        }
+        
         packageEntity.setIsCoursePublishedToCatalaouge(addCourseDTO.getIsCoursePublishedToCatalaouge());
         packageEntity.setCoursePreviewImageMediaId(addCourseDTO.getCoursePreviewImageMediaId());
         packageEntity.setCourseBannerMediaId(addCourseDTO.getCourseBannerMediaId());
@@ -83,14 +121,10 @@ public class TeacherCourseService {
         packageEntity.setWhoShouldLearn(addCourseDTO.getWhoShouldLearnHtml());
         packageEntity.setAboutTheCourse(addCourseDTO.getAboutTheCourseHtml());
         
-        // Set created by teacher ID for approval workflow
-        packageEntity.setCreatedByUserId(teacherId);
-        packageEntity.setVersionNumber(1);
-        
         if (addCourseDTO.getTags() != null && !addCourseDTO.getTags().isEmpty()) {
             packageEntity.setTags(addCourseDTO.getTags().stream()
-                    .map(String::toLowerCase)
-                    .map(String::trim)
+                    .filter(Objects::nonNull)
+                    .filter(tag -> !tag.trim().isEmpty())
                     .collect(Collectors.joining(",")));
         }
         packageEntity.setCourseDepth(addCourseDTO.getCourseDepth());

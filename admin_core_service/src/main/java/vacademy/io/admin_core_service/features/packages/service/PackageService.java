@@ -188,7 +188,13 @@ public class PackageService {
     }
 
     public void addOrUpdatePackage(AddCourseDTO addCourseDTO, String instituteId, CustomUserDetails userDetails) {
-        PackageEntity packageEntity = null;
+        PackageEntity packageEntity;
+        
+        // Set created_by_user_id from user context if not already set in DTO
+        if (!StringUtils.hasText(addCourseDTO.getCreatedByUserId()) && userDetails != null) {
+            addCourseDTO.setCreatedByUserId(userDetails.getId());
+        }
+        
         if (addCourseDTO.getNewCourse()) {
             packageEntity = getCourse(addCourseDTO, instituteId);
         } else {
@@ -202,15 +208,40 @@ public class PackageService {
 
     public PackageEntity getCourse(AddCourseDTO addCourseDTO, String instituteId) {
         Optional<PackageEntity> optionalPackageEntity = packageRepository.findTopByPackageNameAndSessionStatusAndInstitute(addCourseDTO.getCourseName(),
-                Arrays.asList(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
-                List.of(PackageStatusEnum.ACTIVE.name()), instituteId);
+                List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
+                List.of(PackageStatusEnum.ACTIVE.name(), PackageStatusEnum.DRAFT.name()), 
+                instituteId);
         if (optionalPackageEntity.isPresent()) {
             return optionalPackageEntity.get();
         }
         PackageEntity packageEntity = new PackageEntity();
         packageEntity.setPackageName(addCourseDTO.getCourseName());
         packageEntity.setThumbnailFileId(addCourseDTO.getThumbnailFileId());
-        packageEntity.setStatus(PackageStatusEnum.ACTIVE.name());
+        
+        // Set status - default to DRAFT for teacher approval workflow
+        if (StringUtils.hasText(addCourseDTO.getStatus())) {
+            packageEntity.setStatus(addCourseDTO.getStatus());
+        } else {
+            packageEntity.setStatus(PackageStatusEnum.ACTIVE.name());
+        }
+        
+        // Set created by user ID for teacher approval workflow
+        if (StringUtils.hasText(addCourseDTO.getCreatedByUserId())) {
+            packageEntity.setCreatedByUserId(addCourseDTO.getCreatedByUserId());
+        }
+        
+        // Set original course ID if this is a copy
+        if (StringUtils.hasText(addCourseDTO.getOriginalCourseId())) {
+            packageEntity.setOriginalCourseId(addCourseDTO.getOriginalCourseId());
+        }
+        
+        // Set version number
+        if (addCourseDTO.getVersionNumber() != null) {
+            packageEntity.setVersionNumber(addCourseDTO.getVersionNumber());
+        } else {
+            packageEntity.setVersionNumber(1); // Default version
+        }
+        
         packageEntity.setIsCoursePublishedToCatalaouge(addCourseDTO.getIsCoursePublishedToCatalaouge());
         packageEntity.setCoursePreviewImageMediaId(addCourseDTO.getCoursePreviewImageMediaId());
         packageEntity.setCourseBannerMediaId(addCourseDTO.getCourseBannerMediaId());
@@ -228,8 +259,7 @@ public class PackageService {
 
         packageEntity.setCourseDepth(addCourseDTO.getCourseDepth());
         packageEntity.setCourseHtmlDescription(addCourseDTO.getCourseHtmlDescription());
-
-        return packageEntity;
+        return packageRepository.save(packageEntity);
     }
 
     public void updateCourse(AddCourseDTO addCourseDTO, PackageEntity packageEntity) {
@@ -243,6 +273,26 @@ public class PackageService {
 
         if (StringUtils.hasText(addCourseDTO.getThumbnailFileId())) {
             packageEntity.setThumbnailFileId(addCourseDTO.getThumbnailFileId());
+        }
+
+        // Update status if provided
+        if (StringUtils.hasText(addCourseDTO.getStatus())) {
+            packageEntity.setStatus(addCourseDTO.getStatus());
+        }
+        
+        // Update created by user ID if provided
+        if (StringUtils.hasText(addCourseDTO.getCreatedByUserId())) {
+            packageEntity.setCreatedByUserId(addCourseDTO.getCreatedByUserId());
+        }
+        
+        // Update original course ID if provided
+        if (StringUtils.hasText(addCourseDTO.getOriginalCourseId())) {
+            packageEntity.setOriginalCourseId(addCourseDTO.getOriginalCourseId());
+        }
+        
+        // Update version number if provided
+        if (addCourseDTO.getVersionNumber() != null) {
+            packageEntity.setVersionNumber(addCourseDTO.getVersionNumber());
         }
 
         if (addCourseDTO.getIsCoursePublishedToCatalaouge() != null) {
@@ -287,5 +337,7 @@ public class PackageService {
         if (StringUtils.hasText(addCourseDTO.getCourseHtmlDescription())) {
             packageEntity.setCourseHtmlDescription(addCourseDTO.getCourseHtmlDescription());
         }
+
+        packageRepository.save(packageEntity);
     }
 }

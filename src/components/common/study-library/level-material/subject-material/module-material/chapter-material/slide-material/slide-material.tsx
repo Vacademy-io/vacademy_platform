@@ -200,13 +200,15 @@ export const SlideMaterial = () => {
           const mappedQuestions = questions.map((q: unknown) => {
             const question = q as {
               id: string;
-              parent_rich_text?: { content?: string };
+              parent_rich_text?: { id?: string; type?: string; content?: string };
+              text?: { id?: string; type?: string; content?: string };
               options?: Array<{ id?: string; text?: { content?: string } }>;
               question_type?: string;
             };
             return {
               id: question.id,
-              text_data: { content: question.parent_rich_text?.content || "" },
+              parent_rich_text: question.parent_rich_text,
+              text: question.text,
               question_type: question.question_type,
               options: Array.isArray(question.options) && question.options.length > 0
                 ? question.options.map((opt, idx) => ({
@@ -244,13 +246,15 @@ export const SlideMaterial = () => {
             const mappedQuestions = questions.map((q: unknown) => {
               const question = q as {
                 id: string;
-                parent_rich_text?: { content?: string };
+                parent_rich_text?: { id?: string; type?: string; content?: string };
+                text?: { id?: string; type?: string; content?: string };
                 options?: Array<{ id?: string; text?: { content?: string } }>;
                 question_type?: string;
               };
               return {
                 id: question.id,
-                text_data: { content: question.parent_rich_text?.content || "" },
+                parent_rich_text: question.parent_rich_text,
+                text: question.text,
                 question_type: question.question_type,
                 options: Array.isArray(question.options) && question.options.length > 0
                   ? question.options.map((opt, idx) => ({

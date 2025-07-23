@@ -93,7 +93,7 @@ jobs:
             AUTH_SERVER_BASE_URL=${{ secrets.AUTH_SERVER_BASE_URL }} \
             NOTIFICATION_SERVER_BASE_URL=${{ secrets.NOTIFICATION_SERVER_BASE_URL }} \
             CLOUD_FRONT_URL=${{ secrets.CLOUD_FRONT_URL }} \
-            COMMUNITY_SERVICE_DB_URL=${{ secrets.COMMUNITY_SERVICE_DB_URL }}
+            ASSESSMENT_SERVICE_DB_URL=${{ secrets.ASSESSMENT_SERVICE_DB_URL }}
 
       - name: Restart deployment
         id: restart-deployment

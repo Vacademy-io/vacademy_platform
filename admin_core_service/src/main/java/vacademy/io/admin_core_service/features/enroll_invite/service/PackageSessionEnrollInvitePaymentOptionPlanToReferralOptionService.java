@@ -40,4 +40,8 @@ public class PackageSessionEnrollInvitePaymentOptionPlanToReferralOptionService 
                         mapping, paymentPlan, List.of(StatusEnum.ACTIVE.name()))
                 .map(result -> result.getReferralOption().toReferralOptionDTO());
     }
+
+    public void updateStatusByPackageSessionLearnerInvitationToPaymentOptionIds(List<String>packageSessionLearnerInvitationToPaymentOptionIds, String status) {
+        repository.updateStatusByPackageSessionLearnerInvitationToPaymentOptionIds(packageSessionLearnerInvitationToPaymentOptionIds, status);
+    }
 }

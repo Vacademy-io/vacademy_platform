@@ -1,6 +1,7 @@
 package vacademy.io.admin_core_service.features.enroll_invite.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -31,4 +32,12 @@ public interface PackageSessionLearnerInvitationToPaymentOptionRepository extend
             List<String> enrollInviteIds,
             List<String> statusList
     );
+
+    @Modifying
+    @Query("UPDATE PackageSessionLearnerInvitationToPaymentOption psl " +
+            "SET psl.status = :status " +
+            "WHERE psl.id IN :ids")
+    void updateStatusByIds(List<String> ids, String status);
+
+    List<PackageSessionLearnerInvitationToPaymentOption> findByEnrollInvite_IdInAndPaymentOption_IdInAndPackageSession_IdInAndStatusIn(List<String>enrollInviteIds,List<String>paymentOptionIds,List<String>packageSessionIds,List<String>status);
 }

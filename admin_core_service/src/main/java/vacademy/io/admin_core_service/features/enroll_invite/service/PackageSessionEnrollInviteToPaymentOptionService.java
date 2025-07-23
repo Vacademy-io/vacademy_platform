@@ -61,4 +61,9 @@ public class PackageSessionEnrollInviteToPaymentOptionService {
         }
         repository.saveAll(mappings);
     }
+
+    public void updateStatusByIds(List<String> ids, String status) {
+        if (ids == null || ids.isEmpty() || status == null) return;
+        repository.updateStatusByIds(ids, status);
+    }
 }

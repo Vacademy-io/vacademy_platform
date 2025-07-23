@@ -21,7 +21,7 @@ public class TeacherCourseApprovalController {
      */
     @GetMapping("/my-courses")
     public ResponseEntity<List<PackageEntity>> getTeacherCourses(@RequestAttribute("user") CustomUserDetails teacher) {
-        List<PackageEntity> courses = courseApprovalService.getTeacherCoursesWithValidation(teacher.getId());
+        List<PackageEntity> courses = courseApprovalService.getTeacherCoursesWithValidation(teacher.getUserId());
         return ResponseEntity.ok(courses);
     }
 
@@ -69,7 +69,7 @@ public class TeacherCourseApprovalController {
     public ResponseEntity<Boolean> canEditCourse(
             @PathVariable String courseId,
             @RequestAttribute("user") CustomUserDetails teacher) {
-        boolean canEdit = courseApprovalService.canTeacherEditCourse(courseId, teacher.getId());
+        boolean canEdit = courseApprovalService.canTeacherEditCourse(courseId, teacher.getUserId());
         return ResponseEntity.ok(canEdit);
     }
 
@@ -82,7 +82,7 @@ public class TeacherCourseApprovalController {
             @RequestAttribute("user") CustomUserDetails teacher) {
         try {
             // Validate teacher owns this course first
-            courseApprovalService.validateTeacherCoursePermissions(courseId, teacher.getId(), "view");
+            courseApprovalService.validateTeacherCoursePermissions(courseId, teacher.getUserId(), "view");
             Object history = courseApprovalService.getCourseApprovalHistory(courseId);
             return ResponseEntity.ok(history);
         } catch (Exception e) {

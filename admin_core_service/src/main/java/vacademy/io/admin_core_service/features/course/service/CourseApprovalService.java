@@ -20,6 +20,8 @@ import vacademy.io.admin_core_service.features.module.service.ModuleManager;
 import vacademy.io.admin_core_service.features.packages.enums.PackageStatusEnum;
 import vacademy.io.admin_core_service.features.packages.repository.PackageRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
+import vacademy.io.admin_core_service.features.packages.repository.PackageInstituteRepository;
+import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.slide.entity.Slide;
 import vacademy.io.admin_core_service.features.slide.repository.SlideRepository;
 import vacademy.io.admin_core_service.features.slide.service.SlideService;
@@ -30,6 +32,8 @@ import vacademy.io.admin_core_service.features.subject.service.SubjectService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.PackageEntity;
+import vacademy.io.common.institute.entity.PackageInstitute;
+import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.common.institute.entity.module.Module;
 import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.common.institute.entity.student.Subject;
@@ -60,6 +64,8 @@ public class CourseApprovalService {
     private final SlideService slideService;
     private final SubjectService subjectService;
     private final ChapterToSlidesRepository chapterToSlidesRepository;
+    private final PackageInstituteRepository packageInstituteRepository;
+    private final InstituteRepository instituteRepository;
 
     /**
      * Create a temporary copy of a published course for teacher editing
@@ -74,14 +80,17 @@ public class CourseApprovalService {
         }
 
         // Create temp package copy
-        PackageEntity tempPackage = copyPackageEntity(originalPackage, teacher.getId());
+        PackageEntity tempPackage = copyPackageEntity(originalPackage, teacher.getUserId());
         tempPackage = packageRepository.save(tempPackage);
 
         // Copy entire course hierarchy
-        copyEntireCourseHierarchy(originalPackage, tempPackage, teacher.getId());
+        copyEntireCourseHierarchy(originalPackage, tempPackage, teacher.getUserId());
+
+        // Copy package-institute linkages
+        copyPackageInstituteLinkages(originalPackage, tempPackage);
 
         log.info("Created editable copy {} for original course {} by teacher {}", 
-                tempPackage.getId(), originalCourseId, teacher.getId());
+                tempPackage.getId(), originalCourseId, teacher.getUserId());
         
         return tempPackage.getId();
     }
@@ -98,14 +107,14 @@ public class CourseApprovalService {
             throw new VacademyException("Only draft courses can be submitted for review");
         }
 
-        if (!teacher.getId().equals(course.getCreatedByUserId())) {
+        if (!teacher.getUserId().equals(course.getCreatedByUserId())) {
             throw new VacademyException("Only the course creator can submit for review");
         }
 
         course.setStatus(PackageStatusEnum.IN_REVIEW.name());
         packageRepository.save(course);
 
-        log.info("Course {} submitted for review by teacher {}", courseId, teacher.getId());
+        log.info("Course {} submitted for review by teacher {}", courseId, teacher.getUserId());
         return "Course submitted for review successfully";
     }
 
@@ -121,14 +130,14 @@ public class CourseApprovalService {
             throw new VacademyException("Only courses in review can be withdrawn");
         }
 
-        if (!teacher.getId().equals(course.getCreatedByUserId())) {
+        if (!teacher.getUserId().equals(course.getCreatedByUserId())) {
             throw new VacademyException("Only the course creator can withdraw from review");
         }
 
         course.setStatus(PackageStatusEnum.DRAFT.name());
         packageRepository.save(course);
 
-        log.info("Course {} withdrawn from review by teacher {}", courseId, teacher.getId());
+        log.info("Course {} withdrawn from review by teacher {}", courseId, teacher.getUserId());
         return "Course withdrawn from review successfully";
     }
 
@@ -146,13 +155,13 @@ public class CourseApprovalService {
         if (tempCourse.getOriginalCourseId() != null) {
             // Editing existing course - merge changes
             result = mergeChangesIntoOriginal(tempCourse);
+              // Clean up temp course
+            deleteTempCourse(tempCourse);
         } else {
             // New course - publish as active
             result = publishNewCourse(tempCourse);
         }
-
-        // Clean up temp course
-        deleteTempCourse(tempCourse);
+      
 
         log.info("Course {} approved by admin {}", tempCourseId, admin.getId());
         return result;
@@ -349,7 +358,7 @@ public class CourseApprovalService {
     @Transactional
     public String createEditableCopyWithValidation(String originalCourseId, CustomUserDetails teacher) {
         try {
-            validateCopyParameters(originalCourseId, teacher.getId());
+            validateCopyParameters(originalCourseId, teacher.getUserId());
             return createEditableCopy(originalCourseId, teacher);
         } catch (VacademyException e) {
             log.error("Validation failed for creating editable copy: {}", e.getMessage());
@@ -369,7 +378,7 @@ public class CourseApprovalService {
             PackageEntity course = packageRepository.findById(courseId)
                     .orElseThrow(() -> new VacademyException("Course not found"));
             
-            validateTeacherPermissions(courseId, teacher.getId(), "submit");
+            validateTeacherPermissions(courseId, teacher.getUserId(), "submit");
             validateCourseForReview(course);
             
             return submitForReview(courseId, teacher);
@@ -672,6 +681,7 @@ public class CourseApprovalService {
         for (ChapterToSlides chapterToSlide : originalChapterToSlides) {
             Slide originalSlide = chapterToSlide.getSlide();
             Slide newSlide = new Slide();
+            newSlide.setId(UUID.randomUUID().toString()); // Generate unique ID
             newSlide.setTitle(originalSlide.getTitle());
             newSlide.setStatus(originalSlide.getStatus());
             newSlide.setImageFileId(originalSlide.getImageFileId());
@@ -795,6 +805,9 @@ public class CourseApprovalService {
 
         // Merge hierarchy changes (subjects, modules, chapters, slides)
         mergeHierarchyChanges(tempCourse, originalCourse);
+
+        // Copy any new package-institute linkages from temp to original
+        copyPackageInstituteLinkages(tempCourse, originalCourse);
 
         return "Changes merged into original course successfully";
     }
@@ -1016,6 +1029,7 @@ public class CourseApprovalService {
     private void addNewSlideToOriginalChapter(Slide tempSlide, Chapter originalChapter) {
         // Create new slide in original chapter
         Slide newSlide = new Slide();
+        newSlide.setId(UUID.randomUUID().toString()); // Generate unique ID
         newSlide.setTitle(tempSlide.getTitle());
         newSlide.setDescription(tempSlide.getDescription());
         newSlide.setImageFileId(tempSlide.getImageFileId());
@@ -1061,6 +1075,59 @@ public class CourseApprovalService {
     private void deleteTempCourse(PackageEntity tempCourse) {
         tempCourse.setStatus(PackageStatusEnum.DELETED.name());
         packageRepository.save(tempCourse);
+    }
+
+    /**
+     * Copy package-institute linkages from source package to target package
+     */
+    private void copyPackageInstituteLinkages(PackageEntity sourcePackage, PackageEntity targetPackage) {
+        try {
+            // Use a more efficient approach by querying with native SQL
+            // This method will find all package-institute linkages for the source package
+            List<PackageInstitute> sourceLinkages = findPackageInstituteLinkagesByPackageId(sourcePackage.getId());
+
+            // Create corresponding linkages for the target package
+            List<PackageInstitute> targetLinkages = new ArrayList<>();
+            for (PackageInstitute sourceLinkage : sourceLinkages) {
+                // Check if linkage already exists to avoid duplicates
+                Optional<PackageInstitute> existingLinkage = packageInstituteRepository
+                        .findByPackageIdAndInstituteId(targetPackage.getId(), sourceLinkage.getInstituteEntity().getId());
+                
+                if (existingLinkage.isEmpty()) {
+                    PackageInstitute targetLinkage = new PackageInstitute();
+                    targetLinkage.setPackageEntity(targetPackage);
+                    targetLinkage.setInstituteEntity(sourceLinkage.getInstituteEntity());
+                    targetLinkage.setGroupEntity(sourceLinkage.getGroupEntity()); // Copy group association if exists
+                    targetLinkages.add(targetLinkage);
+                }
+            }
+
+            // Save all target linkages
+            if (!targetLinkages.isEmpty()) {
+                packageInstituteRepository.saveAll(targetLinkages);
+                log.info("Copied {} package-institute linkages from {} to {}", 
+                        targetLinkages.size(), sourcePackage.getId(), targetPackage.getId());
+            } else {
+                log.info("No new package-institute linkages to copy from {} to {}", 
+                        sourcePackage.getId(), targetPackage.getId());
+            }
+        } catch (Exception e) {
+            log.error("Error copying package-institute linkages from {} to {}: {}", 
+                    sourcePackage.getId(), targetPackage.getId(), e.getMessage());
+            // Continue with course creation even if linkage copying fails
+        }
+    }
+
+    /**
+     * Find all package-institute linkages for a specific package
+     */
+    private List<PackageInstitute> findPackageInstituteLinkagesByPackageId(String packageId) {
+        // Use a more efficient approach - we can filter from all linkages or use the existing repository method
+        // For now, using the existing findAll and filter approach, but this could be optimized with a custom query
+        return packageInstituteRepository.findAll()
+                .stream()
+                .filter(pi -> pi.getPackageEntity().getId().equals(packageId))
+                .collect(Collectors.toList());
     }
 
     // Inner class for course approval history

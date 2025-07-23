@@ -13,10 +13,7 @@ import vacademy.io.admin_core_service.features.common.dto.InstituteCustomFieldDT
 import vacademy.io.admin_core_service.features.common.enums.CustomFieldTypeEnum;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.common.service.InstituteCustomFiledService;
-import vacademy.io.admin_core_service.features.enroll_invite.dto.EnrollInviteDTO;
-import vacademy.io.admin_core_service.features.enroll_invite.dto.EnrollInviteFilterDTO;
-import vacademy.io.admin_core_service.features.enroll_invite.dto.EnrollInviteWithSessionsProjection;
-import vacademy.io.admin_core_service.features.enroll_invite.dto.PackageSessionToPaymentOptionDTO;
+import vacademy.io.admin_core_service.features.enroll_invite.dto.*;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionEnrollInvitePaymentOptionPlanToReferralOption;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionLearnerInvitationToPaymentOption;
@@ -330,4 +327,98 @@ public class EnrollInviteService {
             packageSessionEnrollInvitePaymentOptionPlanToReferralOptionService.saveInBulk(referralsToSave);
         }
     }
+    @Transactional
+    public String updatePaymentOptionsForInvites(
+            List<UpdateEnrollInvitePackageSessionPaymentOptionDTO> updatePaymentOptionRequests) {
+
+        // Step 1: Delete old payment options
+        List<String> oldPaymentOptionIds = extractOldPaymentOptionIds(updatePaymentOptionRequests);
+        deleteOldPaymentOptions(oldPaymentOptionIds);
+
+        // Step 2: Process new payment options for each enroll invite
+        for (UpdateEnrollInvitePackageSessionPaymentOptionDTO request : updatePaymentOptionRequests) {
+            processNewPaymentOptions(request);
+        }
+
+        return "success";
+    }
+
+// ------------------- PRIVATE METHODS ------------------- //
+
+    /**
+     * Extracts old payment option IDs that need to be deleted.
+     */
+    private List<String> extractOldPaymentOptionIds(
+            List<UpdateEnrollInvitePackageSessionPaymentOptionDTO> requests) {
+        List<String> oldIds = new ArrayList<>();
+        for (UpdateEnrollInvitePackageSessionPaymentOptionDTO dto : requests) {
+            if (dto.getUpdatePaymentOptions() != null) {
+                dto.getUpdatePaymentOptions().forEach(updateOption -> {
+                    if (updateOption.getOldPackageSessionPaymentOptionId() != null) {
+                        oldIds.add(updateOption.getOldPackageSessionPaymentOptionId());
+                    }
+                });
+            }
+        }
+        return oldIds;
+    }
+
+    /**
+     * Deletes old payment options and related referral options by setting them to DELETED.
+     */
+    private void deleteOldPaymentOptions(List<String> oldIds) {
+        if (oldIds.isEmpty()) return;
+        packageSessionEnrollInviteToPaymentOptionService.updateStatusByIds(oldIds, StatusEnum.DELETED.name());
+        packageSessionEnrollInvitePaymentOptionPlanToReferralOptionService
+                .updateStatusByPackageSessionLearnerInvitationToPaymentOptionIds(oldIds, StatusEnum.DELETED.name());
+    }
+
+    /**
+     * Processes new payment options for a single enroll invite request.
+     */
+    private void processNewPaymentOptions(UpdateEnrollInvitePackageSessionPaymentOptionDTO request) {
+        if (request.getUpdatePaymentOptions() == null) return;
+
+        Optional<EnrollInvite> optionalEnrollInvite = repository.findById(request.getEnrollInviteId());
+        if (optionalEnrollInvite.isEmpty()) return;
+
+        EnrollInvite enrollInvite = optionalEnrollInvite.get();
+
+        // Create new PackageSessionLearnerInvitationToPaymentOption entities
+        List<PackageSessionLearnerInvitationToPaymentOption> newPaymentOptions = request.getUpdatePaymentOptions()
+                .stream()
+                .map(updateOption -> createPackageSessionPaymentOption(enrollInvite, updateOption))
+                .collect(Collectors.toList());
+
+        List<PackageSessionToPaymentOptionDTO> newPaymentOptionDTOs = request.getUpdatePaymentOptions()
+                .stream()
+                .map(UpdateEnrollInvitePackageSessionPaymentOptionDTO.UpdatePaymentOptionDTO::getNewPackageSessionPaymentOption)
+                .collect(Collectors.toList());
+
+        // Save new payment options and referral options
+        packageSessionEnrollInviteToPaymentOptionService.createPackageSessionLearnerInvitationToPaymentOptions(newPaymentOptions);
+        validateAndSaveReferralOption(newPaymentOptions, newPaymentOptionDTOs);
+    }
+
+    /**
+     * Creates a single PackageSessionLearnerInvitationToPaymentOption from the provided DTO.
+     */
+    private PackageSessionLearnerInvitationToPaymentOption createPackageSessionPaymentOption(
+            EnrollInvite enrollInvite,
+            UpdateEnrollInvitePackageSessionPaymentOptionDTO.UpdatePaymentOptionDTO updateOptionDTO) {
+
+        PackageSession packageSession = packageSessionService
+                .findById(updateOptionDTO.getNewPackageSessionPaymentOption().getPackageSessionId());
+
+        PaymentOption paymentOption = paymentOptionService
+                .findById(updateOptionDTO.getNewPackageSessionPaymentOption().getPaymentOption().getId());
+
+        return new PackageSessionLearnerInvitationToPaymentOption(
+                enrollInvite,
+                packageSession,
+                paymentOption,
+                StatusEnum.ACTIVE.name()
+        );
+    }
+
 }

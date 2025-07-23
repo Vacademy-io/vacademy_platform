@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.enroll_invite.dto.EnrollInviteDTO;
 import vacademy.io.admin_core_service.features.enroll_invite.dto.EnrollInviteFilterDTO;
 import vacademy.io.admin_core_service.features.enroll_invite.dto.EnrollInviteWithSessionsProjection;
+import vacademy.io.admin_core_service.features.enroll_invite.dto.UpdateEnrollInvitePackageSessionPaymentOptionDTO;
 import vacademy.io.admin_core_service.features.enroll_invite.service.EnrollInviteService;
 import vacademy.io.common.auth.config.PageConstants;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -65,5 +66,10 @@ public class EnrollInviteController {
     @DeleteMapping("/enroll-invites")
     public ResponseEntity<String>deleteEnrollInvites(@RequestBody List<String>enrollInviteIds) {
         return ResponseEntity.ok(enrollInviteService.deleteEnrollInvites(enrollInviteIds));
+    }
+
+    @PutMapping("/enroll-invite-payment-option")
+    private ResponseEntity<String>updateEnrollInvitePaymentOption(@RequestBody List<UpdateEnrollInvitePackageSessionPaymentOptionDTO> updateEnrollInvitePackageSessionPaymentOptionDTO) {
+        return ResponseEntity.ok(enrollInviteService.updatePaymentOptionsForInvites(updateEnrollInvitePackageSessionPaymentOptionDTO));
     }
 }

@@ -8,6 +8,7 @@ import { QuizSlideActivityLogPayload } from "@/types/quiz-slide-activity-log";
 import { getUserId } from "@/constants/getUserId";
 import { v4 as uuidv4 } from "uuid";
 import { toast } from "sonner";
+import QuizReview from "./QuizReview";
 
 interface Option {
   id: string;
@@ -51,6 +52,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({ questions, onAnswer, onC
   const [numericErrors, setNumericErrors] = useState<{ [questionId: string]: string }>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showFullPassage, setShowFullPassage] = useState(false); // <-- NEW
+  const [showReview, setShowReview] = useState(false); // <-- NEW
 
   const submitQuizMutation = useSubmitQuizSlideActivityLog();
 
@@ -114,6 +116,10 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({ questions, onAnswer, onC
         </div>
       </div>
     );
+  }
+
+  if (showReview) {
+    return <QuizReview questions={questions} userAnswers={answers} onRestart={() => { setShowReview(false); setCurrent(0); setAnswers({}); }} />;
   }
 
   const currentQuestion = questions[current];
@@ -191,6 +197,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({ questions, onAnswer, onC
         toast.success("Quiz submitted successfully!", {
           className: "text-center"
         });
+        setShowReview(true); // <-- Show review page
         if (onComplete) onComplete();
       } catch (err) {
         console.error("Quiz submission failed", err);

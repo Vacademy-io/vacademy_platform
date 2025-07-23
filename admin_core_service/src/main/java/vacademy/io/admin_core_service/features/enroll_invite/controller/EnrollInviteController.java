@@ -33,6 +33,13 @@ public class EnrollInviteController {
         return ResponseEntity.ok(enrollInviteService.getEnrollInvitesByInstituteIdAndFilters(instituteId,enrollInviteFilterDTO,pageNo,pageSize));
     }
 
+    @PostMapping("/by-referral-option-ids")
+    public ResponseEntity<List<EnrollInviteDTO>> getByReferralOptionIds(
+            @RequestParam("instituteId") String instituteId,
+            @RequestBody List<String> referralOptionIds) {
+        return ResponseEntity.ok(enrollInviteService.findEnrollInvitesByReferralOptionIds(referralOptionIds, instituteId));
+    }
+
     @GetMapping("/{instituteId}/{enrollInviteId}")
     public ResponseEntity<EnrollInviteDTO>getEnrollInvite(@PathVariable("instituteId") String instituteId,@PathVariable("enrollInviteId") String enrollInviteId) {
         return ResponseEntity.ok(enrollInviteService.findByEnrollInviteId(enrollInviteId,instituteId));
@@ -48,14 +55,15 @@ public class EnrollInviteController {
         return ResponseEntity.ok(enrollInviteService.updateDefaultEnrollInviteConfig(enrollInviteId,packageSessionId));
     }
 
-    @PostMapping("get-by-payment-option-ids")
-    public List<EnrollInviteDTO>getByPaymentOptionIds(@RequestBody List<String> paymentOptionIds) {
-        return enrollInviteService.findByPaymentOptionIds(paymentOptionIds);
+    @PostMapping("/get-by-payment-option-ids")
+    public ResponseEntity<List<EnrollInviteDTO>> getByPaymentOptionIds(
+            @RequestParam("instituteId") String instituteId,
+            @RequestBody List<String> paymentOptionIds) {
+        return ResponseEntity.ok(enrollInviteService.findByPaymentOptionIds(paymentOptionIds, instituteId));
     }
 
     @DeleteMapping("/enroll-invites")
-    private ResponseEntity<String>deleteEnrollInvites(@RequestBody List<String>enrollInviteIds) {
+    public ResponseEntity<String>deleteEnrollInvites(@RequestBody List<String>enrollInviteIds) {
         return ResponseEntity.ok(enrollInviteService.deleteEnrollInvites(enrollInviteIds));
     }
-
 }

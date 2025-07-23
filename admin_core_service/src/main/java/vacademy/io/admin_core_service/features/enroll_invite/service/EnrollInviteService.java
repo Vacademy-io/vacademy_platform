@@ -24,7 +24,9 @@ import vacademy.io.admin_core_service.features.enroll_invite.enums.EnrollInviteT
 import vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollInviteRepository;
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
 import vacademy.io.admin_core_service.features.packages.service.PackageSessionService;
+import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentOptionDTO;
 import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentPlanDTO;
+import vacademy.io.admin_core_service.features.user_subscription.dto.ReferralOptionDTO;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
 import vacademy.io.admin_core_service.features.user_subscription.entity.ReferralOption;
@@ -35,10 +37,7 @@ import vacademy.io.common.core.standard_classes.ListService;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.session.PackageSession;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -52,24 +51,9 @@ public class EnrollInviteService {
     @Autowired private ReferralOptionService referralOptionService;
     @Autowired private PaymentPlanService paymentPlanService;
     @Autowired private PackageSessionEnrollInvitePaymentOptionPlanToReferralOptionService packageSessionEnrollInvitePaymentOptionPlanToReferralOptionService;
-    /**
-     * Creates an EnrollInvite along with its associated custom fields and package-to-payment mappings.
-     *
-     * <p>Validation Rules:
-     * <ul>
-     * <li>enrollInviteDTO must not be null.</li>
-     * <li>packageSessionToPaymentOptions must not be null or empty.</li>
-     * <li>Each mapping must contain a non-null paymentOption.id and packageSessionId.</li>
-     * <li>All referenced PaymentOption and PackageSession entities must exist in the database.</li>
-     * </ul>
-     *
-     * @param enrollInviteDTO The data transfer object containing the enroll invite details.
-     * @return The ID of the newly persisted EnrollInvite.
-     * @throws VacademyException if validation fails.
-     */
+
     @Transactional
     public String createEnrollInvite(EnrollInviteDTO enrollInviteDTO) {
-        // 1. Validate initial payload
         if (enrollInviteDTO == null) {
             throw new VacademyException("EnrollInvite payload cannot be null.");
         }
@@ -78,11 +62,9 @@ public class EnrollInviteService {
             throw new VacademyException("Package session to payment options cannot be empty.");
         }
 
-        // 2. Persist the core EnrollInvite entity
         EnrollInvite enrollInviteToSave = new EnrollInvite(enrollInviteDTO);
         final EnrollInvite savedEnrollInvite = repository.save(enrollInviteToSave);
 
-        // 3. Attach and persist custom fields, if any
         if (!CollectionUtils.isEmpty(enrollInviteDTO.getInstituteCustomFields())) {
             List<InstituteCustomFieldDTO> customFieldsToSave = enrollInviteDTO.getInstituteCustomFields().stream()
                     .filter(Objects::nonNull)
@@ -94,7 +76,6 @@ public class EnrollInviteService {
             instituteCustomFiledService.addCustomFields(customFieldsToSave);
         }
 
-        // 4. Build and persist the mapping entities between PackageSession and PaymentOption
         List<PackageSessionLearnerInvitationToPaymentOption> mappingEntities = mappingDTOs.stream()
                 .filter(Objects::nonNull)
                 .map(dto -> {
@@ -102,18 +83,13 @@ public class EnrollInviteService {
                     PaymentOption paymentOption = paymentOptionService.findById(dto.getPaymentOption().getId());
                     PackageSession packageSession = packageSessionService.findById(dto.getPackageSessionId());
 
-                    PackageSessionLearnerInvitationToPaymentOption packageSessionLearnerInvitationToPaymentOption = new PackageSessionLearnerInvitationToPaymentOption(
-                            savedEnrollInvite,
-                            packageSession,
-                            paymentOption,
-                            StatusEnum.ACTIVE.name()
+                    return new PackageSessionLearnerInvitationToPaymentOption(
+                            savedEnrollInvite, packageSession, paymentOption, StatusEnum.ACTIVE.name()
                     );
-                    return packageSessionLearnerInvitationToPaymentOption;
                 })
                 .collect(Collectors.toList());
 
         if (mappingEntities.isEmpty()) {
-            // This case would only be hit if the original list contained only null elements
             throw new VacademyException("No valid packageSession-paymentOption mappings were provided.");
         }
         packageSessionEnrollInviteToPaymentOptionService.createPackageSessionLearnerInvitationToPaymentOptions(mappingEntities);
@@ -121,84 +97,20 @@ public class EnrollInviteService {
         return savedEnrollInvite.getId();
     }
 
-    private void validateAndSaveReferralOption(
-            List<PackageSessionLearnerInvitationToPaymentOption> savedMappings,
-            List<PackageSessionToPaymentOptionDTO> originalDTOs) {
-
-        // Ensure the lists are workable and have the same size.
-        if (CollectionUtils.isEmpty(savedMappings) || CollectionUtils.isEmpty(originalDTOs) || savedMappings.size() != originalDTOs.size()) {
-            // Or throw an exception, as this indicates a programming error.
-            return;
-        }
-
-        // A list to hold all the new referral mappings we need to create.
-        List<PackageSessionEnrollInvitePaymentOptionPlanToReferralOption> referralsToSave = new ArrayList<>();
-
-        for (int i = 0; i < originalDTOs.size(); i++) {
-            PackageSessionToPaymentOptionDTO dto = originalDTOs.get(i);
-            PackageSessionLearnerInvitationToPaymentOption persistedParent = savedMappings.get(i);
-
-            // Check if the DTO has payment plans with referral options.
-            if (Objects.isNull(dto.getPaymentOption()) || CollectionUtils.isEmpty(dto.getPaymentOption().getPaymentPlans())) {
-                continue; // Skip to the next DTO.
-            }
-
-            // For each payment plan in the DTO, create the referral mapping.
-            for (PaymentPlanDTO planDTO : dto.getPaymentOption().getPaymentPlans()) {
-                if (Objects.nonNull(planDTO.getReferralOption()) && StringUtils.hasText(planDTO.getReferralOption().getId())) {
-
-                    // Fetch the entities needed for the mapping.
-                    Optional<PaymentPlan> optionalPlan = paymentPlanService.findById(planDTO.getId());
-                    Optional<ReferralOption> optionalReferral = referralOptionService.getReferralOption(planDTO.getReferralOption().getId());
-
-                    // If both exist, create the child mapping entity and add it to our list.
-                    if (optionalPlan.isPresent() && optionalReferral.isPresent()) {
-                        // This is the critical step: we create the child entity...
-                        PackageSessionEnrollInvitePaymentOptionPlanToReferralOption childEntity =
-                                new PackageSessionEnrollInvitePaymentOptionPlanToReferralOption(
-                                        persistedParent, // ...using the PARENT that is ALREADY SAVED.
-                                        optionalReferral.get(),
-                                        optionalPlan.get(),
-                                        StatusEnum.ACTIVE.name()
-                                );
-                        referralsToSave.add(childEntity);
-                    }
-                }
-            }
-        }
-
-        // Save all the newly created referral mapping entities in a single batch operation.
-        if (!referralsToSave.isEmpty()) {
-            packageSessionEnrollInvitePaymentOptionPlanToReferralOptionService.saveInBulk(referralsToSave); // Assumes a service method that takes a list.
-        }
-    }
-
-
-    /**
-     * Validates an individual mapping DTO.
-     */
-    private void validateMappingDTO(PackageSessionToPaymentOptionDTO dto) {
-        if (dto.getPackageSessionId() == null || dto.getPackageSessionId().isBlank()) {
-            throw new VacademyException("packageSessionId is required in packageSessionToPaymentOptions.");
-        }
-        if (dto.getPaymentOption() == null || dto.getPaymentOption().getId() == null || dto.getPaymentOption().getId().isBlank()) {
-            throw new VacademyException("paymentOption.id is required in packageSessionToPaymentOptions.");
-        }
-    }
+    // Create and other existing methods...
 
     public Page<EnrollInviteWithSessionsProjection> getEnrollInvitesByInstituteIdAndFilters(String instituteId, EnrollInviteFilterDTO enrollInviteFilterDTO, int pageNo, int pageSize) {
         Sort sortColumns = ListService.createSortObject(enrollInviteFilterDTO.getSortColumns());
         Pageable pageable = PageRequest.of(pageNo, pageSize,sortColumns);
-        Page<EnrollInviteWithSessionsProjection>enrollInvites = null;
         if (StringUtils.hasText(enrollInviteFilterDTO.getSearchName())){
-            enrollInvites = repository.getEnrollInvitesByInstituteIdAndSearchName(instituteId,
+            return repository.getEnrollInvitesByInstituteIdAndSearchName(instituteId,
                     enrollInviteFilterDTO.getSearchName(),
                     List.of(StatusEnum.ACTIVE.name()),
                     List.of(PackageSessionStatusEnum.ACTIVE.name()
                             ,PackageSessionStatusEnum.HIDDEN.name()),
                     pageable);
         }else{
-            enrollInvites = repository.getEnrollInvitesWithFilters(instituteId,
+            return repository.getEnrollInvitesWithFilters(instituteId,
                     enrollInviteFilterDTO.getPackageSessionIds(),
                     enrollInviteFilterDTO.getPaymentOptionIds(),
                     enrollInviteFilterDTO.getTags(),
@@ -206,31 +118,144 @@ public class EnrollInviteService {
                     List.of(PackageSessionStatusEnum.ACTIVE.name(),PackageSessionStatusEnum.HIDDEN.name()),
                     pageable);
         }
-        return enrollInvites;
     }
 
-    public EnrollInviteDTO findByEnrollInviteId(String enrollInviteId,String instituteId) {
-        EnrollInvite enrollInvite = repository.findById(enrollInviteId).orElseThrow(()->new VacademyException("EnrollInvite not found"));
-        EnrollInviteDTO enrollInviteDTO = enrollInvite.toEnrollInviteDTO();
-        enrollInviteDTO.setInstituteCustomFields(instituteCustomFiledService.findCustomFieldsAsJson(instituteId, CustomFieldTypeEnum.ENROLL_INVITE.name(), enrollInviteId));
-        List<PackageSessionToPaymentOptionDTO>packageSessionToPaymentOptionDTOS = packageSessionEnrollInviteToPaymentOptionService.findByInvite(enrollInvite);
-        enrollInviteDTO.setPackageSessionToPaymentOptions(packageSessionToPaymentOptionDTOS);
-        return enrollInviteDTO;
+    public EnrollInviteDTO findByEnrollInviteId(String enrollInviteId, String instituteId) {
+        EnrollInvite enrollInvite = repository.findById(enrollInviteId)
+                .orElseThrow(() -> new VacademyException("EnrollInvite not found with id: " + enrollInviteId));
+        return buildFullEnrollInviteDTO(enrollInvite, instituteId);
     }
 
-    public EnrollInviteDTO findDefaultEnrollInviteByPackageSessionId(String packageSessionId,String instituteId) {
+    public EnrollInviteDTO findDefaultEnrollInviteByPackageSessionId(String packageSessionId, String instituteId) {
         EnrollInvite enrollInvite = repository.findLatestForPackageSessionWithFilters(
                 packageSessionId,
                 List.of(StatusEnum.ACTIVE.name()),
                 List.of(EnrollInviteTag.DEFAULT.name()),
-                List.of(StatusEnum.ACTIVE.name())).orElseThrow(()->new VacademyException("EnrollInvite not found"));
-        EnrollInviteDTO enrollInviteDTO = enrollInvite.toEnrollInviteDTO();
-        enrollInviteDTO.setInstituteCustomFields(instituteCustomFiledService.findCustomFieldsAsJson(instituteId, CustomFieldTypeEnum.ENROLL_INVITE.name(), enrollInvite.getId()));
-        List<PackageSessionToPaymentOptionDTO>packageSessionToPaymentOptionDTOS = packageSessionEnrollInviteToPaymentOptionService.findByInvite(enrollInvite);
-        enrollInviteDTO.setPackageSessionToPaymentOptions(packageSessionToPaymentOptionDTOS);
-        return enrollInviteDTO;
+                List.of(StatusEnum.ACTIVE.name())
+        ).orElseThrow(() -> new VacademyException("Default EnrollInvite not found for package session: " + packageSessionId));
+        return buildFullEnrollInviteDTO(enrollInvite, instituteId);
     }
 
+    public List<EnrollInviteDTO> findByPaymentOptionIds(List<String> paymentOptionIds, String instituteId) {
+        List<PackageSessionLearnerInvitationToPaymentOption> mappings = packageSessionEnrollInviteToPaymentOptionService.findByPaymentOptionIds(paymentOptionIds);
+
+        Map<EnrollInvite, List<PackageSessionLearnerInvitationToPaymentOption>> groupedByInvite = mappings.stream()
+                .collect(Collectors.groupingBy(PackageSessionLearnerInvitationToPaymentOption::getEnrollInvite));
+
+        return groupedByInvite.entrySet().stream()
+                .map(entry -> buildFullEnrollInviteDTO(entry.getKey(), instituteId, entry.getValue()))
+                .collect(Collectors.toList());
+    }
+
+    public List<EnrollInviteDTO> findEnrollInvitesByReferralOptionIds(List<String> referralOptionIds, String instituteId) {
+        List<PackageSessionEnrollInvitePaymentOptionPlanToReferralOption> referralMappings =
+                packageSessionEnrollInvitePaymentOptionPlanToReferralOptionService.findByReferralOptionIds(referralOptionIds);
+
+        Map<EnrollInvite, List<PackageSessionLearnerInvitationToPaymentOption>> groupedByInvite =
+                referralMappings.stream()
+                        .map(PackageSessionEnrollInvitePaymentOptionPlanToReferralOption::getPackageSessionLearnerInvitationToPaymentOption)
+                        .distinct()
+                        .collect(Collectors.groupingBy(PackageSessionLearnerInvitationToPaymentOption::getEnrollInvite));
+
+        return groupedByInvite.entrySet().stream()
+                .map(entry -> buildFullEnrollInviteDTO(entry.getKey(), instituteId, entry.getValue()))
+                .collect(Collectors.toList());
+    }
+
+    @Transactional
+    public String updateDefaultEnrollInviteConfig(String enrollInviteId, String packageSessionId) {
+        removeDefaultTag(packageSessionId);
+        addDefaultTag(enrollInviteId);
+        return enrollInviteId;
+    }
+
+    @Transactional
+    public String deleteEnrollInvites(List<String> enrollInviteIds) {
+        List<EnrollInvite> enrollInvites = repository.findAllById(enrollInviteIds);
+        for (EnrollInvite enrollInvite : enrollInvites) {
+            enrollInvite.setStatus(StatusEnum.DELETED.name());
+        }
+        repository.saveAll(enrollInvites);
+        packageSessionEnrollInviteToPaymentOptionService.deleteByEnrollInviteIds(enrollInviteIds);
+        return "Enroll invites deleted successfully";
+    }
+
+    // ===================================================================================
+    // PRIVATE HELPER AND DTO BUILDING METHODS
+    // ===================================================================================
+
+    private EnrollInviteDTO buildFullEnrollInviteDTO(EnrollInvite enrollInvite, String instituteId) {
+        List<PackageSessionLearnerInvitationToPaymentOption> mappings = packageSessionEnrollInviteToPaymentOptionService.findByInvite(enrollInvite);
+        return buildFullEnrollInviteDTO(enrollInvite, instituteId, mappings);
+    }
+
+    private EnrollInviteDTO buildFullEnrollInviteDTO(EnrollInvite enrollInvite, String instituteId, List<PackageSessionLearnerInvitationToPaymentOption> mappings) {
+        EnrollInviteDTO dto = enrollInvite.toEnrollInviteDTO();
+
+        // 1. Fetch and set Custom Fields
+        dto.setInstituteCustomFields(instituteCustomFiledService.findCustomFieldsAsJson(
+                instituteId, CustomFieldTypeEnum.ENROLL_INVITE.name(), enrollInvite.getId()
+        ));
+
+        // 2. Build and set Payment Option DTOs from mappings
+        List<PackageSessionToPaymentOptionDTO> paymentOptionDTOs = mappings.stream()
+                .map(this::mapToPackageSessionToPaymentOptionDTO)
+                .collect(Collectors.toList());
+        dto.setPackageSessionToPaymentOptions(paymentOptionDTOs);
+
+        return dto;
+    }
+
+    private PackageSessionToPaymentOptionDTO mapToPackageSessionToPaymentOptionDTO(PackageSessionLearnerInvitationToPaymentOption mapping) {
+        if (mapping == null) return null;
+        PaymentOption paymentOption = mapping.getPaymentOption();
+        if (paymentOption == null) return null;
+
+        List<PaymentPlanDTO> paymentPlans = mapPaymentPlans(mapping,
+                Optional.ofNullable(paymentOption.getPaymentPlans()).orElse(Collections.emptyList()));
+
+        PaymentOptionDTO paymentOptionDTO = mapToPaymentOptionDTO(paymentOption, paymentPlans);
+
+        return PackageSessionToPaymentOptionDTO.builder()
+                .id(mapping.getId())
+                .packageSessionId(mapping.getPackageSession() != null ? mapping.getPackageSession().getId() : null)
+                .paymentOption(paymentOptionDTO)
+                .build();
+    }
+
+    private PaymentOptionDTO mapToPaymentOptionDTO(PaymentOption paymentOption, List<PaymentPlanDTO> paymentPlans) {
+        return PaymentOptionDTO.builder()
+                .id(paymentOption.getId())
+                .name(paymentOption.getName())
+                .status(paymentOption.getStatus())
+                .source(paymentOption.getSource())
+                .sourceId(paymentOption.getSourceId())
+                .tag(paymentOption.getTag())
+                .type(paymentOption.getType())
+                .paymentOptionMetadataJson(paymentOption.getPaymentOptionMetadataJson())
+                .requireApproval(paymentOption.isRequireApproval())
+                .paymentPlans(paymentPlans)
+                .build();
+    }
+
+    private List<PaymentPlanDTO> mapPaymentPlans(
+            PackageSessionLearnerInvitationToPaymentOption mapping, List<PaymentPlan> paymentPlans) {
+        return paymentPlans.stream()
+                .filter(Objects::nonNull)
+                .map(plan -> mapPaymentPlan(plan, mapping))
+                .collect(Collectors.toList());
+    }
+
+    private PaymentPlanDTO mapPaymentPlan(
+            PaymentPlan paymentPlan, PackageSessionLearnerInvitationToPaymentOption mapping) {
+        PaymentPlanDTO paymentPlanDTO = paymentPlan.mapToPaymentPlanDTO();
+        Optional<ReferralOptionDTO> referralOption = packageSessionEnrollInvitePaymentOptionPlanToReferralOptionService
+                .getReferralOptionsByPackageSessionLearnerInvitationToPaymentOptionAndPaymentPlan(mapping, paymentPlan);
+        paymentPlanDTO.setReferralOption(referralOption.orElse(null));
+        return paymentPlanDTO;
+    }
+
+    // Other private methods like removeDefaultTag, addDefaultTag, validate...
     private void removeDefaultTag(String packageSessionId) {
         Optional<EnrollInvite>optionalEnrollInvite = repository.findLatestForPackageSessionWithFilters(
                 packageSessionId,
@@ -255,25 +280,54 @@ public class EnrollInviteService {
         }
     }
 
-    @Transactional
-    public String updateDefaultEnrollInviteConfig(String enrollInviteId,String packageSessionId) {
-        removeDefaultTag(packageSessionId);
-        addDefaultTag(enrollInviteId);
-        return enrollInviteId;
-    }
-
-    public List<EnrollInviteDTO> findByPaymentOptionIds(List<String>paymentOptionIds){
-        return packageSessionEnrollInviteToPaymentOptionService.findByPaymentOptionId(paymentOptionIds);
-    }
-
-    @Transactional
-    public String deleteEnrollInvites(List<String>enrollInviteIds) {
-        List<EnrollInvite>enrollInvites = repository.findAllById(enrollInviteIds);
-        for (EnrollInvite enrollInvite : enrollInvites) {
-            enrollInvite.setStatus(StatusEnum.DELETED.name());
+    private void validateMappingDTO(PackageSessionToPaymentOptionDTO dto) {
+        if (dto.getPackageSessionId() == null || dto.getPackageSessionId().isBlank()) {
+            throw new VacademyException("packageSessionId is required in packageSessionToPaymentOptions.");
         }
-        repository.saveAll(enrollInvites);
-        packageSessionEnrollInviteToPaymentOptionService.deleteByEnrollInviteIds(enrollInviteIds);
-        return "Enroll invites deleted successfully";
+        if (dto.getPaymentOption() == null || dto.getPaymentOption().getId() == null || dto.getPaymentOption().getId().isBlank()) {
+            throw new VacademyException("paymentOption.id is required in packageSessionToPaymentOptions.");
+        }
+    }
+
+    private void validateAndSaveReferralOption(
+            List<PackageSessionLearnerInvitationToPaymentOption> savedMappings,
+            List<PackageSessionToPaymentOptionDTO> originalDTOs) {
+
+        if (CollectionUtils.isEmpty(savedMappings) || CollectionUtils.isEmpty(originalDTOs) || savedMappings.size() != originalDTOs.size()) {
+            return;
+        }
+
+        List<PackageSessionEnrollInvitePaymentOptionPlanToReferralOption> referralsToSave = new ArrayList<>();
+
+        for (int i = 0; i < originalDTOs.size(); i++) {
+            PackageSessionToPaymentOptionDTO dto = originalDTOs.get(i);
+            PackageSessionLearnerInvitationToPaymentOption persistedParent = savedMappings.get(i);
+
+            if (Objects.isNull(dto.getPaymentOption()) || CollectionUtils.isEmpty(dto.getPaymentOption().getPaymentPlans())) {
+                continue;
+            }
+
+            for (PaymentPlanDTO planDTO : dto.getPaymentOption().getPaymentPlans()) {
+                if (Objects.nonNull(planDTO.getReferralOption()) && StringUtils.hasText(planDTO.getReferralOption().getId())) {
+                    Optional<PaymentPlan> optionalPlan = paymentPlanService.findById(planDTO.getId());
+                    Optional<ReferralOption> optionalReferral = referralOptionService.getReferralOption(planDTO.getReferralOption().getId());
+
+                    if (optionalPlan.isPresent() && optionalReferral.isPresent()) {
+                        PackageSessionEnrollInvitePaymentOptionPlanToReferralOption childEntity =
+                                new PackageSessionEnrollInvitePaymentOptionPlanToReferralOption(
+                                        persistedParent,
+                                        optionalReferral.get(),
+                                        optionalPlan.get(),
+                                        StatusEnum.ACTIVE.name()
+                                );
+                        referralsToSave.add(childEntity);
+                    }
+                }
+            }
+        }
+
+        if (!referralsToSave.isEmpty()) {
+            packageSessionEnrollInvitePaymentOptionPlanToReferralOptionService.saveInBulk(referralsToSave);
+        }
     }
 }

@@ -731,8 +731,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
         ARRAY_REMOVE(
             ARRAY_AGG(DISTINCT
                 CASE
-                    WHEN fspm.subject_id IS NULL AND
-                         (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true OR fspm.status IN (:facultySubjectSessionStatus))
+                    WHEN (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true OR fspm.status IN (:facultySubjectSessionStatus))
                     THEN fspm.user_id
                     ELSE NULL
                 END
@@ -819,8 +818,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             EXISTS (
                 SELECT 1 FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
                 WHERE LOWER(tag) LIKE LOWER(CONCAT('%', :name, '%'))
-            ) OR
-            LOWER(COALESCE(fspm.name, '')) LIKE LOWER(CONCAT('%', :name, '%'))
+            )
         )
     GROUP BY
         p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
@@ -865,10 +863,9 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             EXISTS (
                 SELECT 1 FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
                 WHERE LOWER(tag) LIKE LOWER(CONCAT('%', :name, '%'))
-            ) OR
-            LOWER(COALESCE(fspm.name, '')) LIKE LOWER(CONCAT('%', :name, '%'))
+            )
         )
-""",
+    """,
             nativeQuery = true)
     Page<PackageDetailProjection> getCatalogPackageDetail(
             @Param("name") String name,
@@ -887,6 +884,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
 
             Pageable pageable
     );
+
 
 
     @Query(value = """
@@ -963,7 +961,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("ratingStatuses") List<String> ratingStatuses
     );
 
-    @Query(value = """
+    @Query(value = """ 
     SELECT
         p.id AS id,
         p.package_name AS packageName,
@@ -1003,9 +1001,8 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
         ARRAY_REMOVE(
             ARRAY_AGG(DISTINCT 
                 CASE 
-                    WHEN fspm.subject_id IS NULL AND 
-                         (:#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true 
-                          OR fspm.status IN (:facultyPackageSessionStatus)) 
+                    WHEN (:#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true 
+                          OR fspm.status IN (:facultyPackageSessionStatus))
                     THEN fspm.user_id 
                     ELSE NULL 
                 END
@@ -1026,7 +1023,6 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
 
     LEFT JOIN faculty_subject_package_session_mapping fspm
         ON fspm.package_session_id = ps.id
-        AND fspm.subject_id IS NULL
         AND (
             :#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true
             OR fspm.status IN (:facultyPackageSessionStatus)
@@ -1114,7 +1110,6 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
     JOIN package_institute pi ON pi.package_id = p.id
     LEFT JOIN faculty_subject_package_session_mapping fspm
         ON fspm.package_session_id = ps.id
-        AND fspm.subject_id IS NULL
         AND (
             :#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true
             OR fspm.status IN (:facultyPackageSessionStatus)
@@ -1156,14 +1151,13 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("tags") List<String> tags,
             @Param("levelStatus") List<String> levelStatus,
             @Param("ratingStatuses") List<String> ratingStatuses,
-
             @Param("assignmentQuestionStatusList") List<String> assignmentQuestionStatusList,
             @Param("questionStatusList") List<String> questionStatusList,
             @Param("slideStatusList") List<String> slideStatusList,
             @Param("chapterPackageStatusList") List<String> chapterPackageStatusList,
-
             Pageable pageable
     );
+
 
 
     @Query(value = """

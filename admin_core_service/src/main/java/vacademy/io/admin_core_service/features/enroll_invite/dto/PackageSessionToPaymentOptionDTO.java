@@ -11,5 +11,6 @@ import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentOpti
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class PackageSessionToPaymentOptionDTO {
     private String packageSessionId;
+    private String id;
     private PaymentOptionDTO paymentOption;
 }

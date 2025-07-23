@@ -3,69 +3,62 @@ package vacademy.io.admin_core_service.features.enroll_invite.service;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
-import vacademy.io.admin_core_service.features.enroll_invite.dto.EnrollInviteDTO;
-import vacademy.io.admin_core_service.features.enroll_invite.dto.PackageSessionToPaymentOptionDTO;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionLearnerInvitationToPaymentOption;
 import vacademy.io.admin_core_service.features.enroll_invite.repository.PackageSessionLearnerInvitationToPaymentOptionRepository;
 
+import java.util.Collections;
 import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
+import java.util.Optional;
 
 @Service
 public class PackageSessionEnrollInviteToPaymentOptionService {
 
     @Autowired
-    private PackageSessionLearnerInvitationToPaymentOptionRepository packageSessionLearnerInvitationToPaymentOptionRepository;
+    private PackageSessionLearnerInvitationToPaymentOptionRepository repository;
 
-    public PackageSessionLearnerInvitationToPaymentOption create(PackageSessionLearnerInvitationToPaymentOption packageSessionEnrollInviteToPaymentOption) {
-        return packageSessionLearnerInvitationToPaymentOptionRepository.save(packageSessionEnrollInviteToPaymentOption);
+    /**
+     * ADD THIS METHOD BACK
+     * Creates and saves a single mapping entity.
+     * @param mapping The entity to save.
+     * @return The saved entity.
+     */
+    public PackageSessionLearnerInvitationToPaymentOption create(PackageSessionLearnerInvitationToPaymentOption mapping) {
+        if (mapping == null) return null;
+        return repository.save(mapping);
     }
 
-    public void createPackageSessionLearnerInvitationToPaymentOptions(List<PackageSessionLearnerInvitationToPaymentOption> packageSessionEnrollInviteToPaymentOptions) {
-        packageSessionLearnerInvitationToPaymentOptionRepository.saveAll(packageSessionEnrollInviteToPaymentOptions);
+    public void createPackageSessionLearnerInvitationToPaymentOptions(List<PackageSessionLearnerInvitationToPaymentOption> mappings) {
+        if (mappings == null || mappings.isEmpty()) return;
+        repository.saveAll(mappings);
     }
 
-    public List<PackageSessionToPaymentOptionDTO>findByInvite(EnrollInvite enrollInvite) {
-        List<PackageSessionLearnerInvitationToPaymentOption> packageSessionEnrollInviteToPaymentOptions = packageSessionLearnerInvitationToPaymentOptionRepository.findByEnrollInviteAndStatusIn(enrollInvite,List.of(StatusEnum.ACTIVE.name()));
-        return packageSessionEnrollInviteToPaymentOptions.stream().map((packageSessionEnrollInviteToPaymentOption) -> packageSessionEnrollInviteToPaymentOption.mapToPackageSessionToPaymentOptionDTO()).toList();
+    public List<PackageSessionLearnerInvitationToPaymentOption> findByInvite(EnrollInvite enrollInvite) {
+        if (enrollInvite == null) return Collections.emptyList();
+
+        return Optional.ofNullable(repository.findByEnrollInviteAndStatusIn(enrollInvite, List.of(StatusEnum.ACTIVE.name())))
+                .orElse(Collections.emptyList());
     }
 
-    public List<EnrollInviteDTO>findByPaymentOptionId(List<String> paymentOptionIds) {
-        List<PackageSessionLearnerInvitationToPaymentOption>packageSessionLearnerInvitationToPaymentOptions = packageSessionLearnerInvitationToPaymentOptionRepository.findByCriteria(paymentOptionIds,List.of(StatusEnum.ACTIVE.name()),List.of(StatusEnum.ACTIVE.name()));
-        Map<EnrollInvite, List<PackageSessionToPaymentOptionDTO>> groupedByEnrollInvite = packageSessionLearnerInvitationToPaymentOptions.stream()
-                .collect(Collectors.groupingBy(
-                        PackageSessionLearnerInvitationToPaymentOption::getEnrollInvite, // Group by the EnrollInvite object
-                        Collectors.mapping(
-                                p -> p.mapToPackageSessionToPaymentOptionDTO(), // Map each element in the group to its DTO
-                                Collectors.toList() // Collect the mapped DTOs into a list
-                        )
-                ));
+    public List<PackageSessionLearnerInvitationToPaymentOption> findByPaymentOptionIds(List<String> paymentOptionIds) {
+        if (paymentOptionIds == null || paymentOptionIds.isEmpty()) return Collections.emptyList();
 
-        // Step 3: Transform the grouped map into the final list of EnrollInviteDTOs.
-        return groupedByEnrollInvite.entrySet().stream()
-                .map(entry -> {
-                    EnrollInvite enrollInviteEntity = entry.getKey();
-                    List<PackageSessionToPaymentOptionDTO> paymentOptionDTOs = entry.getValue();
-
-                    // Map the parent entity to its DTO
-                    EnrollInviteDTO enrollInviteDTO = enrollInviteEntity.toEnrollInviteDTO();
-
-                    // Set the grouped list of child DTOs
-                    enrollInviteDTO.setPackageSessionToPaymentOptions(paymentOptionDTOs);
-
-                    return enrollInviteDTO;
-                })
-                .collect(Collectors.toList());
+        return Optional.ofNullable(repository.findByCriteria(paymentOptionIds, List.of(StatusEnum.ACTIVE.name()), List.of(StatusEnum.ACTIVE.name())))
+                .orElse(Collections.emptyList());
     }
 
-    public String deleteByEnrollInviteIds(List<String> enrollInviteIds) {
-        List<PackageSessionLearnerInvitationToPaymentOption> packageSessionLearnerInvitationToPaymentOptions = packageSessionLearnerInvitationToPaymentOptionRepository.findByEnrollInvite_IdInAndStatusIn(enrollInviteIds,List.of(StatusEnum.ACTIVE.name()));
-        for (PackageSessionLearnerInvitationToPaymentOption packageSessionLearnerInvitationToPaymentOption : packageSessionLearnerInvitationToPaymentOptions) {
-            packageSessionLearnerInvitationToPaymentOption.setStatus(StatusEnum.DELETED.name());
+    public void deleteByEnrollInviteIds(List<String> enrollInviteIds) {
+        if (enrollInviteIds == null || enrollInviteIds.isEmpty()) return;
+
+        List<PackageSessionLearnerInvitationToPaymentOption> mappings =
+                Optional.ofNullable(repository.findByEnrollInvite_IdInAndStatusIn(enrollInviteIds, List.of(StatusEnum.ACTIVE.name())))
+                        .orElse(Collections.emptyList());
+
+        for (PackageSessionLearnerInvitationToPaymentOption mapping : mappings) {
+            if (mapping != null) {
+                mapping.setStatus(StatusEnum.DELETED.name());
+            }
         }
-        packageSessionLearnerInvitationToPaymentOptionRepository.saveAll(packageSessionLearnerInvitationToPaymentOptions);
-        return "Enroll invites deleted successfully";
+        repository.saveAll(mappings);
     }
 }

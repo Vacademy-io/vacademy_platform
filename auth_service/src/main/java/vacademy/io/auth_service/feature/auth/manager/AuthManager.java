@@ -119,13 +119,10 @@ public class AuthManager {
 
             userRoleSet.add(userRole);
         });
-
         User newUser = authService.createUser(registerRequest, userRoleSet);
-
         oAuth2VendorToUserDetailService.verifyEmail(registerRequest.getSubjectId(),registerRequest.getVendorId(),registerRequest.getEmail());
-
         // Generate a refresh token
-        RefreshToken refreshToken = refreshTokenService.createRefreshToken(userName, "VACADEMY-WEB");
+        RefreshToken refreshToken = refreshTokenService.createRefreshToken(newUser.getUsername(), "VACADEMY-WEB");
 
         sendWelcomeMailToUser(newUser);
 

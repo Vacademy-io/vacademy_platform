@@ -6,23 +6,38 @@ import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionEnrollInvitePaymentOptionPlanToReferralOption;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionLearnerInvitationToPaymentOption;
 import vacademy.io.admin_core_service.features.enroll_invite.repository.PackageSessionEnrollInvitePaymentOptionPlanToReferralOptionRepository;
+import vacademy.io.admin_core_service.features.user_subscription.dto.ReferralOptionDTO;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
 import vacademy.io.admin_core_service.features.user_subscription.entity.ReferralOption;
 
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class PackageSessionEnrollInvitePaymentOptionPlanToReferralOptionService {
 
     @Autowired
-    private PackageSessionEnrollInvitePaymentOptionPlanToReferralOptionRepository packageSessionEnrollInvitePaymentOptionPlanToReferralOptionRepository;
+    private PackageSessionEnrollInvitePaymentOptionPlanToReferralOptionRepository repository;
 
-    public void createAndSaveMapping(PackageSessionLearnerInvitationToPaymentOption packageSessionLearnerInvitationToPaymentOption, PaymentPlan paymentPlan, ReferralOption referralOption) {
-        PackageSessionEnrollInvitePaymentOptionPlanToReferralOption packageSessionEnrollInvitePaymentOptionPlanToReferralOption = new PackageSessionEnrollInvitePaymentOptionPlanToReferralOption(packageSessionLearnerInvitationToPaymentOption,referralOption,paymentPlan, StatusEnum.ACTIVE.name());
-        packageSessionEnrollInvitePaymentOptionPlanToReferralOptionRepository.save(packageSessionEnrollInvitePaymentOptionPlanToReferralOption);
+    public void saveInBulk(List<PackageSessionEnrollInvitePaymentOptionPlanToReferralOption> mappings) {
+        repository.saveAll(mappings);
     }
 
-    public void saveInBulk(List<PackageSessionEnrollInvitePaymentOptionPlanToReferralOption> packageSessionEnrollInvitePaymentOptionPlanToReferralOptions) {
-        packageSessionEnrollInvitePaymentOptionPlanToReferralOptionRepository.saveAll(packageSessionEnrollInvitePaymentOptionPlanToReferralOptions);
+    public List<PackageSessionEnrollInvitePaymentOptionPlanToReferralOption> findByReferralOptionIds(List<String> referralOptionIds) {
+        return repository.findByReferralOptionIds(
+                referralOptionIds,
+                List.of(StatusEnum.ACTIVE.name()),
+                List.of(StatusEnum.ACTIVE.name()),
+                List.of(StatusEnum.ACTIVE.name())
+        );
+    }
+
+    public Optional<ReferralOptionDTO> getReferralOptionsByPackageSessionLearnerInvitationToPaymentOptionAndPaymentPlan(
+            PackageSessionLearnerInvitationToPaymentOption mapping,
+            PaymentPlan paymentPlan) {
+
+        return repository.findByPackageSessionLearnerInvitationToPaymentOptionAndPaymentPlanAndStatusIn(
+                        mapping, paymentPlan, List.of(StatusEnum.ACTIVE.name()))
+                .map(result -> result.getReferralOption().toReferralOptionDTO());
     }
 }

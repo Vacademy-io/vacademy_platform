@@ -204,6 +204,8 @@ export const SlideMaterial = () => {
               text?: { id?: string; type?: string; content?: string };
               options?: Array<{ id?: string; text?: { content?: string } }>;
               question_type?: string;
+              auto_evaluation_json?: string;
+              explanation_text?: { id?: string; type?: string; content?: string };
             };
             return {
               id: question.id,
@@ -218,7 +220,9 @@ export const SlideMaterial = () => {
                 : [
                     // If no options, provide a default for numeric/text input
                     { id: "input", text: { content: "(Enter your answer)" } }
-                  ]
+                  ],
+              auto_evaluation_json: question.auto_evaluation_json,
+              explanation_text: question.explanation_text,
             };
           });
 

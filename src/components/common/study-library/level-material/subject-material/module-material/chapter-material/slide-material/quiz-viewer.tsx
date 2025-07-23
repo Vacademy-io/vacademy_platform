@@ -16,7 +16,21 @@ interface Option {
 
 interface Question {
   id: string;
-  text_data: { content: string };
+  parent_rich_text?: { 
+    id?: string;
+    type?: string;
+    content?: string;
+  }; // Passage for comprehension questions
+  text?: { 
+    id?: string;
+    type?: string;
+    content?: string;
+  } | string; // Question text (always present)
+  text_data?: { 
+    id?: string;
+    type?: string;
+    content?: string;
+  }; // Alternative field name for question text
   options: Option[];
   question_type?: string;
 }
@@ -36,6 +50,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({ questions, onAnswer, onC
   const [answers, setAnswers] = useState<{ [questionId: string]: string | number | string[] }>({});
   const [numericErrors, setNumericErrors] = useState<{ [questionId: string]: string }>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showFullPassage, setShowFullPassage] = useState(false); // <-- NEW
 
   const submitQuizMutation = useSubmitQuizSlideActivityLog();
 
@@ -104,6 +119,8 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({ questions, onAnswer, onC
   const currentQuestion = questions[current];
   const total = questions.length;
   const questionType = currentQuestion.question_type || "MCQS";
+
+
 
   const handleOptionSelect = (optionId: string) => {
     setAnswers((prev) => ({ ...prev, [currentQuestion.id]: optionId }));
@@ -186,12 +203,55 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({ questions, onAnswer, onC
   // Progress bar width
   const progress = ((current + 1) / total) * 100;
 
+  // Check if question has a passage (comprehension question)
+  const hasPassage = currentQuestion.parent_rich_text?.content && currentQuestion.parent_rich_text.content.trim() !== "";
+  console.log("Has passage:", hasPassage, "Passage content:", currentQuestion.parent_rich_text?.content);
+
+  // Helper function to safely get question text content
+  const getQuestionText = () => {
+    // Try different possible field names for question text
+    if (currentQuestion.text && typeof currentQuestion.text === 'object' && currentQuestion.text.content) {
+      return currentQuestion.text.content;
+    }
+    if (currentQuestion.text_data?.content) {
+      return currentQuestion.text_data.content;
+    }
+    if (typeof currentQuestion.text === 'string') {
+      return currentQuestion.text;
+    }
+    return "";
+  };
+
+  // Helper function to safely get passage content
+  const getPassageText = () => {
+    if (currentQuestion.parent_rich_text?.content) {
+      return currentQuestion.parent_rich_text.content;
+    }
+    return "";
+  };
+
+  // Helper to get plain text from HTML
+  const getPlainText = (html: string) => {
+    const div = document.createElement("div");
+    div.innerHTML = html;
+    return div.textContent || div.innerText || "";
+  };
+
+  // Passage logic
+  const passageHtml = getPassageText();
+  const passagePlain = getPlainText(passageHtml);
+  const PASSAGE_LIMIT = 200;
+  const isPassageLong = passagePlain.length > PASSAGE_LIMIT;
+  const passageToShow = showFullPassage || !isPassageLong
+    ? passageHtml
+    : getPlainText(passageHtml).slice(0, PASSAGE_LIMIT) + "...";
+
   // Render input based on question type
   const renderInput = () => {
     const currentAnswer = answers[currentQuestion.id];
 
     switch (questionType) {
-            case "CNUMERIC":
+      case "CNUMERIC":
       case "NUMERIC":
         return (
           <div className="space-y-3 sm:space-y-4 mt-4">
@@ -246,6 +306,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({ questions, onAnswer, onC
           </div>
         );
 
+      case "CMCQM":
       case "MCQM":
         return (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mt-4">
@@ -282,6 +343,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({ questions, onAnswer, onC
             })}
           </div>
         );
+      case "CMCQS":
       case "MCQS":
       case "TRUE_FALSE":
       default:
@@ -338,6 +400,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({ questions, onAnswer, onC
       case "CNUMERIC":
       case "NUMERIC":
         return typeof currentAnswer === "number" && currentAnswer !== 0;
+      case "CMCQM":
       case "MCQM":
       case "MULTIPLE_CHOICE":
         return Array.isArray(currentAnswer) && currentAnswer.length > 0;
@@ -365,13 +428,45 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({ questions, onAnswer, onC
         </div>
       </div>
 
-
       {/* Question Content */}
       <div className="mb-8">
-        <div 
-          className="text-sm font-medium text-gray-900 mb-6 leading-relaxed"
-          dangerouslySetInnerHTML={{ __html: currentQuestion.text_data.content }}
-        />
+        {/* Render passage and question together if passage exists */}
+        {hasPassage ? (
+          <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <h3 className="text-sm font-semibold text-gray-700 mb-2">Passage:</h3>
+            <div 
+              className="text-sm text-gray-800 leading-relaxed"
+              dangerouslySetInnerHTML={{ __html: showFullPassage || !isPassageLong ? passageHtml : passageToShow }}
+            />
+            {isPassageLong && (
+              <button
+                className="mt-2 text-primary-600 hover:underline text-xs font-medium focus:outline-none"
+                onClick={() => setShowFullPassage((prev) => !prev)}
+                type="button"
+              >
+                {showFullPassage ? "Show less" : "Show more"}
+              </button>
+            )}
+            {/* Question text inside the same box */}
+            <div className="mt-4">
+              <h3 className="text-sm font-semibold text-gray-700 mb-2">Question:</h3>
+              <div 
+                className="text-sm font-medium text-gray-900 leading-relaxed"
+                dangerouslySetInnerHTML={{ __html: getQuestionText() || "Question text not available" }}
+              />
+            </div>
+          </div>
+        ) : (
+          // No passage, just show question text as before
+          <div className="mb-6">
+            <h3 className="text-sm font-semibold text-gray-700 mb-2">Question:</h3>
+            <div 
+              className="text-sm font-medium text-gray-900 leading-relaxed"
+              dangerouslySetInnerHTML={{ __html: getQuestionText() || "Question text not available" }}
+            />
+          </div>
+        )}
+
         {renderInput()}
       </div>
 

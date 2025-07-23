@@ -75,6 +75,10 @@ public class LearnerInstituteManager {
         if (!packageSessions.isEmpty()) {
             instituteInfoDTO.setSubjects(subjectRepository.findDistinctSubjectsOfPackageSessions(packageSessions.stream().map(PackageSession::getId).toList()).stream().map(SubjectDTO::new).toList());
         }
+        if (institute.get().getSetting() != null) {
+            instituteInfoDTO.setInstituteSettingsJson(institute.get().getSetting());
+        }
+
         return instituteInfoDTO;
     }
 

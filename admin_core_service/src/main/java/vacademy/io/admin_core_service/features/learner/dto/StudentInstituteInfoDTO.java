@@ -31,4 +31,5 @@ public class StudentInstituteInfoDTO {
     private List<InstituteSubModuleDTO> subModules;
     private List<PackageSessionDTO> batchesForSessions;
     private List<SubjectDTO> subjects;
+    private String instituteSettingsJson;
 }

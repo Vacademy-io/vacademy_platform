@@ -6,6 +6,8 @@ import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { getPublicUrl } from "@/services/upload_file";
 import { Session } from "@/types/user/user-detail";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { getTerminology } from "../../layout-container/sidebar/utils";
 
 const SessionSelectionPage = () => {
   const [sessionList, setSessionList] = useState<Session[]>([]);
@@ -13,6 +15,7 @@ const SessionSelectionPage = () => {
   const [submitting, setSubmitting] = useState(false);
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
   const navigate = useNavigate();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { redirect } = useSearch<any>({ from: "/SessionSelectionPage/" });
   const didRun = useRef(false);
 
@@ -24,7 +27,9 @@ const SessionSelectionPage = () => {
       console.log("🚀 useEffect[checkAndFetch] running...");
 
       try {
-        const selectedInstitute = await Preferences.get({ key: "selectedInstituteId" });
+        const selectedInstitute = await Preferences.get({
+          key: "selectedInstituteId",
+        });
         const studentData = await Preferences.get({ key: "students" });
 
         console.log("📌 selectedInstituteId:", selectedInstitute.value);
@@ -50,7 +55,9 @@ const SessionSelectionPage = () => {
         if (!Array.isArray(parsed) || parsed.length === 0) {
           console.warn("⚠️ Parsed session list is empty or invalid.");
         } else {
-          console.log(`✅ Parsed ${parsed.length} session(s) from Preferences.`);
+          console.log(
+            `✅ Parsed ${parsed.length} session(s) from Preferences.`
+          );
         }
 
         setSessionList(parsed);
@@ -67,7 +74,10 @@ const SessionSelectionPage = () => {
   }, []);
 
   useEffect(() => {
-    console.log("🧠 useEffect[sessionList] triggered. Length:", sessionList.length);
+    console.log(
+      "🧠 useEffect[sessionList] triggered. Length:",
+      sessionList.length
+    );
 
     if (sessionList.length === 1) {
       console.log("✅ Only one session. Auto-selecting:", sessionList[0]);
@@ -84,7 +94,9 @@ const SessionSelectionPage = () => {
 
     for (const session of sessionList) {
       const thumbnailId = session.package_dto?.thumbnail_file_id;
-      console.log(`ℹ️ Processing session [${session.id}] with thumbnail ID: ${thumbnailId}`);
+      console.log(
+        `ℹ️ Processing session [${session.id}] with thumbnail ID: ${thumbnailId}`
+      );
 
       if (thumbnailId) {
         try {
@@ -92,7 +104,10 @@ const SessionSelectionPage = () => {
           urls[session.id] = url;
           console.log(`✅ Image URL for ${session.id}: ${url}`);
         } catch (error) {
-          console.error(`❌ Error fetching image for session ${session.id}:`, error);
+          console.error(
+            `❌ Error fetching image for session ${session.id}:`,
+            error
+          );
         }
       } else {
         console.warn(`⚠️ No thumbnail_file_id found for session ${session.id}`);
@@ -117,6 +132,7 @@ const SessionSelectionPage = () => {
 
       const studentList = JSON.parse(studentData.value);
       const selectedStudent = studentList.find(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (student: any) => student.package_session_id === selectedSession.id
       );
 
@@ -144,7 +160,12 @@ const SessionSelectionPage = () => {
   };
 
   if (loading || submitting) {
-    console.log("⏳ Showing loader. Loading:", loading, "Submitting:", submitting);
+    console.log(
+      "⏳ Showing loader. Loading:",
+      loading,
+      "Submitting:",
+      submitting
+    );
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-white z-50">
         <DashboardLoader />
@@ -152,7 +173,10 @@ const SessionSelectionPage = () => {
     );
   }
 
-  console.log("🎉 Rendering session selection UI. Session count:", sessionList.length);
+  console.log(
+    "🎉 Rendering session selection UI. Session count:",
+    sessionList.length
+  );
 
   return (
     <div className="min-h-screen w-full bg-gradient-to-br from-emerald-50 via-white to-teal-50 p-4">
@@ -165,11 +189,20 @@ const SessionSelectionPage = () => {
               stroke="currentColor"
               viewBox="0 0 24 24"
             >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13..." />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 6.253v13..."
+              />
             </svg>
           </div>
-          <h1 className="text-3xl font-bold text-gray-900">Choose Your Course</h1>
-          <p className="text-gray-600">Select a course to begin your learning journey</p>
+          <h1 className="text-3xl font-bold text-gray-900">
+            Choose Your Course
+          </h1>
+          <p className="text-gray-600">
+            Select a course to begin your learning journey
+          </p>
         </div>
 
         {sessionList.length === 0 ? (
@@ -182,12 +215,25 @@ const SessionSelectionPage = () => {
                   stroke="currentColor"
                   viewBox="0 0 24 24"
                 >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13..." />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 6.253v13..."
+                  />
                 </svg>
               </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">No Courses Available</h3>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                No {getTerminology(ContentTerms.Course, SystemTerms.Course)}s
+                Available
+              </h3>
               <p className="text-gray-600">
-                You are not currently enrolled in any courses. Please contact your administrator.
+                You are not currently enrolled in any{" "}
+                {getTerminology(
+                  ContentTerms.Course,
+                  SystemTerms.Course
+                ).toLowerCase()}
+                s. Please contact your administrator.
               </p>
             </div>
           </div>
@@ -216,7 +262,12 @@ const SessionSelectionPage = () => {
                             stroke="currentColor"
                             viewBox="0 0 24 24"
                           >
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13..." />
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M12 6.253v13..."
+                            />
                           </svg>
                         </div>
                       )}
@@ -231,7 +282,9 @@ const SessionSelectionPage = () => {
                     <CardContent className="space-y-2 text-sm text-gray-600">
                       <div className="flex items-center space-x-1">
                         <span className="font-medium">Session:</span>
-                        <span className="truncate">{session.session.session_name}</span>
+                        <span className="truncate">
+                          {session.session.session_name}
+                        </span>
                       </div>
                       <div className="flex items-center space-x-1">
                         <span className="font-medium">Level:</span>
@@ -239,7 +292,9 @@ const SessionSelectionPage = () => {
                       </div>
                       <div className="flex items-center space-x-1">
                         <span className="font-medium">Start:</span>
-                        <span>{new Date(session.start_time).toLocaleDateString()}</span>
+                        <span>
+                          {new Date(session.start_time).toLocaleDateString()}
+                        </span>
                       </div>
                       <div className="pt-1">
                         <div className="flex justify-between text-xs text-gray-500 mb-1">

@@ -75,6 +75,7 @@ export const getRatingDetails = async ({
         source_type: string;
     };
 }) => {
+    if (data.source_id === "") return null;
     const response = await axios({
         method: "POST",
         url: GET_ALL_USER_RATINGS,
@@ -108,6 +109,7 @@ export const handleGetRatingDetails = ({
 };
 
 export const handleGetOverallRating = async (source_id: string) => {
+    if (!source_id) return null;
     const response = await axios({
         method: "GET",
         url: GET_ALL_RATING_SUMMARY,

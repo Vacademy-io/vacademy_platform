@@ -66,17 +66,43 @@ const tryGetPublicUrl = async (
     }
 };
 
+function isJson(str: string): boolean {
+    try {
+        const parsed = JSON.parse(str);
+        return typeof parsed === "object" && parsed !== null;
+    } catch {
+        return false;
+    }
+}
+
 export const transformApiDataToCourseData = async (
     apiData: CourseWithSessionsType
 ) => {
     if (!apiData) return null;
     try {
-        const [coursePreviewImageMediaId, courseBannerMediaId, courseMediaId] =
+        const courseMediaImage = isJson(apiData.course.course_media_id)
+            ? JSON.parse(apiData.course.course_media_id)
+            : apiData.course.course_media_id;
+
+        const [coursePreviewImageMediaId, courseBannerMediaId] =
             await Promise.all([
                 tryGetPublicUrl(apiData.course.course_preview_image_media_id),
                 tryGetPublicUrl(apiData.course.course_banner_media_id),
-                tryGetPublicUrl(apiData.course.course_media_id),
             ]);
+
+        let courseMediaPreview = "";
+        if (
+            isJson(apiData.course.course_media_id) &&
+            courseMediaImage.type === "youtube"
+        ) {
+            courseMediaPreview = courseMediaImage.id;
+        } else {
+            courseMediaPreview = await getPublicUrl(
+                isJson(apiData.course.course_media_id)
+                    ? courseMediaImage.id
+                    : apiData.course.course_media_id
+            );
+        }
 
         return {
             id: apiData.course.id,
@@ -96,7 +122,7 @@ export const transformApiDataToCourseData = async (
                 apiData.course.is_course_published_to_catalaouge,
             coursePreviewImageMediaId,
             courseBannerMediaId,
-            courseMediaId,
+            courseMediaId: courseMediaPreview,
             courseHtmlDescription: apiData.course.course_html_description,
             instructors: [], // This should be populated from your API if available
             sessions: apiData.sessions.map((session) => ({

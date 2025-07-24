@@ -32,6 +32,7 @@ export const getAllCourseDetailsData = async ({
 }: {
     instituteId: string;
 }) => {
+    if (!instituteId) return null;
     const response = await axios({
         method: "GET",
         url: GET_ALL_COURSE_DETAILS,

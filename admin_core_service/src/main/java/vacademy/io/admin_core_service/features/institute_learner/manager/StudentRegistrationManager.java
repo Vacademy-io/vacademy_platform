@@ -138,6 +138,9 @@ public class StudentRegistrationManager {
         if (userDTO.getDateOfBirth() != null) {
             student.setDateOfBirth(userDTO.getDateOfBirth());
         }
+        if (userDTO.getRegion() != null) {
+            student.setRegion(userDTO.getRegion());
+        }
 
         if (studentExtraDetails != null) {
             if (studentExtraDetails.getFathersName() != null) {

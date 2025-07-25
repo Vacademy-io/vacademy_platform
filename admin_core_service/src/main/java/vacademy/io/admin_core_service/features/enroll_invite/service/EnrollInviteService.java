@@ -34,6 +34,7 @@ import vacademy.io.common.core.standard_classes.ListService;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.session.PackageSession;
 
+import java.security.SecureRandom;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -54,6 +55,7 @@ public class EnrollInviteService {
         if (enrollInviteDTO == null) {
             throw new VacademyException("EnrollInvite payload cannot be null.");
         }
+        enrollInviteDTO.setInviteCode(getInviteCode());
         List<PackageSessionToPaymentOptionDTO> mappingDTOs = enrollInviteDTO.getPackageSessionToPaymentOptions();
         if (CollectionUtils.isEmpty(mappingDTOs)) {
             throw new VacademyException("Package session to payment options cannot be empty.");
@@ -421,4 +423,20 @@ public class EnrollInviteService {
         );
     }
 
+    public EnrollInvite findById(String id) {
+        return repository.findById(id).orElseThrow(()->new VacademyException("EnrollInvite not found"));
+    }
+
+    private static String getInviteCode() {
+        String chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+        SecureRandom random = new SecureRandom();
+        StringBuilder sb = new StringBuilder(6);
+
+        for (int i = 0; i < 6; i++) {
+            int index = random.nextInt(chars.length());
+            sb.append(chars.charAt(index));
+        }
+
+        return sb.toString();
+    }
 }

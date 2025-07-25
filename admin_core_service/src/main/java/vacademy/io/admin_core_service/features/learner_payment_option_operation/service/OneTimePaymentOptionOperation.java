@@ -1,0 +1,18 @@
+package vacademy.io.admin_core_service.features.learner_payment_option_operation.service;
+
+import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
+import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
+import vacademy.io.common.auth.dto.learner.LearnerEnrollResponseDTO;
+import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
+import vacademy.io.common.auth.dto.UserDTO;
+
+import java.util.Map;
+
+@Service
+public class OneTimePaymentOptionOperation implements PaymentOptionOperationStrategy {
+    @Override
+    public LearnerEnrollResponseDTO enrollLearnerToBatch(UserDTO userDTO, LearnerPackageSessionsEnrollDTO learnerPackageSessionsEnrollDTO, String instituteId, EnrollInvite enrollInvite, PaymentOption paymentOption, Map<String, Object> gatewaySpecificRequest) {
+        return null;
+    }
+}

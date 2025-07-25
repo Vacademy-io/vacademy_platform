@@ -22,6 +22,7 @@ public class EnrollInviteDTO {
     private String vendorId;
     private String currency;
     private String tag;
+    private Integer learnerAccessDays;
     private String webPageMetaDataJson;
     private List<InstituteCustomFieldDTO> instituteCustomFields;
     private List<PackageSessionToPaymentOptionDTO> packageSessionToPaymentOptions;

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { StarIcon } from "lucide-react";
 import { useRouter } from "@tanstack/react-router";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
+import { toTitleCase } from "@/lib/utils";
 interface Instructor {
     id: string;
     full_name: string;
@@ -90,7 +91,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
                 <div className="w-full h-48 bg-gray-200 flex items-center justify-center relative">
                     <img
                         src={courseImageUrl}
-                        alt={package_name}
+                        alt={toTitleCase(package_name)}
                         loading="lazy"
                         className={`w-full h-full object-cover transition-opacity duration-300 ${
                             loadingImage ? "opacity-0" : "opacity-100"
@@ -103,14 +104,14 @@ const CourseCard: React.FC<CourseCardProps> = ({
                 <div className="flex justify-between items-start mb-2">
                     <h3
                         className="text-lg font-semibold text-gray-800 truncate"
-                        title={package_name}
+                        title={toTitleCase(package_name)}
                     >
-                        {package_name}
+                        {toTitleCase(package_name)}
                     </h3>
                     <span
                         className={`text-sm font-semibold px-2 py-1 rounded-sm ${getLevelColor()}`}
                     >
-                        {level_name}
+                        {toTitleCase(level_name)}
                     </span>
                 </div>
 

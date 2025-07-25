@@ -5,6 +5,7 @@ import { useRouter } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { ModuleDefaultImage } from "@/assets/svgs";
 import { CompletionStatusComponent } from "@/components/common/completion-status-component";
+import { toTitleCase } from "@/lib/utils";
 
 export const ModuleCard = ({ module }: { module: ModulesWithChapters}) => {
 
@@ -55,13 +56,13 @@ export const ModuleCard = ({ module }: { module: ModulesWithChapters}) => {
                 className={`flex w-[310px] xs:w-[340px] sm:w-full ${open ? "md-tablet:w-[270px]" : "md-tablet:w-[340px]"} h-full flex-col gap-4 rounded-lg border border-neutral-300 p-6`}
             >
                 <div className="flex items-center justify-between text-title font-semibold">
-                    <div>{module.module.module_name}</div>
+                    <div>{toTitleCase(module.module.module_name)}</div>
                 </div>
 
                 {imageUrl ? (
                     <img
                         src={imageUrl}
-                        alt={module.module.module_name}
+                        alt={toTitleCase(module.module.module_name)}
                         className="w-full rounded-lg object-contain h-[70%]"
                     />
                 ) : (

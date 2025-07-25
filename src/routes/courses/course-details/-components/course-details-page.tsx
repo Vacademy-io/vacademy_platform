@@ -9,6 +9,7 @@ import {
     PlayCircle,
     Question,
 } from "phosphor-react";
+import { toTitleCase } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
     Select,
@@ -266,7 +267,7 @@ export const CourseDetailsPage = () => {
         return sessions.map((session) => ({
             _id: session.sessionDetails.id,
             value: session.sessionDetails.id,
-            label: session.sessionDetails.session_name,
+            label: toTitleCase(session.sessionDetails.session_name),
         }));
     }, [form.watch("courseData.sessions")]);
 

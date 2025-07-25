@@ -12,6 +12,7 @@ import {
     BookOpen,
     GraduationCap,
 } from "phosphor-react";
+import { toTitleCase } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
     Select,
@@ -306,14 +307,14 @@ export const CourseDetailsPage = () => {
             return filteredSessions.map((session) => ({
                 _id: session.sessionDetails.id,
                 value: session.sessionDetails.id,
-                label: session.sessionDetails.session_name,
+                label: toTitleCase(session.sessionDetails.session_name),
             }));
         } else {
             // For ALL tab, show all sessions
             return sessions.map((session) => ({
                 _id: session.sessionDetails.id,
                 value: session.sessionDetails.id,
-                label: session.sessionDetails.session_name,
+                label: toTitleCase(session.sessionDetails.session_name),
             }));
         }
     }, [form.watch("courseData.sessions"), enrolledSessions, selectedTab]);
@@ -518,11 +519,7 @@ export const CourseDetailsPage = () => {
 
                                                     {/* Title */}
                                                     <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold mb-2 sm:mb-3 leading-tight">
-                                                        {
-                                                            form.getValues(
-                                                                "courseData"
-                                                            ).title
-                                                        }
+                                                        {toTitleCase(form.getValues("courseData").title)}
                                                     </h1>
 
                                                     {/* Description */}
@@ -606,11 +603,7 @@ export const CourseDetailsPage = () => {
 
                                                 {/* Title */}
                                                 <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-3 sm:mb-4 leading-tight">
-                                                    {
-                                                        form.getValues(
-                                                            "courseData"
-                                                        ).title
-                                                    }
+                                                    {toTitleCase(form.getValues("courseData").title)}
                                                 </h1>
 
                                                 {/* Description */}

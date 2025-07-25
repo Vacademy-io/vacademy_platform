@@ -5,6 +5,7 @@ import CourseCard from "./CourseCards.tsx";
 import { MyPagination } from "@/components/design-system/pagination.tsx";
 import { CoursePackageResponse } from "@/types/course-catalog/course-catalog-list.ts";
 import { Search, BookOpen, Grid } from "lucide-react";
+import { toTitleCase } from "@/lib/utils";
 
 interface CoursesPageProps {
     courseData: CoursePackageResponse;
@@ -187,12 +188,12 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                                             key={course.id || index}
                                             courseId={course.id}
                                             package_name={
-                                                course.package_name ||
-                                                "Untitled Package"
+                                                toTitleCase(course.package_name ||
+                                                "Untitled Package")
                                             }
                                             level_name={
-                                                course.level_name ||
-                                                "Beginner"
+                                                toTitleCase(course.level_name ||
+                                                "Beginner")
                                             }
                                             instructors={
                                                 course.instructors?.length > 0

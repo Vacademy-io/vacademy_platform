@@ -13,6 +13,8 @@ import SessionExpiry from "./sessionExpiery";
 import { User } from "lucide-react";
 import { useInstituteFeatureStore } from "@/stores/insititute-feature-store";
 import { HOLISTIC_INSTITUTE_ID } from "@/constants/urls";
+import { getTerminology } from "../layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 // import { SessionExpiry } from "./sessionExpiery";
 interface CourseDetails {
   packageName: string;
@@ -246,19 +248,25 @@ export default function ProfilePage() {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="flex justify-between">
-            <span className="text-xs text-gray-500">Course:</span>
+            <span className="text-xs text-gray-500">
+              {getTerminology(ContentTerms.Course, SystemTerms.Course)}:
+            </span>
             <span className="text-xs">
               {courseDetails?.packageName || "N/A"}
             </span>
           </div>
           <div className="flex justify-between">
-            <span className="text-xs text-gray-500">Session:</span>
+            <span className="text-xs text-gray-500">
+              {getTerminology(ContentTerms.Session, SystemTerms.Session)}:
+            </span>
             <span className="text-xs">
               {courseDetails?.sessionName || "N/A"}
             </span>
           </div>
           <div className="flex justify-between">
-            <span className="text-xs text-gray-500">Level:</span>
+            <span className="text-xs text-gray-500">
+              {getTerminology(ContentTerms.Level, SystemTerms.Level)}:
+            </span>
             <span className="text-xs">{courseDetails?.levelName || "N/A"}</span>
           </div>
           <div className="flex justify-between">

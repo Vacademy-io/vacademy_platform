@@ -217,8 +217,12 @@ const ContinueLearningCard = ({
                 Continue Learning
               </CardTitle>
               <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1 truncate">
-                {data.slides.length} lesson{data.slides.length !== 1 ? "s" : ""}{" "}
-                in progress
+                {data.slides.length}{" "}
+                {getTerminology(
+                  ContentTerms.Slides,
+                  SystemTerms.Slides
+                ).toLocaleLowerCase()}
+                {data.slides.length !== 1 ? "s" : ""} in progress
               </p>
             </div>
           </div>

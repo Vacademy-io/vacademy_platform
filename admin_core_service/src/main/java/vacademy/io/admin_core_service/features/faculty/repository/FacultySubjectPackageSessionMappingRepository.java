@@ -101,5 +101,9 @@ public interface FacultySubjectPackageSessionMappingRepository extends JpaReposi
             @Param("userId") String userId,
             @Param("packageSessionId") String packageSessionId,
             @Param("mappingStatuses") List<String> mappingStatuses);
+
+    @Query("SELECT fspm FROM FacultySubjectPackageSessionMapping fspm WHERE fspm.packageSessionId = :packageSessionId")
+    List<FacultySubjectPackageSessionMapping> findByPackageSessionId(@Param("packageSessionId") String packageSessionId);
+
 //WHERE (:name IS NULL OR :name = '' OR LOWER(a.name) LIKE LOWER(CONCAT('%', :name, '%')))
 }

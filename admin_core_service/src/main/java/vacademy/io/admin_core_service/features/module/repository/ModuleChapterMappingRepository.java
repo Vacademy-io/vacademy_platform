@@ -115,6 +115,9 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
 
     boolean existsByChapterIdAndModuleId(String chapterId, String moduleId);
 
+    @Query("SELECT mcm FROM ModuleChapterMapping mcm WHERE mcm.module.id = :moduleId")
+    List<ModuleChapterMapping> findByModuleId(@Param("moduleId") String moduleId);
+
     @Query(value = """
     SELECT json_agg(module_data) AS module_array
     FROM (

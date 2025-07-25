@@ -50,7 +50,7 @@ public class AuthService {
 
     @Transactional
     public User createUser(RegisterRequest registerRequest, Set<UserRole> roles) {
-        User user = userRepository.findLatestUserByEmail(registerRequest.getEmail()).orElse(User.builder()
+        User user = userRepository.findFirstByEmailOrderByCreatedAtDesc(registerRequest.getEmail()).orElse(User.builder()
                 .fullName(registerRequest.getFullName())
                 .username(registerRequest.getUserName())
                 .email(registerRequest.getEmail())

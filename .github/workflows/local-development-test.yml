@@ -1,0 +1,122 @@
+name: Local Development Test
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'docker-compose.yml'
+      - 'local-dev-setup.sh'
+      - '.github/workflows/local-development-test.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'docker-compose.yml'
+      - 'local-dev-setup.sh'
+
+jobs:
+  test-local-setup:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Create .env file with secrets
+      run: |
+        cat > .env << EOF
+        # Database Configuration
+        DB_USERNAME=postgres
+        DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+        
+        # Service URLs (for testing)
+        AUTH_SERVER_BASE_URL=${{ secrets.AUTH_SERVER_BASE_URL }}
+        ADMIN_CORE_SERVICE_BASE_URL=${{ secrets.ADMIN_CORE_SERVICE_BASE_URL }}
+        NOTIFICATION_SERVER_BASE_URL=${{ secrets.NOTIFICATION_SERVER_BASE_URL }}
+        MEDIA_SERVICE_BASE_URL=${{ secrets.MEDIA_SERVICE_BASE_URL }}
+        ASSESSMENT_SERVER_BASE_URL=${{ secrets.ASSESSMENT_SERVER_BASE_URL }}
+        CLOUD_FRONT_URL=${{ secrets.CLOUD_FRONT_URL }}
+        
+        # Database URLs
+        AUTH_SERVICE_DB_URL=${{ secrets.AUTH_SERVICE_DB_URL }}
+        ADMIN_CORE_SERVICE_DB_URL=${{ secrets.ADMIN_CORE_SERVICE_DB_URL }}
+        COMMUNITY_SERVICE_DB_URL=${{ secrets.COMMUNITY_SERVICE_DB_URL }}
+        ASSESSMENT_SERVICE_DB_URL=${{ secrets.ASSESSMENT_SERVICE_DB_URL }}
+        MEDIA_SERVICE_DB_URL=${{ secrets.MEDIA_SERVICE_DB_URL }}
+        NOTIFICATION_SERVICE_DB_URL=${{ secrets.NOTIFICATION_SERVICE_DB_URL }}
+        
+        # Application credentials
+        APP_USERNAME=${{ secrets.APP_USERNAME }}
+        APP_PASSWORD=${{ secrets.APP_PASSWORD }}
+        
+        # OAuth Credentials
+        GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
+        GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}
+        OAUTH_GITHUB_CLIENT_ID=${{ secrets.OAUTH_GITHUB_CLIENT_ID }}
+        OAUTH_GITHUB_CLIENT_SECRET=${{ secrets.OAUTH_GITHUB_CLIENT_SECRET }}
+        
+        # AWS S3 Configuration
+        S3_AWS_ACCESS_KEY=${{ secrets.S3_AWS_ACCESS_KEY }}
+        S3_AWS_ACCESS_SECRET=${{ secrets.S3_AWS_ACCESS_SECRET }}
+        AWS_BUCKET_NAME=${{ secrets.AWS_BUCKET_NAME }}
+        AWS_S3_PUBLIC_BUCKET=${{ secrets.AWS_S3_PUBLIC_BUCKET }}
+        
+        # API Keys
+        OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}
+        GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+        YOUTUBE_API_KEY=${{ secrets.YOUTUBE_API_KEY }}
+        
+        # Email Configuration
+        MAIL_HOST=${{ secrets.MAIL_HOST }}
+        MAIL_PORT=${{ secrets.MAIL_PORT }}
+        AWS_MAIL_USERNAME=${{ secrets.AWS_MAIL_USERNAME }}
+        AWS_MAIL_PASSWORD=${{ secrets.AWS_MAIL_PASSWORD }}
+        SES_SENDER_EMAIL=${{ secrets.SES_SENDER_EMAIL }}
+        
+        # WhatsApp Configuration
+        WHATSAPP_ACCESS_TOKEN=${{ secrets.WHATSAPP_ACCESS_TOKEN }}
+        
+        # Other
+        SPRING_PROFILES_ACTIVE=stage
+        SCHEDULING_TIME_FRAME=5
+        EOF
+
+    - name: Make scripts executable
+      run: |
+        chmod +x local-dev-setup.sh
+        chmod +x init-multi-postgres-db.sh
+
+    - name: Test Docker Compose configuration
+      run: |
+        # Validate docker-compose file
+        docker-compose config --quiet
+        
+        # Test that all environment variables resolve
+        docker-compose config | grep -E "(spring\.datasource\.|auth\.server\.|aws\.bucket\.)" || true
+
+    - name: Start infrastructure services only (for testing)
+      run: |
+        # Start only database and redis for validation
+        docker-compose up -d postgres redis
+        
+        # Wait for services
+        sleep 15
+        
+        # Check if postgres is responding
+        docker-compose exec -T postgres pg_isready -U postgres
+        
+        # Check if redis is responding  
+        docker-compose exec -T redis redis-cli ping
+
+    - name: Validate database creation
+      run: |
+        # Check if all databases were created
+        docker-compose exec -T postgres psql -U postgres -c "\l" | grep -E "(auth_service|admin_core_service|community_service|assessment_service|media_service|notification_service)"
+
+    - name: Cleanup
+      if: always()
+      run: |
+        docker-compose down -v --remove-orphans || true
+        docker system prune -f || true 

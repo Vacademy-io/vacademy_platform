@@ -144,4 +144,6 @@ public interface RatingRepository extends JpaRepository<Rating, String> {
         @Param("sourceId") String sourceId
     );
 
+    Page<Rating> findBySourceTypeAndSourceIdAndStatusNotIn(String sourceType, String sourceId, List<String> excludedStatuses, Pageable pageable);
+
 }

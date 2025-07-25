@@ -23,10 +23,11 @@ jobs:
       - name: Authenticate GitHub Package Registry
         env:
           JAVA_TOKEN: ${{ secrets.JAVA_TOKEN }}
+          ACCESS_GITHUB_USERNAME: ${{ secrets.ACCESS_GITHUB_USERNAME }}
         run: |
-          echo "${JAVA_TOKEN}" | docker login ghcr.io -u shreyash-jain --password-stdin
+          echo "${JAVA_TOKEN}" | docker login ghcr.io -u ${ACCESS_GITHUB_USERNAME} --password-stdin
           mkdir -p ~/.m2
-          echo "<settings><servers><server><id>github</id><username>shreyash-jain</username><password>${JAVA_TOKEN}</password></server></servers></settings>" > ~/.m2/settings.xml
+          echo "<settings><servers><server><id>github</id><username>${ACCESS_GITHUB_USERNAME}</username><password>${JAVA_TOKEN}</password></server></servers></settings>" > ~/.m2/settings.xml
 
       - name: Build Project
         working-directory: ./auth_service
@@ -53,14 +54,14 @@ jobs:
           ECR_REGISTRY: public.ecr.aws/e0x1f4p4
           IMAGE_TAG: latest
           REPOSITORY: auth-service/auth-service-repo
-          GITHUB_ACTOR: shreyash-jain
+          ACCESS_GITHUB_USERNAME: ${{ secrets.ACCESS_GITHUB_USERNAME }}
           JAVA_TOKEN: ${{ secrets.JAVA_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.JAVA_TOKEN }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
 
         run: |
-          docker build -t $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG . --build-arg GITHUB_TOKEN=${GITHUB_TOKEN} --build-arg JAVA_TOKEN=${JAVA_TOKEN}
+          docker build -t $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG . --build-arg GITHUB_TOKEN=${GITHUB_TOKEN} --build-arg ACCESS_GITHUB_USERNAME=${ACCESS_GITHUB_USERNAME} --build-arg JAVA_TOKEN=${JAVA_TOKEN}
           docker push $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG
           echo "Docker Image Link = $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG"
 
@@ -70,9 +71,18 @@ jobs:
           method: kubeconfig
           kubeconfig: ${{ secrets.VACADEMY_STAGE_KUBECONFIG }}
 
-      - name: Set Google & GitHub Auth Env Vars in Deployment
+      - name: Set Environment Variables in Deployment
         run: |
           kubectl set env deployment/auth-service \
+            DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
+            DB_USERNAME=${{ secrets.DB_USERNAME }} \
+            APP_USERNAME=${{ secrets.APP_USERNAME }} \
+            APP_PASSWORD=${{ secrets.APP_PASSWORD }} \
+            AUTH_SERVER_BASE_URL=${{ secrets.AUTH_SERVER_BASE_URL }} \
+            ADMIN_CORE_SERVICE_BASE_URL=${{ secrets.ADMIN_CORE_SERVICE_BASE_URL }} \
+            NOTIFICATION_SERVER_BASE_URL=${{ secrets.NOTIFICATION_SERVER_BASE_URL }} \
+            CLOUD_FRONT_URL=${{ secrets.CLOUD_FRONT_URL }} \
+            AUTH_SERVICE_DB_URL=${{ secrets.AUTH_SERVICE_DB_URL }} \
             GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }} \
             GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }} \
             OAUTH_GITHUB_CLIENT_ID=${{ secrets.OAUTH_GITHUB_CLIENT_ID }} \

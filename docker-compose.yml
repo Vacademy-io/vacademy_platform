@@ -1,0 +1,207 @@
+version: '3.8'
+
+services:
+  # Database services
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: vacademy123
+      POSTGRES_MULTIPLE_DATABASES: auth_service,admin_core_service,community_service,assessment_service,media_service,notification_service
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-multi-postgres-db.sh:/docker-entrypoint-initdb.d/init-multi-postgres-db.sh
+    networks:
+      - vacademy-network
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - vacademy-network
+
+  # Application services
+  auth-service:
+    build:
+      context: ./auth_service
+      dockerfile: Dockerfile
+    ports:
+      - "8071:8071"
+    environment:
+      - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-stage}
+      - spring.datasource.url=${AUTH_SERVICE_DB_URL:-jdbc:postgresql://postgres:5432/auth_service}
+      - spring.datasource.username=${DB_USERNAME:-postgres}
+      - spring.datasource.password=${DB_PASSWORD:-vacademy123}
+      - application.my.username=${APP_USERNAME:-stage}
+      - application.my.password=${APP_PASSWORD:-test}
+      - auth.server.baseurl=${AUTH_SERVER_BASE_URL:-http://localhost}
+      - admin.core.service.base_url=${ADMIN_CORE_SERVICE_BASE_URL:-http://localhost}
+      - notification.server.baseurl=${NOTIFICATION_SERVER_BASE_URL:-http://localhost}
+      - cloud.front.url=${CLOUD_FRONT_URL:-http://localhost/media/}
+      # OAuth credentials
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-dummy_google_client_id}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-dummy_google_client_secret}
+      - OAUTH_GITHUB_CLIENT_ID=${OAUTH_GITHUB_CLIENT_ID:-dummy_github_client_id}
+      - OAUTH_GITHUB_CLIENT_SECRET=${OAUTH_GITHUB_CLIENT_SECRET:-dummy_github_client_secret}
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - vacademy-network
+
+  admin-core-service:
+    build:
+      context: ./admin_core_service
+      dockerfile: Dockerfile
+    ports:
+      - "8072:8072"
+    environment:
+      - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-stage}
+      - spring.datasource.url=${ADMIN_CORE_SERVICE_DB_URL:-jdbc:postgresql://postgres:5432/admin_core_service}
+      - spring.datasource.username=${DB_USERNAME:-postgres}
+      - spring.datasource.password=${DB_PASSWORD:-vacademy123}
+      - application.my.username=${APP_USERNAME:-stage}
+      - application.my.password=${APP_PASSWORD:-test}
+      - auth.server.baseurl=${AUTH_SERVER_BASE_URL:-http://localhost}
+      - notification.server.baseurl=${NOTIFICATION_SERVER_BASE_URL:-http://localhost}
+      - assessment.server.baseurl=${ASSESSMENT_SERVER_BASE_URL:-http://localhost}
+      - cloud.front.url=${CLOUD_FRONT_URL:-http://localhost/media/}
+    depends_on:
+      - postgres
+      - auth-service
+    networks:
+      - vacademy-network
+
+  community-service:
+    build:
+      context: ./community_service
+      dockerfile: Dockerfile
+    ports:
+      - "8073:8073"
+    environment:
+      - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-stage}
+      - spring.datasource.url=${COMMUNITY_SERVICE_DB_URL:-jdbc:postgresql://postgres:5432/community_service}
+      - spring.datasource.username=${DB_USERNAME:-postgres}
+      - spring.datasource.password=${DB_PASSWORD:-vacademy123}
+      - application.my.username=${APP_USERNAME:-stage}
+      - application.my.password=${APP_PASSWORD:-test}
+      - auth.server.baseurl=${AUTH_SERVER_BASE_URL:-http://localhost}
+      - notification.server.baseurl=${NOTIFICATION_SERVER_BASE_URL:-http://localhost}
+      - cloud.front.url=${CLOUD_FRONT_URL:-http://localhost/media/}
+    depends_on:
+      - postgres
+      - auth-service
+    networks:
+      - vacademy-network
+
+  assessment-service:
+    build:
+      context: ./assessment_service
+      dockerfile: Dockerfile
+    ports:
+      - "8074:8074"
+    environment:
+      - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-stage}
+      - spring.datasource.url=${ASSESSMENT_SERVICE_DB_URL:-jdbc:postgresql://postgres:5432/assessment_service}
+      - spring.datasource.username=${DB_USERNAME:-postgres}
+      - spring.datasource.password=${DB_PASSWORD:-vacademy123}
+      - application.my.username=${APP_USERNAME:-stage}
+      - application.my.password=${APP_PASSWORD:-test}
+      - auth.server.baseurl=${AUTH_SERVER_BASE_URL:-http://localhost}
+      - notification.server.baseurl=${NOTIFICATION_SERVER_BASE_URL:-http://localhost}
+      - media.service.baseurl=${MEDIA_SERVICE_BASE_URL:-http://localhost}
+      - cloud.front.url=${CLOUD_FRONT_URL:-http://localhost/media/}
+      - scheduling.time.frame=${SCHEDULING_TIME_FRAME:-5}
+    depends_on:
+      - postgres
+      - auth-service
+    networks:
+      - vacademy-network
+
+  media-service:
+    build:
+      context: ./media_service
+      dockerfile: Dockerfile
+    ports:
+      - "8075:8075"
+    environment:
+      - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-stage}
+      - spring.datasource.url=${MEDIA_SERVICE_DB_URL:-jdbc:postgresql://postgres:5432/media_service}
+      - spring.datasource.username=${DB_USERNAME:-postgres}
+      - spring.datasource.password=${DB_PASSWORD:-vacademy123}
+      - application.my.username=${APP_USERNAME:-stage}
+      - application.my.password=${APP_PASSWORD:-test}
+      - auth.server.baseurl=${AUTH_SERVER_BASE_URL:-http://localhost}
+      - assessmentServerBaseUrl.server.baseurl=${ASSESSMENT_SERVER_BASE_URL:-http://localhost}
+      - cloud.front.url=${CLOUD_FRONT_URL:-http://localhost/media/}
+      # AWS S3 Configuration
+      - S3_AWS_ACCESS_KEY=${S3_AWS_ACCESS_KEY:-dummy_aws_access_key}
+      - S3_AWS_ACCESS_SECRET=${S3_AWS_ACCESS_SECRET:-dummy_aws_secret}
+      - aws.bucket.name=${AWS_BUCKET_NAME:-vacademy-media-storage}
+      - aws.s3.public-bucket=${AWS_S3_PUBLIC_BUCKET:-vacademy-media-storage-public}
+      # API Keys
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-dummy_openrouter_key}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-dummy_gemini_key}
+      - YOUTUBE_API_KEY=${YOUTUBE_API_KEY:-dummy_youtube_key}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-dummy_deepseek_key}
+    depends_on:
+      - postgres
+      - auth-service
+    networks:
+      - vacademy-network
+
+  notification-service:
+    build:
+      context: ./notification_service
+      dockerfile: Dockerfile
+    ports:
+      - "8076:8076"
+    environment:
+      - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-stage}
+      - spring.datasource.url=${NOTIFICATION_SERVICE_DB_URL:-jdbc:postgresql://postgres:5432/notification_service}
+      - spring.datasource.username=${DB_USERNAME:-postgres}
+      - spring.datasource.password=${DB_PASSWORD:-vacademy123}
+      - application.my.username=${APP_USERNAME:-stage}
+      - application.my.password=${APP_PASSWORD:-test}
+      - auth.server.baseurl=${AUTH_SERVER_BASE_URL:-http://localhost}
+      - cloud.front.url=${CLOUD_FRONT_URL:-http://localhost/media/}
+      # Email Configuration
+      - spring.mail.host=${MAIL_HOST:-email-smtp.ap-south-1.amazonaws.com}
+      - spring.mail.port=${MAIL_PORT:-2587}
+      - AWS_MAIL_USERNAME=${AWS_MAIL_USERNAME:-dummy_mail_username}
+      - AWS_MAIL_PASSWORD=${AWS_MAIL_PASSWORD:-dummy_mail_password}
+      - app.ses.sender.email=${SES_SENDER_EMAIL:-support@vacademy.io}
+      # WhatsApp Configuration
+      - whatsapp.access-token=${WHATSAPP_ACCESS_TOKEN:-dummy_whatsapp_token}
+    depends_on:
+      - postgres
+      - auth-service
+    networks:
+      - vacademy-network
+
+  # API Gateway / Load Balancer (optional)
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - auth-service
+      - admin-core-service
+      - community-service
+      - assessment-service
+      - media-service
+      - notification-service
+    networks:
+      - vacademy-network
+
+volumes:
+  postgres_data:
+
+networks:
+  vacademy-network:
+    driver: bridge 

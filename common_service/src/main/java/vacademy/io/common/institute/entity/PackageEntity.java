@@ -73,4 +73,12 @@ public class PackageEntity {
     @Column(name = "course_html_description", columnDefinition = "TEXT")
     private String courseHtmlDescription;
 
+    @Column(name = "original_course_id")
+    private String originalCourseId;
+
+    @Column(name = "created_by_user_id")
+    private String createdByUserId;
+
+    @Column(name = "version_number")
+    private Integer versionNumber;
 }

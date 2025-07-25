@@ -54,6 +54,12 @@ public class Slide {
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Timestamp updatedAt;
 
+    @Column(name = "parent_id")
+    private String parentId;
+
+    @Column(name = "created_by_user_id")
+    private String createdByUserId;
+
     public Slide(AddDocumentSlideDTO addDocumentSlideDTO, String sourceId, String sourceType, String status) {
         this.sourceId = sourceId;
         this.sourceType = sourceType;

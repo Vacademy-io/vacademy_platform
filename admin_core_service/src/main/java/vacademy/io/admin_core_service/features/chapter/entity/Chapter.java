@@ -41,6 +41,12 @@ public class Chapter {
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Timestamp updatedAt;
 
+    @Column(name = "parent_id")
+    private String parentId;
+
+    @Column(name = "created_by_user_id")
+    private String createdByUserId;
+
     public Chapter(ChapterDTO chapterDTO) {
         if (chapterDTO.getId() != null) {
             this.id = chapterDTO.getId();

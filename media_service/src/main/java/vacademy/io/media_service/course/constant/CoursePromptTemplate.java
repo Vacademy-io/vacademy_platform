@@ -52,36 +52,6 @@ public class CoursePromptTemplate {
             {{
               "modifications": [
                 {{
-                  "action": "ADD",
-                  "targetType": "MODULE",
-                  "parentPath": "C1.S2",
-                  "name": "Asynchronous JavaScript",
-                  "description": "An intermediate module covering asynchronous programming patterns in JavaScript.",
-                  "node": {{
-                    "id": "M2",
-                    "name": "Asynchronous JavaScript",
-                    "type": "MODULE",
-                    "key": "MODULE",
-                    "depth": 3,
-                    "path": "C1.S2.M2"
-                  }}
-                }}
-              ]
-            }}
-
-            ✅ Continue this loop until the course structure is fully constructed.
-
-            ------------------------------------------------------------
-            📌 STEP 3: Final Full Output JSON (Strict Format)
-            ------------------------------------------------------------
-
-            When you're completely done generating the course structure, output one final complete JSON object that includes:
-
-            ```json
-            {{
-              "explanation": "<html>...</html>",
-              "modifications": [
-                {{
                   "action": "ADD" | "UPDATE" | "DELETE",
                   "targetType": "COURSE" | "SUBJECT" | "MODULE" | "CHAPTER" | "SLIDE",
                   "modifiedPath": "C1.S2.M2.CH2.SL9",  //If action is ADD then do not generate modifiedPath
@@ -97,13 +67,28 @@ public class CoursePromptTemplate {
                     "path": "P1.S2.M2.C2.SL9"
                   }}
                 }}
-              ],
+              ]
+            }}
+
+            ✅ Continue this `[Thinking...]` -> `[Generating...]` loop until all structural components are created. **DO NOT** generate `explanation` or `todos` during this iterative step.
+
+            ------------------------------------------------------------
+            📌 STEP 3: Final Full Output JSON (Strict Format)
+            ------------------------------------------------------------
+            **IMMEDIATELY AFTER** you have output the **VERY LAST** `[Generating...]` block for the course structure, you will conclude by generating a **SINGLE, FINAL JSON object**.
+               -This final JSON object is generated **ONLY ONCE** and must contain **ONLY TWO** top-level keys: `"explanation"` and `"todos"`.
+               -**CRITICAL:** This final block **MUST NOT** contain the `"modifications"` key again.
+
+            ```json
+            {{
+              "explanation": "<html>...</html>",    //Explain till now what have you done
               "todos": [
                 {{
                   "name": "STRING",
                   "title": "STRING"'
-                  "type": "DOCUMENT" | "VIDEO",
+                  "type": "DOCUMENT" | "VIDEO" | "PDF" | "ASSESSMENT",
                   "path": "STRING",
+                  "keyword": "STRING",
                   "model": "STRING",
                   "actionType": "ADD" | "UPDATE",
                   "prompt": "STRING",
@@ -156,23 +141,27 @@ public class CoursePromptTemplate {
             - This is a list of tasks for content generation, one for each SLIDE that needs content generated or updated.
             - Each `todo` object must include:
               - `name`: A descriptive name for the content generation task (e.g., "Generate Async/Await Slide Content").
-              - `type`: The type of slide (`DOCUMENT` || `VIDEO` || PDF``).
+              - `type`: The type of slide (`DOCUMENT` || `VIDEO` || `PDF` || `EXCALIDRAW_IMAGE` || `ASSESSMENT`).
               - `title`: Generate Title For the Slide Content
-                          - For `VIDEO` generate `title` such that it can be searched on YOUTUBE
+              - `keyword`: Generate a search keyword
+                        - For `VIDEO` generate `keyword` such that it can be searched on YOUTUBE
+                        - For 'EXCALIDRAW_IMAGE' generate 'keyword' such that image can be searched on UNSPLASH
               - `path`: The full path to the SLIDE node (e.g., "C1.S2.M2.CH2.SL9").
               - `model`: Suggest which model should be used to generate the content
                        - for `DOCUMENT' generation use `google/gemini-2.5-pro'
                        - for 'VIDEO' generation use `google/gemini-2.5-flash-preview-05-20`
                        - for 'PDF' generation use 'google/gemini-2.5-pro'
+                       - for 'ASSESSMENT' generation use 'google/gemini-2.5-pro'
               - `actionType`: `ADD` if the slide is newly added and needs initial content, `UPDATE` if the slide already exists and its content needs to be re-generated or improved.
               - `prompt`: A **very clear and detailed prompt** for an AI to generate the specific content for this slide. This prompt should include:
                 - The slide's topic.
-                - The desired `type` (`DOCUMENT` or `VIDEO` or `PDF`).
+                - The desired `type` (`DOCUMENT` or `VIDEO` or `PDF` or `EXCALIDRAW_IMAGE`).
                 - Specific requirements for `DOCUMENT` type (e.g., "detailed explanation (150-250 words), markdown formatting, code snippets, real-world examples").
                 - Specific requirements for `VIDEO` type (e.g., "high-quality, relevant video link, short informative description, title matching slide topic").
                 - Specific requirements for `PDF` type (e.g., "detailed explanation (150-250 words), markdown formatting, real-world examples").
+                - Specific requirements for `ASSESSMENT`. Prompt must include number of questions(2-10 questions) and should have topic in the prompt.
                 - Any specific analogies or examples to include.
-                - The minimum word count for `DOCUMENT` slides (100 words).
+                - The minimum word count for `DOCUMENT` or `PDF` slides (100 words).
               - `order`: A number indicating the order in which these `todo` items should ideally be processed.
 
             ------------------------------------------------------------
@@ -204,5 +193,8 @@ public class CoursePromptTemplate {
             {{userPrompt}}
             ------------------------------------------------------------
             """;
+    }
+    public String getResponse(){
+        return "";
     }
 }

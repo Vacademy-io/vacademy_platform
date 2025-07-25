@@ -33,4 +33,10 @@ public class Module {
 
     @Column(name = "thumbnail_id")
     private String thumbnailId;
+
+    @Column(name = "parent_id")
+    private String parentId;
+
+    @Column(name = "created_by_user_id")
+    private String createdByUserId;
 }

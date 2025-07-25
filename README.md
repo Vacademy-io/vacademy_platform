@@ -2,11 +2,38 @@
 
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Vacademy-io/vacademy_platform)
 
+## 📚 Documentation Index
+
+| Document | Purpose | Audience |
+|----------|---------|----------|
+| **[Local Development Guide](LOCAL_DEVELOPMENT.md)** | Complete setup for local development | Developers |
+| **[GitHub Secrets Configuration](GITHUB_SECRETS.md)** | Production secrets management | DevOps/Administrators |
+| **[Security Migration Summary](SECURITY_MIGRATION_SUMMARY.md)** | Security improvements overview | Technical Teams |
+| **[Stage Properties Migration](STAGE_PROPERTIES_MIGRATION_UPDATE.md)** | Environment variable migration details | DevOps/Developers |
+
+## 🚀 Quick Links
+
+- **[🐳 Local Development Setup](#-local-development-recommended)** - Get started in 2 minutes
+- **[🏗️ Architecture Overview](#️-backend-architecture--services)** - Understand the system
+- **[📋 Service Access](#-service-access-points)** - Access points and APIs
+- **[🎯 Frontend Applications](#frontend)** - Admin and learner dashboards
+
 ## About
 
-Vacademy is an AI-enabled, open-source Learning Management System (LMS) built with a microservices architecture. It provides comprehensive tools for educational institutions, instructors, and learners, including course management, assessment creation, study libraries, and learner tracking.
+Vacademy is an AI-enabled, open-source Learning Management System (LMS) built with a **microservices architecture**. It provides comprehensive tools for educational institutions, instructors, and learners, including course management, assessment creation, study libraries, and learner tracking.
 
-The platform features a robust backend powered by Spring Boot microservices and modern frontend applications built with React, ensuring scalability, flexibility, and maintainability while delivering a powerful educational experience.
+The platform features a robust backend powered by **Spring Boot microservices** and modern frontend applications built with **React**, ensuring scalability, flexibility, and maintainability while delivering a powerful educational experience.
+
+### 🎯 Key Highlights
+
+- **6 Microservices** with dedicated databases and specialized functions
+- **Docker Compose** for seamless local development  
+- **Kubernetes/Helm** for production deployment
+- **GitHub Actions** CI/CD with automated testing
+- **Environment Variable** based configuration management
+- **OAuth2 Integration** (Google, GitHub)
+- **AI-Powered Features** (VSmart tools)
+- **Multi-Channel Notifications** (Email, WhatsApp, Push)
 
 ## Features in Depth
 
@@ -84,141 +111,230 @@ The platform features a robust backend powered by Spring Boot microservices and 
 - **GitHub Actions**: CI/CD automation.
 - **Storybook**: UI component development environment (admin dashboard).
 
-## Backend and Its Services
+## 🏗️ Backend Architecture & Services
 
-The Vacademy platform uses a microservices architecture with the following specialized services:
+The Vacademy platform uses a **microservices architecture** with 6 specialized services, each running on dedicated ports and databases for optimal scalability and maintainability.
 
-### Common Service
-Core utilities, models, and configurations shared across other services.
+### Service Overview
 
-### Auth Service
-Handles authentication and authorization, including user login, registration, and access control.
+| Service | Port | Database | Primary Functions |
+|---------|------|----------|-------------------|
+| **Auth Service** | 8071 | `auth_service` | Authentication, authorization, OAuth integration |
+| **Admin Core Service** | 8072 | `admin_core_service` | Course management, admin operations |
+| **Community Service** | 8073 | `community_service` | Community features, user interactions |
+| **Assessment Service** | 8074 | `assessment_service` | Testing, evaluation, reports |
+| **Media Service** | 8075 | `media_service` | File storage, media processing |
+| **Notification Service** | 8076 | `notification_service` | Notifications, email, WhatsApp |
 
-### Admin Core Service
-Provides administrative functionalities for managing courses, users, and institutional operations, including:
-- Course, module, subject, and chapter management.
-- Slide creation and management.
-- Learner invitation and enrollment.
-- Institute and faculty management.
-- Study library organization.
-- Session management.
+### Service Details
 
-### Media Service
-Handles media file uploading, processing, storage, and retrieval.
+#### **Common Service**
+- Shared utilities, models, and configurations
+- Base classes and common functionality
+- Cross-service dependencies and interfaces
 
-### Community Service
-Manages community features and interactions between users.
+#### **Auth Service** (Port 8071)
+- User authentication and authorization
+- OAuth2 integration (Google, GitHub)
+- JWT token management
+- Session handling and security
 
-### Assessment Service
-Comprehensive assessment creation, management, and evaluation system, including:
-- Assessment creation and scheduling.
-- Question paper management.
-- Automated evaluation.
-- Reports and analytics.
-- Participant management.
+#### **Admin Core Service** (Port 8072)
+- Course, module, subject, and chapter management
+- Slide creation and presentation tools
+- Learner invitation and enrollment
+- Institute and faculty management
+- Study library organization
+- Administrative dashboard operations
 
-### Notification Service
-Manages system notifications and communication to users.
+#### **Media Service** (Port 8075)
+- File upload and storage (AWS S3 integration)
+- Media processing and optimization
+- AI-powered content analysis
+- Document management and organization
 
-## Installation Guidelines
+#### **Community Service** (Port 8073)
+- User interaction and community features
+- Discussion forums and collaboration tools
+- Social learning components
+
+#### **Assessment Service** (Port 8074)
+- Assessment creation and scheduling
+- Question paper management
+- Live testing and evaluation
+- Automated grading and feedback
+- Performance analytics and reporting
+
+#### **Notification Service** (Port 8076)
+- Multi-channel notifications (email, push, WhatsApp)
+- AWS SES integration for email delivery
+- Event-driven notification system
+- Communication preferences management
+
+### **Deployment Architecture**
+
+#### **Local Development**
+- **Docker Compose** orchestrates all services
+- **PostgreSQL** with separate databases per service
+- **Redis** for caching and session storage
+- **Nginx** gateway for request routing
+
+#### **Production Deployment**
+- **Kubernetes** cluster with Helm charts
+- **AWS ECR** for container registry
+- **RDS PostgreSQL** for managed databases
+- **Application Load Balancer** for traffic distribution
+- **GitHub Actions** for CI/CD automation
+
+## 🚀 Quick Start & Installation
 
 ### Prerequisites
 Before installing Vacademy, ensure you have:
-- **Java 17**
-- **Maven 3.8+**
-- **Docker** and **Docker Compose**
-- **PostgreSQL**
-- **AWS account** with S3 access
-- **GitHub Personal Access Token** for accessing GitHub packages
+- **Docker** and **Docker Compose** 4.0+ (recommended for local development)
+- **GitHub Personal Access Token** with package read permissions
+- **Java 17** and **Maven 3.8+** (optional, for building from source)
+- **Kubernetes cluster** (for production deployment)
 
-### Backend Setup
+> **Note**: The GitHub token is required for accessing shared dependencies in GitHub packages. [Create a token here](https://github.com/settings/tokens) with `read:packages` permission.
 
-1. **Clone the Repository**
-   ```bash
-   git clone https://github.com/Vacademy-io/services.git
-   cd services
-   ```
+### 🐳 Local Development (Recommended)
 
-2. **Configure GitHub Packages Authentication**
-   ```bash
-   export JAVA_TOKEN=your_github_token
-   ```
-
-3. **Build the Project**
-   ```bash
-   mvn clean install -DskipTests
-   ```
-
-4. **Database Configuration**
-   Create an `application.properties` or `application.yml` file in each service's `src/main/resources` directory:
-   ```properties
-   # Database Configuration
-   spring.datasource.url=jdbc:postgresql://localhost:5432/vacademy_[service_name]
-   spring.datasource.username=postgres
-   spring.datasource.password=your_password
-   spring.jpa.hibernate.ddl-auto=update
-   spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.PostgreSQLDialect
-   ```
-
-5. **AWS S3 Configuration**
-   ```properties
-   # AWS Configuration
-   aws.accessKey=your_aws_access_key
-   aws.secretKey=your_aws_secret_key
-   aws.region=your_aws_region
-   aws.s3.bucket=your_s3_bucket_name
-   ```
-
-6. **Service Port Configuration**
-   ```properties
-   # Server configuration
-   server.port=8080  # Change for each service
-   ```
-
-### Running Services Locally
-
-#### Option 1: Run with Maven
+**🚀 One-Command Setup:**
 ```bash
-cd [service_name]
-mvn spring-boot:run
+# Clone and setup (2 minutes total)
+git clone https://github.com/Vacademy-io/vacademy_platform.git
+cd vacademy_platform
+chmod +x local-dev-setup.sh
+./local-dev-setup.sh
 ```
 
-#### Option 2: Run with Docker
+**What the script does automatically:**
+- ✅ Validates system requirements (Docker, ports)
+- ✅ Sets up all 6 microservices with Docker Compose
+- ✅ Configures PostgreSQL with separate databases per service
+- ✅ Sets up Redis for caching and sessions
+- ✅ Configures Nginx gateway for service routing
+- ✅ Performs comprehensive health checks
+- ✅ Provides service status and access URLs
+
+**Manual Docker Compose Setup:**
 ```bash
-cd [service_name]
-docker build -t vacademy/[service_name] .
-docker run -p 8080:8080 vacademy/[service_name]
+# 1. Clone the repository
+git clone https://github.com/Vacademy-io/vacademy_platform.git
+cd vacademy_platform
+
+# 2. Start all services
+docker-compose up -d
+
+# 3. Check service status
+docker-compose ps
+
+# 4. View logs
+docker-compose logs -f
 ```
 
-### Frontend Setup
+**Access Points:**
+- **Gateway**: http://localhost (Nginx routing to all services)
+- **Individual Services**: http://localhost:807X (where X = 1-6)
+- **Swagger UI**: Interactive API documentation at each service endpoint
+- **Service Health**: `/actuator/health` endpoint on each service
 
-#### Learner Dashboard
-1. Navigate to the learner dashboard directory:
-   ```bash
-   cd frontend-learner-dashboard
-   ```
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Run the development server:
-   ```bash
-   npm run dev
-   ```
+### 🏗️ Production Deployment
 
-#### Admin Dashboard
-1. Navigate to the admin dashboard directory:
-   ```bash
-   cd frontend-admin-dashboard
-   ```
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Run the development server:
-   ```bash
-   npm run dev
-   ```
+**Kubernetes with Helm:**
+```bash
+# Deploy to Kubernetes cluster
+helm install vacademy ./vacademy_devops/vacademy-services
+
+# Update deployment
+helm upgrade vacademy ./vacademy_devops/vacademy-services
+```
+
+**GitHub Actions CI/CD:**
+- Automated deployment triggered on push to main branch
+- Environment variables managed through GitHub Secrets
+- ECR container registry integration
+- Multi-environment support (staging/production)
+
+### 🔧 Configuration Management
+
+**Environment Variables:**
+All sensitive configuration is managed through environment variables:
+- **Local Development**: Automatic setup with safe defaults
+- **Production**: GitHub Secrets integration for secure deployment
+
+**Key Configuration Areas:**
+- Database connections (PostgreSQL per service)
+- Service-to-service communication URLs
+- OAuth credentials (Google, GitHub)
+- AWS S3 storage configuration
+- Email and notification settings
+- External API keys (OpenAI, Gemini, YouTube, etc.)
+
+### 📚 Documentation References
+
+For detailed setup and configuration, see:
+- **[Local Development Guide](LOCAL_DEVELOPMENT.md)** - Complete local setup instructions
+- **[GitHub Secrets Configuration](GITHUB_SECRETS.md)** - Production secrets management
+- **[Security Migration Summary](SECURITY_MIGRATION_SUMMARY.md)** - Security improvements overview
+- **[Stage Properties Migration](STAGE_PROPERTIES_MIGRATION_UPDATE.md)** - Environment variable migration details
+
+## 📋 Service Access Points
+
+### Local Development URLs
+
+| Service | Direct URL | Gateway URL | API Documentation |
+|---------|------------|-------------|-------------------|
+| **Gateway** | - | http://localhost | - |
+| **Auth Service** | http://localhost:8071 | http://localhost/auth-service/ | [Swagger](http://localhost:8071/auth-service/swagger-ui.html) |
+| **Admin Core** | http://localhost:8072 | http://localhost/admin-core-service/ | [Swagger](http://localhost:8072/admin-core-service/swagger-ui.html) |
+| **Community** | http://localhost:8073 | http://localhost/community-service/ | [Swagger](http://localhost:8073/community-service/swagger-ui.html) |
+| **Assessment** | http://localhost:8074 | http://localhost/assessment-service/ | [Swagger](http://localhost:8074/assessment-service/swagger-ui.html) |
+| **Media** | http://localhost:8075 | http://localhost/media-service/ | [Swagger](http://localhost:8075/media-service/swagger-ui.html) |
+| **Notification** | http://localhost:8076 | http://localhost/notification-service/ | [Swagger](http://localhost:8076/notification-service/swagger-ui.html) |
+
+### Health Check Endpoints
+
+```bash
+# Check individual service health
+curl http://localhost:8071/auth-service/actuator/health
+curl http://localhost:8072/admin-core-service/actuator/health
+# ... (repeat for each service)
+
+# Check all services via gateway
+curl http://localhost/health
+```
+
+### Development Tools
+
+- **Database Access**: PostgreSQL at `localhost:5432` with separate databases per service
+- **Cache**: Redis at `localhost:6379`
+- **Log Monitoring**: `docker-compose logs -f [service-name]`
+- **Service Scaling**: `docker-compose up -d --scale [service-name]=3`
+
+### 🎯 Frontend Applications
+
+The platform includes two React applications with TypeScript:
+
+#### **Learner Dashboard** (Mobile-First)
+```bash
+cd frontend-learner-dashboard
+npm install && npm run dev
+```
+- **Purpose**: Student interface for courses, assessments, progress tracking
+- **Features**: Responsive design, mobile app capabilities (Capacitor)
+- **Access**: Typically runs on http://localhost:3000
+
+#### **Admin Dashboard** (Desktop-Focused)  
+```bash
+cd frontend-admin-dashboard
+npm install && npm run dev
+```
+- **Purpose**: Administrative interface for course management, analytics
+- **Features**: Advanced tools, reporting, presentation mode
+- **Access**: Typically runs on http://localhost:3001
+
+> **Note**: Frontend development is optional for backend-focused development. The Docker Compose setup focuses on backend services.
 
 ## Frontend
 
@@ -327,22 +443,95 @@ A comprehensive administration interface for educational institutions and instru
   - `/manage-students/invite`: Invite students
   - `/manage-students/enroll-requests`: Manage enrollment requests
 
-## Contributing
 
-1. Fork the repository.
-2. Create a feature branch.
-3. Commit your changes.
-4. Push to the branch.
-5. Create a new Pull Request.
 
-## Notes
+## 🚀 Deployment & Operations
 
-- This is an **open-source project**, and contributions are welcome.
-- The services require a valid **GitHub token** to access shared dependencies from GitHub packages.
-- Some services may require additional configuration for specific features like PDF generation, email notifications, etc.
-- Database schema initialization and migration scripts are not included in this README but may be necessary for a complete setup.
-- This README is based on the exploration of the Vacademy platform codebase.
-- The platform consists of multiple microservices for different functionalities, along with two frontend applications (admin and learner dashboards).
-- The tech stack includes Spring Boot for the backend and React for the frontend, with various supporting libraries and tools.
-- For complete setup, all microservices need to be configured properly with database connections and AWS credentials.
-- The platform supports features like course management, assessments, student tracking, and AI-powered educational tools.
+### **Local Development**
+- **One-command setup** with `./local-dev-setup.sh`
+- **Docker Compose** orchestration for all services
+- **Automatic database setup** with separate schemas per service
+- **Hot reload** and easy debugging capabilities
+
+### **Production Deployment**
+- **Kubernetes/Helm** charts for scalable deployment
+- **GitHub Actions** CI/CD with automated testing and deployment
+- **Environment-based configuration** through GitHub Secrets
+- **Multi-environment support** (staging, production)
+
+### **Security & Configuration**
+- **38 GitHub Secrets** for secure configuration management
+- **Environment variable** based configuration (no hardcoded values)
+- **OAuth2 integration** for secure authentication
+- **Automated secret injection** in deployment workflows
+
+## 📝 Contributing
+
+We welcome contributions! Here's how to get started:
+
+1. **Fork the repository** and clone locally
+2. **Set up local development** using our Docker Compose setup
+3. **Create a feature branch** for your changes
+4. **Test thoroughly** using provided health checks and test suites
+5. **Submit a pull request** with detailed description
+
+### **Development Guidelines**
+- Follow existing code patterns and naming conventions
+- Add tests for new functionality
+- Update documentation as needed
+- Ensure all services pass health checks
+- Test both local and containerized environments
+
+## 📞 Support & Resources
+
+### **Getting Help**
+- **Issues**: Use GitHub Issues for bug reports and feature requests
+- **Discussions**: Join our community discussions for questions
+- **Documentation**: Comprehensive guides in the `/docs` folder
+
+### **Key Resources**
+- **[Local Development Guide](LOCAL_DEVELOPMENT.md)** - Complete setup instructions
+- **[API Documentation](http://localhost/swagger-ui.html)** - Interactive API docs (when running locally)
+- **[Architecture Docs](SECURITY_MIGRATION_SUMMARY.md)** - System design and security
+- **[Deployment Guide](GITHUB_SECRETS.md)** - Production deployment instructions
+
+---
+
+## 📋 System Requirements
+
+### **For Local Development**
+- **Docker Desktop** 4.0+ (8GB RAM recommended)
+- **Git** for version control
+- **Modern browser** for accessing web interfaces
+
+### **For Production Deployment**
+- **Kubernetes cluster** (EKS, GKE, or similar)
+- **PostgreSQL** database (RDS recommended)
+- **AWS S3** for file storage
+- **GitHub repository** with Actions enabled
+
+### **Optional Tools**
+- **kubectl** for Kubernetes management
+- **helm** for chart deployment
+- **Java 17 + Maven** for building from source
+- **Node.js 18+** for frontend development
+
+---
+
+---
+
+## 🎯 What Makes Vacademy Special?
+
+✨ **Modern Architecture**: 6 microservices with dedicated databases  
+🐳 **Developer Friendly**: One-command setup with Docker Compose  
+🔒 **Enterprise Security**: GitHub Secrets + environment variable management  
+🚀 **Production Ready**: Kubernetes/Helm deployment with CI/CD  
+🤖 **AI-Powered**: VSmart tools for intelligent learning experiences  
+🌐 **Multi-Platform**: Web + mobile apps for learners and administrators  
+
+**🎉 Ready to transform education with AI-powered learning?**  
+**Start here: [Local Development Guide](LOCAL_DEVELOPMENT.md) → Get running in 2 minutes!**
+
+---
+
+*Built with ❤️ by the Vacademy community • [Contribute](https://github.com/Vacademy-io/vacademy_platform) • [Report Issues](https://github.com/Vacademy-io/vacademy_platform/issues) • [Join Discussions](https://github.com/Vacademy-io/vacademy_platform/discussions)*

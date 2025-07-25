@@ -30,4 +30,10 @@ public class AddCourseDTO {
     private Integer courseDepth;
     private String courseHtmlDescription;
     private List<AddFacultyToCourseDTO>addFacultyToCourse;
+    
+    // Fields for teacher approval workflow
+    private String status;
+    private String createdByUserId;
+    private String originalCourseId;
+    private Integer versionNumber;
 }

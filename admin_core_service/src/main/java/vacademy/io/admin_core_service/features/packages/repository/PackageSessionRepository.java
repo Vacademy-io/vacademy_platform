@@ -177,4 +177,8 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
     WHERE ps.id IN (:packageSessionIds)
     """, nativeQuery = true)
     List<PackageSession> findPackageSessionsByIds(@Param("packageSessionIds") List<String> packageSessionIds);
+
+    // Add method for finding package sessions by package entity ID
+    @Query("SELECT ps FROM PackageSession ps WHERE ps.packageEntity.id = :packageEntityId")
+    List<PackageSession> findByPackageEntityId(@Param("packageEntityId") String packageEntityId);
 }

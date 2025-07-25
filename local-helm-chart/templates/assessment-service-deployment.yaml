@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: assessment-service
+  namespace: vacademy
+  labels:
+    app: assessment-service
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: assessment-service
+  template:
+    metadata:
+      labels:
+        app: assessment-service
+    spec:
+      containers:
+        - name: assessment-service
+          image: "{{ .Values.services.assessment_service.image.repository }}:{{ .Values.services.assessment_service.image.tag }}"
+          imagePullPolicy: {{ .Values.services.assessment_service.image.pullPolicy | default "Always" }}
+          env:
+          {{- range $key, $value := .Values.globalEnv }}
+          - name: {{ $key }}
+            value: {{ $value | quote }}
+          {{- end }}
+          resources:
+            requests:
+              cpu: {{ .Values.resources.requests.cpu | default "100m" }}
+              memory: {{ .Values.resources.requests.memory | default "256Mi" }}
+            limits:
+              cpu: {{ .Values.resources.limits.cpu | default "500m" }}
+              memory: {{ .Values.resources.limits.memory | default "512Mi" }}
+          livenessProbe:
+            httpGet:
+              path: /assessment-service/actuator/health
+              port: {{ .Values.services.assessment_service.port }}
+              scheme: HTTP
+            initialDelaySeconds: 180
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+            successThreshold: 1
+          startupProbe:
+            httpGet:
+              path: /assessment-service/actuator/health
+              port: {{ .Values.services.assessment_service.port }}
+              scheme: HTTP
+            initialDelaySeconds: 180
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 30
+            successThreshold: 1
+          readinessProbe:
+            httpGet:
+              path: /assessment-service/actuator/health
+              port: {{ .Values.services.assessment_service.port }}
+              scheme: HTTP
+            initialDelaySeconds: 180
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+            successThreshold: 1
+          ports:
+            - containerPort: {{ .Values.services.assessment_service.port }}

@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-service
+  namespace: vacademy
+  labels:
+    app: auth-service
+spec:
+  selector:
+    app: auth-service
+  ports:
+  - port: {{ .Values.services.auth_service.port }}
+    targetPort: {{ .Values.services.auth_service.port }}
+    protocol: TCP
+  type: ClusterIP

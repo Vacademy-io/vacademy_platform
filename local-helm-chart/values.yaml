@@ -1,0 +1,78 @@
+# Vacademy Local Kubernetes Deployment Values
+# Uses application-k8s-local.properties for configuration
+
+global:
+  imageRegistry: "vacademy-local"
+  imageTag: "latest"
+  imagePullPolicy: Never  # Use local images only
+  springProfile: "k8s-local"  # Use application-k8s-local.properties
+  namespace: "vacademy"
+
+# Service configurations
+services:
+  authService:
+    name: "auth-service"
+    image: "auth_service"
+    port: 8071
+    replicas: 1
+    healthPath: "/auth-service/actuator/health"
+    
+  adminCoreService:
+    name: "admin-core-service"
+    image: "admin_core_service"
+    port: 8072
+    replicas: 1
+    healthPath: "/admin-core-service/actuator/health"
+    
+  communityService:
+    name: "community-service"
+    image: "community_service"
+    port: 8073
+    replicas: 1
+    healthPath: "/community-service/actuator/health"
+    
+  assessmentService:
+    name: "assessment-service"
+    image: "assessment_service"
+    port: 8074
+    replicas: 1
+    healthPath: "/assessment-service/actuator/health"
+    
+  mediaService:
+    name: "media-service"
+    image: "media_service"
+    port: 8075
+    replicas: 1
+    healthPath: "/media-service/actuator/health"
+    
+  notificationService:
+    name: "notification-service"
+    image: "notification_service"
+    port: 8076
+    replicas: 1
+    healthPath: "/notification-service/actuator/health"
+
+# Resource limits for local development
+resources:
+  requests:
+    cpu: "100m"
+    memory: "256Mi"
+  limits:
+    cpu: "500m"
+    memory: "512Mi"
+
+# Health check configuration
+healthCheck:
+  initialDelaySeconds: 180  # 3 minutes startup time
+  periodSeconds: 30
+  timeoutSeconds: 5
+  failureThreshold: 5
+  startupFailureThreshold: 30
+
+# Database configuration (deployed separately)
+database:
+  enabled: false  # PostgreSQL deployed separately in deployment script
+  
+# Redis configuration (deployed separately)  
+redis:
+  enabled: false  # Redis deployed separately in deployment script 

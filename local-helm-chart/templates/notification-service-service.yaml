@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: notification-service
+  namespace: vacademy
+  labels:
+    app: notification-service
+spec:
+  selector:
+    app: notification-service
+  ports:
+  - port: {{ .Values.services.notification_service.port }}
+    targetPort: {{ .Values.services.notification_service.port }}
+    protocol: TCP
+  type: ClusterIP

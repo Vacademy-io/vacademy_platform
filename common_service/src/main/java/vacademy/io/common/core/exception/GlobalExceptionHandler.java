@@ -6,14 +6,13 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
-import org.springframework.web.reactive.result.method.annotation.ResponseEntityExceptionHandler;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.Date;
 
 @ControllerAdvice
 @Slf4j
-public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
+public class GlobalExceptionHandler {
     @ExceptionHandler(VacademyException.class)
     public ResponseEntity<ErrorInfo> handleExceptionForOthers(HttpServletRequest req, VacademyException ex) {
         log.error("Vacademy Error: {} Stack Trace: {}", ex, ex.getStackTrace());

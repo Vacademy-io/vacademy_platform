@@ -2096,9 +2096,17 @@ GROUP BY
             @Param("statuses") List<String> statuses
     );
 
-    @Query("SELECT p FROM PackageEntity p WHERE p.status = :status ORDER BY p.createdAt DESC")
-    List<PackageEntity> findByStatus(@Param("status") String status);
-
+    @Query("""
+        SELECT p FROM PackageEntity p
+        JOIN PackageInstitute pi ON pi.packageEntity = p
+        WHERE p.status = :status
+          AND pi.instituteEntity.id = :instituteId
+        ORDER BY p.createdAt DESC
+    """)
+    List<PackageEntity> findByStatusAndInstitute(
+        @Param("status") String status,
+        @Param("instituteId") String instituteId
+    );
     @Query("SELECT p FROM PackageEntity p WHERE p.originalCourseId = :originalCourseId AND p.createdByUserId = :createdByUserId AND p.status = :status")
     List<PackageEntity> findByOriginalCourseIdAndCreatedByUserIdAndStatus(
             @Param("originalCourseId") String originalCourseId, 

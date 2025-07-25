@@ -195,8 +195,8 @@ public class CourseApprovalService {
     /**
      * Get courses pending admin review
      */
-    public List<PackageEntity> getCoursesForReview() {
-        return packageRepository.findByStatus(PackageStatusEnum.IN_REVIEW.name());
+    public List<PackageEntity> getCoursesForReview(String instituteId) {
+        return packageRepository.findByStatusAndInstitute(PackageStatusEnum.IN_REVIEW.name(), instituteId);
     }
 
     /**
@@ -829,15 +829,107 @@ public class CourseApprovalService {
 
     /**
      * Smart merge logic: Update existing entities, add new ones, handle deletions
+     * Process each unique subject only once to avoid duplication across multiple sessions
      */
     private void mergeHierarchyChanges(PackageEntity tempCourse, PackageEntity originalCourse) {
         List<PackageSession> tempPackageSessions = packageSessionRepository.findByPackageEntityId(tempCourse.getId());
         List<PackageSession> originalPackageSessions = packageSessionRepository.findByPackageEntityId(originalCourse.getId());
 
+        // Step 1: Process unique subjects (avoiding duplication)
+        mergeUniqueSubjects(tempPackageSessions, originalPackageSessions);
+        
+        // Step 2: Handle session-specific mappings and deletions
+        handleSessionMappingsAndDeletions(tempPackageSessions, originalPackageSessions);
+    }
+
+    /**
+     * Process each unique subject only once to avoid duplication
+     */
+    private void mergeUniqueSubjects(List<PackageSession> tempPackageSessions, List<PackageSession> originalPackageSessions) {
+        // Collect all unique subjects from all temp sessions
+        Map<String, Subject> uniqueTempSubjects = new HashMap<>();
+        Map<String, PackageSession> subjectToTempSession = new HashMap<>();
+        Map<String, PackageSession> subjectToOriginalSession = new HashMap<>();
+        
+        // Build maps of unique subjects and their session contexts
         for (PackageSession tempSession : tempPackageSessions) {
             PackageSession correspondingOriginalSession = findCorrespondingPackageSession(tempSession, originalPackageSessions);
             if (correspondingOriginalSession != null) {
-                mergePackageSessionContent(tempSession, correspondingOriginalSession);
+                List<Subject> tempSubjects = subjectRepository.findDistinctSubjectsByPackageSessionId(tempSession.getId());
+                
+                for (Subject tempSubject : tempSubjects) {
+                    String subjectKey = tempSubject.getParentId() != null ? tempSubject.getParentId() : tempSubject.getId();
+                    if (!uniqueTempSubjects.containsKey(subjectKey)) {
+                        uniqueTempSubjects.put(subjectKey, tempSubject);
+                        subjectToTempSession.put(subjectKey, tempSession);
+                        subjectToOriginalSession.put(subjectKey, correspondingOriginalSession);
+                    }
+                }
+            }
+        }
+        
+        // Process each unique subject only once
+        for (Map.Entry<String, Subject> entry : uniqueTempSubjects.entrySet()) {
+            String subjectKey = entry.getKey();
+            Subject tempSubject = entry.getValue();
+            PackageSession tempSession = subjectToTempSession.get(subjectKey);
+            PackageSession originalSession = subjectToOriginalSession.get(subjectKey);
+            
+            if (tempSubject.getParentId() != null) {
+                // This is an updated subject - merge changes
+                mergeSubjectChanges(tempSubject, tempSession, originalSession);
+            } else {
+                // This is a new subject - add to original
+                addNewSubjectToOriginal(tempSubject, tempSession, originalSession);
+            }
+        }
+        
+        log.info("Processed {} unique subjects across {} temp sessions", 
+                uniqueTempSubjects.size(), tempPackageSessions.size());
+    }
+
+    /**
+     * Handle session-specific mappings and deleted subjects
+     */
+    private void handleSessionMappingsAndDeletions(List<PackageSession> tempPackageSessions, List<PackageSession> originalPackageSessions) {
+        for (PackageSession tempSession : tempPackageSessions) {
+            PackageSession correspondingOriginalSession = findCorrespondingPackageSession(tempSession, originalPackageSessions);
+            if (correspondingOriginalSession != null) {
+                // Handle deleted subjects (subjects in original but not in temp)
+                handleDeletedSubjects(tempSession, correspondingOriginalSession);
+                
+                // Ensure subject-package session mappings are properly maintained
+                ensureSubjectSessionMappings(tempSession, correspondingOriginalSession);
+            }
+        }
+    }
+
+    /**
+     * Ensure subject-package session mappings are properly maintained for new subjects
+     */
+    private void ensureSubjectSessionMappings(PackageSession tempSession, PackageSession originalSession) {
+        List<Subject> tempSubjects = subjectRepository.findDistinctSubjectsByPackageSessionId(tempSession.getId());
+        
+        for (Subject tempSubject : tempSubjects) {
+            if (tempSubject.getParentId() == null) {
+                // This is a new subject - find the corresponding original subject and ensure mapping
+                Optional<Subject> originalSubjectOpt = subjectPackageSessionRepository.findSubjectByNameAndPackageSessionId(
+                        tempSubject.getSubjectName(), originalSession.getId());
+                
+                if (originalSubjectOpt.isPresent()) {
+                    Subject originalSubject = originalSubjectOpt.get();
+                    // Check if mapping already exists
+                    Optional<SubjectPackageSession> existingMapping = subjectPackageSessionRepository
+                            .findBySubjectIdAndPackageSessionId(originalSubject.getId(), originalSession.getId());
+                    
+                    if (existingMapping.isEmpty()) {
+                        // Create the missing mapping
+                        SubjectPackageSession newMapping = new SubjectPackageSession(originalSubject, originalSession, null);
+                        subjectPackageSessionRepository.save(newMapping);
+                        log.info("Created missing subject-session mapping for subject {} in session {}", 
+                                originalSubject.getSubjectName(), originalSession.getId());
+                    }
+                }
             }
         }
     }
@@ -851,25 +943,7 @@ public class CourseApprovalService {
                 .orElse(null);
     }
 
-    private void mergePackageSessionContent(PackageSession tempSession, PackageSession originalSession) {
-        // Get subjects from temp and original
-        List<Subject> tempSubjects = subjectRepository.findDistinctSubjectsByPackageSessionId(tempSession.getId());
-        
-        for (Subject tempSubject : tempSubjects) {
-            if (tempSubject.getParentId() != null) {
-                // This is an updated subject - merge changes
-                mergeSubjectChanges(tempSubject, originalSession);
-            } else {
-                // This is a new subject - add to original
-                addNewSubjectToOriginal(tempSubject, originalSession);
-            }
-        }
-        
-        // Handle deleted subjects (subjects in original but not in temp)
-        handleDeletedSubjects(tempSession, originalSession);
-    }
-
-    private void mergeSubjectChanges(Subject tempSubject, PackageSession originalSession) {
+    private void mergeSubjectChanges(Subject tempSubject, PackageSession tempSession, PackageSession originalSession) {
         // Find original subject by parent_id
         Subject originalSubject = subjectRepository.findById(tempSubject.getParentId())
                 .orElse(null);
@@ -882,12 +956,12 @@ public class CourseApprovalService {
             originalSubject.setThumbnailId(tempSubject.getThumbnailId());
             subjectRepository.save(originalSubject);
             
-            // Merge modules, chapters, and slides
-            mergeModulesForSubject(tempSubject, originalSubject);
+            // Merge modules, chapters, and slides with correct session context
+            mergeModulesForSubject(tempSubject, originalSubject, tempSession, originalSession);
         }
     }
 
-    private void mergeModulesForSubject(Subject tempSubject, Subject originalSubject) {
+    private void mergeModulesForSubject(Subject tempSubject, Subject originalSubject, PackageSession tempSession, PackageSession originalSession) {
         List<SubjectModuleMapping> tempMappings = subjectModuleMappingRepository.findBySubjectId(tempSubject.getId());
         
         for (SubjectModuleMapping tempMapping : tempMappings) {
@@ -903,16 +977,16 @@ public class CourseApprovalService {
                     moduleRepository.save(originalModule);
                     
                     // Merge chapters for this module
-                    mergeChaptersForModule(tempModule, originalModule);
+                    mergeChaptersForModule(tempModule, originalModule, tempSession, originalSession);
                 }
             } else {
                 // Add new module to original subject
-                addNewModuleToOriginalSubject(tempModule, originalSubject);
+                addNewModuleToOriginalSubject(tempModule, originalSubject, tempSession, originalSession);
             }
         }
     }
 
-    private void mergeChaptersForModule(Module tempModule, Module originalModule) {
+    private void mergeChaptersForModule(Module tempModule, Module originalModule, PackageSession tempSession, PackageSession originalSession) {
         List<ModuleChapterMapping> tempMappings = moduleChapterMappingRepository.findByModuleId(tempModule.getId());
         
         for (ModuleChapterMapping tempMapping : tempMappings) {
@@ -928,16 +1002,16 @@ public class CourseApprovalService {
                     chapterRepository.save(originalChapter);
                     
                     // Merge slides for this chapter
-                    mergeSlidesForChapter(tempChapter, originalChapter);
+                    mergeSlidesForChapter(tempChapter, originalChapter, tempSession, originalSession);
                 }
             } else {
                 // Add new chapter to original module
-                addNewChapterToOriginalModule(tempChapter, originalModule);
+                addNewChapterToOriginalModule(tempChapter, originalModule, tempSession, originalSession);
             }
         }
     }
 
-    private void mergeSlidesForChapter(Chapter tempChapter, Chapter originalChapter) {
+    private void mergeSlidesForChapter(Chapter tempChapter, Chapter originalChapter, PackageSession tempSession, PackageSession originalSession) {
         // Enhanced slide merging logic with parent_id tracking
         List<ChapterToSlides> tempSlides = chapterToSlidesRepository.findByChapterId(tempChapter.getId());
         
@@ -974,7 +1048,7 @@ public class CourseApprovalService {
         // TODO: Implement specific slide source merging based on type
     }
 
-    private void addNewSubjectToOriginal(Subject tempSubject, PackageSession originalSession) {
+    private void addNewSubjectToOriginal(Subject tempSubject, PackageSession tempSession, PackageSession originalSession) {
         // Create new subject in original course
         Subject newSubject = new Subject();
         newSubject.setSubjectName(tempSubject.getSubjectName());
@@ -988,11 +1062,43 @@ public class CourseApprovalService {
         SubjectPackageSession mapping = new SubjectPackageSession(newSubject, originalSession, null);
         subjectPackageSessionRepository.save(mapping);
         
-        log.info("Added new subject {} to original package session {}", 
-                newSubject.getSubjectName(), originalSession.getId());
+        // Copy all modules, chapters, and slides from temp subject to new subject
+        copyModulesFromTempToNewSubject(tempSubject, newSubject, tempSession, originalSession);
+        
+        log.info("Added new subject {} to original package session {} with {} modules", 
+                newSubject.getSubjectName(), originalSession.getId(),
+                                 subjectModuleMappingRepository.findBySubjectId(newSubject.getId()).size());
     }
 
-    private void addNewModuleToOriginalSubject(Module tempModule, Subject originalSubject) {
+    private void copyModulesFromTempToNewSubject(Subject tempSubject, Subject newSubject, PackageSession tempSession, PackageSession originalSession) {
+        // Get all modules from the temp subject
+        List<SubjectModuleMapping> tempModuleMappings = subjectModuleMappingRepository.findBySubjectId(tempSubject.getId());
+        
+        for (SubjectModuleMapping tempMapping : tempModuleMappings) {
+            Module tempModule = tempMapping.getModule();
+            
+            // Create new module for the new subject
+            Module newModule = new Module();
+            newModule.setModuleName(tempModule.getModuleName());
+            newModule.setDescription(tempModule.getDescription());
+            newModule.setThumbnailId(tempModule.getThumbnailId());
+            newModule.setStatus(tempModule.getStatus());
+            // Don't set parentId since this is a new module in the original course
+            newModule = moduleRepository.save(newModule);
+
+            // Create subject-module mapping for the new subject
+            SubjectModuleMapping newMapping = new SubjectModuleMapping(newSubject, newModule);
+            subjectModuleMappingRepository.save(newMapping);
+
+            // Copy all chapters from temp module to new module
+            copyChaptersFromTempToNewModule(tempModule, newModule, tempSession, originalSession);
+        }
+        
+        log.info("Copied {} modules from temp subject {} to new subject {}", 
+                tempModuleMappings.size(), tempSubject.getId(), newSubject.getId());
+    }
+
+    private void addNewModuleToOriginalSubject(Module tempModule, Subject originalSubject, PackageSession tempSession, PackageSession originalSession) {
         // Create new module in original subject
         Module newModule = new Module();
         newModule.setModuleName(tempModule.getModuleName());
@@ -1005,11 +1111,91 @@ public class CourseApprovalService {
         SubjectModuleMapping mapping = new SubjectModuleMapping(originalSubject, newModule);
         subjectModuleMappingRepository.save(mapping);
         
-        log.info("Added new module {} to original subject {}", 
-                newModule.getModuleName(), originalSubject.getId());
+        // Copy all chapters from temp module to new module
+        copyChaptersFromTempToNewModule(tempModule, newModule, tempSession, originalSession);
+        
+        log.info("Added new module {} to original subject {} with {} chapters", 
+                newModule.getModuleName(), originalSubject.getId(), 
+                moduleChapterMappingRepository.findByModuleId(newModule.getId()).size());
     }
 
-    private void addNewChapterToOriginalModule(Chapter tempChapter, Module originalModule) {
+    private void copyChaptersFromTempToNewModule(Module tempModule, Module newModule, PackageSession tempSession, PackageSession originalSession) {
+        // Get all chapters from the temp module
+        List<ModuleChapterMapping> tempChapterMappings = moduleChapterMappingRepository.findByModuleId(tempModule.getId());
+        
+        for (ModuleChapterMapping tempMapping : tempChapterMappings) {
+            Chapter tempChapter = tempMapping.getChapter();
+            
+            // Create new chapter for the new module
+            Chapter newChapter = new Chapter();
+            newChapter.setChapterName(tempChapter.getChapterName());
+            newChapter.setDescription(tempChapter.getDescription());
+            newChapter.setFileId(tempChapter.getFileId());
+            newChapter.setStatus(tempChapter.getStatus());
+            // Don't set parentId since this is a new chapter in the original course
+            newChapter = chapterRepository.save(newChapter);
+
+            // Create module-chapter mapping for the new module
+            ModuleChapterMapping newMapping = new ModuleChapterMapping(newChapter, newModule);
+            moduleChapterMappingRepository.save(newMapping);
+
+            // Create chapter-package session mapping if temp chapter has one
+            Optional<ChapterPackageSessionMapping> tempChapterSessionMapping = 
+                    chapterPackageSessionMappingRepository.findByChapterIdAndPackageSessionIdAndStatusNotDeleted(
+                            tempChapter.getId(), tempSession != null ? tempSession.getId() : null);
+            
+            if (tempChapterSessionMapping.isPresent() && originalSession != null) {
+                ChapterPackageSessionMapping newChapterSessionMapping = new ChapterPackageSessionMapping(
+                        newChapter, originalSession, tempChapterSessionMapping.get().getChapterOrder());
+                chapterPackageSessionMappingRepository.save(newChapterSessionMapping);
+            }
+
+            // Copy slides for this chapter
+            copyNewSlidesForChapter(tempChapter, newChapter);
+        }
+        
+        log.info("Copied {} chapters from temp module {} to new module {}", 
+                tempChapterMappings.size(), tempModule.getId(), newModule.getId());
+    }
+
+    private void copyNewSlidesForChapter(Chapter tempChapter, Chapter newChapter) {
+        List<ChapterToSlides> tempChapterToSlides = chapterToSlidesRepository.findByChapterId(tempChapter.getId());
+        List<Slide> newSlides = new ArrayList<>();
+        List<ChapterToSlides> newChapterToSlides = new ArrayList<>();
+
+        // Create new Slide instances
+        for (ChapterToSlides tempChapterToSlide : tempChapterToSlides) {
+            Slide tempSlide = tempChapterToSlide.getSlide();
+            Slide newSlide = new Slide();
+            newSlide.setId(UUID.randomUUID().toString()); // Generate unique ID
+            newSlide.setTitle(tempSlide.getTitle());
+            newSlide.setStatus(tempSlide.getStatus());
+            newSlide.setImageFileId(tempSlide.getImageFileId());
+            newSlide.setSourceType(tempSlide.getSourceType());
+            newSlide.setDescription(tempSlide.getDescription());
+            newSlide.setSourceId(tempSlide.getSourceId()); // Copy source reference
+            // Don't set parentId since this is a new slide in the original course
+            newSlides.add(newSlide);
+        }
+
+        // Save slides
+        List<Slide> persistedSlides = slideRepository.saveAll(newSlides);
+
+        // Create ChapterToSlides mappings
+        for (int i = 0; i < tempChapterToSlides.size(); i++) {
+            newChapterToSlides.add(new ChapterToSlides(newChapter, persistedSlides.get(i), 
+                    tempChapterToSlides.get(i).getSlideOrder(), 
+                    tempChapterToSlides.get(i).getStatus()));
+        }
+
+        // Save ChapterToSlides mappings
+        chapterToSlidesRepository.saveAll(newChapterToSlides);
+        
+        log.info("Copied {} slides from temp chapter {} to new chapter {}", 
+                newSlides.size(), tempChapter.getId(), newChapter.getId());
+    }
+
+    private void addNewChapterToOriginalModule(Chapter tempChapter, Module originalModule, PackageSession tempSession, PackageSession originalSession) {
         // Create new chapter in original module
         Chapter newChapter = new Chapter();
         newChapter.setChapterName(tempChapter.getChapterName());
@@ -1021,6 +1207,16 @@ public class CourseApprovalService {
         // Create module-chapter mapping
         ModuleChapterMapping mapping = new ModuleChapterMapping(newChapter, originalModule);
         moduleChapterMappingRepository.save(mapping);
+        
+        // Create chapter-package session mapping if needed
+        if (originalSession != null) {
+            ChapterPackageSessionMapping chapterSessionMapping = new ChapterPackageSessionMapping(
+                    newChapter, originalSession, null); // Order can be set later if needed
+            chapterPackageSessionMappingRepository.save(chapterSessionMapping);
+        }
+        
+        // Copy slides for this chapter
+        copyNewSlidesForChapter(tempChapter, newChapter);
         
         log.info("Added new chapter {} to original module {}", 
                 newChapter.getChapterName(), originalModule.getId());

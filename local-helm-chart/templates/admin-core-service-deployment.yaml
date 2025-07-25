@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: admin-core-service
+  namespace: vacademy
+  labels:
+    app: admin-core-service
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: admin-core-service
+  template:
+    metadata:
+      labels:
+        app: admin-core-service
+    spec:
+      containers:
+        - name: admin-core-service
+          image: "{{ .Values.services.admin_core_service.image.repository }}:{{ .Values.services.admin_core_service.image.tag }}"
+          imagePullPolicy: {{ .Values.services.admin_core_service.image.pullPolicy | default "Always" }}
+          env:
+          {{- range $key, $value := .Values.globalEnv }}
+          - name: {{ $key }}
+            value: {{ $value | quote }}
+          {{- end }}
+          resources:
+            requests:
+              cpu: {{ .Values.resources.requests.cpu | default "100m" }}
+              memory: {{ .Values.resources.requests.memory | default "256Mi" }}
+            limits:
+              cpu: {{ .Values.resources.limits.cpu | default "500m" }}
+              memory: {{ .Values.resources.limits.memory | default "512Mi" }}
+          livenessProbe:
+            httpGet:
+              path: /admin-core-service/actuator/health
+              port: {{ .Values.services.admin_core_service.port }}
+              scheme: HTTP
+            initialDelaySeconds: 180
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+            successThreshold: 1
+          startupProbe:
+            httpGet:
+              path: /admin-core-service/actuator/health
+              port: {{ .Values.services.admin_core_service.port }}
+              scheme: HTTP
+            initialDelaySeconds: 180
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 30
+            successThreshold: 1
+          readinessProbe:
+            httpGet:
+              path: /admin-core-service/actuator/health
+              port: {{ .Values.services.admin_core_service.port }}
+              scheme: HTTP
+            initialDelaySeconds: 180
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+            successThreshold: 1
+          ports:
+            - containerPort: {{ .Values.services.admin_core_service.port }}

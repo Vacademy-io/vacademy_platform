@@ -53,9 +53,9 @@ public class AdminCourseApprovalController {
      * Get courses pending review
      */
     @GetMapping("/pending-review")
-    public ResponseEntity<?> getCoursesForReview(@RequestAttribute("user") CustomUserDetails admin) {
+    public ResponseEntity<?> getCoursesForReview(@RequestAttribute("user") CustomUserDetails admin, @RequestParam(required = false) String instituteId) {
         try {
-            List<PackageEntity> courses = courseApprovalService.getCoursesForReview();
+            List<PackageEntity> courses = courseApprovalService.getCoursesForReview(instituteId);
             return ResponseEntity.ok(courses);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body("Error retrieving courses: " + e.getMessage());
@@ -81,10 +81,10 @@ public class AdminCourseApprovalController {
      * Get summary of pending approvals for admin dashboard
      */
     @GetMapping("/approval-summary")
-    public ResponseEntity<Object> getApprovalSummary(@RequestAttribute("user") CustomUserDetails admin) {
+    public ResponseEntity<Object> getApprovalSummary(@RequestAttribute("user") CustomUserDetails admin, @RequestParam(required = false) String instituteId) {
         try {
             Map<String, Object> summary = new HashMap<>();
-            List<PackageEntity> pendingCourses = courseApprovalService.getCoursesForReview();
+            List<PackageEntity> pendingCourses = courseApprovalService.getCoursesForReview(instituteId);
             summary.put("pending_count", pendingCourses.size());
             summary.put("pending_courses", pendingCourses);
             return ResponseEntity.ok(summary);

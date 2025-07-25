@@ -6,7 +6,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import vacademy.io.common.auth.config.SharedConfigurationReference;
 
-@SpringBootApplication
+@SpringBootApplication(exclude = {org.springframework.boot.autoconfigure.mail.MailSenderAutoConfiguration.class})
 @Import(SharedConfigurationReference.class)
 @EnableWebSecurity
 public class NotificationServiceApplication {

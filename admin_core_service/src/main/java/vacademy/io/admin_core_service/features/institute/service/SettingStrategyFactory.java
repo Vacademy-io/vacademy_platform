@@ -22,7 +22,9 @@ public class SettingStrategyFactory {
     private IInstituteSettingStrategy getStrategy(String key) {
         IInstituteSettingStrategy strategy = strategies.get(key);
         if (strategy == null) {
-            throw new IllegalArgumentException("No strategy found for key: " + key);
+            // Fall back to generic strategy for unknown keys
+            strategy = new GenericSettingStrategy();
+            strategy.setKey(key);
         }
         return strategy;
     }

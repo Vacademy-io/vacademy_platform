@@ -5,6 +5,7 @@ import { SidebarProvider, useSidebar } from "@/components/ui/sidebar";
 import { useEffect, useState } from "react";
 import { truncateString } from "@/lib/reusable/truncateString";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
+import { toTitleCase } from "@/lib/utils";
 import { CaretLeft, BookOpen, GraduationCap } from "phosphor-react";
 import { SlideMaterial } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/slide-material";
 import {
@@ -155,7 +156,7 @@ function Slides() {
                                     }`}
                                     onClick={handleSubjectRoute}
                                 >
-                                    {truncateString(subjectName, open ? (window.innerWidth < 640 ? 20 : 15) : 8)}
+                                    {truncateString(toTitleCase(subjectName), open ? (window.innerWidth < 640 ? 20 : 15) : 8)}
                                 </button>
                                 <ChevronRightIcon className="w-2 h-2 sm:w-3 sm:h-3 text-gray-400" />
                                 <button
@@ -164,11 +165,11 @@ function Slides() {
                                     }`}
                                     onClick={handleModuleRoute}
                                 >
-                                    {truncateString(moduleName, open ? (window.innerWidth < 640 ? 20 : 15) : 8)}
+                                    {truncateString(toTitleCase(moduleName), open ? (window.innerWidth < 640 ? 20 : 15) : 8)}
                                 </button>
                                 <ChevronRightIcon className="w-2 h-2 sm:w-3 sm:h-3 text-gray-400" />
                                 <span className="text-xs font-bold text-primary-600 bg-primary-50 px-1 sm:px-2 py-0.5 rounded-md">
-                                    {open ? (window.innerWidth < 640 ? chapterName : truncatedChapterName) : truncatedChapterName}
+                                    {open ? (window.innerWidth < 640 ? toTitleCase(chapterName) : truncatedChapterName) : truncatedChapterName}
                                 </span>
                             </div>
                         </div>
@@ -304,11 +305,11 @@ function Slides() {
                     {/* Mobile: Stack vertically, Desktop: Single line */}
                     <div className="block sm:hidden">
                         <h1 className="text-xs font-bold text-gray-900 truncate mb-0.5">
-                            {truncateString(chapterName || "Study Materials", 25)}
+                            {truncateString(toTitleCase(chapterName || "Study Materials"), 25)}
                         </h1>
                         <p className="text-xs text-gray-600 truncate">
                             {subjectName && moduleName 
-                                ? `${truncateString(subjectName, 15)} • ${truncateString(moduleName, 15)}`
+                                ? `${truncateString(toTitleCase(subjectName), 15)} • ${truncateString(toTitleCase(moduleName), 15)}`
                                 : "Learning Path"
                             }
                         </p>
@@ -316,10 +317,10 @@ function Slides() {
                     <div className="hidden sm:block">
                         <h1 className="text-sm font-bold text-gray-900 truncate">
                             {subjectName && moduleName && chapterName
-                                ? `${truncateString(subjectName, window.innerWidth < 768 ? 8 : window.innerWidth < 1024 ? 12 : 18)} • ${truncateString(
-                                      moduleName,
+                                ? `${truncateString(toTitleCase(subjectName), window.innerWidth < 768 ? 8 : window.innerWidth < 1024 ? 12 : 18)} • ${truncateString(
+                                      toTitleCase(moduleName),
                                       window.innerWidth < 768 ? 8 : window.innerWidth < 1024 ? 12 : 18
-                                  )} • ${truncateString(chapterName, window.innerWidth < 768 ? 10 : window.innerWidth < 1024 ? 15 : 25)}`
+                                  )} • ${truncateString(toTitleCase(chapterName), window.innerWidth < 768 ? 10 : window.innerWidth < 1024 ? 15 : 25)}`
                                 : "Study Materials"}
                         </h1>
                     </div>

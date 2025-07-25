@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { PullToRefreshWrapper } from "@/components/design-system/pull-to-refresh";
 import { fetchStudyLibraryDetails } from "@/services/study-library/getStudyLibraryDetails";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { toTitleCase } from "@/lib/utils";
 import {
     CaretDown,
     CaretRight,
@@ -279,9 +280,9 @@ export const CourseStructureDetails = ({
                                                 </span>
                                                 <span
                                                     className="truncate font-medium group-hover:text-primary-700 transition-colors"
-                                                    title={subject.subject_name}
+                                                    title={toTitleCase(subject.subject_name)}
                                                 >
-                                                    {subject.subject_name}
+                                                    {toTitleCase(subject.subject_name)}
                                                 </span>
                                             </div>
                                         </CollapsibleTrigger>
@@ -424,11 +425,11 @@ export const CourseStructureDetails = ({
                                                                                             <span
                                                                                                 className="truncate group-hover:text-green-700 transition-colors text-xs"
                                                                                                 title={
-                                                                                                    ch.chapter_name
+                                                                                                    toTitleCase(ch.chapter_name)
                                                                                                 }
                                                                                             >
                                                                                                 {
-                                                                                                    ch.chapter_name
+                                                                                                    toTitleCase(ch.chapter_name)
                                                                                                 }
                                                                                             </span>
                                                                                         </div>
@@ -658,11 +659,11 @@ export const CourseStructureDetails = ({
                                                                                         <span
                                                                                             className="truncate group-hover:text-green-700 transition-colors text-xs"
                                                                                             title={
-                                                                                                ch.chapter_name
+                                                                                                toTitleCase(ch.chapter_name)
                                                                                             }
                                                                                         >
                                                                                             {
-                                                                                                ch.chapter_name
+                                                                                                toTitleCase(ch.chapter_name)
                                                                                             }
                                                                                         </span>
                                                                                     </div>
@@ -844,11 +845,11 @@ export const CourseStructureDetails = ({
                                                                                         <span
                                                                                             className="truncate group-hover:text-green-700 transition-colors text-xs"
                                                                                             title={
-                                                                                                ch.chapter_name
+                                                                                                toTitleCase(ch.chapter_name)
                                                                                             }
                                                                                         >
                                                                                             {
-                                                                                                ch.chapter_name
+                                                                                                toTitleCase(ch.chapter_name)
                                                                                             }
                                                                                         </span>
                                                                                     </div>

@@ -4,6 +4,7 @@ import { useRouter } from "@tanstack/react-router";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { Star } from "phosphor-react";
 import { ProgressBar } from "@/components/ui/custom-progress-bar";
+import { toTitleCase } from "@/lib/utils";
 
 interface Instructor {
     id: string;
@@ -144,14 +145,14 @@ const CourseCard: React.FC<CourseCardProps> = ({
                 <div className="flex justify-between items-start mb-3 sm:mb-4">
                     <h3
                         className="text-lg sm:text-xl font-bold text-gray-900 leading-tight group-hover:text-primary-600 transition-colors duration-300 line-clamp-2 flex-1 mr-3"
-                        title={package_name}
+                        title={toTitleCase(package_name)}
                     >
-                        {package_name}
+                        {toTitleCase(package_name)}
                     </h3>
                     <span
                         className={`text-xs font-bold px-3 py-1.5 rounded-full shadow-sm border ${getLevelColor()} flex-shrink-0 transition-all duration-300 group-hover:scale-105`}
                     >
-                        {level_name}
+                        {toTitleCase(level_name)}
                     </span>
                 </div>
 

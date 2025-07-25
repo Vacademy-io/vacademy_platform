@@ -3,6 +3,7 @@ import { useCatalogStore } from "../-store/catalogStore";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { handleFetchInstituteDetails } from "../-services/institute-details";
 import { Filter, Check, ChevronDown, ChevronUp, X } from 'lucide-react';
+import { toTitleCase } from "@/lib/utils";
 
 // Internal reusable component for individual filter sections
 interface FilterSectionProps {
@@ -152,7 +153,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
 
     const levels = (instituteData?.levels || []).map((level: any) => ({
         id: level.id,
-        name: level.level_name || "Unnamed Level",
+        name: toTitleCase(level.level_name || "Unnamed Level"),
     }));
 
     const tags = (instituteData?.tags || []).map((tag: string) => ({

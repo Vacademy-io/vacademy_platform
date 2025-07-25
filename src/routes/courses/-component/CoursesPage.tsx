@@ -5,6 +5,7 @@ import CourseCard from "./CourseCards.tsx";
 import Pagination from "./Pagination.tsx";
 import { useCatalogStore } from "../-store/catalogStore.ts";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
+import { toTitleCase } from "@/lib/utils";
 
 interface CoursesPageProps {
     searchTerm: string;
@@ -214,11 +215,11 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                                         courseId={course.id}
                                         key={index}
                                         package_name={
-                                            course.package_name ||
-                                            "Untitled Package"
+                                            toTitleCase(course.package_name ||
+                                            "Untitled Package")
                                         }
                                         level_name={
-                                            course.level_name || "Beginner"
+                                            toTitleCase(course.level_name || "Beginner")
                                         }
                                         instructors={
                                             course.instructors?.length

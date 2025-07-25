@@ -49,4 +49,6 @@ public class UserPlan {
 
     @Column(name = "updated_at", insertable = false, updatable = false)
     private LocalDateTime updatedAt;
+
+    private String jsonPaymentDetails; // Like which payment method he is using and if
 }

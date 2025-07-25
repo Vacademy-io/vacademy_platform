@@ -70,20 +70,14 @@ public class AuthService {
 
     public JwtResponseDto generateJwtTokenForUser(User user, RefreshToken refreshToken, List<UserRole> userRoles) {
 
-        // Check if the user is a root user
-        if (user.isRootUser()) {
-            List<String>userPermissions = userPermissionRepository.findByUserId(user.getId()).stream().map(UserPermission::getPermissionId).toList();
-            String accessToken = jwtService.generateToken(user, userRoles,userPermissions);
+        List<String>userPermissions = userPermissionRepository.findByUserId(user.getId()).stream().map(UserPermission::getPermissionId).toList();
+        String accessToken = jwtService.generateToken(user, userRoles,userPermissions);
 
-            // Return a JwtResponseDto with access token and refresh token
-            return JwtResponseDto.builder()
-                    .accessToken(accessToken)
-                    .refreshToken(refreshToken.getToken())
-                    .build();
-        }
-
-        // If the user is not a root user, you can handle other logic or throw an exception
-        throw new VacademyException(HttpStatus.BAD_REQUEST, "Non-root user is not allowed to generate token.");
+        // Return a JwtResponseDto with access token and refresh token
+        return JwtResponseDto.builder()
+                .accessToken(accessToken)
+                .refreshToken(refreshToken.getToken())
+                .build();
     }
 
 

@@ -10,6 +10,7 @@ import vacademy.io.auth_service.feature.auth.dto.AuthRequestDto;
 import vacademy.io.auth_service.feature.auth.dto.JwtResponseDto;
 import vacademy.io.auth_service.feature.auth.manager.LearnerAuthManager;
 import vacademy.io.common.auth.dto.RefreshTokenRequestDTO;
+import vacademy.io.common.auth.dto.learner.LearnerSignupDTO;
 import vacademy.io.common.auth.repository.UserRepository;
 import vacademy.io.common.auth.service.JwtService;
 import vacademy.io.common.auth.service.RefreshTokenService;
@@ -31,6 +32,11 @@ public class LearnerAuthController {
 
     @Autowired
     LearnerAuthManager authManager;
+
+    @PostMapping("/register")
+    public JwtResponseDto registerLearner(@RequestBody LearnerSignupDTO learnerSignupDTO) {
+        return authManager.registerLearner(learnerSignupDTO);
+    }
 
     @PostMapping("/login")
     public JwtResponseDto authenticateAndGetToken(@RequestBody AuthRequestDto authRequestDTO) {

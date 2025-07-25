@@ -12,6 +12,8 @@ import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.institute_learner.constants.StudentConstants;
 import vacademy.io.admin_core_service.features.institute_learner.dto.*;
 import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
+import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
+import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
 import vacademy.io.common.auth.dto.UserDTO;
@@ -165,15 +167,68 @@ public class StudentRegistrationManager {
         return instituteStudentRepository.save(student);
     }
 
-    private void linkStudentToInstitute(Student student, InstituteStudentDetails instituteStudentDetails) {
+    public void linkStudentToInstitute(Student student, InstituteStudentDetails instituteStudentDetails) {
         try {
-            UUID studentSessionId = UUID.randomUUID();
+            Optional<StudentSessionInstituteGroupMapping> studentSessionInstituteGroupMappingOptional =
+                    studentSessionRepository.findTopByPackageSessionIdAndUserIdAndStatusIn(
+                            instituteStudentDetails.getPackageSessionId(),
+                            instituteStudentDetails.getInstituteId(),
+                            student.getUserId(),
+                            List.of(
+                                    LearnerSessionStatusEnum.ACTIVE.name(),
+                                    LearnerSessionStatusEnum.INVITED.name(),
+                                    LearnerSessionStatusEnum.TERMINATED.name(),
+                                    LearnerSessionStatusEnum.INACTIVE.name()
+                            )
+                    );
 
-            studentSessionRepository.addStudentToInstitute(studentSessionId.toString(), student.getUserId(), instituteStudentDetails.getEnrollmentDate() == null ? new Date() : instituteStudentDetails.getEnrollmentDate(), instituteStudentDetails.getEnrollmentStatus(), instituteStudentDetails.getEnrollmentId(), instituteStudentDetails.getGroupId(), instituteStudentDetails.getInstituteId(), makeExpiryDate(instituteStudentDetails.getEnrollmentDate(), instituteStudentDetails.getAccessDays()), instituteStudentDetails.getPackageSessionId());
+            if (studentSessionInstituteGroupMappingOptional.isPresent()) {
+                StudentSessionInstituteGroupMapping mapping = studentSessionInstituteGroupMappingOptional.get();
+
+                // Always update enrolledDate to current time
+                mapping.setEnrolledDate(new Date());
+
+                // Conditionally update fields
+                if (instituteStudentDetails.getEnrollmentStatus() != null) {
+                    mapping.setStatus(instituteStudentDetails.getEnrollmentStatus());
+                }
+
+                if (instituteStudentDetails.getEnrollmentId() != null) {
+                    mapping.setInstituteEnrolledNumber(instituteStudentDetails.getEnrollmentId());
+                }
+
+                if (instituteStudentDetails.getAccessDays() != null) {
+                    mapping.setExpiryDate(
+                            makeExpiryDate(
+                                    instituteStudentDetails.getEnrollmentDate(),
+                                    (instituteStudentDetails.getAccessDays())
+                            )
+                    );
+                }
+
+                studentSessionRepository.save(mapping);
+            } else {
+                UUID studentSessionId = UUID.randomUUID();
+                studentSessionRepository.addStudentToInstitute(
+                        studentSessionId.toString(),
+                        student.getUserId(),
+                        instituteStudentDetails.getEnrollmentDate() == null ? new Date() : instituteStudentDetails.getEnrollmentDate(),
+                        instituteStudentDetails.getEnrollmentStatus(),
+                        instituteStudentDetails.getEnrollmentId(),
+                        instituteStudentDetails.getGroupId(),
+                        instituteStudentDetails.getInstituteId(),
+                        makeExpiryDate(
+                                instituteStudentDetails.getEnrollmentDate(),
+                                instituteStudentDetails.getAccessDays()
+                        ),
+                        instituteStudentDetails.getPackageSessionId()
+                );
+            }
         } catch (Exception e) {
-            throw new VacademyException(e.getMessage());
+            throw new VacademyException("Failed to link student to institute: " + e.getMessage());
         }
     }
+
 
     public List<String> getStudentRoles() {
         List<String> roles = new ArrayList<>();

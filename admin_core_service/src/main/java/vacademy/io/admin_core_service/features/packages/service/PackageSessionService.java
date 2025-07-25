@@ -74,4 +74,8 @@ public class PackageSessionService {
     public PackageSession findById(String id){
         return packageRepository.findById(id).orElseThrow(()->new VacademyException("Package Session not found"));
     }
+
+    public List<PackageSession>findAllByIds(List<String>ids){
+        return packageRepository.findAllById(ids);
+    }
 }

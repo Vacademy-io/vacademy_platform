@@ -55,4 +55,8 @@ public class StudentSessionInstituteGroupMapping {
     @JoinColumn(name = "package_session_id", referencedColumnName = "id")
     private PackageSession packageSession; // Assuming you have a PackageSession entity defined
 
+    @ManyToOne
+    @JoinColumn(name = "destination_package_session_id", referencedColumnName = "id")
+    private PackageSession destinationPackageSession;
+
 }

@@ -28,20 +28,33 @@ public class RefreshTokenService {
     JwtService jwtService;
 
     public RefreshToken createRefreshToken(String username, String clientName) {
-        Optional<User> userOptional = userRepository.findByUsername(username);
-        if (userOptional.isEmpty()) throw new RuntimeException();
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("User not found with username: " + username));
+
         Map<String, Object> moreDetails = new HashMap<>();
-        moreDetails.put("user", userOptional.get().getId());
+        moreDetails.put("user", user.getId());
 
-        RefreshToken refreshToken = RefreshToken.builder()
-                .userInfo(userOptional.get())
-                .token(jwtService.generateRefreshToken(moreDetails, userOptional.get()))
-                .expiryDate(Instant.now().plusSeconds(AuthConstant.refreshTokenExpiryInSecs)) // set expiry of refresh token to 1 month
-                .clientName(clientName)
-                .build();
+        Optional<RefreshToken> existingTokenOpt = refreshTokenRepository.findByUserInfo(user);
 
+        RefreshToken refreshToken;
+        if (existingTokenOpt.isPresent()) {
+            // Update existing refresh token
+            refreshToken = existingTokenOpt.get();
+            refreshToken.setToken(jwtService.generateRefreshToken(moreDetails, user));
+            refreshToken.setExpiryDate(Instant.now().plusSeconds(AuthConstant.refreshTokenExpiryInSecs));
+            refreshToken.setClientName(clientName);
+        } else {
+            // Create a new refresh token
+            refreshToken = RefreshToken.builder()
+                    .userInfo(user)
+                    .token(jwtService.generateRefreshToken(moreDetails, user))
+                    .expiryDate(Instant.now().plusSeconds(AuthConstant.refreshTokenExpiryInSecs))
+                    .clientName(clientName)
+                    .build();
+        }
         return refreshTokenRepository.save(refreshToken);
     }
+
 
 
     public Optional<RefreshToken> findByToken(String token) {

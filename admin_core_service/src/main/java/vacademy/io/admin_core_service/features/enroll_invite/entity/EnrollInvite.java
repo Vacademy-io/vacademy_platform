@@ -65,6 +65,9 @@ public class EnrollInvite {
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Timestamp updatedAt;
 
+    @Column(name = "learner_access_days")
+    private Integer learnerAccessDays;
+
     public EnrollInvite(EnrollInviteDTO enrollInviteDTO) {
         this.id = enrollInviteDTO.getId();
         this.name = enrollInviteDTO.getName();
@@ -77,6 +80,7 @@ public class EnrollInvite {
         this.vendorId = enrollInviteDTO.getVendorId();
         this.currency = enrollInviteDTO.getCurrency();
         this.tag = enrollInviteDTO.getTag();
+        this.learnerAccessDays = enrollInviteDTO.getLearnerAccessDays();
         this.webPageMetaDataJson = enrollInviteDTO.getWebPageMetaDataJson();
     }
 
@@ -93,6 +97,7 @@ public class EnrollInvite {
         enrollInviteDTO.setVendorId(vendorId);
         enrollInviteDTO.setCurrency(currency);
         enrollInviteDTO.setTag(tag);
+        enrollInviteDTO.setLearnerAccessDays(learnerAccessDays);
         enrollInviteDTO.setWebPageMetaDataJson(webPageMetaDataJson);
         return enrollInviteDTO;
     }

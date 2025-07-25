@@ -69,7 +69,7 @@ public class LearnerAuthManager {
         if (learnerSignupDTO == null) throw new VacademyException("Invalid Request");
 
         UserDTO userDTO = learnerSignupDTO.getUser();
-        User user = userRepository.findLatestUserByEmail(userDTO.getEmail()).orElseGet(() -> createUser(userDTO));
+        User user = userRepository.findFirstByEmailOrderByCreatedAtDesc(userDTO.getEmail()).orElseGet(() -> createUser(userDTO));
         userDTO.setId(user.getId());
         userDTO.setUsername(user.getUsername());
 

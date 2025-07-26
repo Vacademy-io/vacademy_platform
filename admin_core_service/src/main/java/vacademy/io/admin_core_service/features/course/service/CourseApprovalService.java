@@ -9,6 +9,7 @@ import vacademy.io.admin_core_service.features.chapter.entity.ChapterPackageSess
 import vacademy.io.admin_core_service.features.chapter.repository.ChapterPackageSessionMappingRepository;
 import vacademy.io.admin_core_service.features.chapter.repository.ChapterRepository;
 import vacademy.io.admin_core_service.features.chapter.service.ChapterManager;
+import vacademy.io.admin_core_service.features.course.dto.TeacherCourseDetailDTO;
 import vacademy.io.admin_core_service.features.faculty.repository.FacultySubjectPackageSessionMappingRepository;
 import vacademy.io.admin_core_service.features.faculty.entity.FacultySubjectPackageSessionMapping;
 import vacademy.io.admin_core_service.features.module.entity.ModuleChapterMapping;
@@ -185,11 +186,61 @@ public class CourseApprovalService {
     }
 
     /**
-     * Get teacher's courses (draft, in review, and published ones they created)
+     * Get teacher's courses with enhanced logic:
+     * 1. Courses created by the teacher (created_by_user_id = teacherId)
+     * 2. Courses where teacher is assigned as faculty to any package session
+     * 
+     * This provides a comprehensive view of all courses the teacher is involved with
      */
     public List<PackageEntity> getTeacherCourses(String teacherId) {
-        return packageRepository.findByCreatedByUserIdAndStatusIn(teacherId, 
-                Arrays.asList(PackageStatusEnum.DRAFT.name(), PackageStatusEnum.IN_REVIEW.name(), PackageStatusEnum.ACTIVE.name()));
+        List<String> packageStatuses = Arrays.asList(
+            PackageStatusEnum.DRAFT.name(), 
+            PackageStatusEnum.IN_REVIEW.name(), 
+            PackageStatusEnum.ACTIVE.name()
+        );
+        
+        List<String> facultyMappingStatuses = Arrays.asList(
+            "ACTIVE"  // Only consider active faculty assignments
+        );
+        
+        return packageRepository.findTeacherPackagesByCreatedOrFacultyAssignment(
+            teacherId, 
+            packageStatuses, 
+            facultyMappingStatuses
+        );
+    }
+
+    /**
+     * Enhanced method to get teacher's courses with detailed relationship information
+     * Returns additional metadata about how the teacher is related to each course
+     */
+    public List<Map<String, Object>> getTeacherCoursesWithDetails(String teacherId) {
+        List<String> packageStatuses = Arrays.asList(
+            PackageStatusEnum.DRAFT.name(), 
+            PackageStatusEnum.IN_REVIEW.name(), 
+            PackageStatusEnum.ACTIVE.name()
+        );
+        
+        List<String> facultyMappingStatuses = Arrays.asList(
+            "ACTIVE"  // Only consider active faculty assignments
+        );
+        
+        return packageRepository.findTeacherPackagesWithRelationshipDetails(
+            teacherId, 
+            packageStatuses, 
+            facultyMappingStatuses
+        );
+    }
+    
+    /**
+     * Get teacher's courses with structured DTO response including relationship details
+     */
+    public List<TeacherCourseDetailDTO> getTeacherCoursesAsDTO(String teacherId) {
+        List<Map<String, Object>> rawResults = getTeacherCoursesWithDetails(teacherId);
+        
+        return rawResults.stream()
+            .map(TeacherCourseDetailDTO::fromDatabaseResult)
+            .collect(Collectors.toList());
     }
 
     /**

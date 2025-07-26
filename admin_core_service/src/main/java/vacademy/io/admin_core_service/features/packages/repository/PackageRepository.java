@@ -13,6 +13,7 @@ import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.common.institute.entity.session.SessionProjection;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Repository
@@ -1138,7 +1139,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 WHERE tag ILIKE ANY (array[:#{#tags}])
             )
         )
-""",
+    """,
             nativeQuery = true)
     Page<PackageDetailProjection> getCatalogPackageDetail(
             @Param("instituteId") String instituteId,
@@ -2113,4 +2114,122 @@ GROUP BY
             @Param("createdByUserId") String createdByUserId, 
             @Param("status") String status);
 
+    /**
+     * Get packages where teacher is either:
+     * 1. Creator of the package (created_by_user_id = teacherId)
+     * 2. Assigned as faculty to any package session of the package
+     * 
+     * @param teacherId - ID of the teacher/faculty
+     * @param packageStatuses - List of package statuses to filter by
+     * @param facultyMappingStatuses - List of faculty mapping statuses to consider
+     * @return List of distinct packages
+     */
+    @Query(value = """
+        SELECT DISTINCT p.*
+        FROM package p
+        WHERE p.id IN (
+            -- Packages created by teacher
+            SELECT p1.id 
+            FROM package p1 
+            WHERE p1.created_by_user_id = :teacherId
+            AND (:#{#packageStatuses == null || #packageStatuses.isEmpty()} = true 
+                 OR p1.status IN (:packageStatuses))
+            
+            UNION
+            
+            -- Packages where teacher is assigned as faculty to any package session
+            SELECT p2.id
+            FROM package p2
+            JOIN package_session ps ON ps.package_id = p2.id
+            JOIN faculty_subject_package_session_mapping fspsm ON fspsm.package_session_id = ps.id
+            WHERE fspsm.user_id = :teacherId
+            AND (:#{#facultyMappingStatuses == null || #facultyMappingStatuses.isEmpty()} = true 
+                 OR fspsm.status IN (:facultyMappingStatuses))
+            AND (:#{#packageStatuses == null || #packageStatuses.isEmpty()} = true 
+                 OR p2.status IN (:packageStatuses))
+            AND ps.status != 'DELETED'
+        )
+        ORDER BY p.created_at DESC
+        """, nativeQuery = true)
+    List<PackageEntity> findTeacherPackagesByCreatedOrFacultyAssignment(
+        @Param("teacherId") String teacherId,
+        @Param("packageStatuses") List<String> packageStatuses,
+        @Param("facultyMappingStatuses") List<String> facultyMappingStatuses
+    );
+    
+    /**
+     * Get detailed package information where teacher is either creator or assigned as faculty
+     * Includes additional metadata about faculty assignments
+     */
+    @Query(value = """
+        SELECT DISTINCT 
+            p.*,
+            CASE 
+                WHEN p.created_by_user_id = :teacherId AND COALESCE(faculty_assignments.assignment_count, 0) > 0 THEN 'BOTH'
+                WHEN p.created_by_user_id = :teacherId THEN 'CREATOR'
+                ELSE 'FACULTY_ASSIGNED'
+            END as teacher_relationship_type,
+            COALESCE(faculty_assignments.assignment_count, 0) as faculty_assignment_count,
+            faculty_assignments.assigned_subjects,
+            -- Session details
+            s.id as session_id,
+            s.session_name,
+            s.status as session_status,
+            s.start_date as session_start_date,
+            -- Level details  
+            l.id as level_id,
+            l.level_name,
+            l.duration_in_days,
+            l.status as level_status,
+            l.thumbnail_file_id as level_thumbnail_file_id,
+            l.created_at as level_created_at,
+            l.updated_at as level_updated_at,
+            -- Package Session details
+            ps_info.package_session_ids,
+            ps_info.package_session_count,
+            ps_info.package_session_statuses
+        FROM package p
+        LEFT JOIN (
+            SELECT 
+                ps.package_id,
+                COUNT(DISTINCT fspsm.id) as assignment_count,
+                STRING_AGG(DISTINCT s.subject_name, ', ') as assigned_subjects
+            FROM package_session ps
+            JOIN faculty_subject_package_session_mapping fspsm ON fspsm.package_session_id = ps.id
+            LEFT JOIN subject s ON s.id = fspsm.subject_id
+            WHERE fspsm.user_id = :teacherId
+            AND (:#{#facultyMappingStatuses == null || #facultyMappingStatuses.isEmpty()} = true 
+                 OR fspsm.status IN (:facultyMappingStatuses))
+            AND ps.status != 'DELETED'
+            GROUP BY ps.package_id
+        ) faculty_assignments ON faculty_assignments.package_id = p.id
+        LEFT JOIN (
+            SELECT 
+                ps.package_id,
+                STRING_AGG(DISTINCT ps.id, ', ') as package_session_ids,
+                COUNT(DISTINCT ps.id) as package_session_count,
+                STRING_AGG(DISTINCT ps.status, ', ') as package_session_statuses
+            FROM package_session ps
+            WHERE ps.status != 'DELETED'
+            GROUP BY ps.package_id
+        ) ps_info ON ps_info.package_id = p.id
+        LEFT JOIN package_session ps_first ON ps_first.package_id = p.id AND ps_first.status != 'DELETED'
+        LEFT JOIN session s ON s.id = ps_first.session_id
+        LEFT JOIN level l ON l.id = ps_first.level_id
+        WHERE (
+            -- Teacher created the package
+            p.created_by_user_id = :teacherId
+            OR 
+            -- Teacher is assigned as faculty to any package session
+            faculty_assignments.package_id IS NOT NULL
+        )
+        AND (:#{#packageStatuses == null || #packageStatuses.isEmpty()} = true 
+             OR p.status IN (:packageStatuses))
+        ORDER BY p.created_at DESC
+        """, nativeQuery = true)
+    List<Map<String, Object>> findTeacherPackagesWithRelationshipDetails(
+        @Param("teacherId") String teacherId,
+        @Param("packageStatuses") List<String> packageStatuses,
+        @Param("facultyMappingStatuses") List<String> facultyMappingStatuses
+    );
 }

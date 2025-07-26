@@ -4,13 +4,19 @@ import {
     ChalkboardTeacher,
     Code,
     File,
-    FileDoc,
     FilePdf,
     PlayCircle,
     Question,
     CaretLeft,
     BookOpen,
     GraduationCap,
+    Presentation,
+    GameController,
+    Exam,
+    Terminal,
+    ClipboardText,
+    FileDoc,
+    Notebook,
 } from "phosphor-react";
 import { toTitleCase } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -46,7 +52,6 @@ import { getInstituteId } from "@/constants/helper";
 import { Preferences } from "@capacitor/preferences";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
 import { CourseStructureDetails } from "./course-structure-details";
-import { BatchForSessionType } from "@/types/institute-details/institute-details-interface";
 import { CourseStructureResponse } from "@/types/institute-details/course-details-interface";
 import { getIdByLevelAndSession } from "@/routes/courses/course-details/-utils/helper";
 import { MyButton } from "@/components/design-system/button";
@@ -215,16 +220,7 @@ export const CourseDetailsPage = () => {
         setPackageSessionIdForCurrentLevel,
     ] = useState<string | null>(null);
 
-    const findIdByPackageId = (data: BatchForSessionType[]) => {
-        const result = data?.find(
-            (item) => item.package_dto?.id === searchParams.courseId
-        );
-        return result?.id || "";
-    };
 
-    const [packageSessionIds, setPackageSessionIds] = useState<string | null>(
-        null
-    );
 
     // ✅ Fetch institute details
     useEffect(() => {
@@ -233,9 +229,6 @@ export const CourseDetailsPage = () => {
             try {
                 const response = await axios.get(
                     `${urlInstituteDetails}/${instituteId}`
-                );
-                setPackageSessionIds(
-                    findIdByPackageId(response.data.batches_for_sessions)
                 );
                 setPackageSessionIdForCurrentLevel(
                     getIdByLevelAndSession(
@@ -447,11 +440,132 @@ export const CourseDetailsPage = () => {
 
     // Add this with other queries at the top level of the component
     const slideCountQuery = useQuery({
-        ...handleGetSlideCountDetails(packageSessionIds || ""),
-        enabled: !!packageSessionIds,
+        ...handleGetSlideCountDetails(packageSessionIdForCurrentLevel || ""),
+        enabled: !!packageSessionIdForCurrentLevel,
     });
 
+    // Custom slide count calculation to handle special document types
+    const processedSlideCounts = useMemo(() => {
+        if (!slideCountQuery.data) return [];
+        
+        const counts = slideCountQuery.data as SlideCountType[];
+
+        
+        const processedCounts: { source_type: string; slide_count: number; display_name: string }[] = [];
+        
+        // Create a map to track counts for different types
+        const typeCounts: { [key: string]: number } = {};
+        
+        // Track if we have specific document types to avoid duplicates
+        const hasSpecificDocumentTypes = counts.some(count => 
+            count.source_type === "JUPYTER_NOTEBOOK" || 
+            count.source_type === "CODE_EDITOR" || 
+            count.source_type === "PRESENTATION" ||
+            count.source_type === "SCRATCH_PROJECT"
+        );
+        
+        counts.forEach(count => {
+            let canonicalType = count.source_type;
+            if (canonicalType === "JUPYTER") canonicalType = "JUPYTER_NOTEBOOK";
+            if (canonicalType === "SCRATCH") canonicalType = "SCRATCH_PROJECT";
+            if (canonicalType === "DOCUMENT") {
+                // Only add DOCUMENT count if we don't have specific document types
+                // This prevents duplicates when we have JUPYTER_NOTEBOOK, CODE_EDITOR, etc.
+                if (!hasSpecificDocumentTypes) {
+                    typeCounts["DOCUMENT"] = (typeCounts["DOCUMENT"] || 0) + count.slide_count;
+                }
+            } else {
+                typeCounts[canonicalType] = (typeCounts[canonicalType] || 0) + count.slide_count;
+            }
+        });
+        
+        // Convert the map to the required format
+        Object.entries(typeCounts).forEach(([sourceType, slideCount]) => {
+            let displayName = "";
+            switch (sourceType) {
+                case "VIDEO":
+                    displayName = "Video slides";
+                    break;
+                case "CODE":
+                    displayName = "Code slides";
+                    break;
+                case "PDF":
+                    displayName = "PDF slides";
+                    break;
+                case "DOCUMENT":
+                    displayName = "DOC slides";
+                    break;
+                case "QUESTION":
+                    displayName = "Question slides";
+                    break;
+                case "ASSIGNMENT":
+                    displayName = "Assignment slides";
+                    break;
+                case "PRESENTATION":
+                    displayName = "Presentation slides";
+                    break;
+                case "JUPYTER_NOTEBOOK":
+                case "JUPYTER":
+                    displayName = "Jupyter Notebook slides";
+                    break;
+                case "SCRATCH_PROJECT":
+                case "SCRATCH":
+                    displayName = "Scratch Project slides";
+                    break;
+                case "QUIZ":
+                    displayName = "Quiz slides";
+                    break;
+                case "CODE_EDITOR":
+                    displayName = "Code Editor slides";
+                    break;
+                default:
+                    displayName = `${sourceType} slides`;
+            }
+            
+            processedCounts.push({
+                source_type: sourceType,
+                slide_count: slideCount,
+                display_name: displayName
+            });
+        });
+        
+        return processedCounts;
+    }, [slideCountQuery.data]);
+
+
+
     const [donationDialogOpen, setDonationDialogOpen] = useState(false);
+
+    const getSlideTypeIcon = (type: string) => {
+        switch (type) {
+            case "VIDEO":
+                return <PlayCircle size={16} className="text-blue-600 group-hover/item:scale-110 transition-transform duration-300" weight="duotone" />;
+            case "CODE":
+                return <Code size={16} className="text-green-600 group-hover/item:scale-110 transition-transform duration-300" weight="duotone" />;
+            case "PDF":
+                return <FilePdf size={16} className="text-red-600 group-hover/item:scale-110 transition-transform duration-300" weight="duotone" />;
+            case "DOCUMENT":
+                return <FileDoc size={16} className="text-purple-600 group-hover/item:scale-110 transition-transform duration-300" weight="duotone" />;
+            case "QUESTION":
+                return <Question size={16} className="text-orange-600 group-hover/item:scale-110 transition-transform duration-300" weight="duotone" />;
+            case "ASSIGNMENT":
+                return <ClipboardText size={16} className="text-indigo-600 group-hover/item:scale-110 transition-transform duration-300" weight="duotone" />;
+            case "PRESENTATION":
+                return <Presentation size={16} className="text-cyan-600 group-hover/item:scale-110 transition-transform duration-300" weight="duotone" />;
+            case "JUPYTER_NOTEBOOK":
+            case "JUPYTER":
+                return <Notebook size={16} className="text-yellow-600 group-hover/item:scale-110 transition-transform duration-300" weight="duotone" />;
+            case "SCRATCH_PROJECT":
+            case "SCRATCH":
+                return <GameController size={16} className="text-pink-600 group-hover/item:scale-110 transition-transform duration-300" weight="duotone" />;
+            case "QUIZ":
+                return <Exam size={16} className="text-teal-600 group-hover/item:scale-110 transition-transform duration-300" weight="duotone" />;
+            case "CODE_EDITOR":
+                return <Terminal size={16} className="text-gray-600 group-hover/item:scale-110 transition-transform duration-300" weight="duotone" />;
+            default:
+                return <File size={16} className="text-gray-500 group-hover/item:scale-110 transition-transform duration-300" weight="duotone" />;
+        }
+    };
 
     return (
         <>
@@ -1070,9 +1184,9 @@ export const CourseDetailsPage = () => {
                                                 </div>
                                             ) : (
                                                 <div className="space-y-2">
-                                                    {slideCountQuery.data?.map(
+                                                    {processedSlideCounts.map(
                                                         (
-                                                            count: SlideCountType
+                                                            count: { source_type: string; slide_count: number; display_name: string }
                                                         ) => (
                                                             <div
                                                                 key={
@@ -1081,85 +1195,9 @@ export const CourseDetailsPage = () => {
                                                                 className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300 group/item"
                                                             >
                                                                 <div className="flex items-center space-x-2">
-                                                                    {count.source_type ===
-                                                                        "VIDEO" && (
-                                                                        <PlayCircle
-                                                                            size={
-                                                                                16
-                                                                            }
-                                                                            className="text-blue-600 group-hover/item:scale-110 transition-transform duration-300"
-                                                                            weight="duotone"
-                                                                        />
-                                                                    )}
-                                                                    {count.source_type ===
-                                                                        "CODE" && (
-                                                                        <Code
-                                                                            size={
-                                                                                16
-                                                                            }
-                                                                            className="text-green-600 group-hover/item:scale-110 transition-transform duration-300"
-                                                                            weight="duotone"
-                                                                        />
-                                                                    )}
-                                                                    {count.source_type ===
-                                                                        "PDF" && (
-                                                                        <FilePdf
-                                                                            size={
-                                                                                16
-                                                                            }
-                                                                            className="text-red-600 group-hover/item:scale-110 transition-transform duration-300"
-                                                                            weight="duotone"
-                                                                        />
-                                                                    )}
-                                                                    {count.source_type ===
-                                                                        "DOCUMENT" && (
-                                                                        <FileDoc
-                                                                            size={
-                                                                                16
-                                                                            }
-                                                                            className="text-purple-600 group-hover/item:scale-110 transition-transform duration-300"
-                                                                            weight="duotone"
-                                                                        />
-                                                                    )}
-                                                                    {count.source_type ===
-                                                                        "QUESTION" && (
-                                                                        <Question
-                                                                            size={
-                                                                                16
-                                                                            }
-                                                                            className="text-orange-600 group-hover/item:scale-110 transition-transform duration-300"
-                                                                            weight="duotone"
-                                                                        />
-                                                                    )}
-                                                                    {count.source_type ===
-                                                                        "ASSIGNMENT" && (
-                                                                        <File
-                                                                            size={
-                                                                                16
-                                                                            }
-                                                                            className="text-indigo-600 group-hover/item:scale-110 transition-transform duration-300"
-                                                                            weight="duotone"
-                                                                        />
-                                                                    )}
+                                                                    {getSlideTypeIcon(count.source_type)}
                                                                     <span className="text-xs font-medium text-gray-700">
-                                                                        {count.source_type ===
-                                                                            "VIDEO" &&
-                                                                            "Video slides"}
-                                                                        {count.source_type ===
-                                                                            "CODE" &&
-                                                                            "Code slides"}
-                                                                        {count.source_type ===
-                                                                            "PDF" &&
-                                                                            "PDF slides"}
-                                                                        {count.source_type ===
-                                                                            "DOCUMENT" &&
-                                                                            "Doc slides"}
-                                                                        {count.source_type ===
-                                                                            "QUESTION" &&
-                                                                            "Question slides"}
-                                                                        {count.source_type ===
-                                                                            "ASSIGNMENT" &&
-                                                                            "Assignment slides"}
+                                                                        {count.display_name}
                                                                     </span>
                                                                 </div>
                                                                 <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">

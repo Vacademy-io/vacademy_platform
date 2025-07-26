@@ -161,12 +161,14 @@ const heading = (
     </div>
 );
 
-// Add a type for enrolled session
+// Add a type for enrolled session - matches BatchForSessionType structure
 interface EnrolledSession {
     id: string;
-    session?: { id: string };
-    level?: { id: string };
-    level_id?: string;
+    session: { id: string; session_name: string; status: string; start_date: string };
+    level: { id: string; level_name: string; duration_in_days: number | null; thumbnail_id: string | null };
+    start_time: string | null;
+    status: string;
+    package_dto: { id: string; package_name: string; thumbnail_id?: string | null };
 }
 
 export const CourseDetailsPage = () => {
@@ -199,9 +201,12 @@ export const CourseDetailsPage = () => {
             });
             if (sessionListResult.value) {
                 const sessionList = JSON.parse(sessionListResult.value);
+                console.log("SessionList from Preferences:", sessionList);
                 setEnrolledSessions(
                     Array.isArray(sessionList) ? sessionList as EnrolledSession[] : [sessionList as EnrolledSession]
                 );
+            } else {
+                console.log("No sessionList found in Preferences");
             }
         };
 
@@ -258,11 +263,15 @@ export const CourseDetailsPage = () => {
     );
 
     const courseDetailsData = useMemo(() => {
-        return studyLibraryData?.find(
+        console.log("Study library data:", studyLibraryData);
+        console.log("Search params courseId:", searchParams.courseId);
+        const found = studyLibraryData?.find(
             (item: CourseStructureResponse) =>
                 item.course.id === searchParams.courseId
         );
-    }, [studyLibraryData]);
+        console.log("Found course details:", found);
+        return found;
+    }, [studyLibraryData, searchParams.courseId]);
 
     const form = useForm<CourseDetailsFormValues>({
         resolver: zodResolver(courseDetailsSchema),
@@ -305,16 +314,32 @@ export const CourseDetailsPage = () => {
     // Convert sessions to select options format - filter based on selectedTab
     const sessionOptions = useMemo(() => {
         const sessions = form.getValues("courseData")?.sessions || [];
+        console.log("Available sessions from form:", sessions);
+        console.log("Enrolled sessions:", enrolledSessions);
+        console.log("Selected tab:", selectedTab);
+        console.log("Form course data:", form.getValues("courseData"));
 
         // For PROGRESS and COMPLETED tabs, only show enrolled sessions
         // For ALL tab, show all available sessions
         if (selectedTab === "PROGRESS" || selectedTab === "COMPLETED") {
             const enrolledSessionIds = enrolledSessions.map(
-                (enrolled) => enrolled.session?.id || enrolled.id
+                (enrolled) => enrolled.session.id
             );
+            console.log("Enrolled session IDs:", enrolledSessionIds);
             const filteredSessions = sessions.filter((session) =>
                 enrolledSessionIds.includes(session.sessionDetails.id)
             );
+            console.log("Filtered sessions:", filteredSessions);
+
+            // If no enrolled sessions found, show all sessions as fallback
+            if (filteredSessions.length === 0 && sessions.length > 0) {
+                console.log("No enrolled sessions found, showing all sessions as fallback");
+                return sessions.map((session) => ({
+                    _id: session.sessionDetails.id,
+                    value: session.sessionDetails.id,
+                    label: toTitleCase(session.sessionDetails.session_name),
+                }));
+            }
 
             return filteredSessions.map((session) => ({
                 _id: session.sessionDetails.id,
@@ -346,15 +371,13 @@ export const CourseDetailsPage = () => {
             if (selectedTab === "PROGRESS" || selectedTab === "COMPLETED") {
                 // Find the enrolled session to get enrolled level IDs
                 const enrolledSession = enrolledSessions.find(
-                    (enrolled) => (enrolled.session?.id || enrolled.id) === sessionId
+                    (enrolled) => enrolled.session.id === sessionId
                 );
 
                 let enrolledLevelIds: string[] = [];
                 if (enrolledSession) {
                     // Extract level ID from enrolled session
-                    enrolledLevelIds = [
-                        enrolledSession.level?.id || enrolledSession.level_id,
-                    ].filter(Boolean) as string[];
+                    enrolledLevelIds = [enrolledSession.level.id].filter(Boolean) as string[];
                 }
 
                 // Filter levels based on enrollment
@@ -362,11 +385,21 @@ export const CourseDetailsPage = () => {
                     (level) => enrolledLevelIds.includes(level.id)
                 );
 
-                newLevelOptions = filteredLevels.map((level) => ({
-                    _id: level.id,
-                    value: level.id,
-                    label: level.name,
-                }));
+                // If no enrolled levels found, show all levels as fallback
+                if (filteredLevels.length === 0 && selectedSessionData.levelDetails.length > 0) {
+                    console.log("No enrolled levels found, showing all levels as fallback");
+                    newLevelOptions = selectedSessionData.levelDetails.map((level) => ({
+                        _id: level.id,
+                        value: level.id,
+                        label: level.name,
+                    }));
+                } else {
+                    newLevelOptions = filteredLevels.map((level) => ({
+                        _id: level.id,
+                        value: level.id,
+                        label: level.name,
+                    }));
+                }
             } else {
                 // For ALL tab, show all levels
                 newLevelOptions = selectedSessionData.levelDetails.map(
@@ -410,8 +443,10 @@ export const CourseDetailsPage = () => {
         const loadCourseData = async () => {
             if (courseDetailsData?.course) {
                 try {
+                    console.log("Course details data:", courseDetailsData);
                     const transformedData =
                         await transformApiDataToCourseData(courseDetailsData);
+                    console.log("Transformed data:", transformedData);
                     if (transformedData) {
                         form.reset({
                             courseData: transformedData,
@@ -421,6 +456,8 @@ export const CourseDetailsPage = () => {
                 } catch (error) {
                     console.error("Error transforming course data:", error);
                 }
+            } else {
+                console.log("No course details data found");
             }
         };
 
@@ -773,6 +810,12 @@ export const CourseDetailsPage = () => {
                                                     ? "This course may not have any active sessions configured."
                                                     : "Please contact your instructor or administrator to get enrolled."}
                                             </p>
+                                            <div className="mt-2 text-xs text-yellow-600">
+                                                <p>Debug info:</p>
+                                                <p>Selected tab: {selectedTab}</p>
+                                                <p>Enrolled sessions count: {enrolledSessions.length}</p>
+                                                <p>Form sessions count: {form.getValues("courseData")?.sessions?.length || 0}</p>
+                                            </div>
                                         </div>
                                     )}
                                 </div>

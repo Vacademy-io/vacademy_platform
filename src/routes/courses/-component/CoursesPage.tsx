@@ -4,7 +4,6 @@ import SearchAndSortBar from "./SearchAndSortBar.tsx";
 import CourseCard from "./CourseCards.tsx";
 import Pagination from "./Pagination.tsx";
 import { useCatalogStore } from "../-store/catalogStore.ts";
-import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { toTitleCase } from "@/lib/utils";
 
 interface CoursesPageProps {
@@ -41,12 +40,9 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
     onApplyFilters,
 }) => {
     const { courseData } = useCatalogStore();
-    const [thumbnailUrls, setThumbnailUrls] = useState<string[]>([]);
     const fallbackDescription =
         "build responsive scalable and human-like AI application";
     const fallbackTags = "LLMs,Reinforcement Learning";
-    const fallbackImageUrl =
-        "https://images.unsplash.com/photo-1750059397834-5b359a05dba0?q=80&w=870&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D";
 
     const scrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -88,74 +84,7 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
         }
     };
 
-    // Convert thumbnail_file_id to URLs with individual loading (more reliable)
-    useEffect(() => {
-        const convertThumbnailsToUrls = async () => {
-            // Initialize with fallback images to show immediately
-            const initialUrls = new Array(courseData.length).fill(
-                fallbackImageUrl
-            );
-            setThumbnailUrls(initialUrls);
 
-            // Collect all valid file IDs
-            const validFileIds = courseData
-                .map((course, index) => ({
-                    fileId: course.thumbnail_file_id,
-                    index,
-                }))
-                .filter((item) => item.fileId && item.fileId.trim() !== "");
-
-            if (validFileIds.length === 0) {
-                console.log("No valid file IDs to process");
-                return;
-            }
-
-            console.log("Using individual image loading...");
-
-            const imageUrlPromises = validFileIds.map(async (item) => {
-                try {
-                    const url = await getPublicUrlWithoutLogin(item.fileId);
-                    if (
-                        url &&
-                        typeof url === "string" &&
-                        url.trim() !== "" &&
-                        url !== "null" &&
-                        url !== "undefined"
-                    ) {
-                        return { index: item.index, url };
-                    } else {
-                        return { index: item.index, url: fallbackImageUrl };
-                    }
-                } catch (error) {
-                    console.log(error);
-                }
-            });
-
-            const results = await Promise.allSettled(imageUrlPromises);
-
-            setThumbnailUrls((prevUrls) => {
-                const newUrls = [...prevUrls];
-                results.forEach((result, i) => {
-                    if (result.status === "fulfilled") {
-                        console.log(
-                            `Setting URL for index ${result.value.index}: ${result.value.url}`
-                        );
-                        newUrls[result.value.index] = result.value.url;
-                    } else {
-                        console.log(
-                            `Failed result for index ${i}:`,
-                            result.reason
-                        );
-                    }
-                });
-                return newUrls;
-            });
-        };
-
-        if (courseData.length > 0) {
-            convertThumbnailsToUrls();
-        }
-    }, [courseData]);
 
     return (
         <div ref={scrollRef}>
@@ -204,12 +133,6 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                     ) : (
                         <div className="grid grid-cols-1 sm:grid-cols-1 lg:grid-cols-2 gap-6 h-fit">
                             {paginatedCourses.map((course, index) => {
-                                const originalIndex =
-                                    (currentPage - 1) * itemsPerPage + index;
-                                const currentUrl =
-                                    thumbnailUrls[originalIndex] ||
-                                    fallbackImageUrl;
-
                                 return (
                                     <CourseCard
                                         courseId={course.id}
@@ -223,7 +146,11 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                                         }
                                         instructors={
                                             course.instructors?.length
-                                                ? course.instructors
+                                                ? course.instructors.map(instructor => ({
+                                                    id: instructor.id,
+                                                    full_name: instructor.full_name || "Unknown Instructor",
+                                                    image_url: undefined
+                                                }))
                                                 : []
                                         }
                                         rating={course.rating || 4}

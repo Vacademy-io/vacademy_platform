@@ -8,6 +8,6 @@ import lombok.Data;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class StripeRequestDTO {
     private String paymentMethodId;
-    private String customerEmail;
     private String cardLast4;
+    private String customerId;
 }

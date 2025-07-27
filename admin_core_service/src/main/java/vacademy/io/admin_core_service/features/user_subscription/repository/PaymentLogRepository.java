@@ -9,12 +9,5 @@ import java.util.Optional;
 
 @Repository
 public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> {
-    // Example: Find payment logs by user ID
-    List<PaymentLog> findByUserId(String userId);
 
-    // Example: Find a payment log by order ID
-    Optional<PaymentLog> findByOrderId(String orderId);
-
-    // Example: Find payment logs by payment status
-    // List<PaymentLog> findByPaymentStatus(String paymentStatus);
 }

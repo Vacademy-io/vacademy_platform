@@ -1,15 +1,15 @@
 package vacademy.io.admin_core_service.features.user_subscription.entity;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import lombok.*;
 import org.hibernate.annotations.UuidGenerator;
 import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentOptionDTO;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List; // To handle the collection of PaymentPlan
 import java.util.Objects;
 
@@ -19,6 +19,7 @@ import java.util.Objects;
 @Setter
 @Entity
 @Table(name = "payment_option")
+@Data
 public class PaymentOption {
     @Id
     @UuidGenerator
@@ -49,10 +50,10 @@ public class PaymentOption {
     private boolean requireApproval = true;
 
     @Column(name = "created_at", insertable = false, updatable = false)
-    private LocalDateTime createdAt;
+    private Date createdAt;
 
     @Column(name = "updated_at", insertable = false, updatable = false)
-    private LocalDateTime updatedAt;
+    private Date updatedAt;
 
     // This defines the one-to-many relationship with PaymentPlan
     // mappedBy refers to the field in the PaymentPlan entity that owns the relationship (the foreign key)

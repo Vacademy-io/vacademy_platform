@@ -9,6 +9,7 @@ import org.hibernate.annotations.UuidGenerator;
 
 import java.time.LocalDateTime;
 import java.util.Date; // Using java.util.Date as in your original PaymentLog
+import java.util.List;
 
 @AllArgsConstructor
 @NoArgsConstructor
@@ -29,9 +30,6 @@ public class PaymentLog {
 
     @Column(name = "user_id")
     private String userId;
-
-    @Column(name = "order_id")
-    private String orderId;
 
     @Column(name = "vendor")
     private String vendor;
@@ -57,4 +55,8 @@ public class PaymentLog {
 
     @Column(name = "updated_at", insertable = false, updatable = false)
     private LocalDateTime updatedAt;
+
+    @Column(name = "payment_specific_data")
+    private String paymentSpecificData;
+
 }

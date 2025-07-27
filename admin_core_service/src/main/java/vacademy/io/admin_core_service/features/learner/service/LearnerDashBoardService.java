@@ -14,7 +14,7 @@ import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSt
 import vacademy.io.admin_core_service.features.learner.constants.AssessmentServerRouteConstants;
 import vacademy.io.admin_core_service.features.learner.dto.LeanerDashBoardDetailDTO;
 import vacademy.io.admin_core_service.features.module.enums.ModuleStatusEnum;
-import vacademy.io.admin_core_service.features.notification.service.NotificationService;
+import vacademy.io.admin_core_service.features.notification_service.service.NotificationService;
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
 import vacademy.io.admin_core_service.features.packages.repository.PackageRepository;
 import vacademy.io.admin_core_service.features.slide.enums.SlideStatus;

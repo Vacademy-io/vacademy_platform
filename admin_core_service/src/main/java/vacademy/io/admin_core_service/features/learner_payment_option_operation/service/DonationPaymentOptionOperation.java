@@ -78,7 +78,7 @@ public class DonationPaymentOptionOperation implements PaymentOptionOperationStr
             UserInstitutePaymentGatewayMapping userInstitutePaymentGatewayMapping = paymentService.createOrGetCustomer(instituteId,userDTO,enrollInvite.getVendor(),learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest());
             configureCustomerPaymentData(userInstitutePaymentGatewayMapping,enrollInvite.getVendor(),learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest());
             PaymentResponseDTO paymentResponseDTO = paymentService.makePayment(enrollInvite.getVendor(), instituteId, userDTO,learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest());
-            learnerEnrollResponseDTO.setPaymentResponseDTO(paymentResponseDTO);
+            learnerEnrollResponseDTO.setPaymentResponse(paymentResponseDTO);
             paymentNotificatonService.sendPaymentNotification(instituteId, paymentResponseDTO, learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest(), userDTO,enrollInvite.getVendor());
             paymentLogService.updatePaymentLog(paymentLogId,
                     PaymentLogStatusEnum.PENDING_FOR_PAYMENT.name(),

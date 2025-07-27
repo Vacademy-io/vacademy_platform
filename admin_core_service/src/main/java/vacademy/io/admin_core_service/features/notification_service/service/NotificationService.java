@@ -1,4 +1,4 @@
-package vacademy.io.admin_core_service.features.notification.service;
+package vacademy.io.admin_core_service.features.notification_service.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;

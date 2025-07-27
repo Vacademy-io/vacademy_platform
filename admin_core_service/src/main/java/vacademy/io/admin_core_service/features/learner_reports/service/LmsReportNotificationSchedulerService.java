@@ -11,12 +11,12 @@ import vacademy.io.admin_core_service.features.learner_reports.dto.ReportFilterD
 import vacademy.io.admin_core_service.features.learner_reports.dto.SlideProgressDateWiseDTO;
 import vacademy.io.admin_core_service.features.learner_reports.dto.report_notification.LmsReportNotificationDetailsDTO;
 import vacademy.io.admin_core_service.features.learner_reports.notification.LmsReportNotificationEmailBody;
-import vacademy.io.admin_core_service.features.notification.enums.CommunicationType;
-import vacademy.io.admin_core_service.features.notification.enums.NotificationSettingStatusEnum;
-import vacademy.io.admin_core_service.features.notification.enums.NotificationSourceEnum;
-import vacademy.io.admin_core_service.features.notification.enums.NotificationType;
+import vacademy.io.admin_core_service.features.notification_service.enums.CommunicationType;
+import vacademy.io.admin_core_service.features.notification_service.enums.NotificationSettingStatusEnum;
+import vacademy.io.admin_core_service.features.notification_service.enums.NotificationSourceEnum;
+import vacademy.io.admin_core_service.features.notification_service.enums.NotificationType;
 import vacademy.io.admin_core_service.features.notification.repository.NotificationSettingRepository;
-import vacademy.io.admin_core_service.features.notification.service.NotificationService;
+import vacademy.io.admin_core_service.features.notification_service.service.NotificationService;
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.notification.dto.AttachmentNotificationDTO;

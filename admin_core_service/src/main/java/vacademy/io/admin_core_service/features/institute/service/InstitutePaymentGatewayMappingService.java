@@ -19,9 +19,13 @@ public class InstitutePaymentGatewayMappingService {
     @Autowired
     private ObjectMapper objectMapper;
 
-    public Map<String, Object> findByVendorAndInstituteId(String vendor, String instituteId) {
+    public Map<String, Object> findInstitutePaymentGatewaySpecifData(String vendor, String instituteId) {
         InstitutePaymentGatewayMapping institutePaymentGatewayMapping = institutePaymentGatewayMappingRepository.findByInstituteIdAndVendorAndStatusIn(instituteId, vendor, List.of(StatusEnum.ACTIVE.name())).orElseThrow(()->new VacademyException("No configurartion found for this payment gateway type"));
         return convertJsonToMap(institutePaymentGatewayMapping.getPaymentGatewaySpecificData());
+    }
+
+    public InstitutePaymentGatewayMapping findByInstituteIdAndVendor(String instituteId, String vendor) {
+        return institutePaymentGatewayMappingRepository.findByInstituteIdAndVendorAndStatusIn(instituteId, vendor, List.of(StatusEnum.ACTIVE.name())).orElseThrow(()->new VacademyException("No configurartion found for this payment gateway type"));
     }
 
     private Map<String, Object> convertJsonToMap(String json) {

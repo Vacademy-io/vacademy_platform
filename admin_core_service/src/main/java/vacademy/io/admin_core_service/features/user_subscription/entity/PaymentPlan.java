@@ -1,5 +1,7 @@
 package vacademy.io.admin_core_service.features.user_subscription.entity;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -8,7 +10,9 @@ import lombok.Setter;
 import org.hibernate.annotations.UuidGenerator;
 import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentPlanDTO;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Date;
 
 @AllArgsConstructor
 @Getter
@@ -49,13 +53,14 @@ public class PaymentPlan {
 
     @ManyToOne
     @JoinColumn(name = "payment_option_id") // This is the foreign key column
+    @JsonIgnore
     private PaymentOption paymentOption;
 
     @Column(name = "created_at", insertable = false, updatable = false)
-    private LocalDateTime createdAt;
+    private Date createdAt;
 
     @Column(name = "updated_at", insertable = false, updatable = false)
-    private LocalDateTime updatedAt;
+    private Date updatedAt;
 
     public PaymentPlan(PaymentPlanDTO paymentPlanDTO,PaymentOption paymentOption) {
         this.id = paymentPlanDTO.getId();

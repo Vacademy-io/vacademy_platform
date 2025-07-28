@@ -173,8 +173,9 @@ const ContinueLearningCard = ({
             All Caught Up!
           </h3>
           <p className="text-xs sm:text-sm md:text-base text-gray-600 mb-3 sm:mb-4 md:mb-6 max-w-sm mx-auto">
-            You've completed all available lessons. Explore more content to
-            continue learning.
+            You've completed all available{" "}
+            {getTerminology(ContentTerms.Slides, SystemTerms.Slides)}s. Explore
+            more content to continue learning.
           </p>
           <MyButton
             buttonType="primary"

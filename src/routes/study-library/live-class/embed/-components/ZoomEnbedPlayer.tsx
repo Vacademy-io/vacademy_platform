@@ -1,28 +1,28 @@
 
-const ZoomEmbedPlayer = ({
+interface ZoomEmbedPlayerProps {
+  recordingUrl: string;
+}
+
+// A responsive Zoom embed that fills its parent container (similar look-and-feel to our YouTube player)
+const ZoomEmbedPlayer: React.FC<ZoomEmbedPlayerProps> = ({
   recordingUrl = "https://zoom.us/rec/play/YOUR_RECORDING_ID",
 }) => {
   return (
-    <div className="relative inline-block w-[560px] h-[315px]">
+    <div className="relative w-full h-full bg-black">
+      {/* Zoom iframe */}
       <iframe
-        width="560"
-        height="315"
         src={recordingUrl}
-        frameBorder="0"
+        className="absolute inset-0 w-full h-full"
+        allow="autoplay; fullscreen"
         allowFullScreen
-        className="absolute top-0 left-0"
+        frameBorder={0}
         title="Zoom Recording"
-      ></iframe>
+      />
 
-      {/* LIVE Badge */}
-      <div className="absolute top-2 left-2 bg-red-600 text-white px-2 py-1 rounded font-bold text-sm uppercase z-10 animate-pulse">
-        LIVE
-      </div>
-
-      {/* View Count */}
-      <div className="absolute top-2 right-2 bg-black bg-opacity-70 text-white px-2 py-1 rounded text-sm z-10 font-sans">
-        <span className="text-red-400">●</span> 1,234 watching
-      </div>
+      {/* View count placeholder */}
+      <span className="absolute top-3 right-3 z-10 rounded bg-black/70 px-2 py-1 text-xs font-medium text-white backdrop-blur-sm">
+        <span className="mr-1 text-red-400">●</span>1,234 watching
+      </span>
     </div>
   );
 };

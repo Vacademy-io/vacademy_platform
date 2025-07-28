@@ -55,6 +55,10 @@ export const SidebarItemsData: SidebarItemsType[] = [
         subItemLink: "/study-library",
       },
       {
+        subItem: "Attendance",
+        subItemLink: "/learning-centre/attendance",
+      },
+      {
         subItem: "Live Class",
         subItemLink: "/study-library/live-class",
       },

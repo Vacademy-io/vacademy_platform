@@ -52,6 +52,22 @@ export const getFirebaseToken = async (): Promise<string | null> => {
     return null;
   }
 
+  // Handle permission states explicitly to avoid getToken errors
+  const currentPermission = Notification.permission;
+
+  // If already denied, do not attempt to retrieve token
+  if (currentPermission === 'denied') {
+    console.warn('Push Notifications are blocked by the user. Token retrieval skipped.');
+    return null;
+  }
+
+  // If permission is default (not yet asked), you may trigger a request here
+  // but leave it to calling code; just return null
+  if (currentPermission === 'default') {
+    console.info('Push Notification permission is not granted yet. Token retrieval deferred.');
+    return null;
+  }
+
   try {
     const token = await getToken(messaging, {
       vapidKey: VAPID_KEY

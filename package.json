@@ -109,6 +109,8 @@
     "npm": "^11.0.0",
     "papaparse": "^5.4.1",
     "phosphor-react": "^1.4.1",
+    "react-date-range": "^2.0.1",
+    "react-day-picker": "^9.8.0",
     "react-device-detect": "^2.2.3",
     "react-dropzone": "^14.3.5",
     "react-favicon": "^2.0.7",

@@ -3,7 +3,6 @@ import Footer from "./Footer.tsx";
 import InstructorCTASection from "./InstructorCTASection.tsx";
 import SupportersSection from "./SupportersSection.tsx";
 import CoursesPage from "./CoursesPage.tsx";
-import HeroSectionCourseCatalog from "./HeroSectionCourseCatalog.tsx";
 import { useCatalogStore } from "../-store/catalogStore.ts";
 import axios from "axios";
 import { useNavigate, useSearch } from "@tanstack/react-router";
@@ -17,12 +16,18 @@ import { getTokenFromStorage } from "@/lib/auth/sessionUtility.ts";
 import { TokenKey } from "@/constants/auth/tokens.ts";
 import { getFromStorage } from "@/components/common/LoginPages/sections/login-form.tsx";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils.ts";
+import { getPublicUrl } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/excalidrawUtils.ts";
 
 const CourseCatalougePage: React.FC = () => {
     const navigate = useNavigate();
     const { setCourseData, instituteData, setInstituteData, setInstructors } =
         useCatalogStore();
 
+    const [bannerImage, setBannerImage] = useState("");
+    const [bannerText, setBannerText] = useState({
+        heading: "",
+        description: "",
+    });
     const [searchTerm, setSearchTerm] = useState("");
     const [sortOption, setSortOption] = useState("Newest");
 
@@ -33,10 +38,6 @@ const CourseCatalougePage: React.FC = () => {
     );
 
     const { instituteId } = useSearch({ from: "/courses/" });
-
-    useEffect(() => {
-        console.log("Extracted instituteId:", instituteId);
-    }, [instituteId]);
 
     //api call to store the courses details
 
@@ -119,7 +120,15 @@ const CourseCatalougePage: React.FC = () => {
                         },
                     }
                 );
+                const bannerImagePublicUrl = await getPublicUrl(
+                    response.data.cover_image_file_id
+                );
+                const parsedBannerText = JSON.parse(
+                    response.data.cover_text_json
+                );
+                setBannerText(parsedBannerText);
                 setInstituteData(response.data);
+                setBannerImage(bannerImagePublicUrl);
             } catch (error) {
                 console.log(error);
             }
@@ -190,7 +199,58 @@ const CourseCatalougePage: React.FC = () => {
                 instituteId={instituteData?.id}
                 type="coursesPage"
             />
-            <HeroSectionCourseCatalog />
+            <div className="relative h-[370px]">
+                {/* Transparent blue overlay */}
+                {instituteData?.cover_image_file_id ? (
+                    <div className="pointer-events-none absolute inset-0 z-10 bg-blue-900/50" />
+                ) : (
+                    <div className="pointer-events-none absolute inset-0 z-10 bg-blue-900/10" />
+                )}
+                {!instituteData?.cover_image_file_id ? (
+                    <div className="absolute inset-0 z-0 bg-transparent" />
+                ) : (
+                    <div className="absolute inset-0 z-0 opacity-70">
+                        <img
+                            src={bannerImage}
+                            alt="Course Banner"
+                            className="size-full object-cover"
+                            onError={(e) => {
+                                e.currentTarget.style.display = "none";
+                                e.currentTarget.parentElement?.classList.add(
+                                    "bg-primary-500"
+                                );
+                            }}
+                        />
+                    </div>
+                )}
+                <div className={`container relative z-20 mx-auto h-full flex`}>
+                    <div className="flex items-start justify-between gap-8">
+                        {/* Left side - Title and Description */}
+                        <div className="max-w-2xl my-auto flex flex-col justify-center text-white">
+                            {!instituteData?.cover_text_json ? (
+                                <div className="space-y-4">
+                                    <div className="h-8 w-32 animate-pulse rounded bg-white/20" />
+                                    <div className="h-12 w-3/4 animate-pulse rounded bg-white/20" />
+                                    <div className="h-4 w-full animate-pulse rounded bg-white/20" />
+                                    <div className="h-4 w-2/3 animate-pulse rounded bg-white/20" />
+                                </div>
+                            ) : (
+                                <>
+                                    <h1 className="mb-4 text-4xl font-bold">
+                                        {bannerText.heading}
+                                    </h1>
+                                    <p
+                                        className="text-lg opacity-90"
+                                        dangerouslySetInnerHTML={{
+                                            __html: bannerText.description,
+                                        }}
+                                    />
+                                </>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </div>
             <CoursesPage
                 searchTerm={searchTerm}
                 onSearchChange={setSearchTerm}

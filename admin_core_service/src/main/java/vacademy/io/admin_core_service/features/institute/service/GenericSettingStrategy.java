@@ -96,7 +96,12 @@ public class GenericSettingStrategy extends IInstituteSettingStrategy {
             if (settingMap == null) throw new VacademyException("No Setting Found");
 
             if (!settingMap.containsKey(key)) {
-                throw new VacademyException("Setting Not Found: " + key);
+               // set empty setting
+               SettingDto settingDto = new SettingDto();
+               settingDto.setKey(key);
+               settingDto.setName(genericRequest.getSettingName() != null ? genericRequest.getSettingName() : key.replace("_", " "));
+               settingDto.setData(genericRequest.getSettingData());
+               settingMap.put(key, settingDto);
             }
 
             // Update existing setting data

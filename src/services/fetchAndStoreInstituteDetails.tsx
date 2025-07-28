@@ -2,6 +2,7 @@ import { Preferences } from "@capacitor/preferences";
 import { toast } from "sonner"; // Assuming you're using sonner for toasts
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { INSTITUTE_DETAIL } from "@/constants/urls";
+import { NAMING_SETTINGS_KEY } from "@/types/naming-settings";
 
 export interface InstituteDetails {
   institute_name: string;
@@ -23,6 +24,26 @@ export interface InstituteDetails {
   }>;
   batches_for_sessions: null;
   subjects: string[];
+  institute_settings_json: string;
+}
+
+// Type for the expected structure of institute_settings_json
+interface InstituteSettings {
+  setting?: {
+    NAMING_SETTING?: {
+      key: string;
+      name: string;
+      data?: {
+        data?: NamingSettingsType[];
+      };
+    };
+  };
+}
+
+export interface NamingSettingsType {
+  key: string;
+  systemValue: string | null;
+  customValue: string;
 }
 
 export const fetchAndStoreInstituteDetails = async (
@@ -52,6 +73,25 @@ export const fetchAndStoreInstituteDetails = async (
     }
 
     const instituteDetails: InstituteDetails = instituteDetailsResponse.data;
+
+    // Extract and store naming settings if present
+    const settingsJson = (instituteDetailsResponse.data as InstituteDetails)
+      .institute_settings_json;
+    if (settingsJson) {
+      try {
+        const settingsObj: InstituteSettings = JSON.parse(settingsJson);
+
+        const namingSettings = settingsObj?.setting?.NAMING_SETTING?.data?.data;
+        if (namingSettings) {
+          localStorage.setItem(
+            NAMING_SETTINGS_KEY,
+            JSON.stringify(namingSettings)
+          );
+        }
+      } catch (err) {
+        console.error("Failed to parse or store naming settings:", err);
+      }
+    }
 
     // Store institute details in Capacitor Preferences
     await Preferences.set({

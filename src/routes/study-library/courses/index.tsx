@@ -17,7 +17,7 @@ function RouteComponent() {
 
     return (
         <LayoutContainer>
-            <CourseCatalougePage />;
+            <CourseCatalougePage />
         </LayoutContainer>
     );
 }

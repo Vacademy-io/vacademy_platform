@@ -55,7 +55,9 @@ import { CourseStructureDetails } from "./course-structure-details";
 import { CourseStructureResponse } from "@/types/institute-details/course-details-interface";
 import { getIdByLevelAndSession } from "@/routes/courses/course-details/-utils/helper";
 import { MyButton } from "@/components/design-system/button";
-import { DonationDialog } from "./DonationDialog";
+import { EnrollmentPaymentDialog } from "./payment-dialogs";
+import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
+import { TokenKey } from "@/constants/auth/tokens";
 
 type SlideType = {
     id: string;
@@ -209,6 +211,20 @@ export const CourseDetailsPage = () => {
                 setEnrolledSessions(
                     Array.isArray(sessionList) ? sessionList as EnrolledSession[] : [sessionList as EnrolledSession]
                 );
+            }
+
+            // Fetch invite code from preferences or use default
+            const inviteCodeResult = await Preferences.get({
+                key: "inviteCode",
+            });
+            if (inviteCodeResult.value) {
+                setInviteCode(inviteCodeResult.value);
+            }
+
+            // Fetch authentication token
+            const token = await getTokenFromStorage(TokenKey.accessToken);
+            if (token) {
+                setAuthToken(token);
             }
         };
 
@@ -534,7 +550,9 @@ export const CourseDetailsPage = () => {
 
 
 
-    const [donationDialogOpen, setDonationDialogOpen] = useState(false);
+    const [enrollmentDialogOpen, setEnrollmentDialogOpen] = useState(false);
+    const [inviteCode, setInviteCode] = useState<string>("default");
+    const [authToken, setAuthToken] = useState<string>("");
 
     const getSlideTypeIcon = (type: string) => {
         switch (type) {
@@ -569,12 +587,15 @@ export const CourseDetailsPage = () => {
 
     return (
         <>
-            {/* Donation Dialog */}
-            <DonationDialog
-                open={donationDialogOpen}
-                onOpenChange={setDonationDialogOpen}
-                onContinue={() => setDonationDialogOpen(false)}
-                onSkip={() => setDonationDialogOpen(false)}
+            {/* Enrollment Payment Dialog */}
+            <EnrollmentPaymentDialog
+                open={enrollmentDialogOpen}
+                onOpenChange={setEnrollmentDialogOpen}
+                packageSessionId={packageSessionIdForCurrentLevel || ""}
+                instituteId={instituteId || ""}
+                token={authToken}
+                courseTitle={form.getValues("courseData").title}
+                inviteCode={inviteCode}
             />
             <div className="min-h-screen bg-gradient-to-br from-gray-50/80 via-white to-primary-50/20 relative overflow-hidden w-full max-w-full">
                 {/* Animated background elements */}
@@ -1248,7 +1269,7 @@ export const CourseDetailsPage = () => {
                                                 layoutVariant="default"
                                                 className="mt-2 !min-w-full !w-full text-xs h-8"
                                                 onClick={() =>
-                                                    setDonationDialogOpen(true)
+                                                    setEnrollmentDialogOpen(true)
                                                 }
                                             >
                                                 Enroll

@@ -10,5 +10,5 @@ import vacademy.io.common.auth.dto.UserDTO;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class LearnerEnrollResponseDTO {
     private UserDTO user;
-    private PaymentResponseDTO paymentResponseDTO;
+    private PaymentResponseDTO paymentResponse;
 }

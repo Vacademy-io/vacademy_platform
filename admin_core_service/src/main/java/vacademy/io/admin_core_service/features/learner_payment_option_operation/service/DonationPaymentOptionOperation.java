@@ -3,44 +3,45 @@ package vacademy.io.admin_core_service.features.learner_payment_option_operation
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.common.util.JsonUtil;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
-import vacademy.io.admin_core_service.features.enroll_invite.service.EnrollInviteService;
-import vacademy.io.admin_core_service.features.institute.service.InstitutePaymentGatewayMappingService;
 import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteStudentDetails;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.service.LearnerBatchEnrollService;
-import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
-import vacademy.io.common.auth.dto.learner.LearnerEnrollResponseDTO;
-import vacademy.io.admin_core_service.features.packages.service.PackageSessionService;
-import vacademy.io.common.payment.dto.PaymentResponseDTO;
+import vacademy.io.admin_core_service.features.notification_service.service.PaymentNotificatonService;
 import vacademy.io.admin_core_service.features.payments.service.PaymentService;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
-import vacademy.io.admin_core_service.features.user_subscription.service.PaymentOptionService;
+import vacademy.io.admin_core_service.features.user_subscription.entity.UserInstitutePaymentGatewayMapping;
+import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
+import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentLogStatusEnum;
+import vacademy.io.admin_core_service.features.user_subscription.service.PaymentLogService;
 import vacademy.io.common.auth.dto.UserDTO;
+import vacademy.io.common.auth.dto.learner.LearnerEnrollResponseDTO;
+import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
+import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
+import vacademy.io.common.payment.dto.PaymentResponseDTO;
+import vacademy.io.common.payment.enums.PaymentGateway;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.Map;
 
 
 @Service
 public class DonationPaymentOptionOperation implements PaymentOptionOperationStrategy {
 
     @Autowired
-    private PaymentOptionService paymentOptionService;
-
-    @Autowired
     private LearnerBatchEnrollService learnerBatchEnrollService;
 
     @Autowired
-    private EnrollInviteService enrollInviteService;
-
-    @Autowired
-    private PackageSessionService packageSessionService;
-
-    @Autowired
-    private InstitutePaymentGatewayMappingService institutePaymentGatewayMappingService;
-
-    @Autowired
     private PaymentService paymentService;
+
+    @Autowired
+    private PaymentLogService paymentLogService;
+
+    @Autowired
+    private PaymentNotificatonService paymentNotificatonService;
 
     @Override
     public LearnerEnrollResponseDTO enrollLearnerToBatch(UserDTO userDTO,
@@ -48,6 +49,7 @@ public class DonationPaymentOptionOperation implements PaymentOptionOperationStr
                                                          String instituteId,
                                                          EnrollInvite enrollInvite,
                                                          PaymentOption paymentOption,
+                                                         UserPlan userPlan,
                                                          Map<String, Object> extraData) {
         List<InstituteStudentDetails> instituteStudentDetails = new ArrayList<>();
         if (paymentOption.isRequireApproval()){
@@ -62,13 +64,47 @@ public class DonationPaymentOptionOperation implements PaymentOptionOperationStr
                 instituteStudentDetails.add(instituteStudentDetail);
             }
         }
-        UserDTO user = learnerBatchEnrollService.checkAndCreateStudentAndAddToBatch(userDTO, instituteId, instituteStudentDetails, extraData);
+        UserDTO user = learnerBatchEnrollService.checkAndCreateStudentAndAddToBatch(userDTO, instituteId, instituteStudentDetails,learnerPackageSessionsEnrollDTO.getCustomFieldValues(), extraData);
         LearnerEnrollResponseDTO learnerEnrollResponseDTO = new LearnerEnrollResponseDTO();
         if (learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest() != null){
-           PaymentResponseDTO paymentResponseDTO = paymentService.makePayment(enrollInvite.getVendor(), instituteId, learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest());
-           learnerEnrollResponseDTO.setPaymentResponseDTO(paymentResponseDTO);
+           String paymentLogId = paymentLogService.createPaymentLog(
+                    user.getId(),
+                    learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest().getAmount(),
+                    enrollInvite.getVendor(),
+                    enrollInvite.getVendorId(),
+                    enrollInvite.getCurrency(),
+                    userPlan
+            );
+            UserInstitutePaymentGatewayMapping userInstitutePaymentGatewayMapping = paymentService.createOrGetCustomer(instituteId,userDTO,enrollInvite.getVendor(),learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest());
+            configureCustomerPaymentData(userInstitutePaymentGatewayMapping,enrollInvite.getVendor(),learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest());
+            PaymentResponseDTO paymentResponseDTO = paymentService.makePayment(enrollInvite.getVendor(), instituteId, userDTO,learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest());
+            learnerEnrollResponseDTO.setPaymentResponse(paymentResponseDTO);
+            paymentNotificatonService.sendPaymentNotification(instituteId, paymentResponseDTO, learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest(), userDTO,enrollInvite.getVendor());
+            paymentLogService.updatePaymentLog(paymentLogId,
+                    PaymentLogStatusEnum.PENDING_FOR_PAYMENT.name(),
+                    (String) paymentResponseDTO.responseData.get("status"),
+                    JsonUtil.toJson(paymentResponseDTO));
         }
         learnerEnrollResponseDTO.setUser(user);
         return learnerEnrollResponseDTO;
     }
+
+    private void configureCustomerPaymentData(UserInstitutePaymentGatewayMapping userInstitutePaymentGatewayMapping,
+                                              String vendor,
+                                              PaymentInitiationRequestDTO paymentInitiationRequestDTO) {
+        PaymentGateway paymentGateway = PaymentGateway.fromString(vendor);
+
+        switch (paymentGateway) {
+            case STRIPE:
+                if (paymentInitiationRequestDTO.getStripeRequest() != null) {
+                    paymentInitiationRequestDTO.getStripeRequest()
+                            .setCustomerId(userInstitutePaymentGatewayMapping.getPaymentGatewayCustomerId());
+                }
+                break;
+
+            default:
+                throw new IllegalStateException("Unexpected value: " + vendor);
+        }
+    }
+
 }

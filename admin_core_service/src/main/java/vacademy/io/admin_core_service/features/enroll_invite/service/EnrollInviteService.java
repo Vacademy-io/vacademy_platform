@@ -183,7 +183,7 @@ public class EnrollInviteService {
     // PRIVATE HELPER AND DTO BUILDING METHODS
     // ===================================================================================
 
-    private EnrollInviteDTO buildFullEnrollInviteDTO(EnrollInvite enrollInvite, String instituteId) {
+    public EnrollInviteDTO buildFullEnrollInviteDTO(EnrollInvite enrollInvite, String instituteId) {
         List<PackageSessionLearnerInvitationToPaymentOption> mappings = packageSessionEnrollInviteToPaymentOptionService.findByInvite(enrollInvite);
         return buildFullEnrollInviteDTO(enrollInvite, instituteId, mappings);
     }

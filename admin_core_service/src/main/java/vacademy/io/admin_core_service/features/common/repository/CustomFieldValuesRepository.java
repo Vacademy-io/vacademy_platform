@@ -1,4 +1,4 @@
-package vacademy.io.admin_core_service.features.live_session.repository;
+package vacademy.io.admin_core_service.features.common.repository;
 
 
 import org.springframework.data.jpa.repository.JpaRepository;

@@ -4,8 +4,8 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.notification.dto.NotificationDTO;
 import vacademy.io.admin_core_service.features.notification.dto.NotificationToUserDTO;
-import vacademy.io.admin_core_service.features.notification.enums.CommunicationType;
-import vacademy.io.admin_core_service.features.notification.service.NotificationService;
+import vacademy.io.admin_core_service.features.notification_service.enums.CommunicationType;
+import vacademy.io.admin_core_service.features.notification_service.service.NotificationService;
 import vacademy.io.common.notification.dto.GenericEmailRequest;
 
 import java.util.HashMap;

@@ -23,7 +23,7 @@ public class UserInstitutePaymentGatewayMapping {
     @JoinColumn(name = "institute_payment_gateway_mapping_id") // FK column in this table
     private InstitutePaymentGatewayMapping institutePaymentGatewayMapping;
 
-    private String paymentGateWayCustomerData;
+    private String paymentGatewayCustomerData;
     private String paymentGatewayCustomerId;
     private String status;
 

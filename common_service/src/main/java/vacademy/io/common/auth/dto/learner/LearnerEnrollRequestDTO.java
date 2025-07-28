@@ -7,10 +7,10 @@ import vacademy.io.common.auth.dto.UserDTO;
 
 @Data
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-public class LearnerSignupDTO {
+public class LearnerEnrollRequestDTO {
     private UserDTO user;
     private String instituteId;
     private String subjectId;
     private String vendorId;
-    private LearnerPackageSessionsEnrollDTO learnerPackageSessionsEnrollDTO;
+    private LearnerPackageSessionsEnrollDTO learnerPackageSessionEnroll;
 }

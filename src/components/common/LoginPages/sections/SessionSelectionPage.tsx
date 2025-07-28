@@ -199,10 +199,16 @@ const SessionSelectionPage = () => {
             </svg>
           </div>
           <h1 className="text-3xl font-bold text-gray-900">
-            Choose Your Course
+            Choose Your{" "}
+            {getTerminology(ContentTerms.Course, SystemTerms.Course)}
           </h1>
           <p className="text-gray-600">
-            Select a course to begin your learning journey
+            Select a{" "}
+            {getTerminology(
+              ContentTerms.Course,
+              SystemTerms.Course
+            ).toLocaleLowerCase()}{" "}
+            to begin your learning journey
           </p>
         </div>
 

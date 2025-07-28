@@ -35,7 +35,7 @@ import { CourseDetailsFormValues } from "./course-details-schema";
 import { getSubjectDetails } from "@/routes/courses/course-details/-utils/helper";
 import { useRouter } from "@tanstack/react-router";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
-import { RoleTerms, SystemTerms } from "@/types/naming-settings";
+import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
 
 export interface Chapter {
   id: string;
@@ -245,7 +245,8 @@ export const CourseStructureDetails = ({
           <div className="flex items-center gap-2">
             <TreeStructure size={18} className="text-primary-600" />
             <span className="text-sm font-medium text-neutral-700">
-              Course Structure
+              {getTerminology(ContentTerms.Course, SystemTerms.Course)}{" "}
+              Structure
             </span>
           </div>
           <div className="flex items-center gap-2">

@@ -64,7 +64,7 @@ public class DonationPaymentOptionOperation implements PaymentOptionOperationStr
                 instituteStudentDetails.add(instituteStudentDetail);
             }
         }
-        UserDTO user = learnerBatchEnrollService.checkAndCreateStudentAndAddToBatch(userDTO, instituteId, instituteStudentDetails, extraData);
+        UserDTO user = learnerBatchEnrollService.checkAndCreateStudentAndAddToBatch(userDTO, instituteId, instituteStudentDetails,learnerPackageSessionsEnrollDTO.getCustomFieldValues(), extraData);
         LearnerEnrollResponseDTO learnerEnrollResponseDTO = new LearnerEnrollResponseDTO();
         if (learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest() != null){
            String paymentLogId = paymentLogService.createPaymentLog(

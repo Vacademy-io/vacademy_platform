@@ -170,7 +170,7 @@ public class StudentRegistrationManager {
         return instituteStudentRepository.save(student);
     }
 
-    public void linkStudentToInstitute(Student student, InstituteStudentDetails instituteStudentDetails) {
+    public String linkStudentToInstitute(Student student, InstituteStudentDetails instituteStudentDetails) {
         try {
             Optional<StudentSessionInstituteGroupMapping> studentSessionInstituteGroupMappingOptional =
                     studentSessionRepository.findTopByPackageSessionIdAndUserIdAndStatusIn(
@@ -209,7 +209,7 @@ public class StudentRegistrationManager {
                     );
                 }
 
-                studentSessionRepository.save(mapping);
+              return  studentSessionRepository.save(mapping).getId();
             } else {
                 UUID studentSessionId = UUID.randomUUID();
                 studentSessionRepository.addStudentToInstitute(
@@ -226,6 +226,7 @@ public class StudentRegistrationManager {
                         ),
                         instituteStudentDetails.getPackageSessionId()
                 );
+                return studentSessionId.toString();
             }
         } catch (Exception e) {
             throw new VacademyException("Failed to link student to institute: " + e.getMessage());

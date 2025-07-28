@@ -6,7 +6,7 @@ import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.live_session.dto.GuestRegistrationRequestDTO;
 import vacademy.io.admin_core_service.features.common.entity.CustomFieldValues;
 import vacademy.io.admin_core_service.features.live_session.entity.SessionGuestRegistration;
-import vacademy.io.admin_core_service.features.live_session.repository.CustomFieldValuesRepository;
+import vacademy.io.admin_core_service.features.common.repository.CustomFieldValuesRepository;
 import vacademy.io.admin_core_service.features.live_session.repository.SessionGuestRegistrationRepository;
 
 import java.time.LocalDateTime;

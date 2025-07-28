@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.common.entity;
 import jakarta.persistence.*;
         import lombok.*;
 import org.hibernate.annotations.UuidGenerator;
+import vacademy.io.common.common.dto.CustomFieldValueDTO;
 
 @Entity
 @Table(name = "custom_field_values")
@@ -34,5 +35,14 @@ public class CustomFieldValues {
 
     @Column(columnDefinition = "TEXT")
     private String value;
+
+    public CustomFieldValues(CustomFieldValueDTO customFieldValuesDTO) {
+        this.customFieldId = customFieldValuesDTO.getCustomFieldId();
+        this.sourceType = customFieldValuesDTO.getSourceType();
+        this.sourceId = customFieldValuesDTO.getSourceId();
+        this.type = customFieldValuesDTO.getType();
+        this.typeId = customFieldValuesDTO.getTypeId();
+        this.value = customFieldValuesDTO.getValue();
+    }
 }
 

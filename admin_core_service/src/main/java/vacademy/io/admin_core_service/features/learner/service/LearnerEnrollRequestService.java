@@ -1,6 +1,5 @@
 package vacademy.io.admin_core_service.features.learner.service;
 
-import com.stripe.service.PlanService;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -18,13 +17,13 @@ import vacademy.io.admin_core_service.features.user_subscription.service.Payment
 import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollResponseDTO;
 import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
-import vacademy.io.common.auth.dto.learner.LearnerSignupDTO;
+import vacademy.io.common.auth.dto.learner.LearnerEnrollRequestDTO;
 
 import java.util.Map;
 import java.util.Optional;
 
 @Service
-public class LearnerSignupService {
+public class LearnerEnrollRequestService {
 
     @Autowired
     private EnrollInviteService enrollInviteService;
@@ -42,15 +41,15 @@ public class LearnerSignupService {
     private PaymentPlanService paymentPlanService;
 
     @Transactional
-    public LearnerEnrollResponseDTO signupLearner(LearnerSignupDTO learnerSignupDTO) {
-        LearnerPackageSessionsEnrollDTO enrollDTO = learnerSignupDTO.getLearnerPackageSessionsEnrollDTO();
+    public LearnerEnrollResponseDTO recordLearnerRequest(LearnerEnrollRequestDTO learnerEnrollRequestDTO) {
+        LearnerPackageSessionsEnrollDTO enrollDTO = learnerEnrollRequestDTO.getLearnerPackageSessionEnroll();
 
         EnrollInvite enrollInvite = getValidatedEnrollInvite(enrollDTO.getEnrollInviteId());
         PaymentOption paymentOption = getValidatedPaymentOption(enrollDTO.getPaymentOptionId());
         PaymentPlan paymentPlan = getOptionalPaymentPlan(enrollDTO.getPlanId());
 
         UserPlan userPlan = createUserPlan(
-                learnerSignupDTO.getUser().getId(),
+                learnerEnrollRequestDTO.getUser().getId(),
                 enrollDTO,
                 enrollInvite,
                 paymentOption,
@@ -58,7 +57,7 @@ public class LearnerSignupService {
         );
 
         return enrollLearnerToBatch(
-                learnerSignupDTO,
+                learnerEnrollRequestDTO,
                 enrollDTO,
                 enrollInvite,
                 paymentOption,
@@ -107,7 +106,7 @@ public class LearnerSignupService {
     }
 
     private LearnerEnrollResponseDTO enrollLearnerToBatch(
-            LearnerSignupDTO learnerSignupDTO,
+            LearnerEnrollRequestDTO learnerEnrollRequestDTO,
             LearnerPackageSessionsEnrollDTO enrollDTO,
             EnrollInvite enrollInvite,
             PaymentOption paymentOption,
@@ -117,9 +116,9 @@ public class LearnerSignupService {
                 .getStrategy(PaymentOptionType.fromString(paymentOption.getType()));
 
         return strategy.enrollLearnerToBatch(
-                learnerSignupDTO.getUser(),
+                learnerEnrollRequestDTO.getUser(),
                 enrollDTO,
-                learnerSignupDTO.getInstituteId(),
+                learnerEnrollRequestDTO.getInstituteId(),
                 enrollInvite,
                 paymentOption,
                 userPlan,

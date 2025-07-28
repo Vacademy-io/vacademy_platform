@@ -132,4 +132,13 @@ public interface EnrollInviteRepository extends JpaRepository<EnrollInvite, Stri
             @Param("tagList") List<String> tagList,
             @Param("mappingStatusList") List<String> mappingStatusList
     );
+
+    @Query("SELECT ei FROM EnrollInvite ei " +
+            "WHERE ei.status IN :statusList " +
+            "AND ei.instituteId = :instituteId " +
+            "AND ei.inviteCode = :inviteCode")
+    Optional<EnrollInvite> findValidEnrollInvite(
+            @Param("statusList") List<String> statusList,
+            @Param("instituteId") String instituteId,
+            @Param("inviteCode") String inviteCode);
 }

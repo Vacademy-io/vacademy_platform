@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { PullToRefreshWrapper } from "@/components/design-system/pull-to-refresh";
 import { fetchStudyLibraryDetails } from "@/services/study-library/getStudyLibraryDetails";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { toTitleCase } from "@/lib/utils";
 import {
   CaretDown,
   CaretRight,
@@ -204,6 +205,66 @@ export const CourseStructureDetails = ({
       )
     );
 
+  useEffect(() => {
+    const loadModules = async () => {
+      try {
+        const modulesMap = await fetchModules({
+          subjects: getSubjectDetails(
+            courseData,
+            selectedSession,
+            selectedLevel
+          ),
+        });
+        setSubjectModulesMap(modulesMap);
+
+        // Auto-expand all sections by default
+        const allSubjectIds = new Set<string>(
+          getSubjectDetails(courseData, selectedSession, selectedLevel).map(
+            (s: SubjectType) => s.id
+          )
+        );
+        const allModuleIds = new Set<string>();
+        const allChapterIds = new Set<string>();
+
+        console.log("allModuleIds", allModuleIds);
+        console.log("allChapterIds", allChapterIds);
+
+        Object.values(modulesMap).forEach((modules) => {
+          modules.forEach((mod) => {
+            allModuleIds.add(mod.module.id);
+            mod.chapters.forEach((ch) => {
+              allChapterIds.add(ch.id);
+              // Load slides for each chapter
+              getSlidesWithChapterId(ch.id);
+            });
+          });
+        });
+
+        setOpenSubjects(allSubjectIds);
+        setOpenModules(allModuleIds);
+        setOpenChapters(allChapterIds);
+      } catch (error) {
+        console.error("Failed to fetch modules:", error);
+        setSubjectModulesMap({});
+      }
+    };
+    loadModules();
+  }, [studyLibraryData, packageSessionId, fetchModules]);
+
+  useEffect(() => {
+    setStudyLibraryData(
+      getSubjectDetails(courseData, selectedSession, selectedLevel)
+    );
+  }, [selectedSession, selectedLevel]);
+
+  useEffect(() => {
+    setNavHeading(
+      <div className="flex items-center gap-2">
+        <div>Study Materials</div>
+      </div>
+    );
+  }, []);
+
   const tabContent: Record<TabType, React.ReactNode> = {
     [TabType.OUTLINE]: (
       <div className="space-y-4">
@@ -277,9 +338,9 @@ export const CourseStructureDetails = ({
                       </span>
                       <span
                         className="truncate font-medium group-hover:text-primary-700 transition-colors"
-                        title={subject.subject_name}
+                        title={toTitleCase(subject.subject_name)}
                       >
-                        {subject.subject_name}
+                        {toTitleCase(subject.subject_name)}
                       </span>
                     </div>
                   </CollapsibleTrigger>
@@ -366,9 +427,11 @@ export const CourseStructureDetails = ({
                                             </span>
                                             <span
                                               className="truncate group-hover:text-green-700 transition-colors text-xs"
-                                              title={ch.chapter_name}
+                                              title={toTitleCase(
+                                                ch.chapter_name
+                                              )}
                                             >
-                                              {ch.chapter_name}
+                                              {toTitleCase(ch.chapter_name)}
                                             </span>
                                           </div>
                                         </CollapsibleTrigger>
@@ -508,9 +571,11 @@ export const CourseStructureDetails = ({
                                             </span>
                                             <span
                                               className="truncate group-hover:text-green-700 transition-colors text-xs"
-                                              title={ch.chapter_name}
+                                              title={toTitleCase(
+                                                ch.chapter_name
+                                              )}
                                             >
-                                              {ch.chapter_name}
+                                              {toTitleCase(ch.chapter_name)}
                                             </span>
                                           </div>
                                         </CollapsibleTrigger>
@@ -615,9 +680,9 @@ export const CourseStructureDetails = ({
                                           </span>
                                           <span
                                             className="truncate group-hover:text-green-700 transition-colors text-xs"
-                                            title={ch.chapter_name}
+                                            title={toTitleCase(ch.chapter_name)}
                                           >
-                                            {ch.chapter_name}
+                                            {toTitleCase(ch.chapter_name)}
                                           </span>
                                         </div>
                                       </CollapsibleTrigger>
@@ -798,9 +863,6 @@ export const CourseStructureDetails = ({
         );
         const allModuleIds = new Set<string>();
         const allChapterIds = new Set<string>();
-
-        console.log("allModuleIds", allModuleIds);
-        console.log("allChapterIds", allChapterIds);
 
         Object.values(modulesMap).forEach((modules) => {
           modules.forEach((mod) => {

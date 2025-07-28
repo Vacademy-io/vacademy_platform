@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useStudyLibraryStore } from "@/stores/study-library/use-study-library-store";
 import { PullToRefreshWrapper } from "@/components/design-system/pull-to-refresh";
 import { fetchStudyLibraryDetails } from "@/services/study-library/getStudyLibraryDetails";
+import { toTitleCase } from "@/lib/utils";
 import { getPackageSessionId } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { TabType, tabs } from "./-constants/constant";
@@ -31,8 +32,8 @@ import {
 import { getIcon } from "./module-material/chapter-material/slide-material/chapter-sidebar-slides";
 import { useRouter } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
-import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
 
 export interface Chapter {
   id: string;
@@ -279,8 +280,7 @@ export const SubjectMaterial = () => {
           <div className="flex items-center gap-2">
             <TreeStructure size={18} className="text-primary-600" />
             <span className="text-sm font-medium text-neutral-700">
-              {getTerminology(ContentTerms.Course, SystemTerms.Course)}{" "}
-              Structure
+              {getTerminology(ContentTerms.Course, SystemTerms.Course)}
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -344,9 +344,9 @@ export const SubjectMaterial = () => {
                     </span>
                     <span
                       className="truncate font-medium group-hover:text-primary-700 transition-colors"
-                      title={subject.subject_name}
+                      title={toTitleCase(subject.subject_name)}
                     >
-                      {subject.subject_name}
+                      {toTitleCase(subject.subject_name)}
                     </span>
                   </div>
                   <ArrowSquareOut
@@ -394,9 +394,9 @@ export const SubjectMaterial = () => {
                                 </span>
                                 <span
                                   className="truncate group-hover:text-blue-700 transition-colors"
-                                  title={mod.module.module_name}
+                                  title={toTitleCase(mod.module.module_name)}
                                 >
-                                  {mod.module.module_name}
+                                  {toTitleCase(mod.module.module_name)}
                                 </span>
                               </div>
                               <ArrowSquareOut
@@ -450,9 +450,9 @@ export const SubjectMaterial = () => {
                                           </span>
                                           <span
                                             className="truncate group-hover:text-green-700 transition-colors text-xs"
-                                            title={ch.chapter_name}
+                                            title={toTitleCase(ch.chapter_name)}
                                           >
-                                            {ch.chapter_name}
+                                            {toTitleCase(ch.chapter_name)}
                                           </span>
                                         </div>
                                         <ArrowSquareOut

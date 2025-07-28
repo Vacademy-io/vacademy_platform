@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useCatalogStore } from "../-store/catalogStore";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import { toTitleCase } from "@/lib/utils";
 
 // Internal reusable component for individual filter sections
 interface FilterSectionProps {
@@ -112,7 +113,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
   //   eslint-disable-next-line @typescript-eslint/no-explicit-any
   const levels = (instituteData?.levels || []).map((level: any) => ({
     id: level.id,
-    name: level.level_name || "Unnamed Level",
+    name: toTitleCase(level.level_name || "Unnamed Level"),
   }));
 
   const tags = (instituteData?.tags || []).map((tag: string) => ({

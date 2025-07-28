@@ -5,6 +5,7 @@ import { SidebarProvider, useSidebar } from "@/components/ui/sidebar";
 import { useEffect, useState } from "react";
 import { truncateString } from "@/lib/reusable/truncateString";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
+import { toTitleCase } from "@/lib/utils";
 import { CaretLeft, BookOpen, GraduationCap } from "phosphor-react";
 import { SlideMaterial } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/slide-material";
 import {
@@ -156,7 +157,7 @@ function Slides() {
                   onClick={handleSubjectRoute}
                 >
                   {truncateString(
-                    subjectName,
+                    toTitleCase(subjectName),
                     open ? (window.innerWidth < 640 ? 20 : 15) : 8
                   )}
                 </button>
@@ -168,7 +169,7 @@ function Slides() {
                   onClick={handleModuleRoute}
                 >
                   {truncateString(
-                    moduleName,
+                    toTitleCase(moduleName),
                     open ? (window.innerWidth < 640 ? 20 : 15) : 8
                   )}
                 </button>
@@ -176,7 +177,7 @@ function Slides() {
                 <span className="text-xs font-bold text-primary-600 bg-primary-50 px-1 sm:px-2 py-0.5 rounded-md">
                   {open
                     ? window.innerWidth < 640
-                      ? chapterName
+                      ? toTitleCase(chapterName)
                       : truncatedChapterName
                     : truncatedChapterName}
                 </span>
@@ -196,8 +197,14 @@ function Slides() {
           </div>
           <div className="flex-1 min-w-0">
             <h3 className="text-xs sm:text-sm font-bold text-gray-900 truncate">
-              {getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)}{" "}
-              {getTerminology(ContentTerms.Slides, SystemTerms.Slides)}s
+              {getTerminology(
+                ContentTerms.Chapters,
+                SystemTerms.Chapters
+              ).toLocaleLowerCase()}{" "}
+              {getTerminology(
+                ContentTerms.Slides,
+                SystemTerms.Slides
+              ).toLocaleLowerCase()}
             </h3>
             <p className="text-xs text-gray-600">
               Interactive learning materials
@@ -266,7 +273,11 @@ function Slides() {
                   <div className="flex items-center space-x-2">
                     <div className="w-2 h-2 bg-primary-500 rounded-full animate-pulse" />
                     <span className="text-xs font-semibold text-gray-700">
-                      Chapter Progress
+                      {getTerminology(
+                        ContentTerms.Chapters,
+                        SystemTerms.Chapters
+                      ).toLocaleLowerCase()}
+                      Progress
                     </span>
                   </div>
                   <div className="flex items-center space-x-2">
@@ -312,14 +323,17 @@ function Slides() {
           {/* Mobile: Stack vertically, Desktop: Single line */}
           <div className="block sm:hidden">
             <h1 className="text-xs font-bold text-gray-900 truncate mb-0.5">
-              {truncateString(chapterName || "Study Materials", 25)}
+              {truncateString(
+                toTitleCase(chapterName || "Study Materials"),
+                25
+              )}
             </h1>
             <p className="text-xs text-gray-600 truncate">
               {subjectName && moduleName
-                ? `${truncateString(subjectName, 15)} • ${truncateString(
-                    moduleName,
+                ? `${truncateString(
+                    toTitleCase(subjectName),
                     15
-                  )}`
+                  )} • ${truncateString(toTitleCase(moduleName), 15)}`
                 : "Learning Path"}
             </p>
           </div>
@@ -327,21 +341,21 @@ function Slides() {
             <h1 className="text-sm font-bold text-gray-900 truncate">
               {subjectName && moduleName && chapterName
                 ? `${truncateString(
-                    subjectName,
+                    toTitleCase(subjectName),
                     window.innerWidth < 768
                       ? 8
                       : window.innerWidth < 1024
                       ? 12
                       : 18
                   )} • ${truncateString(
-                    moduleName,
+                    toTitleCase(moduleName),
                     window.innerWidth < 768
                       ? 8
                       : window.innerWidth < 1024
                       ? 12
                       : 18
                   )} • ${truncateString(
-                    chapterName,
+                    toTitleCase(chapterName),
                     window.innerWidth < 768
                       ? 10
                       : window.innerWidth < 1024

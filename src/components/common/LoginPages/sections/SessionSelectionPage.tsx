@@ -8,6 +8,7 @@ import { getPublicUrl } from "@/services/upload_file";
 import { Session } from "@/types/user/user-detail";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { getTerminology } from "../../layout-container/sidebar/utils";
+import { toTitleCase } from "@/lib/utils";
 
 const SessionSelectionPage = () => {
   const [sessionList, setSessionList] = useState<Session[]>([]);
@@ -251,7 +252,7 @@ const SessionSelectionPage = () => {
                       {imageUrls[session.id] ? (
                         <img
                           src={imageUrls[session.id]}
-                          alt={session.package_dto.package_name}
+                          alt={toTitleCase(session.package_dto.package_name)}
                           className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
                         />
                       ) : (
@@ -275,20 +276,32 @@ const SessionSelectionPage = () => {
 
                     <CardHeader className="pb-2">
                       <h3 className="text-lg font-semibold text-gray-900 group-hover:text-emerald-600 truncate">
-                        {session.package_dto.package_name}
+                        {toTitleCase(session.package_dto.package_name)}
                       </h3>
                     </CardHeader>
 
                     <CardContent className="space-y-2 text-sm text-gray-600">
                       <div className="flex items-center space-x-1">
-                        <span className="font-medium">Session:</span>
+                        <span className="font-medium">
+                          {getTerminology(
+                            ContentTerms.Session,
+                            SystemTerms.Session
+                          )}
+                          :
+                        </span>
                         <span className="truncate">
-                          {session.session.session_name}
+                          {toTitleCase(session.session.session_name)}
                         </span>
                       </div>
                       <div className="flex items-center space-x-1">
-                        <span className="font-medium">Level:</span>
-                        <span>{session.level.level_name}</span>
+                        <span className="font-medium">
+                          {getTerminology(
+                            ContentTerms.Level,
+                            SystemTerms.Level
+                          )}
+                          :
+                        </span>
+                        <span>{toTitleCase(session.level.level_name)}</span>
                       </div>
                       <div className="flex items-center space-x-1">
                         <span className="font-medium">Start:</span>

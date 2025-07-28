@@ -19,7 +19,7 @@ export const DonationDialog: React.FC<DonationDialogProps> = ({
   onContinue,
   onSkip,
 }) => {
-  const [donationType, setDonationType] = useState<'one-time' | 'monthly'>('monthly');
+  // const [donationType, setDonationType] = useState<'one-time' | 'monthly'>('monthly');
   const [selectedAmount, setSelectedAmount] = useState<number | 'other'>(12);
   const [customAmount, setCustomAmount] = useState('');
   const [step, setStep] = useState<'select' | 'summary' | 'payment'>('select');
@@ -70,7 +70,7 @@ export const DonationDialog: React.FC<DonationDialogProps> = ({
 
           {step === 'select' ? (
             <>
-              <div className="flex justify-center mb-1 -space-x-6">
+              {/* <div className="flex justify-center mb-1 -space-x-6">
                 <MyButton
                   buttonType={donationType === 'one-time' ? 'primary' : 'secondary'}
                   scale="medium"
@@ -91,7 +91,7 @@ export const DonationDialog: React.FC<DonationDialogProps> = ({
 
               <p className="text-xs text-gray-700 text-center mt-1 mb-1">
                 Choose an amount to donate {donationType}
-              </p>
+              </p> */}
 
               <div className="grid grid-cols-2 gap-3 justify-center mb-2">
                 {[12, 20, 30, 50].map((amount) => (
@@ -143,10 +143,10 @@ export const DonationDialog: React.FC<DonationDialogProps> = ({
                   <span className="text-gray-600">Amount:</span>
                   <span className="font-semibold text-gray-900">${getAmount()}</span>
                 </div>
-                <div className="flex items-center justify-between text-sm mb-2">
+                {/* <div className="flex items-center justify-between text-sm mb-2">
                   <span className="text-gray-600">Frequency:</span>
                   <span className="font-semibold text-gray-900">{donationType === 'monthly' ? 'Monthly' : 'One-time'}</span>
-                </div>
+                </div> */}
                 <button
                   className="text-xs font-medium ml-auto block rounded border border-neutral-300 bg-white text-neutral-600 px-3 py-1 focus:outline-none transition-colors duration-200 hover:bg-primary-50/50 hover:border-primary-300"
                   onClick={handleEdit}
@@ -183,10 +183,10 @@ export const DonationDialog: React.FC<DonationDialogProps> = ({
                   <span className="text-gray-600">Amount:</span>
                   <span className="font-semibold text-gray-900">${getAmount()}</span>
                 </div>
-                <div className="flex items-center justify-between text-sm mb-2">
+                {/* <div className="flex items-center justify-between text-sm mb-2">
                   <span className="text-gray-600">Frequency:</span>
                   <span className="font-semibold text-gray-900">{donationType === 'monthly' ? 'Monthly' : 'One-time'}</span>
-                </div>
+                </div> */}
                 <div className="flex items-center justify-between text-sm mb-1">
                   <span className="text-gray-600">Email:</span>
                   <span className="font-semibold text-gray-900">{email}</span>

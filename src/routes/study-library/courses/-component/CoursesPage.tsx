@@ -5,6 +5,7 @@ import CourseCard from "./CourseCards.tsx";
 import { MyPagination } from "@/components/design-system/pagination.tsx";
 import { CoursePackageResponse } from "@/types/course-catalog/course-catalog-list.ts";
 import { Search, Grid } from "lucide-react";
+import { toTitleCase } from "@/lib/utils";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils.ts";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings.ts";
 
@@ -22,7 +23,7 @@ interface CoursesPageProps {
   setSelectedInstructors: (instructors: string[]) => void;
   clearAllFilters: () => void;
   onApplyFilters: () => void;
-  page?: number;
+  page: number;
   handlePageChange: (page: number) => void;
   showFilters?: boolean;
   selectedTab: string;
@@ -42,6 +43,7 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
   setSelectedInstructors,
   clearAllFilters,
   onApplyFilters,
+  page,
   handlePageChange,
   showFilters = true,
   selectedTab,
@@ -74,7 +76,7 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
       setter([...list, itemId]);
     }
   };
-
+  console.log("page", page);
   // Convert thumbnail_file_id to URLs with individual loading (more reliable)
   useEffect(() => {
     const convertThumbnailsToUrls = async () => {
@@ -145,7 +147,7 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                   ContentTerms.Course,
                   SystemTerms.Course
                 ).toLocaleLowerCase()}
-                s found
+                s found found
               </h3>
               <p className="text-gray-600 text-sm max-w-md mx-auto">
                 Try adjusting your search criteria or browse our popular
@@ -167,8 +169,8 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                         {getTerminology(
                           ContentTerms.Course,
                           SystemTerms.Course
-                        ).toLocaleLowerCase()}{" "}
-                        found
+                        ).toLocaleLowerCase()}
+                        s found
                       </p>
                       <p className="text-xs text-gray-500">
                         Page {courseData.number + 1} of {courseData.totalPages}
@@ -189,8 +191,10 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                     <CourseCard
                       key={course.id || index}
                       courseId={course.id}
-                      package_name={course.package_name || "Untitled Package"}
-                      level_name={course.level_name || "Beginner"}
+                      package_name={toTitleCase(
+                        course.package_name || "Untitled Package"
+                      )}
+                      level_name={toTitleCase(course.level_name || "Beginner")}
                       instructors={
                         course.instructors?.length > 0 ? course.instructors : []
                       }

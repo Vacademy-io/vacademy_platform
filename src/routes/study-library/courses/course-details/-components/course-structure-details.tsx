@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { PullToRefreshWrapper } from "@/components/design-system/pull-to-refresh";
 import { fetchStudyLibraryDetails } from "@/services/study-library/getStudyLibraryDetails";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { toTitleCase } from "@/lib/utils";
 import {
   CaretDown,
   CaretRight,
@@ -34,7 +35,7 @@ import { CourseDetailsFormValues } from "./course-details-schema";
 import { getSubjectDetails } from "@/routes/courses/course-details/-utils/helper";
 import { useRouter } from "@tanstack/react-router";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
-import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
+import { RoleTerms, SystemTerms } from "@/types/naming-settings";
 
 export interface Chapter {
   id: string;
@@ -244,8 +245,7 @@ export const CourseStructureDetails = ({
           <div className="flex items-center gap-2">
             <TreeStructure size={18} className="text-primary-600" />
             <span className="text-sm font-medium text-neutral-700">
-              {getTerminology(ContentTerms.Course, SystemTerms.Course)}{" "}
-              Structure-
+              Course Structure
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -309,9 +309,9 @@ export const CourseStructureDetails = ({
                       </span>
                       <span
                         className="truncate font-medium group-hover:text-primary-700 transition-colors"
-                        title={subject.subject_name}
+                        title={toTitleCase(subject.subject_name)}
                       >
-                        {subject.subject_name}
+                        {toTitleCase(subject.subject_name)}
                       </span>
                     </div>
                   </CollapsibleTrigger>
@@ -398,9 +398,11 @@ export const CourseStructureDetails = ({
                                             </span>
                                             <span
                                               className="truncate group-hover:text-green-700 transition-colors text-xs"
-                                              title={ch.chapter_name}
+                                              title={toTitleCase(
+                                                ch.chapter_name
+                                              )}
                                             >
-                                              {ch.chapter_name}
+                                              {toTitleCase(ch.chapter_name)}
                                             </span>
                                           </div>
                                         </CollapsibleTrigger>
@@ -503,9 +505,9 @@ export const CourseStructureDetails = ({
                                   </span>
                                   <span
                                     className="truncate group-hover:text-blue-700 transition-colors"
-                                    title={mod.module.module_name}
+                                    title={toTitleCase(mod.module.module_name)}
                                   >
-                                    {mod.module.module_name}
+                                    {toTitleCase(mod.module.module_name)}
                                   </span>
                                 </div>
                               </CollapsibleTrigger>
@@ -550,9 +552,11 @@ export const CourseStructureDetails = ({
                                             </span>
                                             <span
                                               className="truncate group-hover:text-green-700 transition-colors text-xs"
-                                              title={ch.chapter_name}
+                                              title={toTitleCase(
+                                                ch.chapter_name
+                                              )}
                                             >
-                                              {ch.chapter_name}
+                                              {toTitleCase(ch.chapter_name)}
                                             </span>
                                           </div>
                                         </CollapsibleTrigger>
@@ -665,9 +669,9 @@ export const CourseStructureDetails = ({
                                           </span>
                                           <span
                                             className="truncate group-hover:text-green-700 transition-colors text-xs"
-                                            title={ch.chapter_name}
+                                            title={toTitleCase(ch.chapter_name)}
                                           >
-                                            {ch.chapter_name}
+                                            {toTitleCase(ch.chapter_name)}
                                           </span>
                                         </div>
                                       </CollapsibleTrigger>

@@ -4,14 +4,21 @@ import {
   ChalkboardTeacher,
   Code,
   File,
-  FileDoc,
   FilePdf,
   PlayCircle,
   Question,
   CaretLeft,
   BookOpen,
   GraduationCap,
+  Presentation,
+  GameController,
+  Exam,
+  Terminal,
+  ClipboardText,
+  FileDoc,
+  Notebook,
 } from "phosphor-react";
+import { toTitleCase } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Select,
@@ -45,13 +52,12 @@ import { getInstituteId } from "@/constants/helper";
 import { Preferences } from "@capacitor/preferences";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
 import { CourseStructureDetails } from "./course-structure-details";
-import { BatchForSessionType } from "@/types/institute-details/institute-details-interface";
 import { CourseStructureResponse } from "@/types/institute-details/course-details-interface";
 import { getIdByLevelAndSession } from "@/routes/courses/course-details/-utils/helper";
 import { MyButton } from "@/components/design-system/button";
 import { DonationDialog } from "./DonationDialog";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
-import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
 
 type SlideType = {
   id: string;
@@ -116,7 +122,10 @@ type SlideCountType = {
 const mockCourses: Course[] = [
   {
     id: "1",
-    title: "2-Level Course Structure",
+    title: `2-Level ${getTerminology(
+      ContentTerms.Course,
+      SystemTerms.Course
+    )} Structure`,
     level: 2,
     structure: {
       courseName: "Introduction to Web Development",
@@ -125,7 +134,10 @@ const mockCourses: Course[] = [
   },
   {
     id: "2",
-    title: "3-Level Course Structure",
+    title: `3-Level ${getTerminology(
+      ContentTerms.Course,
+      SystemTerms.Course
+    )} Structure`,
     level: 3,
     structure: {
       courseName: "Frontend Fundamentals",
@@ -134,7 +146,10 @@ const mockCourses: Course[] = [
   },
   {
     id: "3",
-    title: "4-Level Course Structure",
+    title: `4-Level ${getTerminology(
+      ContentTerms.Course,
+      SystemTerms.Course
+    )} Structure`,
     level: 4,
     structure: {
       courseName: "Full-Stack JavaScript Development Mastery",
@@ -143,7 +158,10 @@ const mockCourses: Course[] = [
   },
   {
     id: "4",
-    title: "5-Level Course Structure",
+    title: `5-Level ${getTerminology(
+      ContentTerms.Course,
+      SystemTerms.Course
+    )} Structure`,
     level: 5,
     structure: {
       courseName: "Advanced Software Engineering Principles",
@@ -164,12 +182,28 @@ const heading = (
   </div>
 );
 
-// Add a type for enrolled session
+// Add a type for enrolled session - matches BatchForSessionType structure
 interface EnrolledSession {
   id: string;
-  session?: { id: string };
-  level?: { id: string };
-  level_id?: string;
+  session: {
+    id: string;
+    session_name: string;
+    status: string;
+    start_date: string;
+  };
+  level: {
+    id: string;
+    level_name: string;
+    duration_in_days: number | null;
+    thumbnail_id: string | null;
+  };
+  start_time: string | null;
+  status: string;
+  package_dto: {
+    id: string;
+    package_name: string;
+    thumbnail_id?: string | null;
+  };
 }
 
 export const CourseDetailsPage = () => {
@@ -218,17 +252,6 @@ export const CourseDetailsPage = () => {
   const [packageSessionIdForCurrentLevel, setPackageSessionIdForCurrentLevel] =
     useState<string | null>(null);
 
-  const findIdByPackageId = (data: BatchForSessionType[]) => {
-    const result = data?.find(
-      (item) => item.package_dto?.id === searchParams.courseId
-    );
-    return result?.id || "";
-  };
-
-  const [packageSessionIds, setPackageSessionIds] = useState<string | null>(
-    null
-  );
-
   // ✅ Fetch institute details
   useEffect(() => {
     const FetchInstituteDetails = async () => {
@@ -236,9 +259,6 @@ export const CourseDetailsPage = () => {
       try {
         const response = await axios.get(
           `${urlInstituteDetails}/${instituteId}`
-        );
-        setPackageSessionIds(
-          findIdByPackageId(response.data.batches_for_sessions)
         );
         setPackageSessionIdForCurrentLevel(
           getIdByLevelAndSession(
@@ -267,7 +287,7 @@ export const CourseDetailsPage = () => {
       (item: CourseStructureResponse) =>
         item.course.id === searchParams.courseId
     );
-  }, [studyLibraryData]);
+  }, [studyLibraryData, searchParams.courseId]);
 
   const form = useForm<CourseDetailsFormValues>({
     resolver: zodResolver(courseDetailsSchema),
@@ -315,23 +335,32 @@ export const CourseDetailsPage = () => {
     // For ALL tab, show all available sessions
     if (selectedTab === "PROGRESS" || selectedTab === "COMPLETED") {
       const enrolledSessionIds = enrolledSessions.map(
-        (enrolled) => enrolled.session?.id || enrolled.id
+        (enrolled) => enrolled.session.id
       );
       const filteredSessions = sessions.filter((session) =>
         enrolledSessionIds.includes(session.sessionDetails.id)
       );
 
+      // If no enrolled sessions found, show all sessions as fallback
+      if (filteredSessions.length === 0 && sessions.length > 0) {
+        return sessions.map((session) => ({
+          _id: session.sessionDetails.id,
+          value: session.sessionDetails.id,
+          label: toTitleCase(session.sessionDetails.session_name),
+        }));
+      }
+
       return filteredSessions.map((session) => ({
         _id: session.sessionDetails.id,
         value: session.sessionDetails.id,
-        label: session.sessionDetails.session_name,
+        label: toTitleCase(session.sessionDetails.session_name),
       }));
     } else {
       // For ALL tab, show all sessions
       return sessions.map((session) => ({
         _id: session.sessionDetails.id,
         value: session.sessionDetails.id,
-        label: session.sessionDetails.session_name,
+        label: toTitleCase(session.sessionDetails.session_name),
       }));
     }
   }, [form.watch("courseData.sessions"), enrolledSessions, selectedTab]);
@@ -351,15 +380,15 @@ export const CourseDetailsPage = () => {
       if (selectedTab === "PROGRESS" || selectedTab === "COMPLETED") {
         // Find the enrolled session to get enrolled level IDs
         const enrolledSession = enrolledSessions.find(
-          (enrolled) => (enrolled.session?.id || enrolled.id) === sessionId
+          (enrolled) => enrolled.session.id === sessionId
         );
 
         let enrolledLevelIds: string[] = [];
         if (enrolledSession) {
           // Extract level ID from enrolled session
-          enrolledLevelIds = [
-            enrolledSession.level?.id || enrolledSession.level_id,
-          ].filter(Boolean) as string[];
+          enrolledLevelIds = [enrolledSession.level.id].filter(
+            Boolean
+          ) as string[];
         }
 
         // Filter levels based on enrollment
@@ -367,11 +396,23 @@ export const CourseDetailsPage = () => {
           (level) => enrolledLevelIds.includes(level.id)
         );
 
-        newLevelOptions = filteredLevels.map((level) => ({
-          _id: level.id,
-          value: level.id,
-          label: level.name,
-        }));
+        // If no enrolled levels found, show all levels as fallback
+        if (
+          filteredLevels.length === 0 &&
+          selectedSessionData.levelDetails.length > 0
+        ) {
+          newLevelOptions = selectedSessionData.levelDetails.map((level) => ({
+            _id: level.id,
+            value: level.id,
+            label: level.name,
+          }));
+        } else {
+          newLevelOptions = filteredLevels.map((level) => ({
+            _id: level.id,
+            value: level.id,
+            label: level.name,
+          }));
+        }
       } else {
         // For ALL tab, show all levels
         newLevelOptions = selectedSessionData.levelDetails.map((level) => ({
@@ -433,11 +474,208 @@ export const CourseDetailsPage = () => {
 
   // Add this with other queries at the top level of the component
   const slideCountQuery = useQuery({
-    ...handleGetSlideCountDetails(packageSessionIds || ""),
-    enabled: !!packageSessionIds,
+    ...handleGetSlideCountDetails(packageSessionIdForCurrentLevel || ""),
+    enabled: !!packageSessionIdForCurrentLevel,
   });
 
+  // Custom slide count calculation to handle special document types
+  const processedSlideCounts = useMemo(() => {
+    if (!slideCountQuery.data) return [];
+
+    const counts = slideCountQuery.data as SlideCountType[];
+
+    const processedCounts: {
+      source_type: string;
+      slide_count: number;
+      display_name: string;
+    }[] = [];
+
+    // Create a map to track counts for different types
+    const typeCounts: { [key: string]: number } = {};
+
+    // Track if we have specific document types to avoid duplicates
+    const hasSpecificDocumentTypes = counts.some(
+      (count) =>
+        count.source_type === "JUPYTER_NOTEBOOK" ||
+        count.source_type === "CODE_EDITOR" ||
+        count.source_type === "PRESENTATION" ||
+        count.source_type === "SCRATCH_PROJECT"
+    );
+
+    counts.forEach((count) => {
+      let canonicalType = count.source_type;
+      if (canonicalType === "JUPYTER") canonicalType = "JUPYTER_NOTEBOOK";
+      if (canonicalType === "SCRATCH") canonicalType = "SCRATCH_PROJECT";
+      if (canonicalType === "DOCUMENT") {
+        // Only add DOCUMENT count if we don't have specific document types
+        // This prevents duplicates when we have JUPYTER_NOTEBOOK, CODE_EDITOR, etc.
+        if (!hasSpecificDocumentTypes) {
+          typeCounts["DOCUMENT"] =
+            (typeCounts["DOCUMENT"] || 0) + count.slide_count;
+        }
+      } else {
+        typeCounts[canonicalType] =
+          (typeCounts[canonicalType] || 0) + count.slide_count;
+      }
+    });
+
+    // Convert the map to the required format
+    Object.entries(typeCounts).forEach(([sourceType, slideCount]) => {
+      let displayName = "";
+      switch (sourceType) {
+        case "VIDEO":
+          displayName = "Video slides";
+          break;
+        case "CODE":
+          displayName = "Code slides";
+          break;
+        case "PDF":
+          displayName = "PDF slides";
+          break;
+        case "DOCUMENT":
+          displayName = "DOC slides";
+          break;
+        case "QUESTION":
+          displayName = "Question slides";
+          break;
+        case "ASSIGNMENT":
+          displayName = "Assignment slides";
+          break;
+        case "PRESENTATION":
+          displayName = "Presentation slides";
+          break;
+        case "JUPYTER_NOTEBOOK":
+        case "JUPYTER":
+          displayName = "Jupyter Notebook slides";
+          break;
+        case "SCRATCH_PROJECT":
+        case "SCRATCH":
+          displayName = "Scratch Project slides";
+          break;
+        case "QUIZ":
+          displayName = "Quiz slides";
+          break;
+        case "CODE_EDITOR":
+          displayName = "Code Editor slides";
+          break;
+        default:
+          displayName = `${sourceType} slides`;
+      }
+
+      processedCounts.push({
+        source_type: sourceType,
+        slide_count: slideCount,
+        display_name: displayName,
+      });
+    });
+
+    return processedCounts;
+  }, [slideCountQuery.data]);
+
   const [donationDialogOpen, setDonationDialogOpen] = useState(false);
+
+  const getSlideTypeIcon = (type: string) => {
+    switch (type) {
+      case "VIDEO":
+        return (
+          <PlayCircle
+            size={16}
+            className="text-blue-600 group-hover/item:scale-110 transition-transform duration-300"
+            weight="duotone"
+          />
+        );
+      case "CODE":
+        return (
+          <Code
+            size={16}
+            className="text-green-600 group-hover/item:scale-110 transition-transform duration-300"
+            weight="duotone"
+          />
+        );
+      case "PDF":
+        return (
+          <FilePdf
+            size={16}
+            className="text-red-600 group-hover/item:scale-110 transition-transform duration-300"
+            weight="duotone"
+          />
+        );
+      case "DOCUMENT":
+        return (
+          <FileDoc
+            size={16}
+            className="text-purple-600 group-hover/item:scale-110 transition-transform duration-300"
+            weight="duotone"
+          />
+        );
+      case "QUESTION":
+        return (
+          <Question
+            size={16}
+            className="text-orange-600 group-hover/item:scale-110 transition-transform duration-300"
+            weight="duotone"
+          />
+        );
+      case "ASSIGNMENT":
+        return (
+          <ClipboardText
+            size={16}
+            className="text-indigo-600 group-hover/item:scale-110 transition-transform duration-300"
+            weight="duotone"
+          />
+        );
+      case "PRESENTATION":
+        return (
+          <Presentation
+            size={16}
+            className="text-cyan-600 group-hover/item:scale-110 transition-transform duration-300"
+            weight="duotone"
+          />
+        );
+      case "JUPYTER_NOTEBOOK":
+      case "JUPYTER":
+        return (
+          <Notebook
+            size={16}
+            className="text-yellow-600 group-hover/item:scale-110 transition-transform duration-300"
+            weight="duotone"
+          />
+        );
+      case "SCRATCH_PROJECT":
+      case "SCRATCH":
+        return (
+          <GameController
+            size={16}
+            className="text-pink-600 group-hover/item:scale-110 transition-transform duration-300"
+            weight="duotone"
+          />
+        );
+      case "QUIZ":
+        return (
+          <Exam
+            size={16}
+            className="text-teal-600 group-hover/item:scale-110 transition-transform duration-300"
+            weight="duotone"
+          />
+        );
+      case "CODE_EDITOR":
+        return (
+          <Terminal
+            size={16}
+            className="text-gray-600 group-hover/item:scale-110 transition-transform duration-300"
+            weight="duotone"
+          />
+        );
+      default:
+        return (
+          <File
+            size={16}
+            className="text-gray-500 group-hover/item:scale-110 transition-transform duration-300"
+            weight="duotone"
+          />
+        );
+    }
+  };
 
   return (
     <>
@@ -523,7 +761,7 @@ export const CourseDetailsPage = () => {
 
                           {/* Title */}
                           <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold mb-2 sm:mb-3 leading-tight">
-                            {form.getValues("courseData").title}
+                            {toTitleCase(form.getValues("courseData").title)}
                           </h1>
 
                           {/* Description */}
@@ -596,7 +834,7 @@ export const CourseDetailsPage = () => {
 
                         {/* Title */}
                         <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-3 sm:mb-4 leading-tight">
-                          {form.getValues("courseData").title}
+                          {toTitleCase(form.getValues("courseData").title)}
                         </h1>
 
                         {/* Description */}
@@ -642,7 +880,7 @@ export const CourseDetailsPage = () => {
                       />
                     </div>
                     <h3 className="text-base font-bold text-gray-900">
-                      {getTerminology(ContentTerms.Course, SystemTerms.Course)}{" "}
+                      {getTerminology(ContentTerms.Course, SystemTerms.Course)}
                       Configuration
                     </h3>
                   </div>
@@ -668,7 +906,12 @@ export const CourseDetailsPage = () => {
                               ContentTerms.Course,
                               SystemTerms.Course
                             ).toLocaleLowerCase()}{" "}
-                            structure. Enroll to access lessons and materials.
+                            structure. Enroll to access{" "}
+                            {getTerminology(
+                              ContentTerms.Slides,
+                              SystemTerms.Slides
+                            ).toLocaleLowerCase()}
+                            s and materials.
                           </p>
                         </div>
                       )}
@@ -752,42 +995,38 @@ export const CourseDetailsPage = () => {
                         <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
                         <span className="text-sm font-medium text-yellow-800">
                           {selectedTab === "ALL"
-                            ? "No " +
-                              getTerminology(
+                            ? `No ${getTerminology(
                                 ContentTerms.Session,
                                 SystemTerms.Session
-                              ).toLocaleLowerCase() +
-                              " available for this " +
-                              getTerminology(
+                              ).toLocaleLowerCase()} available for this ${getTerminology(
                                 ContentTerms.Course,
                                 SystemTerms.Course
-                              ).toLocaleLowerCase()
-                            : "You are not enrolled in any " +
-                              getTerminology(
+                              ).toLocaleLowerCase()}`
+                            : `You are not enrolled in any ${getTerminology(
                                 ContentTerms.Session,
                                 SystemTerms.Session
-                              ).toLocaleLowerCase() +
-                              " for this " +
-                              getTerminology(
+                              ).toLocaleLowerCase()} for this ${getTerminology(
                                 ContentTerms.Course,
                                 SystemTerms.Course
-                              ).toLocaleLowerCase()}
+                              ).toLocaleLowerCase()}`}
                         </span>
                       </div>
                       <p className="text-xs text-yellow-700 mt-1">
                         {selectedTab === "ALL"
-                          ? "This " +
-                            getTerminology(
+                          ? `This ${getTerminology(
                               ContentTerms.Course,
                               SystemTerms.Course
-                            ).toLocaleLowerCase() +
-                            " may not have any active " +
-                            getTerminology(
+                            ).toLocaleLowerCase()} may not have any active ${getTerminology(
                               ContentTerms.Session,
                               SystemTerms.Session
-                            ).toLocaleLowerCase() +
-                            " configured."
-                          : "Please contact your instructor or administrator to get enrolled."}
+                            ).toLocaleLowerCase()}s configured.`
+                          : `Please contact your ${getTerminology(
+                              RoleTerms.Teacher,
+                              SystemTerms.Teacher
+                            ).toLocaleLowerCase()} or ${getTerminology(
+                              RoleTerms.Admin,
+                              SystemTerms.Admin
+                            ).toLocaleLowerCase()} to get enrolled.`}
                       </p>
                     </div>
                   )}
@@ -859,7 +1098,11 @@ export const CourseDetailsPage = () => {
                           />
                         </div>
                         <h2 className="text-base font-bold text-gray-900">
-                          About this course
+                          About this{" "}
+                          {getTerminology(
+                            ContentTerms.Course,
+                            SystemTerms.Course
+                          ).toLocaleLowerCase()}
                         </h2>
                       </div>
                       <div
@@ -922,7 +1165,11 @@ export const CourseDetailsPage = () => {
                             />
                           </div>
                           <h2 className="text-base font-bold text-gray-900">
-                            Instructors
+                            {getTerminology(
+                              RoleTerms.Teacher,
+                              SystemTerms.Teacher
+                            ).toLocaleLowerCase()}
+                            s
                           </h2>
                         </div>
                         <div className="space-y-2">
@@ -983,7 +1230,7 @@ export const CourseDetailsPage = () => {
                         {getTerminology(
                           ContentTerms.Course,
                           SystemTerms.Course
-                        )}{" "}
+                        ).toLocaleLowerCase()}
                         Overview
                       </h2>
                     </div>
@@ -1004,7 +1251,10 @@ export const CourseDetailsPage = () => {
                                 weight="duotone"
                               />
                               <span className="text-xs font-medium text-primary-700">
-                                Level
+                                {getTerminology(
+                                  ContentTerms.Level,
+                                  SystemTerms.Level
+                                ).toLocaleLowerCase()}
                               </span>
                             </div>
                             <span className="text-xs font-bold text-primary-800">
@@ -1033,73 +1283,30 @@ export const CourseDetailsPage = () => {
                       ) : slideCountQuery.error ? (
                         <div className="p-2.5 bg-red-50 border border-red-200 rounded-lg">
                           <p className="text-xs text-red-600 font-medium">
-                            Error loading slide counts
+                            Error loading{" "}
+                            {getTerminology(
+                              ContentTerms.Slides,
+                              SystemTerms.Slides
+                            ).toLocaleLowerCase()}
+                            counts
                           </p>
                         </div>
                       ) : (
                         <div className="space-y-2">
-                          {slideCountQuery.data?.map(
-                            (count: SlideCountType) => (
+                          {processedSlideCounts.map(
+                            (count: {
+                              source_type: string;
+                              slide_count: number;
+                              display_name: string;
+                            }) => (
                               <div
                                 key={count.source_type}
                                 className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300 group/item"
                               >
                                 <div className="flex items-center space-x-2">
-                                  {count.source_type === "VIDEO" && (
-                                    <PlayCircle
-                                      size={16}
-                                      className="text-blue-600 group-hover/item:scale-110 transition-transform duration-300"
-                                      weight="duotone"
-                                    />
-                                  )}
-                                  {count.source_type === "CODE" && (
-                                    <Code
-                                      size={16}
-                                      className="text-green-600 group-hover/item:scale-110 transition-transform duration-300"
-                                      weight="duotone"
-                                    />
-                                  )}
-                                  {count.source_type === "PDF" && (
-                                    <FilePdf
-                                      size={16}
-                                      className="text-red-600 group-hover/item:scale-110 transition-transform duration-300"
-                                      weight="duotone"
-                                    />
-                                  )}
-                                  {count.source_type === "DOCUMENT" && (
-                                    <FileDoc
-                                      size={16}
-                                      className="text-purple-600 group-hover/item:scale-110 transition-transform duration-300"
-                                      weight="duotone"
-                                    />
-                                  )}
-                                  {count.source_type === "QUESTION" && (
-                                    <Question
-                                      size={16}
-                                      className="text-orange-600 group-hover/item:scale-110 transition-transform duration-300"
-                                      weight="duotone"
-                                    />
-                                  )}
-                                  {count.source_type === "ASSIGNMENT" && (
-                                    <File
-                                      size={16}
-                                      className="text-indigo-600 group-hover/item:scale-110 transition-transform duration-300"
-                                      weight="duotone"
-                                    />
-                                  )}
+                                  {getSlideTypeIcon(count.source_type)}
                                   <span className="text-xs font-medium text-gray-700">
-                                    {count.source_type === "VIDEO" &&
-                                      "Video slides"}
-                                    {count.source_type === "CODE" &&
-                                      "Code slides"}
-                                    {count.source_type === "PDF" &&
-                                      "PDF slides"}
-                                    {count.source_type === "DOCUMENT" &&
-                                      "Doc slides"}
-                                    {count.source_type === "QUESTION" &&
-                                      "Question slides"}
-                                    {count.source_type === "ASSIGNMENT" &&
-                                      "Assignment slides"}
+                                    {count.display_name}
                                   </span>
                                 </div>
                                 <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
@@ -1120,7 +1327,11 @@ export const CourseDetailsPage = () => {
                                   weight="duotone"
                                 />
                                 <span className="text-xs font-medium text-gray-700">
-                                  Instructors
+                                  {getTerminology(
+                                    RoleTerms.Teacher,
+                                    SystemTerms.Teacher
+                                  ).toLocaleLowerCase()}
+                                  s
                                 </span>
                               </div>
                               <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">

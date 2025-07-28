@@ -4,6 +4,7 @@ import { useFileUpload } from "@/hooks/use-file-upload";
 import { SubjectType } from "@/stores/study-library/use-study-library-store";
 import { useRouter } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { toTitleCase } from "@/lib/utils";
 
 interface SubjectCardProps {
   subject: SubjectType;
@@ -58,7 +59,7 @@ export const SubjectCard = ({ subject }: SubjectCardProps) => {
           {imageUrl ? (
             <img
               src={imageUrl}
-              alt={subject.subject_name}
+              alt={toTitleCase(subject.subject_name)}
               className="size-full rounded-lg object-contain group-hover:scale-105 transition-transform duration-200"
             />
           ) : (
@@ -69,7 +70,7 @@ export const SubjectCard = ({ subject }: SubjectCardProps) => {
         </div>
         <div className="flex items-center justify-center gap-2 w-full flex-col">
           <div className="text-sm font-semibold text-neutral-800 group-hover:text-primary-700 transition-colors duration-200 text-center leading-tight">
-            {subject.subject_name}
+            {toTitleCase(subject.subject_name)}
           </div>
           <div className="flex items-center gap-2">
             <CompletionStatusComponent completionPercentage={subject.percentage_completed} />

@@ -7,6 +7,7 @@ import { ChevronRightIcon } from "@radix-ui/react-icons";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { Dispatch, SetStateAction, useEffect, useState } from "react";
 import { useStudyLibraryStore } from "@/stores/study-library/use-study-library-store";
+import { toTitleCase } from "@/lib/utils";
 
 interface ChapterSidebarComponentProps {
     currentModuleId: string;
@@ -59,13 +60,13 @@ export const ChapterSidebarComponent = ({
                     className={`cursor-pointer text-neutral-500 hover:text-primary-600 transition-colors duration-200 ${open ? "visible" : "hidden sm:visible"}`}
                     onClick={handleSubjectRoute}
                 >
-                    {subjectName}
+                    {toTitleCase(subjectName)}
                 </p>
                 <ChevronRightIcon
                     className={`size-3 sm:size-4 text-neutral-400 ${open ? "visible" : "hidden sm:visible"}`}
                 />
                 <p className="cursor-pointer text-primary-600 font-medium">
-                    {open ? moduleName : truncateString(moduleName, window.innerWidth < 640 ? 12 : 10)}
+                    {open ? toTitleCase(moduleName) : truncateString(toTitleCase(moduleName), window.innerWidth < 640 ? 12 : 10)}
                 </p>
             </div>
 
@@ -99,7 +100,7 @@ export const ChapterSidebarComponent = ({
                             <p
                                 className={`font-medium transition-colors duration-200 text-xs sm:text-sm ${open ? "visible" : "hidden sm:visible"}`}
                             >
-                                {truncateString(moduleWithChapters.module.module_name, window.innerWidth < 640 ? 20 : 15)}
+                                {truncateString(toTitleCase(moduleWithChapters.module.module_name), window.innerWidth < 640 ? 20 : 15)}
                             </p>
                         </div>
                     ))}

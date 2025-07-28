@@ -3,12 +3,13 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Helmet } from "react-helmet";
 import { useEffect, useMemo, useState } from "react";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
-import { format, isAfter, isBefore, parse, startOfDay, subDays, subMonths, subYears } from "date-fns";
+import { format, isAfter, isBefore, parse, parseISO, startOfDay, subDays, subMonths, subYears } from "date-fns";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { CalendarIcon, CaretDownIcon } from "@radix-ui/react-icons";
 import { Checkbox } from "@/components/ui/checkbox";
 import { MyPagination } from "@/components/design-system/pagination";
+import { fetchAttendanceReport } from "@/services/attendance/getAttendanceReport";
 
 export const Route = createFileRoute("/learning-centre/attendance/")({
   component: RouteComponent,
@@ -20,317 +21,30 @@ export const Route = createFileRoute("/learning-centre/attendance/")({
 interface ClassAttendance {
   id: number;
   title: string;
-  date: string; // "Jan 15, 2024"
-  time: string; // "10:00 AM"
+  date: string; // "MMM dd, yyyy" or raw date
+  time: string; // time info, now unused
   subject: string;
   batch: string;
   classType: "Public" | "Private";
   status: "Present" | "Absent";
 }
+// Define API session item and student wrapper types
+interface SessionApiItem {
+  scheduleId: string;
+  sessionId: string;
+  title: string;
+  meetingDate: string; // YYYY-MM-DD
+  startTime?: string;  // HH:mm:ss
+  lastEntryTime?: string;
+  isPrivate?: boolean;
+  attendanceStatus: "PRESENT" | "ABSENT" | null;
+}
+interface StudentAttendanceApi {
+  sessions: SessionApiItem[];
+}
 
-const MOCK_DATA: ClassAttendance[] = [
-  {
-    id: 1,
-    title: "Introduction to React Hooks",
-    date: "Jan 15, 2024",
-    time: "10:00 AM",
-    subject: "React Development",
-    batch: "Batch A",
-    classType: "Public",
-    status: "Present",
-  },
-  {
-    id: 2,
-    title: "Advanced State Management",
-    date: "Jan 16, 2024",
-    time: "2:00 PM",
-    subject: "React Development",
-    batch: "Batch A",
-    classType: "Private",
-    status: "Absent",
-  },
-  {
-    id: 3,
-    title: "JavaScript Fundamentals",
-    date: "Jan 17, 2024",
-    time: "11:00 AM",
-    subject: "JavaScript",
-    batch: "Batch A",
-    classType: "Public",
-    status: "Present",
-  },
-  {
-    id: 4,
-    title: "API Integration Workshop",
-    date: "Jan 18, 2024",
-    time: "3:00 PM",
-    subject: "Full Stack Development",
-    batch: "Batch A",
-    classType: "Private",
-    status: "Present",
-  },
-  // --- added extra mock rows for pagination demo ---
-  {
-    id: 5,
-    title: "TypeScript Basics",
-    date: "Jan 19, 2024",
-    time: "09:00 AM",
-    subject: "TypeScript",
-    batch: "Batch A",
-    classType: "Public",
-    status: "Present",
-  },
-  {
-    id: 6,
-    title: "CSS Grid Layout",
-    date: "Jan 20, 2024",
-    time: "12:00 PM",
-    subject: "CSS",
-    batch: "Batch B",
-    classType: "Public",
-    status: "Absent",
-  },
-  {
-    id: 7,
-    title: "Functional Programming in JS",
-    date: "Jan 21, 2024",
-    time: "01:00 PM",
-    subject: "JavaScript",
-    batch: "Batch B",
-    classType: "Private",
-    status: "Present",
-  },
-  {
-    id: 8,
-    title: "React Performance Optimisation",
-    date: "Jan 22, 2024",
-    time: "10:30 AM",
-    subject: "React Development",
-    batch: "Batch B",
-    classType: "Public",
-    status: "Present",
-  },
-  {
-    id: 9,
-    title: "GraphQL Introduction",
-    date: "Jan 23, 2024",
-    time: "02:30 PM",
-    subject: "GraphQL",
-    batch: "Batch C",
-    classType: "Public",
-    status: "Absent",
-  },
-  {
-    id: 10,
-    title: "Node.js Streams",
-    date: "Jan 24, 2024",
-    time: "11:15 AM",
-    subject: "Node.js",
-    batch: "Batch C",
-    classType: "Private",
-    status: "Present",
-  },
-  {
-    id: 11,
-    title: "Unit Testing with Jest",
-    date: "Jan 25, 2024",
-    time: "04:00 PM",
-    subject: "Testing",
-    batch: "Batch C",
-    classType: "Public",
-    status: "Present",
-  },
-  {
-    id: 12,
-    title: "Docker Basics",
-    date: "Jan 26, 2024",
-    time: "09:45 AM",
-    subject: "DevOps",
-    batch: "Batch A",
-    classType: "Private",
-    status: "Absent",
-  },
-  {
-    id: 13,
-    title: "CI/CD with GitHub Actions",
-    date: "Jan 27, 2024",
-    time: "02:15 PM",
-    subject: "DevOps",
-    batch: "Batch A",
-    classType: "Public",
-    status: "Present",
-  },
-  {
-    id: 14,
-    title: "Introduction to Redux",
-    date: "Jan 28, 2024",
-    time: "10:00 AM",
-    subject: "State Management",
-    batch: "Batch A",
-    classType: "Public",
-    status: "Present",
-  },
-  {
-    id: 15,
-    title: "Advanced TypeScript Types",
-    date: "Jan 29, 2024",
-    time: "01:30 PM",
-    subject: "TypeScript",
-    batch: "Batch B",
-    classType: "Private",
-    status: "Absent",
-  },
-  {
-    id: 16,
-    title: "Sass Fundamentals",
-    date: "Jan 30, 2024",
-    time: "11:00 AM",
-    subject: "CSS",
-    batch: "Batch C",
-    classType: "Public",
-    status: "Present",
-  },
-  {
-    id: 17,
-    title: "Responsive Design Best Practices",
-    date: "Jan 31, 2024",
-    time: "09:30 AM",
-    subject: "Design",
-    batch: "Batch A",
-    classType: "Public",
-    status: "Present",
-  },
-  {
-    id: 18,
-    title: "Introduction to Web Accessibility",
-    date: "Feb 01, 2024",
-    time: "02:00 PM",
-    subject: "Accessibility",
-    batch: "Batch B",
-    classType: "Private",
-    status: "Absent",
-  },
-  {
-    id: 19,
-    title: "Debugging JavaScript Effectively",
-    date: "Feb 02, 2024",
-    time: "01:00 PM",
-    subject: "JavaScript",
-    batch: "Batch C",
-    classType: "Public",
-    status: "Present",
-  },
-  {
-    id: 20,
-    title: "Introduction to Next.js",
-    date: "Feb 03, 2024",
-    time: "10:15 AM",
-    subject: "React Development",
-    batch: "Batch A",
-    classType: "Private",
-    status: "Present",
-  },
-  {
-    id: 21,
-    title: "Server-Side Rendering with React",
-    date: "Feb 04, 2024",
-    time: "03:30 PM",
-    subject: "React Development",
-    batch: "Batch B",
-    classType: "Public",
-    status: "Absent",
-  },
-  {
-    id: 22,
-    title: "Webpack Deep Dive",
-    date: "Feb 05, 2024",
-    time: "11:45 AM",
-    subject: "Tooling",
-    batch: "Batch C",
-    classType: "Public",
-    status: "Present",
-  },
-  {
-    id: 23,
-    title: "State Machines with XState",
-    date: "Feb 06, 2024",
-    time: "12:30 PM",
-    subject: "State Management",
-    batch: "Batch A",
-    classType: "Private",
-    status: "Present",
-  },
-  {
-    id: 24,
-    title: "Unit Testing React Components",
-    date: "Feb 07, 2024",
-    time: "09:00 AM",
-    subject: "Testing",
-    batch: "Batch B",
-    classType: "Public",
-    status: "Absent",
-  },
-  {
-    id: 25,
-    title: "End-to-End Testing with Cypress",
-    date: "Feb 08, 2024",
-    time: "02:20 PM",
-    subject: "Testing",
-    batch: "Batch C",
-    classType: "Private",
-    status: "Present",
-  },
-  {
-    id: 26,
-    title: "GraphQL Advanced Queries",
-    date: "Feb 09, 2024",
-    time: "01:40 PM",
-    subject: "GraphQL",
-    batch: "Batch A",
-    classType: "Public",
-    status: "Present",
-  },
-  {
-    id: 27,
-    title: "Building REST APIs with Express",
-    date: "Feb 10, 2024",
-    time: "10:10 AM",
-    subject: "Node.js",
-    batch: "Batch B",
-    classType: "Public",
-    status: "Absent",
-  },
-  {
-    id: 28,
-    title: "Authentication with JWT",
-    date: "Feb 11, 2024",
-    time: "03:00 PM",
-    subject: "Security",
-    batch: "Batch C",
-    classType: "Private",
-    status: "Present",
-  },
-  {
-    id: 29,
-    title: "Introduction to Docker Compose",
-    date: "Feb 12, 2024",
-    time: "11:30 AM",
-    subject: "DevOps",
-    batch: "Batch A",
-    classType: "Public",
-    status: "Present",
-  },
-  {
-    id: 30,
-    title: "Monitoring Apps with Prometheus",
-    date: "Feb 13, 2024",
-    time: "09:50 AM",
-    subject: "DevOps",
-    batch: "Batch B",
-    classType: "Public",
-    status: "Absent",
-  },
-];
+// Temporarily keep mock data for fallback or loading state reference
+const MOCK_DATA: ClassAttendance[] = [];
 
 // ---------------------------------------------
 // Component
@@ -345,9 +59,71 @@ function RouteComponent() {
   }, [setNavHeading]);
 
   const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({});
-  const [batch, setBatch] = useState<string>("Batch A");
+  const [batch, setBatch] = useState<string>("All Batches");
   const [subject, setSubject] = useState<string>("All Subjects");
   const [classType, setClassType] = useState<string>("All Types");
+
+  /* --------------------------------------------------------
+   * Attendance data fetched from API
+   * ----------------------------------------------------- */
+  const [attendanceData, setAttendanceData] = useState<ClassAttendance[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Effect: fetch attendance on initial load
+  useEffect(() => {
+    const fetchData = async () => {
+      setError(null);
+      try {
+        setIsLoading(true);
+        const batchSessionId = "14b2df53-4fda-4c18-9ddf-f3e69508f3cc"; // TODO: Replace with dynamic value if available
+
+        // Fetch full dataset once with wide date range
+        const startDate = format(new Date(0), "yyyy-MM-dd"); // Unix epoch start
+        const endDate = format(new Date(), "yyyy-MM-dd");
+
+        const apiData = await fetchAttendanceReport({
+          batchSessionId,
+          startDate,
+          endDate,
+        });
+
+        // Unwrap array of students or sessions
+        const rawArray: StudentAttendanceApi[] | SessionApiItem[] = Array.isArray(apiData)
+          ? apiData
+          : Array.isArray(apiData?.data)
+            ? apiData.data
+            : [];
+
+        // Flatten all sessions
+        const sessionItems: SessionApiItem[] =
+          (rawArray as StudentAttendanceApi[])[0]?.sessions !== undefined
+            ? (rawArray as StudentAttendanceApi[]).flatMap((s) => s.sessions)
+            : (rawArray as SessionApiItem[]);
+
+        // Map sessions to ClassAttendance
+        const transformed: ClassAttendance[] = sessionItems.map((session: SessionApiItem, idx: number) => ({
+          id: idx,
+          title: session.title,
+          date: format(parseISO(session.meetingDate), "MMM dd, yyyy"),
+          time: "",
+          subject: "-",
+          batch: "-",
+          classType: session.isPrivate ? "Private" : "Public",
+          status: session.attendanceStatus === "PRESENT" ? "Present" : "Absent",
+        }));
+
+        setAttendanceData(transformed);
+      } catch (err) {
+        console.error("Failed to fetch attendance report", err);
+        setError((err as Error).message || "Failed to load attendance data");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
 
   // ---------------------------------------------
   // Row selection (checkbox column)
@@ -362,7 +138,8 @@ function RouteComponent() {
    * Filtering logic
    * ----------------------------------------------------- */
   const filteredData = useMemo(() => {
-    return MOCK_DATA.filter((cls) => {
+    const source = attendanceData.length > 0 ? attendanceData : MOCK_DATA;
+    return source.filter((cls) => {
       // Date range filter
       const dateObj = parse(cls.date, "MMM dd, yyyy", new Date());
       if (dateRange.from && isBefore(dateObj, dateRange.from)) return false;
@@ -379,7 +156,7 @@ function RouteComponent() {
 
       return true;
     });
-  }, [dateRange, batch, subject, classType]);
+  }, [dateRange, batch, subject, classType, attendanceData]);
 
   // Ensure page within bounds when filters change
   const totalPages = Math.max(1, Math.ceil(filteredData.length / pageSize));
@@ -424,7 +201,7 @@ function RouteComponent() {
    * ----------------------------------------------------- */
   const clearFilters = () => {
     setDateRange({});
-    setBatch("Batch A");
+    setBatch("All Batches");
     setSubject("All Subjects");
     setClassType("All Types");
   };
@@ -456,7 +233,7 @@ function RouteComponent() {
             <SimpleDropdown
               label="Batch"
               value={batch}
-              options={["Batch A", "Batch B", "Batch C", "All Batches"]}
+              options={["All Batches", "Batch A", "Batch B", "Batch C"]}
               onSelect={setBatch}
             />
 
@@ -483,7 +260,7 @@ function RouteComponent() {
           </div>
 
           {/* Clear Filters button */}
-          {(dateRange.from || dateRange.to || batch !== "Batch A" || subject !== "All Subjects" || classType !== "All Types") && (
+          {(dateRange.from || dateRange.to || batch !== "All Batches" || subject !== "All Subjects" || classType !== "All Types") && (
             <div className="mt-4 text-right">
               <button
                 onClick={clearFilters}
@@ -496,6 +273,12 @@ function RouteComponent() {
         </div>
 
         {/* Table */}
+        {/* Summary of fetched data */}
+        {!isLoading && !error && attendanceData.length > 0 && (
+          <div className="px-4 text-sm text-neutral-600">
+            {`Showing ${filteredData.length} of ${attendanceData.length} attendance records`}
+          </div>
+        )}
         <div className="overflow-hidden rounded-lg border border-neutral-200">
           <div className="w-full overflow-x-auto">
             <table className="w-full min-w-[800px] table-auto border-collapse">
@@ -517,7 +300,19 @@ function RouteComponent() {
                 </tr>
               </thead>
               <tbody>
-                {paginatedData.length > 0 ? (
+                {isLoading ? (
+                  <tr>
+                    <td colSpan={7} className="p-8 text-center text-neutral-500">
+                      Loading attendance data...
+                    </td>
+                  </tr>
+                ) : error ? (
+                  <tr>
+                    <td colSpan={7} className="p-8 text-center text-danger-600">
+                      Error: {error}
+                    </td>
+                  </tr>
+                ) : filteredData.length > 0 ? (
                   paginatedData.map((cls) => (
                     <tr key={cls.id} className="border-b border-neutral-200 text-sm text-neutral-600 hover:bg-neutral-50">
                       <td className="px-4 py-3">
@@ -529,7 +324,7 @@ function RouteComponent() {
                       </td>
                       <td className="px-4 py-3">{cls.title}</td>
                       <td className="px-4 py-3">
-                        {cls.date} at {cls.time}
+                        {cls.date}
                       </td>
                       <td className="px-4 py-3">{cls.subject}</td>
                       <td className="px-4 py-3">{cls.batch}</td>

@@ -95,7 +95,7 @@ public class StripePaymentService implements PaymentServiceStrategy {
         invoiceItemParams.put("amount", amountInCents);
         invoiceItemParams.put("currency", request.getCurrency().toLowerCase());
         invoiceItemParams.put("description", request.getDescription() != null ? request.getDescription() : "No description");
-
+        invoiceItemParams.put("metadata", Map.of("order_id",request.getOrderId()));
         logger.debug("Creating invoice item with params: {}", invoiceItemParams);
         InvoiceItem invoiceItem = InvoiceItem.create(invoiceItemParams);
         logger.info("Invoice item created with ID: {}", invoiceItem.getId());

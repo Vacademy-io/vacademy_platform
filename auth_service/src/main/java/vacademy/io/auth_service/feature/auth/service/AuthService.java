@@ -92,42 +92,52 @@ public class AuthService {
     }
 
     @Transactional
-    public User createUser(UserDTO registerRequest,String instituteId) {
-        boolean isAlreadyPresent = false;
+    public User createUser(UserDTO registerRequest, String instituteId) {
         Optional<User> optionalUser = userRepository.findFirstByEmailOrderByCreatedAtDesc(registerRequest.getEmail());
-        User user = null;
-        List<Role> allRoles = getAllUserRoles(registerRequest.getRoles());
-        Set<UserRole>userRoleSet = new HashSet<>();
-        for (Role role : allRoles) {
-            UserRole userRole = new UserRole();
-            userRole.setRole(role);
-            userRole.setStatus(UserRoleStatus.ACTIVE.name());
-            userRole.setInstituteId(instituteId);
-            userRoleSet.add(userRole);
-        }
-        if (optionalUser.isPresent()){
-            isAlreadyPresent = true;
+        boolean isAlreadyPresent = optionalUser.isPresent();
+
+        User user;
+
+        if (isAlreadyPresent) {
             user = optionalUser.get();
-            user.setRoles(userRoleSet);
-        }else{
+        } else {
             user = User.builder()
                     .fullName(registerRequest.getFullName())
                     .username(registerRequest.getUsername())
                     .email(registerRequest.getEmail())
                     .password(registerRequest.getPassword())
-                    .roles(userRoleSet)
                     .isRootUser(true)
                     .build();
             user = userRepository.save(user);
         }
-        userRepository.save(user);
-        if(isAlreadyPresent){
+
+        // Build user roles
+        List<Role> allRoles = getAllUserRoles(registerRequest.getRoles());
+        Set<UserRole> userRoleSet = new HashSet<>();
+
+        for (Role role : allRoles) {
+            UserRole userRole = new UserRole();
+            userRole.setRole(role);
+            userRole.setStatus(UserRoleStatus.ACTIVE.name());
+            userRole.setInstituteId(instituteId);
+            userRole.setUser(user);
+            userRoleSet.add(userRole);
+        }
+
+        // Set roles and save again
+        user.setRoles(userRoleSet);
+        user = userRepository.save(user);
+
+        // Send appropriate welcome mail
+        if (isAlreadyPresent) {
             sendKeepingCredentialsWelcomeMailToUser(user);
-        }else{
+        } else {
             sendWelcomeMailToUser(user);
         }
+
         return user;
     }
+
 
     private List<Role> getAllUserRoles(List<String> userRoles) {
         return roleRepository.findByNameIn(userRoles);

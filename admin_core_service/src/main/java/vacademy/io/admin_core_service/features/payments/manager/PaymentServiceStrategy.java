@@ -1,4 +1,4 @@
-package vacademy.io.admin_core_service.features.payments.service;
+package vacademy.io.admin_core_service.features.payments.manager;
 
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;

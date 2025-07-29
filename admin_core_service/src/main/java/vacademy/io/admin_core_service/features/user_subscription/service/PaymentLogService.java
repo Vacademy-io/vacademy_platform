@@ -40,4 +40,12 @@ public class PaymentLogService {
         paymentLog.setPaymentSpecificData(paymentSpecificData);
         paymentLogRepository.save(paymentLog);
     }
+    
+    // to do: Red marked as there we need to process so many things
+
+    public void updatePaymentLog(String paymentLogId,String paymentStatus){
+        PaymentLog paymentLog = paymentLogRepository.findById(paymentLogId).get();
+        paymentLog.setPaymentStatus(paymentStatus);
+        paymentLogRepository.save(paymentLog);
+    }
 }

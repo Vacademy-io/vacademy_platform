@@ -1,4 +1,4 @@
-package vacademy.io.admin_core_service.features.payments.service;
+package vacademy.io.admin_core_service.features.payments.manager;
 
 import com.stripe.Stripe;
 import com.stripe.exception.StripeException;
@@ -19,13 +19,12 @@ import vacademy.io.common.payment.dto.StripeRequestDTO;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 @Service
-public class StripePaymentService implements PaymentServiceStrategy {
+public class StripePaymentManager implements PaymentServiceStrategy {
 
-    private static final Logger logger = LoggerFactory.getLogger(StripePaymentService.class);
+    private static final Logger logger = LoggerFactory.getLogger(StripePaymentManager.class);
 
     @Override
     public Map<String, Object> createCustomer(UserDTO user, PaymentInitiationRequestDTO request, Map<String, Object> paymentGatewaySpecificData) {
@@ -95,7 +94,7 @@ public class StripePaymentService implements PaymentServiceStrategy {
         invoiceItemParams.put("amount", amountInCents);
         invoiceItemParams.put("currency", request.getCurrency().toLowerCase());
         invoiceItemParams.put("description", request.getDescription() != null ? request.getDescription() : "No description");
-        invoiceItemParams.put("metadata", Map.of("order_id",request.getOrderId()));
+        invoiceItemParams.put("metadata", Map.of("orderId",request.getOrderId(),"instituteId",request.getInstituteId()));
         logger.debug("Creating invoice item with params: {}", invoiceItemParams);
         InvoiceItem invoiceItem = InvoiceItem.create(invoiceItemParams);
         logger.info("Invoice item created with ID: {}", invoiceItem.getId());

@@ -4,6 +4,8 @@ package vacademy.io.admin_core_service.features.payments.service;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.institute.service.InstitutePaymentGatewayMappingService;
+import vacademy.io.admin_core_service.features.payments.manager.PaymentServiceFactory;
+import vacademy.io.admin_core_service.features.payments.manager.PaymentServiceStrategy;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserInstitutePaymentGatewayMapping;
 import vacademy.io.admin_core_service.features.user_subscription.service.UserInstitutePaymentGatewayMappingService;
 import vacademy.io.common.auth.dto.UserDTO;
@@ -29,6 +31,7 @@ public class PaymentService {
     public PaymentResponseDTO makePayment(String vendor, String instituteId, UserDTO user, PaymentInitiationRequestDTO request) {
         Map<String, Object> paymentGatewaySpecificData = institutePaymentGatewayMappingService.findInstitutePaymentGatewaySpecifData(vendor, instituteId);
         PaymentServiceStrategy paymentServiceStrategy = paymentServiceFactory.getStrategy(PaymentGateway.fromString(vendor));
+        request.setInstituteId(instituteId);
         return paymentServiceStrategy.initiatePayment(user,request, paymentGatewaySpecificData);
     }
 

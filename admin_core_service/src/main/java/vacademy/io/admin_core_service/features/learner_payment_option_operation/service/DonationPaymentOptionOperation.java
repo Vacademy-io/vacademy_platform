@@ -10,6 +10,7 @@ import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSt
 import vacademy.io.admin_core_service.features.institute_learner.service.LearnerBatchEnrollService;
 import vacademy.io.admin_core_service.features.notification_service.service.PaymentNotificatonService;
 import vacademy.io.admin_core_service.features.payments.service.PaymentService;
+import vacademy.io.admin_core_service.features.payments.util.OrderIdGenerator;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserInstitutePaymentGatewayMapping;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
@@ -75,6 +76,7 @@ public class DonationPaymentOptionOperation implements PaymentOptionOperationStr
                     enrollInvite.getCurrency(),
                     userPlan
             );
+           learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest().setOrderId(paymentLogId);
             UserInstitutePaymentGatewayMapping userInstitutePaymentGatewayMapping = paymentService.createOrGetCustomer(instituteId,userDTO,enrollInvite.getVendor(),learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest());
             configureCustomerPaymentData(userInstitutePaymentGatewayMapping,enrollInvite.getVendor(),learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest());
             PaymentResponseDTO paymentResponseDTO = paymentService.makePayment(enrollInvite.getVendor(), instituteId, userDTO,learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest());

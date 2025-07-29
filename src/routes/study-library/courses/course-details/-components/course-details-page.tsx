@@ -246,13 +246,14 @@ export const CourseDetailsPage = () => {
                 const response = await axios.get(
                     `${urlInstituteDetails}/${instituteId}`
                 );
-                setPackageSessionIdForCurrentLevel(
-                    getIdByLevelAndSession(
-                        response.data.batches_for_sessions,
-                        selectedSession,
-                        selectedLevel
-                    )
+                const packageSessionId = getIdByLevelAndSession(
+                    response.data.batches_for_sessions,
+                    selectedSession,
+                    selectedLevel
                 );
+                console.log("Setting packageSessionId:", packageSessionId, "for session:", selectedSession, "level:", selectedLevel);
+                console.log("Available batches:", response.data.batches_for_sessions);
+                setPackageSessionIdForCurrentLevel(packageSessionId);
             } catch (error) {
                 console.log(error);
             }

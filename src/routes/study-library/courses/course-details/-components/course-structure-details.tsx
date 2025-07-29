@@ -1,7 +1,6 @@
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
 import { useEffect, useState } from "react";
 import { PullToRefreshWrapper } from "@/components/design-system/pull-to-refresh";
-import { fetchStudyLibraryDetails } from "@/services/study-library/getStudyLibraryDetails";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toTitleCase } from "@/lib/utils";
 import {
@@ -18,7 +17,7 @@ import {
     CollapsibleContent,
     CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { fetchModulesWithChapters } from "@/services/study-library/getModulesWithChapters";
+import { fetchModulesWithChapters, fetchModulesWithChaptersPublic } from "@/services/study-library/getModulesWithChapters";
 import { SubjectType } from "@/stores/study-library/use-study-library-store";
 import { useMutation } from "@tanstack/react-query";
 import {
@@ -97,6 +96,10 @@ export const CourseStructureDetails = ({
         useState<SubjectModulesMap>({});
     const [slidesMap, setSlidesMap] = useState<Record<string, Slide[]>>({});
 
+
+
+
+
     const handleSlideNavigation = (
         subjectId: string,
         moduleId: string,
@@ -121,13 +124,15 @@ export const CourseStructureDetails = ({
 
     const getSlidesWithChapterId = async (chapterId: string) => {
         // Avoid duplicate fetch
-        if (slidesMap[chapterId]) return;
+        if (slidesMap[chapterId]) {
+            return;
+        }
 
         try {
             const slides = await fetchSlidesByChapterId(chapterId);
             setSlidesMap((prev) => ({ ...prev, [chapterId]: slides }));
         } catch (err) {
-            console.log(err);
+            console.error(`Error fetching slides for chapter ${chapterId}:`, err);
         }
     };
 
@@ -138,12 +143,34 @@ export const CourseStructureDetails = ({
             }: {
                 subjects: SubjectType[];
             }) => {
+                // Ensure packageSessionId is available for all course depths
+                if (!packageSessionId) {
+                    console.warn("packageSessionId is not available for course depth:", courseStructure);
+                    throw new Error("Package session ID is required for fetching modules");
+                }
+
                 const results = await Promise.all(
                     currentSubjects?.map(async (subject) => {
-                        const res = await fetchModulesWithChapters(
-                            subject.id,
-                            packageSessionId
-                        );
+                        // For depth 5 courses, try using the public endpoint first
+                        let res;
+                        if (courseStructure === 5) {
+                            try {
+                                res = await fetchModulesWithChaptersPublic(
+                                    subject.id,
+                                    packageSessionId
+                                );
+                            } catch {
+                                res = await fetchModulesWithChapters(
+                                    subject.id,
+                                    packageSessionId
+                                );
+                            }
+                        } else {
+                            res = await fetchModulesWithChapters(
+                                subject.id,
+                                packageSessionId
+                            );
+                        }
                         return { subjectId: subject.id, modules: res };
                     })
                 );
@@ -161,8 +188,23 @@ export const CourseStructureDetails = ({
     const { mutateAsync: fetchModules } = useModulesMutation();
 
     const refreshData = async () => {
-        const data = await fetchStudyLibraryDetails(packageSessionId);
-        setStudyLibraryData(data);
+        if (!packageSessionId) {
+            console.warn("packageSessionId is not available for refreshing study library data");
+            return;
+        }
+        // Refresh by reloading modules
+        try {
+            const modulesMap = await fetchModules({
+                subjects: getSubjectDetails(
+                    courseData,
+                    selectedSession,
+                    selectedLevel
+                ),
+            });
+            setSubjectModulesMap(modulesMap);
+        } catch (error) {
+            console.error("Failed to refresh data:", error);
+        }
     };
 
     const [openSubjects, setOpenSubjects] = useState<Set<string>>(new Set());
@@ -469,75 +511,44 @@ export const CourseStructureDetails = ({
                                                                                             className={`space-y-px ml-5 border-l border-green-200/50 py-1 pl-2 relative `}
                                                                                         >
                                                                                             <div className="absolute left-0 top-0 w-px h-full bg-gradient-to-b from-green-300/50 to-transparent"></div>
-                                                                                            {(
-                                                                                                slidesMap[
-                                                                                                    ch
-                                                                                                        .id
-                                                                                                ] ??
-                                                                                                []
-                                                                                            )
-                                                                                                .length ===
-                                                                                            0 ? (
-                                                                                                <div className="text-xs px-2 py-1 text-neutral-400 italic bg-neutral-50/50 rounded">
-                                                                                                    No
-                                                                                                    slides
-                                                                                                    in
-                                                                                                    this
-                                                                                                    chapter.
-                                                                                                </div>
-                                                                                            ) : (
-                                                                                                (
-                                                                                                    slidesMap[
-                                                                                                        ch
-                                                                                                            .id
-                                                                                                    ] ??
-                                                                                                    []
-                                                                                                ).map(
-                                                                                                    (
-                                                                                                        slide,
-                                                                                                        sIdx
-                                                                                                    ) => (
-                                                                                                        <div
-                                                                                                            key={
-                                                                                                                slide.id
-                                                                                                            }
-                                                                                                            className="group flex cursor-pointer items-center gap-1.5 px-2 py-1 text-xs text-neutral-500 rounded hover:bg-gradient-to-r hover:from-amber-50/60 hover:to-orange-50/40 hover:border-amber-200/40 border border-transparent transition-all duration-200"
-                                                                                                            onClick={() => {
-                                                                                                                handleSlideNavigation(
-                                                                                                                    subject.id,
-                                                                                                                    mod
-                                                                                                                        .module
-                                                                                                                        .id,
-                                                                                                                    ch.id,
-                                                                                                                    slide.id
-                                                                                                                );
-                                                                                                            }}
-                                                                                                        >
-                                                                                                            <span className="w-5 shrink-0 text-center font-mono text-neutral-400 bg-neutral-100 rounded px-0.5 text-xs">
-                                                                                                                S
-                                                                                                                {sIdx +
-                                                                                                                    1}
-                                                                                                            </span>
-                                                                                                            <div className="shrink-0 group-hover:scale-110 transition-transform">
-                                                                                                                {getIcon(
-                                                                                                                    slide,
-                                                                                                                    "3"
-                                                                                                                )}
-                                                                                                            </div>
-                                                                                                            <span
-                                                                                                                className="truncate group-hover:text-amber-700 transition-colors"
-                                                                                                                title={
-                                                                                                                    slide.title
-                                                                                                                }
+                                                                                                                                                                                                                    {(() => {
+                                const slidesForChapter = slidesMap[ch.id] ?? [];
+                                return slidesForChapter.length === 0 ? (
+                                                                                                    <div className="text-xs px-2 py-1 text-neutral-400 italic bg-neutral-50/50 rounded">
+                                                                                                        No slides in this chapter.
+                                                                                                    </div>
+                                                                                                ) : (
+                                                                                                    slidesForChapter.map(
+                                                                                                        (slide, sIdx) => (
+                                                                                                            <div
+                                                                                                                key={slide.id}
+                                                                                                                className="group flex cursor-pointer items-center gap-1.5 px-2 py-1 text-xs text-neutral-500 rounded hover:bg-gradient-to-r hover:from-amber-50/60 hover:to-orange-50/40 hover:border-amber-200/40 border border-transparent transition-all duration-200"
+                                                                                                                onClick={() => {
+                                                                                                                    handleSlideNavigation(
+                                                                                                                        subject.id,
+                                                                                                                        mod.module.id,
+                                                                                                                        ch.id,
+                                                                                                                        slide.id
+                                                                                                                    );
+                                                                                                                }}
                                                                                                             >
-                                                                                                                {
-                                                                                                                    slide.title
-                                                                                                                }
-                                                                                                            </span>
-                                                                                                        </div>
+                                                                                                                <span className="w-5 shrink-0 text-center font-mono text-neutral-400 bg-neutral-100 rounded px-0.5 text-xs">
+                                                                                                                    S{sIdx + 1}
+                                                                                                                </span>
+                                                                                                                <div className="shrink-0 group-hover:scale-110 transition-transform">
+                                                                                                                    {getIcon(slide, "3")}
+                                                                                                                </div>
+                                                                                                                <span
+                                                                                                                    className="truncate group-hover:text-amber-700 transition-colors"
+                                                                                                                    title={slide.title}
+                                                                                                                >
+                                                                                                                    {slide.title}
+                                                                                                                </span>
+                                                                                                            </div>
+                                                                                                        )
                                                                                                     )
-                                                                                                )
-                                                                                            )}
+                                                                                                );
+                                                                                            })()}
                                                                                         </div>
                                                                                     </CollapsibleContent>
                                                                                 </Collapsible>
@@ -1185,6 +1196,12 @@ export const CourseStructureDetails = ({
 
     useEffect(() => {
         const loadModules = async () => {
+            // Ensure packageSessionId is available before making API calls
+            if (!packageSessionId) {
+                console.warn("packageSessionId is not available, skipping module loading for course depth:", courseStructure);
+                return;
+            }
+
             try {
                 const modulesMap = await fetchModules({
                     subjects: getSubjectDetails(
@@ -1211,7 +1228,7 @@ export const CourseStructureDetails = ({
                         allModuleIds.add(mod.module.id);
                         mod.chapters.forEach((ch) => {
                             allChapterIds.add(ch.id);
-                            // Load slides for each chapter
+                            // Load slides for each chapter (same as expandAll function)
                             getSlidesWithChapterId(ch.id);
                         });
                     });
@@ -1221,17 +1238,64 @@ export const CourseStructureDetails = ({
                 setOpenModules(allModuleIds);
                 setOpenChapters(allChapterIds);
             } catch (error) {
-                console.error("Failed to fetch modules:", error);
+                console.error("Failed to fetch modules or study library details:", error);
                 setSubjectModulesMap({});
             }
         };
         loadModules();
-    }, [studyLibraryData, packageSessionId, fetchModules]);
+    }, [packageSessionId, fetchModules]);
+
+    // Trigger module loading when session or level changes
+    useEffect(() => {
+        if (packageSessionId) {
+            const loadModules = async () => {
+                try {
+                    const modulesMap = await fetchModules({
+                        subjects: getSubjectDetails(
+                            courseData,
+                            selectedSession,
+                            selectedLevel
+                        ),
+                    });
+                    setSubjectModulesMap(modulesMap);
+
+                    // Auto-expand all sections by default
+                    const allSubjectIds = new Set<string>(
+                        getSubjectDetails(
+                            courseData,
+                            selectedSession,
+                            selectedLevel
+                        ).map((s: SubjectType) => s.id)
+                    );
+                    const allModuleIds = new Set<string>();
+                    const allChapterIds = new Set<string>();
+
+                    Object.values(modulesMap).forEach((modules) => {
+                        modules.forEach((mod) => {
+                            allModuleIds.add(mod.module.id);
+                            mod.chapters.forEach((ch) => {
+                                allChapterIds.add(ch.id);
+                                // Load slides for each chapter (same as expandAll function)
+                                getSlidesWithChapterId(ch.id);
+                            });
+                        });
+                    });
+
+                    setOpenSubjects(allSubjectIds);
+                    setOpenModules(allModuleIds);
+                    setOpenChapters(allChapterIds);
+                } catch (error) {
+                    console.error("Failed to fetch modules or study library details:", error);
+                    setSubjectModulesMap({});
+                }
+            };
+            loadModules();
+        }
+    }, [selectedSession, selectedLevel, packageSessionId]);
 
     useEffect(() => {
-        setStudyLibraryData(
-            getSubjectDetails(courseData, selectedSession, selectedLevel)
-        );
+        const studyLibraryData = getSubjectDetails(courseData, selectedSession, selectedLevel);
+        setStudyLibraryData(studyLibraryData);
     }, [selectedSession, selectedLevel]);
 
     useEffect(() => {

@@ -33,6 +33,7 @@ export const fetchModulesWithChapters = async (
             },
         }
     );
+    
     return response.data;
 };
 

@@ -7,6 +7,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
 import vacademy.io.auth_service.feature.auth.constants.AuthConstants;
 import vacademy.io.auth_service.feature.auth.dto.JwtResponseDto;
@@ -14,6 +15,7 @@ import vacademy.io.auth_service.feature.auth.dto.RegisterRequest;
 import vacademy.io.auth_service.feature.notification.service.NotificationEmailBody;
 import vacademy.io.auth_service.feature.notification.service.NotificationService;
 import vacademy.io.auth_service.feature.user.repository.PermissionRepository;
+import vacademy.io.auth_service.feature.util.UsernameGenerator;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.entity.*;
 import vacademy.io.common.auth.enums.UserRoleStatus;
@@ -101,6 +103,12 @@ public class AuthService {
         if (isAlreadyPresent) {
             user = optionalUser.get();
         } else {
+            if(!StringUtils.hasText(registerRequest.getUsername())){
+                registerRequest.setUsername(UsernameGenerator.generateUsername(registerRequest.getFullName()));
+            }
+            if(!StringUtils.hasText(registerRequest.getPassword())) {
+                registerRequest.setPassword(UsernameGenerator.generatePassword(8));
+            }
             user = User.builder()
                     .fullName(registerRequest.getFullName())
                     .username(registerRequest.getUsername())

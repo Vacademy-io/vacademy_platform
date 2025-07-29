@@ -155,6 +155,20 @@ export const usePaymentDialog = (props: {
     paymentType: 'donation' | 'subscription' | 'one-time' | 'free';
     paymentMethod: any; // Stripe payment method object
     token: string;
+    userData?: {
+      email: string;
+      username: string;
+      full_name: string;
+      mobile_number: string;
+      date_of_birth: string;
+      gender: string;
+      address_line: string;
+      city: string;
+      region: string;
+      pin_code: string;
+      profile_pic_file_id: string;
+      country: string;
+    };
   }) => {
     const { email, amount, currency, description, paymentType, paymentMethod } = params;
     
@@ -179,6 +193,7 @@ export const usePaymentDialog = (props: {
       paymentType,
       paymentMethod,
       token: params.token, // Use the token from params since we're not modifying it anymore
+      userData: params.userData, // Pass user data if provided
     });
   };
 

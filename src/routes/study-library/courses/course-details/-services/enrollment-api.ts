@@ -1,4 +1,27 @@
 import axios from "axios";
+import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
+import { getUserId } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
+
+// TypeScript declarations for Stripe
+declare global {
+  interface Window {
+    Stripe?: (publishableKey: string) => any;
+  }
+}
+
+// Helper function to validate and sanitize email
+export const validateAndSanitizeEmail = (email: string): string => {
+  const sanitizedEmail = email.trim().toLowerCase();
+  
+  // Comprehensive email regex that excludes special characters like ^, &, etc.
+  const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+  
+  if (!emailRegex.test(sanitizedEmail)) {
+    throw new Error('Invalid email format. Please enter a valid email address without special characters.');
+  }
+  
+  return sanitizedEmail;
+};
 
 // Types for the enrollment API response
 export interface CustomField {
@@ -93,6 +116,63 @@ export interface EnrollmentResponse {
   institute_custom_fields: InstituteCustomField[];
   package_session_to_payment_options: PackageSessionToPaymentOption[];
 }
+
+export interface PaymentGatewayDetails {
+  id: string;
+  institute_id: string;
+  vendor: string;
+  vendor_id: string;
+  status: string;
+  config_json: string;
+  created_at: string;
+  updated_at: string;
+  publishableKey?: string;
+}
+
+/**
+ * Fetch payment gateway details for an institute
+ * @param instituteId - The institute ID
+ * @param vendor - The payment vendor (e.g., 'STRIPE')
+ * @returns Promise<PaymentGatewayDetails>
+ */
+export const fetchPaymentGatewayDetails = async (
+  instituteId: string,
+  vendor: string = 'STRIPE',
+  token: string
+): Promise<PaymentGatewayDetails> => {
+  try {
+    console.log('🔍 Fetching payment gateway details for institute:', instituteId, 'vendor:', vendor);
+    
+    const response = await axios.get(
+      `https://backend-stage.vacademy.io/admin-core-service/open/v1/institute/payment-setting/payment-gateway-details`,
+      {
+        params: {
+          instituteId,
+          vendor
+        },
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'accept': 'application/json, text/plain, */*',
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+    
+    console.log('🔍 Raw payment gateway response:', response.data);
+    console.log('🔍 Response structure:', {
+      hasId: !!response.data.id,
+      hasVendor: !!response.data.vendor,
+      hasPublishableKey: !!response.data.publishableKey,
+      hasConfigJson: !!response.data.config_json,
+      responseKeys: Object.keys(response.data)
+    });
+    
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching payment gateway details:', error);
+    throw new Error('Failed to fetch payment gateway details');
+  }
+};
 
 /**
  * Fetch enrollment details with payment options
@@ -539,4 +619,543 @@ export const getCurrencySymbol = (currency: string = "USD"): string => {
   };
 
   return currencySymbols[currency.toUpperCase()] || currency.toUpperCase();
+};
+
+/**
+ * Create Stripe payment method
+ * @param cardDetails - Card details for payment method creation
+ * @param publishableKey - Stripe publishable key
+ * @returns Promise<any>
+ */
+export const createStripePaymentMethod = async (
+  cardDetails: {
+    number: string;
+    exp_month: number;
+    exp_year: number;
+    cvc: string;
+  },
+  publishableKey: string
+): Promise<any> => {
+  try {
+    // Load Stripe.js dynamically
+    const stripe = await loadStripe(publishableKey);
+    if (!stripe) {
+      throw new Error('Failed to load Stripe');
+    }
+
+    // Create payment method
+    const { paymentMethod, error } = await stripe.createPaymentMethod({
+      type: 'card',
+      card: {
+        number: cardDetails.number,
+        exp_month: cardDetails.exp_month,
+        exp_year: cardDetails.exp_year,
+        cvc: cardDetails.cvc,
+      },
+    });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return paymentMethod;
+  } catch (error) {
+    console.error('Error creating Stripe payment method:', error);
+    throw error;
+  }
+};
+
+/**
+ * Create Stripe payment method using Elements
+ * @param elements - Stripe Elements instance
+ * @param cardElement - Stripe Card Element instance
+ * @returns Promise<any>
+ */
+export const createStripePaymentMethodWithElements = async (
+  stripe: any,
+  cardElement: any
+): Promise<any> => {
+  try {
+    console.log('🔧 Creating payment method with stripe:', !!stripe);
+    console.log('🔧 Card element:', !!cardElement);
+    
+    if (!stripe || !cardElement) {
+      throw new Error('Stripe instance or card element not provided');
+    }
+
+    const { paymentMethod, error } = await stripe.createPaymentMethod({
+      type: 'card',
+      card: cardElement,
+    });
+
+    if (error) {
+      console.error('❌ Payment method creation error:', error);
+      throw new Error(error.message);
+    }
+
+    console.log('✅ Payment method created successfully:', paymentMethod.id);
+    return paymentMethod;
+  } catch (error) {
+    console.error('❌ Error creating Stripe payment method with Elements:', error);
+    throw error;
+  }
+};
+
+/**
+ * Create Stripe Elements instance
+ * @param publishableKey - Stripe publishable key
+ * @returns Promise<any>
+ */
+export const createStripeElements = async (publishableKey: string) => {
+  try {
+    console.log('🔧 createStripeElements called with key:', publishableKey);
+    console.log('🔧 Key length:', publishableKey?.length);
+    console.log('🔧 Key starts with pk_:', publishableKey?.startsWith('pk_'));
+    
+    const stripe = await loadStripe(publishableKey);
+    console.log('🔧 Stripe loaded:', !!stripe);
+    
+    if (!stripe) {
+      throw new Error('Failed to load Stripe');
+    }
+
+    const elements = stripe.elements();
+    console.log('🔧 Stripe Elements created:', !!elements);
+    return elements;
+  } catch (error) {
+    console.error('❌ Error creating Stripe Elements:', error);
+    throw error;
+  }
+};
+
+/**
+ * Load Stripe.js dynamically
+ */
+const loadStripe = async (publishableKey: string) => {
+  try {
+    console.log('🔧 loadStripe called with key:', publishableKey);
+    console.log('🔧 Window.Stripe exists:', !!window.Stripe);
+    
+    // Check if Stripe is already loaded
+    if (window.Stripe) {
+      console.log('🔧 Using existing Stripe instance');
+      return window.Stripe(publishableKey);
+    }
+
+    console.log('🔧 Loading Stripe script...');
+    // Load Stripe.js script
+    const script = document.createElement('script');
+    script.src = 'https://js.stripe.com/v3/';
+    script.async = true;
+    
+    return new Promise((resolve, reject) => {
+      script.onload = () => {
+        console.log('🔧 Stripe script loaded');
+        console.log('🔧 Window.Stripe after load:', !!window.Stripe);
+        
+        if (window.Stripe) {
+          console.log('🔧 Creating Stripe instance with key');
+          const stripe = window.Stripe(publishableKey);
+          console.log('🔧 Stripe instance created:', !!stripe);
+          resolve(stripe);
+        } else {
+          console.error('❌ Stripe not available after script load');
+          reject(new Error('Stripe failed to load'));
+        }
+      };
+      script.onerror = () => {
+        console.error('❌ Failed to load Stripe script');
+        reject(new Error('Failed to load Stripe script'));
+      };
+      document.head.appendChild(script);
+      console.log('🔧 Stripe script appended to head');
+    });
+  } catch (error) {
+    console.error('❌ Error loading Stripe:', error);
+    throw error;
+  }
+};
+
+/**
+ * Initiate payment for new enrollment
+ * @param paymentData - The payment initiation data
+ * @returns Promise<any>
+ */
+export const initiatePaymentForEnrollment = async (
+  paymentData: {
+    institute_id: string;
+    package_session_ids: string[];
+    plan_id: string;
+    payment_option_id: string;
+    enroll_invite_id: string;
+    payment_initiation_request: {
+      amount: number;
+      currency: string;
+      description: string;
+      charge_automatically: boolean;
+      stripe_request?: {
+        payment_method_id: string;
+        card_last4: string;
+        customer_id: string;
+        publishable_key?: string;
+      };
+      razorpay_request?: {
+        customer_id: string;
+        contact: string;
+        email: string;
+      };
+      pay_pal_request?: any;
+      include_pending_items: boolean;
+    };
+  },
+  token: string
+): Promise<any> => {
+  // Note: Token validation is handled by authenticatedAxiosInstance
+  // The token parameter is kept for backward compatibility but not used directly
+  try {
+    console.log('📤 Initiating payment for enrolled user:', paymentData);
+    console.log('🔑 Using authenticated axios instance for automatic token handling');
+
+    // Use authenticated axios instance which handles token refresh automatically
+    const response = await authenticatedAxiosInstance.post(
+      'https://backend-stage.vacademy.io/admin-core-service/v1/learner/enroll',
+      paymentData
+    );
+    return response.data;
+      } catch (error: any) {
+      console.error('❌ Error initiating payment for enrolled user:', error);
+      
+      if (error.response) {
+        console.error('📊 Response status:', error.response.status);
+        console.error('📊 Response headers:', error.response.headers);
+        console.error('📊 Response data:', error.response.data);
+        
+        // Handle 510 Payment Gateway Configuration error
+        if (error.response.status === 510) {
+          console.error('🔧 510 Payment Gateway Configuration error detected');
+          
+          // Try to extract the actual error message from the nested response
+          let actualErrorMessage = 'Payment gateway configuration error. Please check your payment settings.';
+          
+          try {
+            if (error.response.data?.ex) {
+              // The error message is nested in the 'ex' field and might be JSON
+              const exData = error.response.data.ex;
+              console.log('🔍 Extracted error data:', exData);
+              
+              // Try to parse it as JSON if it's a string
+              if (typeof exData === 'string') {
+                try {
+                  const parsedEx = JSON.parse(exData);
+                  if (parsedEx.ex) {
+                    actualErrorMessage = parsedEx.ex;
+                  }
+                } catch (parseError) {
+                  // If it's not JSON, use the string directly
+                  actualErrorMessage = exData;
+                }
+              }
+            } else if (error.response.data?.responseCode) {
+              // Try to extract from responseCode field
+              const responseCode = error.response.data.responseCode;
+              if (typeof responseCode === 'string' && responseCode.includes('"')) {
+                try {
+                  const parsedResponse = JSON.parse(responseCode);
+                  if (parsedResponse.ex) {
+                    actualErrorMessage = parsedResponse.ex;
+                  }
+                } catch (parseError) {
+                  actualErrorMessage = responseCode;
+                }
+              }
+            }
+          } catch (extractError) {
+            console.error('🔍 Error extracting nested error message:', extractError);
+          }
+          
+          throw new Error(`Payment Gateway Error: ${actualErrorMessage}`);
+        } else if (error.response.status === 511) {
+          console.error('🔐 511 Network Authentication Required error detected');
+          
+          // Try to extract the actual error message from the nested response
+          let actualErrorMessage = 'Network authentication required. Please check your credentials.';
+          
+          try {
+            if (error.response.data?.ex) {
+              // The error message is nested in the 'ex' field and might be JSON
+              const exData = error.response.data.ex;
+              console.log('🔍 Extracted error data:', exData);
+              
+              // Try to parse it as JSON if it's a string
+              if (typeof exData === 'string') {
+                try {
+                  const parsedEx = JSON.parse(exData);
+                  if (parsedEx.ex) {
+                    actualErrorMessage = parsedEx.ex;
+                  }
+                } catch (parseError) {
+                  // If it's not JSON, use the string directly
+                  actualErrorMessage = exData;
+                }
+              }
+            } else if (error.response.data?.responseCode) {
+              // Try to extract from responseCode field
+              const responseCode = error.response.data.responseCode;
+              if (typeof responseCode === 'string' && responseCode.includes('"')) {
+                try {
+                  const parsedResponse = JSON.parse(responseCode);
+                  if (parsedResponse.ex) {
+                    actualErrorMessage = parsedResponse.ex;
+                  }
+                } catch (parseError) {
+                  actualErrorMessage = responseCode;
+                }
+              }
+            }
+          } catch (extractError) {
+            console.error('🔍 Error extracting nested error message:', extractError);
+          }
+          
+          throw new Error(`Authentication Error: ${actualErrorMessage}`);
+        } else if (error.response.status === 403) {
+          throw new Error('Access forbidden. Please check your permissions or try logging in again.');
+        } else if (error.response.status === 401) {
+          throw new Error('Unauthorized. Please check your authentication token.');
+        } else {
+          // Try to extract error message from response data
+          let errorMessage = error.response.statusText || 'Unknown error';
+          
+          if (error.response.data) {
+            if (error.response.data.message) {
+              errorMessage = error.response.data.message;
+            } else if (error.response.data.ex) {
+              errorMessage = error.response.data.ex;
+            } else if (typeof error.response.data === 'string') {
+              errorMessage = error.response.data;
+            }
+          }
+          
+          throw new Error(`Payment failed: ${errorMessage}`);
+        }
+      } else if (error.request) {
+        console.error('📊 Request error:', error.request);
+        throw new Error('Network error. Please check your connection and try again.');
+      } else {
+        throw new Error(`Payment failed: ${error.message}`);
+      }
+    }
+};
+
+/**
+ * Reusable function to handle payment for new enrollments
+ * @param params - Parameters for payment
+ * @returns Promise<any>
+ */
+export const handlePaymentForEnrollment = async (params: {
+  email: string;
+  instituteId: string;
+  packageSessionId: string;
+  enrollmentData: EnrollmentResponse;
+  paymentGatewayData: PaymentGatewayDetails;
+  selectedPaymentPlan: PaymentPlan;
+  selectedPaymentOption: PaymentOption;
+  amount: number;
+  currency: string;
+  description: string;
+  paymentType: 'donation' | 'subscription' | 'one-time' | 'free';
+  cardDetails?: {
+    number: string;
+    exp_month: number;
+    exp_year: number;
+    cvc: string;
+  };
+  paymentMethod?: unknown;
+  token: string;
+}): Promise<any> => {
+  const {
+    email: rawEmail,
+    instituteId,
+    packageSessionId,
+    enrollmentData,
+    paymentGatewayData,
+    selectedPaymentPlan,
+    selectedPaymentOption,
+    amount,
+    currency,
+    description,
+    paymentType,
+    cardDetails,
+    paymentMethod,
+    token
+  } = params;
+
+  // Validate and sanitize email to ensure proper format
+  const email = validateAndSanitizeEmail(rawEmail);
+
+  try {
+    // Get the current user ID
+    const currentUserId = await getUserId();
+    if (!currentUserId) {
+      throw new Error('User authentication required. Please log in again.');
+    }
+
+    // Validate enrollment data
+    if (!enrollmentData || !enrollmentData.id) {
+      throw new Error('Enrollment data is missing or invalid. Please try again.');
+    }
+
+    if (!instituteId || !packageSessionId || !selectedPaymentPlan?.id || !selectedPaymentOption?.id) {
+      throw new Error('Required enrollment parameters are missing. Please try again.');
+    }
+
+    // Validate payment gateway data
+    if (!paymentGatewayData) {
+      throw new Error('Payment gateway configuration is missing. Please try again.');
+    }
+
+    // Handle case where API returns simplified response with just publishableKey
+    const vendor = paymentGatewayData.vendor || 'STRIPE';
+    
+    // Note: Payment gateway configuration is handled by the backend
+    // We only need to send the stripe_request with payment method details
+
+    // Extract publishable key from payment gateway config
+    let publishableKey: string | undefined;
+    
+    // Check if publishableKey is directly available in the response
+    if (paymentGatewayData.publishableKey) {
+      publishableKey = paymentGatewayData.publishableKey;
+    } else if (paymentGatewayData.config_json) {
+      try {
+        const config = JSON.parse(paymentGatewayData.config_json);
+        
+        // Try different possible field names for publishable key
+        publishableKey = config.publishableKey || 
+                        config.publishable_key || 
+                        config.stripe_publishable_key ||
+                        config.stripePublishableKey ||
+                        config.key ||
+                        config.public_key;
+      } catch (error) {
+        console.warn('Failed to parse payment gateway config:', error);
+      }
+    }
+
+    if (!publishableKey) {
+      console.error('❌ Publishable key not found in payment gateway config');
+      throw new Error('Publishable key not found in payment gateway config. Please check the payment gateway configuration.');
+    }
+
+    // Create real Stripe payment method from card details
+    let paymentMethodId: string;
+    let cardLast4: string;
+    let customerId: string;
+
+    if (paymentMethod) {
+      // Use the provided payment method from Stripe Elements
+      paymentMethodId = paymentMethod.id;
+      cardLast4 = paymentMethod.card?.last4 || "0000";
+      customerId = paymentMethod.customer || "temp_customer_id";
+      console.log('✅ Using provided Stripe payment method:', paymentMethodId);
+    } else if (cardDetails && publishableKey) {
+      // Create real Stripe payment method from manual card input
+      console.log('🔧 Creating Stripe payment method from card details...');
+      try {
+        const stripePaymentMethod = await createStripePaymentMethod(cardDetails, publishableKey);
+        paymentMethodId = stripePaymentMethod.id;
+        cardLast4 = stripePaymentMethod.card?.last4 || cardDetails.number.slice(-4);
+        customerId = stripePaymentMethod.customer || "temp_customer_id";
+        console.log('✅ Created Stripe payment method:', paymentMethodId);
+      } catch (stripeError) {
+        console.error('❌ Failed to create Stripe payment method:', stripeError);
+        throw new Error(`Payment method creation failed: ${stripeError instanceof Error ? stripeError.message : 'Unknown error'}`);
+      }
+    } else if (paymentType === 'free') {
+      // For free enrollment, we don't need payment method details
+      paymentMethodId = "free_enrollment";
+      cardLast4 = "0000";
+      customerId = "free_customer";
+      console.log('✅ Free enrollment - no payment method required');
+    } else {
+      throw new Error('Either payment method or card details must be provided');
+    }
+
+    // Prepare payment data according to the exact backend API specification
+    const paymentPayload = {
+      user: {
+        id: currentUserId, // Use the real user ID from authentication
+        username: email.split('@')[0] || `user_${Date.now()}`, // Generate username from email or timestamp
+        email: email,
+        full_name: "Donation User", // Default name for donations
+        mobile_number: "", // Optional for donations
+        date_of_birth: new Date().toISOString(), // Default date
+        gender: "Not Specified", // Default gender
+        address_line: "", // Optional for donations
+        city: "", // Optional for donations
+        region: "", // Optional for donations
+        pin_code: "", // Optional for donations
+        profile_pic_file_id: "", // Optional for donations
+        roles: ["STUDENT"], // Default role
+        root_user: false
+      },
+      institute_id: instituteId,
+      subject_id: "", // Optional field from the specification
+      vendor_id: paymentType === 'free' ? "FREE" : "STRIPE",
+      // Note: Payment gateway configuration is handled by the backend based on the stripe_request
+      learner_package_session_enroll: {
+        package_session_ids: [packageSessionId],
+        plan_id: selectedPaymentPlan.id,
+        payment_option_id: selectedPaymentOption.id,
+        enroll_invite_id: enrollmentData.id,
+        payment_initiation_request: paymentType === 'free' ? null : {
+          amount: amount,
+          currency: currency,
+          description: description,
+          charge_automatically: true,
+          institute_id: instituteId,
+
+          stripe_request: {
+            payment_method_id: paymentMethodId,
+            card_last4: cardLast4,
+            customer_id: customerId
+          },
+          include_pending_items: true
+        },
+        custom_field_values: [] // Empty array for now, can be populated if needed
+      }
+    };
+
+    console.log(`🚀 Initiating ${paymentType} payment for enrolled user:`, JSON.stringify(paymentPayload, null, 2));
+    console.log('🔑 Publishable key available:', !!publishableKey);
+    console.log('🔧 Payment gateway type:', vendor);
+    console.log('📋 Enrollment data ID:', enrollmentData.id);
+    console.log('📋 Institute ID:', instituteId);
+    console.log('📋 Package Session ID:', packageSessionId);
+    console.log('📋 Learner package session enroll structure:', JSON.stringify(paymentPayload.learner_package_session_enroll, null, 2));
+
+    // Call the payment initiation API for enrolled users
+    console.log('🔍 Final request data being sent:', JSON.stringify(paymentPayload, null, 2));
+    
+    const result = await initiatePaymentForEnrollment(paymentPayload, token);
+    console.log(`✅ ${paymentType} payment result:`, result);
+
+    return result;
+  } catch (error) {
+    console.error(`❌ Error during ${paymentType} payment:`, error);
+    
+    // Provide more specific error messages based on the error type
+    if (error instanceof Error) {
+      if (error.message.includes('learner_package_session_enroll') || error.message.includes('enroll_invite_id')) {
+        throw new Error('Enrollment configuration error. Please refresh the page and try again.');
+      } else if (error.message.includes('401') || error.message.includes('Unauthorized')) {
+        throw new Error('Authentication error. Please log in again and try again.');
+      } else if (error.message.includes('403') || error.message.includes('forbidden')) {
+        throw new Error('Access denied. Please check your permissions and try again.');
+      } else {
+        throw error;
+      }
+    } else {
+      throw error;
+    }
+  }
 }; 

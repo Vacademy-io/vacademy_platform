@@ -68,8 +68,6 @@ public class LearnerAuthManager {
         if (learnerEnrollRequestDTO == null) throw new VacademyException("Invalid Request");
 
         UserDTO userDTO = learnerEnrollRequestDTO.getUser();
-        boolean userAlreadyExists = userRoleRepository.existsUserByEmailAndInstituteIdAndStatusesAndRoleNames(userDTO.getEmail(),learnerEnrollRequestDTO.getInstituteId(),List.of(UserRoleStatus.ACTIVE.name()),learnerEnrollRequestDTO.getUser().getRoles());
-        if (userAlreadyExists) throw new VacademyException("User already exits with this email and instituteId");
         User user = authService.createUser(userDTO,learnerEnrollRequestDTO.getInstituteId());
         userDTO.setId(user.getId());
         userDTO.setUsername(user.getUsername());

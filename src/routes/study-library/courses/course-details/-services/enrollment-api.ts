@@ -971,6 +971,20 @@ export const handlePaymentForEnrollment = async (params: {
   };
   paymentMethod?: unknown;
   token: string;
+  userData?: {
+    email: string;
+    username: string;
+    full_name: string;
+    mobile_number: string;
+    date_of_birth: string;
+    gender: string;
+    address_line: string;
+    city: string;
+    region: string;
+    pin_code: string;
+    profile_pic_file_id: string;
+    country: string;
+  };
 }): Promise<any> => {
   const {
     email: rawEmail,
@@ -986,7 +1000,8 @@ export const handlePaymentForEnrollment = async (params: {
     paymentType,
     cardDetails,
     paymentMethod,
-    token
+    token,
+    userData
   } = params;
 
   // Validate and sanitize email to ensure proper format
@@ -1084,17 +1099,17 @@ export const handlePaymentForEnrollment = async (params: {
     const paymentPayload = {
       user: {
         id: currentUserId, // Use the real user ID from authentication
-        username: email.split('@')[0] || `user_${Date.now()}`, // Generate username from email or timestamp
+        username: userData?.username || email.split('@')[0] || `user_${Date.now()}`, // Use real username or generate from email
         email: email,
-        full_name: "Donation User", // Default name for donations
-        mobile_number: "", // Optional for donations
-        date_of_birth: new Date().toISOString(), // Default date
-        gender: "Not Specified", // Default gender
-        address_line: "", // Optional for donations
-        city: "", // Optional for donations
-        region: "", // Optional for donations
-        pin_code: "", // Optional for donations
-        profile_pic_file_id: "", // Optional for donations
+        full_name: userData?.full_name || "Donation User", // Use real name or default
+        mobile_number: userData?.mobile_number || "", // Use real mobile or empty
+        date_of_birth: userData?.date_of_birth || new Date().toISOString(), // Use real DOB or default
+        gender: userData?.gender || "Not Specified", // Use real gender or default
+        address_line: userData?.address_line || "", // Use real address or empty
+        city: userData?.city || "", // Use real city or empty
+        region: userData?.region || "", // Use real region or empty
+        pin_code: userData?.pin_code || "", // Use real pin code or empty
+        profile_pic_file_id: userData?.profile_pic_file_id || "", // Use real profile pic or empty
         roles: ["STUDENT"], // Default role
         root_user: false
       },

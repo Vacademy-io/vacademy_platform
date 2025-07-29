@@ -12,6 +12,7 @@ import {
   createStripePaymentMethodWithElements,
   validateAndSanitizeEmail,
 } from "../../-services/enrollment-api";
+import { Preferences } from "@capacitor/preferences";
 import {
   usePaymentDialog,
   getCurrencyWithPriority,
@@ -60,6 +61,39 @@ export const DonationDialog: React.FC<PaymentDialogProps> = ({
   const [cardElementError, setCardElementError] = useState<string>('');
   const [cardElementReady, setCardElementReady] = useState<boolean>(false);
   const cardElementRef = useRef<HTMLDivElement>(null);
+
+  // Helper function to get real user data from preferences
+  const getRealUserData = async () => {
+    try {
+      const { value } = await Preferences.get({ key: "StudentDetails" });
+      if (!value) {
+        console.warn('No student details found in preferences');
+        return null;
+      }
+
+      const studentData = JSON.parse(value);
+      // Handle both array and object formats
+      const student = Array.isArray(studentData) ? studentData[0] : studentData;
+      
+      return {
+        email: student.email || '',
+        username: student.username || '',
+        full_name: student.full_name || '',
+        mobile_number: student.mobile_number || '',
+        date_of_birth: student.date_of_birth || new Date().toISOString(),
+        gender: student.gender || 'Not Specified',
+        address_line: student.address_line || '',
+        city: student.city || '',
+        region: student.region || '',
+        pin_code: student.pin_code || '',
+        profile_pic_file_id: student.face_file_id || '',
+        country: student.country || ''
+      };
+    } catch (error) {
+      console.error('Error fetching user data from preferences:', error);
+      return null;
+    }
+  };
 
   // Simple loadStripe function
   const loadStripe = async (publishableKey: string) => {
@@ -357,6 +391,9 @@ export const DonationDialog: React.FC<PaymentDialogProps> = ({
       const paymentMethod = await createStripePaymentMethodWithElements(stripe, cardElement);
       console.log('✅ Payment method created:', paymentMethod.id);
       
+      // Get real user data for payment as well
+      const userData = await getRealUserData();
+      
       // Use the shared payment function with Stripe payment method
       await handlePayment({
         email: sanitizedEmail,
@@ -365,7 +402,8 @@ export const DonationDialog: React.FC<PaymentDialogProps> = ({
         description: `Donation for ${selectedPaymentPlan.name}`,
         paymentType: 'donation',
         paymentMethod,
-        token
+        token,
+        userData // Pass real user data for payment too
       });
       
       // Success - call the onContinue callback
@@ -409,14 +447,28 @@ export const DonationDialog: React.FC<PaymentDialogProps> = ({
     try {
       console.log('🔄 Skipping payment - enrolling without payment...');
       
-      // Validate and sanitize email before sending
+      // Get real user data from preferences
+      const userData = await getRealUserData();
+      if (!userData) {
+        setValidationError('Unable to fetch user data. Please try again.');
+        return;
+      }
+
+      // Use real user email or fallback to entered email
       let sanitizedEmail: string;
       try {
-        sanitizedEmail = validateAndSanitizeEmail(email || 'guest@example.com');
+        const emailToUse = userData.email || email || 'guest@example.com';
+        sanitizedEmail = validateAndSanitizeEmail(emailToUse);
       } catch (emailError) {
         setValidationError(emailError instanceof Error ? emailError.message : 'Invalid email format');
         return;
       }
+      
+      console.log('✅ Using real user data for free enrollment:', {
+        email: sanitizedEmail,
+        username: userData.username,
+        full_name: userData.full_name
+      });
       
       // Use the shared payment function with null payment method to enroll without payment
       await handlePayment({
@@ -426,7 +478,8 @@ export const DonationDialog: React.FC<PaymentDialogProps> = ({
         description: `Free enrollment for ${selectedPaymentPlan?.name || 'course'}`,
         paymentType: 'free',
         paymentMethod: null, // Pass null to indicate no payment
-        token
+        token,
+        userData // Pass real user data
       });
       
       console.log('✅ Enrollment without payment successful');

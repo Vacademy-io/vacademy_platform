@@ -55,7 +55,9 @@ import { CourseStructureDetails } from "./course-structure-details";
 import { CourseStructureResponse } from "@/types/institute-details/course-details-interface";
 import { getIdByLevelAndSession } from "@/routes/courses/course-details/-utils/helper";
 import { MyButton } from "@/components/design-system/button";
-import { DonationDialog } from "./DonationDialog";
+import { EnrollmentPaymentDialog } from "./payment-dialogs";
+import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
+import { TokenKey } from "@/constants/auth/tokens";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
 
@@ -232,19 +234,31 @@ export const CourseDetailsPage = () => {
       });
       setInstituteId(instituteResult.value || null);
 
-      // Fetch user's enrolled sessions
-      const sessionListResult = await Preferences.get({
-        key: "sessionList",
-      });
-      if (sessionListResult.value) {
-        const sessionList = JSON.parse(sessionListResult.value);
-        setEnrolledSessions(
-          Array.isArray(sessionList)
-            ? (sessionList as EnrolledSession[])
-            : [sessionList as EnrolledSession]
-        );
-      }
-    };
+            // Fetch user's enrolled sessions
+            const sessionListResult = await Preferences.get({
+                key: "sessionList",
+            });
+            if (sessionListResult.value) {
+                const sessionList = JSON.parse(sessionListResult.value);
+                setEnrolledSessions(
+                    Array.isArray(sessionList) ? sessionList as EnrolledSession[] : [sessionList as EnrolledSession]
+                );
+            }
+
+            // Fetch invite code from preferences or use default
+            const inviteCodeResult = await Preferences.get({
+                key: "inviteCode",
+            });
+            if (inviteCodeResult.value) {
+                setInviteCode(inviteCodeResult.value);
+            }
+
+            // Fetch authentication token
+            const token = await getTokenFromStorage(TokenKey.accessToken);
+            if (token) {
+                setAuthToken(token);
+            }
+        };
 
     fetchInstituteAndUserId();
   }, []);
@@ -252,25 +266,26 @@ export const CourseDetailsPage = () => {
   const [packageSessionIdForCurrentLevel, setPackageSessionIdForCurrentLevel] =
     useState<string | null>(null);
 
-  // ✅ Fetch institute details
-  useEffect(() => {
-    const FetchInstituteDetails = async () => {
-      const instituteId = await getInstituteId();
-      try {
-        const response = await axios.get(
-          `${urlInstituteDetails}/${instituteId}`
-        );
-        setPackageSessionIdForCurrentLevel(
-          getIdByLevelAndSession(
-            response.data.batches_for_sessions,
-            selectedSession,
-            selectedLevel
-          )
-        );
-      } catch (error) {
-        console.log(error);
-      }
-    };
+    // ✅ Fetch institute details
+    useEffect(() => {
+        const FetchInstituteDetails = async () => {
+            const instituteId = await getInstituteId();
+            try {
+                const response = await axios.get(
+                    `${urlInstituteDetails}/${instituteId}`
+                );
+                const packageSessionId = getIdByLevelAndSession(
+                    response.data.batches_for_sessions,
+                    selectedSession,
+                    selectedLevel
+                );
+                console.log("Setting packageSessionId:", packageSessionId, "for session:", selectedSession, "level:", selectedLevel);
+                console.log("Available batches:", response.data.batches_for_sessions);
+                setPackageSessionIdForCurrentLevel(packageSessionId);
+            } catch (error) {
+                console.log(error);
+            }
+        };
 
     FetchInstituteDetails();
   }, [instituteId, selectedSession, selectedLevel]);
@@ -572,7 +587,9 @@ export const CourseDetailsPage = () => {
     return processedCounts;
   }, [slideCountQuery.data]);
 
-  const [donationDialogOpen, setDonationDialogOpen] = useState(false);
+    const [enrollmentDialogOpen, setEnrollmentDialogOpen] = useState(false);
+    const [inviteCode, setInviteCode] = useState<string>("default");
+    const [authToken, setAuthToken] = useState<string>("");
 
   const getSlideTypeIcon = (type: string) => {
     switch (type) {
@@ -677,24 +694,27 @@ export const CourseDetailsPage = () => {
     }
   };
 
-  return (
-    <>
-      {/* Donation Dialog */}
-      <DonationDialog
-        open={donationDialogOpen}
-        onOpenChange={setDonationDialogOpen}
-        onContinue={() => setDonationDialogOpen(false)}
-        onSkip={() => setDonationDialogOpen(false)}
-      />
-      <div className="min-h-screen bg-gradient-to-br from-gray-50/80 via-white to-primary-50/20 relative overflow-hidden w-full max-w-full">
-        {/* Animated background elements */}
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute top-1/4 left-1/4 w-32 md:w-64 h-32 md:h-64 bg-gradient-to-br from-primary-100/20 to-transparent rounded-full blur-3xl animate-gentle-pulse"></div>
-          <div
-            className="absolute bottom-1/3 right-1/3 w-40 md:w-80 h-40 md:h-80 bg-gradient-to-br from-primary-50/30 to-transparent rounded-full blur-3xl animate-gentle-pulse"
-            style={{ animationDelay: "2s" }}
-          ></div>
-        </div>
+    return (
+        <>
+            {/* Enrollment Payment Dialog */}
+            <EnrollmentPaymentDialog
+                open={enrollmentDialogOpen}
+                onOpenChange={setEnrollmentDialogOpen}
+                packageSessionId={packageSessionIdForCurrentLevel || ""}
+                instituteId={instituteId || ""}
+                token={authToken}
+                courseTitle={form.getValues("courseData").title}
+                inviteCode={inviteCode}
+            />
+            <div className="min-h-screen bg-gradient-to-br from-gray-50/80 via-white to-primary-50/20 relative overflow-hidden w-full max-w-full">
+                {/* Animated background elements */}
+                <div className="absolute inset-0 overflow-hidden pointer-events-none">
+                    <div className="absolute top-1/4 left-1/4 w-32 md:w-64 h-32 md:h-64 bg-gradient-to-br from-primary-100/20 to-transparent rounded-full blur-3xl animate-gentle-pulse"></div>
+                    <div
+                        className="absolute bottom-1/3 right-1/3 w-40 md:w-80 h-40 md:h-80 bg-gradient-to-br from-primary-50/30 to-transparent rounded-full blur-3xl animate-gentle-pulse"
+                        style={{ animationDelay: "2s" }}
+                    ></div>
+                </div>
 
         {/* Enhanced Top Banner */}
         <div className="relative overflow-hidden animate-fade-in-up">
@@ -1316,53 +1336,56 @@ export const CourseDetailsPage = () => {
                             )
                           )}
 
-                          {/* Instructors Count */}
-                          {form.getValues("courseData").instructors.length >
-                            0 && (
-                            <div className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300 group/item">
-                              <div className="flex items-center space-x-2">
-                                <ChalkboardTeacher
-                                  size={16}
-                                  className="text-orange-600 group-hover/item:scale-110 transition-transform duration-300"
-                                  weight="duotone"
-                                />
-                                <span className="text-xs font-medium text-gray-700">
-                                  {getTerminology(
-                                    RoleTerms.Teacher,
-                                    SystemTerms.Teacher
-                                  ).toLocaleLowerCase()}
-                                  s
-                                </span>
-                              </div>
-                              <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
-                                {
-                                  form.getValues("courseData").instructors
-                                    .length
-                                }
-                              </span>
+                                                    {/* Instructors Count */}
+                                                    {form.getValues(
+                                                        "courseData"
+                                                    ).instructors.length >
+                                                        0 && (
+                                                        <div className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300 group/item">
+                                                            <div className="flex items-center space-x-2">
+                                                                <ChalkboardTeacher
+                                                                    size={16}
+                                                                    className="text-orange-600 group-hover/item:scale-110 transition-transform duration-300"
+                                                                    weight="duotone"
+                                                                />
+                                                                <span className="text-xs font-medium text-gray-700">
+                                                                    Instructors
+                                                                </span>
+                                                            </div>
+                                                            <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
+                                                                {
+                                                                    form.getValues(
+                                                                        "courseData"
+                                                                    )
+                                                                        .instructors
+                                                                        .length
+                                                                }
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                        {/* Only show enroll button for ALL tab (catalog view) */}
+                                        {selectedTab === "ALL" && (
+                                            <MyButton
+                                                type="button"
+                                                scale="large"
+                                                buttonType="primary"
+                                                layoutVariant="default"
+                                                className="mt-2 !min-w-full !w-full text-xs h-8"
+                                                onClick={() =>
+                                                    setEnrollmentDialogOpen(true)
+                                                }
+                                            >
+                                                Enroll
+                                            </MyButton>
+                                        )}
+                                    </div>
+                                </div>
                             </div>
-                          )}
                         </div>
-                      )}
                     </div>
-                    {/* Only show enroll button for ALL tab (catalog view) */}
-                    {selectedTab === "ALL" && (
-                      <MyButton
-                        type="button"
-                        scale="large"
-                        buttonType="primary"
-                        layoutVariant="default"
-                        className="mt-2 !min-w-full !w-full text-xs h-8"
-                        onClick={() => setDonationDialogOpen(true)}
-                      >
-                        Enroll
-                      </MyButton>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
 
           {/* Ratings Component */}
           <div

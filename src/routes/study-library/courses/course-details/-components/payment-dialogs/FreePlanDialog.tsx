@@ -1,0 +1,346 @@
+import React, { useState, useEffect } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Loader2, CheckCircle, Gift, Check } from "lucide-react";
+import {
+  fetchEnrollmentDetails,
+  getPaymentOptions,
+  getPaymentPlans,
+  formatCurrency,
+  type EnrollmentResponse,
+  type PaymentOption,
+  type PaymentPlan,
+} from "../../-services/enrollment-api";
+import { MyButton } from "@/components/design-system/button";
+
+interface FreePlanDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  packageSessionId: string;
+  instituteId: string;
+  token: string;
+  courseTitle?: string;
+  inviteCode?: string;
+}
+
+export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
+  open,
+  onOpenChange,
+  packageSessionId,
+  instituteId,
+  token,
+  courseTitle = "Course",
+  inviteCode = "default",
+}) => {
+  const [enrollmentData, setEnrollmentData] = useState<EnrollmentResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedPaymentOption, setSelectedPaymentOption] = useState<PaymentOption | null>(null);
+  const [selectedPaymentPlan, setSelectedPaymentPlan] = useState<PaymentPlan | null>(null);
+  const [processingEnrollment, setProcessingEnrollment] = useState(false);
+
+  // Fetch enrollment data when dialog opens
+  useEffect(() => {
+    if (open && packageSessionId) {
+      fetchEnrollmentData();
+    }
+  }, [open, packageSessionId]);
+
+  const fetchEnrollmentData = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await fetchEnrollmentDetails(inviteCode, instituteId, packageSessionId, token);
+      setEnrollmentData(data);
+      
+      // Auto-select first payment option and plan
+      const paymentOptions = getPaymentOptions(data);
+      if (paymentOptions.length > 0) {
+        const firstOption = paymentOptions[0];
+        setSelectedPaymentOption(firstOption);
+        
+        const plans = getPaymentPlans(firstOption);
+        if (plans.length > 0) {
+          setSelectedPaymentPlan(plans[0]);
+        }
+      }
+    } catch (err) {
+      setError("Failed to load free plan options. Please try again.");
+      console.error("Error fetching enrollment data:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEnroll = async () => {
+    if (!selectedPaymentOption || !selectedPaymentPlan) {
+      setError("Please select a free plan.");
+      return;
+    }
+
+    setProcessingEnrollment(true);
+    try {
+      // TODO: Implement actual free enrollment processing
+      console.log("Processing free enrollment with:", {
+        paymentOption: selectedPaymentOption,
+        paymentPlan: selectedPaymentPlan,
+        packageSessionId,
+      });
+
+      // Simulate enrollment processing
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Close dialog on success
+      onOpenChange(false);
+      
+      // TODO: Show success message or redirect
+    } catch (err) {
+      setError("Enrollment failed. Please try again.");
+      console.error("Enrollment error:", err);
+    } finally {
+      setProcessingEnrollment(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Loading Free Plan</DialogTitle>
+          </DialogHeader>
+          <div className="flex items-center justify-center py-12">
+            <div className="text-center">
+              <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary-600" />
+              <p className="text-gray-600">Loading free plan options...</p>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  if (error && !enrollmentData) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Free Plan Error</DialogTitle>
+          </DialogHeader>
+          <div className="text-center py-6">
+            <p className="text-red-600 mb-4">{error}</p>
+            <Button onClick={fetchEnrollmentData} variant="outline">
+              Try Again
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  const paymentOptions = enrollmentData ? getPaymentOptions(enrollmentData) : [];
+  const freePlans = paymentOptions.flatMap(option => 
+    getPaymentPlans(option).filter(plan => plan.actual_price === 0)
+  );
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="text-xl font-bold flex items-center space-x-2">
+            <Gift className="w-6 h-6 text-green-600" />
+            <span>Free Plan for {courseTitle}</span>
+          </DialogTitle>
+          {enrollmentData && (
+            <p className="text-sm text-gray-600">
+              Enroll in the free plan to start learning
+            </p>
+          )}
+        </DialogHeader>
+
+        {enrollmentData && (
+          <div className="space-y-6">
+            {/* Course Info */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg">Course Information</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-600">Course:</span>
+                  <span className="font-medium">{courseTitle}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-600">Access Period:</span>
+                  <span className="text-sm">
+                    {new Date(enrollmentData.start_date).toLocaleDateString()} - {new Date(enrollmentData.end_date).toLocaleDateString()}
+                  </span>
+                </div>
+                {enrollmentData.learner_access_days > 0 && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">Access Duration:</span>
+                    <span className="text-sm">{enrollmentData.learner_access_days} days</span>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Free Plans */}
+            <div className="space-y-4">
+              <div className="text-center">
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">Available Free Plans</h3>
+                <p className="text-gray-600">Choose your free plan to get started</p>
+              </div>
+              
+              {freePlans.length === 0 ? (
+                <Card>
+                  <CardContent className="py-8 text-center">
+                    <p className="text-gray-600">No free plans available at the moment.</p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="grid gap-4">
+                  {freePlans.map((plan) => (
+                    <Card
+                      key={plan.id}
+                      className={`cursor-pointer transition-all duration-200 ${
+                        selectedPaymentPlan?.id === plan.id
+                          ? "ring-2 ring-green-500 border-green-500 bg-green-50"
+                          : "border-gray-200 hover:border-gray-300"
+                      }`}
+                      onClick={() => setSelectedPaymentPlan(plan)}
+                    >
+                      <CardContent className="p-6">
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center space-x-3 mb-3">
+                              <div className="p-2 bg-green-100 rounded-lg">
+                                <Gift className="w-5 h-5 text-green-600" />
+                              </div>
+                              <div>
+                                <h4 className="text-lg font-semibold text-gray-900">{plan.name}</h4>
+                                {plan.tag && (
+                                  <Badge className="bg-green-100 text-green-800 text-xs">
+                                    {plan.tag}
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
+                            
+                            <p className="text-sm text-gray-600 mb-3">
+                              {plan.description}
+                            </p>
+                            
+                            {/* Features */}
+                            <div className="space-y-2">
+                              {plan.feature_json ? (
+                                (() => {
+                                  try {
+                                    const features = JSON.parse(plan.feature_json);
+                                    return Array.isArray(features) ? features.slice(0, 3).map((feature: string, index: number) => (
+                                      <div key={index} className="flex items-center space-x-2">
+                                        <Check className="w-4 h-4 text-green-600 flex-shrink-0" />
+                                        <span className="text-sm text-gray-700">{feature}</span>
+                                      </div>
+                                    )) : [];
+                                  } catch {
+                                    return [
+                                      <div key="default" className="flex items-center space-x-2">
+                                        <Check className="w-4 h-4 text-green-600 flex-shrink-0" />
+                                        <span className="text-sm text-gray-700">Basic course access</span>
+                                      </div>
+                                    ];
+                                  }
+                                })()
+                              ) : (
+                                <div className="flex items-center space-x-2">
+                                  <Check className="w-4 h-4 text-green-600 flex-shrink-0" />
+                                  <span className="text-sm text-gray-700">Basic course access</span>
+                                </div>
+                              )}
+                            </div>
+                            
+                            <div className="flex items-center space-x-4 text-xs text-gray-500 mt-3">
+                              {plan.validity_in_days > 0 && (
+                                <span>Valid for {plan.validity_in_days} days</span>
+                              )}
+                              {plan.currency && (
+                                <span>Currency: {plan.currency}</span>
+                              )}
+                            </div>
+                          </div>
+                          
+                          <div className="text-right">
+                            <div className="text-2xl font-bold text-green-600">
+                              FREE
+                            </div>
+                            <div className="text-sm text-gray-500">
+                              {plan.validity_in_days === 30 ? '1 month' : 
+                               plan.validity_in_days === 90 ? '3 months' :
+                               plan.validity_in_days === 180 ? '6 months' :
+                               plan.validity_in_days === 365 ? '1 year' :
+                               `${plan.validity_in_days} days`}
+                            </div>
+                            {selectedPaymentPlan?.id === plan.id && (
+                              <CheckCircle className="w-5 h-5 text-green-600 mt-2" />
+                            )}
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Error Message */}
+            {error && (
+              <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-red-600 text-sm">{error}</p>
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="flex justify-end space-x-3 pt-4">
+              <Button
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+                disabled={processingEnrollment}
+              >
+                Cancel
+              </Button>
+              <MyButton
+                type="button"
+                scale="large"
+                buttonType="primary"
+                layoutVariant="default"
+                disabled={!selectedPaymentPlan || processingEnrollment}
+                onClick={handleEnroll}
+                className="flex items-center space-x-2"
+              >
+                {processingEnrollment ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Enrolling...
+                  </>
+                ) : (
+                  <>
+                    <Gift className="w-4 h-4" />
+                    Enroll for Free
+                  </>
+                )}
+              </MyButton>
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}; 

@@ -141,8 +141,6 @@ export const fetchPaymentGatewayDetails = async (
   token: string
 ): Promise<PaymentGatewayDetails> => {
   try {
-    console.log('🔍 Fetching payment gateway details for institute:', instituteId, 'vendor:', vendor);
-    
     const response = await axios.get(
       `https://backend-stage.vacademy.io/admin-core-service/open/v1/institute/payment-setting/payment-gateway-details`,
       {
@@ -158,18 +156,8 @@ export const fetchPaymentGatewayDetails = async (
       }
     );
     
-    console.log('🔍 Raw payment gateway response:', response.data);
-    console.log('🔍 Response structure:', {
-      hasId: !!response.data.id,
-      hasVendor: !!response.data.vendor,
-      hasPublishableKey: !!response.data.publishableKey,
-      hasConfigJson: !!response.data.config_json,
-      responseKeys: Object.keys(response.data)
-    });
-    
     return response.data;
   } catch (error) {
-    console.error('Error fetching payment gateway details:', error);
     throw new Error('Failed to fetch payment gateway details');
   }
 };
@@ -200,7 +188,6 @@ export const fetchEnrollmentDetails = async (
     );
     return response.data;
   } catch (error) {
-    console.error("Error fetching enrollment details:", error);
     throw error;
   }
 };
@@ -676,9 +663,6 @@ export const createStripePaymentMethodWithElements = async (
   cardElement: any
 ): Promise<any> => {
   try {
-    console.log('🔧 Creating payment method with stripe:', !!stripe);
-    console.log('🔧 Card element:', !!cardElement);
-    
     if (!stripe || !cardElement) {
       throw new Error('Stripe instance or card element not provided');
     }
@@ -689,14 +673,11 @@ export const createStripePaymentMethodWithElements = async (
     });
 
     if (error) {
-      console.error('❌ Payment method creation error:', error);
       throw new Error(error.message);
     }
 
-    console.log('✅ Payment method created successfully:', paymentMethod.id);
     return paymentMethod;
   } catch (error) {
-    console.error('❌ Error creating Stripe payment method with Elements:', error);
     throw error;
   }
 };
@@ -708,22 +689,15 @@ export const createStripePaymentMethodWithElements = async (
  */
 export const createStripeElements = async (publishableKey: string) => {
   try {
-    console.log('🔧 createStripeElements called with key:', publishableKey);
-    console.log('🔧 Key length:', publishableKey?.length);
-    console.log('🔧 Key starts with pk_:', publishableKey?.startsWith('pk_'));
-    
     const stripe = await loadStripe(publishableKey);
-    console.log('🔧 Stripe loaded:', !!stripe);
     
     if (!stripe) {
       throw new Error('Failed to load Stripe');
     }
 
     const elements = stripe.elements();
-    console.log('🔧 Stripe Elements created:', !!elements);
     return elements;
   } catch (error) {
-    console.error('❌ Error creating Stripe Elements:', error);
     throw error;
   }
 };
@@ -733,16 +707,11 @@ export const createStripeElements = async (publishableKey: string) => {
  */
 const loadStripe = async (publishableKey: string) => {
   try {
-    console.log('🔧 loadStripe called with key:', publishableKey);
-    console.log('🔧 Window.Stripe exists:', !!window.Stripe);
-    
     // Check if Stripe is already loaded
     if (window.Stripe) {
-      console.log('🔧 Using existing Stripe instance');
       return window.Stripe(publishableKey);
     }
 
-    console.log('🔧 Loading Stripe script...');
     // Load Stripe.js script
     const script = document.createElement('script');
     script.src = 'https://js.stripe.com/v3/';
@@ -750,25 +719,17 @@ const loadStripe = async (publishableKey: string) => {
     
     return new Promise((resolve, reject) => {
       script.onload = () => {
-        console.log('🔧 Stripe script loaded');
-        console.log('🔧 Window.Stripe after load:', !!window.Stripe);
-        
         if (window.Stripe) {
-          console.log('🔧 Creating Stripe instance with key');
           const stripe = window.Stripe(publishableKey);
-          console.log('🔧 Stripe instance created:', !!stripe);
           resolve(stripe);
         } else {
-          console.error('❌ Stripe not available after script load');
           reject(new Error('Stripe failed to load'));
         }
       };
       script.onerror = () => {
-        console.error('❌ Failed to load Stripe script');
         reject(new Error('Failed to load Stripe script'));
       };
       document.head.appendChild(script);
-      console.log('🔧 Stripe script appended to head');
     });
   } catch (error) {
     console.error('❌ Error loading Stripe:', error);
@@ -813,9 +774,6 @@ export const initiatePaymentForEnrollment = async (
   // Note: Token validation is handled by authenticatedAxiosInstance
   // The token parameter is kept for backward compatibility but not used directly
   try {
-    console.log('📤 Initiating payment for enrolled user:', paymentData);
-    console.log('🔑 Using authenticated axios instance for automatic token handling');
-
     // Use authenticated axios instance which handles token refresh automatically
     const response = await authenticatedAxiosInstance.post(
       'https://backend-stage.vacademy.io/admin-core-service/v1/learner/enroll',
@@ -823,17 +781,9 @@ export const initiatePaymentForEnrollment = async (
     );
     return response.data;
       } catch (error: any) {
-      console.error('❌ Error initiating payment for enrolled user:', error);
-      
       if (error.response) {
-        console.error('📊 Response status:', error.response.status);
-        console.error('📊 Response headers:', error.response.headers);
-        console.error('📊 Response data:', error.response.data);
-        
         // Handle 510 Payment Gateway Configuration error
         if (error.response.status === 510) {
-          console.error('🔧 510 Payment Gateway Configuration error detected');
-          
           // Try to extract the actual error message from the nested response
           let actualErrorMessage = 'Payment gateway configuration error. Please check your payment settings.';
           
@@ -841,7 +791,6 @@ export const initiatePaymentForEnrollment = async (
             if (error.response.data?.ex) {
               // The error message is nested in the 'ex' field and might be JSON
               const exData = error.response.data.ex;
-              console.log('🔍 Extracted error data:', exData);
               
               // Try to parse it as JSON if it's a string
               if (typeof exData === 'string') {
@@ -870,13 +819,11 @@ export const initiatePaymentForEnrollment = async (
               }
             }
           } catch (extractError) {
-            console.error('🔍 Error extracting nested error message:', extractError);
+            // Silent error handling
           }
           
           throw new Error(`Payment Gateway Error: ${actualErrorMessage}`);
         } else if (error.response.status === 511) {
-          console.error('🔐 511 Network Authentication Required error detected');
-          
           // Try to extract the actual error message from the nested response
           let actualErrorMessage = 'Network authentication required. Please check your credentials.';
           
@@ -884,7 +831,6 @@ export const initiatePaymentForEnrollment = async (
             if (error.response.data?.ex) {
               // The error message is nested in the 'ex' field and might be JSON
               const exData = error.response.data.ex;
-              console.log('🔍 Extracted error data:', exData);
               
               // Try to parse it as JSON if it's a string
               if (typeof exData === 'string') {
@@ -913,7 +859,7 @@ export const initiatePaymentForEnrollment = async (
               }
             }
           } catch (extractError) {
-            console.error('🔍 Error extracting nested error message:', extractError);
+            // Silent error handling
           }
           
           throw new Error(`Authentication Error: ${actualErrorMessage}`);
@@ -1052,12 +998,11 @@ export const handlePaymentForEnrollment = async (params: {
                         config.key ||
                         config.public_key;
       } catch (error) {
-        console.warn('Failed to parse payment gateway config:', error);
+        // Silent error handling
       }
     }
 
     if (!publishableKey) {
-      console.error('❌ Publishable key not found in payment gateway config');
       throw new Error('Publishable key not found in payment gateway config. Please check the payment gateway configuration.');
     }
 
@@ -1071,18 +1016,14 @@ export const handlePaymentForEnrollment = async (params: {
       paymentMethodId = paymentMethod.id;
       cardLast4 = paymentMethod.card?.last4 || "0000";
       customerId = paymentMethod.customer || "temp_customer_id";
-      console.log('✅ Using provided Stripe payment method:', paymentMethodId);
     } else if (cardDetails && publishableKey) {
       // Create real Stripe payment method from manual card input
-      console.log('🔧 Creating Stripe payment method from card details...');
       try {
         const stripePaymentMethod = await createStripePaymentMethod(cardDetails, publishableKey);
         paymentMethodId = stripePaymentMethod.id;
         cardLast4 = stripePaymentMethod.card?.last4 || cardDetails.number.slice(-4);
         customerId = stripePaymentMethod.customer || "temp_customer_id";
-        console.log('✅ Created Stripe payment method:', paymentMethodId);
       } catch (stripeError) {
-        console.error('❌ Failed to create Stripe payment method:', stripeError);
         throw new Error(`Payment method creation failed: ${stripeError instanceof Error ? stripeError.message : 'Unknown error'}`);
       }
     } else if (paymentType === 'free') {
@@ -1090,7 +1031,6 @@ export const handlePaymentForEnrollment = async (params: {
       paymentMethodId = "free_enrollment";
       cardLast4 = "0000";
       customerId = "free_customer";
-      console.log('✅ Free enrollment - no payment method required');
     } else {
       throw new Error('Either payment method or card details must be provided');
     }
@@ -1140,23 +1080,10 @@ export const handlePaymentForEnrollment = async (params: {
       }
     };
 
-    console.log(`🚀 Initiating ${paymentType} payment for enrolled user:`, JSON.stringify(paymentPayload, null, 2));
-    console.log('🔑 Publishable key available:', !!publishableKey);
-    console.log('🔧 Payment gateway type:', vendor);
-    console.log('📋 Enrollment data ID:', enrollmentData.id);
-    console.log('📋 Institute ID:', instituteId);
-    console.log('📋 Package Session ID:', packageSessionId);
-    console.log('📋 Learner package session enroll structure:', JSON.stringify(paymentPayload.learner_package_session_enroll, null, 2));
-
-    // Call the payment initiation API for enrolled users
-    console.log('🔍 Final request data being sent:', JSON.stringify(paymentPayload, null, 2));
-    
     const result = await initiatePaymentForEnrollment(paymentPayload, token);
-    console.log(`✅ ${paymentType} payment result:`, result);
 
     return result;
   } catch (error) {
-    console.error(`❌ Error during ${paymentType} payment:`, error);
     
     // Provide more specific error messages based on the error type
     if (error instanceof Error) {

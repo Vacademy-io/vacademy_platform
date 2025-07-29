@@ -53,6 +53,7 @@ export const DonationDialog: React.FC<PaymentDialogProps> = ({
   const [step, setStep] = useState<'select' | 'summary' | 'payment'>('select');
   const [email, setEmail] = useState('');
   const [validationError, setValidationError] = useState<string>('');
+  const [isApiLoading, setIsApiLoading] = useState<boolean>(false);
   
   // Stripe Elements state
   const [stripe, setStripe] = useState<any>(null);
@@ -67,7 +68,6 @@ export const DonationDialog: React.FC<PaymentDialogProps> = ({
     try {
       const { value } = await Preferences.get({ key: "StudentDetails" });
       if (!value) {
-        console.warn('No student details found in preferences');
         return null;
       }
 
@@ -90,10 +90,23 @@ export const DonationDialog: React.FC<PaymentDialogProps> = ({
         country: student.country || ''
       };
     } catch (error) {
-      console.error('Error fetching user data from preferences:', error);
       return null;
     }
   };
+
+  // Prefill email when dialog opens
+  useEffect(() => {
+    const prefillEmail = async () => {
+      if (open && !email) {
+        const userData = await getRealUserData();
+        if (userData?.email) {
+          setEmail(userData.email);
+        }
+      }
+    };
+    
+    prefillEmail();
+  }, [open, email]);
 
   // Simple loadStripe function
   const loadStripe = async (publishableKey: string) => {
@@ -148,32 +161,17 @@ export const DonationDialog: React.FC<PaymentDialogProps> = ({
   // Initialize Stripe Elements when payment gateway data is loaded
   useEffect(() => {
     const initializeStripeElements = async () => {
-      console.log('🔄 Stripe Elements initialization triggered');
-      console.log('🔍 Payment gateway data:', paymentGatewayData);
-      console.log('🔍 Publishable key:', paymentGatewayData?.publishableKey);
-      console.log('🔍 Card element ref:', cardElementRef.current);
-      console.log('🔍 Card element ref exists:', !!cardElementRef.current);
-      console.log('🔍 Stripe elements:', stripeElements);
-      console.log('🔍 Step:', step);
-      console.log('🔍 Dialog open:', open);
-      
       if (paymentGatewayData?.publishableKey && cardElementRef.current && !stripe) {
         try {
-          console.log('🔧 Starting Stripe Elements initialization...');
-          console.log('🔧 Publishable key being used:', paymentGatewayData.publishableKey);
-          
           // First load Stripe
           const stripeInstance = await loadStripe(paymentGatewayData.publishableKey);
-          console.log('🔧 Stripe instance created:', !!stripeInstance);
           setStripe(stripeInstance);
           
           // Then create elements
           const elements = stripeInstance.elements();
-          console.log('🔧 Stripe Elements created:', !!elements);
           setStripeElements(elements);
           
           // Create card element
-          console.log('🔧 Creating card element...');
           const card = elements.create('card', {
             style: {
               base: {
@@ -191,24 +189,13 @@ export const DonationDialog: React.FC<PaymentDialogProps> = ({
             },
             hidePostalCode: true,
           });
-          console.log('🔧 Card element created:', card);
-          
-          console.log('🔧 Mounting card element to:', cardElementRef.current);
-          console.log('🔧 Card element ref dimensions:', {
-            offsetWidth: cardElementRef.current.offsetWidth,
-            offsetHeight: cardElementRef.current.offsetHeight,
-            clientWidth: cardElementRef.current.clientWidth,
-            clientHeight: cardElementRef.current.clientHeight
-          });
           
           // Add a small delay to ensure DOM is ready
           setTimeout(() => {
             try {
               card.mount(cardElementRef.current);
-              console.log('🔧 Card element mounted successfully');
               setCardElementReady(true);
             } catch (mountError) {
-              console.error('❌ Error mounting card element:', mountError);
               setCardElementError('Failed to load card input. Please refresh and try again.');
             }
           }, 100);
@@ -216,42 +203,25 @@ export const DonationDialog: React.FC<PaymentDialogProps> = ({
           
           // Handle card element errors
           card.on('change', (event: any) => {
-            console.log('🔍 Card element change event:', event);
             if (event.error) {
-              console.log('❌ Card element error:', event.error);
               setCardElementError(event.error.message);
             } else {
-              console.log('✅ Card element valid');
               setCardElementError('');
             }
           });
           
           // Add focus event listener
           card.on('focus', () => {
-            console.log('🔍 Card element focused');
+            // Focus event handled silently
           });
           
           // Add blur event listener
           card.on('blur', () => {
-            console.log('🔍 Card element blurred');
+            // Blur event handled silently
           });
-          
-          console.log('✅ Stripe Elements initialized successfully');
         } catch (error) {
-          console.error('❌ Failed to initialize Stripe Elements:', error);
-          console.error('❌ Error details:', {
-            message: error instanceof Error ? error.message : 'Unknown error',
-            stack: error instanceof Error ? error.stack : undefined
-          });
           setCardElementError('Failed to load payment form. Please refresh and try again.');
         }
-      } else {
-        console.log('⚠️ Conditions not met for Stripe Elements initialization:');
-        console.log('- Has publishable key:', !!paymentGatewayData?.publishableKey);
-        console.log('- Has card element ref:', !!cardElementRef.current);
-        console.log('- No existing stripe elements:', !stripeElements);
-        console.log('- Payment gateway data type:', typeof paymentGatewayData);
-        console.log('- Payment gateway data keys:', paymentGatewayData ? Object.keys(paymentGatewayData) : 'null');
       }
     };
 
@@ -364,11 +334,11 @@ export const DonationDialog: React.FC<PaymentDialogProps> = ({
     const handlePaymentAndEnrollment = async () => {
 
     if (!enrollmentData || !paymentGatewayData || !selectedPaymentPlan || !selectedPaymentOption) {
-      console.error('Payment configuration is incomplete');
       return;
     }
 
     setCardElementError('');
+    setIsApiLoading(true);
 
     try {
       // Use Stripe Elements only
@@ -387,9 +357,7 @@ export const DonationDialog: React.FC<PaymentDialogProps> = ({
       }
 
       // Create payment method using Stripe Elements
-      console.log('🔧 Creating payment method with Stripe Elements...');
       const paymentMethod = await createStripePaymentMethodWithElements(stripe, cardElement);
-      console.log('✅ Payment method created:', paymentMethod.id);
       
       // Get real user data for payment as well
       const userData = await getRealUserData();
@@ -403,7 +371,7 @@ export const DonationDialog: React.FC<PaymentDialogProps> = ({
         paymentType: 'donation',
         paymentMethod,
         token,
-        userData // Pass real user data for payment too
+        userData: userData || undefined // Pass real user data for payment too
       });
       
       // Success - call the onContinue callback
@@ -412,8 +380,6 @@ export const DonationDialog: React.FC<PaymentDialogProps> = ({
       }
       
     } catch (error) {
-      console.error('❌ Error during payment and enrollment:', error);
-      
       // Provide more user-friendly error messages
       let errorMessage = 'Payment failed. Please try again.';
       
@@ -436,6 +402,8 @@ export const DonationDialog: React.FC<PaymentDialogProps> = ({
       }
       
       setCardElementError(errorMessage);
+    } finally {
+      setIsApiLoading(false);
     }
   };
 
@@ -444,9 +412,8 @@ export const DonationDialog: React.FC<PaymentDialogProps> = ({
   };
 
   const handleSkip = async () => {
+    setIsApiLoading(true);
     try {
-      console.log('🔄 Skipping payment - enrolling without payment...');
-      
       // Get real user data from preferences
       const userData = await getRealUserData();
       if (!userData) {
@@ -464,12 +431,6 @@ export const DonationDialog: React.FC<PaymentDialogProps> = ({
         return;
       }
       
-      console.log('✅ Using real user data for free enrollment:', {
-        email: sanitizedEmail,
-        username: userData.username,
-        full_name: userData.full_name
-      });
-      
       // Use the shared payment function with null payment method to enroll without payment
       await handlePayment({
         email: sanitizedEmail,
@@ -479,10 +440,8 @@ export const DonationDialog: React.FC<PaymentDialogProps> = ({
         paymentType: 'free',
         paymentMethod: null, // Pass null to indicate no payment
         token,
-        userData // Pass real user data
+        userData: userData || undefined // Pass real user data
       });
-      
-      console.log('✅ Enrollment without payment successful');
       
       // Success - call the onSkip callback
       if (onSkip) {
@@ -490,8 +449,6 @@ export const DonationDialog: React.FC<PaymentDialogProps> = ({
       }
       
     } catch (error) {
-      console.error('❌ Error during enrollment without payment:', error);
-      
       // Provide user-friendly error messages
       let errorMessage = 'Enrollment failed. Please try again.';
       
@@ -513,6 +470,8 @@ export const DonationDialog: React.FC<PaymentDialogProps> = ({
       
       // Show error to user
       setValidationError(errorMessage);
+    } finally {
+      setIsApiLoading(false);
     }
   };
 
@@ -761,7 +720,7 @@ export const DonationDialog: React.FC<PaymentDialogProps> = ({
                     </div>
                   )}
                   <div ref={cardElementRef} className="w-full h-full" />
-                </div>
+                  </div>
                 
                 {cardElementError && (
                   <div className="text-red-600 text-xs mb-2 mt-1">
@@ -776,8 +735,19 @@ export const DonationDialog: React.FC<PaymentDialogProps> = ({
                     layoutVariant="default"
                     className="w-full h-11 text-base flex items-center justify-center gap-2"
                     onClick={handlePaymentAndEnrollment}
+                    disabled={isApiLoading}
                   >
-                    <LockSimple size={18} weight="bold" /> Donate Now
+                    {isApiLoading ? (
+                      <>
+                        <Loader2 size={18} className="animate-spin" />
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        <LockSimple size={18} weight="bold" />
+                        Donate Now
+                      </>
+                    )}
                   </MyButton>
                   <MyButton
                     buttonType="secondary"
@@ -785,8 +755,9 @@ export const DonationDialog: React.FC<PaymentDialogProps> = ({
                     layoutVariant="default"
                     className="w-full h-10 text-sm border-none"
                     onClick={handleSkip}
+                    disabled={isApiLoading}
                   >
-                    Skip
+                    {isApiLoading ? 'Processing...' : 'Skip'}
                   </MyButton>
                 </div>
                 <div className="text-xs text-gray-500 text-center mt-2 flex items-center justify-center gap-1">
@@ -809,8 +780,9 @@ export const DonationDialog: React.FC<PaymentDialogProps> = ({
                 layoutVariant="default"
                 className="w-full h-11 text-base"
                 onClick={handleContinue}
+                disabled={isApiLoading}
               >
-                Continue
+                {isApiLoading ? 'Processing...' : 'Continue'}
               </MyButton>
               <MyButton
                 buttonType="secondary"
@@ -818,8 +790,9 @@ export const DonationDialog: React.FC<PaymentDialogProps> = ({
                 layoutVariant="default"
                 className="w-full h-10 text-sm border-none"
                 onClick={handleSkip}
+                disabled={isApiLoading}
               >
-                Skip
+                {isApiLoading ? 'Processing...' : 'Skip'}
               </MyButton>
             </div>
           )}

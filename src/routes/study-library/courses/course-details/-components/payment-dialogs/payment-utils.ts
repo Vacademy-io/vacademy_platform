@@ -57,28 +57,15 @@ export const usePaymentDialog = (props: {
     
     try {
       // Step 1: Fetch payment gateway details first
-      console.log('🔍 Fetching payment gateway details for institute:', instituteId);
       const gatewayData = await fetchPaymentGatewayDetails(instituteId, 'STRIPE', token);
-      console.log('✅ Payment gateway details loaded:', gatewayData);
-      console.log('🔍 Payment gateway data structure:', {
-        id: gatewayData.id,
-        vendor: gatewayData.vendor,
-        publishableKey: gatewayData.publishableKey,
-        config_json: gatewayData.config_json,
-        hasPublishableKey: !!gatewayData.publishableKey,
-        dataKeys: Object.keys(gatewayData)
-      });
 
       // Step 2: Fetch enrollment details
-      console.log('Fetching enrollment details...');
       const enrollmentData = await fetchEnrollmentDetails(inviteCode, instituteId, packageSessionId, token);
       
       // Validate enrollment data
       if (!enrollmentData || !enrollmentData.id) {
         throw new Error('Invalid enrollment data received from server');
       }
-      
-      console.log('✅ Enrollment data loaded:', enrollmentData);
       
       // Auto-select first payment option and plan
       const paymentOptions = getPaymentOptions(enrollmentData);
@@ -107,8 +94,6 @@ export const usePaymentDialog = (props: {
         loading: false,
       }));
     } catch (err) {
-      console.error('Error in payment flow:', err);
-      
       // Provide more specific error messages
       let errorMessage = "Failed to load payment options. Please try again.";
       
@@ -248,7 +233,6 @@ export const parsePaymentOptionMetadata = (paymentOption: PaymentOption | null) 
   try {
     return JSON.parse(paymentOption.payment_option_metadata_json);
   } catch (error) {
-    console.error("Error parsing payment option metadata:", error);
     return null;
   }
 }; 

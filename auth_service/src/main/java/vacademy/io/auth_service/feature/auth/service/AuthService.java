@@ -59,39 +59,43 @@ public class AuthService {
 
     @Autowired
     private UserRoleRepository userRoleRepository;
-
     @Transactional
     public User createUser(RegisterRequest registerRequest, Set<UserRole> roles) {
         boolean isAlreadyPresent = false;
         Optional<User> optionalUser = userRepository.findFirstByEmailOrderByCreatedAtDesc(registerRequest.getEmail());
-        User user = null;
-        if (optionalUser.isPresent()){
+        User user;
+
+        if (optionalUser.isPresent()) {
             isAlreadyPresent = true;
             user = optionalUser.get();
-            user.setRoles(roles);
-        }else{
+        } else {
             user = User.builder()
                     .fullName(registerRequest.getFullName())
                     .username(registerRequest.getUserName())
                     .email(registerRequest.getEmail())
                     .password(registerRequest.getPassword())
-                    .roles(roles)
                     .isRootUser(true)
                     .build();
-            user = userRepository.save(user);
+            user = userRepository.save(user); // Save first to get the ID
         }
+
+        // Assign the user to each UserRole
         for (UserRole role : roles) {
             role.setUser(user);
         }
 
-        userRepository.save(user);
-        if(isAlreadyPresent){
+        user.setRoles(roles); // Now set the roles
+        user = userRepository.save(user); // Save again with roles
+
+        if (isAlreadyPresent) {
             sendKeepingCredentialsWelcomeMailToUser(user);
-        }else{
+        } else {
             sendWelcomeMailToUser(user);
         }
+
         return user;
     }
+
 
     @Transactional
     public User createUser(UserDTO registerRequest, String instituteId) {

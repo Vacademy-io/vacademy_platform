@@ -90,10 +90,6 @@ public class AuthManager {
     public JwtResponseDto registerRootUser(RegisterRequest registerRequest) {
         if (Objects.isNull(registerRequest)) throw new VacademyException("Invalid Request");
 
-        String userName = registerRequest.getUserName().trim().toLowerCase();
-        Optional<User> userOptional = userRepository.findByUsername(userName);
-
-        if (userOptional.isPresent()) throw new VacademyException("User Already Exist");
 
         InstituteInfoDTO instituteInfoDTO = registerRequest.getInstitute();
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(applicationName, HttpMethod.POST.name(), adminCoreServiceBaseUrl, AuthConstants.CREATE_INSTITUTES_PATH, instituteInfoDTO);
@@ -124,8 +120,6 @@ public class AuthManager {
         // Generate a refresh token
         RefreshToken refreshToken = refreshTokenService.createRefreshToken(newUser.getUsername(), "VACADEMY-WEB");
 
-        sendWelcomeMailToUser(newUser);
-
         return authService.generateJwtTokenForUser(newUser, refreshToken, userRoleSet.stream().toList());
     }
 
@@ -155,10 +149,18 @@ public class AuthManager {
 
             User user = userOptional.get();
 
-            List<UserRole> userRoles = userRoleRepository.findByUser(user);
+            List<UserRole> userRoles = userRoleRepository.findUserRolesByUserIdAndStatusesAndRoleNames(
+                    user.getId(),
+                    List.of(UserRoleStatus.ACTIVE.name(),UserRoleStatus.INVITED.name()),
+                    AuthConstants.VALID_ROLES_FOR_ADMIN_PORTAL
+            );
+
+            // there is problem, we have to mark as accepted invitation based on Institute
 
             if (!userRoles.isEmpty()) {
                 userRoleRepository.updateUserRoleStatusByInstituteIdAndUserId(UserRoleStatus.ACTIVE.name(), userRoles.get(0).getInstituteId(), List.of(user.getId()));
+            }else{
+                throw new UsernameNotFoundException("invalid user request..!!");
             }
 
             RefreshToken refreshToken = refreshTokenService.createRefreshToken(authRequestDTO.getUserName(), authRequestDTO.getClientName());
@@ -181,14 +183,6 @@ public class AuthManager {
             return JwtResponseDto.builder().accessToken(accessToken).build();
         }).orElseThrow(() -> new ExpiredTokenException(refreshTokenRequestDTO.getToken() + " Refresh token is. Please make a new login..!"));
 
-    }
-
-    public void sendWelcomeMailToUser(User user) {
-        GenericEmailRequest genericEmailRequest = new GenericEmailRequest();
-        genericEmailRequest.setTo(user.getEmail());
-        genericEmailRequest.setBody(NotificationEmailBody.createWelcomeEmailBody("Vacademy", user.getFullName(), user.getUsername(), user.getPassword()));
-        genericEmailRequest.setSubject("Welcome to Vacademy");
-        notificationService.sendGenericHtmlMail(genericEmailRequest);
     }
 
     public String requestOtp(AuthRequestDto authRequestDTO) {

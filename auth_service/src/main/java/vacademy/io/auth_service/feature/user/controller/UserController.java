@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.auth_service.feature.auth.service.AuthService;
 import vacademy.io.common.auth.dto.*;
 import vacademy.io.common.auth.entity.User;
 import vacademy.io.common.auth.enums.UserRoleStatus;
@@ -22,15 +23,16 @@ public class UserController {
     @Autowired
     UserService userService;
 
+    @Autowired
+    private AuthService authService;
+
 
     //API to create user
     @PostMapping("/internal/create-user")
     @Transactional
     public ResponseEntity<UserDTO> createUser(@RequestBody UserDTO userDTO, @RequestParam("instituteId") String instituteId) {
         try {
-            // todo: handle if user already exists
-            User user = userService.createUserFromUserDto(userDTO);
-            userService.addUserRoles(instituteId, userDTO.getRoles(), user, UserRoleStatus.ACTIVE.name());
+            User user = authService.createUser(userDTO,instituteId);
             return ResponseEntity.ok(new UserDTO(user));
         } catch (Exception e) {
             throw new VacademyException(e.getMessage());
@@ -42,20 +44,7 @@ public class UserController {
     @Transactional
     public ResponseEntity<UserDTO> createUserOrGetExisting(@RequestBody UserDTO userDTO, @RequestParam(name = "instituteId", required = false) String instituteId) {
         try {
-            User user = userService.getUserDetailsByUsername(userDTO.getUsername());
-
-            if (user == null) {
-                if (StringUtils.hasText(userDTO.getEmail())) {
-                    user = userService.getUserDetailsByEmail(userDTO.getEmail());
-                }
-            }
-
-            if (user == null) {
-                user = userService.createUserFromUserDto(userDTO);
-            } else
-                user = userService.updateUser(user, userDTO);
-
-            userService.addUserRoles(instituteId, userDTO.getRoles(), user, UserRoleStatus.ACTIVE.name());
+            User user = authService.createUser(userDTO,instituteId);
             return ResponseEntity.ok(new UserDTO(user));
         } catch (Exception e) {
             throw new VacademyException(e.getMessage());

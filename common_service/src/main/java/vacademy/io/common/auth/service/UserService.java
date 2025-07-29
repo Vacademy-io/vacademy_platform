@@ -202,23 +202,27 @@ public class UserService {
 
 
     public User createUserFromUserDto(UserDTO userDTO) {
-
-        User user = new User();
-        user.setUsername(userDTO.getUsername());
-        user.setPassword(userDTO.getPassword());
-        user.setEmail(userDTO.getEmail());
-        user.setFullName(userDTO.getFullName());
-        user.setAddressLine(userDTO.getAddressLine());
-        user.setCity(userDTO.getCity());
-        user.setPinCode(userDTO.getPinCode());
-        user.setMobileNumber(userDTO.getMobileNumber());
-        user.setDateOfBirth(userDTO.getDateOfBirth());
-        user.setGender(userDTO.getGender());
-        user.setRootUser(userDTO.isRootUser());
-        User savedUser = userRepository.save(user);
-        userDTO.setId(savedUser.getId());
-
-        return savedUser;
+        Optional<User>optionalUser = userRepository.findFirstByEmailOrderByCreatedAtDesc(userDTO.getEmail());
+        if (optionalUser.isPresent()) {
+            User  user = optionalUser.get();
+            return user;
+        }else{
+            User user = new User();
+            user.setUsername(userDTO.getUsername());
+            user.setPassword(userDTO.getPassword());
+            user.setEmail(userDTO.getEmail());
+            user.setFullName(userDTO.getFullName());
+            user.setAddressLine(userDTO.getAddressLine());
+            user.setCity(userDTO.getCity());
+            user.setPinCode(userDTO.getPinCode());
+            user.setMobileNumber(userDTO.getMobileNumber());
+            user.setDateOfBirth(userDTO.getDateOfBirth());
+            user.setGender(userDTO.getGender());
+            user.setRootUser(true);
+            User savedUser = userRepository.save(user);
+            userDTO.setId(savedUser.getId());
+            return user;
+        }
     }
 
     public List<UserRole> addUserRoles(String instituteId, List<String> roles, User user, String status) {
@@ -352,7 +356,7 @@ public class UserService {
         List<UserRole> updateStatusRoles = new ArrayList<>();
 
         addUserRoleRequest.forEach(roleName->{
-            Optional<UserRole> userRole = userRoleRepository.findByUserIdAndRoleIdAndInstituteId(savedUser.getId(),roleName,instituteId);
+            Optional<UserRole> userRole = userRoleRepository.findFirstByUserIdAndInstituteIdAndRoleNamesAndStatuses(savedUser.getId(), instituteId,List.of(roleName),List.of(UserRoleStatus.ACTIVE.name()));
             if(userRole.isPresent()){
                 userRole.get().setStatus(UserRoleStatus.ACTIVE.name());
                 updateStatusRoles.add(userRole.get());

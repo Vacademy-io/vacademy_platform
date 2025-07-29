@@ -18,6 +18,20 @@ public interface UserRoleRepository extends CrudRepository<UserRole, String> {
 
     List<UserRole> findByUser(User user);
 
+    @Query("""
+    SELECT ur FROM UserRole ur
+    JOIN ur.role r
+    WHERE ur.user.id = :userId
+      AND ur.status IN :statuses
+      AND r.name IN :roleNames
+""")
+    List<UserRole> findUserRolesByUserIdAndStatusesAndRoleNames(
+            @Param("userId") String userId,
+            @Param("statuses") List<String> statuses,
+            @Param("roleNames") List<String> roleNames
+    );
+
+
     @Modifying
     @Transactional
     @Query("DELETE FROM UserRole ur WHERE ur.user.id = :userId AND ur.role.name IN :roleNames")
@@ -43,14 +57,37 @@ public interface UserRoleRepository extends CrudRepository<UserRole, String> {
 
 
     @Query(value = """
-            SELECT ur.* FROM user_role ur
-            JOIN roles r ON r.id = ur.role_id
-            WHERE ur.user_id = :userId
-            AND ur.institute_id = :instituteId
-            AND r.role_name = :roleName
-            ORDER BY ur.created_at LIMIT 1
-            """,nativeQuery = true)
-    Optional<UserRole> findByUserIdAndRoleIdAndInstituteId(@Param("userId") String userId,
-                                                           @Param("roleName") String roleName,
-                                                           @Param("instituteId") String instituteId);
+    SELECT ur.* FROM user_role ur
+    JOIN roles r ON r.id = ur.role_id
+    WHERE ur.user_id = :userId
+      AND ur.institute_id = :instituteId
+      AND r.role_name IN (:roleNames)
+      AND ur.status IN (:statuses)
+    ORDER BY ur.created_at
+    LIMIT 1
+    """, nativeQuery = true)
+    Optional<UserRole> findFirstByUserIdAndInstituteIdAndRoleNamesAndStatuses(
+            @Param("userId") String userId,
+            @Param("instituteId") String instituteId,
+            @Param("roleNames") List<String> roleNames,
+            @Param("statuses") List<String> statuses
+    );
+
+    @Query("""
+    SELECT CASE WHEN COUNT(u) > 0 THEN TRUE ELSE FALSE END
+    FROM User u
+    JOIN u.roles ur
+    JOIN ur.role r
+    WHERE u.email = :email
+      AND ur.instituteId = :instituteId
+      AND ur.status IN :statuses
+      AND r.name IN :roleNames
+""")
+    boolean existsUserByEmailAndInstituteIdAndStatusesAndRoleNames(
+            @Param("email") String email,
+            @Param("instituteId") String instituteId,
+            @Param("statuses") List<String> statuses,
+            @Param("roleNames") List<String> roleNames
+    );
+
 }

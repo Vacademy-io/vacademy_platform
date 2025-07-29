@@ -4,14 +4,18 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stripe.exception.SignatureVerificationException;
 import com.stripe.model.Event;
+import com.stripe.model.Invoice;
 import com.stripe.net.Webhook;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.institute.service.InstitutePaymentGatewayMappingService;
+import vacademy.io.admin_core_service.features.payments.enums.WebHookStatus;
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentLogService;
+import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.payment.enums.PaymentGateway;
+import vacademy.io.common.payment.enums.PaymentStatusEnum;
 
 import java.util.Map;
 
@@ -34,34 +38,54 @@ public class StripeWebHookService {
     public ResponseEntity<String> processWebHook(String payload, String sigHeader) {
         log.info("Received Stripe webhook");
 
-        String instituteId = extractInstituteId(payload);
-        if (instituteId == null) {
-            return ResponseEntity.status(400).body("Missing or invalid institute_id in metadata");
-        }
-
-        String webhookSecret = getWebhookSecret(instituteId);
-        if (webhookSecret == null) {
-            return ResponseEntity.status(404).body("Unknown institute");
-        }
-
-        Event event = verifySignature(payload, sigHeader, webhookSecret, instituteId);
-        if (event == null) {
-            return ResponseEntity.status(400).body("Invalid signature");
-        }
+        String webhookId = null;
 
         try {
-            JsonNode object = objectMapper.readTree(event.getData().getObject().toJson());
-            String userId = object.get("metadata").get("user_id").asText(null);
-            String userPlanId = object.get("metadata").get("user_plan_id").asText(null);
-            String paymentStatus = getPaymentStatus(object);
+            webhookId = webHookService.saveWebhook(PaymentGateway.STRIPE.name(), payload);
 
-            // Save payment logs, handle payment status, etc.
-            log.info("Processed webhook event: {}, User: {}, Plan: {}, Status: {}", event.getId(), userId, userPlanId, paymentStatus);
+            String instituteId = extractInstituteId(payload);
+            if (instituteId == null) {
+                log.warn("Missing or invalid institute_id");
+                return ResponseEntity.status(400).body("Missing or invalid institute_id in metadata");
+            }
 
-            return ResponseEntity.ok("Webhook processed");
-        } catch (Exception e) {
-            log.error("Error while processing Stripe event data", e);
-            return ResponseEntity.status(500).body("Error processing event");
+            String webhookSecret = getWebhookSecret(instituteId);
+            if (webhookSecret == null) {
+                log.warn("Webhook secret not found for institute: {}", instituteId);
+                return ResponseEntity.status(404).body("Unknown institute");
+            }
+
+            Event event = verifySignature(payload, sigHeader, webhookSecret, instituteId);
+            if (event == null) {
+                return ResponseEntity.status(400).body("Invalid signature");
+            }
+
+            Invoice invoice = extractInvoiceFromPayload(event);
+            String orderId = invoice.getMetadata().get("orderId");
+
+            String paymentStatus = invoice.getPaid()
+                    ? PaymentStatusEnum.SUCCESS.name()
+                    : PaymentStatusEnum.FAILED.name();
+
+            // Fallback check
+            if (!invoice.getPaid() && invoice.getStatus() != null) {
+                if (invoice.getStatus().equalsIgnoreCase("open") || invoice.getStatus().equalsIgnoreCase("draft")) {
+                    paymentStatus = PaymentStatusEnum.PENDING.name();
+                }
+            }
+
+            webHookService.updateWebHook(webhookId, PaymentGateway.STRIPE.name(), event.getType(), orderId);
+            paymentLogService.updatePaymentLog(orderId, paymentStatus);
+            webHookService.updateWebHookStatus(webhookId, WebHookStatus.PROCESSED);
+
+            return ResponseEntity.ok("Webhook processed successfully");
+
+        } catch (Exception ex) {
+            log.error("Error while processing webhook", ex);
+            if (webhookId != null) {
+                webHookService.updateWebHookStatus(webhookId, WebHookStatus.FAILED);
+            }
+            return ResponseEntity.status(500).body("Internal error during webhook processing");
         }
     }
 
@@ -73,7 +97,7 @@ public class StripeWebHookService {
                 return dataObject.get("metadata").get("instituteId").asText();
             }
         } catch (Exception e) {
-            log.error("Failed to extract institute_id", e);
+            log.error("Failed to extract institute_id from payload", e);
         }
         return null;
     }
@@ -87,20 +111,19 @@ public class StripeWebHookService {
     private Event verifySignature(String payload, String sigHeader, String secret, String instituteId) {
         try {
             Event event = Webhook.constructEvent(payload, sigHeader, secret);
-            log.info("Webhook verified for institute {}", instituteId);
+            log.info("Webhook signature verified for institute {}", instituteId);
             return event;
         } catch (SignatureVerificationException e) {
-            log.error("Invalid signature for webhook from institute {}", instituteId, e);
+            log.error("Signature verification failed for institute {}", instituteId, e);
             return null;
         }
     }
 
-    private String getPaymentStatus(JsonNode object) {
-        if (object.has("status")) {
-            return object.get("status").asText();
-        } else if (object.has("payment_status")) {
-            return object.get("payment_status").asText();
+    private Invoice extractInvoiceFromPayload(Event event) {
+        if (!event.getType().startsWith("invoice.")) {
+            log.warn("Unhandled event type received: {}", event.getType());
+            throw new VacademyException("Unhandled event type: " + event.getType());
         }
-        return "unknown";
+        return (Invoice) event.getData().getObject();
     }
 }

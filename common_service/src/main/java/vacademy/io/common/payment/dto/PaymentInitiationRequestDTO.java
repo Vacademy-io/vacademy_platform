@@ -14,6 +14,8 @@ public class PaymentInitiationRequestDTO {
     private String description;
     private boolean isIncludePendingItems;
     private boolean chargeAutomatically;
+    private String orderId;
+    private String instituteId;
 
     private StripeRequestDTO stripeRequest;
     private RazorpayRequestDTO razorpayRequest;

@@ -86,7 +86,7 @@ public class InstituteSettingService {
         InstituteSettingDto allSettings = getAllSettings(institute);
         
         if (allSettings.getSetting() == null || !allSettings.getSetting().containsKey(settingKey)) {
-            throw new VacademyException("Setting not found: " + settingKey);
+            return null;
         }
         
         return allSettings.getSetting().get(settingKey);

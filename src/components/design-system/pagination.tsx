@@ -8,7 +8,7 @@ import {
     PaginationPrevious,
 } from "@/components/ui/pagination";
 import { MyInput } from "./input";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { KeyReturn, XCircle } from "@phosphor-icons/react";
 
 interface PaginationProps {
@@ -20,6 +20,22 @@ interface PaginationProps {
 export function MyPagination({ currentPage, totalPages, onPageChange }: PaginationProps) {
     const [pageInput, setPageInput] = useState("");
     const [submittedPage, setSubmittedPage] = useState("");
+    // Compute page numbers for pagination control
+    const pageNumbers = useMemo(() => {
+        const pages: number[] = [];
+        if (totalPages <= 5) {
+            for (let i = 0; i < totalPages; i++) pages.push(i);
+        } else {
+            pages.push(0);
+            if (currentPage > 2) pages.push(-1);
+            const start = Math.max(1, currentPage - 1);
+            const end = Math.min(totalPages - 2, currentPage + 1);
+            for (let i = start; i <= end; i++) pages.push(i);
+            if (currentPage < totalPages - 3) pages.push(-1);
+            pages.push(totalPages - 1);
+        }
+        return pages;
+    }, [currentPage, totalPages]);
 
     const handlePageInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         const input = event.target.value;
@@ -66,34 +82,23 @@ export function MyPagination({ currentPage, totalPages, onPageChange }: Paginati
                             }
                         />
                     </PaginationItem>
-
-                    <PaginationItem>
-                        <PaginationLink
-                            onClick={() => onPageChange(0)}
-                            isActive={currentPage === 0}
-                            className="cursor-pointer"
-                        >
-                            1
-                        </PaginationLink>
-                    </PaginationItem>
-
-                    {totalPages > 1 && (
-                        <>
-                            <PaginationItem>
+                    {pageNumbers.map((pageIndex, idx) =>
+                        pageIndex === -1 ? (
+                            <PaginationItem key={`ellipsis-${idx}`}>  
                                 <PaginationEllipsis />
                             </PaginationItem>
-                            <PaginationItem>
+                        ) : (
+                            <PaginationItem key={pageIndex}>
                                 <PaginationLink
-                                    onClick={() => onPageChange(totalPages - 1)}
-                                    isActive={currentPage === totalPages - 1}
+                                    onClick={() => onPageChange(pageIndex)}
+                                    isActive={currentPage === pageIndex}
                                     className="cursor-pointer"
                                 >
-                                    {totalPages}
+                                    {pageIndex + 1}
                                 </PaginationLink>
                             </PaginationItem>
-                        </>
+                        )
                     )}
-
                     <PaginationItem>
                         <PaginationNext
                             onClick={handleNextPage}

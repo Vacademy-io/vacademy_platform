@@ -11,7 +11,7 @@ import {
 } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { useTrackingStore } from "@/stores/study-library/youtube-video-tracking-store";
-import { getEpochTimeInMillis } from "./utils";
+import { getEpochTimeInMillis } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/utils";
 import { convertTimeToSeconds } from "@/utils/study-library/tracking/convertTimeToSeconds";
 import { formatVideoTime } from "@/utils/study-library/tracking/formatVideoTime";
 import { calculateNetDuration } from "@/utils/study-library/tracking/calculateNetDuration";
@@ -35,7 +35,7 @@ import {
 } from "@phosphor-icons/react";
 import { Preferences } from "@capacitor/preferences";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
-import VideoQuestionOverlay from "./video-question-overlay";
+import VideoQuestionOverlay from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/video-question-overlay";
 import { useMediaRefsStore } from "@/stores/mediaRefsStore";
 
 // Add the YouTube PlayerState enum to avoid window.YT references
@@ -73,6 +73,7 @@ interface YouTubePlayerProps {
     auto_evaluation_json?: string;
   }>;
   allowPlayPause?: boolean; // If false, play/pause controls are disabled
+  allowRewind?: boolean; // If false, user cannot seek backward
 }
 
 export const formatTime = (timeInSeconds: number) => {
@@ -87,9 +88,11 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   ms = 0,
   questions = [],
   allowPlayPause = true,
+  allowRewind = true,
 }) => {
   const { activeItem } = useContentStore();
-  const { addActivity } = useTrackingStore();
+  // Select only the addActivity function from the store to avoid re-renders when trackingData updates
+  const addActivity = useTrackingStore((state) => state.addActivity);
   const activityId = useRef(uuidv4());
   const currentTimestamps = useRef<
     Array<{
@@ -177,23 +180,40 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     }>
   >([]);
   
-  const {setCurrentYoutubeTime, setCurrentYoutubeVideoLength} = useMediaRefsStore();
+  // Select only the setter functions we need so this component does not re-render when other store state changes
+  const setCurrentYoutubeTime = useMediaRefsStore(
+    (state) => state.setCurrentYoutubeTime
+  );
+  const setCurrentYoutubeVideoLength = useMediaRefsStore(
+    (state) => state.setCurrentYoutubeVideoLength
+  );
   
   useEffect(()=>{
       setCurrentYoutubeTime(currentTime);
   }, [currentTime])
 
+  // When the list of questions actually changes (different IDs/length), map them once.
   useEffect(() => {
-    if (questions && questions.length > 0) {
-      const mapped = questions.map((q) => ({
-        time: q.question_time_in_millis,
-        question: q,
-      }));
-      setTimeToQuestionMap(mapped);
-      console.log("Mapped questions:", mapped);
-    }
-    // Reset answered questions when questions change (new video/slide)
-    setAnsweredQuestions({});
+    if (!questions || questions.length === 0) return;
+
+    const mapped = questions.map((q) => ({
+      time: q.question_time_in_millis,
+      question: q,
+    }));
+
+    // Only update state if the content is truly different to avoid unnecessary re-renders
+    setTimeToQuestionMap((prev) => {
+      if (
+        prev.length === mapped.length &&
+        prev.every((item, idx) => item.question.id === mapped[idx].question.id)
+      ) {
+        return prev; // no meaningful change
+      }
+      return mapped;
+    });
+
+    console.log("Mapped questions:", mapped);
+    // Do NOT reset answeredQuestions here; it is reset in a separate effect tied to `videoId`
   }, [questions]);
 
   // Reset answered questions when video changes
@@ -978,27 +998,37 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
 
   // Control video playback based on isPlayed state
   useEffect(() => {
+    // Bail early if player is not yet ready
     if (!player || !playerReady) return;
 
     try {
+      // Obtain the current YT player state in a safe way (may return undefined while iframe initialises)
+      // getPlayerState is synchronous and returns a numeric enum, but its type can be Promise-based in the typings.
+      // Cast to `number` to avoid the mismatched comparison error.
+      const currentState: number | null =
+        typeof (player as any).getPlayerState === "function"
+          ? (player as any).getPlayerState()
+          : null;
+
       if (isPlayed) {
-        player.playVideo();
+        // Only attempt to play if the player is not already in PLAYING state
+        if (currentState !== PlayerState.PLAYING) {
+          player.playVideo();
+        }
         startProgressTracking();
       } else {
-        player.pauseVideo();
+        // Only attempt to pause if the player is currently playing
+        if (currentState === PlayerState.PLAYING) {
+          player.pauseVideo();
+        }
         setPauseCount((prev) => prev + 1);
         stopProgressTracking();
       }
     } catch (error) {
       console.error("Error controlling video playback:", error);
     }
-  }, [
-    isPlayed,
-    player,
-    playerReady,
-    startProgressTracking,
-    stopProgressTracking,
-  ]);
+    // Depend on stable callbacks only – this effect should re-run chiefly when `isPlayed` toggles
+  }, [isPlayed, player, playerReady, startProgressTracking, stopProgressTracking]);
 
   // Clean up on unmount
   useEffect(() => {
@@ -1116,6 +1146,11 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       const minutes = minutesInput === "" ? 0 : Number.parseInt(minutesInput);
       const seconds = secondsInput === "" ? 0 : Number.parseInt(secondsInput);
       totalSecondsToSeek = minutes * 60 + seconds;
+    }
+
+    // Block backward seek if rewind disabled
+    if (!allowRewind && totalSecondsToSeek < currentTime && !forceSeek) {
+      return false;
     }
 
     // Check navigation restrictions unless forced (e.g., for initial seek with ms prop)
@@ -1261,6 +1296,9 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         setShowSeekAnimation({ side: 'right', show: true });
       } else {
         // Backward 10 seconds
+        if (!allowRewind) {
+          return; // block rewind
+        }
         newTime = Math.max(currentTime - 10, 0);
         setShowSeekAnimation({ side: 'left', show: true });
       }
@@ -1282,7 +1320,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     } catch (error) {
       console.error("Error seeking on double click:", error);
     }
-  }, [player, playerReady]);
+  }, [player, playerReady, allowRewind]);
 
   // Toggle play / pause on SINGLE click anywhere on the video (but ignore clicks on inner controls)
   const handleSingleClick = useCallback(
@@ -1295,13 +1333,15 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
 
       if (!allowPlayPause) return;
 
+      // No additional rewind restriction needed for single click
+
       if (isPlayed) {
         togglePause();
       } else {
         togglePlay();
       }
     },
-    [player, playerReady, isPlayed, togglePause, togglePlay, allowPlayPause]
+    [player, playerReady, isPlayed, togglePause, togglePlay, allowPlayPause, allowRewind]
   );
  
   // Handle mouse movement to show/hide controls
@@ -1487,23 +1527,33 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
 
             {/* Bottom controls - Play/Pause */}
             <div className="flex items-center justify-center gap-6 mb-4">
-              <button
-                onClick={() => {
-                  if (player) {
-                    safeGetNumber(player.getCurrentTime()).then(
-                      (currentTime) => {
-                        const newTime = currentTime - 10;
-                        player.seekTo(Math.max(newTime, 0), true);
-                        setCurrentTime(Math.max(newTime, 0));
-                      }
-                    );
-                  }
-                }}
-                className="p-3 rounded-full bg-black/60 text-white hover:bg-black/80 transition-all hover:scale-105 shadow-lg backdrop-blur-sm border border-white/10"
-                aria-label="Rewind 10 seconds"
-              >
-                <Rewind size={22} weight="bold" />
-              </button>
+              {allowRewind ? (
+                <button
+                  onClick={() => {
+                    if (player) {
+                      safeGetNumber(player.getCurrentTime()).then(
+                        (currentTime) => {
+                          const newTime = currentTime - 10;
+                          player.seekTo(Math.max(newTime, 0), true);
+                          setCurrentTime(Math.max(newTime, 0));
+                        }
+                      );
+                    }
+                  }}
+                  className="p-3 rounded-full bg-black/60 text-white hover:bg-black/80 transition-all hover:scale-105 shadow-lg backdrop-blur-sm border border-white/10"
+                  aria-label="Rewind 10 seconds"
+                >
+                  <Rewind size={22} weight="bold" />
+                </button>
+              ) : (
+                <button
+                  disabled
+                  className="p-3 rounded-full bg-black/30 text-white/40 opacity-50 cursor-not-allowed backdrop-blur-sm border border-white/10"
+                  aria-label="Rewind disabled"
+                >
+                  <Rewind size={22} weight="bold" />
+                </button>
+              )}
 
               {isPlayed ? (
                 <button
@@ -1592,21 +1642,29 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                   )}
 
                   {/* Rewind */}
-                  <button
-                    onClick={() => {
-                      if (player) {
-                        safeGetNumber(player.getCurrentTime()).then((currentTime) => {
-                          const newTime = Math.max(currentTime - 10, 0);
-                          // Always allow backward navigation
-                          player.seekTo(newTime, true);
-                          setCurrentTime(newTime);
-                        });
-                      }
-                    }}
-                    className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all hover:scale-105 backdrop-blur-sm"
-                  >
-                    <Rewind size={18} weight="fill" />
-                  </button>
+                  {allowRewind ? (
+                    <button
+                      onClick={() => {
+                        if (player) {
+                          safeGetNumber(player.getCurrentTime()).then((currentTime) => {
+                            const newTime = Math.max(currentTime - 10, 0);
+                            player.seekTo(newTime, true);
+                            setCurrentTime(newTime);
+                          });
+                        }
+                      }}
+                      className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all hover:scale-105 backdrop-blur-sm"
+                    >
+                      <Rewind size={18} weight="fill" />
+                    </button>
+                  ) : (
+                    <button
+                      disabled
+                      className="p-2 rounded-full bg-white/10 text-white/40 backdrop-blur-sm opacity-50 cursor-not-allowed"
+                    >
+                      <Rewind size={18} weight="fill" />
+                    </button>
+                  )}
 
                   {/* Fast Forward */}
                   <button
@@ -1837,11 +1895,12 @@ interface YouTubePlayerWrapperProps {
   }>;
   ms?: number;
   allowPlayPause?: boolean;
+  allowRewind?: boolean;
 }
 
 // This is a wrapper component that exposes the YouTube player methods
 const YouTubePlayerWrapper = forwardRef<any, YouTubePlayerWrapperProps>(
-  ({ videoId, onTimeUpdate, questions, ms, allowPlayPause }, ref) => {
+  ({ videoId, onTimeUpdate, questions, ms, allowPlayPause, allowRewind }, ref) => {
     const playerRef = useRef<any>(null);
 
     // Expose methods to parent component
@@ -1889,11 +1948,11 @@ const YouTubePlayerWrapper = forwardRef<any, YouTubePlayerWrapperProps>(
         questions={questions}
         ms={ms}
         allowPlayPause={allowPlayPause}
+        allowRewind={allowRewind}
       />
     );
   }
 );
 
 YouTubePlayerWrapper.displayName = "YouTubePlayerWrapper";
-
 export default YouTubePlayerWrapper;

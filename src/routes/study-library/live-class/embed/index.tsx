@@ -61,9 +61,15 @@ function EmbedComponent() {
         (sessionDetails as any)?.enablePlayPause ??
         true
       );
+
+      const allowRewind = (
+        (sessionDetails as any)?.allowRewind ??
+        (sessionDetails as any)?.allow_rewind ??
+        true
+      );
       return (
         <div className="w-full h-full">
-          <YouTubePlayerWrapper videoId={videoId} allowPlayPause={allowPlayPause} />
+          <YouTubePlayerWrapper videoId={videoId} allowPlayPause={allowPlayPause} allowRewind={allowRewind} />
         </div>
       );
     }
@@ -117,12 +123,12 @@ function EmbedComponent() {
           <h1 className="text-2xl font-bold text-center mb-6 ">
             {sessionDetails?.title || "Session"}
           </h1>
-          <div>Live</div>
+          {/* Single LIVE badge (outside video) */}
+          <span className="rounded bg-red-600 px-3 py-1 text-sm font-semibold uppercase text-white shadow">
+            Live
+          </span>
         </div>
         <div className="flex-grow relative flex items-center justify-center p-2">
-          <div className="absolute top-10 right-10 p-2 px-4 bg-red-500 text-white z-[1] rounded">
-            Live
-          </div>
           {renderEmbededSession()}
         </div>
       </div>

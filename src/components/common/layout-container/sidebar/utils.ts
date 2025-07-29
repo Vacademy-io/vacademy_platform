@@ -1,11 +1,11 @@
 import { getInstituteId } from "@/constants/helper";
 import { SidebarItemsType } from "../../../../types/layout-container-types";
 import {
-    House,
-    BookOpen,
-    Scroll,
-    SignOut,
-    NotePencil,
+  House,
+  BookOpen,
+  Scroll,
+  SignOut,
+  NotePencil,
 } from "@phosphor-icons/react";
 import {
   CreditCard,
@@ -20,6 +20,25 @@ import {
   CODE_CIRCLE_INSTITUTE_ID,
   HOLISTIC_INSTITUTE_ID,
 } from "@/constants/urls";
+import { NamingSettingsType } from "@/services/fetchAndStoreInstituteDetails";
+import { NAMING_SETTINGS_KEY } from "@/types/naming-settings";
+
+const getNamingSettings = (): NamingSettingsType[] => {
+  try {
+    const saved = localStorage.getItem(NAMING_SETTINGS_KEY);
+    return saved ? JSON.parse(saved) : [];
+  } catch (error) {
+    console.error("Failed to parse naming settings from localStorage:", error);
+    return [];
+  }
+};
+
+// Utility function to get custom terminology with fallback to default
+export const getTerminology = (key: string, defaultValue: string): string => {
+  const settings = getNamingSettings();
+  const setting = settings.find((item) => item.key === key);
+  return setting?.customValue || defaultValue;
+};
 
 export const SidebarItemsData: SidebarItemsType[] = [
   {
@@ -34,6 +53,10 @@ export const SidebarItemsData: SidebarItemsType[] = [
       {
         subItem: "Study Library",
         subItemLink: "/study-library",
+      },
+      {
+        subItem: "Attendance",
+        subItemLink: "/learning-centre/attendance",
       },
       {
         subItem: "Live Class",

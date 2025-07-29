@@ -33,6 +33,7 @@ import { Route as RegisterLiveClassIndexRouteImport } from './routes/register/li
 import { Route as LoginForgotPasswordIndexRouteImport } from './routes/login/forgot-password/index'
 import { Route as LiveClassGuestWaitingRoomIndexRouteImport } from './routes/live-class-guest/waiting-room/index'
 import { Route as LiveClassGuestEmbedIndexRouteImport } from './routes/live-class-guest/embed/index'
+import { Route as LearningCentreAttendanceIndexRouteImport } from './routes/learning-centre/attendance/index'
 import { Route as HomeworkReportsIndexRouteImport } from './routes/homework/reports/index'
 import { Route as HomeworkListIndexRouteImport } from './routes/homework/list/index'
 import { Route as DashboardNotificationsIndexRouteImport } from './routes/dashboard/notifications/index'
@@ -179,6 +180,12 @@ const LiveClassGuestEmbedIndexRoute =
     path: '/live-class-guest/embed/',
     getParentRoute: () => rootRouteImport,
   } as any)
+const LearningCentreAttendanceIndexRoute =
+  LearningCentreAttendanceIndexRouteImport.update({
+    id: '/learning-centre/attendance/',
+    path: '/learning-centre/attendance/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const HomeworkReportsIndexRoute = HomeworkReportsIndexRouteImport.update({
   id: '/homework/reports/',
   path: '/homework/reports/',
@@ -313,6 +320,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/notifications': typeof DashboardNotificationsIndexRoute
   '/homework/list': typeof HomeworkListIndexRoute
   '/homework/reports': typeof HomeworkReportsIndexRoute
+  '/learning-centre/attendance': typeof LearningCentreAttendanceIndexRoute
   '/live-class-guest/embed': typeof LiveClassGuestEmbedIndexRoute
   '/live-class-guest/waiting-room': typeof LiveClassGuestWaitingRoomIndexRoute
   '/login/forgot-password': typeof LoginForgotPasswordIndexRoute
@@ -357,6 +365,7 @@ export interface FileRoutesByTo {
   '/dashboard/notifications': typeof DashboardNotificationsIndexRoute
   '/homework/list': typeof HomeworkListIndexRoute
   '/homework/reports': typeof HomeworkReportsIndexRoute
+  '/learning-centre/attendance': typeof LearningCentreAttendanceIndexRoute
   '/live-class-guest/embed': typeof LiveClassGuestEmbedIndexRoute
   '/live-class-guest/waiting-room': typeof LiveClassGuestWaitingRoomIndexRoute
   '/login/forgot-password': typeof LoginForgotPasswordIndexRoute
@@ -402,6 +411,7 @@ export interface FileRoutesById {
   '/dashboard/notifications/': typeof DashboardNotificationsIndexRoute
   '/homework/list/': typeof HomeworkListIndexRoute
   '/homework/reports/': typeof HomeworkReportsIndexRoute
+  '/learning-centre/attendance/': typeof LearningCentreAttendanceIndexRoute
   '/live-class-guest/embed/': typeof LiveClassGuestEmbedIndexRoute
   '/live-class-guest/waiting-room/': typeof LiveClassGuestWaitingRoomIndexRoute
   '/login/forgot-password/': typeof LoginForgotPasswordIndexRoute
@@ -448,6 +458,7 @@ export interface FileRouteTypes {
     | '/dashboard/notifications'
     | '/homework/list'
     | '/homework/reports'
+    | '/learning-centre/attendance'
     | '/live-class-guest/embed'
     | '/live-class-guest/waiting-room'
     | '/login/forgot-password'
@@ -492,6 +503,7 @@ export interface FileRouteTypes {
     | '/dashboard/notifications'
     | '/homework/list'
     | '/homework/reports'
+    | '/learning-centre/attendance'
     | '/live-class-guest/embed'
     | '/live-class-guest/waiting-room'
     | '/login/forgot-password'
@@ -536,6 +548,7 @@ export interface FileRouteTypes {
     | '/dashboard/notifications/'
     | '/homework/list/'
     | '/homework/reports/'
+    | '/learning-centre/attendance/'
     | '/live-class-guest/embed/'
     | '/live-class-guest/waiting-room/'
     | '/login/forgot-password/'
@@ -581,6 +594,7 @@ export interface RootRouteChildren {
   DashboardNotificationsIndexRoute: typeof DashboardNotificationsIndexRoute
   HomeworkListIndexRoute: typeof HomeworkListIndexRoute
   HomeworkReportsIndexRoute: typeof HomeworkReportsIndexRoute
+  LearningCentreAttendanceIndexRoute: typeof LearningCentreAttendanceIndexRoute
   LiveClassGuestEmbedIndexRoute: typeof LiveClassGuestEmbedIndexRoute
   LiveClassGuestWaitingRoomIndexRoute: typeof LiveClassGuestWaitingRoomIndexRoute
   LoginForgotPasswordIndexRoute: typeof LoginForgotPasswordIndexRoute
@@ -771,6 +785,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LiveClassGuestEmbedIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/learning-centre/attendance/': {
+      id: '/learning-centre/attendance/'
+      path: '/learning-centre/attendance'
+      fullPath: '/learning-centre/attendance'
+      preLoaderRoute: typeof LearningCentreAttendanceIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/homework/reports/': {
       id: '/homework/reports/'
       path: '/homework/reports'
@@ -925,6 +946,7 @@ const rootRouteChildren: RootRouteChildren = {
   DashboardNotificationsIndexRoute: DashboardNotificationsIndexRoute,
   HomeworkListIndexRoute: HomeworkListIndexRoute,
   HomeworkReportsIndexRoute: HomeworkReportsIndexRoute,
+  LearningCentreAttendanceIndexRoute: LearningCentreAttendanceIndexRoute,
   LiveClassGuestEmbedIndexRoute: LiveClassGuestEmbedIndexRoute,
   LiveClassGuestWaitingRoomIndexRoute: LiveClassGuestWaitingRoomIndexRoute,
   LoginForgotPasswordIndexRoute: LoginForgotPasswordIndexRoute,

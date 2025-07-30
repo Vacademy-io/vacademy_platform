@@ -57,6 +57,7 @@ public class ApplicationSecurityConfig {
             "/auth-service/v1/request-otp",
             "/auth-service/v1/login-otp",
             "/auth-service/v1/login",
+            "/auth-service/open/**"
     };
 
     @Autowired

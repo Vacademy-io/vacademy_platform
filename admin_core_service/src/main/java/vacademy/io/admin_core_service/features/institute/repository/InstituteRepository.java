@@ -7,6 +7,7 @@ import org.springframework.data.repository.CrudRepository;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
+import vacademy.io.admin_core_service.features.institute.dto.InstituteSearchProjection;
 import vacademy.io.common.institute.entity.Institute;
 
 import java.util.List;
@@ -60,5 +61,17 @@ public interface InstituteRepository extends CrudRepository<Institute, String> {
             """,nativeQuery = true)
     Optional<Institute> findBySubdomainLimit1(@Param("subdomain") String subdomain);
 
+    @Query(value = """
+    SELECT id, name AS instituteName
+    FROM institutes
+    WHERE LOWER(name) LIKE LOWER(CONCAT('%', :query, '%'))
+       OR LOWER(address_line) LIKE LOWER(CONCAT('%', :query, '%'))
+       OR LOWER(city) LIKE LOWER(CONCAT('%', :query, '%'))
+       OR LOWER(state) LIKE LOWER(CONCAT('%', :query, '%'))
+       OR LOWER(pin_code) LIKE LOWER(CONCAT('%', :query, '%'))
+    ORDER BY name ASC
+    LIMIT 20
+    """, nativeQuery = true)
+    List<InstituteSearchProjection> searchByQuery(@Param("query") String query);
 
 }

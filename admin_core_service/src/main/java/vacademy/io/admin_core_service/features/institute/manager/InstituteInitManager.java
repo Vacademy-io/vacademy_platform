@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.group.repository.PackageGroupMappingRepository;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.institute.service.InstituteModuleService;
+import vacademy.io.admin_core_service.features.institute.utils.InstituteSettingUtils;
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
 import vacademy.io.admin_core_service.features.packages.repository.PackageRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;

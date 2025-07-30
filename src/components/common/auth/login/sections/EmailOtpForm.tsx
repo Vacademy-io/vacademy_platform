@@ -39,10 +39,12 @@ export function EmailLogin({
     onSwitchToUsername,
     type,
     courseId,
+    onSwitchToSignup,
 }: {
     onSwitchToUsername: () => void;
     type?: string;
     courseId?: string;
+    onSwitchToSignup?: () => void;
 }) {
     const [isOtpSent, setIsOtpSent] = useState(false);
     const [email, setEmail] = useState("");
@@ -633,12 +635,14 @@ export function EmailLogin({
                     <motion.button
                         type="button"
                         whileHover={{ scale: 1.02 }}
-                        onClick={() => navigate({ to: "/signup" })}
+                        onClick={onSwitchToSignup || (() => navigate({ to: "/signup" }))}
                         className="text-gray-700 hover:text-gray-900 font-medium underline cursor-pointer"
                     >
                         Sign up here
                     </motion.button>
                 </div>
+                
+
             </motion.div>
         </div>
     );

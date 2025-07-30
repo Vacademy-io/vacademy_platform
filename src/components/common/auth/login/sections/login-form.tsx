@@ -45,9 +45,11 @@ export const setToStorage = async (key: string, value: string) => {
 export function LoginForm({
     type,
     courseId,
+    onSwitchToSignup,
 }: {
     type?: string;
     courseId?: string;
+    onSwitchToSignup?: () => void;
 }) {
     const navigate = useNavigate();
     const { setPrimaryColor } = useTheme();
@@ -289,7 +291,7 @@ export function LoginForm({
                 className="absolute bottom-20 right-20 w-64 h-64 bg-gradient-to-br from-gray-300/10 to-gray-400/10 rounded-full blur-3xl"
             />
 
-            <div className="flex min-h-screen">
+            <div className="flex">
                 {/* Left Side - Compact Branding & Features */}
                 {!type && (
                     <motion.div
@@ -491,6 +493,7 @@ export function LoginForm({
                                                 }
                                                 type={type}
                                                 courseId={courseId}
+                                                onSwitchToSignup={onSwitchToSignup}
                                             />
                                         </motion.div>
                                     ) : (
@@ -507,6 +510,7 @@ export function LoginForm({
                                                 }
                                                 type={type}
                                                 courseId={courseId}
+                                                onSwitchToSignup={onSwitchToSignup}
                                             />
                                         </motion.div>
                                     )}

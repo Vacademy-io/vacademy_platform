@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useSyncLanguage } from "@/hooks/useSyncLanguage";
-import { ForgotPassword } from "@/components/common/LoginPages/sections/forgot-password-form";
+import { ForgotPassword } from "@/components/common/auth/login/sections/forgot-password-form";
 
 export const Route = createFileRoute("/login/forgot-password/")({
   component: PasswordReset,

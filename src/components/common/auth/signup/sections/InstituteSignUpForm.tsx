@@ -43,11 +43,13 @@ interface Institute {
 interface InstituteSignUpProps {
     type?: string;
     courseId?: string;
+    onSwitchToLogin?: () => void;
 }
 
 export function InstituteSignUp({
     type,
     courseId,
+    onSwitchToLogin,
 }: InstituteSignUpProps) {
     const navigate = useNavigate();
     const [currentStep, setCurrentStep] = useState<"selection" | "details">("selection");
@@ -168,7 +170,7 @@ export function InstituteSignUp({
     };
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-4">
             <AnimatePresence mode="wait">
                 {currentStep === "selection" ? (
                     <motion.div
@@ -177,7 +179,7 @@ export function InstituteSignUp({
                         animate={{ opacity: 1, x: 0 }}
                         exit={{ opacity: 0, x: 30 }}
                         transition={{ duration: 0.3 }}
-                        className="space-y-6"
+                        className="space-y-4"
                     >
                         {/* Institute Selection Header */}
                         <motion.div
@@ -522,7 +524,7 @@ export function InstituteSignUp({
                     <motion.button
                         type="button"
                         whileHover={{ scale: 1.02 }}
-                        onClick={() => navigate({ to: "/login" })}
+                        onClick={onSwitchToLogin || (() => navigate({ to: "/login" }))}
                         className="text-gray-700 hover:text-gray-900 font-medium underline cursor-pointer"
                     >
                         Sign in here

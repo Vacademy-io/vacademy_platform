@@ -1,4 +1,4 @@
-import SessionSelectionPage from '@/components/common/LoginPages/sections/SessionSelectionPage'
+import SessionSelectionPage from '@/components/common/auth/login/sections/SessionSelectionPage'
 import { createFileRoute } from '@tanstack/react-router'
 
 export const Route = createFileRoute('/SessionSelectionPage/')({

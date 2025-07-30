@@ -1,6 +1,6 @@
 
 import { DoubtType, StudentDetailsType } from "../types/add-doubt-type"
-import { getFromStorage } from "@/components/common/LoginPages/sections/login-form";
+import { getFromStorage } from "@/components/common/auth/login/sections/login-form";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import { useAddDoubt } from "../services/AddDoubt";
 import { ArrowUp } from "@phosphor-icons/react";

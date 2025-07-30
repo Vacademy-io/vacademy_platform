@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
-import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
-import { LoginForm } from "@/components/common/LoginPages/sections/login-form";
+import { AuthModal } from "@/components/common/auth/modal/AuthModal";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 
@@ -124,16 +123,15 @@ const CourseListHeader = ({
           ))}
         </ul>
         <div className="flex gap-3">
-          <Dialog>
-            <DialogTrigger>
+          <AuthModal 
+            type={type} 
+            courseId={courseId}
+            trigger={
               <button className="px-4 py-2 border border-gray-300 text-black rounded-md hover:bg-gray-100 transition-colors duration-200 text-sm font-medium">
                 Login
               </button>
-            </DialogTrigger>
-            <DialogContent>
-              <LoginForm type={type} courseId={courseId} />
-            </DialogContent>
-          </Dialog>
+            }
+          />
           <button className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors duration-200 text-sm font-medium">
             Donate
           </button>
@@ -157,19 +155,18 @@ const CourseListHeader = ({
             ))}
           </ul>
           <div className="flex flex-col gap-3">
-            <Dialog>
-              <DialogTrigger>
+            <AuthModal 
+              type={type} 
+              courseId={courseId}
+              trigger={
                 <button
                   onClick={closeMobileMenu}
                   className="w-full px-4 py-3 border border-gray-300 text-black rounded-md hover:bg-gray-100 transition-colors duration-200 text-sm font-medium"
                 >
                   Login
                 </button>
-              </DialogTrigger>
-              <DialogContent>
-                <LoginForm type={type} courseId={courseId} />
-              </DialogContent>
-            </Dialog>
+              }
+            />
             <button className="w-full px-4 py-3 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors duration-200 text-sm font-medium">
               Donate
             </button>

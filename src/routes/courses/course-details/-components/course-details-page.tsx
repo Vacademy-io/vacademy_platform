@@ -46,7 +46,7 @@ import { MyButton } from "@/components/design-system/button";
 import {
   getFromStorage,
   LoginForm,
-} from "@/components/common/LoginPages/sections/login-form";
+} from "@/components/common/auth/login/sections/login-form";
 import { CourseStructureDetails } from "./course-structure-details";
 import { handleGetSlideCountDetails } from "../-services/get-slides-count";
 import {

@@ -36,7 +36,12 @@ export function UsernameLogin({
     onSwitchToEmail,
     type,
     courseId,
-}: UsernameLoginProps) {
+    onSwitchToSignup,
+    onSwitchToForgotPassword,
+}: UsernameLoginProps & {
+    onSwitchToSignup?: () => void;
+    onSwitchToForgotPassword?: () => void;
+}) {
     const navigate = useNavigate();
     const [isLoading, setIsLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
@@ -307,9 +312,7 @@ export function UsernameLogin({
                                 type="button"
                                 whileHover={{ scale: 1.02 }}
                                 className="text-xs text-gray-500 hover:text-gray-700 transition-colors duration-200 font-medium"
-                                onClick={() =>
-                                    navigate({ to: "/login/forgot-password" })
-                                }
+                                onClick={onSwitchToForgotPassword || (() => navigate({ to: "/login/forgot-password" }))}
                             >
                                 Forgot password?
                             </motion.button>
@@ -379,7 +382,7 @@ export function UsernameLogin({
                     <motion.button
                         type="button"
                         whileHover={{ scale: 1.02 }}
-                        onClick={() => navigate({ to: "/signup" })}
+                        onClick={onSwitchToSignup || (() => navigate({ to: "/signup" }))}
                         className="text-gray-700 hover:text-gray-900 font-medium underline cursor-pointer"
                     >
                         Sign up here

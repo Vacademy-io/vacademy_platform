@@ -2,15 +2,31 @@ import { BookOpen } from "phosphor-react";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { MyButton } from "@/components/design-system/button";
+import {
+    getTokenDecodedData,
+    getTokenFromCookie,
+} from "@/lib/auth/sessionUtility";
+import { TokenKey } from "@/constants/auth/tokens";
+import { getInstituteIdSync } from "@/components/common/helper";
 
 const HeroSection = ({
     allowLeanersToCreateCourses,
 }: {
     allowLeanersToCreateCourses: boolean;
 }) => {
+    const instituteId = getInstituteIdSync();
+    const accessToken = getTokenFromCookie(TokenKey.accessToken);
+    const tokenData = getTokenDecodedData(accessToken);
+
+    const hasTeacherAndStudentRole =
+        instituteId &&
+        tokenData?.authorities[instituteId]?.roles.includes("TEACHER") &&
+        tokenData?.authorities[instituteId]?.roles.includes("STUDENT");
+
     const handleNavigate = () => {
         window.location.href = "https://dash.vacademy.io/study-library/courses";
     };
+
     return (
         <div className="relative min-h-[200px] bg-gradient-to-br from-gray-50/80 via-white to-primary-50/20 overflow-hidden w-full max-w-full">
             {/* Animated background elements */}
@@ -72,11 +88,12 @@ const HeroSection = ({
                     }`}
                     style={{ animationDelay: "0.4s" }}
                 >
-                    {allowLeanersToCreateCourses && (
-                        <MyButton onClick={handleNavigate}>
-                            Create Course
-                        </MyButton>
-                    )}
+                    {allowLeanersToCreateCourses &&
+                        hasTeacherAndStudentRole && (
+                            <MyButton onClick={handleNavigate}>
+                                Create Course
+                            </MyButton>
+                        )}
                     <div className="relative group">
                         {/* Floating orb effect */}
                         <div className="absolute -top-2 -right-2 w-6 h-6 sm:w-8 sm:h-8 bg-primary-100/30 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>

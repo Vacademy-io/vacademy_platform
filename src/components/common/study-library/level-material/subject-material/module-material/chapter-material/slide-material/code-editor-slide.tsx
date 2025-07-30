@@ -19,7 +19,6 @@ import {
 import Editor from "@monaco-editor/react";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -99,7 +98,6 @@ export const CodeEditorSlide: React.FC<CodeEditorSlideProps> = ({
 
   const [output, setOutput] = useState("");
   const [isRunning, setIsRunning] = useState(false);
-  const [activeTab, setActiveTab] = useState<"editor" | "output">("editor");
 
   // Activity tracking state
   const { addActivity } = useTrackingStore();
@@ -149,9 +147,6 @@ export const CodeEditorSlide: React.FC<CodeEditorSlideProps> = ({
   const [wrongAnswerCount, setWrongAnswerCount] = useState(0);
   const verificationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const inactivityThreshold = 60000;
-
-  // Add state for tab visibility
-  const [isTabHidden, setIsTabHidden] = useState(document.hidden);
 
   // state for output panel
   const [isOutputExpanded, setIsOutputExpanded] = useState(false);
@@ -316,10 +311,8 @@ export const CodeEditorSlide: React.FC<CodeEditorSlideProps> = ({
           return newCount;
         });
         setIsPaused(true);
-        setIsTabHidden(true);
         stopTimer();
       } else {
-        setIsTabHidden(false);
       }
     };
 
@@ -341,7 +334,6 @@ export const CodeEditorSlide: React.FC<CodeEditorSlideProps> = ({
   // Handle resume activity
   const handleResumeActivity = useCallback(() => {
     setIsPaused(false);
-    setIsTabHidden(false);
     startTimer();
     handleUserActivity();
   }, [startTimer, handleUserActivity]);
@@ -626,13 +618,13 @@ export const CodeEditorSlide: React.FC<CodeEditorSlideProps> = ({
 
     if (!currentCode.trim()) {
       setOutput("No code to execute. Please write some code first.");
-      setActiveTab("output");
+      setIsOutputExpanded(true);
       return;
     }
 
     setIsRunning(true);
     setIsPyodideLoading(true);
-    setIsOutputExpanded(true); // Auto-expand output when running
+    setIsOutputExpanded(true);
     setOutput("Loading Python environment...");
 
     // Track code execution activity

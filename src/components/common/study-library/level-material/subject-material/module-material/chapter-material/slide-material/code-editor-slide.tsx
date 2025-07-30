@@ -1,5 +1,4 @@
 /* eslint-disable */
-
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Code,
@@ -10,12 +9,16 @@ import {
   Download,
   Settings,
   ChevronDown,
+  ChevronUp,
+  X,
+  Minimize2,
+  Maximize2,
+  GripVertical,
 } from "lucide-react";
 
 import Editor from "@monaco-editor/react";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,25 +27,20 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-import { executeCodeWithPiston } from "./utils";
-
 // Activity tracking imports
 import { v4 as uuidv4 } from "uuid";
 import { useTrackingStore } from "@/stores/study-library/pdf-tracking-store";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import { usePDFSync } from "@/hooks/study-library/usePdfSync";
 import { Preferences } from "@capacitor/preferences";
+import { executeCode } from "./code-slide-utils.";
+import { getEpochTimeInMillis, getISTTime } from "./utils";
+import {
+  DEFAULT_CODE_SAMPLES,
+  SupportedLanguage,
+} from "./constants/code-slide";
 
-// Utils for time tracking
-const getISTTime = () => {
-  return new Date().toISOString();
-};
-
-const getEpochTimeInMillis = () => {
-  return Date.now();
-};
-
-interface CodeEditorData {
+export interface CodeEditorData {
   language: string;
   theme: "dark" | "light";
   // Legacy field for backward compatibility
@@ -72,87 +70,26 @@ interface CodeEditorSlideProps {
   documentId: string;
 }
 
-// Default code samples for each language
-const DEFAULT_CODE_SAMPLES = {
-  python: `# Python Example
-def greet(name):
-    print(f"Hello, {name}!")
-    return f"Welcome to Python programming!"
-
-# Variables and data types
-numbers = [1, 2, 3, 4, 5]
-total = sum(numbers)
-
-print("Sum of numbers:", total)
-greet("World")
-
-# Input example
-user_input = input("Enter your name: ")
-print(f"Nice to meet you, {user_input}!")`,
-
-  javascript: `// JavaScript Example
-function greet(name) {
-    console.log(\`Hello, \${name}!\`);
-    return \`Welcome to JavaScript programming!\`;
-}
-
-// Variables and data types
-const numbers = [1, 2, 3, 4, 5];
-const total = numbers.reduce((sum, num) => sum + num, 0);
-
-console.log("Sum of numbers:", total);
-greet("World");
-
-// DOM interaction example
-document.addEventListener('DOMContentLoaded', function() {
-    console.log("Page loaded successfully!");
-});`,
-};
-
-// Utility function to create CodeEditor data structure for API calls
-export const createCodeEditorApiData = (
-  pythonCode: string = "",
-  javascriptCode: string = "",
-  currentLanguage: "python" | "javascript" = "python",
-  options: Partial<CodeEditorData> = {}
-): CodeEditorData => {
-  const currentTime = Date.now();
-  return {
-    language: currentLanguage,
-    theme: "dark",
-    // Legacy field for backward compatibility
-    code: currentLanguage === "python" ? pythonCode : javascriptCode,
-    viewMode: "edit",
-    // New structure with both languages and timestamps
-    allLanguagesData: {
-      python: {
-        code: pythonCode || DEFAULT_CODE_SAMPLES.python,
-        lastEdited: currentTime,
-      },
-      javascript: {
-        code: javascriptCode || DEFAULT_CODE_SAMPLES.javascript,
-        lastEdited: currentTime,
-      },
-    },
-    // Legacy fields for backward compatibility
-    readOnly: false,
-    showLineNumbers: true,
-    fontSize: 14,
-    editorType: "codeEditor",
-    timestamp: currentTime,
-    ...options,
+export interface EditorState {
+  currentLanguage: SupportedLanguage;
+  theme: "dark" | "light";
+  readOnly: boolean;
+  viewMode: "edit" | "view";
+  codeSamples: {
+    python: string;
+    javascript: string;
   };
-};
+}
 
 export const CodeEditorSlide: React.FC<CodeEditorSlideProps> = ({
   published_data,
   documentId,
 }) => {
-  const [editorState, setEditorState] = useState({
-    currentLanguage: "python" as keyof typeof DEFAULT_CODE_SAMPLES,
-    theme: "dark" as "dark" | "light",
+  const [editorState, setEditorState] = useState<EditorState>({
+    currentLanguage: "python",
+    theme: "dark",
     readOnly: false,
-    viewMode: "edit" as "edit" | "view",
+    viewMode: "edit",
     codeSamples: {
       python: "",
       javascript: "",
@@ -160,10 +97,7 @@ export const CodeEditorSlide: React.FC<CodeEditorSlideProps> = ({
   });
 
   const [output, setOutput] = useState("");
-  const [inputValue, setInputValue] = useState("");
   const [isRunning, setIsRunning] = useState(false);
-  const [activeTab, setActiveTab] = useState<"editor" | "output">("editor");
-  const [waitingForInput, setWaitingForInput] = useState(false);
 
   // Activity tracking state
   const { addActivity } = useTrackingStore();
@@ -204,6 +138,8 @@ export const CodeEditorSlide: React.FC<CodeEditorSlideProps> = ({
   const lastActivityTimeRef = useRef<number>(Date.now());
   const inactivityTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [isPaused, setIsPaused] = useState(false);
+  const [isPyodideLoading, setIsPyodideLoading] = useState(false);
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Activity metrics
   const [tabSwitchCount, setTabSwitchCount] = useState(0);
@@ -212,8 +148,12 @@ export const CodeEditorSlide: React.FC<CodeEditorSlideProps> = ({
   const verificationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const inactivityThreshold = 60000;
 
-  // Add state for tab visibility
-  const [isTabHidden, setIsTabHidden] = useState(document.hidden);
+  // state for output panel
+  const [isOutputExpanded, setIsOutputExpanded] = useState(false);
+  const [isOutputFullScreen, setIsOutputFullScreen] = useState(false);
+  const [outputHeight, setOutputHeight] = useState(200); // Default height in pixels
+  const [isResizing, setIsResizing] = useState(false);
+  const resizeRef = useRef<HTMLDivElement>(null);
 
   // Save verification data
   const saveVerificationTime = async (time: number) => {
@@ -371,10 +311,8 @@ export const CodeEditorSlide: React.FC<CodeEditorSlideProps> = ({
           return newCount;
         });
         setIsPaused(true);
-        setIsTabHidden(true);
         stopTimer();
       } else {
-        setIsTabHidden(false);
       }
     };
 
@@ -396,7 +334,6 @@ export const CodeEditorSlide: React.FC<CodeEditorSlideProps> = ({
   // Handle resume activity
   const handleResumeActivity = useCallback(() => {
     setIsPaused(false);
-    setIsTabHidden(false);
     startTimer();
     handleUserActivity();
   }, [startTimer, handleUserActivity]);
@@ -607,7 +544,7 @@ export const CodeEditorSlide: React.FC<CodeEditorSlideProps> = ({
         },
       };
 
-      setEditorState(newState);
+      setEditorState(newState as EditorState);
 
       // Initialize activity tracking on first load
       handleDocumentLoad();
@@ -671,45 +608,42 @@ export const CodeEditorSlide: React.FC<CodeEditorSlideProps> = ({
     currentAction,
   ]);
 
-  // Get current code based on selected language
   const getCurrentCode = () => {
     return editorState.codeSamples[editorState.currentLanguage];
   };
+  const isEditable = !editorState.readOnly;
 
-  // Execute code using Piston API for real code execution
-
-  const runCode = () => {
+  const runCode = useCallback(async () => {
     const currentCode = getCurrentCode();
 
     if (!currentCode.trim()) {
       setOutput("No code to execute. Please write some code first.");
-      setActiveTab("output");
+      setIsOutputExpanded(true);
       return;
     }
 
     setIsRunning(true);
-    setActiveTab("output");
-    setOutput("Running code...");
+    setIsPyodideLoading(true);
+    setIsOutputExpanded(true);
+    setOutput("Loading Python environment...");
 
     // Track code execution activity
     handleActionChange(2); // Action type 2 for running code
-
-    // Execute code with Piston API for real execution
-    executeCodeWithPiston(currentCode, editorState.currentLanguage)
-      .then(({ output, needsInput }) => {
-        setOutput(output);
-        setWaitingForInput(needsInput);
-        setIsRunning(false);
-        handleUserActivity(); // Track activity after code execution
-      })
-      .catch((error) => {
-        console.error("[CodeEditor] Failed to execute code:", error);
-        setOutput(`Execution failed: ${error.message || "Unknown error"}`);
-        setWaitingForInput(false);
-        setIsRunning(false);
-        handleUserActivity(); // Track activity even on error
-      });
-  };
+    try {
+      const { output } = await executeCode(
+        currentCode,
+        editorState.currentLanguage
+      );
+      setOutput(output);
+    } catch (error) {
+      setOutput(
+        `Error: ${error instanceof Error ? error.message : "Unknown error"}`
+      );
+    } finally {
+      setIsRunning(false);
+      setIsPyodideLoading(false);
+    }
+  }, [editorState.currentLanguage, getCurrentCode, handleActionChange]);
 
   const copyCode = () => {
     navigator.clipboard.writeText(getCurrentCode());
@@ -740,27 +674,6 @@ export const CodeEditorSlide: React.FC<CodeEditorSlideProps> = ({
     handleUserActivity(); // Track theme change activity
   };
 
-  const handleLanguageChange = (
-    language: keyof typeof DEFAULT_CODE_SAMPLES
-  ) => {
-    setEditorState((prev) => ({
-      ...prev,
-      currentLanguage: language,
-      // If switching to a language that has no code (empty), populate with default
-      codeSamples: {
-        ...prev.codeSamples,
-        [language]:
-          prev.codeSamples[language] || DEFAULT_CODE_SAMPLES[language],
-      },
-    }));
-    // Clear output when switching languages
-    setOutput("");
-    setWaitingForInput(false);
-
-    // Track language change activity
-    handleActionChange(3); // Action type 3 for language switching
-  };
-
   const handleCodeChange = (value: string | undefined) => {
     if (editorState.readOnly || editorState.viewMode === "view") return;
 
@@ -777,19 +690,6 @@ export const CodeEditorSlide: React.FC<CodeEditorSlideProps> = ({
     handleUserActivity();
   };
 
-  const handleInputSubmit = () => {
-    if (inputValue.trim()) {
-      setOutput(
-        (prev) =>
-          prev +
-          `${inputValue}\nProcessing input...\nNice to meet you, ${inputValue}!\n`
-      );
-      setInputValue("");
-      setWaitingForInput(false);
-      handleUserActivity(); // Track input submission
-    }
-  };
-
   const handleEditorDidMount = (editor: any, monaco: any) => {
     // Add Ctrl+Enter shortcut to run code
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
@@ -800,8 +700,93 @@ export const CodeEditorSlide: React.FC<CodeEditorSlideProps> = ({
     handleUserActivity();
   };
 
-  const isEditable = !editorState.readOnly;
-  const currentCode = getCurrentCode();
+  // Output panel controls
+  const toggleOutputExpanded = useCallback(() => {
+    setIsOutputExpanded(!isOutputExpanded);
+    if (isOutputFullScreen) {
+      setIsOutputFullScreen(false);
+    }
+  }, [isOutputExpanded, isOutputFullScreen]);
+
+  const toggleOutputFullScreen = useCallback(() => {
+    setIsOutputFullScreen(!isOutputFullScreen);
+  }, [isOutputFullScreen]);
+
+  // Resize functionality
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+  }, []);
+
+  const handleResizeMove = useCallback(
+    (e: MouseEvent) => {
+      if (!isResizing) return;
+
+      const container = resizeRef.current?.parentElement;
+      if (!container) return;
+
+      const containerRect = container.getBoundingClientRect();
+      const newHeight = containerRect.bottom - e.clientY;
+
+      // Set minimum and maximum heights
+      const minHeight = 100;
+      const maxHeight = window.innerHeight * 0.8;
+
+      if (newHeight >= minHeight && newHeight <= maxHeight) {
+        setOutputHeight(newHeight);
+      }
+    },
+    [isResizing]
+  );
+
+  const handleResizeEnd = useCallback(() => {
+    setIsResizing(false);
+  }, []);
+
+  // Add keyboard shortcut for running code
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+        event.preventDefault();
+        if (!isRunning && isEditable) {
+          runCode();
+        }
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isRunning, isEditable, runCode]);
+
+  // Add resize event listeners
+  useEffect(() => {
+    if (isResizing) {
+      document.addEventListener("mousemove", handleResizeMove);
+      document.addEventListener("mouseup", handleResizeEnd);
+    }
+    return () => {
+      document.removeEventListener("mousemove", handleResizeMove);
+      document.removeEventListener("mouseup", handleResizeEnd);
+    };
+  }, [isResizing, handleResizeMove, handleResizeEnd]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Calculate editor height based on output panel state
+  const getEditorHeight = () => {
+    if (isOutputFullScreen) return "0px";
+    if (!isOutputExpanded) return "100%";
+    return `calc(100% - ${outputHeight}px)`;
+  };
 
   return (
     <div className="h-full p-1 relative">
@@ -903,42 +888,6 @@ export const CodeEditorSlide: React.FC<CodeEditorSlideProps> = ({
                 <DropdownMenuContent align="end" className="w-56">
                   <DropdownMenuItem
                     onClick={() => {
-                      handleLanguageChange("python");
-                      handleUserActivity();
-                    }}
-                    className={
-                      editorState.currentLanguage === "python"
-                        ? "bg-accent"
-                        : ""
-                    }
-                  >
-                    <span>Python</span>
-                    {editorState.currentLanguage === "python" && (
-                      <span className="ml-auto">✓</span>
-                    )}
-                  </DropdownMenuItem>
-
-                  <DropdownMenuItem
-                    onClick={() => {
-                      handleLanguageChange("javascript");
-                      handleUserActivity();
-                    }}
-                    className={
-                      editorState.currentLanguage === "javascript"
-                        ? "bg-accent"
-                        : ""
-                    }
-                  >
-                    <span>JavaScript</span>
-                    {editorState.currentLanguage === "javascript" && (
-                      <span className="ml-auto">✓</span>
-                    )}
-                  </DropdownMenuItem>
-
-                  <DropdownMenuSeparator />
-
-                  <DropdownMenuItem
-                    onClick={() => {
                       handleThemeChange();
                       handleUserActivity();
                     }}
@@ -984,119 +933,110 @@ export const CodeEditorSlide: React.FC<CodeEditorSlideProps> = ({
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          <Tabs
-            value={activeTab}
-            onValueChange={(value) => {
-              setActiveTab(value as "output" | "editor");
-              handleUserActivity(); // Track tab switching
-            }}
-            className="h-full"
-          >
-            <div className="flex items-center justify-between px-6 pb-4">
-              <TabsList className="grid grid-cols-2">
-                <TabsTrigger value="editor" onClick={handleUserActivity}>
-                  Code Editor
-                </TabsTrigger>
-                <TabsTrigger
-                  value="output"
-                  className="relative"
-                  onClick={handleUserActivity}
-                >
-                  Output
-                  {output && !isRunning && (
-                    <span className="ml-1 inline-flex size-2 rounded-full bg-green-500"></span>
-                  )}
-                </TabsTrigger>
-              </TabsList>
-              <div className="hidden text-sm text-gray-500 lg:inline-block">
-                Press Ctrl+Enter to run code
-              </div>
+          <div className="flex h-[550px] flex-col">
+            <div
+              className="flex-1 border-t"
+              style={{ height: getEditorHeight() }}
+            >
+              <Editor
+                height="100%"
+                language={editorState.currentLanguage}
+                value={getCurrentCode()}
+                theme={editorState.theme === "dark" ? "vs-dark" : "light"}
+                onChange={handleCodeChange}
+                onMount={handleEditorDidMount}
+                options={{
+                  readOnly: !isEditable || editorState.viewMode === "view",
+                  minimap: { enabled: false },
+                  scrollBeyondLastLine: false,
+                  automaticLayout: true,
+                  fontSize: 14,
+                  lineNumbers: "on",
+                  roundedSelection: false,
+                  scrollbar: {
+                    verticalScrollbarSize: 8,
+                    horizontalScrollbarSize: 8,
+                  },
+                  padding: { top: 16 },
+                }}
+              />
             </div>
-
-            <TabsContent value="editor" className="m-0 h-[500px]">
-              <div className="h-full border-t">
-                <Editor
-                  height="100%"
-                  language={editorState.currentLanguage}
-                  value={currentCode}
-                  theme={editorState.theme === "dark" ? "vs-dark" : "light"}
-                  onChange={handleCodeChange}
-                  onMount={handleEditorDidMount}
-                  options={{
-                    readOnly: !isEditable || editorState.viewMode === "view",
-                    minimap: { enabled: false },
-                    scrollBeyondLastLine: false,
-                    automaticLayout: true,
-                    fontSize: 14,
-                    lineNumbers: "on",
-                    roundedSelection: false,
-                    scrollbar: {
-                      verticalScrollbarSize: 8,
-                      horizontalScrollbarSize: 8,
-                    },
-                    padding: { top: 16 },
-                  }}
-                />
-              </div>
-            </TabsContent>
-
-            <TabsContent value="output" className="m-0 h-[500px]">
-              <div className="flex h-full flex-col border-t">
-                <div className="flex-1 overflow-auto bg-gray-900 p-4 font-mono text-sm text-green-400">
-                  <pre className="whitespace-pre-wrap">
-                    {output || 'Click "Run Code" to see output here...'}
-                  </pre>
-                  {waitingForInput && (
-                    <div className="mt-2 flex items-center gap-2">
-                      <span className="text-yellow-400">{">"}</span>
-                      <input
-                        type="text"
-                        value={inputValue}
-                        onChange={(e) => {
-                          setInputValue(e.target.value);
-                          handleUserActivity(); // Track input changes
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            handleInputSubmit();
-                          }
-                          handleUserActivity(); // Track key presses
-                        }}
-                        className="flex-1 border-none bg-transparent text-green-400 outline-none"
-                        placeholder="Type your input and press Enter..."
-                        autoFocus
-                      />
-                    </div>
-                  )}
+            {isOutputExpanded && (
+              <>
+                {/* Resize Handle */}
+                <div
+                  ref={resizeRef}
+                  className="flex h-1 cursor-ns-resize items-center justify-center bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600"
+                  onMouseDown={handleResizeStart}
+                >
+                  <GripVertical className="size-4 text-gray-500" />
                 </div>
-                {waitingForInput && (
-                  <div className="border-t border-gray-700 bg-gray-800 p-2">
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => {
-                          handleInputSubmit();
-                          handleUserActivity();
-                        }}
-                        className="rounded bg-green-600 px-3 py-1 text-sm text-white hover:bg-green-700"
+
+                {/* Output Content */}
+                <div
+                  className="flex flex-col overflow-y-scroll border-t"
+                  style={{
+                    height: isOutputFullScreen ? "100vh" : `${outputHeight}px`,
+                  }}
+                >
+                  {/* Output Header */}
+                  <div className="flex items-center justify-between border-b bg-gray-50 px-4 py-2 dark:bg-gray-800">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">Console</span>
+                      {output && !isRunning && (
+                        <span className="inline-flex size-2 rounded-full bg-green-500"></span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={toggleOutputFullScreen}
+                        className="size-8 p-0"
                       >
-                        Submit
-                      </button>
-                      <button
-                        onClick={() => {
-                          setWaitingForInput(false);
-                          setInputValue("");
-                          handleUserActivity();
-                        }}
-                        className="rounded bg-gray-600 px-3 py-1 text-sm text-white hover:bg-gray-700"
+                        {isOutputFullScreen ? (
+                          <Minimize2 className="size-4" />
+                        ) : (
+                          <Maximize2 className="size-4" />
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={toggleOutputExpanded}
+                        className="size-8 p-0"
                       >
-                        Cancel
-                      </button>
+                        <X className="size-4" />
+                      </Button>
                     </div>
                   </div>
-                )}
+
+                  {/* Output Content */}
+                  <div className="flex-1 overflow-auto bg-gray-900 p-4 font-mono text-sm text-green-400">
+                    <pre className="whitespace-pre-wrap">
+                      {isPyodideLoading && isRunning
+                        ? "Loading Python environment (this may take a few seconds on first run)..."
+                        : output || 'Click "Run Code" to see output here...'}
+                    </pre>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Output Toggle Button (when collapsed) */}
+            {!isOutputExpanded && (
+              <div className="border-t p-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={toggleOutputExpanded}
+                >
+                  <ChevronUp className="mr-1 size-4" />
+                  Show Output
+                </Button>
               </div>
-            </TabsContent>
-          </Tabs>
+            )}
+          </div>
         </CardContent>
       </Card>
     </div>

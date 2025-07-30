@@ -8,6 +8,9 @@ const HeroSection = ({
 }: {
     allowLeanersToCreateCourses: boolean;
 }) => {
+    const handleNavigate = () => {
+        window.location.href = "https://dash.vacademy.io/study-library/courses";
+    };
     return (
         <div className="relative min-h-[200px] bg-gradient-to-br from-gray-50/80 via-white to-primary-50/20 overflow-hidden w-full max-w-full">
             {/* Animated background elements */}
@@ -70,7 +73,9 @@ const HeroSection = ({
                     style={{ animationDelay: "0.4s" }}
                 >
                     {allowLeanersToCreateCourses && (
-                        <MyButton>Create Course</MyButton>
+                        <MyButton onClick={handleNavigate}>
+                            Create Course
+                        </MyButton>
                     )}
                     <div className="relative group">
                         {/* Floating orb effect */}

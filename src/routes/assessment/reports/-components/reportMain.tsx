@@ -13,6 +13,8 @@ import { Report } from "@/types/assessments/assessment-data-type";
 import { formatDuration, getSubjectNameById } from "@/constants/helper";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
 import { PlayMode, StatusChip } from "@/components/design-system/chips";
+import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 
 const playModeColors: { [key: string]: string } = {
   EXAM: "bg-green-500 text-white",
@@ -223,7 +225,11 @@ const AssessmentReportList = ({
                 <div className="space-y-2 text-xs lg:text-sm text-gray-600">
                   <div>Attempt Date: {formatDateTime(report.attempt_date)}</div>
                   <div>
-                    Subject:{" "}
+                    {getTerminology(
+                      ContentTerms.Subjects,
+                      SystemTerms.Subjects
+                    )}
+                    :{" "}
                     {getSubjectNameById(
                       instituteDetails?.subjects || [],
                       report?.subject_id

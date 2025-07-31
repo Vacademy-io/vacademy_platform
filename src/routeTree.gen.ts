@@ -12,9 +12,11 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as UserProfileIndexRouteImport } from './routes/user-profile/index'
 import { Route as TermsAndConditionsIndexRouteImport } from './routes/terms-and-conditions/index'
 import { Route as StudyLibraryIndexRouteImport } from './routes/study-library/index'
+import { Route as SignupIndexRouteImport } from './routes/signup/index'
 import { Route as RegisterIndexRouteImport } from './routes/register/index'
 import { Route as ReferralIndexRouteImport } from './routes/referral/index'
 import { Route as PrivacyPolicyIndexRouteImport } from './routes/privacy-policy/index'
+import { Route as NotificationsTestIndexRouteImport } from './routes/notifications-test/index'
 import { Route as LogoutIndexRouteImport } from './routes/logout/index'
 import { Route as LoginIndexRouteImport } from './routes/login/index'
 import { Route as LiveClassGuestIndexRouteImport } from './routes/live-class-guest/index'
@@ -32,6 +34,7 @@ import { Route as RegisterLiveClassIndexRouteImport } from './routes/register/li
 import { Route as LoginForgotPasswordIndexRouteImport } from './routes/login/forgot-password/index'
 import { Route as LiveClassGuestWaitingRoomIndexRouteImport } from './routes/live-class-guest/waiting-room/index'
 import { Route as LiveClassGuestEmbedIndexRouteImport } from './routes/live-class-guest/embed/index'
+import { Route as LearningCentreAttendanceIndexRouteImport } from './routes/learning-centre/attendance/index'
 import { Route as HomeworkReportsIndexRouteImport } from './routes/homework/reports/index'
 import { Route as HomeworkListIndexRouteImport } from './routes/homework/list/index'
 import { Route as DashboardNotificationsIndexRouteImport } from './routes/dashboard/notifications/index'
@@ -66,6 +69,11 @@ const StudyLibraryIndexRoute = StudyLibraryIndexRouteImport.update({
   path: '/study-library/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SignupIndexRoute = SignupIndexRouteImport.update({
+  id: '/signup/',
+  path: '/signup/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const RegisterIndexRoute = RegisterIndexRouteImport.update({
   id: '/register/',
   path: '/register/',
@@ -79,6 +87,11 @@ const ReferralIndexRoute = ReferralIndexRouteImport.update({
 const PrivacyPolicyIndexRoute = PrivacyPolicyIndexRouteImport.update({
   id: '/privacy-policy/',
   path: '/privacy-policy/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NotificationsTestIndexRoute = NotificationsTestIndexRouteImport.update({
+  id: '/notifications-test/',
+  path: '/notifications-test/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LogoutIndexRoute = LogoutIndexRouteImport.update({
@@ -171,6 +184,12 @@ const LiveClassGuestEmbedIndexRoute =
   LiveClassGuestEmbedIndexRouteImport.update({
     id: '/live-class-guest/embed/',
     path: '/live-class-guest/embed/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const LearningCentreAttendanceIndexRoute =
+  LearningCentreAttendanceIndexRouteImport.update({
+    id: '/learning-centre/attendance/',
+    path: '/learning-centre/attendance/',
     getParentRoute: () => rootRouteImport,
   } as any)
 const HomeworkReportsIndexRoute = HomeworkReportsIndexRouteImport.update({
@@ -293,9 +312,11 @@ export interface FileRoutesByFullPath {
   '/live-class-guest': typeof LiveClassGuestIndexRoute
   '/login': typeof LoginIndexRoute
   '/logout': typeof LogoutIndexRoute
+  '/notifications-test': typeof NotificationsTestIndexRoute
   '/privacy-policy': typeof PrivacyPolicyIndexRoute
   '/referral': typeof ReferralIndexRoute
   '/register': typeof RegisterIndexRoute
+  '/signup': typeof SignupIndexRoute
   '/study-library': typeof StudyLibraryIndexRoute
   '/terms-and-conditions': typeof TermsAndConditionsIndexRoute
   '/user-profile': typeof UserProfileIndexRoute
@@ -306,6 +327,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/notifications': typeof DashboardNotificationsIndexRoute
   '/homework/list': typeof HomeworkListIndexRoute
   '/homework/reports': typeof HomeworkReportsIndexRoute
+  '/learning-centre/attendance': typeof LearningCentreAttendanceIndexRoute
   '/live-class-guest/embed': typeof LiveClassGuestEmbedIndexRoute
   '/live-class-guest/waiting-room': typeof LiveClassGuestWaitingRoomIndexRoute
   '/login/forgot-password': typeof LoginForgotPasswordIndexRoute
@@ -336,9 +358,11 @@ export interface FileRoutesByTo {
   '/live-class-guest': typeof LiveClassGuestIndexRoute
   '/login': typeof LoginIndexRoute
   '/logout': typeof LogoutIndexRoute
+  '/notifications-test': typeof NotificationsTestIndexRoute
   '/privacy-policy': typeof PrivacyPolicyIndexRoute
   '/referral': typeof ReferralIndexRoute
   '/register': typeof RegisterIndexRoute
+  '/signup': typeof SignupIndexRoute
   '/study-library': typeof StudyLibraryIndexRoute
   '/terms-and-conditions': typeof TermsAndConditionsIndexRoute
   '/user-profile': typeof UserProfileIndexRoute
@@ -349,6 +373,7 @@ export interface FileRoutesByTo {
   '/dashboard/notifications': typeof DashboardNotificationsIndexRoute
   '/homework/list': typeof HomeworkListIndexRoute
   '/homework/reports': typeof HomeworkReportsIndexRoute
+  '/learning-centre/attendance': typeof LearningCentreAttendanceIndexRoute
   '/live-class-guest/embed': typeof LiveClassGuestEmbedIndexRoute
   '/live-class-guest/waiting-room': typeof LiveClassGuestWaitingRoomIndexRoute
   '/login/forgot-password': typeof LoginForgotPasswordIndexRoute
@@ -380,9 +405,11 @@ export interface FileRoutesById {
   '/live-class-guest/': typeof LiveClassGuestIndexRoute
   '/login/': typeof LoginIndexRoute
   '/logout/': typeof LogoutIndexRoute
+  '/notifications-test/': typeof NotificationsTestIndexRoute
   '/privacy-policy/': typeof PrivacyPolicyIndexRoute
   '/referral/': typeof ReferralIndexRoute
   '/register/': typeof RegisterIndexRoute
+  '/signup/': typeof SignupIndexRoute
   '/study-library/': typeof StudyLibraryIndexRoute
   '/terms-and-conditions/': typeof TermsAndConditionsIndexRoute
   '/user-profile/': typeof UserProfileIndexRoute
@@ -393,6 +420,7 @@ export interface FileRoutesById {
   '/dashboard/notifications/': typeof DashboardNotificationsIndexRoute
   '/homework/list/': typeof HomeworkListIndexRoute
   '/homework/reports/': typeof HomeworkReportsIndexRoute
+  '/learning-centre/attendance/': typeof LearningCentreAttendanceIndexRoute
   '/live-class-guest/embed/': typeof LiveClassGuestEmbedIndexRoute
   '/live-class-guest/waiting-room/': typeof LiveClassGuestWaitingRoomIndexRoute
   '/login/forgot-password/': typeof LoginForgotPasswordIndexRoute
@@ -425,9 +453,11 @@ export interface FileRouteTypes {
     | '/live-class-guest'
     | '/login'
     | '/logout'
+    | '/notifications-test'
     | '/privacy-policy'
     | '/referral'
     | '/register'
+    | '/signup'
     | '/study-library'
     | '/terms-and-conditions'
     | '/user-profile'
@@ -438,6 +468,7 @@ export interface FileRouteTypes {
     | '/dashboard/notifications'
     | '/homework/list'
     | '/homework/reports'
+    | '/learning-centre/attendance'
     | '/live-class-guest/embed'
     | '/live-class-guest/waiting-room'
     | '/login/forgot-password'
@@ -468,9 +499,11 @@ export interface FileRouteTypes {
     | '/live-class-guest'
     | '/login'
     | '/logout'
+    | '/notifications-test'
     | '/privacy-policy'
     | '/referral'
     | '/register'
+    | '/signup'
     | '/study-library'
     | '/terms-and-conditions'
     | '/user-profile'
@@ -481,6 +514,7 @@ export interface FileRouteTypes {
     | '/dashboard/notifications'
     | '/homework/list'
     | '/homework/reports'
+    | '/learning-centre/attendance'
     | '/live-class-guest/embed'
     | '/live-class-guest/waiting-room'
     | '/login/forgot-password'
@@ -511,9 +545,11 @@ export interface FileRouteTypes {
     | '/live-class-guest/'
     | '/login/'
     | '/logout/'
+    | '/notifications-test/'
     | '/privacy-policy/'
     | '/referral/'
     | '/register/'
+    | '/signup/'
     | '/study-library/'
     | '/terms-and-conditions/'
     | '/user-profile/'
@@ -524,6 +560,7 @@ export interface FileRouteTypes {
     | '/dashboard/notifications/'
     | '/homework/list/'
     | '/homework/reports/'
+    | '/learning-centre/attendance/'
     | '/live-class-guest/embed/'
     | '/live-class-guest/waiting-room/'
     | '/login/forgot-password/'
@@ -555,9 +592,11 @@ export interface RootRouteChildren {
   LiveClassGuestIndexRoute: typeof LiveClassGuestIndexRoute
   LoginIndexRoute: typeof LoginIndexRoute
   LogoutIndexRoute: typeof LogoutIndexRoute
+  NotificationsTestIndexRoute: typeof NotificationsTestIndexRoute
   PrivacyPolicyIndexRoute: typeof PrivacyPolicyIndexRoute
   ReferralIndexRoute: typeof ReferralIndexRoute
   RegisterIndexRoute: typeof RegisterIndexRoute
+  SignupIndexRoute: typeof SignupIndexRoute
   StudyLibraryIndexRoute: typeof StudyLibraryIndexRoute
   TermsAndConditionsIndexRoute: typeof TermsAndConditionsIndexRoute
   UserProfileIndexRoute: typeof UserProfileIndexRoute
@@ -568,6 +607,7 @@ export interface RootRouteChildren {
   DashboardNotificationsIndexRoute: typeof DashboardNotificationsIndexRoute
   HomeworkListIndexRoute: typeof HomeworkListIndexRoute
   HomeworkReportsIndexRoute: typeof HomeworkReportsIndexRoute
+  LearningCentreAttendanceIndexRoute: typeof LearningCentreAttendanceIndexRoute
   LiveClassGuestEmbedIndexRoute: typeof LiveClassGuestEmbedIndexRoute
   LiveClassGuestWaitingRoomIndexRoute: typeof LiveClassGuestWaitingRoomIndexRoute
   LoginForgotPasswordIndexRoute: typeof LoginForgotPasswordIndexRoute
@@ -611,6 +651,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StudyLibraryIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/signup/': {
+      id: '/signup/'
+      path: '/signup'
+      fullPath: '/signup'
+      preLoaderRoute: typeof SignupIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/register/': {
       id: '/register/'
       path: '/register'
@@ -630,6 +677,13 @@ declare module '@tanstack/react-router' {
       path: '/privacy-policy'
       fullPath: '/privacy-policy'
       preLoaderRoute: typeof PrivacyPolicyIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/notifications-test/': {
+      id: '/notifications-test/'
+      path: '/notifications-test'
+      fullPath: '/notifications-test'
+      preLoaderRoute: typeof NotificationsTestIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/logout/': {
@@ -749,6 +803,13 @@ declare module '@tanstack/react-router' {
       path: '/live-class-guest/embed'
       fullPath: '/live-class-guest/embed'
       preLoaderRoute: typeof LiveClassGuestEmbedIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/learning-centre/attendance/': {
+      id: '/learning-centre/attendance/'
+      path: '/learning-centre/attendance'
+      fullPath: '/learning-centre/attendance'
+      preLoaderRoute: typeof LearningCentreAttendanceIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/homework/reports/': {
@@ -891,9 +952,11 @@ const rootRouteChildren: RootRouteChildren = {
   LiveClassGuestIndexRoute: LiveClassGuestIndexRoute,
   LoginIndexRoute: LoginIndexRoute,
   LogoutIndexRoute: LogoutIndexRoute,
+  NotificationsTestIndexRoute: NotificationsTestIndexRoute,
   PrivacyPolicyIndexRoute: PrivacyPolicyIndexRoute,
   ReferralIndexRoute: ReferralIndexRoute,
   RegisterIndexRoute: RegisterIndexRoute,
+  SignupIndexRoute: SignupIndexRoute,
   StudyLibraryIndexRoute: StudyLibraryIndexRoute,
   TermsAndConditionsIndexRoute: TermsAndConditionsIndexRoute,
   UserProfileIndexRoute: UserProfileIndexRoute,
@@ -904,6 +967,7 @@ const rootRouteChildren: RootRouteChildren = {
   DashboardNotificationsIndexRoute: DashboardNotificationsIndexRoute,
   HomeworkListIndexRoute: HomeworkListIndexRoute,
   HomeworkReportsIndexRoute: HomeworkReportsIndexRoute,
+  LearningCentreAttendanceIndexRoute: LearningCentreAttendanceIndexRoute,
   LiveClassGuestEmbedIndexRoute: LiveClassGuestEmbedIndexRoute,
   LiveClassGuestWaitingRoomIndexRoute: LiveClassGuestWaitingRoomIndexRoute,
   LoginForgotPasswordIndexRoute: LoginForgotPasswordIndexRoute,

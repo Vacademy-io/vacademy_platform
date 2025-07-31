@@ -1,8 +1,8 @@
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
 import { useEffect, useState } from "react";
 import { PullToRefreshWrapper } from "@/components/design-system/pull-to-refresh";
-import { fetchStudyLibraryDetails } from "@/services/study-library/getStudyLibraryDetails";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { toTitleCase } from "@/lib/utils";
 import {
     CaretDown,
     CaretRight,
@@ -17,7 +17,7 @@ import {
     CollapsibleContent,
     CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { fetchModulesWithChapters } from "@/services/study-library/getModulesWithChapters";
+import { fetchModulesWithChapters, fetchModulesWithChaptersPublic } from "@/services/study-library/getModulesWithChapters";
 import { SubjectType } from "@/stores/study-library/use-study-library-store";
 import { useMutation } from "@tanstack/react-query";
 import {
@@ -33,6 +33,8 @@ import { getIcon } from "@/components/common/study-library/level-material/subjec
 import { CourseDetailsFormValues } from "./course-details-schema";
 import { getSubjectDetails } from "@/routes/courses/course-details/-utils/helper";
 import { useRouter } from "@tanstack/react-router";
+import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
 
 export interface Chapter {
     id: string;
@@ -71,12 +73,14 @@ export const CourseStructureDetails = ({
     courseStructure,
     courseData,
     packageSessionId,
+    selectedTab,
 }: {
     selectedSession: string;
     selectedLevel: string;
     courseStructure: number;
     courseData: CourseDetailsFormValues;
     packageSessionId: string;
+    selectedTab: string;
 }) => {
     const router = useRouter();
     const searchParams = router.state.location.search;
@@ -88,11 +92,15 @@ export const CourseStructureDetails = ({
 
     const [studyLibraryData, setStudyLibraryData] = useState<SubjectType[]>([]);
 
-    const [selectedTab, setSelectedTab] = useState<string>(TabType.OUTLINE);
-    const handleTabChange = (value: string) => setSelectedTab(value);
+    const [selectedStructureTab, setSelectedStructureTab] = useState<string>(TabType.OUTLINE);
+    const handleTabChange = (value: string) => setSelectedStructureTab(value);
     const [subjectModulesMap, setSubjectModulesMap] =
         useState<SubjectModulesMap>({});
     const [slidesMap, setSlidesMap] = useState<Record<string, Slide[]>>({});
+
+
+
+
 
     const handleSlideNavigation = (
         subjectId: string,
@@ -100,27 +108,33 @@ export const CourseStructureDetails = ({
         chapterId: string,
         slideId: string
     ) => {
-        navigateTo(
-            `/study-library/courses/course-details/subjects/modules/chapters/slides`,
-            {
-                courseId: searchParams.courseId,
-                subjectId,
-                moduleId,
-                chapterId,
-                slideId,
-            }
-        );
+        // Only allow navigation for enrolled courses (PROGRESS/COMPLETED tabs)
+        if (selectedTab === "PROGRESS" || selectedTab === "COMPLETED") {
+            navigateTo(
+                `/study-library/courses/course-details/subjects/modules/chapters/slides`,
+                {
+                    courseId: searchParams.courseId,
+                    subjectId,
+                    moduleId,
+                    chapterId,
+                    slideId,
+                }
+            );
+        }
+        // For ALL tab, do nothing (view-only mode)
     };
 
     const getSlidesWithChapterId = async (chapterId: string) => {
         // Avoid duplicate fetch
-        if (slidesMap[chapterId]) return;
+        if (slidesMap[chapterId]) {
+            return;
+        }
 
         try {
             const slides = await fetchSlidesByChapterId(chapterId);
             setSlidesMap((prev) => ({ ...prev, [chapterId]: slides }));
         } catch (err) {
-            console.log(err);
+            console.error(`Error fetching slides for chapter ${chapterId}:`, err);
         }
     };
 
@@ -131,12 +145,34 @@ export const CourseStructureDetails = ({
             }: {
                 subjects: SubjectType[];
             }) => {
+                // Ensure packageSessionId is available for all course depths
+                if (!packageSessionId) {
+                    console.warn("packageSessionId is not available for course depth:", courseStructure);
+                    throw new Error("Package session ID is required for fetching modules");
+                }
+
                 const results = await Promise.all(
                     currentSubjects?.map(async (subject) => {
-                        const res = await fetchModulesWithChapters(
+                        // For depth 5 courses, try using the public endpoint first
+                        let res;
+                        if (courseStructure === 5) {
+                            try {
+                                res = await fetchModulesWithChaptersPublic(
                             subject.id,
                             packageSessionId
                         );
+                            } catch {
+                                res = await fetchModulesWithChapters(
+                                    subject.id,
+                                    packageSessionId
+                                );
+                            }
+                        } else {
+                            res = await fetchModulesWithChapters(
+                                subject.id,
+                                packageSessionId
+                            );
+                        }
                         return { subjectId: subject.id, modules: res };
                     })
                 );
@@ -154,8 +190,23 @@ export const CourseStructureDetails = ({
     const { mutateAsync: fetchModules } = useModulesMutation();
 
     const refreshData = async () => {
-        const data = await fetchStudyLibraryDetails(packageSessionId);
-        setStudyLibraryData(data);
+        if (!packageSessionId) {
+            console.warn("packageSessionId is not available for refreshing study library data");
+            return;
+        }
+        // Refresh by reloading modules
+        try {
+            const modulesMap = await fetchModules({
+                subjects: getSubjectDetails(
+                    courseData,
+                    selectedSession,
+                    selectedLevel
+                ),
+            });
+            setSubjectModulesMap(modulesMap);
+        } catch (error) {
+            console.error("Failed to refresh data:", error);
+        }
     };
 
     const [openSubjects, setOpenSubjects] = useState<Set<string>>(new Set());
@@ -233,7 +284,8 @@ export const CourseStructureDetails = ({
                     <div className="flex items-center gap-2">
                         <TreeStructure size={18} className="text-primary-600" />
                         <span className="text-sm font-medium text-neutral-700">
-                            Course Structure
+              {getTerminology(ContentTerms.Course, SystemTerms.Course)}{" "}
+              Structure
                         </span>
                     </div>
                     <div className="flex items-center gap-2">
@@ -259,22 +311,16 @@ export const CourseStructureDetails = ({
                 </div>
                 <div className="max-w-2xl space-y-1.5">
                     {courseStructure === 5 &&
-                        studyLibraryData?.map(
-                            (subject: SubjectType, idx: number) => {
-                                const isSubjectOpen = openSubjects.has(
-                                    subject.id
-                                );
-                                const baseIndent =
-                                    "pl-[calc(18px+0.5rem+18px+0.5rem)]";
+            studyLibraryData?.map((subject: SubjectType, idx: number) => {
+              const isSubjectOpen = openSubjects.has(subject.id);
+              const baseIndent = "pl-[calc(18px+0.5rem+18px+0.5rem)]";
                                 const subjectContentIndent = `${baseIndent} pl-[1.5rem]`;
 
                                 return (
                                     <Collapsible
                                         key={subject.id}
                                         open={isSubjectOpen}
-                                        onOpenChange={() =>
-                                            toggleSubject(subject.id)
-                                        }
+                  onOpenChange={() => toggleSubject(subject.id)}
                                     >
                                         <CollapsibleTrigger className="group flex w-full items-center rounded-lg px-3 py-2 text-left text-sm font-semibold text-neutral-700 transition-all duration-200 hover:bg-gradient-to-r hover:from-primary-50/60 hover:to-blue-50/40 hover:border-primary-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-1">
                                             <div className="flex min-w-0 flex-1 items-center gap-2.5">
@@ -303,9 +349,9 @@ export const CourseStructureDetails = ({
                                                 </span>
                                                 <span
                                                     className="truncate font-medium group-hover:text-primary-700 transition-colors"
-                                                    title={subject.subject_name}
-                                                >
-                                                    {subject.subject_name}
+                                                                                                            title={toTitleCase(subject.subject_name)}
+                                                    >
+                                                        {toTitleCase(subject.subject_name)}
                                                 </span>
                                             </div>
                                         </CollapsibleTrigger>
@@ -314,69 +360,40 @@ export const CourseStructureDetails = ({
                                         >
                                             <div className="space-y-1 border-l-2 border-gradient-to-b from-primary-200/60 to-neutral-200/40 pl-3 relative">
                                                 <div className="absolute left-0 top-0 w-0.5 h-full bg-gradient-to-b from-primary-300/80 to-transparent"></div>
-                                                {(
-                                                    subjectModulesMap[
-                                                        subject.id
-                                                    ] ?? []
-                                                ).map((mod, modIdx) => {
-                                                    const isModuleOpen =
-                                                        openModules.has(
-                                                            mod.module.id
-                                                        );
+                      {(subjectModulesMap[subject.id] ?? []).map(
+                        (mod, modIdx) => {
+                          const isModuleOpen = openModules.has(mod.module.id);
                                                     const moduleContentIndent = `pl-[calc(16px+0.5rem+16px+0.5rem+1.5rem)]`;
                                                     return (
                                                         <Collapsible
                                                             key={mod.module.id}
                                                             open={isModuleOpen}
-                                                            onOpenChange={() =>
-                                                                toggleModule(
-                                                                    mod.module
-                                                                        .id
-                                                                )
-                                                            }
+                              onOpenChange={() => toggleModule(mod.module.id)}
                                                         >
                                                             <CollapsibleTrigger className="group flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-sm font-medium text-neutral-600 transition-all duration-200 hover:bg-gradient-to-r hover:from-blue-50/70 hover:to-indigo-50/50 hover:border-blue-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1">
                                                                 <div className="flex min-w-0 flex-1 items-center gap-2">
                                                                     {isModuleOpen ? (
                                                                         <CaretDown
-                                                                            size={
-                                                                                16
-                                                                            }
+                                      size={16}
                                                                             className="shrink-0 text-neutral-500 group-hover:text-blue-600 transition-colors"
                                                                         />
                                                                     ) : (
                                                                         <CaretRight
-                                                                            size={
-                                                                                16
-                                                                            }
+                                      size={16}
                                                                             className="shrink-0 text-neutral-500 group-hover:text-blue-600 transition-colors"
                                                                         />
                                                                     )}
                                                                     <div className="flex items-center justify-center w-5 h-5 rounded bg-gradient-to-br from-blue-500 to-blue-600 text-white">
-                                                                        <FileText
-                                                                            size={
-                                                                                12
-                                                                            }
-                                                                        />
+                                    <FileText size={12} />
                                                                     </div>
                                                                     <span className="w-6 shrink-0 text-center font-mono text-xs font-medium text-neutral-500 bg-neutral-100 rounded px-1">
-                                                                        M
-                                                                        {modIdx +
-                                                                            1}
+                                    M{modIdx + 1}
                                                                     </span>
                                                                     <span
                                                                         className="truncate group-hover:text-blue-700 transition-colors"
-                                                                        title={
-                                                                            mod
-                                                                                .module
-                                                                                .module_name
-                                                                        }
-                                                                    >
-                                                                        {
-                                                                            mod
-                                                                                .module
-                                                                                .module_name
-                                                                        }
+                                    title={mod.module.module_name}
+                                  >
+                                    {mod.module.module_name}
                                                                     </span>
                                                                 </div>
                                                             </CollapsibleTrigger>
@@ -386,16 +403,8 @@ export const CourseStructureDetails = ({
                                                             >
                                                                 <div className="space-y-0.5 border-l-2 border-blue-200/40 pl-2.5 relative">
                                                                     <div className="absolute left-0 top-0 w-0.5 h-full bg-gradient-to-b from-blue-300/60 to-transparent"></div>
-                                                                    {(
-                                                                        mod.chapters ??
-                                                                        []
-                                                                    ).map(
-                                                                        (
-                                                                            ch,
-                                                                            chIdx
-                                                                        ) => {
-                                                                            const isChapterOpen =
-                                                                                openChapters.has(
+                                  {(mod.chapters ?? []).map((ch, chIdx) => {
+                                    const isChapterOpen = openChapters.has(
                                                                                     ch.id
                                                                                 );
 
@@ -448,11 +457,11 @@ export const CourseStructureDetails = ({
                                                                                             <span
                                                                                                 className="truncate group-hover:text-green-700 transition-colors text-xs"
                                                                                                 title={
-                                                                                                    ch.chapter_name
+                                                                                                    toTitleCase(ch.chapter_name)
                                                                                                 }
                                                                                             >
                                                                                                 {
-                                                                                                    ch.chapter_name
+                                                                                                    toTitleCase(ch.chapter_name)
                                                                                                 }
                                                                                             </span>
                                                                                         </div>
@@ -462,75 +471,44 @@ export const CourseStructureDetails = ({
                                                                                             className={`space-y-px ml-5 border-l border-green-200/50 py-1 pl-2 relative `}
                                                                                         >
                                                                                             <div className="absolute left-0 top-0 w-px h-full bg-gradient-to-b from-green-300/50 to-transparent"></div>
-                                                                                            {(
-                                                                                                slidesMap[
-                                                                                                    ch
-                                                                                                        .id
-                                                                                                ] ??
-                                                                                                []
-                                                                                            )
-                                                                                                .length ===
-                                                                                            0 ? (
+                                                                                                                                                                                                                    {(() => {
+                                const slidesForChapter = slidesMap[ch.id] ?? [];
+                                return slidesForChapter.length === 0 ? (
                                                                                                 <div className="text-xs px-2 py-1 text-neutral-400 italic bg-neutral-50/50 rounded">
-                                                                                                    No
-                                                                                                    slides
-                                                                                                    in
-                                                                                                    this
-                                                                                                    chapter.
+                                                                                                        No slides in this chapter.
                                                                                                 </div>
                                                                                             ) : (
-                                                                                                (
-                                                                                                    slidesMap[
-                                                                                                        ch
-                                                                                                            .id
-                                                                                                    ] ??
-                                                                                                    []
-                                                                                                ).map(
-                                                                                                    (
-                                                                                                        slide,
-                                                                                                        sIdx
-                                                                                                    ) => (
-                                                                                                        <div
-                                                                                                            key={
-                                                                                                                slide.id
-                                                                                                            }
+                                                                                                    slidesForChapter.map(
+                                                                                                        (slide, sIdx) => (
+                                                                                                            <div
+                                                                                                                key={slide.id}
                                                                                                             className="group flex cursor-pointer items-center gap-1.5 px-2 py-1 text-xs text-neutral-500 rounded hover:bg-gradient-to-r hover:from-amber-50/60 hover:to-orange-50/40 hover:border-amber-200/40 border border-transparent transition-all duration-200"
                                                                                                             onClick={() => {
                                                                                                                 handleSlideNavigation(
                                                                                                                     subject.id,
-                                                                                                                    mod
-                                                                                                                        .module
-                                                                                                                        .id,
+                                                                                                                        mod.module.id,
                                                                                                                     ch.id,
                                                                                                                     slide.id
                                                                                                                 );
                                                                                                             }}
                                                                                                         >
                                                                                                             <span className="w-5 shrink-0 text-center font-mono text-neutral-400 bg-neutral-100 rounded px-0.5 text-xs">
-                                                                                                                S
-                                                                                                                {sIdx +
-                                                                                                                    1}
+                                                                                                                    S{sIdx + 1}
                                                                                                             </span>
                                                                                                             <div className="shrink-0 group-hover:scale-110 transition-transform">
-                                                                                                                {getIcon(
-                                                                                                                    slide,
-                                                                                                                    "3"
-                                                                                                                )}
+                                                                                                                    {getIcon(slide, "3")}
                                                                                                             </div>
                                                                                                             <span
                                                                                                                 className="truncate group-hover:text-amber-700 transition-colors"
-                                                                                                                title={
-                                                                                                                    slide.title
-                                                                                                                }
+                                                                                                                    title={slide.title}
                                                                                                             >
-                                                                                                                {
-                                                                                                                    slide.title
-                                                                                                                }
+                                                                                                                    {slide.title}
                                                                                                             </span>
                                                                                                         </div>
                                                                                                     )
                                                                                                 )
-                                                                                            )}
+                                                                                                );
+                                                                                            })()}
                                                                                         </div>
                                                                                     </CollapsibleContent>
                                                                                 </Collapsible>
@@ -613,15 +591,15 @@ export const CourseStructureDetails = ({
                                                                 <span
                                                                     className="truncate group-hover:text-blue-700 transition-colors"
                                                                     title={
-                                                                        mod
+                                                                        toTitleCase(mod
                                                                             .module
-                                                                            .module_name
+                                                                            .module_name)
                                                                     }
                                                                 >
                                                                     {
-                                                                        mod
+                                                                        toTitleCase(mod
                                                                             .module
-                                                                            .module_name
+                                                                            .module_name)
                                                                     }
                                                                 </span>
                                                             </div>
@@ -632,144 +610,83 @@ export const CourseStructureDetails = ({
                                                         >
                                                             <div className="space-y-0.5 border-l-2 border-blue-200/40 pl-2.5 relative">
                                                                 <div className="absolute left-0 top-0 w-0.5 h-full bg-gradient-to-b from-blue-300/60 to-transparent"></div>
-                                                                {(
-                                                                    mod.chapters ??
-                                                                    []
-                                                                ).map(
-                                                                    (
-                                                                        ch,
-                                                                        chIdx
-                                                                    ) => {
-                                                                        const isChapterOpen =
-                                                                            openChapters.has(
+                                  {(mod.chapters ?? []).map((ch, chIdx) => {
+                                    const isChapterOpen = openChapters.has(
                                                                                 ch.id
                                                                             );
 
                                                                         return (
                                                                             <Collapsible
-                                                                                key={
-                                                                                    ch.id
-                                                                                }
-                                                                                open={
-                                                                                    isChapterOpen
-                                                                                }
+                                        key={ch.id}
+                                        open={isChapterOpen}
                                                                                 onOpenChange={() => {
-                                                                                    toggleChapter(
-                                                                                        ch.id
-                                                                                    );
-                                                                                    getSlidesWithChapterId(
-                                                                                        ch.id
-                                                                                    );
+                                          toggleChapter(ch.id);
+                                          getSlidesWithChapterId(ch.id);
                                                                                 }}
                                                                             >
                                                                                 <CollapsibleTrigger className="group flex w-full items-center rounded-md px-2 py-1 text-left text-sm text-neutral-600 transition-all duration-200 hover:bg-gradient-to-r hover:from-green-50/70 hover:to-emerald-50/50 hover:border-green-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-1">
                                                                                     <div className="flex min-w-0 flex-1 items-center gap-1.5">
                                                                                         {isChapterOpen ? (
                                                                                             <CaretDown
-                                                                                                size={
-                                                                                                    14
-                                                                                                }
+                                                size={14}
                                                                                                 className="shrink-0 text-neutral-500 group-hover:text-green-600 transition-colors"
                                                                                             />
                                                                                         ) : (
                                                                                             <CaretRight
-                                                                                                size={
-                                                                                                    14
-                                                                                                }
+                                                size={14}
                                                                                                 className="shrink-0 text-neutral-500 group-hover:text-green-600 transition-colors"
                                                                                             />
                                                                                         )}
                                                                                         <div className="flex items-center justify-center w-4 h-4 rounded bg-gradient-to-br from-green-500 to-green-600 text-white">
-                                                                                            <PresentationChart
-                                                                                                size={
-                                                                                                    10
-                                                                                                }
-                                                                                            />
+                                              <PresentationChart size={10} />
                                                                                         </div>
                                                                                         <span className="text-xs w-5 shrink-0 text-center font-mono text-neutral-500 bg-neutral-100 rounded px-0.5">
-                                                                                            C
-                                                                                            {chIdx +
-                                                                                                1}
+                                              C{chIdx + 1}
                                                                                         </span>
                                                                                         <span
                                                                                             className="truncate group-hover:text-green-700 transition-colors text-xs"
-                                                                                            title={
-                                                                                                ch.chapter_name
-                                                                                            }
-                                                                                        >
-                                                                                            {
-                                                                                                ch.chapter_name
-                                                                                            }
+                                              title={toTitleCase(
+                                                ch.chapter_name
+                                              )}
+                                            >
+                                              {toTitleCase(ch.chapter_name)}
                                                                                         </span>
                                                                                     </div>
                                                                                 </CollapsibleTrigger>
                                                                                 <CollapsibleContent>
                                                                                     <div className="space-y-px ml-5 border-l border-green-200/50 py-1 pl-2 relative">
                                                                                         <div className="absolute left-0 top-0 w-px h-full bg-gradient-to-b from-green-300/50 to-transparent"></div>
-                                                                                        {(
-                                                                                            slidesMap[
-                                                                                                ch
-                                                                                                    .id
-                                                                                            ] ??
-                                                                                            []
-                                                                                        )
-                                                                                            .length ===
+                                            {(slidesMap[ch.id] ?? []).length ===
                                                                                         0 ? (
                                                                                             <div className="text-xs px-2 py-1 text-neutral-400 italic bg-neutral-50/50 rounded">
-                                                                                                No
-                                                                                                slides
-                                                                                                in
-                                                                                                this
-                                                                                                chapter.
+                                                No slides in this chapter.
                                                                                             </div>
                                                                                         ) : (
-                                                                                            (
-                                                                                                slidesMap[
-                                                                                                    ch
-                                                                                                        .id
-                                                                                                ] ??
-                                                                                                []
-                                                                                            ).map(
-                                                                                                (
-                                                                                                    slide,
-                                                                                                    sIdx
-                                                                                                ) => (
-                                                                                                    <div
-                                                                                                        key={
-                                                                                                            slide.id
-                                                                                                        }
+                                              (slidesMap[ch.id] ?? []).map(
+                                                (slide, sIdx) => (
+                                                  <div
+                                                    key={slide.id}
                                                                                                         className="group flex cursor-pointer items-center gap-1.5 px-2 py-1 text-xs text-neutral-500 rounded hover:bg-gradient-to-r hover:from-amber-50/60 hover:to-orange-50/40 hover:border-amber-200/40 border border-transparent transition-all duration-200"
                                                                                                         onClick={() => {
                                                                                                             handleSlideNavigation(
                                                                                                                 subject.id,
-                                                                                                                mod
-                                                                                                                    .module
-                                                                                                                    .id,
+                                                        mod.module.id,
                                                                                                                 ch.id,
                                                                                                                 slide.id
                                                                                                             );
                                                                                                         }}
                                                                                                     >
                                                                                                         <span className="w-5 shrink-0 text-center font-mono text-neutral-400 bg-neutral-100 rounded px-0.5 text-xs">
-                                                                                                            S
-                                                                                                            {sIdx +
-                                                                                                                1}
+                                                      S{sIdx + 1}
                                                                                                         </span>
                                                                                                         <div className="shrink-0 group-hover:scale-110 transition-transform">
-                                                                                                            {getIcon(
-                                                                                                                slide,
-                                                                                                                "3"
-                                                                                                            )}
+                                                      {getIcon(slide, "3")}
                                                                                                         </div>
                                                                                                         <span
                                                                                                             className="truncate group-hover:text-amber-700 transition-colors"
-                                                                                                            title={
-                                                                                                                slide.title
-                                                                                                            }
+                                                      title={slide.title}
                                                                                                         >
-                                                                                                            {
-                                                                                                                slide.title
-                                                                                                            }
+                                                      {slide.title}
                                                                                                         </span>
                                                                                                     </div>
                                                                                                 )
@@ -779,13 +696,13 @@ export const CourseStructureDetails = ({
                                                                                 </CollapsibleContent>
                                                                             </Collapsible>
                                                                         );
-                                                                    }
-                                                                )}
+                                  })}
                                                             </div>
                                                         </CollapsibleContent>
                                                     </Collapsible>
                                                 );
-                                            })}
+                        }
+                      )}
                                         </div>
                                     </CollapsibleContent>
                                 </Collapsible>
@@ -798,174 +715,93 @@ export const CourseStructureDetails = ({
                                 <Collapsible
                                     key={subject.id}
                                     open={isSubjectOpen}
-                                    onOpenChange={() =>
-                                        toggleSubject(subject.id)
-                                    }
+                  onOpenChange={() => toggleSubject(subject.id)}
                                 >
-                                    <CollapsibleContent
-                                        className={`pb-1 pt-2 `}
-                                    >
+                  <CollapsibleContent className={`pb-1 pt-2 `}>
                                         <div className="space-y-1 relative">
-                                            {(
-                                                subjectModulesMap[subject.id] ??
-                                                []
-                                            ).map((mod) => {
-                                                const isModuleOpen =
-                                                    openModules.has(
-                                                        mod.module.id
-                                                    );
+                      {(subjectModulesMap[subject.id] ?? []).map((mod) => {
+                        const isModuleOpen = openModules.has(mod.module.id);
                                                 return (
                                                     <Collapsible
                                                         key={mod.module.id}
                                                         open={isModuleOpen}
-                                                        onOpenChange={() =>
-                                                            toggleModule(
-                                                                mod.module.id
-                                                            )
-                                                        }
-                                                    >
-                                                        <CollapsibleContent
-                                                            className={`py-1`}
-                                                        >
+                            onOpenChange={() => toggleModule(mod.module.id)}
+                          >
+                            <CollapsibleContent className={`py-1`}>
                                                             <div className="space-y-0.5">
-                                                                {(
-                                                                    mod.chapters ??
-                                                                    []
-                                                                ).map(
-                                                                    (
-                                                                        ch,
-                                                                        chIdx
-                                                                    ) => {
-                                                                        const isChapterOpen =
-                                                                            openChapters.has(
-                                                                                ch.id
-                                                                            );
+                                {(mod.chapters ?? []).map((ch, chIdx) => {
+                                  const isChapterOpen = openChapters.has(ch.id);
 
                                                                         return (
                                                                             <Collapsible
-                                                                                key={
-                                                                                    ch.id
-                                                                                }
-                                                                                open={
-                                                                                    isChapterOpen
-                                                                                }
+                                      key={ch.id}
+                                      open={isChapterOpen}
                                                                                 onOpenChange={() => {
-                                                                                    toggleChapter(
-                                                                                        ch.id
-                                                                                    );
-                                                                                    getSlidesWithChapterId(
-                                                                                        ch.id
-                                                                                    );
+                                        toggleChapter(ch.id);
+                                        getSlidesWithChapterId(ch.id);
                                                                                 }}
                                                                             >
                                                                                 <CollapsibleTrigger className="group flex w-full items-center rounded-md px-2 py-1 text-left text-sm text-neutral-600 transition-all duration-200 hover:bg-gradient-to-r hover:from-green-50/70 hover:to-emerald-50/50 hover:border-green-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-1">
                                                                                     <div className="flex min-w-0 flex-1 items-center gap-1.5">
                                                                                         {isChapterOpen ? (
                                                                                             <CaretDown
-                                                                                                size={
-                                                                                                    14
-                                                                                                }
+                                              size={14}
                                                                                                 className="shrink-0 text-neutral-500 group-hover:text-green-600 transition-colors"
                                                                                             />
                                                                                         ) : (
                                                                                             <CaretRight
-                                                                                                size={
-                                                                                                    14
-                                                                                                }
+                                              size={14}
                                                                                                 className="shrink-0 text-neutral-500 group-hover:text-green-600 transition-colors"
                                                                                             />
                                                                                         )}
                                                                                         <div className="flex items-center justify-center w-4 h-4 rounded bg-gradient-to-br from-green-500 to-green-600 text-white">
-                                                                                            <PresentationChart
-                                                                                                size={
-                                                                                                    10
-                                                                                                }
-                                                                                            />
+                                            <PresentationChart size={10} />
                                                                                         </div>
                                                                                         <span className="text-xs w-5 shrink-0 text-center font-mono text-neutral-500 bg-neutral-100 rounded px-0.5">
-                                                                                            C
-                                                                                            {chIdx +
-                                                                                                1}
+                                            C{chIdx + 1}
                                                                                         </span>
                                                                                         <span
                                                                                             className="truncate group-hover:text-green-700 transition-colors text-xs"
-                                                                                            title={
-                                                                                                ch.chapter_name
-                                                                                            }
+                                            title={toTitleCase(ch.chapter_name)}
                                                                                         >
-                                                                                            {
-                                                                                                ch.chapter_name
-                                                                                            }
+                                            {toTitleCase(ch.chapter_name)}
                                                                                         </span>
                                                                                     </div>
                                                                                 </CollapsibleTrigger>
                                                                                 <CollapsibleContent>
                                                                                     <div className="space-y-px ml-5 border-l border-green-200/50 py-1 pl-2 relative">
                                                                                         <div className="absolute left-0 top-0 w-px h-full bg-gradient-to-b from-green-300/50 to-transparent"></div>
-                                                                                        {(
-                                                                                            slidesMap[
-                                                                                                ch
-                                                                                                    .id
-                                                                                            ] ??
-                                                                                            []
-                                                                                        )
-                                                                                            .length ===
+                                          {(slidesMap[ch.id] ?? []).length ===
                                                                                         0 ? (
                                                                                             <div className="text-xs px-2 py-1 text-neutral-400 italic bg-neutral-50/50 rounded">
-                                                                                                No
-                                                                                                slides
-                                                                                                in
-                                                                                                this
-                                                                                                chapter.
+                                              No slides in this chapter.
                                                                                             </div>
                                                                                         ) : (
-                                                                                            (
-                                                                                                slidesMap[
-                                                                                                    ch
-                                                                                                        .id
-                                                                                                ] ??
-                                                                                                []
-                                                                                            ).map(
-                                                                                                (
-                                                                                                    slide,
-                                                                                                    sIdx
-                                                                                                ) => (
-                                                                                                    <div
-                                                                                                        key={
-                                                                                                            slide.id
-                                                                                                        }
+                                            (slidesMap[ch.id] ?? []).map(
+                                              (slide, sIdx) => (
+                                                <div
+                                                  key={slide.id}
                                                                                                         className="group flex cursor-pointer items-center gap-1.5 px-2 py-1 text-xs text-neutral-500 rounded hover:bg-gradient-to-r hover:from-amber-50/60 hover:to-orange-50/40 hover:border-amber-200/40 border border-transparent transition-all duration-200"
                                                                                                         onClick={() => {
                                                                                                             handleSlideNavigation(
                                                                                                                 subject.id,
-                                                                                                                mod
-                                                                                                                    .module
-                                                                                                                    .id,
+                                                      mod.module.id,
                                                                                                                 ch.id,
                                                                                                                 slide.id
                                                                                                             );
                                                                                                         }}
                                                                                                     >
                                                                                                         <span className="w-5 shrink-0 text-center font-mono text-neutral-400 bg-neutral-100 rounded px-0.5 text-xs">
-                                                                                                            S
-                                                                                                            {sIdx +
-                                                                                                                1}
+                                                    S{sIdx + 1}
                                                                                                         </span>
                                                                                                         <div className="shrink-0 group-hover:scale-110 transition-transform">
-                                                                                                            {getIcon(
-                                                                                                                slide,
-                                                                                                                "3"
-                                                                                                            )}
+                                                    {getIcon(slide, "3")}
                                                                                                         </div>
                                                                                                         <span
                                                                                                             className="truncate group-hover:text-amber-700 transition-colors"
-                                                                                                            title={
-                                                                                                                slide.title
-                                                                                                            }
+                                                    title={slide.title}
                                                                                                         >
-                                                                                                            {
-                                                                                                                slide.title
-                                                                                                            }
+                                                    {slide.title}
                                                                                                         </span>
                                                                                                     </div>
                                                                                                 )
@@ -975,8 +811,7 @@ export const CourseStructureDetails = ({
                                                                                 </CollapsibleContent>
                                                                             </Collapsible>
                                                                         );
-                                                                    }
-                                                                )}
+                                })}
                                                             </div>
                                                         </CollapsibleContent>
                                                     </Collapsible>
@@ -995,128 +830,71 @@ export const CourseStructureDetails = ({
                                 <Collapsible
                                     key={subject.id}
                                     open={isSubjectOpen}
-                                    onOpenChange={() =>
-                                        toggleSubject(subject.id)
-                                    }
+                  onOpenChange={() => toggleSubject(subject.id)}
                                 >
-                                    <CollapsibleContent
-                                        className={`pb-1 pt-2 `}
-                                    >
+                  <CollapsibleContent className={`pb-1 pt-2 `}>
                                         <div className="space-y-1 relative">
-                                            {(
-                                                subjectModulesMap[subject.id] ??
-                                                []
-                                            ).map((mod) => {
-                                                const isModuleOpen =
-                                                    openModules.has(
-                                                        mod.module.id
-                                                    );
+                      {(subjectModulesMap[subject.id] ?? []).map((mod) => {
+                        const isModuleOpen = openModules.has(mod.module.id);
                                                 return (
                                                     <Collapsible
                                                         key={mod.module.id}
                                                         open={isModuleOpen}
-                                                        onOpenChange={() =>
-                                                            toggleModule(
-                                                                mod.module.id
-                                                            )
-                                                        }
-                                                    >
-                                                        <CollapsibleContent
-                                                            className={`py-1`}
-                                                        >
+                            onOpenChange={() => toggleModule(mod.module.id)}
+                          >
+                            <CollapsibleContent className={`py-1`}>
                                                             <div className="space-y-0.5">
-                                                                {(
-                                                                    mod.chapters ??
-                                                                    []
-                                                                ).map((ch) => {
-                                                                    const isChapterOpen =
-                                                                        openChapters.has(
-                                                                            ch.id
-                                                                        );
+                                {(mod.chapters ?? []).map((ch) => {
+                                  const isChapterOpen = openChapters.has(ch.id);
 
                                                                     return (
                                                                         <Collapsible
-                                                                            key={
-                                                                                ch.id
-                                                                            }
-                                                                            open={
-                                                                                isChapterOpen
-                                                                            }
+                                      key={ch.id}
+                                      open={isChapterOpen}
                                                                             onOpenChange={() => {
-                                                                                toggleChapter(
-                                                                                    ch.id
-                                                                                );
-                                                                                getSlidesWithChapterId(
-                                                                                    ch.id
-                                                                                );
+                                        toggleChapter(ch.id);
+                                        getSlidesWithChapterId(ch.id);
                                                                             }}
                                                                         >
                                                                             <CollapsibleContent>
                                                                                 <div className="space-y-px pl-2 relative">
-                                                                                    {(
-                                                                                        slidesMap[
-                                                                                            ch
-                                                                                                .id
-                                                                                        ] ??
-                                                                                        []
-                                                                                    )
-                                                                                        .length ===
+                                          {(slidesMap[ch.id] ?? []).length ===
                                                                                     0 ? (
                                                                                         <div className="text-xs px-2 text-neutral-400 italic bg-neutral-50/50 rounded">
-                                                                                            No
-                                                                                            slides
-                                                                                            in
-                                                                                            this
-                                                                                            chapter.
+                                              No slides in this chapter.
                                                                                         </div>
                                                                                     ) : (
-                                                                                        (
-                                                                                            slidesMap[
-                                                                                                ch
-                                                                                                    .id
-                                                                                            ] ??
-                                                                                            []
-                                                                                        ).map(
-                                                                                            (
-                                                                                                slide,
-                                                                                                sIdx
-                                                                                            ) => (
-                                                                                                <div
-                                                                                                    key={
-                                                                                                        slide.id
-                                                                                                    }
-                                                                                                    className="group flex cursor-pointer items-center gap-1.5 px-2 py-1 text-xs text-neutral-500 rounded hover:bg-gradient-to-r hover:from-amber-50/60 hover:to-orange-50/40 hover:border-amber-200/40 border border-transparent transition-all duration-200"
+                                            (slidesMap[ch.id] ?? []).map(
+                                              (slide, sIdx) => (
+                                                <div
+                                                  key={slide.id}
+                                                                                                    className={`group flex items-center gap-1.5 px-2 py-1 text-xs text-neutral-500 rounded border border-transparent transition-all duration-200 ${
+                                                    selectedTab ===
+                                                      "PROGRESS" ||
+                                                    selectedTab === "COMPLETED"
+                                                                                                            ? "cursor-pointer hover:bg-gradient-to-r hover:from-amber-50/60 hover:to-orange-50/40 hover:border-amber-200/40" 
+                                                                                                            : "cursor-default opacity-60"
+                                                                                                    }`}
                                                                                                     onClick={() => {
                                                                                                         handleSlideNavigation(
                                                                                                             subject.id,
-                                                                                                            mod
-                                                                                                                .module
-                                                                                                                .id,
+                                                      mod.module.id,
                                                                                                             ch.id,
                                                                                                             slide.id
                                                                                                         );
                                                                                                     }}
                                                                                                 >
                                                                                                     <span className="w-5 shrink-0 text-center font-mono text-neutral-400 bg-neutral-100 rounded px-0.5 text-xs">
-                                                                                                        S
-                                                                                                        {sIdx +
-                                                                                                            1}
+                                                    S{sIdx + 1}
                                                                                                     </span>
                                                                                                     <div className="shrink-0 group-hover:scale-110 transition-transform">
-                                                                                                        {getIcon(
-                                                                                                            slide,
-                                                                                                            "3"
-                                                                                                        )}
+                                                    {getIcon(slide, "3")}
                                                                                                     </div>
                                                                                                     <span
                                                                                                         className="truncate group-hover:text-amber-700 transition-colors"
-                                                                                                        title={
-                                                                                                            slide.title
-                                                                                                        }
+                                                    title={slide.title}
                                                                                                     >
-                                                                                                        {
-                                                                                                            slide.title
-                                                                                                        }
+                                                    {slide.title}
                                                                                                     </span>
                                                                                                 </div>
                                                                                             )
@@ -1147,11 +925,12 @@ export const CourseStructureDetails = ({
                         <span className="text-white text-xs font-bold">T</span>
                     </div>
                     <span className="font-medium text-neutral-700">
-                        Teachers
+            {getTerminology(RoleTerms.Teacher, SystemTerms.Teacher)}s
                     </span>
                 </div>
                 <p className="text-neutral-500">
-                    Teachers content coming soon.
+          {getTerminology(RoleTerms.Teacher, SystemTerms.Teacher)}s content
+          coming soon.
                 </p>
             </div>
         ),
@@ -1161,18 +940,65 @@ export const CourseStructureDetails = ({
                     <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center">
                         <span className="text-white text-xs font-bold">A</span>
                     </div>
-                    <span className="font-medium text-neutral-700">
-                        Assessments
-                    </span>
+          <span className="font-medium text-neutral-700">Assessments</span>
                 </div>
-                <p className="text-neutral-500">
-                    Assessment content coming soon.
-                </p>
+        <p className="text-neutral-500">Assessment content coming soon.</p>
             </div>
         ),
     };
 
     useEffect(() => {
+        const loadModules = async () => {
+            // Ensure packageSessionId is available before making API calls
+            if (!packageSessionId) {
+                console.warn("packageSessionId is not available, skipping module loading for course depth:", courseStructure);
+                return;
+            }
+
+            try {
+                const modulesMap = await fetchModules({
+                    subjects: getSubjectDetails(
+                        courseData,
+                        selectedSession,
+                        selectedLevel
+                    ),
+                });
+                setSubjectModulesMap(modulesMap);
+
+        // Auto-expand all sections by default
+        const allSubjectIds = new Set<string>(
+          getSubjectDetails(courseData, selectedSession, selectedLevel).map(
+            (s: SubjectType) => s.id
+          )
+        );
+        const allModuleIds = new Set<string>();
+        const allChapterIds = new Set<string>();
+
+                Object.values(modulesMap).forEach((modules) => {
+                    modules.forEach((mod) => {
+                        allModuleIds.add(mod.module.id);
+                        mod.chapters.forEach((ch) => {
+                            allChapterIds.add(ch.id);
+                            // Load slides for each chapter (same as expandAll function)
+                            getSlidesWithChapterId(ch.id);
+                        });
+                    });
+                });
+
+                setOpenSubjects(allSubjectIds);
+                setOpenModules(allModuleIds);
+                setOpenChapters(allChapterIds);
+            } catch (error) {
+                console.error("Failed to fetch modules or study library details:", error);
+                setSubjectModulesMap({});
+            }
+        };
+        loadModules();
+    }, [packageSessionId, fetchModules]);
+
+    // Trigger module loading when session or level changes
+    useEffect(() => {
+        if (packageSessionId) {
         const loadModules = async () => {
             try {
                 const modulesMap = await fetchModules({
@@ -1200,7 +1026,7 @@ export const CourseStructureDetails = ({
                         allModuleIds.add(mod.module.id);
                         mod.chapters.forEach((ch) => {
                             allChapterIds.add(ch.id);
-                            // Load slides for each chapter
+                                // Load slides for each chapter (same as expandAll function)
                             getSlidesWithChapterId(ch.id);
                         });
                     });
@@ -1210,17 +1036,17 @@ export const CourseStructureDetails = ({
                 setOpenModules(allModuleIds);
                 setOpenChapters(allChapterIds);
             } catch (error) {
-                console.error("Failed to fetch modules:", error);
+                    console.error("Failed to fetch modules or study library details:", error);
                 setSubjectModulesMap({});
             }
         };
         loadModules();
-    }, [studyLibraryData, packageSessionId, fetchModules]);
+        }
+    }, [selectedSession, selectedLevel, packageSessionId]);
 
     useEffect(() => {
-        setStudyLibraryData(
-            getSubjectDetails(courseData, selectedSession, selectedLevel)
-        );
+        const studyLibraryData = getSubjectDetails(courseData, selectedSession, selectedLevel);
+        setStudyLibraryData(studyLibraryData);
     }, [selectedSession, selectedLevel]);
 
     useEffect(() => {
@@ -1235,7 +1061,7 @@ export const CourseStructureDetails = ({
         <PullToRefreshWrapper onRefresh={refreshData}>
             <div className="flex size-full flex-col gap-4 rounded-lg bg-gradient-to-br from-neutral-50/50 to-white py-4 text-neutral-700">
                 <Tabs
-                    value={selectedTab}
+                    value={selectedStructureTab}
                     onValueChange={handleTabChange}
                     className="w-full overflow-scroll"
                 >
@@ -1254,11 +1080,11 @@ export const CourseStructureDetails = ({
                         ))}
                     </TabsList>
                     <TabsContent
-                        key={selectedTab}
-                        value={selectedTab}
+                        key={selectedStructureTab}
+                        value={selectedStructureTab}
                         className="mt-4 rounded-lg bg-white border border-neutral-200/60 p-4"
                     >
-                        {tabContent[selectedTab as TabType]}
+                        {tabContent[selectedStructureTab as TabType]}
                     </TabsContent>
                 </Tabs>
             </div>

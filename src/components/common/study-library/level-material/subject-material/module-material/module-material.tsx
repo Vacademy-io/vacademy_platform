@@ -9,6 +9,7 @@ import { fetchModulesWithChapters } from "@/services/study-library/getModulesWit
 import { PullToRefreshWrapper } from "@/components/design-system/pull-to-refresh";
 import { getPackageSessionId } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
 import { useStudyLibraryStore } from "@/stores/study-library/use-study-library-store";
+import { toTitleCase } from "@/lib/utils";
 
 export const ModuleMaterial = () => {
     const { setNavHeading } = useNavHeadingStore();
@@ -30,7 +31,7 @@ export const ModuleMaterial = () => {
             >
                 <CaretLeft className="size-5" />
             </div>
-            <div className="text-neutral-800 font-medium">{subjectName}</div>
+            <div className="text-neutral-800 font-medium">{toTitleCase(subjectName)}</div>
         </div>
     );
 

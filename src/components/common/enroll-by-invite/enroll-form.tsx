@@ -19,6 +19,8 @@ import PhoneInputField from "@/components/design-system/phone-input-field";
 import axios from "axios";
 import { Route } from "@/routes/learner-invitation-response";
 import { Loader2 } from "lucide-react";
+import { getTerminology } from "../layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 
 interface CustomField {
   id: string;
@@ -926,15 +928,28 @@ const EnrollByInvite = () => {
             // Step 1: Level Selection with Package and Session context
             <div className="space-y-6">
               <div className="border-t pt-4">
-                <h3 className="font-medium mb-2">Select Course</h3>
+                <h3 className="font-medium mb-2">
+                  Select{" "}
+                  {getTerminology(ContentTerms.Course, SystemTerms.Course)}
+                </h3>
                 {batchOptions?.max_selectable_packages !== 0 && (
                   <p className="text-xs text-gray-500 mb-2">
-                    Pre-selected levels are not selectable
+                    Pre-selected{" "}
+                    {getTerminology(
+                      ContentTerms.Level,
+                      SystemTerms.Level
+                    ).toLocaleLowerCase()}
+                    s are not selectable
                   </p>
                 )}
                 {batchOptions?.max_selectable_packages !== 0 && (
                   <p className="text-xs text-gray-500 mb-4">
-                    Select the levels you want to enroll in
+                    Select the{" "}
+                    {getTerminology(
+                      ContentTerms.Level,
+                      SystemTerms.Level
+                    ).toLocaleLowerCase()}
+                    s you want to enroll in
                   </p>
                 )}
                 <p className="text-xs text-gray-500 mb-2">{}</p>
@@ -987,12 +1002,30 @@ const EnrollByInvite = () => {
               )}
               {Object.values(errors.sessions).some((error) => error) && (
                 <p className="text-red-500 text-sm">
-                  Please select at least one session for each package
+                  Please select at least one{" "}
+                  {getTerminology(
+                    ContentTerms.Session,
+                    SystemTerms.Session
+                  ).toLocaleLowerCase()}{" "}
+                  for each{" "}
+                  {getTerminology(
+                    ContentTerms.Package,
+                    SystemTerms.Package
+                  ).toLocaleLowerCase()}
                 </p>
               )}
               {Object.values(errors.levels).some((error) => error) && (
                 <p className="text-red-500 text-sm">
-                  Please select at least one level for each session
+                  Please select at least one{" "}
+                  {getTerminology(
+                    ContentTerms.Level,
+                    SystemTerms.Level
+                  ).toLocaleLowerCase()}{" "}
+                  for each{" "}
+                  {getTerminology(
+                    ContentTerms.Session,
+                    SystemTerms.Session
+                  ).toLocaleLowerCase()}
                 </p>
               )}
 

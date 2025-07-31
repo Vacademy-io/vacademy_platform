@@ -15,6 +15,9 @@ const config: CapacitorConfig = {
       enable: true,
       preventScreenshots: true,
     },
+    PushNotifications: {
+      presentationOptions: ["badge", "sound", "alert"],
+    },
   },
 };
 

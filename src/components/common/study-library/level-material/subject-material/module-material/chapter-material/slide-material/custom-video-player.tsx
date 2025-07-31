@@ -58,7 +58,8 @@ interface CustomVideoPlayerProps {
 const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
     ({ videoUrl, sourceType = "URL", onTimeUpdate, questions = [] }, ref) => {
         const { activeItem } = useContentStore();
-        const { addActivity } = useTrackingStore();
+        // Select only the addActivity function to avoid re-renders due to trackingData updates
+        const addActivity = useTrackingStore((state) => state.addActivity);
         const activityId = useRef(uuidv4());
         const currentTimestamps = useRef<
             Array<{
@@ -1364,7 +1365,7 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
                 {/* Video player container with verification overlay */}
                 <div
                     ref={playerContainerRef}
-                    className="aspect-video w-full relative h-full items-center flex justify-center overflow-hidden"
+                    className="aspect-video w-full relative min-h-[200px] sm:min-h-[250px] md:min-h-[300px] lg:h-full items-center flex justify-center overflow-hidden rounded-lg"
                     onMouseMove={handleMouseMove}
                 >
                     {/* Verification overlay - only shown in fullscreen */}

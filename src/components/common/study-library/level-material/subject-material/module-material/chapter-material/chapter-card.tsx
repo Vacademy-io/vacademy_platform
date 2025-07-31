@@ -3,6 +3,7 @@ import { BookOpenText, PlayCircle  } from "@phosphor-icons/react";
 import { CheckCircle } from "phosphor-react";
 import { Chapter } from "@/stores/study-library/use-modules-with-chapters-store";
 import { CompletionStatusComponent } from "@/components/common/completion-status-component";
+import { toTitleCase } from "@/lib/utils";
 
 export const ChapterCard = ({ chapter }: {chapter: Chapter}) => {
     const router = useRouter();
@@ -37,7 +38,7 @@ export const ChapterCard = ({ chapter }: {chapter: Chapter}) => {
             <div className="flex w-full flex-col justify-center gap-2 rounded-lg border border-neutral-300 bg-neutral-50 p-4">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center justify-between text-body font-semibold">
-                        <div>{chapter.chapter_name}</div>
+                        <div>{toTitleCase(chapter.chapter_name)}</div>
                     </div>
                     <div className="flex items-center gap-2">
                         <CompletionStatusComponent completionPercentage={chapter.percentage_completed} />

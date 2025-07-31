@@ -8,7 +8,8 @@ import { useSessionDetails } from "../-hooks/useSessionDetails";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { LinkType } from "@/routes/register/live-class/-types/enum";
 import YouTubePlayerWrapper from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/youtube-player";
-import ZoomEmbedPlayer from "./-components/ZoomEnbedPlayer";
+import ZoomEmbedPlayer from "./-components/ZoomEmbedPlayer"; // Fixed typo
+
 export const Route = createFileRoute("/study-library/live-class/embed/")({
   validateSearch: z.object({
     sessionId: z.string(),
@@ -42,7 +43,7 @@ function EmbedComponent() {
     return match ? match[1] : null;
   };
 
-  const renderEmbededSession = () => {
+  const renderEmbeddedSession = () => { // Fixed typo: "Embeded" -> "Embedded"
     if (!sessionDetails?.linkType) return null;
 
     // --- YouTube & recorded YouTube links ---
@@ -50,33 +51,42 @@ function EmbedComponent() {
       sessionDetails.linkType === LinkType.YOUTUBE ||
       sessionDetails.linkType === LinkType.YOUTUBE_RECORDED
     ) {
-      const videoId =
-        extractYouTubeVideoId(sessionDetails.defaultMeetLink) ||
-        sessionDetails.defaultMeetLink; // fallback
-
-      const allowPlayPause = (
-        (sessionDetails as any)?.allowPlayPause ??
-        (sessionDetails as any)?.isPlayPauseEnabled ??
-        (sessionDetails as any)?.playPauseEnabled ??
-        (sessionDetails as any)?.enablePlayPause ??
-        true
-      );
-        // Normalize allowRewind to boolean: backend may send 'false' string or boolean
-        const rawAllowRewind =
-          (sessionDetails as any)?.allowRewind ??
-          (sessionDetails as any)?.allow_rewind;
-        const allowRewind = rawAllowRewind !== undefined
-          ? (rawAllowRewind === true || rawAllowRewind === 'true')
-          : true;
+      const videoId = extractYouTubeVideoId(sessionDetails.defaultMeetLink);
+      
+      // Handle case where video ID extraction fails
+      if (!videoId) {
         return (
-          <div className="w-full h-full">
-            <YouTubePlayerWrapper
-              videoId={videoId}
-              allowPlayPause={allowPlayPause}
-              allowRewind={allowRewind}
-            />
+          <div className="p-4 border border-red-200 rounded-lg bg-red-50 text-red-700">
+            Invalid YouTube URL format
           </div>
         );
+      }
+
+      // Safely access properties with proper fallbacks
+      const sessionData = sessionDetails as any; // Consider creating proper types
+      const allowPlayPause = Boolean(
+        sessionData?.allowPlayPause ??
+        sessionData?.isPlayPauseEnabled ??
+        sessionData?.playPauseEnabled ??
+        sessionData?.enablePlayPause ??
+        true
+      );
+
+      // Normalize allowRewind to boolean
+      const rawAllowRewind = sessionData?.allowRewind ?? sessionData?.allow_rewind;
+      const allowRewind = rawAllowRewind !== undefined
+        ? (rawAllowRewind === true || rawAllowRewind === 'true')
+        : true;
+
+      return (
+        <div className="w-full h-full">
+          <YouTubePlayerWrapper
+            videoId={videoId}
+            allowPlayPause={allowPlayPause}
+            allowRewind={allowRewind}
+          />
+        </div>
+      );
     }
 
     // --- Zoom recorded links ---
@@ -87,8 +97,12 @@ function EmbedComponent() {
       return <ZoomEmbedPlayer recordingUrl={sessionDetails.defaultMeetLink} />;
     }
 
-    // TODO: handle other link types (Google Meet, etc.)
-    return null;
+    // Handle unsupported link types
+    return (
+      <div className="p-4 border border-yellow-200 rounded-lg bg-yellow-50 text-yellow-700">
+        Unsupported session type: {sessionDetails.linkType}
+      </div>
+    );
   };
 
   if (isLoading) return <DashboardLoader />;
@@ -125,16 +139,15 @@ function EmbedComponent() {
 
       <div className="flex flex-col h-[calc(100vh-64px)]">
         <div className="flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-center mb-6 ">
+          <h1 className="text-2xl font-bold text-center mb-6">
             {sessionDetails?.title || "Session"}
           </h1>
-          {/* Live badge overlay */}
-          <div className="absolute top-10 right-10 p-2 px-4 bg-red-500 text-white z-[1] rounded">
+          <span className="rounded bg-red-600 px-3 py-1 text-sm font-semibold uppercase text-white shadow">
             Live
-          </div>
+          </span>
         </div>
         <div className="flex-grow relative flex items-center justify-center p-2">
-          {renderEmbededSession()}
+          {renderEmbeddedSession()}
         </div>
       </div>
     </LayoutContainer>

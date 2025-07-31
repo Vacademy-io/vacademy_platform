@@ -1,0 +1,121 @@
+# .dockerignore for Vacademy Learner Dashboard
+
+# Development files and folders
+node_modules
+.npm
+.pnpm-store
+.pnpm-debug.log*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Build outputs that will be generated in container
+dist
+dist-ssr
+build
+
+# Development and testing
+coverage
+.nyc_output
+.cache
+.vite
+*.local
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+README.md
+docs/
+*.md
+
+# Logs
+logs
+*.log
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+*.lcov
+
+# Capacitor platform builds (mobile/desktop)
+android/
+ios/
+electron/build/
+electron/dist/
+
+# Cache directories
+.eslintcache
+.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# Development scripts and configs (keep package.json and lock files)
+.prettierrc*
+.eslintrc*
+jest.config.*
+*.test.*
+*.spec.*
+__tests__/
+test/
+tests/
+
+# Docker files (except the ones we need)
+docker-compose.*
+Dockerfile.dev
+.dockerignore
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Environment files (will be injected at runtime)
+.env*
+!.env.example
+
+# Backup files
+*.bak
+*.swp
+*.swo
+*~
+
+# IDE specific files
+*.iml
+.project
+.classpath
+.settings/
+.loadpath
+.externalToolBuilders/
+
+# Build artifacts that shouldn't be in source
+*.tgz
+*.tar.gz 

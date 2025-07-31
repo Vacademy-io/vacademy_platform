@@ -11,6 +11,7 @@ import { ModulesWithChaptersProvider } from "@/providers/study-library/modules-w
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import { useQueryClient } from "@tanstack/react-query";
 import { useStudyLibraryStore } from "@/stores/study-library/use-study-library-store";
+import { toTitleCase } from "@/lib/utils";
 
 interface ModulesSearchParams {
     courseId: string;
@@ -80,7 +81,7 @@ function ModuleMaterialPage() {
                 onClick={() => window.history.back()}
                 className="cursor-pointer"
             />
-            <div>{`${subjectName}`}</div>
+            <div>{toTitleCase(subjectName)}</div>
         </div>
     );
 

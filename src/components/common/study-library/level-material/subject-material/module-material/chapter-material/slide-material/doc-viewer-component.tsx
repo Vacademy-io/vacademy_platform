@@ -198,26 +198,26 @@ export const DocViewerComponent = forwardRef<DocViewerComponentRef, {
   }
 
   return (
-    <div ref={containerRef} className="min-h-[600px] max-h-[800px] overflow-auto bg-white rounded-2xl border border-gray-200 shadow-lg hover:shadow-xl transition-shadow duration-300">
+    <div ref={containerRef} className="min-h-[40vh] sm:min-h-[50vh] lg:min-h-[60vh] max-h-[calc(100vh-120px)] sm:max-h-[calc(100vh-140px)] lg:max-h-[calc(100vh-170px)] overflow-auto bg-white rounded-lg sm:rounded-xl lg:rounded-2xl border border-gray-200 shadow-lg hover:shadow-xl transition-shadow duration-300">
       {isHtml ? (
-        <div className="p-8 lg:p-12 markdown-content">
+        <div className="p-4 sm:p-6 lg:p-8 xl:p-12 markdown-content">
           {markdownContent ? (
-            <div className="prose prose-lg prose-gray max-w-none">
+            <div className="prose prose-sm sm:prose-base lg:prose-lg prose-gray max-w-none">
               <ReactMarkdown 
                 components={{
                   // Enhanced heading styles with better typography
                   h1: ({children}) => (
-                    <h1 className="text-4xl font-bold mb-8 text-gray-900 border-b-2 border-gradient-to-r from-blue-500 to-indigo-600 pb-4 leading-tight">
+                    <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-4 sm:mb-6 lg:mb-8 text-gray-900 border-b-2 border-gradient-to-r from-blue-500 to-indigo-600 pb-2 sm:pb-3 lg:pb-4 leading-tight">
                       {children}
                     </h1>
                   ),
                   h2: ({children}) => (
-                    <h2 className="text-3xl font-semibold mb-6 text-gray-900 mt-12 first:mt-0 leading-tight">
+                    <h2 className="text-xl sm:text-2xl lg:text-3xl font-semibold mb-3 sm:mb-4 lg:mb-6 text-gray-900 mt-6 sm:mt-8 lg:mt-12 first:mt-0 leading-tight">
                       {children}
                     </h2>
                   ),
                   h3: ({children}) => (
-                    <h3 className="text-2xl font-semibold mb-4 text-gray-900 mt-10 first:mt-0 leading-tight">
+                    <h3 className="text-lg sm:text-xl lg:text-2xl font-semibold mb-2 sm:mb-3 lg:mb-4 text-gray-900 mt-5 sm:mt-6 lg:mt-10 first:mt-0 leading-tight">
                       {children}
                     </h3>
                   ),

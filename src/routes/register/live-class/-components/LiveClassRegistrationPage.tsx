@@ -44,6 +44,8 @@ import { SessionStreamingServiceType } from "@/routes/register/live-class/-types
 import { getPublicFileUrl } from "../-hooks/getPublicUrl";
 import { useMarkAttendance } from "@/routes/live-class-guest/-hooks/useMarkAttendance";
 import { Storage } from "@capacitor/storage";
+import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 
 export const verifyEmailSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -452,7 +454,13 @@ export default function LiveClassRegistrationPage() {
               </div>
               {data?.subject && (
                 <div className="flex flex-row gap-2">
-                  <div>Subject:</div>
+                  <div>
+                    {getTerminology(
+                      ContentTerms.Subjects,
+                      SystemTerms.Subjects
+                    )}
+                    :
+                  </div>
                   <div>{data.subject}</div>
                 </div>
               )}

@@ -4,14 +4,24 @@ import {
     ChalkboardTeacher,
     Code,
     File,
-    FileDoc,
     FilePdf,
     PlayCircle,
     Question,
     CaretLeft,
     BookOpen,
     GraduationCap,
+    Presentation,
+    GameController,
+    Exam,
+    Terminal,
+    ClipboardText,
+    FileDoc,
+    Notebook,
+    FileText,
+    PresentationChart,
+    Folder,
 } from "phosphor-react";
+import { toTitleCase } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
     Select,
@@ -45,9 +55,15 @@ import { getInstituteId } from "@/constants/helper";
 import { Preferences } from "@capacitor/preferences";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
 import { CourseStructureDetails } from "./course-structure-details";
-import { BatchForSessionType } from "@/types/institute-details/institute-details-interface";
 import { CourseStructureResponse } from "@/types/institute-details/course-details-interface";
 import { getIdByLevelAndSession } from "@/routes/courses/course-details/-utils/helper";
+import { MyButton } from "@/components/design-system/button";
+import { EnrollmentPaymentDialog } from "./payment-dialogs";
+import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
+import { TokenKey } from "@/constants/auth/tokens";
+import { getSubjectDetails } from "@/routes/courses/course-details/-utils/helper";
+import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
 
 type SlideType = {
     id: string;
@@ -112,7 +128,10 @@ type SlideCountType = {
 const mockCourses: Course[] = [
     {
         id: "1",
-        title: "2-Level Course Structure",
+    title: `2-Level ${getTerminology(
+      ContentTerms.Course,
+      SystemTerms.Course
+    )} Structure`,
         level: 2,
         structure: {
             courseName: "Introduction to Web Development",
@@ -121,7 +140,10 @@ const mockCourses: Course[] = [
     },
     {
         id: "2",
-        title: "3-Level Course Structure",
+    title: `3-Level ${getTerminology(
+      ContentTerms.Course,
+      SystemTerms.Course
+    )} Structure`,
         level: 3,
         structure: {
             courseName: "Frontend Fundamentals",
@@ -130,7 +152,10 @@ const mockCourses: Course[] = [
     },
     {
         id: "3",
-        title: "4-Level Course Structure",
+    title: `4-Level ${getTerminology(
+      ContentTerms.Course,
+      SystemTerms.Course
+    )} Structure`,
         level: 4,
         structure: {
             courseName: "Full-Stack JavaScript Development Mastery",
@@ -139,7 +164,10 @@ const mockCourses: Course[] = [
     },
     {
         id: "4",
-        title: "5-Level Course Structure",
+    title: `5-Level ${getTerminology(
+      ContentTerms.Course,
+      SystemTerms.Course
+    )} Structure`,
         level: 5,
         structure: {
             courseName: "Advanced Software Engineering Principles",
@@ -154,9 +182,35 @@ const heading = (
             onClick={() => window.history.back()}
             className="cursor-pointer"
         />
-        <h1 className="text-lg ml-2">Course Details</h1>
+    <h1 className="text-lg ml-2">
+      {getTerminology(ContentTerms.Course, SystemTerms.Course)} Details
+    </h1>
     </div>
 );
+
+// Add a type for enrolled session - matches BatchForSessionType structure
+interface EnrolledSession {
+    id: string;
+  session: {
+    id: string;
+    session_name: string;
+    status: string;
+    start_date: string;
+  };
+  level: {
+    id: string;
+    level_name: string;
+    duration_in_days: number | null;
+    thumbnail_id: string | null;
+  };
+    start_time: string | null;
+    status: string;
+  package_dto: {
+    id: string;
+    package_name: string;
+    thumbnail_id?: string | null;
+  };
+}
 
 export const CourseDetailsPage = () => {
     const { setNavHeading } = useNavHeadingStore();
@@ -170,6 +224,12 @@ export const CourseDetailsPage = () => {
     const router = useRouter();
     const searchParams = router.state.location.search;
     const [instituteId, setInstituteId] = useState<string | null>(null);
+  const [enrolledSessions, setEnrolledSessions] = useState<EnrolledSession[]>(
+    []
+  );
+
+    // Get selectedTab from route params, default to "ALL" if not provided
+    const selectedTab = searchParams.selectedTab || "ALL";
 
     useEffect(() => {
         const fetchInstituteAndUserId = async () => {
@@ -177,26 +237,38 @@ export const CourseDetailsPage = () => {
                 key: "InstituteId",
             });
             setInstituteId(instituteResult.value || null);
+
+            // Fetch user's enrolled sessions
+            const sessionListResult = await Preferences.get({
+                key: "sessionList",
+            });
+            if (sessionListResult.value) {
+                const sessionList = JSON.parse(sessionListResult.value);
+                setEnrolledSessions(
+                    Array.isArray(sessionList) ? sessionList as EnrolledSession[] : [sessionList as EnrolledSession]
+                );
+            }
+
+            // Fetch invite code from preferences or use default
+            const inviteCodeResult = await Preferences.get({
+                key: "inviteCode",
+            });
+            if (inviteCodeResult.value) {
+                setInviteCode(inviteCodeResult.value);
+            }
+
+            // Fetch authentication token
+            const token = await getTokenFromStorage(TokenKey.accessToken);
+            if (token) {
+                setAuthToken(token);
+            }
         };
 
         fetchInstituteAndUserId();
     }, []);
 
-    const [
-        packageSessionIdForCurrentLevel,
-        setPackageSessionIdForCurrentLevel,
-    ] = useState<string | null>(null);
-
-    const findIdByPackageId = (data: BatchForSessionType[]) => {
-        const result = data?.find(
-            (item) => item.package_dto?.id === searchParams.courseId
-        );
-        return result?.id || "";
-    };
-
-    const [packageSessionIds, setPackageSessionIds] = useState<string | null>(
-        null
-    );
+  const [packageSessionIdForCurrentLevel, setPackageSessionIdForCurrentLevel] =
+    useState<string | null>(null);
 
     // ✅ Fetch institute details
     useEffect(() => {
@@ -206,16 +278,14 @@ export const CourseDetailsPage = () => {
                 const response = await axios.get(
                     `${urlInstituteDetails}/${instituteId}`
                 );
-                setPackageSessionIds(
-                    findIdByPackageId(response.data.batches_for_sessions)
-                );
-                setPackageSessionIdForCurrentLevel(
-                    getIdByLevelAndSession(
+                const packageSessionId = getIdByLevelAndSession(
                         response.data.batches_for_sessions,
                         selectedSession,
                         selectedLevel
-                    )
                 );
+                console.log("Setting packageSessionId:", packageSessionId, "for session:", selectedSession, "level:", selectedLevel);
+                console.log("Available batches:", response.data.batches_for_sessions);
+                setPackageSessionIdForCurrentLevel(packageSessionId);
             } catch (error) {
                 console.log(error);
             }
@@ -236,7 +306,7 @@ export const CourseDetailsPage = () => {
             (item: CourseStructureResponse) =>
                 item.course.id === searchParams.courseId
         );
-    }, [studyLibraryData]);
+    }, [studyLibraryData, searchParams.courseId]);
 
     const form = useForm<CourseDetailsFormValues>({
         resolver: zodResolver(courseDetailsSchema),
@@ -276,17 +346,45 @@ export const CourseDetailsPage = () => {
         { _id: string; value: string; label: string }[]
     >([]);
 
-    // Convert sessions to select options format
+    // Convert sessions to select options format - filter based on selectedTab
     const sessionOptions = useMemo(() => {
         const sessions = form.getValues("courseData")?.sessions || [];
-        return sessions.map((session) => ({
-            _id: session.sessionDetails.id,
-            value: session.sessionDetails.id,
-            label: session.sessionDetails.session_name,
-        }));
-    }, [form.watch("courseData.sessions")]);
 
-    // Update level options when session changes
+        // For PROGRESS and COMPLETED tabs, only show enrolled sessions
+        // For ALL tab, show all available sessions
+        if (selectedTab === "PROGRESS" || selectedTab === "COMPLETED") {
+            const enrolledSessionIds = enrolledSessions.map(
+                (enrolled) => enrolled.session.id
+            );
+            const filteredSessions = sessions.filter((session) =>
+                enrolledSessionIds.includes(session.sessionDetails.id)
+            );
+
+            // If no enrolled sessions found, show all sessions as fallback
+            if (filteredSessions.length === 0 && sessions.length > 0) {
+                return sessions.map((session) => ({
+                    _id: session.sessionDetails.id,
+                    value: session.sessionDetails.id,
+                    label: toTitleCase(session.sessionDetails.session_name),
+                }));
+            }
+
+            return filteredSessions.map((session) => ({
+                _id: session.sessionDetails.id,
+                value: session.sessionDetails.id,
+                label: toTitleCase(session.sessionDetails.session_name),
+            }));
+        } else {
+            // For ALL tab, show all sessions
+            return sessions.map((session) => ({
+                _id: session.sessionDetails.id,
+                value: session.sessionDetails.id,
+                label: toTitleCase(session.sessionDetails.session_name),
+            }));
+        }
+    }, [form.watch("courseData.sessions"), enrolledSessions, selectedTab]);
+
+    // Update level options when session changes - filter based on selectedTab
     const handleSessionChange = (sessionId: string) => {
         setSelectedSession(sessionId);
         const sessions = form.getValues("courseData")?.sessions || [];
@@ -295,13 +393,54 @@ export const CourseDetailsPage = () => {
         );
 
         if (selectedSessionData) {
-            const newLevelOptions = selectedSessionData.levelDetails.map(
-                (level) => ({
-                    _id: level.id,
-                    value: level.id,
-                    label: level.name,
-                })
-            );
+            let newLevelOptions;
+
+            // For PROGRESS and COMPLETED tabs, only show enrolled levels
+            if (selectedTab === "PROGRESS" || selectedTab === "COMPLETED") {
+                // Find the enrolled session to get enrolled level IDs
+                const enrolledSession = enrolledSessions.find(
+                    (enrolled) => enrolled.session.id === sessionId
+                );
+
+                let enrolledLevelIds: string[] = [];
+                if (enrolledSession) {
+                    // Extract level ID from enrolled session
+          enrolledLevelIds = [enrolledSession.level.id].filter(
+            Boolean
+          ) as string[];
+                }
+
+                // Filter levels based on enrollment
+                const filteredLevels = selectedSessionData.levelDetails.filter(
+                    (level) => enrolledLevelIds.includes(level.id)
+                );
+
+                // If no enrolled levels found, show all levels as fallback
+        if (
+          filteredLevels.length === 0 &&
+          selectedSessionData.levelDetails.length > 0
+        ) {
+                    newLevelOptions = selectedSessionData.levelDetails.map((level) => ({
+                        _id: level.id,
+                        value: level.id,
+                        label: level.name,
+                    }));
+                } else {
+                    newLevelOptions = filteredLevels.map((level) => ({
+                        _id: level.id,
+                        value: level.id,
+                        label: level.name,
+                    }));
+                }
+            } else {
+                // For ALL tab, show all levels
+        newLevelOptions = selectedSessionData.levelDetails.map((level) => ({
+                        _id: level.id,
+                        value: level.id,
+                        label: level.name,
+        }));
+            }
+
             setLevelOptions(newLevelOptions);
 
             // Select the first level when session changes
@@ -318,7 +457,7 @@ export const CourseDetailsPage = () => {
         setSelectedLevel(levelId);
     };
 
-    // Set initial session and its levels
+    // Set initial session and its levels - auto-select if only one option
     useEffect(() => {
         if (
             sessionOptions.length > 0 &&
@@ -334,8 +473,9 @@ export const CourseDetailsPage = () => {
         const loadCourseData = async () => {
             if (courseDetailsData?.course) {
                 try {
-                    const transformedData =
-                        await transformApiDataToCourseData(courseDetailsData);
+          const transformedData = await transformApiDataToCourseData(
+            courseDetailsData
+          );
                     if (transformedData) {
                         form.reset({
                             courseData: transformedData,
@@ -351,14 +491,286 @@ export const CourseDetailsPage = () => {
         loadCourseData();
     }, [courseDetailsData]);
 
+    // Calculate module statistics
+    useEffect(() => {
+        const currentSubjects = getSubjectDetails(
+            form.getValues(),
+            selectedSession,
+            selectedLevel
+        );
+        
+        let totalModules = 0;
+        let totalChapters = 0;
+        const totalSubjects = currentSubjects.length;
+        
+        // Calculate modules and chapters for non-depth-5 courses
+        if (form.getValues("courseData.courseStructure") !== 5) {
+            currentSubjects.forEach((subject) => {
+                if (subject.modules) {
+                    totalModules += subject.modules.length;
+                    subject.modules.forEach((module) => {
+                        if (module.chapters) {
+                            totalChapters += module.chapters.length;
+                        }
+                    });
+                }
+            });
+        }
+        
+        setModuleStats({
+            totalModules,
+            totalChapters,
+            totalSubjects
+        });
+    }, [selectedSession, selectedLevel, form.watch("courseData")]);
+
     // Add this with other queries at the top level of the component
     const slideCountQuery = useQuery({
-        ...handleGetSlideCountDetails(packageSessionIds || ""),
-        enabled: !!packageSessionIds,
+        ...handleGetSlideCountDetails(packageSessionIdForCurrentLevel || ""),
+        enabled: !!packageSessionIdForCurrentLevel,
     });
+
+    // Custom slide count calculation to handle special document types
+    const processedSlideCounts = useMemo(() => {
+        if (!slideCountQuery.data) return [];
+        
+        const counts = slideCountQuery.data as SlideCountType[];
+
+    const processedCounts: {
+      source_type: string;
+      slide_count: number;
+      display_name: string;
+    }[] = [];
+        
+        // Create a map to track counts for different types
+        const typeCounts: { [key: string]: number } = {};
+        
+        // Track if we have specific document types to avoid duplicates
+    const hasSpecificDocumentTypes = counts.some(
+      (count) =>
+            count.source_type === "JUPYTER_NOTEBOOK" || 
+            count.source_type === "CODE_EDITOR" || 
+            count.source_type === "PRESENTATION" ||
+            count.source_type === "SCRATCH_PROJECT"
+        );
+        
+    counts.forEach((count) => {
+            let canonicalType = count.source_type;
+            if (canonicalType === "JUPYTER") canonicalType = "JUPYTER_NOTEBOOK";
+            if (canonicalType === "SCRATCH") canonicalType = "SCRATCH_PROJECT";
+            if (canonicalType === "DOCUMENT") {
+                // Only add DOCUMENT count if we don't have specific document types
+                // This prevents duplicates when we have JUPYTER_NOTEBOOK, CODE_EDITOR, etc.
+                if (!hasSpecificDocumentTypes) {
+          typeCounts["DOCUMENT"] =
+            (typeCounts["DOCUMENT"] || 0) + count.slide_count;
+                }
+            } else {
+        typeCounts[canonicalType] =
+          (typeCounts[canonicalType] || 0) + count.slide_count;
+            }
+        });
+        
+        // Convert the map to the required format
+        Object.entries(typeCounts).forEach(([sourceType, slideCount]) => {
+            let displayName = "";
+            switch (sourceType) {
+                case "VIDEO":
+                    displayName = "Video slides";
+                    break;
+                case "CODE":
+                    displayName = "Code slides";
+                    break;
+                case "PDF":
+                    displayName = "PDF slides";
+                    break;
+                case "DOCUMENT":
+                    displayName = "DOC slides";
+                    break;
+                case "QUESTION":
+                    displayName = "Question slides";
+                    break;
+                case "ASSIGNMENT":
+                    displayName = "Assignment slides";
+                    break;
+                case "PRESENTATION":
+                    displayName = "Presentation slides";
+                    break;
+                case "JUPYTER_NOTEBOOK":
+                case "JUPYTER":
+                    displayName = "Jupyter Notebook slides";
+                    break;
+                case "SCRATCH_PROJECT":
+                case "SCRATCH":
+                    displayName = "Scratch Project slides";
+                    break;
+                case "QUIZ":
+                    displayName = "Quiz slides";
+                    break;
+                case "CODE_EDITOR":
+                    displayName = "Code Editor slides";
+                    break;
+                default:
+                    displayName = `${sourceType} slides`;
+            }
+            
+            processedCounts.push({
+                source_type: sourceType,
+                slide_count: slideCount,
+        display_name: displayName,
+            });
+        });
+        
+        return processedCounts;
+    }, [slideCountQuery.data]);
+
+    const [enrollmentDialogOpen, setEnrollmentDialogOpen] = useState(false);
+    const [inviteCode, setInviteCode] = useState<string>("default");
+    const [authToken, setAuthToken] = useState<string>("");
+    const [moduleStats, setModuleStats] = useState({
+        totalModules: 0,
+        totalChapters: 0,
+        totalSubjects: 0
+    });
+
+    // Function to update module statistics for depth 5 courses
+    const updateModuleStats = (modulesData: Record<string, Array<{ chapters?: Array<unknown> }>>) => {
+        if (form.getValues("courseData.courseStructure") === 5) {
+            let totalModules = 0;
+            let totalChapters = 0;
+            
+            Object.values(modulesData).forEach((modules) => {
+                totalModules += modules.length;
+                modules.forEach((module) => {
+                    if (module.chapters) {
+                        totalChapters += module.chapters.length;
+                    }
+                });
+            });
+            
+            setModuleStats(prev => ({
+                ...prev,
+                totalModules,
+                totalChapters
+            }));
+        }
+    };
+
+    const getSlideTypeIcon = (type: string) => {
+        switch (type) {
+            case "VIDEO":
+        return (
+          <PlayCircle
+            size={16}
+            className="text-blue-600 group-hover/item:scale-110 transition-transform duration-300"
+            weight="duotone"
+          />
+        );
+            case "CODE":
+        return (
+          <Code
+            size={16}
+            className="text-green-600 group-hover/item:scale-110 transition-transform duration-300"
+            weight="duotone"
+          />
+        );
+            case "PDF":
+        return (
+          <FilePdf
+            size={16}
+            className="text-red-600 group-hover/item:scale-110 transition-transform duration-300"
+            weight="duotone"
+          />
+        );
+            case "DOCUMENT":
+        return (
+          <FileDoc
+            size={16}
+            className="text-purple-600 group-hover/item:scale-110 transition-transform duration-300"
+            weight="duotone"
+          />
+        );
+            case "QUESTION":
+        return (
+          <Question
+            size={16}
+            className="text-orange-600 group-hover/item:scale-110 transition-transform duration-300"
+            weight="duotone"
+          />
+        );
+            case "ASSIGNMENT":
+        return (
+          <ClipboardText
+            size={16}
+            className="text-indigo-600 group-hover/item:scale-110 transition-transform duration-300"
+            weight="duotone"
+          />
+        );
+            case "PRESENTATION":
+        return (
+          <Presentation
+            size={16}
+            className="text-cyan-600 group-hover/item:scale-110 transition-transform duration-300"
+            weight="duotone"
+          />
+        );
+            case "JUPYTER_NOTEBOOK":
+            case "JUPYTER":
+        return (
+          <Notebook
+            size={16}
+            className="text-yellow-600 group-hover/item:scale-110 transition-transform duration-300"
+            weight="duotone"
+          />
+        );
+            case "SCRATCH_PROJECT":
+            case "SCRATCH":
+        return (
+          <GameController
+            size={16}
+            className="text-pink-600 group-hover/item:scale-110 transition-transform duration-300"
+            weight="duotone"
+          />
+        );
+            case "QUIZ":
+        return (
+          <Exam
+            size={16}
+            className="text-teal-600 group-hover/item:scale-110 transition-transform duration-300"
+            weight="duotone"
+          />
+        );
+            case "CODE_EDITOR":
+        return (
+          <Terminal
+            size={16}
+            className="text-gray-600 group-hover/item:scale-110 transition-transform duration-300"
+            weight="duotone"
+          />
+        );
+            default:
+        return (
+          <File
+            size={16}
+            className="text-gray-500 group-hover/item:scale-110 transition-transform duration-300"
+            weight="duotone"
+          />
+        );
+        }
+    };
 
     return (
         <>
+            {/* Enrollment Payment Dialog */}
+            <EnrollmentPaymentDialog
+                open={enrollmentDialogOpen}
+                onOpenChange={setEnrollmentDialogOpen}
+                packageSessionId={packageSessionIdForCurrentLevel || ""}
+                instituteId={instituteId || ""}
+                token={authToken}
+                courseTitle={form.getValues("courseData").title}
+                inviteCode={inviteCode}
+            />
             <div className="min-h-screen bg-gradient-to-br from-gray-50/80 via-white to-primary-50/20 relative overflow-hidden w-full max-w-full">
                 {/* Animated background elements */}
                 <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -378,10 +790,7 @@ export const CourseDetailsPage = () => {
                         ) : (
                             <div className="absolute inset-0 z-0">
                                 <img
-                                    src={
-                                        form.watch("courseData")
-                                            .courseBannerMediaId
-                                    }
+                  src={form.watch("courseData").courseBannerMediaId}
                                     alt="Course Banner"
                                     className="w-full h-full object-cover"
                                     onError={(e) => {
@@ -424,33 +833,20 @@ export const CourseDetailsPage = () => {
                                                     {/* Tags */}
                                                     <div className="mb-2 sm:mb-3 flex flex-wrap gap-1.5">
                                                         {form
-                                                            .getValues(
-                                                                "courseData"
-                                                            )
-                                                            .tags.map(
-                                                                (
-                                                                    tag,
-                                                                    index
-                                                                ) => (
+                              .getValues("courseData")
+                              .tags.map((tag, index) => (
                                                                     <span
-                                                                        key={
-                                                                            index
-                                                                        }
+                                  key={index}
                                                                         className="bg-white/20 backdrop-blur-sm border border-white/30 text-white px-2.5 py-1 rounded-full text-xs font-medium hover:bg-white/30 transition-all duration-300"
                                                                     >
                                                                         {tag}
                                                                     </span>
-                                                                )
-                                                            )}
+                              ))}
                                                     </div>
 
                                                     {/* Title */}
                                                     <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold mb-2 sm:mb-3 leading-tight">
-                                                        {
-                                                            form.getValues(
-                                                                "courseData"
-                                                            ).title
-                                                        }
+                                                        {toTitleCase(form.getValues("courseData").title)}
                                                     </h1>
 
                                                     {/* Description */}
@@ -458,10 +854,7 @@ export const CourseDetailsPage = () => {
                                                         className="text-sm sm:text-base opacity-90 leading-relaxed line-clamp-2"
                                                         dangerouslySetInnerHTML={{
                                                             __html:
-                                                                form.getValues(
-                                                                    "courseData"
-                                                                ).description ||
-                                                                "",
+                                form.getValues("courseData").description || "",
                                                         }}
                                                     />
                                                 </>
@@ -476,26 +869,20 @@ export const CourseDetailsPage = () => {
                                             <div className="relative overflow-hidden rounded-xl shadow-2xl border border-white/20 bg-black/20 backdrop-blur-sm group">
                                                 <div className="relative aspect-video">
                                                     <video
-                                                        src={
-                                                            form.watch(
-                                                                "courseData"
-                                                            ).courseMediaId
-                                                        }
+                            src={form.watch("courseData").courseMediaId}
                                                         controls
                                                         controlsList="nodownload noremoteplayback"
                                                         disablePictureInPicture
                                                         disableRemotePlayback
                                                         className="w-full h-full object-cover rounded-xl"
                                                         onError={(e) => {
-                                                            e.currentTarget.style.display =
-                                                                "none";
+                              e.currentTarget.style.display = "none";
                                                             e.currentTarget.parentElement?.classList.add(
                                                                 "bg-black"
                                                             );
                                                         }}
                                                     >
-                                                        Your browser does not
-                                                        support the video tag.
+                            Your browser does not support the video tag.
                                                     </video>
                                                 </div>
 
@@ -520,25 +907,19 @@ export const CourseDetailsPage = () => {
                                                 <div className="mb-3 sm:mb-4 flex flex-wrap gap-2 justify-center">
                                                     {form
                                                         .getValues("courseData")
-                                                        .tags.map(
-                                                            (tag, index) => (
+                            .tags.map((tag, index) => (
                                                                 <span
                                                                     key={index}
                                                                     className="bg-white/20 backdrop-blur-sm border border-white/30 text-white px-3 py-1.5 rounded-full text-sm font-medium hover:bg-white/30 transition-all duration-300"
                                                                 >
                                                                     {tag}
                                                                 </span>
-                                                            )
-                                                        )}
+                            ))}
                                                 </div>
 
                                                 {/* Title */}
                                                 <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-3 sm:mb-4 leading-tight">
-                                                    {
-                                                        form.getValues(
-                                                            "courseData"
-                                                        ).title
-                                                    }
+                                                    {toTitleCase(form.getValues("courseData").title)}
                                                 </h1>
 
                                                 {/* Description */}
@@ -546,9 +927,7 @@ export const CourseDetailsPage = () => {
                                                     className="text-base sm:text-lg opacity-90 leading-relaxed line-clamp-3 max-w-3xl mx-auto"
                                                     dangerouslySetInnerHTML={{
                                                         __html:
-                                                            form.getValues(
-                                                                "courseData"
-                                                            ).description || "",
+                              form.getValues("courseData").description || "",
                                                     }}
                                                 />
                                             </div>
@@ -586,131 +965,156 @@ export const CourseDetailsPage = () => {
                                             />
                                         </div>
                                         <h3 className="text-base font-bold text-gray-900">
-                                            Course Configuration
+                      {getTerminology(ContentTerms.Course, SystemTerms.Course)}
+                      Configuration
                                         </h3>
                                     </div>
 
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 lg:gap-4">
-                                        {/* Session Selector */}
-
-                                        {sessionOptions && (
-                                            <div className="space-y-1.5">
-                                                <label className="text-xs font-semibold text-gray-700 flex items-center space-x-1.5">
-                                                    <div className="w-1.5 h-1.5 bg-primary-500 rounded-full"></div>
-                                                    <span>Session</span>
-                                                </label>
-                                                {sessionOptions.length === 1 ? (
-                                                    sessionOptions[0]?.label !==
-                                                        "default" && (
-                                                        <div className="flex flex-col gap-2">
-                                                            <label className="text-sm font-medium">
-                                                                {
-                                                                    sessionOptions[0]
-                                                                        ?.label
-                                                                }
-                                                            </label>
-                                                        </div>
-                                                    )
-                                                ) : (
-                                                    <div className="flex flex-col gap-2">
-                                                        <Select
-                                                            value={
-                                                                selectedSession
-                                                            }
-                                                            onValueChange={
-                                                                handleSessionChange
-                                                            }
-                                                        >
-                                                            <SelectTrigger>
-                                                                <SelectValue placeholder="Select Session" />
-                                                            </SelectTrigger>
-                                                            <SelectContent>
-                                                                {sessionOptions.map(
-                                                                    (
-                                                                        option
-                                                                    ) => (
-                                                                        <SelectItem
-                                                                            key={
-                                                                                option._id
-                                                                            }
-                                                                            value={
-                                                                                option.value
-                                                                            }
-                                                                        >
-                                                                            {
-                                                                                option.label
-                                                                            }
-                                                                        </SelectItem>
-                                                                    )
-                                                                )}
-                                                            </SelectContent>
-                                                        </Select>
+                  {sessionOptions && sessionOptions.length > 0 ? (
+                                        <div>
+                                            {/* Preview notice for ALL tab */}
+                                            {selectedTab === "ALL" && (
+                                                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                                    <div className="flex items-center space-x-2">
+                                                        <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                                                        <span className="text-sm font-medium text-blue-800">
+                              {getTerminology(
+                                ContentTerms.Course,
+                                SystemTerms.Course
+                              )}{" "}
+                              Preview Mode
+                                                        </span>
                                                     </div>
-                                                )}
-                                            </div>
-                                        )}
+                                                    <p className="text-xs text-blue-700 mt-1">
+                            Browse{" "}
+                            {getTerminology(
+                              ContentTerms.Course,
+                              SystemTerms.Course
+                            ).toLocaleLowerCase()}{" "}
+                            structure. Enroll to access{" "}
+                            {getTerminology(
+                              ContentTerms.Slides,
+                              SystemTerms.Slides
+                            ).toLocaleLowerCase()}
+                            s and materials.
+                                                    </p>
+                                                </div>
+                                            )}
 
-                                        {/* Level Selector */}
-                                        {levelOptions && (
-                                            <div className="space-y-1.5">
-                                                <label className="text-xs font-semibold text-gray-700 flex items-center space-x-1.5">
-                                                    <div className="w-1.5 h-1.5 bg-primary-500 rounded-full"></div>
-                                                    <span>Level</span>
-                                                </label>
-                                                {levelOptions.length === 1 ? (
-                                                    levelOptions[0]?.label !==
-                                                        "default" && (
-                                                        <div className="flex flex-col gap-2">
-                                                            <label className="text-sm font-medium">
-                                                                {
-                                                                    levelOptions[0]
-                                                                        ?.label
-                                                                }
-                                                            </label>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 lg:gap-4">
+                                                {/* Session Selector */}
+                        {sessionOptions &&
+                          sessionOptions.length > 0 &&
+                                                    // Hide if only one and label is 'default'
+                          (sessionOptions.length === 1 &&
+                          sessionOptions[0].label ===
+                            "default" ? null : sessionOptions.length === 1 ? (
+                                                        <div className="p-2.5 bg-gray-50/80 rounded-lg border border-gray-200">
+                                                            <span className="text-sm font-medium text-gray-900">
+                                                                {sessionOptions[0]?.label}
+                                                            </span>
                                                         </div>
-                                                    )
-                                                ) : (
-                                                    <div className="flex flex-col gap-2">
-                                                        <Select
-                                                            value={
-                                                                selectedLevel
-                                                            }
-                                                            onValueChange={
-                                                                handleLevelChange
-                                                            }
-                                                            disabled={
-                                                                !selectedSession
-                                                            }
-                                                        >
-                                                            <SelectTrigger>
-                                                                <SelectValue placeholder="Select Level" />
-                                                            </SelectTrigger>
-                                                            <SelectContent>
-                                                                {levelOptions.map(
-                                                                    (
-                                                                        option
-                                                                    ) => (
+                                                    ) : sessionOptions.length > 1 ? (
+                                                        <div className="flex flex-col gap-2">
+                                                            <Select
+                                                                value={selectedSession}
+                                                                onValueChange={handleSessionChange}
+                                                            >
+                                                                <SelectTrigger>
+                                                                    <SelectValue placeholder="Select Session" />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    {sessionOptions.map((option) => (
                                                                         <SelectItem
-                                                                            key={
-                                                                                option._id
-                                                                            }
-                                                                            value={
-                                                                                option.value
-                                                                            }
+                                                                            key={option._id}
+                                                                            value={option.value}
                                                                         >
-                                                                            {
-                                                                                option.label
-                                                                            }
+                                                                            {option.label}
                                                                         </SelectItem>
-                                                                    )
-                                                                )}
-                                                            </SelectContent>
-                                                        </Select>
-                                                    </div>
-                                                )}
+                                                                    ))}
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </div>
+                          ) : null)}
+
+                                                {/* Level Selector */}
+                        {levelOptions &&
+                          levelOptions.length > 0 &&
+                                                    // Hide if only one and label is 'default'
+                          (levelOptions.length === 1 &&
+                          levelOptions[0].label ===
+                            "default" ? null : levelOptions.length === 1 ? (
+                                                        <div className="p-2.5 bg-gray-50/80 rounded-lg border border-gray-200">
+                                                            <span className="text-sm font-medium text-gray-900">
+                                                                {levelOptions[0]?.label}
+                                                            </span>
+                                                        </div>
+                                                    ) : levelOptions.length > 1 ? (
+                                                        <div className="flex flex-col gap-2">
+                                                            <Select
+                                                                value={selectedLevel}
+                                                                onValueChange={handleLevelChange}
+                                                                disabled={!selectedSession}
+                                                            >
+                                                                <SelectTrigger>
+                                                                    <SelectValue placeholder="Select Level" />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    {levelOptions.map((option) => (
+                                                                        <SelectItem
+                                                                            key={option._id}
+                                                                            value={option.value}
+                                                                        >
+                                                                            {option.label}
+                                                                        </SelectItem>
+                                                                    ))}
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </div>
+                          ) : null)}
                                             </div>
-                                        )}
-                                    </div>
+                                        </div>
+                                    ) : (
+                                        <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                                            <div className="flex items-center space-x-2">
+                                                <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
+                                                <span className="text-sm font-medium text-yellow-800">
+                                                    {selectedTab === "ALL"
+                            ? `No ${getTerminology(
+                                ContentTerms.Session,
+                                SystemTerms.Session
+                              ).toLocaleLowerCase()} available for this ${getTerminology(
+                                ContentTerms.Course,
+                                SystemTerms.Course
+                              ).toLocaleLowerCase()}`
+                            : `You are not enrolled in any ${getTerminology(
+                                ContentTerms.Session,
+                                SystemTerms.Session
+                              ).toLocaleLowerCase()} for this ${getTerminology(
+                                ContentTerms.Course,
+                                SystemTerms.Course
+                              ).toLocaleLowerCase()}`}
+                                                </span>
+                                            </div>
+                                            <p className="text-xs text-yellow-700 mt-1">
+                                                {selectedTab === "ALL"
+                          ? `This ${getTerminology(
+                              ContentTerms.Course,
+                              SystemTerms.Course
+                            ).toLocaleLowerCase()} may not have any active ${getTerminology(
+                              ContentTerms.Session,
+                              SystemTerms.Session
+                            ).toLocaleLowerCase()}s configured.`
+                          : `Please contact your ${getTerminology(
+                              RoleTerms.Teacher,
+                              SystemTerms.Teacher
+                            ).toLocaleLowerCase()} or ${getTerminology(
+                              RoleTerms.Admin,
+                              SystemTerms.Admin
+                            ).toLocaleLowerCase()} to get enrolled.`}
+                      </p>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
@@ -722,21 +1126,18 @@ export const CourseDetailsPage = () => {
                                 <CourseStructureDetails
                                     selectedSession={selectedSession}
                                     selectedLevel={selectedLevel}
-                                    courseStructure={form.getValues(
-                                        "courseData.courseStructure"
-                                    )}
+                  courseStructure={form.getValues("courseData.courseStructure")}
                                     courseData={form.getValues()}
-                                    packageSessionId={
-                                        packageSessionIdForCurrentLevel || ""
-                                    }
+                  packageSessionId={packageSessionIdForCurrentLevel || ""}
+                                    selectedTab={selectedTab}
+                  updateModuleStats={updateModuleStats}
                                 />
                             </div>
 
                             {/* Content Sections */}
                             <div className="space-y-4">
                                 {/* What You'll Learn Section */}
-                                {form.getValues("courseData")
-                                    .whatYoullLearn && (
+                {form.getValues("courseData").whatYoullLearn && (
                                     <div
                                         className="relative bg-white/80 backdrop-blur-sm border border-gray-200/60 rounded-xl shadow-sm hover:shadow-lg transition-all duration-500 p-3 sm:p-4 group animate-fade-in-up"
                                         style={{ animationDelay: "0.3s" }}
@@ -759,9 +1160,7 @@ export const CourseDetailsPage = () => {
                                                 className="text-sm text-gray-600 leading-relaxed"
                                                 dangerouslySetInnerHTML={{
                                                     __html:
-                                                        form.getValues(
-                                                            "courseData"
-                                                        ).whatYoullLearn || "",
+                            form.getValues("courseData").whatYoullLearn || "",
                                                 }}
                                             />
                                         </div>
@@ -769,8 +1168,7 @@ export const CourseDetailsPage = () => {
                                 )}
 
                                 {/* About Course Section */}
-                                {form.getValues("courseData")
-                                    .aboutTheCourse && (
+                {form.getValues("courseData").aboutTheCourse && (
                                     <div
                                         className="relative bg-white/80 backdrop-blur-sm border border-gray-200/60 rounded-xl shadow-sm hover:shadow-lg transition-all duration-500 p-3 sm:p-4 group animate-fade-in-up"
                                         style={{ animationDelay: "0.4s" }}
@@ -786,16 +1184,18 @@ export const CourseDetailsPage = () => {
                                                     />
                                                 </div>
                                                 <h2 className="text-base font-bold text-gray-900">
-                                                    About this course
+                          About this{" "}
+                          {getTerminology(
+                            ContentTerms.Course,
+                            SystemTerms.Course
+                          ).toLocaleLowerCase()}
                                                 </h2>
                                             </div>
                                             <div
                                                 className="text-sm text-gray-600 leading-relaxed"
                                                 dangerouslySetInnerHTML={{
                                                     __html:
-                                                        form.getValues(
-                                                            "courseData"
-                                                        ).aboutTheCourse || "",
+                            form.getValues("courseData").aboutTheCourse || "",
                                                 }}
                                             />
                                         </div>
@@ -803,8 +1203,7 @@ export const CourseDetailsPage = () => {
                                 )}
 
                                 {/* Who Should Join Section */}
-                                {form.getValues("courseData")
-                                    .whoShouldLearn && (
+                {form.getValues("courseData").whoShouldLearn && (
                                     <div
                                         className="relative bg-white/80 backdrop-blur-sm border border-gray-200/60 rounded-xl shadow-sm hover:shadow-lg transition-all duration-500 p-3 sm:p-4 group animate-fade-in-up"
                                         style={{ animationDelay: "0.5s" }}
@@ -827,9 +1226,7 @@ export const CourseDetailsPage = () => {
                                                 className="text-sm text-gray-600 leading-relaxed"
                                                 dangerouslySetInnerHTML={{
                                                     __html:
-                                                        form.getValues(
-                                                            "courseData"
-                                                        ).whoShouldLearn || "",
+                            form.getValues("courseData").whoShouldLearn || "",
                                                 }}
                                             />
                                         </div>
@@ -838,8 +1235,7 @@ export const CourseDetailsPage = () => {
 
                                 {/* Instructors Section */}
                                 {form.getValues("courseData").instructors &&
-                                    form.getValues("courseData").instructors
-                                        .length > 0 && (
+                  form.getValues("courseData").instructors.length > 0 && (
                                         <div
                                             className="relative bg-white/80 backdrop-blur-sm border border-gray-200/60 rounded-xl shadow-sm hover:shadow-lg transition-all duration-500 p-3 sm:p-4 group animate-fade-in-up"
                                             style={{ animationDelay: "0.6s" }}
@@ -855,49 +1251,37 @@ export const CourseDetailsPage = () => {
                                                         />
                                                     </div>
                                                     <h2 className="text-base font-bold text-gray-900">
-                                                        Instructors
+                            {getTerminology(
+                              RoleTerms.Teacher,
+                              SystemTerms.Teacher
+                            ).toLocaleLowerCase()}
+                            s
                                                     </h2>
                                                 </div>
                                                 <div className="space-y-2">
                                                     {form
                                                         .getValues("courseData")
-                                                        .instructors.map(
-                                                            (
-                                                                instructor,
-                                                                index
-                                                            ) => (
+                            .instructors.map((instructor, index) => (
                                                                 <div
                                                                     key={index}
                                                                     className="flex items-center gap-3 p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300"
                                                                 >
                                                                     <Avatar className="w-8 h-8 border-2 border-white shadow-sm">
-                                                                        <AvatarImage
-                                                                            src=""
-                                                                            alt={
-                                                                                instructor.email
-                                                                            }
-                                                                        />
+                                  <AvatarImage src="" alt={instructor.email} />
                                                                         <AvatarFallback className="bg-gradient-to-br from-primary-500 to-primary-600 text-white text-xs font-semibold">
-                                                                            {getInitials(
-                                                                                instructor.email
-                                                                            )}
+                                    {getInitials(instructor.email)}
                                                                         </AvatarFallback>
                                                                     </Avatar>
                                                                     <div>
                                                                         <h3 className="text-sm font-semibold text-gray-900">
-                                                                            {
-                                                                                instructor.name
-                                                                            }
+                                    {instructor.name}
                                                                         </h3>
                                                                         <p className="text-xs text-gray-600">
-                                                                            {
-                                                                                instructor.email
-                                                                            }
+                                    {instructor.email}
                                                                         </p>
                                                                     </div>
                                                                 </div>
-                                                            )
-                                                        )}
+                            ))}
                                                 </div>
                                             </div>
                                         </div>
@@ -929,43 +1313,50 @@ export const CourseDetailsPage = () => {
                                                 />
                                             </div>
                                             <h2 className="text-base font-bold text-gray-900">
-                                                Course Overview
+                        {getTerminology(
+                          ContentTerms.Course,
+                          SystemTerms.Course
+                        ).toLocaleLowerCase()}
+                        Overview
                                             </h2>
                                         </div>
 
                                         {/* Course Stats */}
                                         <div className="space-y-3">
                                             {/* Level Badge */}
-                                            {levelOptions[0]?.label !==
-                                                "default" && (
-                                                <div className="flex items-center justify-between p-2.5 bg-gradient-to-r from-primary-50 to-primary-100 rounded-lg border border-primary-200">
-                                                    <div className="flex items-center space-x-2">
-                                                        <Steps
-                                                            size={16}
-                                                            className="text-primary-600"
-                                                            weight="duotone"
-                                                        />
-                                                        <span className="text-xs font-medium text-primary-700">
-                                                            Level
+                                            {levelOptions.length > 0 &&
+                                                selectedLevel &&
+                        levelOptions.find(
+                          (option) => option.value === selectedLevel
+                        )?.label !== "default" && (
+                                                    <div className="flex items-center justify-between p-2.5 bg-gradient-to-r from-primary-50 to-primary-100 rounded-lg border border-primary-200">
+                                                        <div className="flex items-center space-x-2">
+                                                            <Steps
+                                                                size={16}
+                                                                className="text-primary-600"
+                                                                weight="duotone"
+                                                            />
+                                                            <span className="text-xs font-medium text-primary-700">
+                                {getTerminology(
+                                  ContentTerms.Level,
+                                  SystemTerms.Level
+                                ).toLocaleLowerCase()}
+                                                            </span>
+                                                        </div>
+                                                        <span className="text-xs font-bold text-primary-800">
+                                                            {
+                                                                levelOptions.find(
+                                  (option) => option.value === selectedLevel
+                                                                )?.label
+                                                            }
                                                         </span>
                                                     </div>
-                                                    <span className="text-xs font-bold text-primary-800">
-                                                        {
-                                                            levelOptions.find(
-                                                                (option) =>
-                                                                    option.value ===
-                                                                    selectedLevel
-                                                            )?.label
-                                                        }
-                                                    </span>
-                                                </div>
-                                            )}
+                                                )}
 
                                             {/* Slide Counts */}
                                             {slideCountQuery.isLoading ? (
                                                 <div className="space-y-2">
-                                                    {[1, 2, 3, 4, 5].map(
-                                                        (i) => (
+                          {[1, 2, 3, 4, 5].map((i) => (
                                                             <div
                                                                 key={i}
                                                                 className="flex items-center justify-between p-2.5 bg-gray-50 rounded-lg animate-pulse"
@@ -973,118 +1364,113 @@ export const CourseDetailsPage = () => {
                                                                 <div className="h-3 w-16 bg-gray-200 rounded"></div>
                                                                 <div className="h-3 w-6 bg-gray-200 rounded"></div>
                                                             </div>
-                                                        )
-                                                    )}
+                          ))}
                                                 </div>
                                             ) : slideCountQuery.error ? (
                                                 <div className="p-2.5 bg-red-50 border border-red-200 rounded-lg">
                                                     <p className="text-xs text-red-600 font-medium">
-                                                        Error loading slide
+                            Error loading{" "}
+                            {getTerminology(
+                              ContentTerms.Slides,
+                              SystemTerms.Slides
+                            ).toLocaleLowerCase()}
                                                         counts
                                                     </p>
                                                 </div>
                                             ) : (
                                                 <div className="space-y-2">
-                                                    {slideCountQuery.data?.map(
-                                                        (
-                                                            count: SlideCountType
-                                                        ) => (
-                                                            <div
-                                                                key={
-                                                                    count.source_type
-                                                                }
+                                                    {processedSlideCounts.map(
+                            (count: {
+                              source_type: string;
+                              slide_count: number;
+                              display_name: string;
+                            }) => (
+                              <div
+                                key={count.source_type}
                                                                 className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300 group/item"
                                                             >
                                                                 <div className="flex items-center space-x-2">
-                                                                    {count.source_type ===
-                                                                        "VIDEO" && (
-                                                                        <PlayCircle
-                                                                            size={
-                                                                                16
-                                                                            }
-                                                                            className="text-blue-600 group-hover/item:scale-110 transition-transform duration-300"
-                                                                            weight="duotone"
-                                                                        />
-                                                                    )}
-                                                                    {count.source_type ===
-                                                                        "CODE" && (
-                                                                        <Code
-                                                                            size={
-                                                                                16
-                                                                            }
-                                                                            className="text-green-600 group-hover/item:scale-110 transition-transform duration-300"
-                                                                            weight="duotone"
-                                                                        />
-                                                                    )}
-                                                                    {count.source_type ===
-                                                                        "PDF" && (
-                                                                        <FilePdf
-                                                                            size={
-                                                                                16
-                                                                            }
-                                                                            className="text-red-600 group-hover/item:scale-110 transition-transform duration-300"
-                                                                            weight="duotone"
-                                                                        />
-                                                                    )}
-                                                                    {count.source_type ===
-                                                                        "DOCUMENT" && (
-                                                                        <FileDoc
-                                                                            size={
-                                                                                16
-                                                                            }
-                                                                            className="text-purple-600 group-hover/item:scale-110 transition-transform duration-300"
-                                                                            weight="duotone"
-                                                                        />
-                                                                    )}
-                                                                    {count.source_type ===
-                                                                        "QUESTION" && (
-                                                                        <Question
-                                                                            size={
-                                                                                16
-                                                                            }
-                                                                            className="text-orange-600 group-hover/item:scale-110 transition-transform duration-300"
-                                                                            weight="duotone"
-                                                                        />
-                                                                    )}
-                                                                    {count.source_type ===
-                                                                        "ASSIGNMENT" && (
-                                                                        <File
-                                                                            size={
-                                                                                16
-                                                                            }
-                                                                            className="text-indigo-600 group-hover/item:scale-110 transition-transform duration-300"
-                                                                            weight="duotone"
-                                                                        />
-                                                                    )}
+                                                                    {getSlideTypeIcon(count.source_type)}
                                                                     <span className="text-xs font-medium text-gray-700">
-                                                                        {count.source_type ===
-                                                                            "VIDEO" &&
-                                                                            "Video slides"}
-                                                                        {count.source_type ===
-                                                                            "CODE" &&
-                                                                            "Code slides"}
-                                                                        {count.source_type ===
-                                                                            "PDF" &&
-                                                                            "PDF slides"}
-                                                                        {count.source_type ===
-                                                                            "DOCUMENT" &&
-                                                                            "Doc slides"}
-                                                                        {count.source_type ===
-                                                                            "QUESTION" &&
-                                                                            "Question slides"}
-                                                                        {count.source_type ===
-                                                                            "ASSIGNMENT" &&
-                                                                            "Assignment slides"}
+                                                                        {count.display_name}
                                                                     </span>
                                                                 </div>
                                                                 <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
-                                                                    {
-                                                                        count.slide_count
-                                                                    }
+                                  {count.slide_count}
                                                                 </span>
                                                             </div>
                                                         )
                                                     )}
+
+                                                    {/* Module Statistics */}
+                          {(() => {
+                            const currentSubjects = getSubjectDetails(
+                              form.getValues(),
+                              selectedSession,
+                              selectedLevel
+                            );
+                            
+                            return (
+                              <>
+                                {/* Total Modules */}
+                                {moduleStats.totalModules > 0 && (
+                                  <div className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300 group/item">
+                                    <div className="flex items-center space-x-2">
+                                      <FileText
+                                        size={16}
+                                        className="text-blue-600 group-hover/item:scale-110 transition-transform duration-300"
+                                        weight="duotone"
+                                      />
+                                      <span className="text-xs font-medium text-gray-700">
+                                        {getTerminology(ContentTerms.Modules, SystemTerms.Modules)}
+                                      </span>
+                                    </div>
+                                    <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
+                                      {moduleStats.totalModules}
+                                    </span>
+                                  </div>
+                                )}
+
+                                {/* Total Chapters */}
+                                {moduleStats.totalChapters > 0 && (
+                                  <div className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300 group/item">
+                                    <div className="flex items-center space-x-2">
+                                      <PresentationChart
+                                        size={16}
+                                        className="text-green-600 group-hover/item:scale-110 transition-transform duration-300"
+                                        weight="duotone"
+                                      />
+                                      <span className="text-xs font-medium text-gray-700">
+                                        {getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)}
+                                      </span>
+                                    </div>
+                                    <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
+                                      {moduleStats.totalChapters}
+                                    </span>
+                                  </div>
+                                )}
+
+                                {/* Total Subjects (for depth 5) */}
+                                {form.getValues("courseData.courseStructure") === 5 && currentSubjects.length > 0 && (
+                                  <div className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300 group/item">
+                                    <div className="flex items-center space-x-2">
+                                      <Folder
+                                        size={16}
+                                        className="text-purple-600 group-hover/item:scale-110 transition-transform duration-300"
+                                        weight="duotone"
+                                      />
+                                      <span className="text-xs font-medium text-gray-700">
+                                        {getTerminology(ContentTerms.Subjects, SystemTerms.Subjects)}
+                                      </span>
+                                    </div>
+                                    <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
+                                      {currentSubjects.length}
+                                    </span>
+                                  </div>
+                                )}
+                              </>
+                            );
+                          })()}
 
                                                     {/* Instructors Count */}
                                                     {form.getValues(
@@ -1116,6 +1502,21 @@ export const CourseDetailsPage = () => {
                                                 </div>
                                             )}
                                         </div>
+                                        {/* Only show enroll button for ALL tab (catalog view) */}
+                                        {selectedTab === "ALL" && (
+                                            <MyButton
+                                                type="button"
+                                                scale="large"
+                                                buttonType="primary"
+                                                layoutVariant="default"
+                                                className="mt-2 !min-w-full !w-full text-xs h-8"
+                                                onClick={() =>
+                                                    setEnrollmentDialogOpen(true)
+                                                }
+                                            >
+                                                Enroll
+                                            </MyButton>
+                                        )}
                                     </div>
                                 </div>
                             </div>

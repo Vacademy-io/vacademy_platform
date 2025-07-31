@@ -57,7 +57,7 @@ const createDefaultSubject = (): SubjectType => ({
 const tryGetPublicUrl = async (
     mediaId: string | null | undefined
 ): Promise<string> => {
-    if (!mediaId) return "";
+    if (!mediaId || mediaId.trim() === "") return "";
     try {
         const url = await getPublicUrl(mediaId);
         return url || "";
@@ -66,24 +66,63 @@ const tryGetPublicUrl = async (
     }
 };
 
+function isJson(str: string): boolean {
+    try {
+        const parsed = JSON.parse(str);
+        return typeof parsed === "object" && parsed !== null;
+    } catch {
+        return false;
+    }
+}
+
 export const transformApiDataToCourseData = async (
-    apiData: CourseWithSessionsType
+    apiData: any // Use any or the correct type
 ) => {
     if (!apiData) return null;
     try {
-        const [coursePreviewImageMediaId, courseBannerMediaId, courseMediaId] =
+        const courseMediaImage = isJson(apiData.course.course_media_id)
+            ? JSON.parse(apiData.course.course_media_id)
+            : apiData.course.course_media_id;
+
+        const [coursePreviewImageMediaId, courseBannerMediaId] =
             await Promise.all([
                 tryGetPublicUrl(apiData.course.course_preview_image_media_id),
                 tryGetPublicUrl(apiData.course.course_banner_media_id),
-                tryGetPublicUrl(apiData.course.course_media_id),
             ]);
+
+        let courseMediaPreview = "";
+        // Only try to get media URL if course_media_id is not empty
+        if (apiData.course.course_media_id && apiData.course.course_media_id.trim() !== "") {
+            if (
+                isJson(apiData.course.course_media_id) &&
+                courseMediaImage.type === "youtube"
+            ) {
+                courseMediaPreview = courseMediaImage.id || "";
+            } else {
+                const mediaId = isJson(apiData.course.course_media_id)
+                    ? courseMediaImage.id
+                    : apiData.course.course_media_id;
+                
+                // Only call getPublicUrl if mediaId is not empty
+                if (mediaId && mediaId.trim() !== "") {
+                    courseMediaPreview = await getPublicUrl(mediaId);
+                }
+            }
+        }
+
+        // PATCH: handle tags as string or array
+        let tags: string[] = [];
+        if (Array.isArray(apiData.course.tags)) {
+            tags = apiData.course.tags;
+        } else if (typeof apiData.course.tags === "string") {
+            tags = apiData.course.tags.split(",").map((tag: string) => tag.trim());
+        }
 
         return {
             id: apiData.course.id,
             title: apiData.course.package_name,
             description: apiData.course.course_html_description || "",
-            tags:
-                apiData.course.tags?.split(",").map((tag) => tag.trim()) || [],
+            tags,
             imageUrl: coursePreviewImageMediaId || "", // Use the preview image as the main image
             courseStructure: apiData.course.course_depth,
             whatYoullLearn: apiData.course.why_learn,
@@ -96,11 +135,11 @@ export const transformApiDataToCourseData = async (
                 apiData.course.is_course_published_to_catalaouge,
             coursePreviewImageMediaId,
             courseBannerMediaId,
-            courseMediaId,
+            courseMediaId: courseMediaPreview,
             courseHtmlDescription: apiData.course.course_html_description,
             instructors: [], // This should be populated from your API if available
-            sessions: apiData.sessions.map((session) => ({
-                levelDetails: session.level_with_details.map((level) => {
+            sessions: apiData.sessions.map((session: any) => ({
+                levelDetails: session.level_with_details.map((level: any) => {
                     // For course structure 4, add a default subject if no subjects exist
                     let subjects = level.subjects;
                     if (apiData.course.course_depth === 4) {
@@ -113,7 +152,7 @@ export const transformApiDataToCourseData = async (
                         id: level.id,
                         name: level.name,
                         duration_in_days: level.duration_in_days,
-                        subjects: subjects.map((subject) => ({
+                        subjects: subjects.map((subject: any) => ({
                             id: subject.id,
                             subject_name: subject.subject_name,
                             subject_code: subject.subject_code,
@@ -134,7 +173,7 @@ export const transformApiDataToCourseData = async (
             })),
         };
     } catch (error) {
-        console.error("Error getting public URLs:", error);
+        console.error("Error transforming course data:", error, apiData);
         return null;
     }
 };

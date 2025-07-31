@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createRouter } from "@tanstack/react-router";
-import { StrictMode } from "react";
+import React, { StrictMode } from "react";
 import ReactDOM from "react-dom/client";
 import RootErrorComponent from "./components/core/deafult-error";
 import RootNotFoundComponent from "./components/core/default-not-found";
@@ -11,8 +11,20 @@ import { SidebarProvider } from "./components/ui/sidebar";
 import { routeTree } from "./routeTree.gen";
 import "./i18n";
 import { Toaster } from "./components/ui/sonner";
+import { usePushNotifications } from "./hooks/usePushNotifications";
+import { initializeAnalytics } from "./lib/analytics";
+
+// Initialize Amplitude analytics
+initializeAnalytics();
 
 const queryClient = new QueryClient();
+
+// Notification initialization wrapper
+const NotificationInitializer = ({ children }: { children: React.ReactNode }) => {
+  // Initialize push notifications when app starts
+  usePushNotifications();
+  return <>{children}</>;
+};
 
 // Create a new router instance
 const router = createRouter({
@@ -40,10 +52,12 @@ if (!rootElement.innerHTML) {
     <StrictMode>
       <ThemeProvider>
         <QueryClientProvider client={queryClient}>
-          <SidebarProvider>
-            <RouterProvider router={router} />
-            <Toaster />
-          </SidebarProvider>
+          <NotificationInitializer>
+            <SidebarProvider>
+              <RouterProvider router={router} />
+              <Toaster />
+            </SidebarProvider>
+          </NotificationInitializer>
         </QueryClientProvider>
       </ThemeProvider>
     </StrictMode>

@@ -26,6 +26,20 @@ import {
 import { BookOpen, Code, Gamepad2 } from "lucide-react";
 import { useDoubtSidebarStore } from "@/stores/study-library/doubt-sidebar-store";
 
+// Helper function to get responsive truncation length
+const getResponsiveTruncationLength = () => {
+    if (typeof window !== 'undefined') {
+        // On mobile devices (width < 640px), show more text as we have vertical space
+        // On tablet (640px - 1024px), moderate truncation
+        // On desktop (> 1024px), shorter truncation due to horizontal constraints
+        const width = window.innerWidth;
+        if (width < 640) return 24; // Mobile - more text
+        if (width < 1024) return 20; // Tablet - moderate
+        return 16; // Desktop - shorter
+    }
+    return 16; // Fallback
+};
+
 // Helper function to calculate overall completion percentage
 export const calculateOverallCompletion = (slides: Slide[]): number => {
     if (!slides || slides.length === 0) return 0;
@@ -293,7 +307,7 @@ const SlideItem = ({
                                         <h4 className="flex-1 text-xs font-semibold leading-tight truncate">
                                             {truncateString(
                                                 getSlideTitle(),
-                                                16
+                                                getResponsiveTruncationLength()
                                             )}
                                         </h4>
                                         {getStatusBadge()}

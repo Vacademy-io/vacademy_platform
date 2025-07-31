@@ -4,7 +4,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { getPublicUrl } from "@/services/upload_file";
 import { Session } from "@/types/user/user-detail";
-import { setToStorage } from "@/components/common/LoginPages/sections/login-form";
+import { setToStorage } from "@/components/common/auth/login/sections/login-form";
 import {
   getTokenDecodedData,
   setTokenInStorage,

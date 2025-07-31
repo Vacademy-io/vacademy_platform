@@ -28,7 +28,7 @@ export const handleSubmitRating = async (
             source_id,
             source_type: "PACKAGE_SESSION",
             text: desc,
-            status: "ACTIVE",
+            status: "PENDING",
         },
     });
     return response?.data;
@@ -40,7 +40,8 @@ export const handleUpdateRating = async (
     source_id: string,
     status: string,
     likes: number,
-    dislikes: number
+    dislikes: number,
+    text?: string
 ) => {
     const accessToken = await getTokenFromStorage(TokenKey.accessToken);
     const tokenData = getTokenDecodedData(accessToken);
@@ -56,6 +57,7 @@ export const handleUpdateRating = async (
             source_id,
             source_type: "PACKAGE_SESSION",
             status,
+            text,
         },
     });
     return response?.data;
@@ -73,6 +75,7 @@ export const getRatingDetails = async ({
         source_type: string;
     };
 }) => {
+    if (data.source_id === "") return null;
     const response = await axios({
         method: "POST",
         url: GET_ALL_USER_RATINGS,
@@ -106,6 +109,7 @@ export const handleGetRatingDetails = ({
 };
 
 export const handleGetOverallRating = async (source_id: string) => {
+    if (!source_id) return null;
     const response = await axios({
         method: "GET",
         url: GET_ALL_RATING_SUMMARY,

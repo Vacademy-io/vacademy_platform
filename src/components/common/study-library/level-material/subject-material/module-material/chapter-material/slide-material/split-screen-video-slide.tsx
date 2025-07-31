@@ -179,35 +179,43 @@ export const SplitScreenVideoSlide: React.FC<SplitScreenVideoSlideProps> = ({
 
         {/* Split Screen Content */}
         <div className="flex-1 relative overflow-hidden" ref={containerRef}>
-          <div className="flex h-full">
-            {/* Left Panel - Embedded Content */}
+          <div className="flex flex-col lg:flex-row h-full">
+            {/* Left Panel - Embedded Content (Top on mobile, Left on desktop) */}
             <div
-              className="relative overflow-hidden"
-              style={{ width: `${leftWidth}%` }}
+              className="relative overflow-hidden lg:border-r border-neutral-200"
+              style={{ 
+                width: window.innerWidth >= 1024 ? `${leftWidth}%` : '100%',
+                height: window.innerWidth >= 1024 ? '100%' : '50%'
+              }}
             >
               <div className="h-full">{renderEmbeddedSlide()}</div>
             </div>
 
-            {/* Resizer */}
-            <div
-              className={`relative flex items-center justify-center w-2 bg-neutral-100 hover:bg-neutral-200 cursor-col-resize transition-colors group ${
-                isDragging ? "bg-primary-200" : ""
-              }`}
-              onMouseDown={handleMouseDown}
-            >
-              <div className="absolute inset-y-0 w-4 -mx-1" />
-              <DotsSixVertical
-                size={16}
-                className={`text-neutral-400 group-hover:text-neutral-600 transition-colors ${
-                  isDragging ? "text-primary-600" : ""
+            {/* Resizer - Only show on desktop */}
+            {window.innerWidth >= 1024 && (
+              <div
+                className={`relative flex items-center justify-center w-2 bg-neutral-100 hover:bg-neutral-200 cursor-col-resize transition-colors group ${
+                  isDragging ? "bg-primary-200" : ""
                 }`}
-              />
-            </div>
+                onMouseDown={handleMouseDown}
+              >
+                <div className="absolute inset-y-0 w-4 -mx-1" />
+                <DotsSixVertical
+                  size={16}
+                  className={`text-neutral-400 group-hover:text-neutral-600 transition-colors ${
+                    isDragging ? "text-primary-600" : ""
+                  }`}
+                />
+              </div>
+            )}
 
-            {/* Right Panel - Video */}
+            {/* Right Panel - Video (Bottom on mobile, Right on desktop) */}
             <div
               className="relative overflow-hidden"
-              style={{ width: `${100 - leftWidth}%` }}
+              style={{ 
+                width: window.innerWidth >= 1024 ? `${100 - leftWidth}%` : '100%',
+                height: window.innerWidth >= 1024 ? '100%' : '50%'
+              }}
             >
               <div className="h-full p-2">
                 {videoContent || (
@@ -219,8 +227,8 @@ export const SplitScreenVideoSlide: React.FC<SplitScreenVideoSlideProps> = ({
             </div>
           </div>
 
-          {/* Drag Overlay */}
-          {isDragging && (
+          {/* Drag Overlay - Only show on desktop */}
+          {isDragging && window.innerWidth >= 1024 && (
             <div className="absolute inset-0 bg-transparent cursor-col-resize z-10" />
           )}
         </div>

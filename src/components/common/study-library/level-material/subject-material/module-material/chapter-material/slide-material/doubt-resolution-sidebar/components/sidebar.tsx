@@ -121,13 +121,23 @@ export const DoubtResolutionSidebar = () => {
     };
 
     const handleTimestampEdit = () => {
-        setShowTimestampDialog(true);
+        // Only allow timestamp editing for video slides
+        if (activeItem?.source_type === "VIDEO") {
+            setShowTimestampDialog(true);
+        }
     };
 
     const handleAskDoubtClick = () => {
         setTimestamp(undefined);
         setFormattedTime(undefined);
-        setShowTimestampDialog(true);
+        
+        // Only show timestamp dialog for video slides
+        if (activeItem?.source_type === "VIDEO") {
+            setShowTimestampDialog(true);
+        } else {
+            // For non-video slides, directly show the doubt input
+            setShowInput(true);
+        }
     };
 
    if (isPending) return <DashboardLoader />
@@ -142,21 +152,24 @@ export const DoubtResolutionSidebar = () => {
             fixed top-0 right-0 h-full z-[10000]
             transition-transform duration-300 ease-in-out
             ${open ? "translate-x-0" : "translate-x-full"}
-            w-[35vw] min-w-[400px] max-w-[500px]
+            w-full sm:w-[90vw] md:w-[70vw] lg:w-[60vw] xl:w-[35vw] 
+            min-w-[280px] sm:min-w-[320px] lg:min-w-[400px] max-w-[500px]
             bg-gradient-to-b from-white to-slate-50/30 shadow-2xl border-l border-gray-200/60 backdrop-blur-xl 
             flex flex-col overflow-hidden
           `} 
         >
                       {/* Enhanced Professional Header */}
-          <div className="border-b border-gray-200/80 bg-white/95 backdrop-blur-md p-6 flex-shrink-0">
+          <div className="border-b border-gray-200/80 bg-white/95 backdrop-blur-md p-3 sm:p-4 lg:p-6 flex-shrink-0">
                 <div className="flex items-center justify-between w-full">
-                    <div className="flex items-center gap-3">
-                        <div className="flex items-center justify-center w-10 h-10 bg-gradient-to-br from-primary-500 to-primary-600 rounded-xl shadow-lg">
-                            <ChatText size={20} className="text-white" />
+                    <div className="flex items-center gap-2 sm:gap-3">
+                        <div className="flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-primary-500 to-primary-600 rounded-xl shadow-lg">
+                            <ChatText size={16} className="sm:w-5 sm:h-5 text-white" />
                         </div>
                         <div className="flex flex-col">
-                            <h1 className="text-xl font-bold text-gray-900 leading-tight">Doubt Resolution</h1>
-                            <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Ask & Learn</p>
+                            <h1 className="text-lg sm:text-xl font-bold text-gray-900 leading-tight">Doubt Resolution</h1>
+                            <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                {activeItem?.source_type === "VIDEO" ? "Video Timestamp Support" : "General Support"}
+                            </p>
                         </div>
                     </div>
                     <button 
@@ -165,7 +178,7 @@ export const DoubtResolutionSidebar = () => {
                     >
                         <X size={18} className="text-gray-600 group-hover:text-gray-800" />
                     </button>
-                              </div>
+                </div>
           </div>
 
           {/* Enhanced Content Area */}
@@ -217,10 +230,10 @@ export const DoubtResolutionSidebar = () => {
           {/* Enhanced Footer */}
           <div className="border-t border-gray-200/80 bg-white/95 backdrop-blur-md p-6 flex-shrink-0">
                 {showInput ? (
-                    <div className="flex gap-3 w-full">
-                        <div className="flex flex-col gap-3 flex-1">
-                            {timestamp !== undefined && formattedTime && (
-                                <div className="flex items-center gap-2">
+                    <div className="flex gap-3 w-full max-h-[40vh]">
+                        <div className="flex flex-col gap-3 flex-1 min-h-0">
+                            {activeItem?.source_type === "VIDEO" && timestamp !== undefined && formattedTime && (
+                                <div className="flex items-center gap-2 flex-shrink-0">
                                     <TimestampChip
                                         timestamp={timestamp}
                                         formattedTime={formattedTime}
@@ -228,15 +241,16 @@ export const DoubtResolutionSidebar = () => {
                                     />
                                 </div>
                             )}
-                            <div className="relative">
+                            <div className="flex-1 min-h-0 overflow-hidden">
                                 <MainViewQuillEditor
                                     value={doubt}
                                     onChange={setDoubt}
                                     className="w-full min-h-[100px] rounded-xl border border-gray-200 focus-within:border-primary-300 transition-colors"
+                                    isDoubtResolution={true}
                                 />
                             </div>
                         </div>
-                        <div className="flex flex-col gap-2 items-center justify-end">
+                        <div className="flex flex-col gap-2 items-center justify-end flex-shrink-0">
                             <AddDoubt 
                                 doubtText={doubt} 
                                 refetch={refetch} 
@@ -261,6 +275,7 @@ export const DoubtResolutionSidebar = () => {
                     >
                         <Plus size={20} />
                         Ask a Doubt
+                    
                     </MyButton>
                 )}
             </div>
@@ -274,12 +289,14 @@ export const DoubtResolutionSidebar = () => {
           />
         )}
 
-        <TimestampDialog
-            open={showTimestampDialog}
-            onOpenChange={setShowTimestampDialog}
-            onTimestampSet={handleTimestampSet}
-            initialTimestamp={timestamp}
-        />
+        {activeItem?.source_type === "VIDEO" && (
+            <TimestampDialog
+                open={showTimestampDialog}
+                onOpenChange={setShowTimestampDialog}
+                onTimestampSet={handleTimestampSet}
+                initialTimestamp={timestamp}
+            />
+        )}
       </>
    )
 }

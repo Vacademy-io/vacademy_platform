@@ -1034,3 +1034,309 @@ html, body {
   transform: translateX(0);
   transition: all 0.3s ease-out;
 }
+
+/* Mobile responsiveness improvements */
+@media (max-width: 640px) {
+  /* Prevent horizontal overflow on mobile */
+  .dashboard-container {
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+  
+  /* Improve touch targets on mobile */
+  .stat-card, .continue-learning-card, .live-session-card {
+    min-height: 44px;
+    padding: 12px 16px;
+  }
+  
+  /* Better text scaling on mobile */
+  .dashboard-title {
+    font-size: clamp(1.125rem, 4vw, 1.5rem);
+    line-height: 1.4;
+  }
+  
+  /* Reduce animation complexity on mobile for better performance */
+  .animate-gentle-pulse {
+    animation: none;
+  }
+  
+  /* Prevent text overflow */
+  .session-title, .course-title {
+    word-break: break-word;
+    hyphens: auto;
+  }
+  
+  /* Better spacing for mobile cards */
+  .mobile-card {
+    padding: 0.75rem;
+    margin-bottom: 0.75rem;
+  }
+  
+  /* Ensure buttons are touch-friendly */
+  .mobile-button {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 12px 16px;
+  }
+  
+  /* Better grid layouts for mobile */
+  .mobile-grid {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+  
+  /* Reduce blur effects for performance */
+  .backdrop-blur-sm {
+    backdrop-filter: none;
+    background: rgba(255, 255, 255, 0.95);
+  }
+}
+
+/* Tablet responsive adjustments */
+@media (min-width: 641px) and (max-width: 1024px) {
+  .tablet-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+  }
+  
+  /* Better spacing for tablet */
+  .tablet-spacing {
+    padding: 1rem 1.5rem;
+  }
+}
+
+/* Prevent layout shifts */
+.prevent-shift {
+  contain: layout style;
+}
+
+/* Better scroll behavior */
+.smooth-scroll {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Optimize animations for reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  .animate-gentle-pulse,
+  .animate-fade-in-up,
+  .animate-fade-in-down {
+    animation: none;
+  }
+  
+  .transition-all {
+    transition: none;
+  }
+}
+
+/* Better focus states for accessibility */
+.focus-visible:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Ensure proper aspect ratios for images */
+.yoga-image {
+  aspect-ratio: 1 / 1;
+  object-fit: contain;
+  max-width: 100%;
+  height: auto;
+}
+
+/* Specific text overflow handling for dashboard cards */
+.continue-learning-card, .live-session-card {
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.continue-learning-card .slide-title,
+.continue-learning-card .slide-description,
+.live-session-card .session-title,
+.live-session-card .session-time {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+  word-wrap: break-word;
+  word-break: break-all;
+}
+
+/* Force text truncation on very small screens */
+@media (max-width: 375px) {
+  .slide-title, .session-title {
+    font-size: 0.75rem !important;
+    max-width: 150px;
+  }
+  
+  .slide-description, .session-time {
+    font-size: 0.65rem !important;
+    max-width: 120px;
+  }
+}
+
+/* Ensure flex containers don't overflow */
+.dashboard-flex-container {
+  min-width: 0;
+  flex: 1 1 0%;
+  overflow: hidden;
+}
+
+/* Additional mobile-specific text handling */
+@media (max-width: 640px) {
+  /* Ensure all text in cards is properly constrained */
+  .dashboard-card-text {
+    max-width: calc(100vw - 120px); /* Account for icons and padding */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  
+  /* Better handling for long course/session titles */
+  .course-title, .session-title, .slide-title {
+    word-break: break-word;
+    overflow-wrap: break-word;
+    hyphens: auto;
+    max-width: 100%;
+  }
+  
+  /* Prevent badge overflow */
+  .mobile-badge {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  
+  /* Better button sizing on mobile */
+  .mobile-action-button {
+    min-width: 60px;
+    flex-shrink: 0;
+  }
+}
+
+/* Hide scrollbar for modal */
+.scrollbar-hide {
+  -ms-overflow-style: none !important;  /* Internet Explorer 10+ */
+  scrollbar-width: none !important;  /* Firefox */
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none !important;  /* Safari and Chrome */
+}
+
+.scrollbar-hide::-webkit-scrollbar-track {
+  display: none !important;
+}
+
+.scrollbar-hide::-webkit-scrollbar-thumb {
+  display: none !important;
+}
+
+.scrollbar-hide::-webkit-scrollbar-corner {
+  display: none !important;
+}
+
+/* Additional specificity for modal scrollbar hiding */
+.scrollbar-hide[style*="overflow: auto"],
+.scrollbar-hide[style*="overflow-y: auto"],
+.scrollbar-hide[style*="overflow-y: scroll"] {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
+}
+
+.scrollbar-hide[style*="overflow: auto"]::-webkit-scrollbar,
+.scrollbar-hide[style*="overflow-y: auto"]::-webkit-scrollbar,
+.scrollbar-hide[style*="overflow-y: scroll"]::-webkit-scrollbar {
+  display: none !important;
+}
+
+.scrollbar-hide[style*="overflow: auto"]::-webkit-scrollbar-track,
+.scrollbar-hide[style*="overflow-y: auto"]::-webkit-scrollbar-track,
+.scrollbar-hide[style*="overflow-y: scroll"]::-webkit-scrollbar-track {
+  display: none !important;
+}
+
+.scrollbar-hide[style*="overflow: auto"]::-webkit-scrollbar-thumb,
+.scrollbar-hide[style*="overflow-y: auto"]::-webkit-scrollbar-thumb,
+.scrollbar-hide[style*="overflow-y: scroll"]::-webkit-scrollbar-thumb {
+  display: none !important;
+}
+
+/* Force hide scrollbars for all webkit browsers */
+.scrollbar-hide *::-webkit-scrollbar {
+  display: none !important;
+}
+
+.scrollbar-hide *::-webkit-scrollbar-track {
+  display: none !important;
+}
+
+.scrollbar-hide *::-webkit-scrollbar-thumb {
+  display: none !important;
+}
+
+/* Prevent body scroll when modal is open */
+body.modal-open {
+  overflow: hidden !important;
+  position: fixed !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Alternative approach for body scroll prevention */
+html.modal-open {
+  overflow: hidden !important;
+}
+
+/* Ensure modal backdrop prevents scroll */
+.modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Additional scrollbar hiding for all possible cases */
+.scrollbar-hide,
+.scrollbar-hide *,
+.scrollbar-hide *::before,
+.scrollbar-hide *::after {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
+}
+
+.scrollbar-hide::-webkit-scrollbar,
+.scrollbar-hide *::-webkit-scrollbar,
+.scrollbar-hide *::before::-webkit-scrollbar,
+.scrollbar-hide *::after::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.scrollbar-hide::-webkit-scrollbar-track,
+.scrollbar-hide *::-webkit-scrollbar-track {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.scrollbar-hide::-webkit-scrollbar-thumb,
+.scrollbar-hide *::-webkit-scrollbar-thumb {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* Force hide scrollbars on the modal container itself */
+[class*="scrollbar-hide"] {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
+}
+
+[class*="scrollbar-hide"]::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}

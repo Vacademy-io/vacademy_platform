@@ -71,21 +71,23 @@ public class LearnerAuthManager {
         User user = authService.createUser(userDTO,learnerEnrollRequestDTO.getInstituteId());
         userDTO.setId(user.getId());
         userDTO.setUsername(user.getUsername());
-        ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
-                applicationName, HttpMethod.POST.name(),
-                adminCoreServiceBaseUrl, AuthConstants.LEARNER_ENROLL_PATH,
-                learnerEnrollRequestDTO
-        );
-
-        LearnerEnrollResponseDTO learnerEnrollResponseDTO;
-        try {
-            learnerEnrollResponseDTO = new ObjectMapper().readValue(
-                    response.getBody(), new TypeReference<>() {}
+        if (learnerEnrollRequestDTO.getLearnerPackageSessionEnroll() != null) {
+            ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                    applicationName, HttpMethod.POST.name(),
+                    adminCoreServiceBaseUrl, AuthConstants.LEARNER_ENROLL_PATH,
+                    learnerEnrollRequestDTO
             );
-        } catch (JsonProcessingException e) {
-            throw new VacademyException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to register learner: " + e.getMessage());
-        }
 
+            LearnerEnrollResponseDTO learnerEnrollResponseDTO;
+            try {
+                learnerEnrollResponseDTO = new ObjectMapper().readValue(
+                        response.getBody(), new TypeReference<>() {}
+                );
+            } catch (JsonProcessingException e) {
+                throw new VacademyException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to register learner: " + e.getMessage());
+            }
+
+        }
         oAuth2VendorToUserDetailService.verifyEmail(learnerEnrollRequestDTO.getSubjectId(), learnerEnrollRequestDTO.getVendorId(), user.getEmail());
 
         RefreshToken refreshToken = refreshTokenService.createRefreshToken(user.getUsername(), "VACADEMY-WEB");

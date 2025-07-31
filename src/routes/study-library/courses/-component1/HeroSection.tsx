@@ -2,30 +2,46 @@ import { BookOpen } from "phosphor-react";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { MyButton } from "@/components/design-system/button";
-import {
-    getTokenDecodedData,
-    getTokenFromCookie,
-} from "@/lib/auth/sessionUtility";
-import { TokenKey } from "@/constants/auth/tokens";
-import { getInstituteIdSync } from "@/components/common/helper";
+import { useSuspenseQuery } from "@tanstack/react-query";
+import { handleFetchUserRoleDetails } from "../-services/institute-details";
+import { useEffect, useState } from "react";
+import { DashboardLoader } from "@/components/core/dashboard-loader";
+
+interface UserRole {
+    id: string;
+    institute_id: string;
+    role_name: string;
+    status: string;
+    role_id: string;
+}
 
 const HeroSection = ({
     allowLeanersToCreateCourses,
 }: {
     allowLeanersToCreateCourses: boolean;
 }) => {
-    const instituteId = getInstituteIdSync();
-    const accessToken = getTokenFromCookie(TokenKey.accessToken);
-    const tokenData = getTokenDecodedData(accessToken);
+    const { data: userRoleDetails, isLoading } = useSuspenseQuery(
+        handleFetchUserRoleDetails()
+    );
 
-    const hasTeacherAndStudentRole =
-        instituteId &&
-        tokenData?.authorities[instituteId]?.roles.includes("TEACHER") &&
-        tokenData?.authorities[instituteId]?.roles.includes("STUDENT");
+    const [hasTeacherAndStudentRole, setHasTeacherAndStudentRole] =
+        useState(false);
+
+    const roleNames = userRoleDetails?.roles?.map(
+        (role: UserRole) => role.role_name
+    );
 
     const handleNavigate = () => {
         window.location.href = "https://dash.vacademy.io/study-library/courses";
     };
+
+    useEffect(() => {
+        setHasTeacherAndStudentRole(
+            roleNames.includes("STUDENT") && roleNames.includes("TEACHER")
+        );
+    }, [userRoleDetails]);
+
+    if (isLoading) return <DashboardLoader />;
 
     return (
         <div className="relative min-h-[200px] bg-gradient-to-br from-gray-50/80 via-white to-primary-50/20 overflow-hidden w-full max-w-full">

@@ -19,8 +19,9 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
 
     @Transactional
     @Modifying
-    @Query(value = "INSERT INTO student_session_institute_group_mapping (id, user_id, enrolled_date, status, institute_enrollment_number, group_id, institute_id, expiry_date, package_session_id) " +
-            "VALUES (:id, :userId, :enrolledDate, :status, :instituteEnrolledNumber, :groupId, :instituteId, :expiryDate, :packageSessionId)",
+    @Query(value = "INSERT INTO student_session_institute_group_mapping " +
+            "(id, user_id, enrolled_date, status, institute_enrollment_number, group_id, institute_id, expiry_date, package_session_id, destination_package_session_id) " +
+            "VALUES (:id, :userId, :enrolledDate, :status, :instituteEnrolledNumber, :groupId, :instituteId, :expiryDate, :packageSessionId, :destinationPackageSessionId)",
             nativeQuery = true)
     void addStudentToInstitute(
             @Param("id") String id,
@@ -31,7 +32,9 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
             @Param("groupId") String groupId,
             @Param("instituteId") String instituteId,
             @Param("expiryDate") Date expiryDate,
-            @Param("packageSessionId") String packageSessionId);
+            @Param("packageSessionId") String packageSessionId,
+            @Param("destinationPackageSessionId") String destinationPackageSessionId
+    );
 
     @Modifying
     @Transactional
@@ -132,4 +135,6 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
             @Param("packageSessionId") String packageSessionId,
             @Param("statusList") List<String> statusList
     );
+
+    List<StudentSessionInstituteGroupMapping> findByPackageSession_IdInAndUserIdAndStatusIn(List<String> packageSessionIds, String userId, List<String> status);
 }

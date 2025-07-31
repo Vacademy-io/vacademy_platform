@@ -4,5 +4,6 @@ public enum PackageSessionStatusEnum {
     ACTIVE,
     DELETED,
     HIDDEN,
-    DRAFT
+    DRAFT,
+    INVITED
 }

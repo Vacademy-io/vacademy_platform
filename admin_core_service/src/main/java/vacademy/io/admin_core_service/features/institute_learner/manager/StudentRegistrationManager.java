@@ -224,8 +224,70 @@ public class StudentRegistrationManager {
                                 instituteStudentDetails.getEnrollmentDate(),
                                 instituteStudentDetails.getAccessDays()
                         ),
-                        instituteStudentDetails.getPackageSessionId()
+                        instituteStudentDetails.getPackageSessionId(),
+                        instituteStudentDetails.getDestinationPackageSessionId()
                 );
+                return studentSessionId.toString();
+            }
+        } catch (Exception e) {
+            throw new VacademyException("Failed to link student to institute: " + e.getMessage());
+        }
+    }
+
+    // to do: There are some issues about expiry days as if making actual active today than his plan or expriry will be based on today
+
+    public String shiftStudentBatch(String destinationPackageSession,StudentSessionInstituteGroupMapping studentSessionInstituteGroupMapping,String newStatus) {
+        try {
+            Optional<StudentSessionInstituteGroupMapping> studentSessionInstituteGroupMappingOptional =
+                    studentSessionRepository.findTopByPackageSessionIdAndUserIdAndStatusIn(
+                            studentSessionInstituteGroupMapping.getPackageSession().getId(),
+                            studentSessionInstituteGroupMapping.getInstitute().getId(),
+                            studentSessionInstituteGroupMapping.getUserId(),
+                            List.of(
+                                    LearnerSessionStatusEnum.ACTIVE.name(),
+                                    LearnerSessionStatusEnum.INVITED.name(),
+                                    LearnerSessionStatusEnum.TERMINATED.name(),
+                                    LearnerSessionStatusEnum.INACTIVE.name()
+                            )
+                    );
+
+            if (studentSessionInstituteGroupMappingOptional.isPresent()) {
+                StudentSessionInstituteGroupMapping mapping = studentSessionInstituteGroupMappingOptional.get();
+
+                // Always update enrolledDate to current time
+                mapping.setEnrolledDate(new Date());
+
+
+                mapping.setStatus(newStatus);
+
+
+                if (studentSessionInstituteGroupMapping.getInstituteEnrolledNumber() != null) {
+                    mapping.setInstituteEnrolledNumber(studentSessionInstituteGroupMapping.getInstituteEnrolledNumber());
+                }
+
+                if (studentSessionInstituteGroupMapping.getExpiryDate() != null) {
+                    mapping.setExpiryDate(
+                            studentSessionInstituteGroupMapping.getExpiryDate()
+                    );
+                }
+                studentSessionRepository.save(studentSessionInstituteGroupMapping);
+                return  studentSessionRepository.save(mapping).getId();
+            } else {
+                UUID studentSessionId = UUID.randomUUID();
+                studentSessionRepository.addStudentToInstitute(
+                        studentSessionId.toString(),
+                        studentSessionInstituteGroupMapping.getUserId(),
+                        new Date(),
+                        newStatus,
+                        studentSessionInstituteGroupMapping.getInstituteEnrolledNumber(),
+                        (studentSessionInstituteGroupMapping.getGroup() != null ? studentSessionInstituteGroupMapping.getGroup().getId() : null),
+                        studentSessionInstituteGroupMapping.getInstitute().getId(),
+                        studentSessionInstituteGroupMapping.getExpiryDate(),
+                        destinationPackageSession,
+                        null
+                );
+                studentSessionInstituteGroupMapping.setStatus(LearnerSessionStatusEnum.DELETED.name());
+                studentSessionRepository.save(studentSessionInstituteGroupMapping);
                 return studentSessionId.toString();
             }
         } catch (Exception e) {

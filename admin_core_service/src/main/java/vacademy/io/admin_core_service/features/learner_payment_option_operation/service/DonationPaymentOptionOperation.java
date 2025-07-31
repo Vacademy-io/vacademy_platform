@@ -44,6 +44,9 @@ public class DonationPaymentOptionOperation implements PaymentOptionOperationStr
     @Autowired
     private PaymentNotificatonService paymentNotificatonService;
 
+    @Autowired
+    private PaymentGatewaySpecificPaymentDetailService paymentGatewaySpecificPaymentDetailService;
+
     @Override
     public LearnerEnrollResponseDTO enrollLearnerToBatch(UserDTO userDTO,
                                                          LearnerPackageSessionsEnrollDTO learnerPackageSessionsEnrollDTO,
@@ -54,59 +57,30 @@ public class DonationPaymentOptionOperation implements PaymentOptionOperationStr
                                                          Map<String, Object> extraData) {
         List<InstituteStudentDetails> instituteStudentDetails = new ArrayList<>();
         if (paymentOption.isRequireApproval()){
-            String status = LearnerStatusEnum.INVITED.name();
+            String status = LearnerStatusEnum.PENDING_FOR_APPROVAL.name();
             // to do: find all invited package sessions and pass destination package session id etc
         }else{
             String status = LearnerStatusEnum.ACTIVE.name();
             Integer accessDays = enrollInvite.getLearnerAccessDays();
             List<String>packageSessionIds = learnerPackageSessionsEnrollDTO.getPackageSessionIds();
             for (String packageSessionId : packageSessionIds) {
-                InstituteStudentDetails instituteStudentDetail = new InstituteStudentDetails(instituteId, packageSessionId, null, status, new Date(), null, (accessDays != null ? accessDays.toString() : null));
+                InstituteStudentDetails instituteStudentDetail = new InstituteStudentDetails(instituteId, packageSessionId, null, status, new Date(), null, (accessDays != null ? accessDays.toString() : null),null);
                 instituteStudentDetails.add(instituteStudentDetail);
             }
         }
         UserDTO user = learnerBatchEnrollService.checkAndCreateStudentAndAddToBatch(userDTO, instituteId, instituteStudentDetails,learnerPackageSessionsEnrollDTO.getCustomFieldValues(), extraData);
         LearnerEnrollResponseDTO learnerEnrollResponseDTO = new LearnerEnrollResponseDTO();
-        if (learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest() != null){
-           String paymentLogId = paymentLogService.createPaymentLog(
-                    user.getId(),
-                    learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest().getAmount(),
-                    enrollInvite.getVendor(),
-                    enrollInvite.getVendorId(),
-                    enrollInvite.getCurrency(),
+        if (learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest() != null) {
+            PaymentResponseDTO paymentResponseDTO = paymentService.handlePayment(
+                    user,
+                    learnerPackageSessionsEnrollDTO,
+                    instituteId,
+                    enrollInvite,
                     userPlan
             );
-           learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest().setOrderId(paymentLogId);
-            UserInstitutePaymentGatewayMapping userInstitutePaymentGatewayMapping = paymentService.createOrGetCustomer(instituteId,userDTO,enrollInvite.getVendor(),learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest());
-            configureCustomerPaymentData(userInstitutePaymentGatewayMapping,enrollInvite.getVendor(),learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest());
-            PaymentResponseDTO paymentResponseDTO = paymentService.makePayment(enrollInvite.getVendor(), instituteId, userDTO,learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest());
             learnerEnrollResponseDTO.setPaymentResponse(paymentResponseDTO);
-            paymentNotificatonService.sendPaymentNotification(instituteId, paymentResponseDTO, learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest(), userDTO,enrollInvite.getVendor());
-            paymentLogService.updatePaymentLog(paymentLogId,
-                    PaymentLogStatusEnum.PENDING_FOR_PAYMENT.name(),
-                    (String) paymentResponseDTO.responseData.get("status"),
-                    JsonUtil.toJson(paymentResponseDTO));
         }
         learnerEnrollResponseDTO.setUser(user);
         return learnerEnrollResponseDTO;
     }
-
-    private void configureCustomerPaymentData(UserInstitutePaymentGatewayMapping userInstitutePaymentGatewayMapping,
-                                              String vendor,
-                                              PaymentInitiationRequestDTO paymentInitiationRequestDTO) {
-        PaymentGateway paymentGateway = PaymentGateway.fromString(vendor);
-
-        switch (paymentGateway) {
-            case STRIPE:
-                if (paymentInitiationRequestDTO.getStripeRequest() != null) {
-                    paymentInitiationRequestDTO.getStripeRequest()
-                            .setCustomerId(userInstitutePaymentGatewayMapping.getPaymentGatewayCustomerId());
-                }
-                break;
-
-            default:
-                throw new IllegalStateException("Unexpected value: " + vendor);
-        }
-    }
-
 }

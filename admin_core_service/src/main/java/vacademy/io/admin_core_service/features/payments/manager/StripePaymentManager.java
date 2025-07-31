@@ -15,6 +15,7 @@ import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
 import vacademy.io.common.payment.dto.PaymentResponseDTO;
 import vacademy.io.common.payment.dto.StripeRequestDTO;
+import vacademy.io.common.payment.enums.PaymentStatusEnum;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -103,27 +104,24 @@ public class StripePaymentManager implements PaymentServiceStrategy {
     private Invoice createAndFinalizeInvoice(StripeRequestDTO stripeRequestDTO, PaymentInitiationRequestDTO request) throws StripeException {
         Map<String, Object> invoiceParams = new HashMap<>();
         invoiceParams.put("customer", stripeRequestDTO.getCustomerId());
-        invoiceParams.put("collection_method", request.isChargeAutomatically() ? "charge_automatically" : "send_invoice");
+        invoiceParams.put("collection_method", "charge_automatically"); // Always auto charge
         invoiceParams.put("pending_invoice_items_behavior", "include");
-        invoiceParams.put("auto_advance", false); // Turn off auto_advance for manual finalization
-
-        if (!request.isChargeAutomatically()) {
-            invoiceParams.put("days_until_due", 7);
-        }
+        invoiceParams.put("auto_advance", true); // Let Stripe auto-finalize & attempt payment
 
         if (StringUtils.hasText(stripeRequestDTO.getPaymentMethodId())) {
             invoiceParams.put("default_payment_method", stripeRequestDTO.getPaymentMethodId());
+        } else {
+            throw new VacademyException("Payment method is required for automatic payments.");
         }
 
         logger.debug("Creating invoice with params: {}", invoiceParams);
         Invoice invoice = Invoice.create(invoiceParams);
-        logger.info("Draft invoice created: {}", invoice.getId());
+        logger.info("Invoice created: {}", invoice.getId());
 
-        Invoice finalizedInvoice = invoice.finalizeInvoice();
-        logger.info("Invoice finalized: {}", finalizedInvoice.getId());
-
-        return finalizedInvoice;
+        // No manual finalization; Stripe will handle it due to auto_advance=true
+        return invoice;
     }
+
 
     private void attachPaymentMethodIfNeeded(String customerId, String paymentMethodId) throws StripeException {
         logger.info("Verifying if payment method {} is attached to customer {}", paymentMethodId, customerId);
@@ -155,14 +153,23 @@ public class StripePaymentManager implements PaymentServiceStrategy {
         response.put("status", invoice.getStatus());
         response.put("description", invoice.getDescription());
         response.put("paymentUrl", invoice.getHostedInvoiceUrl());
-        response.put("paymentStatus", invoice.getPaid());
-        response.put("paidAt", invoice.getStatusTransitions().getPaidAt());
+
+        // Determine payment status based on 'paid' boolean
+        PaymentStatusEnum paymentStatus = invoice.getPaid()
+                ? PaymentStatusEnum.PAID
+                : PaymentStatusEnum.PAYMENT_PENDING;
+        response.put("paymentStatus", paymentStatus.name());
+
+        response.put("paidAt", invoice.getStatusTransitions() != null
+                ? invoice.getStatusTransitions().getPaidAt()
+                : null);
 
         PaymentResponseDTO dto = new PaymentResponseDTO();
         dto.setResponseData(response);
         logger.debug("Built payment response: {}", dto);
         return dto;
     }
+
 
     private void validateRequest(PaymentInitiationRequestDTO request) {
         StripeRequestDTO stripeRequestDTO = request.getStripeRequest();

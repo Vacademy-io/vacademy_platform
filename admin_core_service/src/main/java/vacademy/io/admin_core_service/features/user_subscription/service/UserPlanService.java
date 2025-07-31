@@ -5,18 +5,29 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.common.util.JsonUtil;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
+import vacademy.io.admin_core_service.features.enroll_invite.service.PackageSessionEnrollInviteToPaymentOptionService;
+import vacademy.io.admin_core_service.features.institute_learner.service.LearnerBatchEnrollService;
 import vacademy.io.admin_core_service.features.user_subscription.entity.AppliedCouponDiscount;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
+import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanStatusEnum;
 import vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository;
 import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
+
+import java.util.List;
 
 @Service
 public class UserPlanService {
 
     @Autowired
     private UserPlanRepository userPlanRepository;
+
+    @Autowired
+    private PackageSessionEnrollInviteToPaymentOptionService packageSessionEnrollInviteToPaymentOptionService;
+
+    @Autowired
+    public LearnerBatchEnrollService learnerBatchEnrollService;
 
     public UserPlan createUserPlan(String userId,
                                    PaymentPlan paymentPlan,
@@ -69,4 +80,17 @@ public class UserPlanService {
             userPlan.setPaymentOptionJson(JsonUtil.toJson(option));
         }
     }
+
+    public void applyOperationsOnFirstPayment(UserPlan userPlan){
+        if (userPlan.getStatus().equalsIgnoreCase(UserPlanStatusEnum.ACTIVE.name())){
+            return;
+        }
+        EnrollInvite enrollInvite = userPlan.getEnrollInvite();
+
+        List<String>packageSessionIds = packageSessionEnrollInviteToPaymentOptionService.findPackageSessionsOfEnrollInvite(enrollInvite);
+        learnerBatchEnrollService.shiftLearnerFromInvitedToActivePackageSessions(packageSessionIds,userPlan.getUserId(), enrollInvite.getId());
+        userPlan.setStatus(UserPlanStatusEnum.ACTIVE.name());
+        userPlanRepository.save(userPlan);
+    }
+
 }

@@ -1,5 +1,6 @@
 package vacademy.io.admin_core_service.features.user_subscription.service;
 
+import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLog;
@@ -14,6 +15,9 @@ public class PaymentLogService {
 
     @Autowired
     private PaymentLogRepository paymentLogRepository;
+
+    @Autowired
+    public UserPlanService userPlanService;
 
     public String createPaymentLog(String userId, double paymentAmount, String vendor, String vendorId, String currency, UserPlan userPlan){
         PaymentLog paymentLog = new PaymentLog();
@@ -43,9 +47,11 @@ public class PaymentLogService {
     
     // to do: Red marked as there we need to process so many things
 
+    @Transactional
     public void updatePaymentLog(String paymentLogId,String paymentStatus){
         PaymentLog paymentLog = paymentLogRepository.findById(paymentLogId).get();
         paymentLog.setPaymentStatus(paymentStatus);
         paymentLogRepository.save(paymentLog);
+        userPlanService.applyOperationsOnFirstPayment(paymentLog.getUserPlan());
     }
 }

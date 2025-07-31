@@ -181,4 +181,32 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
     // Add method for finding package sessions by package entity ID
     @Query("SELECT ps FROM PackageSession ps WHERE ps.packageEntity.id = :packageEntityId")
     List<PackageSession> findByPackageEntityId(@Param("packageEntityId") String packageEntityId);
+
+    @Query(value = """
+    SELECT ps2.*
+    FROM package_session ps2
+    JOIN package_session ps1 ON ps1.id = :packageSessionId
+    WHERE ps2.package_id = ps1.package_id
+      AND ps2.level_id = :levelId
+      AND ps2.session_id = :sessionId
+      AND ps2.status IN (:invitedPackageSessionStatuses)
+      AND ps1.status IN (:packageSessionStatuses)
+      AND ps2.package_id IN (
+          SELECT p.id
+          FROM package p
+          WHERE p.id = ps2.package_id
+          AND p.status IN (:packageStatuses)
+      )
+    ORDER BY ps2.created_at DESC
+    LIMIT 1
+""", nativeQuery = true)
+    Optional<PackageSession> findInvitedPackageSessionForPackage(
+            @Param("packageSessionId") String packageSessionId,
+            @Param("levelId") String levelId,
+            @Param("sessionId") String sessionId,
+            @Param("invitedPackageSessionStatuses") List<String> invitedPackageSessionStatuses,
+            @Param("packageSessionStatuses") List<String> packageSessionStatuses,
+            @Param("packageStatuses") List<String> packageStatuses
+    );
+
 }

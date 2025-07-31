@@ -159,7 +159,9 @@ public class CourseService {
 
         packageEntity.setCourseDepth(addCourseDTO.getCourseDepth());
         packageEntity.setCourseHtmlDescription(addCourseDTO.getCourseHtmlDescription());
-        return packageRepository.save(packageEntity);
+        PackageEntity savedPackage = packageRepository.save(packageEntity);
+        packageSessionService.addInvitedPackageSessionForPackage(savedPackage);
+        return savedPackage;
     }
 
     public PackageEntity updateCourseDetails(AddCourseDTO addCourseDTO, PackageEntity packageEntity) {

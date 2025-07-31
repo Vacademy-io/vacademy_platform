@@ -127,6 +127,7 @@ public class InstituteInitManager {
         instituteInfoDTO.setBatchesForSessions(packageSessionRepository.findPackageSessionsByInstituteId(institute.get().getId(), List.of(PackageSessionStatusEnum.ACTIVE.name())).stream().map((obj) -> {
             return new PackageSessionDTO(obj);
         }).toList());
+        instituteInfoDTO.setSetting(institute.get().getSetting());
         return instituteInfoDTO;
     }
 

@@ -64,13 +64,13 @@ public class StripeWebHookService {
             String orderId = invoice.getMetadata().get("orderId");
 
             String paymentStatus = invoice.getPaid()
-                    ? PaymentStatusEnum.SUCCESS.name()
+                    ? PaymentStatusEnum.PAID.name()
                     : PaymentStatusEnum.FAILED.name();
 
             // Fallback check
             if (!invoice.getPaid() && invoice.getStatus() != null) {
                 if (invoice.getStatus().equalsIgnoreCase("open") || invoice.getStatus().equalsIgnoreCase("draft")) {
-                    paymentStatus = PaymentStatusEnum.PENDING.name();
+                    paymentStatus = PaymentStatusEnum.PAYMENT_PENDING.name();
                 }
             }
 

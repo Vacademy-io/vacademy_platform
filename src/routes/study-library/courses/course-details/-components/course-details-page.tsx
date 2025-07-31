@@ -1007,7 +1007,7 @@ export const CourseDetailsPage = () => {
                           sessionOptions.length > 0 &&
                                                     // Hide if only one and label is 'default'
                           (sessionOptions.length === 1 &&
-                          sessionOptions[0].label.toLowerCase() ===
+                          sessionOptions[0].label ===
                             "default" ? null : sessionOptions.length === 1 ? (
                                                         <div className="p-2.5 bg-gray-50/80 rounded-lg border border-gray-200">
                                                             <span className="text-sm font-medium text-gray-900">
@@ -1042,7 +1042,7 @@ export const CourseDetailsPage = () => {
                           levelOptions.length > 0 &&
                                                     // Hide if only one and label is 'default'
                           (levelOptions.length === 1 &&
-                          levelOptions[0].label.toLowerCase() ===
+                          levelOptions[0].label ===
                             "default" ? null : levelOptions.length === 1 ? (
                                                         <div className="p-2.5 bg-gray-50/80 rounded-lg border border-gray-200">
                                                             <span className="text-sm font-medium text-gray-900">

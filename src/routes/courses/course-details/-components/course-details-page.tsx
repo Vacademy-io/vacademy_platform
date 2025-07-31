@@ -488,7 +488,7 @@ export const CourseDetailsPage = () => {
                 <div className="flex items-center gap-6">
                   {/* Session Dropdown Logic */}
                   {sessionOptions.length === 1 &&
-                  sessionOptions[0].label.toLowerCase() ===
+                  sessionOptions[0].label ===
                     "default" ? null : sessionOptions.length === 1 ? (
                     <div className="flex flex-col gap-2">
                       <label className="text-sm font-medium">
@@ -518,7 +518,7 @@ export const CourseDetailsPage = () => {
 
                   {/* Level Dropdown Logic */}
                   {levelOptions.length === 1 &&
-                  levelOptions[0].label.toLowerCase() ===
+                  levelOptions[0].label ===
                     "default" ? null : levelOptions.length === 1 ? (
                     <div className="flex flex-col gap-2">
                       <label className="text-sm font-medium">

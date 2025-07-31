@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable react-hooks/exhaustive-deps */
 "use client";
 
 import type React from "react";
@@ -1531,23 +1533,6 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                 </button>
               )}
 
-              <button
-                onClick={() => {
-                  if (player) {
-                    safeGetNumber(player.getCurrentTime()).then((currentTime) => {
-                      const newTime = currentTime + 10;
-                      safeGetNumber(player.getDuration()).then((duration) => {
-                        player.seekTo(Math.min(newTime, duration), true);
-                        setCurrentTime(Math.min(newTime, duration));
-                      });
-                    });
-                  }
-                }}
-                className="p-3 rounded-full bg-black/60 text-white hover:bg-black/80 transition-all hover:scale-105 shadow-lg backdrop-blur-sm border border-white/10"
-                aria-label="Forward 10 seconds"
-              >
-                <FastForward size={22} weight="bold" />
-              </button>
             </div>
           </div>
         )}
@@ -1615,31 +1600,6 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                     <Rewind size={18} weight="fill" />
                   </button>
 
-                  {/* Fast Forward */}
-                  <button
-                    onClick={() => {
-                      if (player) {
-                        safeGetNumber(player.getCurrentTime()).then((currentTime) => {
-                          const newTime = currentTime + 10;
-                          safeGetNumber(player.getDuration()).then((duration) => {
-                            const finalTime = Math.min(newTime, duration);
-                            
-                            // Check if forward navigation is allowed
-                            if (!canNavigateToTime(finalTime)) {
-                              console.log("Navigation blocked: Please answer previous required questions first");
-                              return;
-                            }
-                            
-                            player.seekTo(finalTime, true);
-                            setCurrentTime(finalTime);
-                          });
-                        });
-                      }
-                    }}
-                    className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all hover:scale-105 backdrop-blur-sm"
-                  >
-                    <FastForward size={18} weight="fill" />
-                  </button>
                 </div>
 
                 {/* Right Controls */}

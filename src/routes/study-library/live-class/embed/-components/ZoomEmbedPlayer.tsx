@@ -1,4 +1,3 @@
-
 interface ZoomEmbedPlayerProps {
   recordingUrl: string;
 }

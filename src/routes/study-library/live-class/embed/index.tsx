@@ -8,7 +8,7 @@ import { useSessionDetails } from "../-hooks/useSessionDetails";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { LinkType } from "@/routes/register/live-class/-types/enum";
 import YouTubePlayerWrapper from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/youtube-player";
-import ZoomEmbedPlayer from "./-components/ZoomEmbedPlayer"; // Fixed typo
+import ZoomEmbedPlayer from "./-components/ZoomEmbedPlayer";
 
 export const Route = createFileRoute("/study-library/live-class/embed/")({
   validateSearch: z.object({
@@ -62,7 +62,7 @@ function EmbedComponent() {
         );
       }
 
-      // Safely access properties with proper fallbacks
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const sessionData = sessionDetails as any; // Consider creating proper types
       const allowPlayPause = Boolean(
         sessionData?.allowPlayPause ??

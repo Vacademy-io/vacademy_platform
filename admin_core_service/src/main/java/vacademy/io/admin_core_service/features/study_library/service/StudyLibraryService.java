@@ -25,6 +25,7 @@ import vacademy.io.admin_core_service.features.module.repository.SubjectModuleMa
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
 import vacademy.io.admin_core_service.features.packages.enums.PackageStatusEnum;
 import vacademy.io.admin_core_service.features.packages.repository.PackageRepository;
+import vacademy.io.admin_core_service.features.session.enums.SessionStatusEnum;
 import vacademy.io.admin_core_service.features.slide.enums.QuestionStatusEnum;
 import vacademy.io.admin_core_service.features.slide.enums.SlideStatus;
 import vacademy.io.admin_core_service.features.slide.repository.SlideRepository;
@@ -113,7 +114,7 @@ public class StudyLibraryService {
 
     public List<SessionDTOWithDetails> buildSessionDTOWithDetails(String packageId, String instituteId) {
         List<SessionDTOWithDetails> sessionDTOWithDetails = new ArrayList<>();
-        List<SessionProjection> packageSessions = packageRepository.findDistinctSessionsByPackageId(packageId);
+        List<SessionProjection> packageSessions = packageRepository.findDistinctSessionsByPackageIdAndStatuses(packageId,List.of(SessionStatusEnum.ACTIVE.name()),List.of(PackageSessionStatusEnum.ACTIVE.name(),PackageSessionStatusEnum.HIDDEN.name()));
 
         for (SessionProjection sessionProjection : packageSessions) {
             List<LevelDTOWithDetails> levelWithDetails = buildLevelDTOWithDetails(instituteId, sessionProjection.getId(), packageId);

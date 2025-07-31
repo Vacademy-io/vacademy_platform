@@ -64,15 +64,19 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
 
 
     @Query(value = """
-                SELECT DISTINCT s.*
-                FROM session s
-                INNER JOIN package_session ps ON s.id = ps.session_id
-                INNER JOIN package p ON ps.package_id = p.id
-                WHERE ps.package_id = :packageId
-                  AND s.status != 'DELETED'
-                  AND ps.status != 'DELETED'
-            """, nativeQuery = true)
-    List<SessionProjection> findDistinctSessionsByPackageId(@Param("packageId") String packageId);
+    SELECT DISTINCT s.*
+    FROM session s
+    INNER JOIN package_session ps ON s.id = ps.session_id
+    INNER JOIN package p ON ps.package_id = p.id
+    WHERE ps.package_id = :packageId
+      AND s.status IN (:sessionStatusList)
+      AND ps.status IN (:packageSessionStatusList)
+    """, nativeQuery = true)
+    List<SessionProjection> findDistinctSessionsByPackageIdAndStatuses(
+            @Param("packageId") String packageId,
+            @Param("sessionStatusList") List<String> sessionStatusList,
+            @Param("packageSessionStatusList") List<String> packageSessionStatusList
+    );
 
 
     @Query(value = "SELECT DISTINCT p.* FROM package p " +

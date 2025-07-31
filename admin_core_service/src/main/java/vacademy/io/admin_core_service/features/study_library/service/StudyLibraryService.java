@@ -114,7 +114,7 @@ public class StudyLibraryService {
 
     public List<SessionDTOWithDetails> buildSessionDTOWithDetails(String packageId, String instituteId) {
         List<SessionDTOWithDetails> sessionDTOWithDetails = new ArrayList<>();
-        List<SessionProjection> packageSessions = packageRepository.findDistinctSessionsByPackageIdAndStatuses(packageId,List.of(SessionStatusEnum.ACTIVE.name()),List.of(PackageSessionStatusEnum.ACTIVE.name(),PackageSessionStatusEnum.HIDDEN.name()));
+        List<SessionProjection> packageSessions = packageRepository.findDistinctSessionsByPackageIdAndStatuses(packageId,List.of(SessionStatusEnum.ACTIVE.name(),SessionStatusEnum.INACTIVE.name()),List.of(PackageSessionStatusEnum.ACTIVE.name(),PackageSessionStatusEnum.HIDDEN.name()));
 
         for (SessionProjection sessionProjection : packageSessions) {
             List<LevelDTOWithDetails> levelWithDetails = buildLevelDTOWithDetails(instituteId, sessionProjection.getId(), packageId);

@@ -61,11 +61,22 @@ function EmbedComponent() {
         (sessionDetails as any)?.enablePlayPause ??
         true
       );
-      return (
-        <div className="w-full h-full">
-          <YouTubePlayerWrapper videoId={videoId} allowPlayPause={allowPlayPause} />
-        </div>
-      );
+        // Normalize allowRewind to boolean: backend may send 'false' string or boolean
+        const rawAllowRewind =
+          (sessionDetails as any)?.allowRewind ??
+          (sessionDetails as any)?.allow_rewind;
+        const allowRewind = rawAllowRewind !== undefined
+          ? (rawAllowRewind === true || rawAllowRewind === 'true')
+          : true;
+        return (
+          <div className="w-full h-full">
+            <YouTubePlayerWrapper
+              videoId={videoId}
+              allowPlayPause={allowPlayPause}
+              allowRewind={allowRewind}
+            />
+          </div>
+        );
     }
 
     // --- Zoom recorded links ---
@@ -117,12 +128,12 @@ function EmbedComponent() {
           <h1 className="text-2xl font-bold text-center mb-6 ">
             {sessionDetails?.title || "Session"}
           </h1>
-          <div>Live</div>
-        </div>
-        <div className="flex-grow relative flex items-center justify-center p-2">
+          {/* Live badge overlay */}
           <div className="absolute top-10 right-10 p-2 px-4 bg-red-500 text-white z-[1] rounded">
             Live
           </div>
+        </div>
+        <div className="flex-grow relative flex items-center justify-center p-2">
           {renderEmbededSession()}
         </div>
       </div>

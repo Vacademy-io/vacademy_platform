@@ -95,6 +95,9 @@ function RouteComponent() {
   };
 
   const handleJoinSession = async (session: SessionDetails) => {
+    if (session.session_streaming_service_type === SessionStreamingServiceType.EMBED) {
+      console.log("Embed session clicked:", session);
+    }
     const now = new Date();
     const sessionDate = new Date(
       `${session.meeting_date}T${session.start_time}`

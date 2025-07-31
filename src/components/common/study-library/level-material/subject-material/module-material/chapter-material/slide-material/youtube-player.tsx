@@ -73,6 +73,7 @@ interface YouTubePlayerProps {
     auto_evaluation_json?: string;
   }>;
   allowPlayPause?: boolean; // If false, play/pause controls are disabled
+  allowRewind?: boolean; // If false, rewind controls are disabled
 }
 
 export const formatTime = (timeInSeconds: number) => {
@@ -87,9 +88,11 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   ms = 0,
   questions = [],
   allowPlayPause = true,
+  allowRewind = true,
 }) => {
   const { activeItem } = useContentStore();
-  const { addActivity } = useTrackingStore();
+  // Subscribe only to addActivity to avoid re-render on every trackingData update
+  const addActivity = useTrackingStore((state) => state.addActivity);
   const activityId = useRef(uuidv4());
   const currentTimestamps = useRef<
     Array<{
@@ -177,7 +180,9 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     }>
   >([]);
   
-  const {setCurrentYoutubeTime, setCurrentYoutubeVideoLength} = useMediaRefsStore();
+  // Subscribe only to setter functions to avoid re-render on store updates
+  const setCurrentYoutubeTime = useMediaRefsStore(state => state.setCurrentYoutubeTime);
+  const setCurrentYoutubeVideoLength = useMediaRefsStore(state => state.setCurrentYoutubeVideoLength);
   
   useEffect(()=>{
       setCurrentYoutubeTime(currentTime);
@@ -1489,6 +1494,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
             <div className="flex items-center justify-center gap-6 mb-4">
               <button
                 onClick={() => {
+                  if (!allowRewind) return;
                   if (player) {
                     safeGetNumber(player.getCurrentTime()).then(
                       (currentTime) => {
@@ -1499,7 +1505,8 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                     );
                   }
                 }}
-                className="p-3 rounded-full bg-black/60 text-white hover:bg-black/80 transition-all hover:scale-105 shadow-lg backdrop-blur-sm border border-white/10"
+                disabled={!allowRewind}
+                className={`p-3 rounded-full bg-black/60 text-white shadow-lg backdrop-blur-sm border border-white/10 ${allowRewind ? 'hover:bg-black/80 transition-all hover:scale-105' : 'opacity-50 cursor-not-allowed'}`}
                 aria-label="Rewind 10 seconds"
               >
                 <Rewind size={22} weight="bold" />
@@ -1594,16 +1601,17 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                   {/* Rewind */}
                   <button
                     onClick={() => {
+                      if (!allowRewind) return;
                       if (player) {
                         safeGetNumber(player.getCurrentTime()).then((currentTime) => {
                           const newTime = Math.max(currentTime - 10, 0);
-                          // Always allow backward navigation
                           player.seekTo(newTime, true);
                           setCurrentTime(newTime);
                         });
                       }
                     }}
-                    className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all hover:scale-105 backdrop-blur-sm"
+                    disabled={!allowRewind}
+                    className={`p-2 rounded-full text-white backdrop-blur-sm ${allowRewind ? 'bg-white/20 hover:bg-white/30 transition-all hover:scale-105' : 'bg-white/10 opacity-50 cursor-not-allowed'}`}
                   >
                     <Rewind size={18} weight="fill" />
                   </button>
@@ -1837,11 +1845,12 @@ interface YouTubePlayerWrapperProps {
   }>;
   ms?: number;
   allowPlayPause?: boolean;
+  allowRewind?: boolean;
 }
 
 // This is a wrapper component that exposes the YouTube player methods
 const YouTubePlayerWrapper = forwardRef<any, YouTubePlayerWrapperProps>(
-  ({ videoId, onTimeUpdate, questions, ms, allowPlayPause }, ref) => {
+  ({ videoId, onTimeUpdate, questions, ms, allowPlayPause, allowRewind }, ref) => {
     const playerRef = useRef<any>(null);
 
     // Expose methods to parent component
@@ -1889,6 +1898,7 @@ const YouTubePlayerWrapper = forwardRef<any, YouTubePlayerWrapperProps>(
         questions={questions}
         ms={ms}
         allowPlayPause={allowPlayPause}
+        allowRewind={allowRewind}
       />
     );
   }

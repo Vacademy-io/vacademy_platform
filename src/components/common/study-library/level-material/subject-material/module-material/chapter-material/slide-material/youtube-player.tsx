@@ -8,6 +8,7 @@ import {
   useState,
   forwardRef,
   useImperativeHandle,
+  useMemo,
 } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { useTrackingStore } from "@/stores/study-library/youtube-video-tracking-store";
@@ -173,38 +174,33 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   );
   const [concentrationScore, setConcentrationScore] = useState(100); // Start with perfect score
 
-  const [timeToQuestionMap, setTimeToQuestionMap] = useState<
-    Array<{
-      time: number;
-      question: NonNullable<YouTubePlayerProps["questions"]>[number];
-    }>
-  >([]);
+  // Memoize questions to prevent unnecessary re-renders
+  const memoizedQuestions = useMemo(() => questions, [JSON.stringify(questions)]);
+
+  // Memoize timeToQuestionMap to prevent recreating it unnecessarily
+  const timeToQuestionMap = useMemo(() => {
+    if (memoizedQuestions && memoizedQuestions.length > 0) {
+      return memoizedQuestions.map((q) => ({
+        time: q.question_time_in_millis,
+        question: q,
+      }));
+    }
+    return [];
+  }, [memoizedQuestions]);
   
   // Subscribe only to setter functions to avoid re-render on store updates
   const setCurrentYoutubeTime = useMediaRefsStore(state => state.setCurrentYoutubeTime);
   const setCurrentYoutubeVideoLength = useMediaRefsStore(state => state.setCurrentYoutubeVideoLength);
   
-  useEffect(()=>{
-      setCurrentYoutubeTime(currentTime);
-  }, [currentTime])
-
   useEffect(() => {
-    if (questions && questions.length > 0) {
-      const mapped = questions.map((q) => ({
-        time: q.question_time_in_millis,
-        question: q,
-      }));
-      setTimeToQuestionMap(mapped);
-      console.log("Mapped questions:", mapped);
-    }
-    // Reset answered questions when questions change (new video/slide)
-    setAnsweredQuestions({});
-  }, [questions]);
+    setCurrentYoutubeTime(currentTime);
+  }, [currentTime, setCurrentYoutubeTime]);
 
-  // Reset answered questions when video changes
+  // Reset answered questions when questions or videoId changes
   useEffect(() => {
+    console.log("Questions changed, resetting answered questions");
     setAnsweredQuestions({});
-  }, [videoId]);
+  }, [memoizedQuestions, videoId]);
 
   // Helper function to safely get a number from potentially a Promise<number>
   const safeGetNumber = async (value: any): Promise<number> => {
@@ -336,7 +332,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   }, []);
 
   // Save concentration metrics to Capacitor preferences
-  const saveConcentrationMetrics = async () => {
+  const saveConcentrationMetrics = useCallback(async () => {
     try {
       const metrics = {
         tabSwitchCount,
@@ -354,7 +350,8 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     } catch (error) {
       console.error("Error saving concentration metrics:", error);
     }
-  };
+  }, [tabSwitchCount, wrongAnswerCount, missedAnswerCount, pauseCount, answerTimesInSeconds, concentrationScore]);
+
   // Save verification time to Capacitor preferences
   const saveVerificationTime = async (time: number) => {
     try {
@@ -387,7 +384,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
 
     setConcentrationScore(newScore);
     saveConcentrationMetrics();
-  }, [tabSwitchCount, wrongAnswerCount, missedAnswerCount, pauseCount]);
+  }, [tabSwitchCount, wrongAnswerCount, missedAnswerCount, pauseCount, saveConcentrationMetrics]);
 
   // Generate verification numbers
   const generateVerificationNumbers = useCallback(() => {
@@ -593,6 +590,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       stopTimer();
     }
   }, [canNavigateToTime, player, stopProgressTracking, stopTimer]);
+
   // Pause video when tab is switched
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -689,7 +687,6 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       new_activity: true,
     };
     addActivity(newActivity, true);
-    // }, [elapsedTime, duration, videoId, addActivity]);
   }, [
     elapsedTime,
     duration,
@@ -701,6 +698,8 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     pauseCount,
     concentrationScore,
     addActivity,
+    activeItem?.id,
+    calculatePercentageWatched,
   ]);
 
   // Prevent right-click on the video
@@ -807,14 +806,16 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
 
     // Try to inject CSS after iframe is loaded
     const iframe = iframeRef.current;
-    iframe.addEventListener("load", injectCSS);
+    if (iframe) {
+      iframe.addEventListener("load", injectCSS);
 
-    // Also try immediately in case iframe is already loaded
-    injectCSS();
+      // Also try immediately in case iframe is already loaded
+      injectCSS();
 
-    return () => {
-      iframe.removeEventListener("load", injectCSS);
-    };
+      return () => {
+        iframe.removeEventListener("load", injectCSS);
+      };
+    }
   }, [iframeRef.current]);
 
   const opts: YouTubeProps["opts"] = {
@@ -1287,7 +1288,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     } catch (error) {
       console.error("Error seeking on double click:", error);
     }
-  }, [player, playerReady]);
+  }, [player, playerReady, canNavigateToTime]);
 
   // Toggle play / pause on SINGLE click anywhere on the video (but ignore clicks on inner controls)
   const handleSingleClick = useCallback(
@@ -1364,8 +1365,6 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       showControls
     });
   }, [isFullscreen, showFullscreenControls, showControls]);
-
-  // Format time for display
 
   // Handle progress bar click for seeking
   const handleProgressBarClick = (e: React.MouseEvent<HTMLDivElement>) => {

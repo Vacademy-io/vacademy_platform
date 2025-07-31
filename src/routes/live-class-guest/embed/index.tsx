@@ -4,7 +4,7 @@ import { useSessionDetails } from "../-hooks/useSessionDetails";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { LinkType } from "@/routes/register/live-class/-types/enum";
 import YouTubePlayerWrapper from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/youtube-player";
-import ZoomEmbedPlayer from "@/routes/study-library/live-class/embed/-components/ZoomEnbedPlayer";
+import ZoomEmbedPlayer from "@/routes/study-library/live-class/embed/-components/ZoomEmbedPlayer";
 
 export const Route = createFileRoute("/live-class-guest/embed/")({
   validateSearch: z.object({

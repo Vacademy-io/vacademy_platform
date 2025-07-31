@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable react-hooks/exhaustive-deps */
 "use client";
 
 import type React from "react";
@@ -8,6 +10,7 @@ import {
   useState,
   forwardRef,
   useImperativeHandle,
+  useMemo,
 } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { useTrackingStore } from "@/stores/study-library/youtube-video-tracking-store";
@@ -73,6 +76,7 @@ interface YouTubePlayerProps {
     auto_evaluation_json?: string;
   }>;
   allowPlayPause?: boolean; // If false, play/pause controls are disabled
+  allowRewind?: boolean; // If false, rewind controls are disabled
 }
 
 export const formatTime = (timeInSeconds: number) => {
@@ -87,9 +91,11 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   ms = 0,
   questions = [],
   allowPlayPause = true,
+  allowRewind = true,
 }) => {
   const { activeItem } = useContentStore();
-  const { addActivity } = useTrackingStore();
+  // Subscribe only to addActivity to avoid re-render on every trackingData update
+  const addActivity = useTrackingStore((state) => state.addActivity);
   const activityId = useRef(uuidv4());
   const currentTimestamps = useRef<
     Array<{
@@ -170,36 +176,33 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   );
   const [concentrationScore, setConcentrationScore] = useState(100); // Start with perfect score
 
-  const [timeToQuestionMap, setTimeToQuestionMap] = useState<
-    Array<{
-      time: number;
-      question: NonNullable<YouTubePlayerProps["questions"]>[number];
-    }>
-  >([]);
-  
-  const {setCurrentYoutubeTime, setCurrentYoutubeVideoLength} = useMediaRefsStore();
-  
-  useEffect(()=>{
-      setCurrentYoutubeTime(currentTime);
-  }, [currentTime])
+  // Memoize questions to prevent unnecessary re-renders
+  const memoizedQuestions = useMemo(() => questions, [JSON.stringify(questions)]);
 
-  useEffect(() => {
-    if (questions && questions.length > 0) {
-      const mapped = questions.map((q) => ({
+  // Memoize timeToQuestionMap to prevent recreating it unnecessarily
+  const timeToQuestionMap = useMemo(() => {
+    if (memoizedQuestions && memoizedQuestions.length > 0) {
+      return memoizedQuestions.map((q) => ({
         time: q.question_time_in_millis,
         question: q,
       }));
-      setTimeToQuestionMap(mapped);
-      console.log("Mapped questions:", mapped);
     }
-    // Reset answered questions when questions change (new video/slide)
-    setAnsweredQuestions({});
-  }, [questions]);
-
-  // Reset answered questions when video changes
+    return [];
+  }, [memoizedQuestions]);
+  
+  // Subscribe only to setter functions to avoid re-render on store updates
+  const setCurrentYoutubeTime = useMediaRefsStore(state => state.setCurrentYoutubeTime);
+  const setCurrentYoutubeVideoLength = useMediaRefsStore(state => state.setCurrentYoutubeVideoLength);
+  
   useEffect(() => {
+    setCurrentYoutubeTime(currentTime);
+  }, [currentTime, setCurrentYoutubeTime]);
+
+  // Reset answered questions when questions or videoId changes
+  useEffect(() => {
+    console.log("Questions changed, resetting answered questions");
     setAnsweredQuestions({});
-  }, [videoId]);
+  }, [memoizedQuestions, videoId]);
 
   // Helper function to safely get a number from potentially a Promise<number>
   const safeGetNumber = async (value: any): Promise<number> => {
@@ -331,7 +334,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   }, []);
 
   // Save concentration metrics to Capacitor preferences
-  const saveConcentrationMetrics = async () => {
+  const saveConcentrationMetrics = useCallback(async () => {
     try {
       const metrics = {
         tabSwitchCount,
@@ -349,7 +352,8 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     } catch (error) {
       console.error("Error saving concentration metrics:", error);
     }
-  };
+  }, [tabSwitchCount, wrongAnswerCount, missedAnswerCount, pauseCount, answerTimesInSeconds, concentrationScore]);
+
   // Save verification time to Capacitor preferences
   const saveVerificationTime = async (time: number) => {
     try {
@@ -382,7 +386,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
 
     setConcentrationScore(newScore);
     saveConcentrationMetrics();
-  }, [tabSwitchCount, wrongAnswerCount, missedAnswerCount, pauseCount]);
+  }, [tabSwitchCount, wrongAnswerCount, missedAnswerCount, pauseCount, saveConcentrationMetrics]);
 
   // Generate verification numbers
   const generateVerificationNumbers = useCallback(() => {
@@ -588,6 +592,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       stopTimer();
     }
   }, [canNavigateToTime, player, stopProgressTracking, stopTimer]);
+
   // Pause video when tab is switched
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -684,7 +689,6 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       new_activity: true,
     };
     addActivity(newActivity, true);
-    // }, [elapsedTime, duration, videoId, addActivity]);
   }, [
     elapsedTime,
     duration,
@@ -696,6 +700,8 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     pauseCount,
     concentrationScore,
     addActivity,
+    activeItem?.id,
+    calculatePercentageWatched,
   ]);
 
   // Prevent right-click on the video
@@ -802,14 +808,16 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
 
     // Try to inject CSS after iframe is loaded
     const iframe = iframeRef.current;
-    iframe.addEventListener("load", injectCSS);
+    if (iframe) {
+      iframe.addEventListener("load", injectCSS);
 
-    // Also try immediately in case iframe is already loaded
-    injectCSS();
+      // Also try immediately in case iframe is already loaded
+      injectCSS();
 
-    return () => {
-      iframe.removeEventListener("load", injectCSS);
-    };
+      return () => {
+        iframe.removeEventListener("load", injectCSS);
+      };
+    }
   }, [iframeRef.current]);
 
   const opts: YouTubeProps["opts"] = {
@@ -1282,7 +1290,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     } catch (error) {
       console.error("Error seeking on double click:", error);
     }
-  }, [player, playerReady]);
+  }, [player, playerReady, canNavigateToTime]);
 
   // Toggle play / pause on SINGLE click anywhere on the video (but ignore clicks on inner controls)
   const handleSingleClick = useCallback(
@@ -1359,8 +1367,6 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       showControls
     });
   }, [isFullscreen, showFullscreenControls, showControls]);
-
-  // Format time for display
 
   // Handle progress bar click for seeking
   const handleProgressBarClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -1489,6 +1495,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
             <div className="flex items-center justify-center gap-6 mb-4">
               <button
                 onClick={() => {
+                  if (!allowRewind) return;
                   if (player) {
                     safeGetNumber(player.getCurrentTime()).then(
                       (currentTime) => {
@@ -1499,7 +1506,8 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                     );
                   }
                 }}
-                className="p-3 rounded-full bg-black/60 text-white hover:bg-black/80 transition-all hover:scale-105 shadow-lg backdrop-blur-sm border border-white/10"
+                disabled={!allowRewind}
+                className={`p-3 rounded-full bg-black/60 text-white shadow-lg backdrop-blur-sm border border-white/10 ${allowRewind ? 'hover:bg-black/80 transition-all hover:scale-105' : 'opacity-50 cursor-not-allowed'}`}
                 aria-label="Rewind 10 seconds"
               >
                 <Rewind size={22} weight="bold" />
@@ -1525,23 +1533,6 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                 </button>
               )}
 
-              <button
-                onClick={() => {
-                  if (player) {
-                    safeGetNumber(player.getCurrentTime()).then((currentTime) => {
-                      const newTime = currentTime + 10;
-                      safeGetNumber(player.getDuration()).then((duration) => {
-                        player.seekTo(Math.min(newTime, duration), true);
-                        setCurrentTime(Math.min(newTime, duration));
-                      });
-                    });
-                  }
-                }}
-                className="p-3 rounded-full bg-black/60 text-white hover:bg-black/80 transition-all hover:scale-105 shadow-lg backdrop-blur-sm border border-white/10"
-                aria-label="Forward 10 seconds"
-              >
-                <FastForward size={22} weight="bold" />
-              </button>
             </div>
           </div>
         )}
@@ -1594,45 +1585,21 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                   {/* Rewind */}
                   <button
                     onClick={() => {
+                      if (!allowRewind) return;
                       if (player) {
                         safeGetNumber(player.getCurrentTime()).then((currentTime) => {
                           const newTime = Math.max(currentTime - 10, 0);
-                          // Always allow backward navigation
                           player.seekTo(newTime, true);
                           setCurrentTime(newTime);
                         });
                       }
                     }}
-                    className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all hover:scale-105 backdrop-blur-sm"
+                    disabled={!allowRewind}
+                    className={`p-2 rounded-full text-white backdrop-blur-sm ${allowRewind ? 'bg-white/20 hover:bg-white/30 transition-all hover:scale-105' : 'bg-white/10 opacity-50 cursor-not-allowed'}`}
                   >
                     <Rewind size={18} weight="fill" />
                   </button>
 
-                  {/* Fast Forward */}
-                  <button
-                    onClick={() => {
-                      if (player) {
-                        safeGetNumber(player.getCurrentTime()).then((currentTime) => {
-                          const newTime = currentTime + 10;
-                          safeGetNumber(player.getDuration()).then((duration) => {
-                            const finalTime = Math.min(newTime, duration);
-                            
-                            // Check if forward navigation is allowed
-                            if (!canNavigateToTime(finalTime)) {
-                              console.log("Navigation blocked: Please answer previous required questions first");
-                              return;
-                            }
-                            
-                            player.seekTo(finalTime, true);
-                            setCurrentTime(finalTime);
-                          });
-                        });
-                      }
-                    }}
-                    className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all hover:scale-105 backdrop-blur-sm"
-                  >
-                    <FastForward size={18} weight="fill" />
-                  </button>
                 </div>
 
                 {/* Right Controls */}
@@ -1837,11 +1804,12 @@ interface YouTubePlayerWrapperProps {
   }>;
   ms?: number;
   allowPlayPause?: boolean;
+  allowRewind?: boolean;
 }
 
 // This is a wrapper component that exposes the YouTube player methods
 const YouTubePlayerWrapper = forwardRef<any, YouTubePlayerWrapperProps>(
-  ({ videoId, onTimeUpdate, questions, ms, allowPlayPause }, ref) => {
+  ({ videoId, onTimeUpdate, questions, ms, allowPlayPause, allowRewind }, ref) => {
     const playerRef = useRef<any>(null);
 
     // Expose methods to parent component
@@ -1889,6 +1857,7 @@ const YouTubePlayerWrapper = forwardRef<any, YouTubePlayerWrapperProps>(
         questions={questions}
         ms={ms}
         allowPlayPause={allowPlayPause}
+        allowRewind={allowRewind}
       />
     );
   }

@@ -14,7 +14,7 @@ export const fetchSessionDetails = async (
         scheduleId,
       },
     });
-
+    console.log("SessionDetails API response for scheduleId", scheduleId, response.data);
     return response.data;
   } catch (error) {
     console.error("Error fetching session details:", error);
@@ -27,5 +27,6 @@ export const useSessionDetails = (scheduleId: string | null) => {
     queryKey: ["sessionDetails", scheduleId],
     queryFn: () => fetchSessionDetails(scheduleId!),
     enabled: !!scheduleId,
+    refetchInterval: 30000,
   });
 };

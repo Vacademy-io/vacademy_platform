@@ -1294,7 +1294,20 @@ html.modal-open {
   left: 0;
   width: 100vw;
   height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 99999;
   overflow: hidden;
+}
+
+/* Ensure modal content can scroll independently */
+.modal-backdrop > div {
+  overflow: visible !important;
+  max-height: 90vh !important;
+  width: auto !important;
+  height: auto !important;
+  position: relative !important;
 }
 
 /* Additional scrollbar hiding for all possible cases */
@@ -1339,4 +1352,106 @@ html.modal-open {
   display: none !important;
   width: 0 !important;
   height: 0 !important;
+}
+
+/* Auth Modal specific scrolling styles */
+.auth-modal-content {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  scroll-behavior: smooth !important;
+  max-height: 90vh !important;
+  height: auto !important;
+  min-height: auto !important;
+}
+
+.auth-modal-content::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.auth-modal-content::-webkit-scrollbar-track {
+  display: none !important;
+}
+
+.auth-modal-content::-webkit-scrollbar-thumb {
+  display: none !important;
+}
+
+/* Ensure modal content can grow and scroll */
+.auth-modal-content > div {
+  min-height: auto !important;
+  height: auto !important;
+  max-height: none !important;
+}
+
+/* Override any conflicting styles */
+.auth-modal-content * {
+  max-height: none !important;
+}
+
+/* Force scrolling to work */
+.auth-modal-content {
+  overflow: auto !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+
+/* Mobile specific modal scrolling */
+@media (max-width: 640px) {
+  .auth-modal-content {
+    max-height: 85vh !important;
+    padding: 12px !important;
+  }
+}
+
+/* Tablet specific modal scrolling */
+@media (min-width: 641px) and (max-width: 1024px) {
+  .auth-modal-content {
+    max-height: 88vh !important;
+  }
+}
+
+/* Desktop specific modal scrolling */
+@media (min-width: 1025px) {
+  .auth-modal-content {
+    max-height: 90vh !important;
+  }
+}
+
+/* Ensure modal content can expand beyond viewport if needed */
+.auth-modal-content {
+  min-height: auto !important;
+  height: auto !important;
+  max-height: 90vh !important;
+}
+
+/* Prevent content from being cut off */
+.auth-modal-content > * {
+  min-height: 0 !important;
+  height: auto !important;
+}
+
+/* Smooth scrolling for better UX */
+.auth-modal-content {
+  scroll-behavior: smooth !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+/* Ensure proper spacing in modal content */
+.auth-modal-content .space-y-4 > * + * {
+  margin-top: 1rem !important;
+}
+
+.auth-modal-content .space-y-6 > * + * {
+  margin-top: 1.5rem !important;
+}
+
+/* Better touch scrolling on mobile */
+@media (hover: none) and (pointer: coarse) {
+  .auth-modal-content {
+    -webkit-overflow-scrolling: touch !important;
+    overscroll-behavior: contain !important;
+  }
 }

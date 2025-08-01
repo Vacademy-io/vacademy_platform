@@ -106,7 +106,13 @@ public class StripePaymentManager implements PaymentServiceStrategy {
         invoiceParams.put("customer", stripeRequestDTO.getCustomerId());
         invoiceParams.put("collection_method", "charge_automatically");
         invoiceParams.put("pending_invoice_items_behavior", "include");
-        invoiceParams.put("auto_advance", false); // Disable auto_advance so we manually finalize right after
+        invoiceParams.put("auto_advance", false);
+
+        // ✅ Add metadata to the invoice itself
+        Map<String, Object> metadata = new HashMap<>();
+        metadata.put("orderId", request.getOrderId());
+        metadata.put("instituteId", request.getInstituteId());
+        invoiceParams.put("metadata", metadata);
 
         if (StringUtils.hasText(stripeRequestDTO.getPaymentMethodId())) {
             invoiceParams.put("default_payment_method", stripeRequestDTO.getPaymentMethodId());
@@ -117,13 +123,14 @@ public class StripePaymentManager implements PaymentServiceStrategy {
         logger.debug("Creating invoice with params: {}", invoiceParams);
         Invoice invoice = Invoice.create(invoiceParams);
 
-        // Manually finalize immediately so we get hosted_invoice_url and invoice_pdf
+        // Manually finalize the invoice
         invoice = invoice.finalizeInvoice();
 
         logger.info("Invoice finalized: {}, hosted_url: {}, pdf: {}", invoice.getId(), invoice.getHostedInvoiceUrl(), invoice.getInvoicePdf());
 
         return invoice;
     }
+
 
 
 

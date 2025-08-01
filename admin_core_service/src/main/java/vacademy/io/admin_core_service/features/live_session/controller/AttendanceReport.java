@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.common.dto.CustomFieldDTO;
@@ -36,10 +37,10 @@ public class AttendanceReport {
         return ResponseEntity.ok(report);
     }
     @PostMapping("/all-attendance")
-    public Page<StudentAttendanceDTO> getAttendanceFilterRequest(@RequestBody AttendanceFilterRequest attendanceFilterRequest, @RequestParam(defaultValue = "0") int page,
+    public ResponseEntity<Page<StudentAttendanceDTO>> getAttendanceFilterRequest(@RequestBody AttendanceFilterRequest attendanceFilterRequest, @RequestParam(defaultValue = "0") int page,
                                                                  @RequestParam(defaultValue = "10") int size) {
         Pageable pageable = PageRequest.of(page, size); // page 0, size 10
-        return attendanceReportService.getAllByAttendanceFilterRequest(attendanceFilterRequest, pageable);
+        return  new ResponseEntity<>(attendanceReportService.getAllByAttendanceFilterRequest(attendanceFilterRequest, pageable), HttpStatus.OK);
 
     }
 

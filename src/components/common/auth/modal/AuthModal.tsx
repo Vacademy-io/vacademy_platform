@@ -43,8 +43,17 @@ export function AuthModal({ type, courseId, trigger, onModalOpen }: AuthModalPro
             document.documentElement.style.overflow = 'hidden';
             document.documentElement.style.height = '100%';
             
-            // Prevent scrolling on all parent elements
+            // Prevent scrolling on background elements only, allow modal scrolling
             preventScrollHandler = (e: Event) => {
+                const target = e.target as Element;
+                const modalContent = dialogRef.current;
+                
+                // Allow scrolling within the modal content
+                if (modalContent && (modalContent.contains(target) || modalContent === target)) {
+                    return true;
+                }
+                
+                // Prevent scrolling on background elements
                 e.preventDefault();
                 e.stopPropagation();
                 return false;
@@ -101,6 +110,10 @@ export function AuthModal({ type, courseId, trigger, onModalOpen }: AuthModalPro
     useEffect(() => {
         if (isOpen) {
             setIsVisible(true);
+            // Focus the modal content for accessibility
+            setTimeout(() => {
+                dialogRef.current?.focus();
+            }, 100);
         } else {
             setIsVisible(false);
         }
@@ -197,9 +210,7 @@ export function AuthModal({ type, courseId, trigger, onModalOpen }: AuthModalPro
                 alignItems: 'center',
                 justifyContent: 'center',
                 visibility: 'visible',
-                opacity: isVisible ? 1 : 0,
-                overflow: 'hidden',
-                touchAction: 'none'
+                opacity: isVisible ? 1 : 0
             }}
             onClick={handleBackdropClick}
             role="dialog"
@@ -214,13 +225,13 @@ export function AuthModal({ type, courseId, trigger, onModalOpen }: AuthModalPro
                     isVisible
                         ? 'scale-100 opacity-100 translate-y-0'
                         : 'scale-95 opacity-0 translate-y-4'
-                } scrollbar-hide w-full max-w-[500px] mx-4 sm:mx-6`}
+                } scrollbar-hide auth-modal-content w-full max-w-[500px] mx-4 sm:mx-6`}
                 style={{
                     padding: '16px',
                     maxHeight: '90vh',
                     minHeight: 'auto',
-                    overflow: 'hidden',
                     overflowY: 'auto',
+                    overflowX: 'hidden',
                     msOverflowStyle: 'none',
                     scrollbarWidth: 'none',
                     zIndex: 100000,
@@ -231,6 +242,7 @@ export function AuthModal({ type, courseId, trigger, onModalOpen }: AuthModalPro
                 }}
                 onClick={(e) => e.stopPropagation()}
                 data-testid="auth-modal-content"
+                tabIndex={-1}
             >
                 {/* Screen reader title */}
                 <h1 id="auth-title" className="sr-only">
@@ -257,7 +269,7 @@ export function AuthModal({ type, courseId, trigger, onModalOpen }: AuthModalPro
                 </button>
 
                 {/* Content */}
-                <div className="mt-8 w-full min-h-0">
+                <div className="mt-8 w-full pb-4">
                     {currentMode === 'login' ? (
                         <ModalLoginForm 
                             type={type} 

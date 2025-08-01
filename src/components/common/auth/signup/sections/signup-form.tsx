@@ -1,4 +1,4 @@
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import {
     Shield,
     BookOpen,
@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { InstituteSignUp } from "./InstituteSignUpForm";
+import { ModalSignUpForm } from "./ModalSignUpForm";
 
 export function SignUpForm({
     type,
@@ -19,12 +20,17 @@ export function SignUpForm({
     courseId?: string;
 }) {
     const navigate = useNavigate();
+    const search = useSearch({ from: "/signup/" });
+    
+    // Use search parameters if not provided as props
+    const finalType = type || (search as { type?: string; courseId?: string }).type;
+    const finalCourseId = courseId || (search as { type?: string; courseId?: string }).courseId;
 
 
 
     return (
         <div
-            className={`${type ? "h-[400px] overflow-auto" : "min-h-screen overflow-hidden"}  bg-gray-50 relative `}
+            className={`${finalType ? "h-[400px] overflow-auto" : "min-h-screen overflow-hidden"}  bg-gray-50 relative `}
         >
             {/* Subtle Background Pattern */}
             <div className="absolute inset-0 bg-grid-gray-100 [mask-image:linear-gradient(0deg,white,rgba(255,255,255,0.6))] -z-10" />
@@ -60,7 +66,7 @@ export function SignUpForm({
 
             <div className="flex min-h-screen">
                 {/* Left Side - Compact Branding & Features */}
-                {!type && (
+                {!finalType && (
                     <motion.div
                         initial={{ x: -50, opacity: 0 }}
                         animate={{ x: 0, opacity: 1 }}
@@ -186,22 +192,24 @@ export function SignUpForm({
                             initial={{ y: 20, opacity: 0, scale: 0.98 }}
                             animate={{ y: 0, opacity: 1, scale: 1 }}
                             transition={{ delay: 0.3, duration: 0.4 }}
-                            className={`bg-white/90 backdrop-blur-xl rounded-xl ${type ? "" : "shadow-xl border border-gray-200/50 p-6 lg:p-8 xl:p-10"}  `}
+                            className={`bg-white/90 backdrop-blur-xl rounded-xl ${finalType ? "" : "shadow-xl border border-gray-200/50 p-6 lg:p-8 xl:p-10"}  `}
                         >
-                            {/* Compact Header */}
-                            <motion.div
-                                initial={{ y: 10, opacity: 0 }}
-                                animate={{ y: 0, opacity: 1 }}
-                                transition={{ delay: 0.5 }}
-                                className="text-center mb-6"
-                            >
-                                <h2 className="text-xl lg:text-2xl font-bold text-gray-900 mb-2">
-                                    Create Your Account
-                                </h2>
-                                <p className="text-gray-600 text-sm">
-                                    Join our learning community and start your journey
-                                </p>
-                            </motion.div>
+                            {/* Compact Header - Only show for modal signup */}
+                            {finalType && (
+                                <motion.div
+                                    initial={{ y: 10, opacity: 0 }}
+                                    animate={{ y: 0, opacity: 1 }}
+                                    transition={{ delay: 0.5 }}
+                                    className="text-center mb-6"
+                                >
+                                    <h2 className="text-xl lg:text-2xl font-bold text-gray-900 mb-2">
+                                        Create Your Account
+                                    </h2>
+                                    <p className="text-gray-600 text-sm">
+                                        Join our learning community and start your journey
+                                    </p>
+                                </motion.div>
+                            )}
 
 
 
@@ -211,10 +219,19 @@ export function SignUpForm({
                                 animate={{ y: 0, opacity: 1 }}
                                 transition={{ delay: 1.1 }}
                             >
-                                <InstituteSignUp
-                                    type={type}
-                                    courseId={courseId}
-                                />
+                                {finalType ? (
+                                    <ModalSignUpForm
+                                        type={finalType}
+                                        courseId={finalCourseId}
+                                        onSwitchToLogin={() => navigate({ to: "/login" })}
+                                    />
+                                ) : (
+                                    <InstituteSignUp
+                                        type={finalType}
+                                        courseId={finalCourseId}
+                                        onSwitchToLogin={() => navigate({ to: "/login" })}
+                                    />
+                                )}
                             </motion.div>
 
                             {/* Compact Security Notice */}

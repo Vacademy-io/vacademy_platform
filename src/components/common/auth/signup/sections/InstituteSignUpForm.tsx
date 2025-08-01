@@ -1,44 +1,44 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Form, FormControl, FormField, FormItem } from "@/components/ui/form";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { FcGoogle } from "react-icons/fc";
 import { GitHubLogoIcon } from "@radix-ui/react-icons";
 import { LOGIN_URL_GOOGLE_GITHUB } from "@/constants/urls";
 import { 
     Building2,
-    Mail,
     User,
     CheckCircle,
     ChevronDown,
     Search,
     ArrowRight,
+    Loader2,
 } from "lucide-react";
 import { MyInput } from "@/components/design-system/input";
+import { useSignupFlow } from "@/hooks/use-signup-flow";
+import { SignupEmailOtpForm } from "./SignupEmailOtpForm";
+import { getUserDetailsByEmail, registerUser, type RegisterUserRequest } from "@/services/signup-api";
 
 const instituteSelectionSchema = z.object({
     instituteId: z.string().min(1, "Please select an institute"),
 });
 
 const userDetailsSchema = z.object({
-    email: z.string().email("Please enter a valid email address"),
     fullName: z.string().min(2, "Full name must be at least 2 characters"),
     username: z.string().min(3, "Username must be at least 3 characters"),
+    password: z.string().min(8, "Password must be at least 8 characters"),
+    confirmPassword: z.string().min(8, "Confirm password must be at least 8 characters"),
+}).refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords don't match",
+    path: ["confirmPassword"],
 });
 
 type InstituteSelectionValues = z.infer<typeof instituteSelectionSchema>;
 type UserDetailsValues = z.infer<typeof userDetailsSchema>;
-
-interface Institute {
-    id: string;
-    name: string;
-    location: string;
-    type: string;
-}
 
 interface InstituteSignUpProps {
     type?: string;
@@ -52,36 +52,33 @@ export function InstituteSignUp({
     onSwitchToLogin,
 }: InstituteSignUpProps) {
     const navigate = useNavigate();
-    const [currentStep, setCurrentStep] = useState<"selection" | "details">("selection");
-    const [selectedInstitute, setSelectedInstitute] = useState<Institute | null>(null);
+    const search = useSearch({ from: "/signup/" });
+    const [currentStep, setCurrentStep] = useState<"selection" | "email" | "details">("selection");
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-    const [searchQuery, setSearchQuery] = useState("");
+    const [verifiedEmail, setVerifiedEmail] = useState("");
+    
+    // Use the signup flow hook
+    const {
+        state,
+        handleInstituteSearch,
+        handleInstituteSelect,
+        updateUserData,
+        updateSelectedRole,
+        handleUserRegistration,
+        resetState,
+    } = useSignupFlow();
 
-    // Mock institutes data
-    const institutes: Institute[] = [
-        { id: "1", name: "Harvard University", location: "Cambridge, MA", type: "University" },
-        { id: "2", name: "MIT", location: "Cambridge, MA", type: "University" },
-        { id: "3", name: "Stanford University", location: "Stanford, CA", type: "University" },
-        { id: "4", name: "Code Academy", location: "New York, NY", type: "Coding Bootcamp" },
-        { id: "5", name: "Tech Institute", location: "San Francisco, CA", type: "Technical School" },
-        { id: "6", name: "University of California, Berkeley", location: "Berkeley, CA", type: "University" },
-        { id: "7", name: "General Assembly", location: "New York, NY", type: "Coding Bootcamp" },
-        { id: "8", name: "Flatiron School", location: "New York, NY", type: "Coding Bootcamp" },
-        { id: "9", name: "Community College", location: "Local, Various", type: "Community College" },
-        { id: "10", name: "Online Learning Platform", location: "Remote", type: "Online Platform" },
-    ];
+    // Check if institute ID is provided in URL (for modal signup)
+    useEffect(() => {
+        if (search && (search as { instituteId?: string }).instituteId && !state.selectedInstitute) {
+            handleInstituteSelect((search as { instituteId?: string }).instituteId!);
+        }
+    }, [search, state.selectedInstitute, handleInstituteSelect]);
 
     // Filter institutes based on search query
     const filteredInstitutes = useMemo(() => {
-        if (!searchQuery.trim()) return institutes;
-        
-        const query = searchQuery.toLowerCase();
-        return institutes.filter(institute => 
-            institute.name.toLowerCase().includes(query) ||
-            institute.location.toLowerCase().includes(query) ||
-            institute.type.toLowerCase().includes(query)
-        );
-    }, [searchQuery, institutes]);
+        return state.searchResults;
+    }, [state.searchResults]);
 
     const instituteSelectionForm = useForm<InstituteSelectionValues>({
         resolver: zodResolver(instituteSelectionSchema),
@@ -93,60 +90,186 @@ export function InstituteSignUp({
     const userDetailsForm = useForm<UserDetailsValues>({
         resolver: zodResolver(userDetailsSchema),
         defaultValues: {
-            email: "",
             fullName: "",
             username: "",
+            password: "",
+            confirmPassword: "",
         },
     });
 
-    const handleInstituteSelect = (institute: Institute) => {
-        setSelectedInstitute(institute);
-        instituteSelectionForm.setValue("instituteId", institute.id);
+    const handleInstituteSelectLocal = async (instituteId: string) => {
+        await handleInstituteSelect(instituteId);
+        instituteSelectionForm.setValue("instituteId", instituteId);
         setIsDropdownOpen(false);
-        setSearchQuery(""); // Clear search when institute is selected
+        setCurrentStep("email");
+    };
+
+    const handleUserDetailsCheck = async ({ email }: { email: string; response: unknown }) => {
+        try {
+            // Call the API to check if user already exists
+            const userData = await getUserDetailsByEmail(email);
+            
+            // User exists, but we need to check if they're enrolled in the selected institute
+            // Since the user details API doesn't return institute info, we'll proceed with enrollment
+            // The backend will handle duplicate enrollment checks
+            
+            // Prepare user roles based on institute settings and course creation permissions
+            const userRoles: string[] = [];
+            
+            // Always add STUDENT role for learners
+            userRoles.push("STUDENT");
+            
+            // If learners can create courses, also add TEACHER role
+            if (state.instituteSettings?.learnersCanCreateCourses) {
+                userRoles.push("TEACHER");
+            }
+            
+            console.log("handleUserDetailsCheck - User registration - Roles assigned:", {
+                learnersCanCreateCourses: state.instituteSettings?.learnersCanCreateCourses,
+                assignedRoles: userRoles,
+                instituteSettings: state.instituteSettings
+            });
+            
+            // Call signup API with existing user data
+            const registrationData: RegisterUserRequest = {
+                user: {
+                    username: userData.username,
+                    email: userData.email,
+                    full_name: userData.full_name,
+                    password: userData.password || "",
+                    roles: userRoles,
+                    root_user: false,
+                },
+                institute_id: state.selectedInstitute!.id,
+                learner_package_session_enroll: null,
+            };
+
+            await registerUser(registrationData);
+            toast.success("Successfully signed up for this institute! Your credentials have been sent to your email.");
+            
+            // Don't store tokens - user should login separately
+            // Navigate to login page
+            navigate({ to: "/login" });
+        } catch (error: unknown) {
+            if (error instanceof Error && error.message === 'USER_NOT_FOUND') {
+                // User doesn't exist, proceed to user details step
+                setVerifiedEmail(email);
         setCurrentStep("details");
+                toast.success("Email verified successfully! Please complete your registration.");
+            } else {
+                console.error("Error checking user details:", error);
+                toast.error("Failed to check user details. Please try again.");
+            }
+        }
     };
 
     const handleDropdownToggle = () => {
         setIsDropdownOpen(!isDropdownOpen);
-        if (!isDropdownOpen) {
-            setSearchQuery(""); // Clear search when opening dropdown
-        }
     };
 
-    const handleUserDetailsSubmit = async (data: UserDetailsValues) => {
-        if (!selectedInstitute) {
+    const handleUserRegistrationWithPassword = async (password: string) => {
+        if (!state.selectedInstitute) {
             toast.error("Please select an institute first");
             return;
         }
 
+        if (!state.userData.email || !state.userData.fullName || !state.userData.username) {
+            toast.error("Please fill in all required fields");
+            return;
+        }
+
         try {
-            // Simulate API call for user registration
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            // Prepare user roles based on institute settings and course creation permissions
+            const userRoles: string[] = [];
             
-            toast.success("Account created successfully!");
-            console.log("Registration data:", {
-                institute: selectedInstitute,
-                userDetails: data,
-                type,
-                courseId,
+            // Always add STUDENT role for learners
+            userRoles.push("STUDENT");
+            
+            // If learners can create courses, also add TEACHER role
+            if (state.instituteSettings?.learnersCanCreateCourses) {
+                userRoles.push("TEACHER");
+            }
+            
+            console.log("User registration - Roles assigned:", {
+                learnersCanCreateCourses: state.instituteSettings?.learnersCanCreateCourses,
+                assignedRoles: userRoles,
+                instituteSettings: state.instituteSettings
             });
+
+            // Prepare registration payload with password
+            const registrationData: RegisterUserRequest = {
+                user: {
+                    username: state.userData.username,
+                    email: state.userData.email,
+                    full_name: state.userData.fullName,
+                    password: password,
+                    roles: userRoles,
+                    root_user: false,
+                },
+                institute_id: state.selectedInstitute.id,
+                learner_package_session_enroll: null,
+            };
+
+            // Call the registration API
+            await registerUser(registrationData);
+
+            // If we get here, registration was successful
+            toast.success("Successfully signed up for this institute! Your credentials have been sent to your email.");
             
-            // Navigate to dashboard or next step
-            navigate({ to: "/dashboard" });
+            // Don't store tokens - user should login separately
+            // Navigate to login page
+            navigate({ to: "/login" });
         } catch (error) {
+            console.error("Registration failed:", error);
             toast.error("Registration failed. Please try again.");
         }
     };
 
+    const handleUserDetailsSubmit = async (data: UserDetailsValues) => {
+        console.log("Form submission data:", data);
+        console.log("Form state:", userDetailsForm.formState);
+        
+        // Check if form is valid
+        const isValid = await userDetailsForm.trigger();
+        if (!isValid) {
+            console.log("Form validation failed:", userDetailsForm.formState.errors);
+            toast.error("Please fill in all required fields correctly.");
+            return;
+        }
+        
+        if (!state.selectedInstitute) {
+            toast.error("Please select an institute first");
+            return;
+        }
+
+        if (!verifiedEmail) {
+            toast.error("Please verify your email first.");
+            return;
+        }
+
+        // Update user data in the hook
+        updateUserData("email", verifiedEmail);
+        updateUserData("fullName", data.fullName);
+        updateUserData("username", data.username);
+
+        // Call the registration function with password
+        await handleUserRegistrationWithPassword(data.password);
+    };
+
     const handleBackToSelection = () => {
         setCurrentStep("selection");
-        setSelectedInstitute(null);
+        resetState();
         instituteSelectionForm.reset();
+        setVerifiedEmail("");
+    };
+
+    const handleBackToEmail = () => {
+        setCurrentStep("email");
+        setVerifiedEmail("");
     };
 
     const handleOAuthSignUp = (provider: "google" | "github") => {
-        if (!selectedInstitute) {
+        if (!state.selectedInstitute) {
             toast.error("Please select an institute first");
             return;
         }
@@ -155,8 +278,8 @@ export function InstituteSignUp({
             const stateObj = {
                 from: `${window.location.origin}/signup/oauth/learner`,
                 account_type: "signup",
-                institute_id: selectedInstitute.id,
-                institute_name: selectedInstitute.name,
+                institute_id: state.selectedInstitute.id,
+                institute_name: state.selectedInstitute.institute_name,
             };
 
             const base64State = btoa(JSON.stringify(stateObj));
@@ -196,12 +319,12 @@ export function InstituteSignUp({
                                     type: "spring",
                                     stiffness: 200,
                                 }}
-                                className="w-12 h-12 bg-gray-100 rounded-xl mx-auto flex items-center justify-center"
+                                className="w-20 h-20 bg-gray-100 rounded-xl mx-auto flex items-center justify-center"
                             >
-                                <Building2 className="w-6 h-6 text-gray-700" />
+                                <Building2 className="w-12 h-12 text-gray-700" />
                             </motion.div>
                             <div className="space-y-1">
-                                <h3 className="text-lg font-semibold text-gray-900">
+                                <h3 className="text-2xl font-semibold text-gray-900">
                                     Select Your Institute
                                 </h3>
                                 <p className="text-sm text-gray-600">
@@ -228,11 +351,14 @@ export function InstituteSignUp({
                                             <input
                                                 type="text"
                                                 placeholder="Search institutes..."
-                                                value={searchQuery}
-                                                onChange={(e) => setSearchQuery(e.target.value)}
+                                                value={state.searchQuery}
+                                                onChange={(e) => handleInstituteSearch(e.target.value)}
                                                 className="w-full pl-10 pr-10 py-3 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent transition-all duration-200"
                                                 autoFocus
                                             />
+                                            {state.isSearching && (
+                                                <Loader2 className="w-4 h-4 animate-spin text-gray-400 absolute right-3 top-1/2 transform -translate-y-1/2" />
+                                            )}
                                             <button
                                                 type="button"
                                                 onClick={handleDropdownToggle}
@@ -247,10 +373,14 @@ export function InstituteSignUp({
                                             onClick={handleDropdownToggle}
                                             className="w-full p-3 text-left bg-white border border-gray-200 rounded-lg hover:border-gray-300 focus:border-gray-900 focus:outline-none transition-all duration-200 flex items-center justify-between"
                                         >
-                                            <span className={selectedInstitute ? "text-gray-900" : "text-gray-500"}>
-                                                {selectedInstitute ? selectedInstitute.name : "Select an institute..."}
+                                            <span className={state.selectedInstitute ? "text-gray-900" : "text-gray-500"}>
+                                                {state.selectedInstitute ? state.selectedInstitute.institute_name : "Select an institute..."}
                                             </span>
-                                            <ChevronDown className="w-4 h-4 text-gray-400 transition-transform duration-200" />
+                                            {state.isFetchingInstituteDetails ? (
+                                                <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
+                                            ) : (
+                                                <ChevronDown className="w-4 h-4 text-gray-400 transition-transform duration-200" />
+                                            )}
                                         </button>
                                     )}
                                 </div>
@@ -268,44 +398,99 @@ export function InstituteSignUp({
                                                 <button
                                                     key={institute.id}
                                                     type="button"
-                                                    onClick={() => handleInstituteSelect(institute)}
+                                                    onClick={() => handleInstituteSelectLocal(institute.id)}
                                                     className="w-full p-3 text-left hover:bg-gray-50 border-b border-gray-100 last:border-b-0 transition-colors duration-200"
                                                 >
                                                     <div>
                                                         <h5 className="font-medium text-gray-900 text-sm">
-                                                            {institute.name}
+                                                            {institute.institute_name}
                                                         </h5>
                                                         <p className="text-xs text-gray-600">
-                                                            {institute.location} • {institute.type}
+                                                            ID: {institute.id}
                                                         </p>
                                                     </div>
                                                 </button>
                                             ))
                                         ) : (
                                             <div className="p-4 text-center text-gray-500 text-sm">
-                                                No institutes found matching "{searchQuery}"
+                                                {state.searchQuery ? `No institutes found matching "${state.searchQuery}"` : "Start typing to search institutes"}
                                             </div>
                                         )}
                                     </motion.div>
                                 )}
                             </div>
-
-                            {/* Continue Button */}
-                            {selectedInstitute && (
-                                <motion.button
-                                    type="button"
-                                    onClick={() => setCurrentStep("details")}
-                                    whileHover={{ scale: 1.01 }}
-                                    whileTap={{ scale: 0.99 }}
-                                    className="w-full bg-gray-900 hover:bg-black text-white font-medium py-3 px-4 rounded-lg transition-all duration-200 shadow-sm hover:shadow-md"
-                                >
-                                    <div className="flex items-center justify-center space-x-2">
-                                        <CheckCircle className="w-4 h-4" />
-                                        <span className="text-sm">Continue</span>
-                                    </div>
-                                </motion.button>
-                            )}
                         </motion.div>
+
+                        {/* Already have an account link - after dropdown */}
+                        <motion.div
+                            initial={{ y: 10, opacity: 0 }}
+                            animate={{ y: 0, opacity: 1 }}
+                            transition={{ delay: 0.6 }}
+                            className="text-center text-xs text-gray-500"
+                        >
+                            Already have an account?{" "}
+                            <motion.button
+                                type="button"
+                                whileHover={{ scale: 1.02 }}
+                                onClick={() => {
+                                    if (onSwitchToLogin) {
+                                        onSwitchToLogin();
+                                    } else {
+                                        navigate({ to: "/login" });
+                                    }
+                                }}
+                                className="text-gray-700 hover:text-gray-900 font-medium underline cursor-pointer"
+                            >
+                                Sign in here
+                            </motion.button>
+                        </motion.div>
+                    </motion.div>
+                ) : currentStep === "email" ? (
+                    <motion.div
+                        key="email"
+                        initial={{ opacity: 0, x: -30 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: 30 }}
+                        transition={{ duration: 0.3 }}
+                        className="space-y-6"
+                    >
+                        {/* Institute Display */}
+                            {state.selectedInstitute && (
+                            <motion.div
+                                initial={{ y: 10, opacity: 0 }}
+                                animate={{ y: 0, opacity: 1 }}
+                                transition={{ delay: 0.1 }}
+                                className="p-4 bg-blue-50 border border-blue-200 rounded-lg"
+                            >
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center space-x-3">
+                                        <Building2 className="w-5 h-5 text-blue-600" />
+                                        <div>
+                                            <h4 className="font-medium text-blue-900 text-sm">
+                                                Institute
+                                            </h4>
+                                            <p className="text-xs text-blue-700">
+                                                {state.selectedInstitute.institute_name}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <motion.button
+                                        type="button"
+                                        whileHover={{ scale: 1.05 }}
+                                        onClick={handleBackToSelection}
+                                        className="text-xs text-blue-700 hover:text-blue-900 font-medium underline"
+                                    >
+                                        Change
+                                </motion.button>
+                                </div>
+                            </motion.div>
+                        )}
+
+                        {/* Email Verification using SignupEmailOtpForm component */}
+                        <SignupEmailOtpForm
+                            onUserDetailsCheck={handleUserDetailsCheck}
+                            onSwitchToLogin={onSwitchToLogin}
+                        />
                     </motion.div>
                 ) : (
                     <motion.div
@@ -316,33 +501,20 @@ export function InstituteSignUp({
                         transition={{ duration: 0.3 }}
                         className="space-y-6"
                     >
-                        {/* Selected Institute Display */}
+                        {/* Header */}
                         <motion.div
                             initial={{ y: 10, opacity: 0 }}
                             animate={{ y: 0, opacity: 1 }}
                             transition={{ delay: 0.1 }}
-                            className="p-4 bg-green-50 border border-green-200 rounded-lg"
+                            className="text-center space-y-3"
                         >
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center space-x-3">
-                                    <Building2 className="w-5 h-5 text-green-600" />
-                                    <div>
-                                        <h4 className="font-medium text-green-900 text-sm">
-                                            {selectedInstitute?.name}
-                                        </h4>
-                                        <p className="text-xs text-green-700">
-                                            {selectedInstitute?.location} • {selectedInstitute?.type}
-                                        </p>
-                                    </div>
-                                </div>
-                                <motion.button
-                                    type="button"
-                                    whileHover={{ scale: 1.05 }}
-                                    onClick={handleBackToSelection}
-                                    className="text-xs text-green-700 hover:text-green-900 font-medium underline"
-                                >
-                                    Change
-                                </motion.button>
+                            <div className="space-y-1">
+                                <h3 className="text-lg font-semibold text-gray-900">
+                                    Create Your Account
+                                </h3>
+                                <p className="text-sm text-gray-600">
+                                    Join our learning community and start your journey
+                                </p>
                             </div>
                         </motion.div>
 
@@ -385,7 +557,7 @@ export function InstituteSignUp({
                         <motion.div
                             initial={{ width: 0, opacity: 0 }}
                             animate={{ width: "100%", opacity: 1 }}
-                            transition={{ delay: 0.4, duration: 0.3 }}
+                            transition={{ delay: 0.3, duration: 0.3 }}
                             className="relative my-5"
                         >
                             <div className="absolute inset-0 flex items-center">
@@ -398,43 +570,92 @@ export function InstituteSignUp({
                             </div>
                         </motion.div>
 
+
+
+                        {/* Email Verification Display */}
+                        {verifiedEmail && (
+                            <motion.div
+                                initial={{ y: 10, opacity: 0 }}
+                                animate={{ y: 0, opacity: 1 }}
+                                transition={{ delay: 0.5 }}
+                                className="p-4 bg-blue-50 border border-blue-200 rounded-lg"
+                            >
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center space-x-3">
+                                        <CheckCircle className="w-5 h-5 text-blue-600" />
+                                        <div>
+                                            <h4 className="font-medium text-blue-900 text-sm">
+                                                Email Verified
+                                            </h4>
+                                            <p className="text-xs text-blue-700">
+                                                {verifiedEmail}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <motion.button
+                                        type="button"
+                                        whileHover={{ scale: 1.05 }}
+                                        onClick={handleBackToEmail}
+                                        className="text-xs text-blue-700 hover:text-blue-900 font-medium underline"
+                                    >
+                                        Change
+                                    </motion.button>
+                                </div>
+                            </motion.div>
+                        )}
+
+                        {/* Role Selection */}
+                        {state.instituteSettings && (state.instituteSettings.allowLearnerSignup && state.instituteSettings.allowTeacherSignup) && (
+                            <motion.div
+                                initial={{ y: 10, opacity: 0 }}
+                                animate={{ y: 0, opacity: 1 }}
+                                transition={{ delay: 0.6 }}
+                                className="space-y-2"
+                            >
+                                <label className="block text-sm font-medium text-gray-700">
+                                    Select Role <span className="text-red-500">*</span>
+                                </label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {state.instituteSettings.allowLearnerSignup && (
+                                        <button
+                                            key="learner"
+                                            type="button"
+                                            onClick={() => updateSelectedRole("learner")}
+                                            className={`p-3 text-sm font-medium rounded-lg border transition-all duration-200 ${
+                                                state.selectedRole === "learner"
+                                                    ? "bg-gray-900 text-white border-gray-900"
+                                                    : "bg-white text-gray-700 border-gray-200 hover:border-gray-300"
+                                            }`}
+                                        >
+                                            Learner
+                                        </button>
+                                    )}
+                                    {state.instituteSettings.allowTeacherSignup && (
+                                        <button
+                                            key="teacher"
+                                            type="button"
+                                            onClick={() => updateSelectedRole("teacher")}
+                                            className={`p-3 text-sm font-medium rounded-lg border transition-all duration-200 ${
+                                                state.selectedRole === "teacher"
+                                                    ? "bg-gray-900 text-white border-gray-900"
+                                                    : "bg-white text-gray-700 border-gray-200 hover:border-gray-300"
+                                            }`}
+                                        >
+                                            Teacher
+                                        </button>
+                                    )}
+                                </div>
+                            </motion.div>
+                        )}
+
                         {/* User Details Form */}
                         <motion.div
                             initial={{ y: 10, opacity: 0 }}
                             animate={{ y: 0, opacity: 1 }}
-                            transition={{ delay: 0.6 }}
+                            transition={{ delay: 0.7 }}
                         >
                             <Form {...userDetailsForm}>
                                 <form onSubmit={userDetailsForm.handleSubmit(handleUserDetailsSubmit)} className="space-y-4">
-                                    {/* Email Field */}
-                                    <FormField
-                                        control={userDetailsForm.control}
-                                        name="email"
-                                        render={({ field }) => (
-                                            <FormItem>
-                                                <FormControl>
-                                                    <div className="relative">
-                                                        <MyInput
-                                                            inputType="email"
-                                                            inputPlaceholder="Enter your email address"
-                                                            label="Email Address"
-                                                            required
-                                                            size="large"
-                                                            error={
-                                                                userDetailsForm.formState.errors.email?.message
-                                                            }
-                                                            {...field}
-                                                            className="w-full transition-all duration-200 border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pr-10"
-                                                            input={field.value}
-                                                            onChangeFunction={field.onChange}
-                                                        />
-                                                        <Mail className="absolute right-3 bottom-3 w-4 h-4 text-gray-400" />
-                                                    </div>
-                                                </FormControl>
-                                            </FormItem>
-                                        )}
-                                    />
-
                                     {/* Full Name Field */}
                                     <FormField
                                         control={userDetailsForm.control}
@@ -452,7 +673,6 @@ export function InstituteSignUp({
                                                             error={
                                                                 userDetailsForm.formState.errors.fullName?.message
                                                             }
-                                                            {...field}
                                                             className="w-full transition-all duration-200 border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pr-10"
                                                             input={field.value}
                                                             onChangeFunction={field.onChange}
@@ -481,7 +701,6 @@ export function InstituteSignUp({
                                                             error={
                                                                 userDetailsForm.formState.errors.username?.message
                                                             }
-                                                            {...field}
                                                             className="w-full transition-all duration-200 border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pr-10"
                                                             input={field.value}
                                                             onChangeFunction={field.onChange}
@@ -493,44 +712,115 @@ export function InstituteSignUp({
                                         )}
                                     />
 
+                                    {/* Password Field */}
+                                    <FormField
+                                        control={userDetailsForm.control}
+                                        name="password"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormControl>
+                                                    <div className="relative">
+                                                        <MyInput
+                                                            inputType="password"
+                                                            inputPlaceholder="Create a password"
+                                                            label="Password"
+                                                            required
+                                                            size="large"
+                                                            error={
+                                                                userDetailsForm.formState.errors.password?.message
+                                                            }
+                                                            className="w-full transition-all duration-200 border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pr-10"
+                                                            input={field.value}
+                                                            onChangeFunction={field.onChange}
+                                                        />
+                                                    </div>
+                                                </FormControl>
+                                            </FormItem>
+                                        )}
+                                    />
+
+                                    {/* Confirm Password Field */}
+                                    <FormField
+                                        control={userDetailsForm.control}
+                                        name="confirmPassword"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormControl>
+                                                    <div className="relative">
+                                                        <MyInput
+                                                            inputType="password"
+                                                            inputPlaceholder="Confirm your password"
+                                                            label="Confirm Password"
+                                                            required
+                                                            size="large"
+                                                            error={
+                                                                userDetailsForm.formState.errors.confirmPassword?.message
+                                                            }
+                                                            className="w-full transition-all duration-200 border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pr-10"
+                                                            input={field.value}
+                                                            onChangeFunction={field.onChange}
+                                                        />
+                                                    </div>
+                                                </FormControl>
+                                            </FormItem>
+                                        )}
+                                    />
+
                                     {/* Create Account Button */}
                                     <motion.button
                                         type="submit"
-                                        whileHover={{ scale: 1.01 }}
-                                        whileTap={{ scale: 0.99 }}
-                                        className="w-full bg-gray-900 hover:bg-black text-white font-medium py-3 px-4 rounded-lg transition-all duration-200 shadow-sm hover:shadow-md"
+                                        disabled={state.isRegistering}
+                                        whileHover={{ scale: state.isRegistering ? 1 : 1.01 }}
+                                        whileTap={{ scale: state.isRegistering ? 1 : 0.99 }}
+                                        className="w-full bg-gray-900 hover:bg-black text-white font-medium py-3 px-4 rounded-lg transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                         <div className="flex items-center justify-center space-x-2">
-                                            <CheckCircle className="w-4 h-4" />
-                                            <span className="text-sm">Create Account</span>
+                                            {state.isRegistering ? (
+                                                <div className="flex items-center space-x-2">
+                                                    <Loader2 className="w-4 h-4 animate-spin text-white" />
+                                                    <span className="text-sm">Creating Account...</span>
+                                                </div>
+                                            ) : (
+                                                <>
+                                                    <CheckCircle className="w-4 h-4" />
+                                                    <span className="text-sm">Create Account</span>
+                                                </>
+                                            )}
                                         </div>
                                     </motion.button>
                                 </form>
                             </Form>
                         </motion.div>
+
+                        {/* Already have an account link */}
+                        <motion.div
+                            initial={{ y: 10, opacity: 0 }}
+                            animate={{ y: 0, opacity: 1 }}
+                            transition={{ delay: 0.8 }}
+                            className="text-center text-xs text-gray-500"
+                        >
+                            Already have an account?{" "}
+                            <motion.button
+                                type="button"
+                                whileHover={{ scale: 1.02 }}
+                                onClick={() => {
+                                    if (onSwitchToLogin) {
+                                        onSwitchToLogin();
+                                    } else {
+                                        navigate({ to: "/login" });
+                                    }
+                                }}
+                                className="text-gray-700 hover:text-gray-900 font-medium underline cursor-pointer"
+                            >
+                                Sign in here
+                            </motion.button>
+                        </motion.div>
+
+
                     </motion.div>
                 )}
             </AnimatePresence>
 
-            {/* Sign In Link */}
-            <motion.div
-                initial={{ y: 10, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.8 }}
-                className="text-center pt-3"
-            >
-                <div className="text-xs text-gray-500">
-                    Already have an account?{" "}
-                    <motion.button
-                        type="button"
-                        whileHover={{ scale: 1.02 }}
-                        onClick={onSwitchToLogin || (() => navigate({ to: "/login" }))}
-                        className="text-gray-700 hover:text-gray-900 font-medium underline cursor-pointer"
-                    >
-                        Sign in here
-                    </motion.button>
-                </div>
-            </motion.div>
         </div>
     );
 } 

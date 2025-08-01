@@ -40,11 +40,13 @@ export function EmailLogin({
     type,
     courseId,
     onSwitchToSignup,
+    onEmailVerificationSuccess,
 }: {
     onSwitchToUsername: () => void;
     type?: string;
     courseId?: string;
     onSwitchToSignup?: () => void;
+    onEmailVerificationSuccess?: (email: string) => void;
 }) {
     const [isOtpSent, setIsOtpSent] = useState(false);
     const [email, setEmail] = useState("");
@@ -117,6 +119,12 @@ export function EmailLogin({
             axios.post(LOGIN_OTP, data),
         onSuccess: async (response) => {
             try {
+                // If onEmailVerificationSuccess callback is provided, use it for signup flow
+                if (onEmailVerificationSuccess) {
+                    onEmailVerificationSuccess(email);
+                    return;
+                }
+
                 // Store tokens
                 await setTokenInStorage(
                     TokenKey.accessToken,

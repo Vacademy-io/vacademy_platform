@@ -56,6 +56,7 @@ public class PackageSessionService {
     }
 
     public PackageSession updatePackageSession(String packageSessionId,String status,String instituteId,List<AddFacultyToCourseDTO>addFacultyToCourseDTOS){
+        System.out.println(packageSessionId);
         PackageSession packageSession = packageRepository.findById(packageSessionId).get();
         packageSession.setStatus(status);
         packageRepository.save(packageSession);

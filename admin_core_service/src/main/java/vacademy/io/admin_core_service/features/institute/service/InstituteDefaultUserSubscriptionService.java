@@ -23,7 +23,7 @@ public class InstituteDefaultUserSubscriptionService {
                 .sourceId(instituteId)
                 .tag(PaymentOptionTag.DEFAULT.name())
                 .type(PaymentOptionType.FREE.name())
-                .requireApproval(true)
+                .requireApproval(false)
                 .build();
 
         paymentOptionService.savePaymentOption(paymentOptionDTO);

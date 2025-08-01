@@ -52,7 +52,7 @@ public class StripePaymentManager implements PaymentServiceStrategy {
 
     @Override
     public PaymentResponseDTO initiatePayment(UserDTO user, PaymentInitiationRequestDTO request, Map<String, Object> paymentGatewaySpecificData) {
-        logger.info("Starting payment initiation for user: {}", user.getId());
+        logger.info("Initiating Stripe payment for user: {}", user.getId());
 
         try {
             validateRequest(request);
@@ -61,22 +61,22 @@ public class StripePaymentManager implements PaymentServiceStrategy {
 
             StripeRequestDTO stripeRequestDTO = request.getStripeRequest();
 
-            logger.debug("Raw request amount: {}", request.getAmount());
             long amountInCents = convertAmountToCents(request.getAmount());
-            logger.debug("Converted amount in cents: {}", amountInCents);
+            logger.debug("Amount in cents: {}", amountInCents);
 
             attachPaymentMethodIfNeeded(stripeRequestDTO.getCustomerId(), stripeRequestDTO.getPaymentMethodId());
 
             createInvoiceItem(stripeRequestDTO, amountInCents, request);
-            Invoice invoice = createAndFinalizeInvoice(stripeRequestDTO, request);
-            System.out.println(invoice);
+            Invoice invoice = createAndAutoChargeInvoice(stripeRequestDTO, request);
+
             return buildPaymentResponse(invoice);
 
         } catch (StripeException e) {
-            logger.error("StripeException during payment initiation: {}", e.getMessage(), e);
+            logger.error("Stripe error during payment initiation: {}", e.getMessage(), e);
             throw new VacademyException("Stripe error: " + e.getMessage());
         }
     }
+
 
     private long convertAmountToCents(double amount) {
         return BigDecimal.valueOf(amount)
@@ -101,26 +101,31 @@ public class StripePaymentManager implements PaymentServiceStrategy {
         logger.info("Invoice item created with ID: {}", invoiceItem.getId());
     }
 
-    private Invoice createAndFinalizeInvoice(StripeRequestDTO stripeRequestDTO, PaymentInitiationRequestDTO request) throws StripeException {
+    private Invoice createAndAutoChargeInvoice(StripeRequestDTO stripeRequestDTO, PaymentInitiationRequestDTO request) throws StripeException {
         Map<String, Object> invoiceParams = new HashMap<>();
         invoiceParams.put("customer", stripeRequestDTO.getCustomerId());
-        invoiceParams.put("collection_method", "charge_automatically"); // Always auto charge
+        invoiceParams.put("collection_method", "charge_automatically");
         invoiceParams.put("pending_invoice_items_behavior", "include");
-        invoiceParams.put("auto_advance", true); // Let Stripe auto-finalize & attempt payment
+        invoiceParams.put("auto_advance", false); // Disable auto_advance so we manually finalize right after
 
         if (StringUtils.hasText(stripeRequestDTO.getPaymentMethodId())) {
             invoiceParams.put("default_payment_method", stripeRequestDTO.getPaymentMethodId());
         } else {
-            throw new VacademyException("Payment method is required for automatic payments.");
+            throw new VacademyException("Payment method required for automatic payments.");
         }
 
         logger.debug("Creating invoice with params: {}", invoiceParams);
         Invoice invoice = Invoice.create(invoiceParams);
-        logger.info("Invoice created: {}", invoice.getId());
 
-        // No manual finalization; Stripe will handle it due to auto_advance=true
+        // Manually finalize immediately so we get hosted_invoice_url and invoice_pdf
+        invoice = invoice.finalizeInvoice();
+
+        logger.info("Invoice finalized: {}, hosted_url: {}, pdf: {}", invoice.getId(), invoice.getHostedInvoiceUrl(), invoice.getInvoicePdf());
+
         return invoice;
     }
+
+
 
 
     private void attachPaymentMethodIfNeeded(String customerId, String paymentMethodId) throws StripeException {
@@ -152,9 +157,8 @@ public class StripePaymentManager implements PaymentServiceStrategy {
         response.put("dueDate", invoice.getDueDate());
         response.put("status", invoice.getStatus());
         response.put("description", invoice.getDescription());
-        response.put("paymentUrl", invoice.getHostedInvoiceUrl());
-
-        // Determine payment status based on 'paid' boolean
+        response.put("paymentUrl", invoice.getHostedInvoiceUrl()); // Include this explicitly
+        System.out.println(invoice);
         PaymentStatusEnum paymentStatus = invoice.getPaid()
                 ? PaymentStatusEnum.PAID
                 : PaymentStatusEnum.PAYMENT_PENDING;

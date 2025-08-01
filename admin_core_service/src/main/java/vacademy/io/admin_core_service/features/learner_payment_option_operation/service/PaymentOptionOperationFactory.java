@@ -12,11 +12,13 @@ public class PaymentOptionOperationFactory {
 
     public PaymentOptionOperationFactory(SubscriptionPaymentOptionOperation subscriptionPaymentOptionOperation,
                                          OneTimePaymentOptionOperation oneTimePaymentOptionOperation,
-                                         DonationPaymentOptionOperation donationPaymentOptionOperation) {
+                                         DonationPaymentOptionOperation donationPaymentOptionOperation,
+                                         FreePaymentOptionOperation freePaymentOptionOperation) {
         strategies = Map.of(
                 PaymentOptionType.SUBSCRIPTION, subscriptionPaymentOptionOperation,
                 PaymentOptionType.ONE_TIME, oneTimePaymentOptionOperation,
-                PaymentOptionType.DONATION, donationPaymentOptionOperation
+                PaymentOptionType.DONATION, donationPaymentOptionOperation,
+                PaymentOptionType.FREE, freePaymentOptionOperation
         );
     }
 

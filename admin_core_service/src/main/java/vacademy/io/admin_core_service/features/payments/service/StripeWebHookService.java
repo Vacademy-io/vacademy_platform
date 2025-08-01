@@ -40,6 +40,8 @@ public class StripeWebHookService {
 
         String webhookId = null;
 
+        System.out.println("payload: " + payload);
+
         try {
             webhookId = webHookService.saveWebhook(PaymentGateway.STRIPE.name(), payload);
 

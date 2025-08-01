@@ -19,7 +19,7 @@ public class WebHook {
     @UuidGenerator
     private String id;
 
-    @Column(name = "event_type", nullable = false)
+    @Column(name = "event_type")
     private String eventType;
 
     @Column(name = "vendor", nullable = false)

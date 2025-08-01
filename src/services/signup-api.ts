@@ -216,9 +216,6 @@ export const searchInstitute = async (searchName: string): Promise<InstituteSear
 };
 
 export const getInstituteDetails = async (instituteId: string): Promise<InstituteDetails> => {
-  console.log("=== getInstituteDetails START ===");
-  console.log("Fetching details for instituteId:", instituteId);
-  
   try {
     const response = await axios.get<InstituteDetails>(
       `${BASE_URL}/admin-core-service/public/institute/v1/details/${instituteId}`,
@@ -228,31 +225,8 @@ export const getInstituteDetails = async (instituteId: string): Promise<Institut
         },
       }
     );
-    
-    console.log("=== Institute details API response ===");
-    console.log("Full response data:", response.data);
-    console.log("Institute ID:", response.data.id);
-    console.log("Institute name:", response.data.institute_name);
-    console.log("Settings field:", response.data.setting);
-    console.log("Settings field type:", typeof response.data.setting);
-    console.log("Settings field length:", response.data.setting?.length);
-    
-    // Try to parse the settings to see what's in there
-    if (response.data.setting) {
-      try {
-        const parsedSettings = JSON.parse(response.data.setting);
-        console.log("Parsed settings from API:", parsedSettings);
-        console.log("learnersCanCreateCourses in API response:", parsedSettings.learnersCanCreateCourses);
-      } catch (parseError) {
-        console.error("Error parsing settings from API response:", parseError);
-      }
-    }
-    
-    console.log("=== getInstituteDetails END ===");
     return response.data;
   } catch (error) {
-    console.error("Error fetching institute details:", error);
-    console.log("=== getInstituteDetails END (error) ===");
     throw new Error("Failed to fetch institute details");
   }
 };
@@ -299,63 +273,50 @@ export const getUserDetailsByEmail = async (email: string): Promise<UserDetailsB
 
 // Utility function to parse institute settings
 export const parseInstituteSettings = (settingsString: string): InstituteSettings => {
-  console.log("=== parseInstituteSettings START ===");
-  console.log("Input settingsString:", settingsString);
-  console.log("Input settingsString type:", typeof settingsString);
-  console.log("Input settingsString length:", settingsString?.length);
-  
   try {
     // Handle null, undefined, or empty string
     if (!settingsString || settingsString.trim() === '') {
-      console.warn("Institute settings string is empty or null, using defaults");
-      const defaultSettings = {
+      return {
         allowLearnerSignup: true,
         allowTeacherSignup: false,
         learnersCanCreateCourses: false,
       };
-      console.log("Returning default settings:", defaultSettings);
-      console.log("=== parseInstituteSettings END (defaults) ===");
-      return defaultSettings;
     }
 
     const settings = JSON.parse(settingsString);
-    console.log("Parsed JSON settings:", settings);
-    console.log("Parsed settings type:", typeof settings);
-    
     // Handle case where parsed result is null or not an object
     if (!settings || typeof settings !== 'object') {
-      console.warn("Parsed institute settings is null or not an object, using defaults");
-      const defaultSettings = {
+      return {
         allowLearnerSignup: true,
         allowTeacherSignup: false,
         learnersCanCreateCourses: false,
       };
-      console.log("Returning default settings:", defaultSettings);
-      console.log("=== parseInstituteSettings END (defaults) ===");
-      return defaultSettings;
     }
 
-    const result = {
-      allowLearnerSignup: settings.allowLearnerSignup ?? true,
-      allowTeacherSignup: settings.allowTeacherSignup ?? false,
-      learnersCanCreateCourses: settings.learnersCanCreateCourses ?? false,
+    // Extract permissions from the nested structure
+    let allowLearnersToCreateCourses = false;
+    if (settings.setting && typeof settings.setting === 'object') {
+      if (settings.setting.COURSE_SETTING && 
+          settings.setting.COURSE_SETTING.data && 
+          settings.setting.COURSE_SETTING.data.permissions) {
+        const permissions = settings.setting.COURSE_SETTING.data.permissions;
+        allowLearnersToCreateCourses = permissions.allowLearnersToCreateCourses ?? false;
+      }
+    }
+    // For backward compatibility, also check direct properties
+    const allowLearnerSignup = settings.allowLearnerSignup ?? true;
+    const allowTeacherSignup = settings.allowTeacherSignup ?? false;
+    const learnersCanCreateCourses = allowLearnersToCreateCourses || (settings.learnersCanCreateCourses ?? false);
+    return {
+      allowLearnerSignup,
+      allowTeacherSignup,
+      learnersCanCreateCourses,
     };
-    
-    console.log("Final parsed settings result:", result);
-    console.log("learnersCanCreateCourses value:", result.learnersCanCreateCourses);
-    console.log("=== parseInstituteSettings END (success) ===");
-    return result;
   } catch (error) {
-    console.error("Error parsing institute settings:", error);
-    console.error("Settings string was:", settingsString);
-    // Default to allowing learner signup only
-    const defaultSettings = {
+    return {
       allowLearnerSignup: true,
       allowTeacherSignup: false,
       learnersCanCreateCourses: false,
     };
-    console.log("Returning default settings due to error:", defaultSettings);
-    console.log("=== parseInstituteSettings END (error) ===");
-    return defaultSettings;
   }
 }; 

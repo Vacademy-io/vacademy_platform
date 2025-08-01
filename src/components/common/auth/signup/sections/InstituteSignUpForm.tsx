@@ -124,12 +124,6 @@ export function InstituteSignUp({
                 userRoles.push("TEACHER");
             }
             
-            console.log("handleUserDetailsCheck - User registration - Roles assigned:", {
-                learnersCanCreateCourses: state.instituteSettings?.learnersCanCreateCourses,
-                assignedRoles: userRoles,
-                instituteSettings: state.instituteSettings
-            });
-            
             // Call signup API with existing user data
             const registrationData: RegisterUserRequest = {
                 user: {
@@ -190,12 +184,6 @@ export function InstituteSignUp({
                 userRoles.push("TEACHER");
             }
             
-            console.log("User registration - Roles assigned:", {
-                learnersCanCreateCourses: state.instituteSettings?.learnersCanCreateCourses,
-                assignedRoles: userRoles,
-                instituteSettings: state.instituteSettings
-            });
-
             // Prepare registration payload with password
             const registrationData: RegisterUserRequest = {
                 user: {

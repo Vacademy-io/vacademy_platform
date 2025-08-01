@@ -94,23 +94,8 @@ export const useSignupFlow = () => {
       // First, get the institute details
       const instituteDetails = await getInstituteDetails(instituteId);
       
-      // Debug: Log the institute details before parsing
-      console.log("Institute details before parsing settings:", {
-        instituteId,
-        setting: instituteDetails.setting,
-        settingType: typeof instituteDetails.setting
-      });
-      
       // Parse the settings to determine available roles
       const settings = parseInstituteSettings(instituteDetails.setting);
-      
-      // Debug: Log the parsed settings
-      console.log("=== useSignupFlow - Parsed settings ===");
-      console.log("Settings object:", settings);
-      console.log("learnersCanCreateCourses:", settings.learnersCanCreateCourses);
-      console.log("allowLearnerSignup:", settings.allowLearnerSignup);
-      console.log("allowTeacherSignup:", settings.allowTeacherSignup);
-      
       // Determine the available role based on settings
       let availableRole: "learner" | "teacher" | null = null;
       if (settings.allowLearnerSignup && settings.allowTeacherSignup) {
@@ -120,12 +105,6 @@ export const useSignupFlow = () => {
       } else if (settings.allowTeacherSignup) {
         availableRole = "teacher";
       }
-
-      console.log("=== useSignupFlow - Setting state ===");
-      console.log("Institute details:", instituteDetails);
-      console.log("Institute settings:", settings);
-      console.log("Available role:", availableRole);
-      
       setState(prev => ({
         ...prev,
         selectedInstitute: instituteDetails,
@@ -133,9 +112,6 @@ export const useSignupFlow = () => {
         selectedRole: availableRole,
         isFetchingInstituteDetails: false,
       }));
-      
-      console.log("=== useSignupFlow - State updated ===");
-
       toast.success(`Selected: ${instituteDetails.institute_name}`);
     } catch (error) {
       console.error("Error fetching institute details:", error);

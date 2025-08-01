@@ -121,12 +121,6 @@ export function ModalSignUpForm({
                 userRoles.push("TEACHER");
             }
             
-            console.log("ModalSignUpForm - handleUserDetailsCheck - Roles assigned:", {
-                learnersCanCreateCourses: instituteSettings?.learnersCanCreateCourses,
-                assignedRoles: userRoles,
-                instituteSettings: instituteSettings
-            });
-            
             const registrationData: RegisterUserRequest = {
                 user: {
                     username: userData.username,
@@ -204,13 +198,6 @@ export function ModalSignUpForm({
                 userRoles.push("TEACHER");
             }
             
-            console.log("ModalSignUpForm - User registration - Roles assigned:", {
-                learnersCanCreateCourses: instituteSettings.learnersCanCreateCourses,
-                assignedRoles: userRoles,
-                instituteSettings: instituteSettings
-            });
-
-            // Prepare registration payload
             const registrationData: RegisterUserRequest = {
                 user: {
                     username: data.username,

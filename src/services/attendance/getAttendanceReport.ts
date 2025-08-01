@@ -3,26 +3,51 @@ import { LIVE_SESSION_ATTENDANCE_REPORT_BY_STUDENT } from "@/constants/urls";
 import { getAccessToken, getTokenDecodedData } from "@/lib/auth/sessionUtility";
 
 export interface AttendanceReportParams {
-  startDate: string; // Format: YYYY-MM-DD
-  endDate: string;   // Format: YYYY-MM-DD
+  startDate: string;
+  endDate: string;
+  batchId: string;
 }
 
-export const fetchAttendanceReport = async ({ startDate, endDate }: AttendanceReportParams) => {
+export interface ScheduleItem {
+  accessLevel: "private" | "public";
+  attendanceStatus: "PRESENT" | "ABSENT" | null;
+  lastEntryTime: string;
+  meetingDate: string;
+  scheduleId: string;
+  sessionId: string;
+  sessionStatus: string;
+  sessionTitle: string;
+  startTime: string;
+  subject: string;
+}
+export interface StudentAttendanceApi {
+  userId: string;
+  attendancePercentage: number;
+  schedules: ScheduleItem[];
+}
+
+export const fetchAttendanceReport = async ({
+  startDate,
+  endDate,
+  batchId,
+}: AttendanceReportParams) => {
   const token = await getAccessToken();
   const tokenData = getTokenDecodedData(token);
-  console.log("[AttendanceService] Decoded token data:", tokenData);
   const userId = tokenData?.user as string;
-  console.log("[AttendanceService] Using userId:", userId);
+
+  // Prepare params object
+  const params: Record<string, string> = {
+    userId,
+    batchId,
+    startDate,
+    endDate,
+  };
+
   const response = await authenticatedAxiosInstance.get(
     LIVE_SESSION_ATTENDANCE_REPORT_BY_STUDENT,
     {
-      params: {
-        userId,
-        batchId: "14b2df53-4fda-4c18-9ddf-f3e69508f3cc",
-        startDate,
-        endDate,
-      },
+      params,
     }
   );
-  return response.data;
-}; 
+  return response.data as StudentAttendanceApi;
+};

@@ -114,7 +114,6 @@ export default function ProfilePage() {
 
           // Handle both array and object formats
           let studentDetails: Student;
-
           if (Array.isArray(parsedData)) {
             if (parsedData.length === 0) {
               console.log("Student details array is empty");

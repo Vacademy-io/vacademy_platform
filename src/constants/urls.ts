@@ -90,6 +90,9 @@ export const GET_DOUBTS = `${BASE_URL}/admin-core-service/institute/v1/doubts/ge
 export const GET_USER_BASIC_DETAILS = `${BASE_URL}/auth-service/v1/user-details/get-basic-details`;
 export const GET_USER_ROLES_DETAILS = `${BASE_URL}/auth-service/v1/user-details/get`;
 
+// New signup API endpoint
+export const REGISTER_USER = `${BASE_URL}/auth-service/learner/v1/register`;
+
 export const urlInstituteDetails = `${BASE_URL}/admin-core-service/public/institute/v1/details`;
 export const urlCourseDetails = `${BASE_URL}/admin-core-service/open/packages/v1/search`;
 export const urlPublicCourseDetails = `${BASE_URL}/admin-core-service/learner-packages/v1/search`;

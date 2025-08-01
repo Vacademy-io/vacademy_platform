@@ -35,9 +35,7 @@ function OAuthRedirectHandler() {
     );
   }, [navigate, setPrimaryColor]);
 
-  return showSessionPage ? (
-    <InlineSessionSelectionPage redirect={redirectPath} />
-  ) : (
+  return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-gradient-to-br from-emerald-50 via-white to-teal-50">
       <DashboardLoader />
     </div>
@@ -114,8 +112,8 @@ const handleSuccessfulLogin = async (
       }
       await fetchAndStoreStudentDetails(instituteId, userId);
 
-      setRedirectPath("/dashboard");
-      setShowSessionPage(true);
+      // Skip session selection and go directly to dashboard
+      navigate({ to: "/dashboard" });
     } else {
       navigate({
         to: "/institute-selection",

@@ -96,12 +96,14 @@ export function LoginForm({
             const authorityKeys = authorities ? Object.keys(authorities) : [];
 
             if (authorityKeys.length > 1) {
+                // User has multiple institutes - redirect to institute selection
                 navigate({
                     to: "/institute-selection",
                     search: { redirect: redirect || "/dashboard/" },
                 });
                 setIsSSOLoading(false);
             } else {
+                // User has only one institute - proceed directly to dashboard
                 const instituteId = authorities
                     ? Object.keys(authorities)[0]
                     : undefined;
@@ -138,6 +140,7 @@ export function LoginForm({
                     toast.error("Invalid user data received");
                 }
 
+                // Always redirect to dashboard, regardless of course enrollment
                 navigate({ to: "/dashboard" });
             }
         } catch {

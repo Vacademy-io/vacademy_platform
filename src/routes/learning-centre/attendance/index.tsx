@@ -32,11 +32,16 @@ interface ClassAttendance {
 interface SessionApiItem {
   scheduleId: string;
   sessionId: string;
-  title: string;
+  // Legacy title field
+  title?: string;
+  // Live class title from student-report API
+  sessionTitle?: string;
   meetingDate: string; // YYYY-MM-DD
   startTime?: string;  // HH:mm:ss
   lastEntryTime?: string;
   isPrivate?: boolean;
+  // Subject from student-report API
+  subject?: string;
   attendanceStatus: "PRESENT" | "ABSENT" | null;
 }
 interface StudentAttendanceApi {
@@ -76,38 +81,47 @@ function RouteComponent() {
       setError(null);
       try {
         setIsLoading(true);
-        const batchSessionId = "14b2df53-4fda-4c18-9ddf-f3e69508f3cc"; // TODO: Replace with dynamic value if available
-
         // Fetch full dataset once with wide date range
         const startDate = format(new Date(0), "yyyy-MM-dd"); // Unix epoch start
         const endDate = format(new Date(), "yyyy-MM-dd");
 
         const apiData = await fetchAttendanceReport({
-          batchSessionId,
           startDate,
           endDate,
         });
 
-        // Unwrap array of students or sessions
-        const rawArray: StudentAttendanceApi[] | SessionApiItem[] = Array.isArray(apiData)
-          ? apiData
-          : Array.isArray(apiData?.data)
-            ? apiData.data
-            : [];
+        // Determine sessions array: new API returns schedules array, legacy may return array of students or sessions
+        let sessionItems: SessionApiItem[] = [];
+        if (Array.isArray(apiData)) {
+          // Array of SessionApiItem[] or StudentAttendanceApi[]
+          // Detect StudentAttendanceApi[] (objects with sessions property)
+          if ((apiData as StudentAttendanceApi[])[0]?.sessions !== undefined) {
+            sessionItems = (apiData as StudentAttendanceApi[]).flatMap((s) => s.sessions);
+          } else {
+            sessionItems = apiData as SessionApiItem[];
+          }
+        }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        else if (apiData && Array.isArray((apiData as any).schedules)) {
+          // New student-report endpoint
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          sessionItems = (apiData as any).schedules;
+        }
 
-        // Flatten all sessions
-        const sessionItems: SessionApiItem[] =
-          (rawArray as StudentAttendanceApi[])[0]?.sessions !== undefined
-            ? (rawArray as StudentAttendanceApi[]).flatMap((s) => s.sessions)
-            : (rawArray as SessionApiItem[]);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        console.log("[AttendancePage] API response userId:", (apiData as any).userId);
+        console.log("[AttendancePage] scheduleItems count:", sessionItems.length);
+        console.log("[AttendancePage] sessionItems:", sessionItems);
 
         // Map sessions to ClassAttendance
         const transformed: ClassAttendance[] = sessionItems.map((session: SessionApiItem, idx: number) => ({
           id: idx,
-          title: session.title,
+          // Use sessionTitle if available, otherwise fallback to legacy title
+          title: session.sessionTitle ?? session.title ?? "",
           date: format(parseISO(session.meetingDate), "MMM dd, yyyy"),
           time: "",
-          subject: "-",
+          // Use subject from API if available
+          subject: session.subject ?? "-",
           batch: "-",
           classType: session.isPrivate ? "Private" : "Public",
           status: session.attendanceStatus === "PRESENT" ? "Present" : "Absent",
@@ -163,7 +177,7 @@ function RouteComponent() {
 
   useEffect(() => {
     if (page >= totalPages) setPage(totalPages - 1);
-  }, [totalPages]);
+  }, [page, totalPages]);
 
   const paginatedData = useMemo(() => {
     const start = page * pageSize;

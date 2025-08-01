@@ -183,7 +183,7 @@ export function InstituteSignUp({
             if (state.instituteSettings?.learnersCanCreateCourses) {
                 userRoles.push("TEACHER");
             }
-            
+
             // Prepare registration payload with password
             const registrationData: RegisterUserRequest = {
                 user: {

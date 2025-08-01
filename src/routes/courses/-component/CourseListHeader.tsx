@@ -127,7 +127,10 @@ const CourseListHeader = ({
             type={type} 
             courseId={courseId}
             trigger={
-              <button className="px-4 py-2 border border-gray-300 text-black rounded-md hover:bg-gray-100 transition-colors duration-200 text-sm font-medium">
+              <button 
+                data-auth-modal-trigger
+                className="px-4 py-2 border border-gray-300 text-black rounded-md hover:bg-gray-100 transition-colors duration-200 text-sm font-medium"
+              >
                 Login
               </button>
             }
@@ -140,7 +143,7 @@ const CourseListHeader = ({
 
       {/* Mobile Navigation Menu */}
       {isMobileMenuOpen && (
-        <div className="lg:hidden w-full bg-white border-t border-gray-200 py-4 px-4 sm:px-6">
+        <div className="lg:hidden w-full bg-white border-t border-gray-200 py-4 px-4 sm:px-6" style={{ zIndex: 100 }}>
           <ul className="flex flex-col space-y-4 mb-6">
             {navigationItems.map((item) => (
               <li key={item.href}>
@@ -155,18 +158,19 @@ const CourseListHeader = ({
             ))}
           </ul>
           <div className="flex flex-col gap-3">
-            <AuthModal 
-              type={type} 
-              courseId={courseId}
-              trigger={
-                <button
-                  onClick={closeMobileMenu}
-                  className="w-full px-4 py-3 border border-gray-300 text-black rounded-md hover:bg-gray-100 transition-colors duration-200 text-sm font-medium"
-                >
-                  Login
-                </button>
-              }
-            />
+            <button
+              onClick={() => {
+                closeMobileMenu();
+                // Trigger the desktop AuthModal
+                const desktopLoginButton = document.querySelector('[data-auth-modal-trigger]') as HTMLElement;
+                if (desktopLoginButton) {
+                  desktopLoginButton.click();
+                }
+              }}
+              className="w-full px-4 py-3 border border-gray-300 text-black rounded-md hover:bg-gray-100 transition-colors duration-200 text-sm font-medium"
+            >
+              Login
+            </button>
             <button className="w-full px-4 py-3 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors duration-200 text-sm font-medium">
               Donate
             </button>

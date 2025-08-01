@@ -142,12 +142,12 @@ export const useSignupFlow = () => {
   // Handle user registration
   const handleUserRegistration = useCallback(async () => {
     if (!state.selectedInstitute || !state.selectedRole) {
-      toast.error("Please select an institute and role first");
+      //toast.error("Please select an institute and role first");
       return;
     }
 
     if (!state.userData.email || !state.userData.fullName || !state.userData.username) {
-      toast.error("Please fill in all required fields");
+      // toast.error("Please fill in all required fields");
       return;
     }
 

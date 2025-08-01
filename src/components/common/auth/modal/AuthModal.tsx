@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { ModalLoginForm } from "@/components/common/auth/login/sections/ModalLoginForm";
 import { ModalSignUpForm } from "@/components/common/auth/signup/sections/ModalSignUpForm";
 import { ModalForgotPasswordForm } from "@/components/common/auth/login/sections/ModalForgotPasswordForm";
@@ -7,27 +8,92 @@ interface AuthModalProps {
     type?: string;
     courseId?: string;
     trigger: React.ReactNode;
+    onModalOpen?: () => void;
 }
 
-export function AuthModal({ type, courseId, trigger }: AuthModalProps) {
+export function AuthModal({ type, courseId, trigger, onModalOpen }: AuthModalProps) {
     const [isOpen, setIsOpen] = useState(false);
     const [currentMode, setCurrentMode] = useState<'login' | 'signup' | 'forgot-password'>('login');
     const [isVisible, setIsVisible] = useState(false);
     const dialogRef = useRef<HTMLDivElement>(null);
 
+
+
     // Prevent body scroll when modal is open
     useEffect(() => {
+        let scrollY = 0;
+        let preventScrollHandler: ((e: Event) => boolean) | null = null;
+        
         if (isOpen) {
+            // Store current scroll position
+            scrollY = window.scrollY;
+            
+            // Add classes for styling
             document.body.classList.add('modal-open');
             document.documentElement.classList.add('modal-open');
+            
+            // Prevent scrolling by setting overflow hidden and position fixed
+            document.body.style.overflow = 'hidden';
+            document.body.style.position = 'fixed';
+            document.body.style.top = `-${scrollY}px`;
+            document.body.style.width = '100%';
+            document.body.style.height = '100%';
+            
+            // Also prevent scrolling on html element
+            document.documentElement.style.overflow = 'hidden';
+            document.documentElement.style.height = '100%';
+            
+            // Prevent scrolling on all parent elements
+            preventScrollHandler = (e: Event) => {
+                e.preventDefault();
+                e.stopPropagation();
+                return false;
+            };
+            
+            // Add event listeners to prevent scroll
+            document.addEventListener('wheel', preventScrollHandler, { passive: false });
+            document.addEventListener('touchmove', preventScrollHandler, { passive: false });
+            
         } else {
+            // Restore scrolling
+            document.body.style.overflow = '';
+            document.body.style.position = '';
+            document.body.style.top = '';
+            document.body.style.width = '';
+            document.body.style.height = '';
+            document.documentElement.style.overflow = '';
+            document.documentElement.style.height = '';
+            
+            // Restore scroll position
+            window.scrollTo(0, scrollY);
+            
+            // Remove classes
             document.body.classList.remove('modal-open');
             document.documentElement.classList.remove('modal-open');
+            
+            // Remove event listeners
+            if (preventScrollHandler) {
+                document.removeEventListener('wheel', preventScrollHandler);
+                document.removeEventListener('touchmove', preventScrollHandler);
+            }
         }
 
         return () => {
+            // Cleanup on unmount
+            document.body.style.overflow = '';
+            document.body.style.position = '';
+            document.body.style.top = '';
+            document.body.style.width = '';
+            document.body.style.height = '';
+            document.documentElement.style.overflow = '';
+            document.documentElement.style.height = '';
             document.body.classList.remove('modal-open');
             document.documentElement.classList.remove('modal-open');
+            
+            if (preventScrollHandler) {
+                document.removeEventListener('wheel', preventScrollHandler);
+                document.removeEventListener('touchmove', preventScrollHandler);
+            }
         };
     }, [isOpen]);
 
@@ -99,20 +165,48 @@ export function AuthModal({ type, courseId, trigger }: AuthModalProps) {
         }
     };
 
-    if (!isOpen) return <div onClick={() => setIsOpen(true)}>{trigger}</div>;
+    if (!isOpen) {
+        return <div onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsOpen(true);
+            // Call the optional callback when modal opens, but delay it slightly
+            if (onModalOpen) {
+                setTimeout(() => {
+                    onModalOpen();
+                }, 0);
+            }
+        }}>{trigger}</div>;
+    }
 
-    return (
+    const modalContent = (
         <div
-            className={`fixed inset-0 z-50 flex items-center justify-center p-4 transition-all duration-200 modal-backdrop ${
+            className={`fixed inset-0 z-[99999] flex items-center justify-center p-2 sm:p-4 transition-all duration-200 modal-backdrop ${
                 isVisible
                     ? 'bg-gray-200 bg-opacity-50 backdrop-blur'
                     : 'bg-opacity-0'
             }`}
+            style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                zIndex: 99999,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                visibility: 'visible',
+                opacity: isVisible ? 1 : 0,
+                overflow: 'hidden',
+                touchAction: 'none'
+            }}
             onClick={handleBackdropClick}
             role="dialog"
             aria-modal="true"
             aria-labelledby="auth-title"
             aria-describedby="auth-description"
+            data-testid="auth-modal-backdrop"
         >
             <div
                 ref={dialogRef}
@@ -120,17 +214,23 @@ export function AuthModal({ type, courseId, trigger }: AuthModalProps) {
                     isVisible
                         ? 'scale-100 opacity-100 translate-y-0'
                         : 'scale-95 opacity-0 translate-y-4'
-                } scrollbar-hide`}
-                                style={{
-                    width: '500px',
-                    padding: '20px',
+                } scrollbar-hide w-full max-w-[500px] mx-4 sm:mx-6`}
+                style={{
+                    padding: '16px',
                     maxHeight: '90vh',
+                    minHeight: 'auto',
                     overflow: 'hidden',
-                    overflowY: 'scroll',
+                    overflowY: 'auto',
                     msOverflowStyle: 'none',
-                    scrollbarWidth: 'none'
+                    scrollbarWidth: 'none',
+                    zIndex: 100000,
+                    position: 'relative',
+                    display: 'block',
+                    visibility: 'visible',
+                    opacity: isVisible ? 1 : 0
                 }}
                 onClick={(e) => e.stopPropagation()}
+                data-testid="auth-modal-content"
             >
                 {/* Screen reader title */}
                 <h1 id="auth-title" className="sr-only">
@@ -157,7 +257,7 @@ export function AuthModal({ type, courseId, trigger }: AuthModalProps) {
                 </button>
 
                 {/* Content */}
-                <div className="mt-8">
+                <div className="mt-8 w-full min-h-0">
                     {currentMode === 'login' ? (
                         <ModalLoginForm 
                             type={type} 
@@ -180,4 +280,6 @@ export function AuthModal({ type, courseId, trigger }: AuthModalProps) {
             </div>
         </div>
     );
+
+    return createPortal(modalContent, document.body);
 } 

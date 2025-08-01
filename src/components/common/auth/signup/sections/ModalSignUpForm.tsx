@@ -14,10 +14,9 @@ import {
     CheckCircle,
     ArrowRight,
     Loader2,
-    Building2,
 } from "lucide-react";
 import { MyInput } from "@/components/design-system/input";
-import { getInstituteDetails, parseInstituteSettings, registerUser, getUserDetailsByEmail, type InstituteDetails, type RegisterUserRequest, type UserDetailsByEmailResponse } from "@/services/signup-api";
+import { getInstituteDetails, parseInstituteSettings, registerUser, getUserDetailsByEmail, type InstituteDetails, type RegisterUserRequest } from "@/services/signup-api";
 import { SignupEmailOtpForm } from "./SignupEmailOtpForm";
 
 const userDetailsSchema = z.object({
@@ -39,8 +38,6 @@ interface ModalSignUpFormProps {
 }
 
 export function ModalSignUpForm({
-    type,
-    courseId,
     onSwitchToLogin,
 }: ModalSignUpFormProps) {
     const navigate = useNavigate();
@@ -71,7 +68,6 @@ export function ModalSignUpForm({
             fetchInstituteDetails(instituteId);
         } else if (!instituteId) {
             // If no institute ID, show a message or handle accordingly
-            console.log("No institute ID found in URL parameters for modal signup");
         }
     }, [instituteId, selectedInstitute]);
 
@@ -80,17 +76,7 @@ export function ModalSignUpForm({
         try {
             const instituteDetails = await getInstituteDetails(instituteId);
             
-            // Debug: Log the institute details before parsing
-            console.log("ModalSignUpForm - Institute details before parsing settings:", {
-                instituteId,
-                setting: instituteDetails.setting,
-                settingType: typeof instituteDetails.setting
-            });
-            
             const settings = parseInstituteSettings(instituteDetails.setting);
-            
-            // Debug: Log the parsed settings
-            console.log("ModalSignUpForm - Parsed settings:", settings);
             
             setSelectedInstitute(instituteDetails);
             setInstituteSettings(settings);
@@ -159,16 +145,6 @@ export function ModalSignUpForm({
     };
 
     const handleUserDetailsSubmit = async (data: UserDetailsValues) => {
-        console.log("Form submission data:", data);
-        console.log("Form state:", userDetailsForm.formState);
-        
-        // Check if form is valid
-        const isValid = await userDetailsForm.trigger();
-        if (!isValid) {
-            console.log("Form validation failed:", userDetailsForm.formState.errors);
-            toast.error("Please fill in all required fields correctly.");
-            return;
-        }
         
         if (!selectedInstitute) {
             toast.error("Institute details not available. Please try again.");
@@ -216,7 +192,6 @@ export function ModalSignUpForm({
 
             // If we get here, registration was successful
             toast.success("Successfully signed up for this institute! Your credentials have been sent to your email.");
-            console.log("Registration successful");
             
             // Don't store tokens - user should login separately
             // Switch to login modal instead of navigating to login page
@@ -452,7 +427,7 @@ export function ModalSignUpForm({
                                                             error={
                                                                 userDetailsForm.formState.errors.fullName?.message
                                                             }
-                                                            className="w-full min-w-full transition-all duration-200 border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pr-10"
+                                                            className="w-full transition-all duration-200 border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pr-10"
                                                             input={field.value}
                                                             onChangeFunction={field.onChange}
                                                         />
@@ -480,7 +455,7 @@ export function ModalSignUpForm({
                                                             error={
                                                                 userDetailsForm.formState.errors.username?.message
                                                             }
-                                                            className="w-full min-w-full transition-all duration-200 border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pr-10"
+                                                            className="w-full transition-all duration-200 border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pr-10"
                                                             input={field.value}
                                                             onChangeFunction={field.onChange}
                                                         />
@@ -508,7 +483,7 @@ export function ModalSignUpForm({
                                                             error={
                                                                 userDetailsForm.formState.errors.password?.message
                                                             }
-                                                            className="w-full min-w-full transition-all duration-200 border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pr-10"
+                                                            className="w-full transition-all duration-200 border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pr-10"
                                                             input={field.value}
                                                             onChangeFunction={field.onChange}
                                                         />
@@ -535,7 +510,7 @@ export function ModalSignUpForm({
                                                             error={
                                                                 userDetailsForm.formState.errors.confirmPassword?.message
                                                             }
-                                                            className="w-full min-w-full transition-all duration-200 border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pr-10"
+                                                            className="w-full transition-all duration-200 border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pr-10"
                                                             input={field.value}
                                                             onChangeFunction={field.onChange}
                                                         />

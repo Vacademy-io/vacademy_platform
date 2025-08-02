@@ -33,14 +33,12 @@ public class StripeWebHookService {
     private ObjectMapper objectMapper;
 
     @Autowired
-    public PaymentLogService paymentLogService;
+    private PaymentLogService paymentLogService;
 
     public ResponseEntity<String> processWebHook(String payload, String sigHeader) {
         log.info("Received Stripe webhook");
 
         String webhookId = null;
-
-        System.out.println("payload: " + payload);
 
         try {
             webhookId = webHookService.saveWebhook(PaymentGateway.STRIPE.name(), payload);
@@ -63,13 +61,24 @@ public class StripeWebHookService {
             }
 
             Invoice invoice = extractInvoiceFromPayload(event);
-            String orderId = invoice.getMetadata().get("orderId");
+
+            // Extract orderId from line item metadata (not top-level invoice metadata)
+            String orderId = null;
+            if (invoice.getLines() != null &&
+                    invoice.getLines().getData() != null &&
+                    !invoice.getLines().getData().isEmpty()) {
+                orderId = invoice.getLines().getData().get(0).getMetadata().get("orderId");
+            }
+
+            if (orderId == null) {
+                log.warn("Missing orderId in line item metadata");
+                return ResponseEntity.status(400).body("Missing orderId in invoice line item metadata");
+            }
 
             String paymentStatus = invoice.getPaid()
                     ? PaymentStatusEnum.PAID.name()
                     : PaymentStatusEnum.FAILED.name();
 
-            // Fallback check
             if (!invoice.getPaid() && invoice.getStatus() != null) {
                 if (invoice.getStatus().equalsIgnoreCase("open") || invoice.getStatus().equalsIgnoreCase("draft")) {
                     paymentStatus = PaymentStatusEnum.PAYMENT_PENDING.name();
@@ -94,15 +103,19 @@ public class StripeWebHookService {
     private String extractInstituteId(String payload) {
         try {
             JsonNode payloadJson = objectMapper.readTree(payload);
-            JsonNode dataObject = payloadJson.get("data").get("object");
-            if (dataObject.has("metadata") && dataObject.get("metadata").has("instituteId")) {
-                return dataObject.get("metadata").get("instituteId").asText();
+            JsonNode lineItems = payloadJson.at("/data/object/lines/data");
+            if (lineItems.isArray() && lineItems.size() > 0) {
+                JsonNode metadata = lineItems.get(0).get("metadata");
+                if (metadata != null && metadata.has("instituteId")) {
+                    return metadata.get("instituteId").asText();
+                }
             }
         } catch (Exception e) {
             log.error("Failed to extract institute_id from payload", e);
         }
         return null;
     }
+
 
     private String getWebhookSecret(String instituteId) {
         Map<String, Object> gatewayData = institutePaymentGatewayMappingService

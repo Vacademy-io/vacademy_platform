@@ -111,6 +111,48 @@ const CourseCatalougePage: React.FC = () => {
             setData(response.data);
         } catch (error) {
             console.log(error);
+            
+            // If enrolled courses fail, try to fetch available courses for the "ALL" tab
+            if (tabType === "ALL") {
+                try {
+                    const { urlCourseDetails } = await import("@/constants/urls");
+                    const instituteId = await getInstituteId();
+                    const response = await authenticatedAxiosInstance.post(
+                        urlCourseDetails,
+                        {
+                            status: [],
+                            level_ids: selectedLevels,
+                            faculty_ids: selectedInstructors,
+                            search_by_name: search,
+                            tag: selectedTags,
+                            min_percentage_completed: 0,
+                            max_percentage_completed: 0,
+                        },
+                        {
+                            params: {
+                                instituteId,
+                                page: 0,
+                                size: 10,
+                                sortBy:
+                                    sort === "Newest"
+                                        ? "created_at,desc"
+                                        : sort === "Oldest"
+                                          ? "created_at,asc"
+                                          : sort === "Rating"
+                                            ? "rating,desc"
+                                            : "created_at,desc",
+                            },
+                            headers: {
+                                accept: "*/*",
+                                "Content-Type": "application/json",
+                            },
+                        }
+                    );
+                    setData(response.data);
+                } catch (fallbackError) {
+                    console.log("Fallback to available courses also failed:", fallbackError);
+                }
+            }
         }
     };
 

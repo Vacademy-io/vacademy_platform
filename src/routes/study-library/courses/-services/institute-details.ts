@@ -26,7 +26,7 @@ export const handleFetchInstituteDetails = () => {
 };
 
 export const fetchUserRolesDetails = async () => {
-    const instituteId = getInstituteIdSync();
+    const instituteId = await getInstituteIdSync();
     const StudentDetails = await Preferences.get({ key: "StudentDetails" });
     const response = await authenticatedAxiosInstance({
         method: "GET",

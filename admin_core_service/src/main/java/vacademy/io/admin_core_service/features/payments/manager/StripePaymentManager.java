@@ -68,7 +68,7 @@ public class StripePaymentManager implements PaymentServiceStrategy {
 
             createInvoiceItem(stripeRequestDTO, amountInCents, request);
             Invoice invoice = createAndAutoChargeInvoice(stripeRequestDTO, request);
-
+            System.out.println(invoice);
             return buildPaymentResponse(invoice);
 
         } catch (StripeException e) {

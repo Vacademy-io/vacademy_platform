@@ -37,7 +37,8 @@ public class StripeWebHookService {
 
     public ResponseEntity<String> processWebHook(String payload, String sigHeader) {
         log.info("Received Stripe webhook");
-
+        System.out.println(sigHeader);
+        System.out.println(payload);
         String webhookId = null;
 
         try {
@@ -50,6 +51,7 @@ public class StripeWebHookService {
             }
 
             String webhookSecret = getWebhookSecret(instituteId);
+            System.out.println(instituteId);
             if (webhookSecret == null) {
                 log.warn("Webhook secret not found for institute: {}", instituteId);
                 return ResponseEntity.status(404).body("Unknown institute");
@@ -104,18 +106,16 @@ public class StripeWebHookService {
     private String extractInstituteId(String payload) {
         try {
             JsonNode payloadJson = objectMapper.readTree(payload);
-            JsonNode lineItems = payloadJson.at("/data/object/lines/data");
-            if (lineItems.isArray() && lineItems.size() > 0) {
-                JsonNode metadata = lineItems.get(0).get("metadata");
-                if (metadata != null && metadata.has("instituteId")) {
-                    return metadata.get("instituteId").asText();
-                }
+            JsonNode metadata = payloadJson.at("/data/object/metadata");
+            if (metadata != null && metadata.has("instituteId")) {
+                return metadata.get("instituteId").asText();
             }
         } catch (Exception e) {
-            log.error("Failed to extract institute_id from payload", e);
+            log.error("Failed to extract instituteId from payload", e);
         }
         return null;
     }
+
 
 
     private String getWebhookSecret(String instituteId) {

@@ -1,8 +1,9 @@
 import { TokenKey } from "@/constants/auth/tokens";
-import { getTokenDecodedData, getTokenFromCookie } from "@/lib/auth/sessionUtility";
+import { getTokenDecodedData } from "@/lib/auth/sessionUtility";
+import { getTokenFromStorage } from "@/lib/auth/axiosInstance";
 
-export function getInstituteIdSync() {
-    const accessToken = getTokenFromCookie(TokenKey.accessToken);
+export async function getInstituteIdSync() {
+    const accessToken = await getTokenFromStorage(TokenKey.accessToken);
     const data = getTokenDecodedData(accessToken);
     console.log("data", data);
     const INSTITUTE_ID = data && Object.keys(data.authorities)[0];

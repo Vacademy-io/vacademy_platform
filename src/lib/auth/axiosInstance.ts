@@ -5,7 +5,7 @@ import { isTokenExpired } from "./sessionUtility"; // Utility for JWT expiration
 import { REFRESH_TOKEN_URL } from "@/constants/urls";
 
 // Helper functions to interact with Capacitor Storage
-const getTokenFromStorage = async (key: string): Promise<string | null> => {
+export const getTokenFromStorage = async (key: string): Promise<string | null> => {
   const { value } = await Storage.get({ key });
   return value;
 };

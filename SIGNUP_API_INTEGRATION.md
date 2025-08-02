@@ -21,13 +21,19 @@ The signup process has been integrated with the backend APIs to provide a seamle
 - **Endpoint**: `GET /admin-core-service/public/institute/v1/details/{instituteId}`
 - **Purpose**: Fetch detailed information about a specific institute
 - **Parameters**: `instituteId` (path parameter)
-- **Response**: Complete institute details including settings
+- **Response**: Complete institute details including settings and available packages
 
 ### 3. Register User
 - **Endpoint**: `POST /auth-service/learner/v1/register`
 - **Purpose**: Register a new user account
 - **Body**: User registration data including institute details and roles
 - **Response**: Registration success/failure status with access and refresh tokens
+
+### 4. Enroll User in Packages (NEW)
+- **Endpoint**: `POST /admin-core-service/v1/learner/enroll`
+- **Purpose**: Enroll user in default packages after signup
+- **Body**: Enrollment data with package session IDs
+- **Response**: Enrollment success/failure status
 
 ## Implementation Files
 
@@ -51,6 +57,7 @@ The signup process has been integrated with the backend APIs to provide a seamle
 4. User fills in registration form
 5. Registration API is called with appropriate roles based on institute settings
 6. **NEW**: User is automatically authenticated and redirected to dashboard of the same institute
+7. **NEW**: User is automatically enrolled in default packages if available
 
 ### Full Signup Page Flow
 1. User accesses signup page directly
@@ -61,6 +68,7 @@ The signup process has been integrated with the backend APIs to provide a seamle
 6. User fills in registration form
 7. Registration API is called with appropriate roles
 8. **NEW**: User is automatically authenticated and redirected to dashboard of the same institute
+9. **NEW**: User is automatically enrolled in default packages if available
 
 ## Post-Signup Authentication
 
@@ -68,12 +76,81 @@ After successful registration, the system now automatically:
 
 1. **Stores tokens**: Access token and refresh token from the registration response
 2. **Fetches institute details**: Stores institute information for the selected institute
-3. **Fetches student details**: Retrieves and stores student information
-4. **Redirects to dashboard**: Automatically navigates to the dashboard of the institute the user signed up for
+3. **Enrolls in default packages**: Automatically enrolls user in available packages from the institute
+4. **Fetches student details**: Retrieves and stores student information
+5. **Redirects to dashboard**: Automatically navigates to the dashboard of the institute the user signed up for
 
 This applies to both scenarios:
 - **New user registration**: After email OTP verification and user details submission
 - **Existing user enrollment**: After email OTP verification when user already exists in the system
+
+## Complete API Flow After Signup
+
+### **Step 1: Store Authentication Tokens**
+```typescript
+// Store tokens in Capacitor Preferences
+await Preferences.set({ key: TokenKey.accessToken, value: accessToken });
+await Preferences.set({ key: TokenKey.refreshToken, value: refreshToken });
+await Preferences.set({ key: "instituteId", value: instituteId });
+```
+
+### **Step 2: Decode Token to Get User ID**
+```typescript
+// Decode JWT token to extract user information
+const decodedData = getTokenDecodedData(accessToken);
+const userId = decodedData?.user;
+```
+
+### **Step 3: Fetch and Store Institute Details**
+```typescript
+// GET /admin-core-service/learner/v1/details/{instituteId}
+// Stores institute information including:
+// - Institute name, ID, theme code
+// - Settings and permissions
+// - Available modules and sessions
+// - Available packages for enrollment
+await fetchAndStoreInstituteDetails(instituteId, userId);
+```
+
+### **Step 4: Enroll in Default Packages (NEW)**
+```typescript
+// POST /admin-core-service/v1/learner/enroll
+// Enrolls user in default packages if available
+if (instituteDetails?.batches_for_sessions?.length > 0) {
+  await enrollUserInDefaultPackages(instituteId, userId, instituteDetails.batches_for_sessions);
+}
+```
+
+### **Step 5: Fetch and Store Student Details**
+```typescript
+// GET /admin-core-service/learner/info/v1/details/{instituteId}/{userId}
+// Stores student information including:
+// - Student profile data
+// - Enrolled sessions
+// - Package information
+await fetchAndStoreStudentDetails(instituteId, userId);
+```
+
+### **Step 6: Redirect to Dashboard**
+```typescript
+// Navigate to dashboard with stored context
+navigate({ to: "/dashboard" });
+```
+
+## Study Library Courses Page
+
+The study library courses page now has enhanced functionality:
+
+### **Primary API**: Enrolled Courses
+- **Endpoint**: `POST /admin-core-service/learner-packages/v1/search`
+- **Purpose**: Fetch courses that the user is enrolled in
+- **Used for**: "PROGRESS" and "COMPLETED" tabs
+
+### **Fallback API**: Available Courses (NEW)
+- **Endpoint**: `POST /admin-core-service/open/packages/v1/search`
+- **Purpose**: Fetch all available courses in the institute
+- **Used for**: "ALL" tab when no enrolled courses are found
+- **Benefit**: Users can see available courses even if not enrolled
 
 ## Role Determination Logic
 
@@ -100,6 +177,30 @@ if (settings.allowLearnerSignup && settings.allowTeacherSignup) {
 - Form validation ensures required fields are filled
 - Institute selection validation prevents registration without institute
 - If post-signup authentication fails, user is redirected to login page as fallback
+- If enrollment fails, the flow continues and user can enroll manually later
+- Study library has fallback to show available courses if enrolled courses fail
+
+## Authentication Fix (CRITICAL)
+
+### **Issue Identified:**
+After signup, clicking on "Study Library" was triggering the login API because of a token storage mismatch:
+
+- **Signup Flow**: Stores tokens in **Capacitor Storage** using `Preferences.set()`
+- **Study Library**: Was trying to get tokens from **Cookies** using `getTokenFromCookie()`
+
+### **Solution Implemented:**
+1. **Fixed Token Retrieval**: Updated all study library components to use `getTokenFromStorage()` instead of `getTokenFromCookie()`
+2. **Exported Storage Function**: Made `getTokenFromStorage` available for import from `@/lib/auth/axiosInstance`
+3. **Updated Files**:
+   - `src/routes/study-library/courses/-services/getStudyLibraryDetails.ts`
+   - `src/routes/courses/-services/getStudyLibraryDetails.ts`
+   - `src/components/common/helper.ts`
+   - `src/routes/study-library/courses/-services/institute-details.ts`
+
+### **Result:**
+- Study library now properly authenticates using stored tokens
+- No more login API calls when accessing study library after signup
+- Seamless user experience from signup to course access
 
 ## Usage Examples
 
@@ -121,7 +222,8 @@ To test the integration:
 
 1. **Modal Signup**: Navigate to `/signup?instituteId=YOUR_INSTITUTE_ID&type=modal`
 2. **Full Signup**: Navigate to `/signup` and search for institutes
-3. **API Testing**: Use the provided curl commands in the original requirements
+3. **Study Library**: After signup, click "Study Library" in sidebar to verify courses are shown
+4. **API Testing**: Use the provided curl commands in the original requirements
 
 ## Dependencies
 

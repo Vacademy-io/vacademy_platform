@@ -24,10 +24,10 @@ The signup process has been integrated with the backend APIs to provide a seamle
 - **Response**: Complete institute details including settings
 
 ### 3. Register User
-- **Endpoint**: `POST /auth-service/v1/signup-root`
+- **Endpoint**: `POST /auth-service/learner/v1/register`
 - **Purpose**: Register a new user account
 - **Body**: User registration data including institute details and roles
-- **Response**: Registration success/failure status
+- **Response**: Registration success/failure status with access and refresh tokens
 
 ## Implementation Files
 
@@ -50,7 +50,7 @@ The signup process has been integrated with the backend APIs to provide a seamle
 3. Institute settings are parsed to determine available roles (learner/teacher)
 4. User fills in registration form
 5. Registration API is called with appropriate roles based on institute settings
-6. User is redirected to login page on success
+6. **NEW**: User is automatically authenticated and redirected to dashboard of the same institute
 
 ### Full Signup Page Flow
 1. User accesses signup page directly
@@ -60,7 +60,20 @@ The signup process has been integrated with the backend APIs to provide a seamle
 5. Institute details are fetched and settings are parsed
 6. User fills in registration form
 7. Registration API is called with appropriate roles
-8. User is redirected to login page on success
+8. **NEW**: User is automatically authenticated and redirected to dashboard of the same institute
+
+## Post-Signup Authentication
+
+After successful registration, the system now automatically:
+
+1. **Stores tokens**: Access token and refresh token from the registration response
+2. **Fetches institute details**: Stores institute information for the selected institute
+3. **Fetches student details**: Retrieves and stores student information
+4. **Redirects to dashboard**: Automatically navigates to the dashboard of the institute the user signed up for
+
+This applies to both scenarios:
+- **New user registration**: After email OTP verification and user details submission
+- **Existing user enrollment**: After email OTP verification when user already exists in the system
 
 ## Role Determination Logic
 
@@ -86,6 +99,7 @@ if (settings.allowLearnerSignup && settings.allowTeacherSignup) {
 - Loading states are managed for better UX
 - Form validation ensures required fields are filled
 - Institute selection validation prevents registration without institute
+- If post-signup authentication fails, user is redirected to login page as fallback
 
 ## Usage Examples
 

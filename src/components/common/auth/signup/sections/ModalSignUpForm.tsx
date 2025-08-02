@@ -16,7 +16,7 @@ import {
     Loader2,
 } from "lucide-react";
 import { MyInput } from "@/components/design-system/input";
-import { getInstituteDetails, parseInstituteSettings, registerUser, getUserDetailsByEmail, type InstituteDetails, type RegisterUserRequest } from "@/services/signup-api";
+import { getInstituteDetails, parseInstituteSettings, registerUser, getUserDetailsByEmail, handlePostSignupAuth, type InstituteDetails, type RegisterUserRequest } from "@/services/signup-api";
 import { SignupEmailOtpForm } from "./SignupEmailOtpForm";
 
 const userDetailsSchema = z.object({
@@ -120,17 +120,15 @@ export function ModalSignUpForm({
                 learner_package_session_enroll: null,
             };
 
-            await registerUser(registrationData);
-            toast.success("Successfully signed up for this institute! Your credentials have been sent to your email.");
+            const response = await registerUser(registrationData);
             
-            // Don't store tokens - user should login separately
-            // Switch to login modal instead of navigating to login page
-            if (onSwitchToLogin) {
-                onSwitchToLogin();
-            } else {
-                // Fallback to navigation if onSwitchToLogin is not provided
-                navigate({ to: "/login" });
-            }
+            // Handle post-signup authentication and redirect to dashboard
+            await handlePostSignupAuth(
+                response.accessToken,
+                response.refreshToken,
+                selectedInstitute!.id,
+                navigate
+            );
         } catch (error: unknown) {
             if (error instanceof Error && error.message === 'USER_NOT_FOUND') {
                 // User doesn't exist, proceed to user details step
@@ -188,19 +186,15 @@ export function ModalSignUpForm({
             };
 
             // Call the registration API
-            await registerUser(registrationData);
+            const response = await registerUser(registrationData);
 
-            // If we get here, registration was successful
-            toast.success("Successfully signed up for this institute! Your credentials have been sent to your email.");
-            
-            // Don't store tokens - user should login separately
-            // Switch to login modal instead of navigating to login page
-            if (onSwitchToLogin) {
-                onSwitchToLogin();
-            } else {
-                // Fallback to navigation if onSwitchToLogin is not provided
-                navigate({ to: "/login" });
-            }
+            // Handle post-signup authentication and redirect to dashboard
+            await handlePostSignupAuth(
+                response.accessToken,
+                response.refreshToken,
+                selectedInstitute.id,
+                navigate
+            );
         } catch (error) {
             console.error("Registration failed:", error);
             toast.error("Registration failed. Please try again.");

@@ -6,6 +6,7 @@ import {
   getInstituteDetails, 
   registerUser, 
   parseInstituteSettings,
+  handlePostSignupAuth,
   type InstituteSearchResult,
   type InstituteDetails,
   type InstituteSettings,
@@ -187,13 +188,13 @@ export const useSignupFlow = () => {
       // Call the registration API
       const response = await registerUser(registrationData);
 
-      // If we get here, registration was successful
-      toast.success("Successfully signed up for this institute! Your credentials have been sent to your email.");
-      console.log("Registration successful");
-      
-      // Don't store tokens - user should login separately
-      // Navigate to login page
-      navigate({ to: "/login" });
+      // Handle post-signup authentication and redirect to dashboard
+      await handlePostSignupAuth(
+        response.accessToken,
+        response.refreshToken,
+        state.selectedInstitute.id,
+        navigate
+      );
     } catch (error) {
       console.error("Registration failed:", error);
       toast.error("Registration failed. Please try again.");

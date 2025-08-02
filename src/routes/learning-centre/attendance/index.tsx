@@ -18,7 +18,6 @@ import {
 } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { CalendarIcon, CaretDownIcon } from "@radix-ui/react-icons";
-import { Checkbox } from "@/components/ui/checkbox";
 import { MyPagination } from "@/components/design-system/pagination";
 import {
   fetchAttendanceReport,
@@ -36,13 +35,7 @@ export const Route = createFileRoute("/learning-centre/attendance/")({
   component: RouteComponent,
 });
 
-// ---------------------------------------------
-// Component
-// ---------------------------------------------
 function RouteComponent() {
-  /* --------------------------------------------------------
-   * Local state & Nav heading
-   * ----------------------------------------------------- */
   const { setNavHeading } = useNavHeadingStore();
   useEffect(() => {
     setNavHeading("My Attendance");
@@ -106,9 +99,9 @@ function RouteComponent() {
     gcTime: 10 * 60 * 1000, // 10 minutes
   });
 
-  const [rowSelections, setRowSelections] = useState<Record<number, boolean>>(
-    {}
-  );
+  // const [rowSelections, setRowSelections] = useState<Record<number, boolean>>(
+  //   {}
+  // );
 
   const pageSize = 10;
   const [page, setPage] = useState(0);
@@ -127,30 +120,31 @@ function RouteComponent() {
     return attendanceData?.schedules?.slice(start, start + pageSize);
   }, [attendanceData, page]);
 
-  const allRowsSelected =
-    !isNullOrEmptyOrUndefined(paginatedData) &&
-    paginatedData?.every((_, idx) => rowSelections[idx]);
+  // const allRowsSelected =
+  //   !isNullOrEmptyOrUndefined(paginatedData) &&
+  //   paginatedData?.every((_, idx) => rowSelections[idx]);
 
-  const toggleSelectAll = (checked: boolean) => {
-    if (checked) {
-      const sel: Record<number, boolean> = {};
-      paginatedData?.forEach((_, idx) => {
-        sel[idx] = true;
-      });
-      setRowSelections(sel);
-    } else {
-      setRowSelections({});
-    }
-  };
+  // const toggleSelectAll = (checked: boolean) => {
+  //   if (checked) {
+  //     const sel: Record<number, boolean> = {};
+  //     paginatedData?.forEach((_, idx) => {
+  //       sel[idx] = true;
+  //     });
+  //     setRowSelections(sel);
+  //   } else {
+  //     setRowSelections({});
+  //   }
+  // };
 
-  const toggleRowSelection = (id: number, checked: boolean) => {
-    setRowSelections((prev) => {
-      const newSel = { ...prev };
-      if (checked) newSel[id] = true;
-      else delete newSel[id];
-      return newSel;
-    });
-  };
+  // const toggleRowSelection = (id: number, checked: boolean) => {
+  //   console.log(id, checked);
+  //   setRowSelections((prev) => {
+  //     const newSel = { ...prev };
+  //     if (checked) newSel[id] = true;
+  //     else delete newSel[id];
+  //     return newSel;
+  //   });
+  // };
 
   const clearFilters = () => {
     setDateRange({});
@@ -221,13 +215,13 @@ function RouteComponent() {
             <table className="w-full min-w-[800px] table-auto border-collapse">
               <thead>
                 <tr className="border-b border-neutral-200 bg-primary-100 text-left text-sm font-medium text-neutral-600">
-                  <th className="w-[40px] px-4 py-3">
+                  {/* <th className="w-[40px] px-4 py-3">
                     <Checkbox
                       checked={allRowsSelected}
                       onCheckedChange={(val) => toggleSelectAll(!!val)}
                       className="border-neutral-400 bg-white text-neutral-600 data-[state=checked]:bg-primary-500 data-[state=checked]:text-white"
                     />
-                  </th>
+                  </th> */}
                   <th className="px-4 py-3">Live Class Title</th>
                   <th className="px-4 py-3">Date &amp; Time</th>
                   <th className="px-4 py-3">Batch</th>
@@ -254,18 +248,19 @@ function RouteComponent() {
                 ) : !isNullOrEmptyOrUndefined(paginatedData) ? (
                   paginatedData?.map((cls, idx) => (
                     <tr
-                      key={cls.sessionId}
+                      key={idx}
                       className="border-b border-neutral-200 text-sm text-neutral-600 hover:bg-neutral-50"
                     >
-                      <td className="px-4 py-3">
+                      {/* <td className="px-4 py-3">
                         <Checkbox
                           checked={!!rowSelections[idx]}
-                          onCheckedChange={(val) =>
-                            toggleRowSelection(idx, !!val)
-                          }
+                          onCheckedChange={(val) => {
+                            toggleRowSelection(idx, !!val);
+                            console.log(rowSelections);
+                          }}
                           className="flex size-4 items-center justify-center border-neutral-400 text-neutral-600 shadow-none data-[state=checked]:bg-primary-500 data-[state=checked]:text-white"
                         />
-                      </td>
+                      </td> */}
                       <td className="px-4 py-3">{cls.sessionTitle}</td>
                       <td className="px-4 py-3">
                         {format(parseISO(cls.meetingDate), "MMM dd, yyyy")}
@@ -323,9 +318,6 @@ function RouteComponent() {
   );
 }
 
-// ---------------------------------------------
-// Helper components
-// ---------------------------------------------
 interface RangeDateFilterProps {
   range: { from?: Date; to?: Date };
   onChange: (r: { from?: Date; to?: Date }) => void;
@@ -406,7 +398,6 @@ function RangeDateFilter({ range, onChange }: RangeDateFilterProps) {
   );
 }
 
-// New component for batch dropdown with batch ID handling
 interface BatchDropdownProps {
   label: string;
   value: string;

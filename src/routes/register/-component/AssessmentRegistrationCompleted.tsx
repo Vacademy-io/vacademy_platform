@@ -51,16 +51,11 @@ const AssessmentRegistrationCompleted = ({
               instituteId,
               userId
             );
-            if (status == 200) {
-              navigate({
-                to: "/SessionSelectionPage",
-                search: { redirect: "/assessment/examination" , isPublicAssessment: true},
-              });
-            } else {
-              navigate({
-                to: "/assessment/examination",
-              });
-            }
+            // Skip session selection and go directly to assessment
+            navigate({
+              to: "/assessment/examination",
+              search: { isPublicAssessment: true },
+            });
           } catch (error) {
             console.error("Error fetching details:", error);
             toast.error("Failed to fetch details");

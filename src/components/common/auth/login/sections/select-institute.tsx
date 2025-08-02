@@ -39,9 +39,10 @@ type FormValues = z.infer<typeof instituteSelectionSchema>;
 
 export function InstituteSelection() {
     const location = useLocation();
-    const { type, courseId } = location.state || {};
+    const { type, courseId } = (location.state as { type?: string; courseId?: string }) || {};
     const navigate = useNavigate();
-    const { redirect } = useSearch<any>({ from: "/institute-selection/" });
+    const search = useSearch({ from: "/institute-selection/" });
+    const redirect = (search as { redirect?: string })?.redirect;
 
     const form = useForm<FormValues>({
         resolver: zodResolver(instituteSelectionSchema),
@@ -137,18 +138,19 @@ export function InstituteSelection() {
             // Step 3: Fetch and store student details using updated institute data
             await fetchAndStoreStudentDetails(data.instituteId, userId);
 
-            // Redirect after everything is saved
+            // Always redirect to dashboard after institute selection, regardless of course enrollment
             if (type) {
                 if (type === "coursesPage")
                     navigate({ to: "/study-library/courses" });
                 else
                     navigate({
                         to: "/study-library/courses/course-details",
-                        search: { courseId: courseId },
+                        search: { courseId: courseId || "" },
                     });
                 return;
             }
-            navigate({ to: "/SessionSelectionPage", search: { redirect } });
+            // Skip session selection and go directly to dashboard
+            navigate({ to: "/dashboard" });
         } catch (error) {
             console.error("❌ Error submitting form:", error);
             toast.error("Submission failed");
@@ -287,7 +289,7 @@ export function InstituteSelection() {
                             layoutVariant="default"
                             className="text-gray-700 hover:text-black hover:underline ml-1"
                             onClick={() =>
-                                navigate({ to: "/login", search: { redirect } })
+                                navigate({ to: "/login", search: { redirect: redirect || "/dashboard/" } })
                             }
                             disabled={isSubmitting}
                         >

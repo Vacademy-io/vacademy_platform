@@ -319,4 +319,52 @@ export const parseInstituteSettings = (settingsString: string): InstituteSetting
       learnersCanCreateCourses: false,
     };
   }
+};
+
+// Utility function to handle post-signup authentication and redirect
+export const handlePostSignupAuth = async (
+  accessToken: string,
+  refreshToken: string,
+  instituteId: string,
+  navigate: any
+) => {
+  try {
+    // Import required functions
+    const { Preferences } = await import("@capacitor/preferences");
+    const { TokenKey } = await import("@/constants/auth/tokens");
+    const { getTokenDecodedData } = await import("@/lib/auth/sessionUtility");
+    const { fetchAndStoreInstituteDetails } = await import("@/services/fetchAndStoreInstituteDetails");
+    const { fetchAndStoreStudentDetails } = await import("@/services/studentDetails");
+    const { toast } = await import("sonner");
+
+    // Store tokens in storage
+    await Preferences.set({ key: TokenKey.accessToken, value: accessToken });
+    await Preferences.set({ key: TokenKey.refreshToken, value: refreshToken });
+    await Preferences.set({ key: "instituteId", value: instituteId });
+
+    // Decode token to get user ID
+    const decodedData = getTokenDecodedData(accessToken);
+    const userId = decodedData?.user;
+
+    if (!userId) {
+      throw new Error("Invalid user data in token");
+    }
+
+    // Fetch and store institute details
+    await fetchAndStoreInstituteDetails(instituteId, userId);
+
+    // Fetch and store student details
+    await fetchAndStoreStudentDetails(instituteId, userId);
+
+    // Show success message
+    toast.success("Successfully signed up and logged in!");
+
+    // Redirect to dashboard
+    navigate({ to: "/dashboard" });
+
+  } catch (error) {
+    console.error("Error in post-signup authentication:", error);
+    // If there's an error, still redirect to login as fallback
+    navigate({ to: "/login" });
+  }
 }; 

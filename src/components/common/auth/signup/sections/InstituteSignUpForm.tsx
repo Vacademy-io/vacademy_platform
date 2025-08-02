@@ -21,7 +21,7 @@ import {
 import { MyInput } from "@/components/design-system/input";
 import { useSignupFlow } from "@/hooks/use-signup-flow";
 import { SignupEmailOtpForm } from "./SignupEmailOtpForm";
-import { getUserDetailsByEmail, registerUser, type RegisterUserRequest } from "@/services/signup-api";
+import { getUserDetailsByEmail, registerUser, handlePostSignupAuth, type RegisterUserRequest } from "@/services/signup-api";
 
 const instituteSelectionSchema = z.object({
     instituteId: z.string().min(1, "Please select an institute"),
@@ -138,12 +138,15 @@ export function InstituteSignUp({
                 learner_package_session_enroll: null,
             };
 
-            await registerUser(registrationData);
-            toast.success("Successfully signed up for this institute! Your credentials have been sent to your email.");
+            const response = await registerUser(registrationData);
             
-            // Don't store tokens - user should login separately
-            // Navigate to login page
-            navigate({ to: "/login" });
+            // Handle post-signup authentication and redirect to dashboard
+            await handlePostSignupAuth(
+                response.accessToken,
+                response.refreshToken,
+                state.selectedInstitute!.id,
+                navigate
+            );
         } catch (error: unknown) {
             if (error instanceof Error && error.message === 'USER_NOT_FOUND') {
                 // User doesn't exist, proceed to user details step
@@ -199,14 +202,15 @@ export function InstituteSignUp({
             };
 
             // Call the registration API
-            await registerUser(registrationData);
+            const response = await registerUser(registrationData);
 
-            // If we get here, registration was successful
-            toast.success("Successfully signed up for this institute! Your credentials have been sent to your email.");
-            
-            // Don't store tokens - user should login separately
-            // Navigate to login page
-            navigate({ to: "/login" });
+            // Handle post-signup authentication and redirect to dashboard
+            await handlePostSignupAuth(
+                response.accessToken,
+                response.refreshToken,
+                state.selectedInstitute.id,
+                navigate
+            );
         } catch (error) {
             console.error("Registration failed:", error);
             toast.error("Registration failed. Please try again.");

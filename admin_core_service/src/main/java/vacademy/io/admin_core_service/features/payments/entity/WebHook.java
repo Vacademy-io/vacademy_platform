@@ -32,7 +32,7 @@ public class WebHook {
     @Column(name = "status", nullable = false)
     private WebHookStatus status = WebHookStatus.RECEIVED;
 
-    @Column(name = "order_id",nullable = false)
+    @Column(name = "order_id")
     private String orderId;
 
     @Column(name = "created_at", nullable = false, insertable = false, updatable = false)

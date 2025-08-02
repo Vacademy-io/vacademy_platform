@@ -93,6 +93,7 @@ public class StripeWebHookService {
 
         } catch (Exception ex) {
             log.error("Error while processing webhook", ex);
+            ex.printStackTrace();
             if (webhookId != null) {
                 webHookService.updateWebHookStatus(webhookId, WebHookStatus.FAILED);
             }
@@ -129,6 +130,7 @@ public class StripeWebHookService {
             log.info("Webhook signature verified for institute {}", instituteId);
             return event;
         } catch (SignatureVerificationException e) {
+            e.printStackTrace();
             log.error("Signature verification failed for institute {}", instituteId, e);
             return null;
         }
@@ -139,6 +141,27 @@ public class StripeWebHookService {
             log.warn("Unhandled event type received: {}", event.getType());
             throw new VacademyException("Unhandled event type: " + event.getType());
         }
-        return (Invoice) event.getData().getObject();
+
+        try {
+            JsonNode eventJson = objectMapper.readTree(event.toJson());
+            String invoiceId = eventJson.at("/data/object/invoice").asText();
+
+            if (invoiceId == null || invoiceId.isEmpty()) {
+                invoiceId = eventJson.at("/data/object/id").asText(); // fallback
+            }
+
+            if (invoiceId == null || invoiceId.isEmpty()) {
+                throw new VacademyException("Invoice ID not found in event");
+            }
+
+            Invoice invoice = Invoice.retrieve(invoiceId);
+            log.info("Retrieved full invoice from Stripe for ID {}", invoiceId);
+            return invoice;
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            log.error("Failed to retrieve full invoice from Stripe", e);
+            throw new VacademyException("Failed to retrieve full invoice from Stripe");
+        }
     }
 }

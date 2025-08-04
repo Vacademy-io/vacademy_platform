@@ -73,20 +73,7 @@ public class StripeWebHookService {
 
             Invoice invoice = extractInvoiceFromPayload(event, apiKey);
 
-            String orderId = null;
-            if (invoice.getLines() != null &&
-                    invoice.getLines().getData() != null &&
-                    !invoice.getLines().getData().isEmpty()) {
-                orderId = invoice.getLines().getData().get(0).getMetadata().get("orderId");
-            }
-
-            if (orderId == null) {
-                log.warn("Missing orderId in line item metadata");
-                if (webhookId != null) {
-                    webHookService.updateWebHookStatus(webhookId, WebHookStatus.FAILED);
-                }
-                return ResponseEntity.status(400).body("Missing orderId in invoice line item metadata");
-            }
+            String orderId = invoice.getMetadata().get("orderId");
 
             String paymentStatus = invoice.getPaid()
                     ? PaymentStatusEnum.PAID.name()

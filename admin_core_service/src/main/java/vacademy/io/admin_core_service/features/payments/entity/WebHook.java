@@ -41,6 +41,9 @@ public class WebHook {
     @Column(name = "processed_at")
     private LocalDateTime processedAt;
 
+//    @Column(name = "error_message")
+//    private String errorMessage;
+
     public WebHook(String eventType, String vendor, String payload, String orderId,WebHookStatus webHookStatus) {
         this.eventType = eventType;
         this.vendor = vendor;

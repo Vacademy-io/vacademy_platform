@@ -100,7 +100,6 @@ public class StripeWebHookService {
             return ResponseEntity.status(500).body("Internal error during webhook processing");
         }
     }
-
     private String extractInstituteId(String payload) {
         try {
             JsonNode payloadJson = objectMapper.readTree(payload);
@@ -117,6 +116,7 @@ public class StripeWebHookService {
                     case "invoice.created":
                     case "invoice.finalized":
                     case "invoice.updated":
+                    case "invoice.payment_failed":  // <-- added this line
                         // Attempt to get metadata directly from invoice
                         JsonNode metadataNode = dataObject.get("metadata");
                         if (metadataNode != null && metadataNode.has("instituteId")) {

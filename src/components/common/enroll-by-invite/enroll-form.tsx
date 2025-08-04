@@ -1,1139 +1,315 @@
-"use client";
-
-import { useState, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
-import { MyDropdown } from "@/components/design-system/dropdown";
-import { MyInput } from "@/components/design-system/input";
-import { Form } from "@/components/ui/form";
-import { Label } from "@/components/ui/label";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import * as z from "zod";
-import { ENROLL_DETAILS_RESPONSE, GET_ENROLL_DETAILS } from "@/constants/urls";
-import { toast } from "sonner";
-import { DashboardLoader } from "@/components/core/dashboard-loader";
-import { MyButton } from "@/components/design-system/button";
-import { getPublicUrl } from "@/services/upload_file";
-import PhoneInputField from "@/components/design-system/phone-input-field";
-import axios from "axios";
 import { Route } from "@/routes/learner-invitation-response";
-import { Loader2 } from "lucide-react";
-import { getTerminology } from "../layout-container/sidebar/utils";
-import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { useSuspenseQuery } from "@tanstack/react-query";
+import { handleGetEnrollInviteData } from "./-services/enroll-invite-services";
+import { DashboardLoader } from "@/components/core/dashboard-loader";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Award, Target, Info, GraduationCap, BookOpen } from "lucide-react";
+import { useEffect, useState } from "react";
+import { safeJsonParse } from "./-utils/helper";
+import { useInstituteQuery } from "@/services/signup-api";
+import { useInstituteDetailsStore } from "@/stores/study-library/useInstituteDetails";
 
-interface CustomField {
-  id: string;
-  field_name: string;
-  field_type: "TEXT" | "DROPDOWN";
-  default_value: string;
-  description: string;
-  is_mandatory: boolean;
-  comma_separated_options: string;
+interface FinalCourseData {
+    aboutCourse: string;
+    course: string;
+    courseBanner: string;
+    customHtml: string;
+    description: string;
+    includeInstituteLogo: boolean;
+    learningOutcome: string;
+    restrictToSameBatch: boolean;
+    showRelatedCourses: boolean;
+    tags: string[];
+    targetAudience: string;
 }
-
-interface Level {
-  id: string;
-  name: string;
-  package_session_id: string;
-}
-
-interface Session {
-  id: string;
-  name: string;
-  institute_assigned?: boolean;
-  max_selectable_packages: number;
-  pre_selected_levels?: Level[];
-  learner_choice_levels?: Level[];
-}
-
-interface Package {
-  id: string;
-
-  name: string;
-  institute_assigned?: boolean;
-  max_selectable_sessions: number;
-  pre_selected_session_dtos?: Session[];
-  learner_choice_sessions?: Session[];
-}
-
-interface BatchOptions {
-  institute_assigned: boolean;
-  max_selectable_packages: number;
-  pre_selected_packages: Package[];
-  learner_choice_packages: Package[];
-}
-
-interface LearnerInvitation {
-  id: string;
-  name: string;
-  status: string;
-  date_generated: string;
-  expiry_date: string;
-  institute_id: string;
-  invite_code: string;
-  batch_options_json: string;
-  custom_fields: CustomField[];
-}
-
-interface ApiResponse {
-  learner_invitation: LearnerInvitation;
-  institute_name: string;
-  institute_logo_file_id: string | null;
-}
-
-// Extended level interface with additional context information
-interface LevelWithContext {
-  id: string;
-  name: string;
-  sessionId: string;
-  sessionName: string;
-  packageId: string;
-  packageName: string;
-  isPreSelected: boolean;
-}
-
-// Validation schemas
-const emailSchema = z.string().email("Please enter a valid email address");
-const phoneSchema = z
-  .string()
-  .regex(
-    /^\+\d{1,4}\d{10}$/,
-    "Please enter a valid phone number with country code"
-  )
-  .transform((val) => val.trim());
-
-// Create a form schema for the custom fields
-const createCustomFieldsSchema = (customFields: CustomField[]) => {
-  const schemaObject: Record<string, z.ZodType> = {};
-  customFields.forEach((field) => {
-    if (field.field_name.toLowerCase().includes("email")) {
-      schemaObject[field.id] = z
-        .string()
-        .email("Please enter a valid email address");
-    } else if (
-      field.field_name.toLowerCase().includes("phone") ||
-      field.field_name.toLowerCase().includes("mobile")
-    ) {
-      schemaObject[field.id] = z
-        .string()
-        .regex(
-          /^\+\d{1,4}\d{10}$/,
-          "Please enter a valid phone number with country code"
-        );
-    } else {
-      schemaObject[field.id] = field.is_mandatory
-        ? z.string().min(1, "This field is required")
-        : z.string().optional();
-    }
-  });
-  return z.object(schemaObject);
-};
 
 const EnrollByInvite = () => {
-  const { instituteId, inviteCode } = Route.useSearch();
+    const { instituteId, inviteCode } = Route.useSearch();
+    const { isLoading: isInstituteLoading } = useSuspenseQuery(
+        useInstituteQuery({ instituteId })
+    );
 
-  // Form state
-  const [step, setStep] = useState(1);
-  const [loading, setLoading] = useState(true);
-  const [submitLoading, setSubmitLoading] = useState(false);
-  const [apiResponse, setApiResponse] = useState<ApiResponse | null>(null);
-  const [inviteData, setInviteData] = useState<LearnerInvitation | null>(null);
-  const [batchOptions, setBatchOptions] = useState<BatchOptions | null>(null);
-  const [imageUrl, setImageUrl] = useState<string | undefined>(undefined);
-  const [success, setSuccess] = useState(false);
+    const { getDetailsFromPackageSessionId } = useInstituteDetailsStore();
 
-  // All available levels with context
-  const [allLevels, setAllLevels] = useState<LevelWithContext[]>([]);
+    const { data: inviteData, isLoading } = useSuspenseQuery(
+        handleGetEnrollInviteData({ instituteId, inviteCode })
+    );
 
-  // Selection states
-  const [selectedPackages, setSelectedPackages] = useState<string[]>([]);
-  const [selectedSessions, setSelectedSessions] = useState<
-    Record<string, string[]>
-  >({});
-  const [selectedLevels, setSelectedLevels] = useState<
-    Record<string, string[]>
-  >({});
+    // Form state
+    const [formData, setFormData] = useState({
+        firstName: "",
+        lastName: "",
+        email: "",
+        phone: "",
+    });
 
-  // Personal info state
-  const [personalInfo] = useState({
-    fullName: "",
-    email: "",
-    mobile: "",
-  });
+    const handleInputChange = (field: string, value: string) => {
+        setFormData((prev) => ({
+            ...prev,
+            [field]: value,
+        }));
+    };
 
-  // Custom fields state
-  const [customFieldValues, setCustomFieldValues] = useState<
-    Record<string, string>
-  >({});
+    const handleRegister = () => {
+        // Handle registration logic here
+        console.log("Registration data:", formData);
+    };
 
-  // Validation errors state
-  const [errors, setErrors] = useState({
-    packages: "",
-    sessions: {} as Record<string, string>,
-    levels: {} as Record<string, string>,
-    fullName: "",
-    email: "",
-    mobile: "",
-    customFields: {} as Record<string, string>,
-  });
+    const [courseData, setCourseData] = useState<FinalCourseData>({
+        aboutCourse: "",
+        course: "",
+        courseBanner: "",
+        customHtml: "",
+        description: "",
+        includeInstituteLogo: false,
+        learningOutcome: "",
+        restrictToSameBatch: false,
+        showRelatedCourses: false,
+        tags: [],
+        targetAudience: "",
+    });
 
-  // Initialize form with dynamic schema
-  const form = useForm({
-    mode: "onChange",
-    defaultValues: customFieldValues,
-    resolver: zodResolver(
-      createCustomFieldsSchema(inviteData?.custom_fields || [])
-    ),
-  });
-
-  // Update form validation schema when custom fields change
-  useEffect(() => {
-    if (inviteData?.custom_fields) {
-      form.clearErrors();
-      form.reset(customFieldValues);
-    }
-  }, [inviteData?.custom_fields]);
-
-  // Fetch invite data on component mount
-  useEffect(() => {
-    if (instituteId && inviteCode) {
-      fetchInviteData();
-    }
-  }, [instituteId, inviteCode]);
-
-  // Process batch options to create a flat list of all levels with context
-  useEffect(() => {
-    if (batchOptions) {
-      const levels: LevelWithContext[] = [];
-
-      // Process pre-selected packages
-      batchOptions.pre_selected_packages.forEach((pkg) => {
-        // Process pre-selected sessions
-        if (pkg.pre_selected_session_dtos) {
-          pkg.pre_selected_session_dtos.forEach((session) => {
-            // Process pre-selected levels
-            if (session.pre_selected_levels) {
-              session.pre_selected_levels.forEach((level) => {
-                levels.push({
-                  id: level.id,
-                  name: level.name,
-                  sessionId: session.id,
-                  sessionName: session.name,
-                  packageId: pkg.id,
-                  packageName: pkg.name,
-                  isPreSelected: true,
-                });
-              });
-            }
-
-            // Process learner choice levels for pre-selected sessions
-            if (session.learner_choice_levels) {
-              session.learner_choice_levels.forEach((level) => {
-                levels.push({
-                  id: level.id,
-                  name: level.name,
-                  sessionId: session.id,
-                  sessionName: session.name,
-                  packageId: pkg.id,
-                  packageName: pkg.name,
-                  isPreSelected: false,
-                });
-              });
-            }
-          });
-        }
-
-        // Process learner choice sessions for pre-selected packages
-        if (pkg.learner_choice_sessions) {
-          pkg.learner_choice_sessions.forEach((session) => {
-            // Process learner choice levels
-            if (session.learner_choice_levels) {
-              session.learner_choice_levels.forEach((level) => {
-                levels.push({
-                  id: level.id,
-                  name: level.name,
-                  sessionId: session.id,
-                  sessionName: session.name,
-                  packageId: pkg.id,
-                  packageName: pkg.name,
-                  isPreSelected: false,
-                });
-              });
-            }
-          });
-        }
-      });
-
-      // Process learner choice packages
-      batchOptions.learner_choice_packages.forEach((pkg) => {
-        // Process learner choice sessions
-        if (pkg.learner_choice_sessions) {
-          pkg.learner_choice_sessions.forEach((session) => {
-            // Process learner choice levels
-            if (session.learner_choice_levels) {
-              session.learner_choice_levels.forEach((level) => {
-                levels.push({
-                  id: level.id,
-                  name: level.name,
-                  sessionId: session.id,
-                  sessionName: session.name,
-                  packageId: pkg.id,
-                  packageName: pkg.name,
-                  isPreSelected: false,
-                });
-              });
-            }
-          });
-        }
-      });
-
-      setAllLevels(levels);
-    }
-  }, [batchOptions]);
-
-  // Fetch invite data from API
-  const fetchInviteData = async () => {
-    setLoading(true);
-    try {
-      const response = await axios.get(GET_ENROLL_DETAILS, {
-        params: {
-          instituteId: instituteId,
-          inviteCode: inviteCode,
-        },
-      });
-      console.log("Invite data:", response.data);
-
-      // Store the full API response
-      setApiResponse(response.data);
-
-      // Extract the learner invitation data
-      const learnerInvitation = response.data.learner_invitation;
-      setInviteData(learnerInvitation);
-      if (response.data.institute_logo_file_id) {
-        try {
-          const institute_logo = await getPublicUrl(
-            response.data.institute_logo_file_id
-          );
-          setImageUrl(institute_logo);
-        } catch (error) {
-          console.error("Error fetching institute logo:", error);
-        }
-      }
-
-      // Parse batch options JSON
-      const batchOptionsData = JSON.parse(learnerInvitation.batch_options_json);
-      setBatchOptions(batchOptionsData);
-
-      // Initialize custom fields
-      const initialCustomFields: Record<string, string> = {};
-      learnerInvitation.custom_fields.forEach((field: CustomField) => {
-        initialCustomFields[field.id] = field.default_value || "";
-      });
-      setCustomFieldValues(initialCustomFields);
-
-      // Pre-select packages, sessions, and levels
-      if (batchOptionsData.pre_selected_packages) {
-        const preSelectedPackages = batchOptionsData.pre_selected_packages.map(
-          (pkg: Package) => pkg.id
-        );
-        setSelectedPackages(preSelectedPackages);
-
-        // Pre-select sessions for each package
-        const sessionsMap: Record<string, string[]> = {};
-        const levelsMap: Record<string, string[]> = {};
-
-        batchOptionsData.pre_selected_packages.forEach((pkg: Package) => {
-          if (pkg.pre_selected_session_dtos) {
-            const sessionIds = pkg.pre_selected_session_dtos.map(
-              (session: Session) => session.id
-            );
-            sessionsMap[pkg.id] = sessionIds;
-
-            // Pre-select levels for each session
-            pkg.pre_selected_session_dtos.forEach((session: Session) => {
-              if (session.pre_selected_levels) {
-                const levelIds = session.pre_selected_levels.map(
-                  (level: Level) => level.id
+    useEffect(() => {
+        const loadCourseData = async () => {
+            try {
+                const transformedData = await safeJsonParse(
+                    inviteData?.web_page_meta_data_json,
+                    {}
                 );
-                levelsMap[session.id] = levelIds;
-              }
-            });
-          }
-        });
-
-        setSelectedSessions(sessionsMap);
-        setSelectedLevels(levelsMap);
-      }
-
-      setLoading(false);
-    } catch (error) {
-      console.error("Error fetching invite data:", error);
-      setLoading(false);
-      // Handle error (show message to user)
-    }
-  };
-
-  // Toggle level selection
-  const toggleLevel = (level: LevelWithContext) => {
-    // If pre-selected, don't allow toggling
-    if (level.isPreSelected) return;
-
-    const { sessionId, packageId } = level;
-    const currentLevels = selectedLevels[sessionId] || [];
-    const isSelected = currentLevels.includes(level.id);
-
-    // Check if the package is selected
-    if (!selectedPackages.includes(packageId)) {
-      // Add package if not already selected
-      setSelectedPackages([...selectedPackages, packageId]);
-    }
-
-    // Check if the session is selected for this package
-    const packageSessions = selectedSessions[packageId] || [];
-    if (!packageSessions.includes(sessionId)) {
-      // Add session if not already selected
-      setSelectedSessions({
-        ...selectedSessions,
-        [packageId]: [...packageSessions, sessionId],
-      });
-    }
-
-    // Toggle level selection
-    if (isSelected) {
-      // Remove level
-      const newLevels = { ...selectedLevels };
-      newLevels[sessionId] = currentLevels.filter((id) => id !== level.id);
-      setSelectedLevels(newLevels);
-    } else {
-      // Add level if within max limit
-      const session = findSessionById(sessionId);
-      if (session) {
-        const maxLevels = batchOptions?.max_selectable_packages; // Changed from max_selectable_levels
-        const preSelectedCount = session.pre_selected_levels?.length || 0;
-        console.log("preSelectedCount", preSelectedCount);
-
-        if (currentLevels.length < (maxLevels ?? 0)) {
-          setSelectedLevels({
-            ...selectedLevels,
-            [sessionId]: [...currentLevels, level.id],
-          });
-        }
-      }
-    }
-  };
-
-  // Helper function to find session by ID
-  const findSessionById = (sessionId: string): Session | null => {
-    if (!batchOptions) return null;
-
-    // Search in all packages
-    for (const pkg of [
-      ...batchOptions.pre_selected_packages,
-      ...batchOptions.learner_choice_packages,
-    ]) {
-      // Check in pre-selected sessions
-      if (pkg.pre_selected_session_dtos) {
-        const session = pkg.pre_selected_session_dtos.find(
-          (s) => s.id === sessionId
-        );
-        if (session) return session;
-      }
-
-      // Check in learner choice sessions
-      if (pkg.learner_choice_sessions) {
-        const session = pkg.learner_choice_sessions.find(
-          (s) => s.id === sessionId
-        );
-        if (session) return session;
-      }
-    }
-    return null;
-  };
-
-  // Check if a level is selected
-  const isLevelSelected = (levelId: string, sessionId: string): boolean => {
-    return (selectedLevels[sessionId] || []).includes(levelId);
-  };
-
-  // Check if a level can be selected (based on session's max selectable levels)
-  const canSelectLevel = (level: LevelWithContext): boolean => {
-    if (level.isPreSelected) return false; // Pre-selected levels can't be toggled
-
-    const session = findSessionById(level.sessionId);
-    if (!session) return false;
-
-    const currentLevels = selectedLevels[level.sessionId] || [];
-    const isSelected = currentLevels.includes(level.id);
-
-    // If already selected, allow deselection
-    if (isSelected) return true;
-
-    // Check if we've reached the max limit
-    const maxLevels = batchOptions?.max_selectable_packages; // Changed from max_selectable_levels
-    const preSelectedCount = session.pre_selected_levels?.length || 0;
-    console.log("preSelectedCount", preSelectedCount);
-
-    return currentLevels.length < (maxLevels ?? 0);
-  };
-
-  // Update personal info
-  // const updatePersonalInfo = (field: string, value: string) => {
-  //   setPersonalInfo({ ...personalInfo, [field]: value });
-
-  //   // Clear error when typing
-  //   if (errors[field as keyof typeof errors]) {
-  //     setErrors({ ...errors, [field]: "" });
-  //   }
-  // };
-
-  // Update custom field value
-  const updateCustomField = (fieldId: string, value: string) => {
-    setCustomFieldValues({ ...customFieldValues, [fieldId]: value });
-
-    // Clear error when typing
-    const newCustomErrors = { ...errors.customFields };
-    delete newCustomErrors[fieldId];
-    setErrors({ ...errors, customFields: newCustomErrors });
-  };
-
-  // Handle next button click with validation
-  const handleNext = () => {
-    const newErrors = { ...errors };
-    let hasError = false;
-
-    // Validate packages
-    if (selectedPackages.length === 0) {
-      newErrors.packages = "Please select at least one package";
-      hasError = true;
-    }
-
-    // Validate sessions for each selected package
-    selectedPackages.forEach((packageId) => {
-      const selectedSessionsForPackage = selectedSessions[packageId] || [];
-      if (selectedSessionsForPackage.length === 0) {
-        newErrors.sessions = {
-          ...newErrors.sessions,
-          [packageId]: "Please select at least one session for this package",
+                setCourseData({
+                    aboutCourse: transformedData.aboutCourse,
+                    course: transformedData.course,
+                    courseBanner: transformedData.courseBannerBlob,
+                    customHtml: transformedData.customHtml,
+                    description: transformedData.description,
+                    includeInstituteLogo: transformedData.includeInstituteLogo,
+                    learningOutcome: transformedData.learningOutcome,
+                    restrictToSameBatch: transformedData.restrictToSameBatch,
+                    showRelatedCourses: transformedData.transformedData,
+                    tags: transformedData?.tags ?? [],
+                    targetAudience: transformedData?.targetAudience ?? "",
+                });
+            } catch (error) {
+                console.error("Error transforming course data:", error);
+            }
         };
-        hasError = true;
-      }
-    });
 
-    // Validate levels for each selected session
-    Object.keys(selectedSessions).forEach((packageId) => {
-      const sessions = selectedSessions[packageId] || [];
+        loadCourseData();
+    }, [inviteData]);
 
-      sessions.forEach((sessionId) => {
-        const selectedLevelsForSession = selectedLevels[sessionId] || [];
-        if (selectedLevelsForSession.length === 0) {
-          newErrors.levels = {
-            ...newErrors.levels,
-            [sessionId]: "Please select at least one level for this session",
-          };
-          hasError = true;
-        }
-      });
-    });
-
-    if (hasError) {
-      setErrors(newErrors);
-      return;
-    }
-
-    setStep(2);
-  };
-
-  // Handle back button click
-  const handleBack = () => {
-    setStep(1);
-  };
-
-  // Handle confirm button click with validation
-  const handleConfirm = async () => {
-    const newErrors = { ...errors };
-    let hasError = false;
-
-    // Validate custom fields
-    if (inviteData && inviteData.custom_fields) {
-      inviteData.custom_fields.forEach((field) => {
-        if (field.is_mandatory && !customFieldValues[field.id]) {
-          newErrors.customFields = {
-            ...newErrors.customFields,
-            [field.id]: `${field.field_name} is required`,
-          };
-          hasError = true;
-        }
-
-        // Add validation for Email field
-        if (field.field_name.toLowerCase() === "email") {
-          try {
-            emailSchema.parse(customFieldValues[field.id]);
-          } catch (error) {
-            if (error instanceof z.ZodError) {
-              newErrors.customFields = {
-                ...newErrors.customFields,
-                [field.id]: error.errors[0].message,
-              };
-              hasError = true;
-            }
-          }
-        }
-
-        // Add validation for Phone Number field
-        if (
-          field.field_name.toLowerCase().includes("phone") ||
-          field.field_name.toLowerCase().includes("mobile")
-        ) {
-          try {
-            phoneSchema.parse(customFieldValues[field.id]);
-          } catch (error) {
-            if (error instanceof z.ZodError) {
-              newErrors.customFields = {
-                ...newErrors.customFields,
-                [field.id]: error.errors[0].message,
-              };
-              hasError = true;
-            }
-          }
-        }
-      });
-    }
-
-    if (hasError) {
-      setErrors(newErrors);
-      return;
-    }
-
-    // Find email and phone number from custom fields
-    let emailValue = personalInfo.email;
-    let phoneValue = personalInfo.mobile;
-
-    if (inviteData && inviteData.custom_fields) {
-      // const emailField = inviteData.custom_fields.find(
-      //   (field) => field.field_name === "Email"
-      // );
-      const emailField = inviteData.custom_fields.find(
-        (field) => field.field_name.toLowerCase() === "email"
-      );
-      const phoneField = inviteData.custom_fields.find(
-        (field) =>
-          field.field_name.toLowerCase().includes("phone") ||
-          field.field_name.toLowerCase().includes("mobile")
-      );
-
-      const fullNameField = inviteData.custom_fields.find(
-        (field) => field.field_name === "Full Name"
-      );
-
-      if (emailField && customFieldValues[emailField.id]) {
-        emailValue = customFieldValues[emailField.id];
-      }
-
-      if (phoneField && customFieldValues[phoneField.id]) {
-        phoneValue = customFieldValues[phoneField.id];
-      }
-      if (fullNameField && customFieldValues[fullNameField.id]) {
-        personalInfo.fullName = customFieldValues[fullNameField.id];
-      }
-    }
-
-    // Find all package data
-    const getPackageData = (packageId: string) => {
-      if (!batchOptions) return { id: packageId };
-
-      const preSelectedPackage = batchOptions.pre_selected_packages.find(
-        (p) => p.id === packageId
-      );
-      const learnerChoicePackage = batchOptions.learner_choice_packages.find(
-        (p) => p.id === packageId
-      );
-
-      return preSelectedPackage || learnerChoicePackage || { id: packageId };
-    };
-
-    // Find all session data
-    const getSessionData = (packageId: string, sessionId: string) => {
-      const packageData = getPackageData(packageId);
-
-      if (!packageData) return { id: sessionId };
-
-      let preSelectedSession = null;
-      let learnerChoiceSession = null;
-
-      if ("pre_selected_session_dtos" in packageData) {
-        preSelectedSession = packageData.pre_selected_session_dtos?.find(
-          (s: Session) => s.id === sessionId
-        );
-      }
-
-      if ("learner_choice_sessions" in packageData) {
-        learnerChoiceSession = packageData.learner_choice_sessions?.find(
-          (s: Session) => s.id === sessionId
-        );
-      }
-
-      return preSelectedSession || learnerChoiceSession || { id: sessionId };
-    };
-
-    // Prepare data for submission with full data for packages, sessions, and levels
-    const submissionData = {
-      id: null,
-      institute_id: inviteData?.institute_id,
-      learner_invitation_id: inviteData?.id,
-      status: "ACTIVE",
-      full_name: personalInfo.fullName,
-      email: emailValue,
-      contact_number: phoneValue,
-      batch_options_json: inviteData?.batch_options_json,
-      batch_selection_response_json: JSON.stringify(
-        selectedPackages.map((packageId) => {
-          const packageData = getPackageData(packageId);
-          console.log("packageData", packageData);
-          const packageSessions = selectedSessions[packageId] || [];
-
-          return {
-            package_id: packageId,
-            package_name: "name" in packageData ? packageData.name : "",
-            selected_sessions: packageSessions.map((sessionId) => {
-              const sessionData = getSessionData(packageId, sessionId);
-              const sessionLevels = selectedLevels[sessionId] || [];
-
-              // Find the full level data for each selected level
-              const selectedLevelsWithData = sessionLevels.map((levelId) => {
-                const levelData = allLevels.find((l) => l.id === levelId);
-
-                const session = findSessionById(sessionId);
-                const fullLevelData = session?.learner_choice_levels?.find(
-                  (l) => l.id === levelId
-                );
-
-                return {
-                  id: levelId,
-                  name: levelData?.name || "",
-                  package_session_id: fullLevelData?.package_session_id || null,
-                };
-              });
-
-              return {
-                session_id: sessionId,
-                session_name: "name" in sessionData ? sessionData.name : "",
-                selected_levels: selectedLevelsWithData,
-              };
-            }),
-          };
+    console.log(
+        getDetailsFromPackageSessionId({
+            packageSessionId: "386fbdcb-352b-480f-8213-0521c451d75b",
         })
-      ),
-      recorded_on: new Date().toISOString(),
-      custom_fields_response: Object.keys(customFieldValues).map((fieldId) => {
-        const field = inviteData?.custom_fields.find((f) => f.id === fieldId);
-        return {
-          custom_field_id: fieldId,
-          id: null,
-          value: customFieldValues[fieldId],
-          field_name: field?.field_name || null,
-        };
-      }),
-    };
-    console.log("Submission data:", submissionData);
-
-    // Submit data
-    setSubmitLoading(true);
-    try {
-      const response = await axios.post(
-        `${ENROLL_DETAILS_RESPONSE}`,
-        submissionData
-      );
-      console.log("Enrollment response:", response.data);
-      setSuccess(true);
-      setStep(3); // Move to step 3 on success
-      toast.success("Enrollment submitted successfully!");
-    } catch (error) {
-      console.error("Error submitting enrollment:", error);
-      setSuccess(false);
-      toast.error("Failed to submit enrollment. Please try again.");
-    } finally {
-      setSubmitLoading(false);
-    }
-  };
-
-  // Function to render custom fields based on their type
-  const renderCustomField = (field: CustomField) => {
-    const commonInputClasses = "w-full max-w-md"; // Common width for all inputs
-
-    switch (field.field_type) {
-      case "TEXT":
-        // Special handling for phone number fields
-        if (
-          field.field_name.toLowerCase().includes("phone") ||
-          field.field_name.toLowerCase().includes("mobile")
-        ) {
-          return (
-            <Form {...form}>
-              <div className={commonInputClasses}>
-                <PhoneInputField
-                  label={field.field_name}
-                  name={field.id}
-                  placeholder={field.description || `Enter ${field.field_name}`}
-                  control={form.control}
-                  value={customFieldValues[field.id] || ""}
-                  onChange={(value) => updateCustomField(field.id, value)}
-                  required={field.is_mandatory}
-                  country="in"
-                />
-              </div>
-            </Form>
-          );
-        }
-        // For email fields
-        if (field.field_name.toLowerCase().includes("email")) {
-          return (
-            <div className={commonInputClasses}>
-              <MyInput
-                inputType="email"
-                label={field.field_name}
-                required={field.is_mandatory}
-                inputPlaceholder={
-                  field.description || `Enter ${field.field_name}`
-                }
-                input={customFieldValues[field.id] || ""}
-                onChangeFunction={(e) =>
-                  updateCustomField(field.id, e.target.value)
-                }
-                error={errors.customFields[field.id]}
-                size="large"
-                className="w-full"
-              />
-            </div>
-          );
-        }
-        // For all other text fields
-        return (
-          <div className={commonInputClasses}>
-            <MyInput
-              inputType="text"
-              label={field.field_name}
-              required={field.is_mandatory}
-              inputPlaceholder={
-                field.description || `Enter ${field.field_name}`
-              }
-              input={customFieldValues[field.id] || ""}
-              onChangeFunction={(e) =>
-                updateCustomField(field.id, e.target.value)
-              }
-              error={errors.customFields[field.id]}
-              size="large"
-              className="w-full"
-            />
-          </div>
-        );
-      case "DROPDOWN": {
-        const options = field.comma_separated_options
-          ? field.comma_separated_options.split(",")
-          : [];
-        return (
-          <div className={commonInputClasses}>
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">
-                {field.field_name}
-                {field.is_mandatory && (
-                  <span className="text-red-500 ml-1">*</span>
-                )}
-              </Label>
-              <MyDropdown
-                currentValue={customFieldValues[field.id] || ""}
-                handleChange={(value) => updateCustomField(field.id, value)}
-                dropdownList={options}
-                placeholder={`Select ${field.field_name}`}
-                error={errors.customFields[field.id]}
-                // className="w-10"
-              />
-              {errors.customFields[field.id] && (
-                <p className="text-sm text-red-500">
-                  {errors.customFields[field.id]}
-                </p>
-              )}
-            </div>
-          </div>
-        );
-      }
-      default:
-        return (
-          <div className={commonInputClasses}>
-            <MyInput
-              inputType="text"
-              label={field.field_name}
-              required={field.is_mandatory}
-              inputPlaceholder={
-                field.description || `Enter ${field.field_name}`
-              }
-              input={customFieldValues[field.id] || ""}
-              onChangeFunction={(e) =>
-                updateCustomField(field.id, e.target.value)
-              }
-              error={errors.customFields[field.id]}
-              size="large"
-              className="w-full"
-            />
-          </div>
-        );
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-screen w-screen">
-        <DashboardLoader />
-      </div>
     );
-  }
 
-  if (!inviteData || !batchOptions) {
+    if (isLoading || isInstituteLoading) return <DashboardLoader />;
+
     return (
-      <div className="flex items-center w-full justify-center bg-gray-50">
-        <div className="text-center">
-          <p className="text-red-500 font-medium">
-            Invalid or expired invite code.
-          </p>
-          <p className="mt-2 text-gray-500">
-            Please contact the institute for a valid invite code.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex items-center justify-center w-full bg-gray-50 p-4">
-      <Card className="w-full max-w-md md:max-w-md lg:max-w-lg">
-        <CardHeader className="text-center">
-          {imageUrl && (
-            <img
-              src={imageUrl || "/placeholder.svg"}
-              alt="Institute Logo"
-              className="h-12 w-12 rounded-full object-cover"
-            />
-          )}
-          <CardTitle className="text-orange-500">
-            {apiResponse?.institute_name}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-gray-500 mb-6">
-            You have been invited to enroll in:{" "}
-            <span className="font-medium">{inviteData.name}</span>
-          </p>
-
-          {step === 1 ? (
-            // Step 1: Level Selection with Package and Session context
-            <div className="space-y-6">
-              <div className="border-t pt-4">
-                <h3 className="font-medium mb-2">
-                  Select{" "}
-                  {getTerminology(ContentTerms.Course, SystemTerms.Course)}
-                </h3>
-                {batchOptions?.max_selectable_packages !== 0 && (
-                  <p className="text-xs text-gray-500 mb-2">
-                    Pre-selected{" "}
-                    {getTerminology(
-                      ContentTerms.Level,
-                      SystemTerms.Level
-                    ).toLocaleLowerCase()}
-                    s are not selectable
-                  </p>
-                )}
-                {batchOptions?.max_selectable_packages !== 0 && (
-                  <p className="text-xs text-gray-500 mb-4">
-                    Select the{" "}
-                    {getTerminology(
-                      ContentTerms.Level,
-                      SystemTerms.Level
-                    ).toLocaleLowerCase()}
-                    s you want to enroll in
-                  </p>
-                )}
-                <p className="text-xs text-gray-500 mb-2">{}</p>
-              </div>
-
-              {/* Flat list of all levels with context */}
-              <div className="space-y-3">
-                <p className="text-sm text-gray-500">
-                  Maximum selectable packages:{" "}
-                  {batchOptions?.max_selectable_packages}
-                </p>
-                {allLevels.map((level) => (
-                  <div key={level.id} className="flex items-start space-x-2">
-                    {!level.isPreSelected && (
-                      <Checkbox
-                        id={`level-${level.id}`}
-                        checked={isLevelSelected(level.id, level.sessionId)}
-                        onCheckedChange={() => toggleLevel(level)}
-                        disabled={!canSelectLevel(level)}
-                        className={`w-6 h-6 flex items-center justify-center rounded-md shadow ${
-                          isLevelSelected(level.id, level.sessionId)
-                            ? "bg-primary-500"
-                            : "bg-transparent border border-gray-300"
-                        }`}
-                      >
-                        {isLevelSelected(level.id, level.sessionId) && (
-                          <span className="text-white text-sm font-bold">
-                            ✔
-                          </span>
+        <div className="w-full min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 py-8 px-4 sm:px-6 lg:px-8">
+            <div className="max-w-[80%] mx-auto space-y-8">
+                {/* Course Information Card */}
+                <Card className="overflow-hidden shadow-xl border-0 bg-white/80 backdrop-blur-sm w-full">
+                    {/* Banner Image */}
+                    <div className="p-8 rounded-lg !pb-0">
+                        {courseData.courseBanner ? (
+                            <div className="rounded-xl relative h-32 sm:h-56 lg:h-72 w-full overflow-hidden">
+                                <img
+                                    src={courseData.courseBanner}
+                                    alt="Course Banner"
+                                    className="w-full h-full object-contain"
+                                />
+                            </div>
+                        ) : (
+                            <div className="rounded-xl relative h-32 sm:h-56 lg:h-72 w-full overflow-hidden bg-primary-500"></div>
                         )}
-                      </Checkbox>
-                    )}
-
-                    <div className="space-y-1">
-                      <Label
-                        htmlFor={`level-${level.id}`}
-                        className="text-sm font-medium cursor-pointer"
-                      >
-                        {level.name} {level.packageName} {level.sessionName}
-                        {level.isPreSelected && " (Pre-selected)"}
-                      </Label>
                     </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Error messages */}
-              {errors.packages && (
-                <p className="text-red-500 text-sm">{errors.packages}</p>
-              )}
-              {Object.values(errors.sessions).some((error) => error) && (
-                <p className="text-red-500 text-sm">
-                  Please select at least one{" "}
-                  {getTerminology(
-                    ContentTerms.Session,
-                    SystemTerms.Session
-                  ).toLocaleLowerCase()}{" "}
-                  for each{" "}
-                  {getTerminology(
-                    ContentTerms.Package,
-                    SystemTerms.Package
-                  ).toLocaleLowerCase()}
-                </p>
-              )}
-              {Object.values(errors.levels).some((error) => error) && (
-                <p className="text-red-500 text-sm">
-                  Please select at least one{" "}
-                  {getTerminology(
-                    ContentTerms.Level,
-                    SystemTerms.Level
-                  ).toLocaleLowerCase()}{" "}
-                  for each{" "}
-                  {getTerminology(
-                    ContentTerms.Session,
-                    SystemTerms.Session
-                  ).toLocaleLowerCase()}
-                </p>
-              )}
-
-              <div className="flex justify-center">
-                <MyButton
-                  type="submit"
-                  scale="medium"
-                  buttonType="primary"
-                  layoutVariant="default"
-                  onClick={handleNext}
-                >
-                  Next
-                </MyButton>
-              </div>
-            </div>
-          ) : step === 2 ? (
-            // Step 2: Personal Information
-            <Form {...form}>
-              <div className="space-y-6">
-                <div className="border-t pt-4">
-                  <h3 className="font-medium mb-4">Additional Information</h3>
-                </div>
-
-                {/* Custom Fields */}
-                {inviteData &&
-                  inviteData.custom_fields &&
-                  inviteData.custom_fields.length > 0 && (
-                    <div className="space-y-4">
-                      {inviteData.custom_fields.map((field) => (
-                        <div key={field.id} className="space-y-2">
-                          {renderCustomField(field)}
-                          {errors.customFields[field.id] && (
-                            <p className="text-red-500 text-sm">
-                              {errors.customFields[field.id]}
-                            </p>
-                          )}
+                    <CardContent className="p-6 sm:p-8">
+                        {/* Course Name */}
+                        <div className="flex items-start gap-2 sm:gap-3 mb-4">
+                            <BookOpen className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 flex-shrink-0 mt-0.5" />
+                            <h2 className="text-lg sm:text-xl md:text-2xl font-semibold text-gray-900 leading-tight">
+                                {courseData.course}
+                            </h2>
                         </div>
-                      ))}
-                    </div>
-                  )}
-                {success ? (
-                  <p className="text-green-500 text-sm">
-                    Your data has been sent successfully!
-                  </p>
-                ) : null}
+                        {/* Tags Row */}
+                        {courseData?.tags?.length > 0 && (
+                            <div className="flex flex-wrap gap-2 mb-6">
+                                {courseData?.tags?.map(
+                                    (tag: string, index: number) => (
+                                        <Badge
+                                            key={index}
+                                            variant="secondary"
+                                            className="px-3 py-1 text-sm font-medium bg-blue-100 text-blue-800 hover:bg-blue-200 transition-colors"
+                                        >
+                                            {tag}
+                                        </Badge>
+                                    )
+                                )}
+                            </div>
+                        )}
 
-                <div className="pt-4 flex justify-between">
-                  <MyButton
-                    type="button"
-                    scale="medium"
-                    buttonType="secondary"
-                    layoutVariant="default"
-                    onClick={handleBack}
-                  >
-                    Back
-                  </MyButton>
-                  <MyButton
-                    type="button"
-                    scale="medium"
-                    buttonType="primary"
-                    layoutVariant="default"
-                    onClick={handleConfirm}
-                    disabled={submitLoading}
-                  >
-                    {submitLoading ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                        Processing...
-                      </>
-                    ) : (
-                      "Confirm Enrollment"
-                    )}
-                  </MyButton>
-                </div>
-              </div>
-            </Form>
-          ) : (
-            // Step 3: Success Confirmation
-            <div className="flex flex-col items-center justify-center space-y-6 py-8">
-              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
-                <svg
-                  className="w-8 h-8 text-green-500"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M5 13l4 4L19 7"
-                  />
-                </svg>
-              </div>
-              <h3 className="text-xl font-semibold text-gray-900">
-                Enrollment Successful!
-              </h3>
-              <p className="text-center text-gray-600">
-                Thank you for enrolling. You will receive further instructions
-                via email.
-              </p>
+                        {/* Course Description */}
+                        <p
+                            className="text-gray-700 text-base sm:text-lg leading-relaxed mb-6"
+                            dangerouslySetInnerHTML={{
+                                __html: courseData.description || "",
+                            }}
+                        />
+
+                        {/* Level Badge */}
+                        <div className="flex items-start gap-2 mb-8">
+                            <Award className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+                            <Badge
+                                variant="outline"
+                                className="px-3 py-1 text-sm font-medium border-amber-200 text-amber-700"
+                            >
+                                {/* Level: {courseData.level} */}
+                                {getDetailsFromPackageSessionId({
+                                    packageSessionId:
+                                        inviteData
+                                            .package_session_to_payment_options[0]
+                                            .package_session_id,
+                                })?.level.level_name || "-"}
+                            </Badge>
+                        </div>
+
+                        <Separator className="my-8" />
+
+                        {/* What Learners Will Gain Section */}
+                        {courseData?.learningOutcome && (
+                            <div className="mb-8">
+                                <div className="flex items-start gap-2 sm:gap-3 mb-4">
+                                    <Target className="w-5 h-5 sm:w-6 sm:h-6 text-green-600 flex-shrink-0 mt-0.5" />
+                                    <h2 className="text-lg sm:text-xl md:text-2xl font-semibold text-gray-900 leading-tight">
+                                        What Learners Will Gain
+                                    </h2>
+                                </div>
+                                <div className="grid gap-3">
+                                    <p
+                                        className="text-gray-700 text-sm sm:text-base"
+                                        dangerouslySetInnerHTML={{
+                                            __html:
+                                                courseData?.learningOutcome ||
+                                                "",
+                                        }}
+                                    />
+                                </div>
+                            </div>
+                        )}
+
+                        <Separator className="my-8" />
+
+                        {/* About the Course Section */}
+                        {courseData?.aboutCourse && (
+                            <div className="mb-8">
+                                <div className="flex items-start gap-2 sm:gap-3 mb-4">
+                                    <Info className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 flex-shrink-0 mt-0.5" />
+                                    <h2 className="text-lg sm:text-xl md:text-2xl font-semibold text-gray-900 leading-tight">
+                                        About the Course
+                                    </h2>
+                                </div>
+                                <p
+                                    className="text-gray-700 text-sm sm:text-base leading-relaxed"
+                                    dangerouslySetInnerHTML={{
+                                        __html: courseData?.aboutCourse || "",
+                                    }}
+                                />
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+
+                {/* Registration Card */}
+                <Card className="shadow-xl border-0 bg-white/80 backdrop-blur-sm w-full">
+                    <CardContent className="p-6 sm:p-8">
+                        {/* Header */}
+                        <div className="flex items-start gap-2 sm:gap-3 mb-6">
+                            <div className="p-1.5 sm:p-2 bg-blue-100 rounded-lg flex-shrink-0">
+                                <GraduationCap className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
+                            </div>
+                            <div>
+                                <h2 className="text-lg sm:text-xl md:text-2xl font-semibold text-gray-900 leading-tight">
+                                    Join This Course
+                                </h2>
+                                <p className="text-gray-600 text-sm mt-1">
+                                    Fill in your details to enroll in the course
+                                </p>
+                            </div>
+                        </div>
+
+                        <Separator className="mb-6" />
+
+                        {/* Registration Form */}
+                        <div className="space-y-6">
+                            {/* Email Field */}
+                            <div className="space-y-2">
+                                <Label
+                                    htmlFor="email"
+                                    className="text-sm font-medium text-gray-700"
+                                >
+                                    Email Address *
+                                </Label>
+                                <Input
+                                    id="email"
+                                    type="email"
+                                    placeholder="Enter your email address"
+                                    value={formData.email}
+                                    onChange={(e) =>
+                                        handleInputChange(
+                                            "email",
+                                            e.target.value
+                                        )
+                                    }
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                                    required
+                                />
+                            </div>
+
+                            {/* Phone Field */}
+                            <div className="space-y-2">
+                                <Label
+                                    htmlFor="phone"
+                                    className="text-sm font-medium text-gray-700"
+                                >
+                                    Phone Number *
+                                </Label>
+                                <Input
+                                    id="phone"
+                                    type="tel"
+                                    placeholder="Enter your phone number"
+                                    value={formData.phone}
+                                    onChange={(e) =>
+                                        handleInputChange(
+                                            "phone",
+                                            e.target.value
+                                        )
+                                    }
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                                    required
+                                />
+                            </div>
+
+                            {/* Register Button */}
+                            <Button
+                                onClick={handleRegister}
+                                size="lg"
+                                className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl"
+                            >
+                                <GraduationCap className="w-5 h-5 mr-2" />
+                                Register
+                            </Button>
+                        </div>
+                    </CardContent>
+                </Card>
             </div>
-          )}
-        </CardContent>
-      </Card>
-    </div>
-  );
+        </div>
+    );
 };
 
 export default EnrollByInvite;

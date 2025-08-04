@@ -45,13 +45,14 @@ public class StripeWebHookService {
             webhookId = webHookService.saveWebhook(PaymentGateway.STRIPE.name(), payload);
 
             String instituteId = extractInstituteId(payload);
+            System.out.println("instituteId: " + instituteId);
             if (instituteId == null) {
                 log.warn("Missing or invalid institute_id");
                 return ResponseEntity.status(400).body("Missing or invalid institute_id in metadata");
             }
 
             String webhookSecret = getWebhookSecret(instituteId);
-            System.out.println(instituteId);
+            System.out.println(webhookSecret);
             if (webhookSecret == null) {
                 log.warn("Webhook secret not found for institute: {}", instituteId);
                 return ResponseEntity.status(404).body("Unknown institute");
@@ -106,15 +107,64 @@ public class StripeWebHookService {
     private String extractInstituteId(String payload) {
         try {
             JsonNode payloadJson = objectMapper.readTree(payload);
-            JsonNode metadata = payloadJson.at("/data/object/metadata");
-            if (metadata != null && metadata.has("instituteId")) {
-                return metadata.get("instituteId").asText();
+
+            String eventType = payloadJson.get("type").asText();
+            JsonNode dataObject = payloadJson.at("/data/object");
+
+            String invoiceId = null;
+
+            System.out.println(eventType);
+
+            // Determine invoice ID based on event type
+            switch (eventType) {
+                case "invoice.paid":
+                case "invoice.created":
+                case "invoice.finalized":
+                case "invoice.updated":
+                    // The object is the invoice itself
+                    if ("invoice".equals(dataObject.get("object").asText())) {
+                        invoiceId = dataObject.get("id").asText();
+                    }
+                    break;
+
+                case "invoice_payment.paid":
+                case "invoice_payment.created":
+                case "invoice_payment.failed":
+                    // The object is a payment, invoice is a nested field
+                    if (dataObject.has("invoice")) {
+                        invoiceId = dataObject.get("invoice").asText();
+                    }
+                    break;
+
+                // Add more cases as needed depending on Stripe event types you support
+                default:
+                    log.warn("Unhandled event type: {}", eventType);
+                    break;
             }
+
+            if (invoiceId == null || invoiceId.isEmpty()) {
+                log.warn("Invoice ID could not be extracted from event type: {}", eventType);
+                return null;
+            }
+
+            // Retrieve invoice from Stripe API
+            Invoice invoice = Invoice.retrieve(invoiceId);
+
+            // Get metadata
+            Map<String, String> metadata = invoice.getMetadata();
+            if (metadata != null && metadata.containsKey("instituteId")) {
+                return metadata.get("instituteId");
+            } else {
+                log.warn("instituteId not found in metadata for invoice: {}", invoiceId);
+            }
+
         } catch (Exception e) {
             log.error("Failed to extract instituteId from payload", e);
         }
+
         return null;
     }
+
 
 
 

@@ -22,10 +22,11 @@ public class WebHookService {
         return webHook.getId();
     }
 
-    public void updateWebHookStatus(String id, WebHookStatus status) {
+    public void updateWebHookStatus(String id, WebHookStatus status,String errorMessage) {
         WebHook webHook = webHookRepository.findById(id).get();
         webHook.setStatus(status);
         webHook.setProcessedAt(LocalDateTime.now());
+        webHook.setErrorMessage(errorMessage);
         webHookRepository.save(webHook);
     }
 

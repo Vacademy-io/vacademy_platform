@@ -48,7 +48,7 @@ public class StripeWebHookService {
             if (instituteId == null) {
                 log.warn("Missing or invalid institute_id");
                 if (webhookId != null) {
-                    webHookService.updateWebHookStatus(webhookId, WebHookStatus.FAILED);
+                    webHookService.updateWebHookStatus(webhookId, WebHookStatus.FAILED,"Missing or invalid institute_id in metadata");
                 }
                 return ResponseEntity.status(400).body("Missing or invalid institute_id in metadata");
             }
@@ -58,7 +58,7 @@ public class StripeWebHookService {
             if (webhookSecret == null) {
                 log.warn("Webhook secret not found for institute: {}", instituteId);
                 if (webhookId != null) {
-                    webHookService.updateWebHookStatus(webhookId, WebHookStatus.FAILED);
+                    webHookService.updateWebHookStatus(webhookId, WebHookStatus.FAILED,"Webhook secret not found for institute: " + instituteId);
                 }
                 return ResponseEntity.status(404).body("Unknown institute");
             }
@@ -66,7 +66,7 @@ public class StripeWebHookService {
             Event event = verifySignature(payload, sigHeader, webhookSecret, instituteId);
             if (event == null) {
                 if (webhookId != null) {
-                    webHookService.updateWebHookStatus(webhookId, WebHookStatus.FAILED);
+                    webHookService.updateWebHookStatus(webhookId, WebHookStatus.FAILED,"Invalid signature");
                 }
                 return ResponseEntity.status(400).body("Invalid signature");
             }
@@ -87,7 +87,7 @@ public class StripeWebHookService {
 
             webHookService.updateWebHook(webhookId, payload, orderId, event.getType());
             paymentLogService.updatePaymentLog(orderId, paymentStatus);
-            webHookService.updateWebHookStatus(webhookId, WebHookStatus.PROCESSED);
+            webHookService.updateWebHookStatus(webhookId, WebHookStatus.PROCESSED,null);
 
             return ResponseEntity.ok("Webhook processed successfully");
 
@@ -95,7 +95,7 @@ public class StripeWebHookService {
             log.error("Error while processing webhook", ex);
             ex.printStackTrace();
             if (webhookId != null) {
-                webHookService.updateWebHookStatus(webhookId, WebHookStatus.FAILED);
+                webHookService.updateWebHookStatus(webhookId, WebHookStatus.FAILED,ex.getMessage());
             }
             return ResponseEntity.status(500).body("Internal error during webhook processing");
         }

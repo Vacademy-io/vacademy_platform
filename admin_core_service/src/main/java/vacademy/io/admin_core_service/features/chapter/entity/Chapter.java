@@ -73,6 +73,7 @@ public class Chapter {
         chapterDTO.setFileId(fileId);
         chapterDTO.setDescription(description);
         chapterDTO.setStatus(status);
+        chapterDTO.setParentId(parentId);
         return chapterDTO;
     }
 

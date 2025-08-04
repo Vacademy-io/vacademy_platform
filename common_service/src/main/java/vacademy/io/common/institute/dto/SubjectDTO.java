@@ -33,6 +33,8 @@ public class SubjectDTO {
 
     private Integer subjectOrder;
 
+    private String parentId;
+
     public SubjectDTO(Subject subject) {
 
         this.id = subject.getId();
@@ -42,5 +44,6 @@ public class SubjectDTO {
         this.createdAt = subject.getCreatedAt();
         this.updatedAt = subject.getUpdatedAt();
         this.thumbnailId = subject.getThumbnailId();
+        this.parentId = subject.getParentId();
     }
 }

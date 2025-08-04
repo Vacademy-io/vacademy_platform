@@ -24,6 +24,46 @@ export interface CourseDetailsJsonDataForInviteLink {
     customHtml: string;
 }
 
+interface ConvertedCustomField {
+    id: string;
+    field_name: string;
+    field_key: string;
+    field_order: number;
+    comma_separated_options: string;
+    status: string;
+    is_mandatory: boolean;
+    field_type: string;
+    created_at: string;
+    updated_at: string;
+}
+
+interface CustomField {
+    guestId: string | null;
+    id: string;
+    fieldKey: string;
+    fieldName: string;
+    fieldType: string; // e.g., 'textfield', 'dropdown', etc.
+    defaultValue: string;
+    config: string;
+    formOrder: number;
+    isMandatory: boolean;
+    isFilter: boolean;
+    isSortable: boolean;
+    createdAt: string; // ISO date string
+    updatedAt: string; // ISO date string
+    sessionId: string;
+    liveSessionId: string | null;
+    customFieldValue: string | null;
+}
+
+interface EnrollInviteData {
+    id: string;
+    institute_id: string;
+    type: string; // e.g., 'ENROLL_INVITE'
+    type_id: string;
+    custom_field: CustomField;
+}
+
 export const safeJsonParse = (
     jsonString: string | null | undefined,
     defaultValue: unknown = null
@@ -95,3 +135,26 @@ export const transformApiDataToCourseDataForInvite = async (
         return null;
     }
 };
+
+export function convertInviteCustomFields(
+    data: EnrollInviteData[]
+): ConvertedCustomField[] {
+    return data?.map((item) => {
+        const field = item.custom_field;
+        return {
+            id: field.id,
+            field_name: field.fieldName,
+            field_key: field.fieldKey,
+            field_order: field.formOrder,
+            comma_separated_options:
+                field.fieldType === "dropdown"
+                    ? JSON.parse(field.config)?.coommaSepartedOptions
+                    : "",
+            status: "ACTIVE",
+            is_mandatory: field.isMandatory,
+            field_type: field.fieldType,
+            created_at: field.createdAt,
+            updated_at: field.updatedAt,
+        };
+    });
+}

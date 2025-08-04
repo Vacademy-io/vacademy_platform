@@ -5,14 +5,21 @@ import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Award, Target, Info, GraduationCap, BookOpen } from "lucide-react";
+import { Award, Target, Info, GraduationCap, BookOpen, RotateCcw } from "lucide-react";
 import { useEffect, useState } from "react";
-import { safeJsonParse } from "./-utils/helper";
+import { convertInviteCustomFields, safeJsonParse } from "./-utils/helper";
 import { useInstituteQuery } from "@/services/signup-api";
 import { useInstituteDetailsStore } from "@/stores/study-library/useInstituteDetails";
+import { getDynamicSchema } from "@/routes/register/-utils/helper";
+import z from "zod";
+import { AssessmentCustomFieldOpenRegistration } from "@/types/assessment-open-registration";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { FormProvider, useForm } from "react-hook-form";
+import { FormControl, FormField, FormItem } from "@/components/ui/form";
+import PhoneInputField from "@/components/design-system/phone-input-field";
+import SelectField from "@/components/design-system/select-field";
+import { MyInput } from "@/components/design-system/input";
+import { MyButton } from "@/components/design-system/button";
 
 interface FinalCourseData {
     aboutCourse: string;
@@ -29,37 +36,6 @@ interface FinalCourseData {
 }
 
 const EnrollByInvite = () => {
-    const { instituteId, inviteCode } = Route.useSearch();
-    const { isLoading: isInstituteLoading } = useSuspenseQuery(
-        useInstituteQuery({ instituteId })
-    );
-
-    const { getDetailsFromPackageSessionId } = useInstituteDetailsStore();
-
-    const { data: inviteData, isLoading } = useSuspenseQuery(
-        handleGetEnrollInviteData({ instituteId, inviteCode })
-    );
-
-    // Form state
-    const [formData, setFormData] = useState({
-        firstName: "",
-        lastName: "",
-        email: "",
-        phone: "",
-    });
-
-    const handleInputChange = (field: string, value: string) => {
-        setFormData((prev) => ({
-            ...prev,
-            [field]: value,
-        }));
-    };
-
-    const handleRegister = () => {
-        // Handle registration logic here
-        console.log("Registration data:", formData);
-    };
-
     const [courseData, setCourseData] = useState<FinalCourseData>({
         aboutCourse: "",
         course: "",
@@ -73,6 +49,99 @@ const EnrollByInvite = () => {
         tags: [],
         targetAudience: "",
     });
+    const { instituteId, inviteCode } = Route.useSearch();
+    const { isLoading: isInstituteLoading } = useSuspenseQuery(
+        useInstituteQuery({ instituteId })
+    );
+
+    const { getDetailsFromPackageSessionId } = useInstituteDetailsStore();
+
+    const { data: inviteData, isLoading } = useSuspenseQuery(
+        handleGetEnrollInviteData({ instituteId, inviteCode })
+    );
+
+    const zodSchema = getDynamicSchema(
+        convertInviteCustomFields(inviteData?.institute_custom_fields || []) ||
+            []
+    );
+
+    type FormValues = z.infer<typeof zodSchema>;
+
+    const form = useForm<FormValues>({
+        resolver: zodResolver(zodSchema),
+        defaultValues: (
+            convertInviteCustomFields(
+                inviteData?.institute_custom_fields || []
+            ) || []
+        )
+            .sort(
+                (
+                    a: AssessmentCustomFieldOpenRegistration,
+                    b: AssessmentCustomFieldOpenRegistration
+                ) => a.field_order - b.field_order
+            )
+            .reduce(
+                (
+                    defaults: Record<
+                        string,
+                        {
+                            name: string;
+                            value: string;
+                            is_mandatory: boolean;
+                            type: string;
+                            comma_separated_options?: string[];
+                        }
+                    >,
+                    field: AssessmentCustomFieldOpenRegistration
+                ) => {
+                    if (field.field_type === "dropdown") {
+                        const optionsArray = field.comma_separated_options
+                            ? field.comma_separated_options
+                                  .split(",")
+                                  .map((opt) => opt.trim())
+                            : [];
+
+                        defaults[field.field_key] = {
+                            name: field.field_name,
+                            value: optionsArray[0] || "",
+                            is_mandatory: field.is_mandatory || false,
+                            comma_separated_options: optionsArray,
+                            type: field.field_type,
+                        };
+                    } else {
+                        defaults[field.field_key] = {
+                            name: field.field_name,
+                            value: "",
+                            is_mandatory: field.is_mandatory || false,
+                            type: field.field_type,
+                        };
+                    }
+                    return defaults;
+                },
+                {} as Record<
+                    string,
+                    {
+                        name: string;
+                        value: string;
+                        is_mandatory: boolean;
+                        type: string;
+                        comma_separated_options?: string[];
+                    }
+                >
+            ),
+        mode: "onChange",
+    });
+
+    form.watch();
+    console.log(form.getValues());
+
+    function onSubmit(values: FormValues) {
+        console.log(values);
+    }
+
+    const onInvalid = (err: unknown) => {
+        console.error(err);
+    };
 
     useEffect(() => {
         const loadCourseData = async () => {
@@ -102,16 +171,10 @@ const EnrollByInvite = () => {
         loadCourseData();
     }, [inviteData]);
 
-    console.log(
-        getDetailsFromPackageSessionId({
-            packageSessionId: "386fbdcb-352b-480f-8213-0521c451d75b",
-        })
-    );
-
     if (isLoading || isInstituteLoading) return <DashboardLoader />;
 
     return (
-        <div className="w-full min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 py-8 px-4 sm:px-6 lg:px-8">
+        <div className="w-full h-full bg-gradient-to-br from-slate-50 to-blue-50 py-8 px-4 sm:px-6 lg:px-8">
             <div className="max-w-[80%] mx-auto space-y-8">
                 {/* Course Information Card */}
                 <Card className="overflow-hidden shadow-xl border-0 bg-white/80 backdrop-blur-sm w-full">
@@ -246,64 +309,133 @@ const EnrollByInvite = () => {
                         <Separator className="mb-6" />
 
                         {/* Registration Form */}
-                        <div className="space-y-6">
-                            {/* Email Field */}
-                            <div className="space-y-2">
-                                <Label
-                                    htmlFor="email"
-                                    className="text-sm font-medium text-gray-700"
-                                >
-                                    Email Address *
-                                </Label>
-                                <Input
-                                    id="email"
-                                    type="email"
-                                    placeholder="Enter your email address"
-                                    value={formData.email}
-                                    onChange={(e) =>
-                                        handleInputChange(
-                                            "email",
-                                            e.target.value
-                                        )
-                                    }
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                                    required
-                                />
+                        <div className="flex justify-center items-center w-full">
+                            <div className="flex justify-center items-start w-full flex-col bg-white rounded-xl p-4 py-0  mx-4 mb-4">
+                                <FormProvider {...form}>
+                                    <form className="w-full flex flex-col gap-6 mt-4 sm:max-h-[70vh] sm:overflow-auto md:max-h-[100vh]">
+                                        {Object.entries(form.getValues()).map(
+                                            ([key, value]) =>
+                                                key === "phone_number" ? (
+                                                    <FormField
+                                                        control={form.control}
+                                                        name={`${key}.value`}
+                                                        render={() => (
+                                                            <FormItem>
+                                                                <FormControl>
+                                                                    <PhoneInputField
+                                                                        label="Phone Number"
+                                                                        placeholder="123 456 7890"
+                                                                        name={`${key}.value`}
+                                                                        control={
+                                                                            form.control
+                                                                        }
+                                                                        country="in"
+                                                                        required
+                                                                    />
+                                                                </FormControl>
+                                                            </FormItem>
+                                                        )}
+                                                    />
+                                                ) : (
+                                                    <FormField
+                                                        key={key}
+                                                        control={form.control}
+                                                        name={`${key}.value`}
+                                                        render={({ field }) => (
+                                                            <FormItem>
+                                                                <FormControl>
+                                                                    {value.type ===
+                                                                    "dropdown" ? (
+                                                                        <SelectField
+                                                                            label={
+                                                                                value.name
+                                                                            }
+                                                                            name={`${key}.value`}
+                                                                            options={
+                                                                                value.comma_separated_options?.map(
+                                                                                    (
+                                                                                        option: string,
+                                                                                        index: number
+                                                                                    ) => ({
+                                                                                        value: option,
+                                                                                        label: option,
+                                                                                        _id: index,
+                                                                                    })
+                                                                                ) ||
+                                                                                []
+                                                                            }
+                                                                            control={
+                                                                                form.control
+                                                                            }
+                                                                            required={
+                                                                                value.is_mandatory
+                                                                            }
+                                                                            className="!w-full"
+                                                                        />
+                                                                    ) : (
+                                                                        <MyInput
+                                                                            inputType="text"
+                                                                            inputPlaceholder={
+                                                                                value.name
+                                                                            }
+                                                                            input={
+                                                                                field.value
+                                                                            }
+                                                                            onChangeFunction={
+                                                                                field.onChange
+                                                                            }
+                                                                            required={
+                                                                                value.is_mandatory
+                                                                            }
+                                                                            size="large"
+                                                                            label={
+                                                                                value.name
+                                                                            }
+                                                                            className="!max-w-full !w-full"
+                                                                        />
+                                                                    )}
+                                                                </FormControl>
+                                                            </FormItem>
+                                                        )}
+                                                    />
+                                                )
+                                        )}
+                                        <div className="flex items-center justify-center flex-col gap-4">
+                                            <MyButton
+                                                type="button"
+                                                buttonType="primary"
+                                                scale="large"
+                                                layoutVariant="default"
+                                                onClick={form.handleSubmit(
+                                                    onSubmit,
+                                                    onInvalid
+                                                )}
+                                                disable={
+                                                    !form.getValues(
+                                                        "phone_number"
+                                                    ).value ||
+                                                    !form.getValues("email")
+                                                        .value ||
+                                                    !form.getValues("full_name")
+                                                        .value
+                                                }
+                                                className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl"
+                                            >
+                                                <GraduationCap className="w-5 h-5 mr-2" />
+                                                Register
+                                            </MyButton>
+                                            <button
+                                                type="button"
+                                                className="flex items-center gap-2 text-gray-500 hover:text-gray-700 text-sm mb-2 cursor-pointer transition-colors duration-200"
+                                                onClick={() => form.reset()}
+                                            >
+                                                <RotateCcw className="w-4 h-4" />
+                                                Reset Form
+                                            </button>
+                                        </div>
+                                    </form>
+                                </FormProvider>
                             </div>
-
-                            {/* Phone Field */}
-                            <div className="space-y-2">
-                                <Label
-                                    htmlFor="phone"
-                                    className="text-sm font-medium text-gray-700"
-                                >
-                                    Phone Number *
-                                </Label>
-                                <Input
-                                    id="phone"
-                                    type="tel"
-                                    placeholder="Enter your phone number"
-                                    value={formData.phone}
-                                    onChange={(e) =>
-                                        handleInputChange(
-                                            "phone",
-                                            e.target.value
-                                        )
-                                    }
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                                    required
-                                />
-                            </div>
-
-                            {/* Register Button */}
-                            <Button
-                                onClick={handleRegister}
-                                size="lg"
-                                className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl"
-                            >
-                                <GraduationCap className="w-5 h-5 mr-2" />
-                                Register
-                            </Button>
                         </div>
                     </CardContent>
                 </Card>

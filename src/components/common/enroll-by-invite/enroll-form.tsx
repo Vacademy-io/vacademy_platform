@@ -2,17 +2,7 @@ import { Route } from "@/routes/learner-invitation-response";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { handleGetEnrollInviteData } from "./-services/enroll-invite-services";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import {
-    Award,
-    Target,
-    Info,
-    GraduationCap,
-    BookOpen,
-    RotateCcw,
-} from "lucide-react";
+import { GraduationCap } from "lucide-react";
 import { useEffect, useState } from "react";
 import { convertInviteCustomFields, safeJsonParse } from "./-utils/helper";
 import { useInstituteQuery } from "@/services/signup-api";
@@ -21,28 +11,26 @@ import { getDynamicSchema } from "@/routes/register/-utils/helper";
 import z from "zod";
 import { AssessmentCustomFieldOpenRegistration } from "@/types/assessment-open-registration";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { FormProvider, useForm } from "react-hook-form";
-import { FormControl, FormField, FormItem } from "@/components/ui/form";
-import PhoneInputField from "@/components/design-system/phone-input-field";
-import SelectField from "@/components/design-system/select-field";
-import { MyInput } from "@/components/design-system/input";
+import { useForm } from "react-hook-form";
 import { MyButton } from "@/components/design-system/button";
 
-interface FinalCourseData {
-    aboutCourse: string;
-    course: string;
-    courseBanner: string;
-    customHtml: string;
-    description: string;
-    includeInstituteLogo: boolean;
-    learningOutcome: string;
-    restrictToSameBatch: boolean;
-    showRelatedCourses: boolean;
-    tags: string[];
-    targetAudience: string;
-}
+// Import step components
+import {
+    RegistrationStep,
+    PaymentSelectionStep,
+    ReviewStep,
+    PaymentInfoStep,
+    SuccessStep,
+    CourseInfoCard,
+    NavigationButtons,
+    FinalCourseData,
+    PaymentOption,
+    PaymentInfo,
+    EnrollmentData
+} from "./-components";
 
 const EnrollByInvite = () => {
+    const [currentStep, setCurrentStep] = useState(0); // 0: Registration, 1: Payment Selection, 2: Review, 3: Payment Details, 4: Success
     const [courseData, setCourseData] = useState<FinalCourseData>({
         aboutCourse: "",
         course: "",
@@ -56,6 +44,17 @@ const EnrollByInvite = () => {
         tags: [],
         targetAudience: "",
     });
+    const [enrollmentData, setEnrollmentData] = useState<EnrollmentData>({
+        registrationData: {},
+        selectedPayment: null,
+        paymentInfo: {
+            cardholderName: "",
+            cardNumber: "",
+            expiryDate: "",
+            cvv: "",
+        },
+    });
+
     const { instituteId, inviteCode } = Route.useSearch();
     const { isLoading: isInstituteLoading } = useSuspenseQuery(
         useInstituteQuery({ instituteId })
@@ -66,6 +65,34 @@ const EnrollByInvite = () => {
     const { data: inviteData, isLoading } = useSuspenseQuery(
         handleGetEnrollInviteData({ instituteId, inviteCode })
     );
+
+    // Mock payment options - replace with actual data from API
+    const paymentOptions: PaymentOption[] = [
+        {
+            id: "1",
+            name: "Full Course Access",
+            amount: 299,
+            currency: "USD",
+            description: "Complete access to all course materials and assessments",
+            duration: "6 months",
+        },
+        {
+            id: "2",
+            name: "Premium Access",
+            amount: 499,
+            currency: "USD",
+            description: "Full access plus 1-on-1 mentoring sessions",
+            duration: "12 months",
+        },
+        {
+            id: "3",
+            name: "Basic Access",
+            amount: 199,
+            currency: "USD",
+            description: "Access to core course materials",
+            duration: "3 months",
+        },
+    ];
 
     const zodSchema = getDynamicSchema(
         convertInviteCustomFields(inviteData?.institute_custom_fields || []) ||
@@ -142,11 +169,61 @@ const EnrollByInvite = () => {
     form.watch();
 
     function onSubmit(values: FormValues) {
-        console.log(values);
+        setEnrollmentData(prev => ({
+            ...prev,
+            registrationData: values
+        }));
+        setCurrentStep(1);
     }
 
-    const onInvalid = (err: unknown) => {
-        console.error(err);
+
+
+    const handlePaymentSelection = (payment: PaymentOption) => {
+        setEnrollmentData(prev => ({
+            ...prev,
+            selectedPayment: payment
+        }));
+    };
+
+    const handlePaymentInfoChange = (field: keyof PaymentInfo, value: string) => {
+        setEnrollmentData(prev => ({
+            ...prev,
+            paymentInfo: {
+                ...prev.paymentInfo,
+                [field]: value
+            }
+        }));
+    };
+
+    const handleEmailChange = (email: string) => {
+        setEnrollmentData(prev => ({
+            ...prev,
+            registrationData: {
+                ...prev.registrationData,
+                email: {
+                    ...prev.registrationData.email,
+                    value: email
+                }
+            }
+        }));
+    };
+
+    const handleNext = () => {
+        if (currentStep < 4) {
+            setCurrentStep(currentStep + 1);
+        }
+    };
+
+    const handlePrevious = () => {
+        if (currentStep > 0) {
+            setCurrentStep(currentStep - 1);
+        }
+    };
+
+    const handleSubmitEnrollment = () => {
+        // Here you would typically submit the enrollment data to your API
+        console.log("Submitting enrollment:", enrollmentData);
+        setCurrentStep(4);
     };
 
     useEffect(() => {
@@ -179,296 +256,117 @@ const EnrollByInvite = () => {
 
     if (isLoading || isInstituteLoading) return <DashboardLoader />;
 
+    const renderCurrentStep = () => {
+        switch (currentStep) {
+            case 0:
+                return (
+                    <RegistrationStep
+                        courseData={courseData}
+                        inviteData={inviteData}
+                        onSubmit={onSubmit}
+                        form={form}
+                    />
+                );
+            case 1:
+                return (
+                    <PaymentSelectionStep
+                        paymentOptions={paymentOptions}
+                        selectedPayment={enrollmentData.selectedPayment}
+                        onPaymentSelect={handlePaymentSelection}
+                    />
+                );
+            case 2:
+                return (
+                    <ReviewStep
+                        courseData={courseData}
+                        selectedPayment={enrollmentData.selectedPayment}
+                        registrationData={enrollmentData.registrationData}
+                        onEmailChange={handleEmailChange}
+                    />
+                );
+            case 3:
+                return (
+                    <PaymentInfoStep
+                        courseData={courseData}
+                        selectedPayment={enrollmentData.selectedPayment}
+                        paymentInfo={enrollmentData.paymentInfo}
+                        onPaymentInfoChange={handlePaymentInfoChange}
+                    />
+                );
+            case 4:
+                return <SuccessStep />;
+            default:
+                return (
+                    <RegistrationStep
+                        courseData={courseData}
+                        inviteData={inviteData}
+                        onSubmit={onSubmit}
+                        form={form}
+                    />
+                );
+        }
+    };
+
     return (
         <div className="w-full h-full bg-gradient-to-br from-slate-50 to-blue-50 py-8 px-4 sm:px-6 lg:px-8 pb-24">
             <div className="max-w-[80%] mx-auto space-y-8">
-                {/* Course Information Card */}
-                <Card className="overflow-hidden shadow-xl border-0 bg-white/80 backdrop-blur-sm w-full">
-                    {/* Banner Image */}
-                    <div className="p-8 rounded-lg !pb-0">
-                        {courseData.courseBanner ? (
-                            <div className="rounded-xl relative h-32 sm:h-56 lg:h-72 w-full overflow-hidden">
-                                <img
-                                    src={courseData.courseBanner}
-                                    alt="Course Banner"
-                                    className="w-full h-full object-contain"
-                                />
-                            </div>
-                        ) : (
-                            <div className="rounded-xl relative h-32 sm:h-56 lg:h-72 w-full overflow-hidden bg-primary-500"></div>
-                        )}
-                    </div>
-                    <CardContent className="p-6 sm:p-8">
-                        {/* Course Name */}
-                        <div className="flex items-start gap-2 sm:gap-3 mb-4">
-                            <BookOpen className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 flex-shrink-0 mt-0.5" />
-                            <h2 className="text-lg sm:text-xl md:text-2xl font-semibold text-gray-900 leading-tight">
-                                {courseData.course}
-                            </h2>
-                        </div>
-                        {/* Tags Row */}
-                        {courseData?.tags?.length > 0 && (
-                            <div className="flex flex-wrap gap-2 mb-6">
-                                {courseData?.tags?.map(
-                                    (tag: string, index: number) => (
-                                        <Badge
-                                            key={index}
-                                            variant="secondary"
-                                            className="px-3 py-1 text-sm font-medium bg-blue-100 text-blue-800 hover:bg-blue-200 transition-colors"
-                                        >
-                                            {tag}
-                                        </Badge>
-                                    )
-                                )}
-                            </div>
-                        )}
+                {/* Course Information Card - Only show in registration step */}
+                {currentStep === 0 && (
+                    <CourseInfoCard
+                        courseData={courseData}
+                        levelName={getDetailsFromPackageSessionId({
+                            packageSessionId:
+                                inviteData
+                                    .package_session_to_payment_options[0]
+                                    .package_session_id,
+                        })?.level.level_name || "-"}
+                    />
+                )}
 
-                        {/* Course Description */}
-                        <p
-                            className="text-gray-700 text-base sm:text-lg leading-relaxed mb-6"
-                            dangerouslySetInnerHTML={{
-                                __html: courseData.description || "",
+
+
+                {/* Current Step Content */}
+                {renderCurrentStep()}
+
+                {/* Navigation Buttons - Only show for steps 1-3 */}
+                {currentStep > 0 && currentStep < 4 && (
+                    <NavigationButtons
+                        currentStep={currentStep}
+                        selectedPayment={enrollmentData.selectedPayment}
+                        paymentInfo={enrollmentData.paymentInfo}
+                        onPrevious={handlePrevious}
+                        onNext={handleNext}
+                        onSubmitEnrollment={handleSubmitEnrollment}
+                    />
+                )}
+            </div>
+
+            {/* Fixed bottom container with border - Only show in registration step */}
+            {currentStep === 0 && (
+                <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg z-50">
+                    <div className="max-w-[80%] mx-auto px-4 sm:px-6 lg:px-8 py-4 md:flex md:justify-center">
+                        <MyButton
+                            type="button"
+                            buttonType="secondary"
+                            scale="large"
+                            layoutVariant="default"
+                            onClick={() => {
+                                const registrationCard = document.getElementById('registration-card');
+                                if (registrationCard) {
+                                    registrationCard.scrollIntoView({ 
+                                        behavior: 'smooth',
+                                        block: 'start'
+                                    });
+                                }
                             }}
-                        />
-
-                        {/* Level Badge */}
-                        <div className="flex items-start gap-2 mb-8">
-                            <Award className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
-                            <Badge
-                                variant="outline"
-                                className="px-3 py-1 text-sm font-medium border-amber-200 text-amber-700"
-                            >
-                                Level:&nbsp;
-                                {getDetailsFromPackageSessionId({
-                                    packageSessionId:
-                                        inviteData
-                                            .package_session_to_payment_options[0]
-                                            .package_session_id,
-                                })?.level.level_name || "-"}
-                            </Badge>
-                        </div>
-
-                        <Separator className="my-8" />
-
-                        {/* What Learners Will Gain Section */}
-                        {courseData?.learningOutcome && (
-                            <div className="mb-8">
-                                <div className="flex items-start gap-2 sm:gap-3 mb-4">
-                                    <Target className="w-5 h-5 sm:w-6 sm:h-6 text-green-600 flex-shrink-0 mt-0.5" />
-                                    <h2 className="text-lg sm:text-xl md:text-2xl font-semibold text-gray-900 leading-tight">
-                                        What Learners Will Gain
-                                    </h2>
-                                </div>
-                                <div className="grid gap-3">
-                                    <p
-                                        className="text-gray-700 text-sm sm:text-base"
-                                        dangerouslySetInnerHTML={{
-                                            __html:
-                                                courseData?.learningOutcome ||
-                                                "",
-                                        }}
-                                    />
-                                </div>
-                            </div>
-                        )}
-
-                        <Separator className="my-8" />
-
-                        {/* About the Course Section */}
-                        {courseData?.aboutCourse && (
-                            <div className="mb-8">
-                                <div className="flex items-start gap-2 sm:gap-3 mb-4">
-                                    <Info className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 flex-shrink-0 mt-0.5" />
-                                    <h2 className="text-lg sm:text-xl md:text-2xl font-semibold text-gray-900 leading-tight">
-                                        About the Course
-                                    </h2>
-                                </div>
-                                <p
-                                    className="text-gray-700 text-sm sm:text-base leading-relaxed"
-                                    dangerouslySetInnerHTML={{
-                                        __html: courseData?.aboutCourse || "",
-                                    }}
-                                />
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-
-                {/* Registration Card */}
-                <Card id="registration-card" className="shadow-xl border-0 bg-white/80 backdrop-blur-sm w-full">
-                    <CardContent className="p-6 sm:p-8">
-                        {/* Header */}
-                        <div className="flex items-start gap-2 sm:gap-3 mb-6">
-                            <div className="p-1.5 sm:p-2 bg-blue-100 rounded-lg flex-shrink-0">
-                                <GraduationCap className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
-                            </div>
-                            <div>
-                                <h2 className="text-lg sm:text-xl md:text-2xl font-semibold text-gray-900 leading-tight">
-                                    Join This Course
-                                </h2>
-                                <p className="text-gray-600 text-sm mt-1">
-                                    Fill in your details to enroll in the course
-                                </p>
-                            </div>
-                        </div>
-
-                        <Separator className="mb-6" />
-
-                        {/* Registration Form */}
-                        <div className="flex justify-center items-center w-full">
-                            <div className="flex justify-center items-start w-full flex-col bg-white rounded-xl p-4 py-0  mx-4 mb-4">
-                                <FormProvider {...form}>
-                                    <form className="w-full flex flex-col gap-6 mt-4 max-h-full overflow-auto">
-                                        {Object.entries(form.getValues()).map(
-                                            ([key, value]) =>
-                                                key === "phone_number" ? (
-                                                    <FormField
-                                                        control={form.control}
-                                                        name={`${key}.value`}
-                                                        render={() => (
-                                                            <FormItem>
-                                                                <FormControl>
-                                                                    <PhoneInputField
-                                                                        label="Phone Number"
-                                                                        placeholder="123 456 7890"
-                                                                        name={`${key}.value`}
-                                                                        control={
-                                                                            form.control
-                                                                        }
-                                                                        country="in"
-                                                                        required
-                                                                    />
-                                                                </FormControl>
-                                                            </FormItem>
-                                                        )}
-                                                    />
-                                                ) : (
-                                                    <FormField
-                                                        key={key}
-                                                        control={form.control}
-                                                        name={`${key}.value`}
-                                                        render={({ field }) => (
-                                                            <FormItem>
-                                                                <FormControl>
-                                                                    {value.type ===
-                                                                    "dropdown" ? (
-                                                                        <SelectField
-                                                                            label={
-                                                                                value.name
-                                                                            }
-                                                                            name={`${key}.value`}
-                                                                            options={
-                                                                                value.comma_separated_options?.map(
-                                                                                    (
-                                                                                        option: string,
-                                                                                        index: number
-                                                                                    ) => ({
-                                                                                        value: option,
-                                                                                        label: option,
-                                                                                        _id: index,
-                                                                                    })
-                                                                                ) ||
-                                                                                []
-                                                                            }
-                                                                            control={
-                                                                                form.control
-                                                                            }
-                                                                            required={
-                                                                                value.is_mandatory
-                                                                            }
-                                                                            className="!w-full"
-                                                                        />
-                                                                    ) : (
-                                                                        <MyInput
-                                                                            inputType="text"
-                                                                            inputPlaceholder={
-                                                                                value.name
-                                                                            }
-                                                                            input={
-                                                                                field.value
-                                                                            }
-                                                                            onChangeFunction={
-                                                                                field.onChange
-                                                                            }
-                                                                            required={
-                                                                                value.is_mandatory
-                                                                            }
-                                                                            size="large"
-                                                                            label={
-                                                                                value.name
-                                                                            }
-                                                                            className="!max-w-full !w-full"
-                                                                        />
-                                                                    )}
-                                                                </FormControl>
-                                                            </FormItem>
-                                                        )}
-                                                    />
-                                                )
-                                        )}
-                                        <div className="flex items-center justify-center flex-col gap-4">
-                                            <MyButton
-                                                type="button"
-                                                buttonType="primary"
-                                                scale="large"
-                                                layoutVariant="default"
-                                                onClick={form.handleSubmit(
-                                                    onSubmit,
-                                                    onInvalid
-                                                )}
-                                                disable={Object.entries(
-                                                    form.getValues()
-                                                ).some(
-                                                    ([, value]) =>
-                                                        value.is_mandatory &&
-                                                        !value.value
-                                                )}
-                                                className="w-full md:w-fit bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl"
-                                            >
-                                                <GraduationCap className="w-5 h-5 mr-2" />
-                                                Register
-                                            </MyButton>
-                                            <button
-                                                type="button"
-                                                className="flex items-center gap-2 text-gray-500 hover:text-gray-700 text-sm mb-2 cursor-pointer transition-colors duration-200"
-                                                onClick={() => form.reset()}
-                                            >
-                                                <RotateCcw className="w-4 h-4" />
-                                                Reset Form
-                                            </button>
-                                        </div>
-                                    </form>
-                                </FormProvider>
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
-            </div>
-
-            {/* Fixed bottom container with border */}
-            <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg z-50">
-                <div className="max-w-[80%] mx-auto px-4 sm:px-6 lg:px-8 py-4 md:flex md:justify-center">
-                    <MyButton
-                        type="button"
-                        buttonType="secondary"
-                        scale="large"
-                        layoutVariant="default"
-                        onClick={() => {
-                            const registrationCard = document.getElementById('registration-card');
-                            if (registrationCard) {
-                                registrationCard.scrollIntoView({ 
-                                    behavior: 'smooth',
-                                    block: 'start'
-                                });
-                            }
-                        }}
-                        className="w-full md:w-fit text-white font-semibold rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl"
-                    >
-                        <GraduationCap className="w-5 h-5 mr-2" />
-                        Enroll Now
-                    </MyButton>
+                            className="w-full md:w-fit text-white font-semibold rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl"
+                        >
+                            <GraduationCap className="w-5 h-5 mr-2" />
+                            Enroll Now
+                        </MyButton>
+                    </div>
                 </div>
-            </div>
+            )}
         </div>
     );
 };

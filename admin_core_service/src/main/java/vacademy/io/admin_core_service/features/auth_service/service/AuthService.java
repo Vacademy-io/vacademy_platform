@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import vacademy.io.admin_core_service.features.auth_service.constants.AuthServiceRoutes;
+import vacademy.io.admin_core_service.features.institute_learner.constants.StudentConstants;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
 import vacademy.io.common.exceptions.VacademyException;
@@ -83,6 +84,18 @@ public class AuthService {
 
             return objectMapper.readValue(response.getBody(), new TypeReference<UserDTO>() {
             });
+        } catch (Exception e) {
+            throw new VacademyException(e.getMessage());
+        }
+    }
+
+    public UserDTO createUserFromAuthService(UserDTO userDTO, String instituteId) {
+        try {
+            userDTO.setRootUser(true);
+            ObjectMapper objectMapper = new ObjectMapper();
+            ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(clientName, HttpMethod.POST.name(), authServerBaseUrl, StudentConstants.addUserRoute + "?instituteId=" + instituteId, userDTO);
+            return objectMapper.readValue(response.getBody(), UserDTO.class);
+
         } catch (Exception e) {
             throw new VacademyException(e.getMessage());
         }

@@ -416,15 +416,13 @@ const EnrollByInvite = () => {
                                                     onSubmit,
                                                     onInvalid
                                                 )}
-                                                disable={
-                                                    !form.getValues(
-                                                        "phone_number"
-                                                    ).value ||
-                                                    !form.getValues("email")
-                                                        .value ||
-                                                    !form.getValues("full_name")
-                                                        .value
-                                                }
+                                                disable={Object.entries(
+                                                    form.getValues()
+                                                ).some(
+                                                    ([, value]) =>
+                                                        value.is_mandatory &&
+                                                        !value.value
+                                                )}
                                                 className="w-full md:w-fit bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl"
                                             >
                                                 <GraduationCap className="w-5 h-5 mr-2" />

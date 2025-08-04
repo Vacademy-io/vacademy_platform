@@ -295,7 +295,7 @@ const EnrollByInvite = () => {
                 </Card>
 
                 {/* Registration Card */}
-                <Card className="shadow-xl border-0 bg-white/80 backdrop-blur-sm w-full">
+                <Card id="registration-card" className="shadow-xl border-0 bg-white/80 backdrop-blur-sm w-full">
                     <CardContent className="p-6 sm:p-8">
                         {/* Header */}
                         <div className="flex items-start gap-2 sm:gap-3 mb-6">
@@ -453,6 +453,15 @@ const EnrollByInvite = () => {
                         buttonType="secondary"
                         scale="large"
                         layoutVariant="default"
+                        onClick={() => {
+                            const registrationCard = document.getElementById('registration-card');
+                            if (registrationCard) {
+                                registrationCard.scrollIntoView({ 
+                                    behavior: 'smooth',
+                                    block: 'start'
+                                });
+                            }
+                        }}
                         className="w-full md:w-fit text-white font-semibold rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl"
                     >
                         <GraduationCap className="w-5 h-5 mr-2" />

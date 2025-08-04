@@ -62,6 +62,7 @@ public class StudentRegistrationManager {
 
     public UserDTO createUserFromAuthService(UserDTO userDTO, String instituteId) {
         try {
+            userDTO.setRootUser(true);
             ObjectMapper objectMapper = new ObjectMapper();
             ResponseEntity<String> response = internalClientUtils.makeHmacRequest(applicationName, HttpMethod.POST.name(), authServerBaseUrl, StudentConstants.addUserRoute + "?instituteId=" + instituteId, userDTO);
             return objectMapper.readValue(response.getBody(), UserDTO.class);

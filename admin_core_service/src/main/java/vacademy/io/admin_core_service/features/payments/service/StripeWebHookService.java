@@ -111,51 +111,29 @@ public class StripeWebHookService {
             String eventType = payloadJson.get("type").asText();
             JsonNode dataObject = payloadJson.at("/data/object");
 
-            String invoiceId = null;
+            System.out.println("Stripe Event Type: " + eventType);
 
-            System.out.println(eventType);
-
-            // Determine invoice ID based on event type
-            switch (eventType) {
-                case "invoice.paid":
-                case "invoice.created":
-                case "invoice.finalized":
-                case "invoice.updated":
-                    // The object is the invoice itself
-                    if ("invoice".equals(dataObject.get("object").asText())) {
-                        invoiceId = dataObject.get("id").asText();
-                    }
-                    break;
-
-                case "invoice_payment.paid":
-                case "invoice_payment.created":
-                case "invoice_payment.failed":
-                    // The object is a payment, invoice is a nested field
-                    if (dataObject.has("invoice")) {
-                        invoiceId = dataObject.get("invoice").asText();
-                    }
-                    break;
-
-                // Add more cases as needed depending on Stripe event types you support
-                default:
-                    log.warn("Unhandled event type: {}", eventType);
-                    break;
-            }
-
-            if (invoiceId == null || invoiceId.isEmpty()) {
-                log.warn("Invoice ID could not be extracted from event type: {}", eventType);
-                return null;
-            }
-
-            // Retrieve invoice from Stripe API
-            Invoice invoice = Invoice.retrieve(invoiceId);
-
-            // Get metadata
-            Map<String, String> metadata = invoice.getMetadata();
-            if (metadata != null && metadata.containsKey("instituteId")) {
-                return metadata.get("instituteId");
+            // Only proceed if object is an invoice and matches supported events
+            if (dataObject.has("object") && "invoice".equals(dataObject.get("object").asText())) {
+                switch (eventType) {
+                    case "invoice.paid":
+                    case "invoice.created":
+                    case "invoice.finalized":
+                    case "invoice.updated":
+                        // Attempt to get metadata directly from invoice
+                        JsonNode metadataNode = dataObject.get("metadata");
+                        if (metadataNode != null && metadataNode.has("instituteId")) {
+                            return metadataNode.get("instituteId").asText();
+                        } else {
+                            log.warn("Metadata or instituteId not found in invoice for event: {}", eventType);
+                        }
+                        break;
+                    default:
+                        log.warn("Unhandled invoice event type: {}", eventType);
+                        break;
+                }
             } else {
-                log.warn("instituteId not found in metadata for invoice: {}", invoiceId);
+                log.warn("Event does not contain a full invoice object for event type: {}", eventType);
             }
 
         } catch (Exception e) {
@@ -164,7 +142,6 @@ public class StripeWebHookService {
 
         return null;
     }
-
 
 
 

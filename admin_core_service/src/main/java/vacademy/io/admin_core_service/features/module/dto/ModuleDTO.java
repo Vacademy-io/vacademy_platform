@@ -13,9 +13,11 @@ public class ModuleDTO {
     private String status;
     private String description;
     private String thumbnailId;
+    private String parentId;
 
     public ModuleDTO(Module module) {
         this.id = module.getId();
+        this.parentId = module.getParentId();
         this.moduleName = module.getModuleName();
         this.status = module.getStatus();
         this.description = module.getDescription();

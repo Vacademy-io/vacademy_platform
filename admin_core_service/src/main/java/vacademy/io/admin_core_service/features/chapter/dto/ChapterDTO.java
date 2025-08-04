@@ -13,4 +13,5 @@ public class ChapterDTO {
     private String fileId;
     private String description;
     private Integer chapterOrder;
+    private String parentId;
 }

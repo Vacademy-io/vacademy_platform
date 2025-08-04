@@ -21,7 +21,8 @@ public interface ChapterRepository extends JpaRepository<Chapter, String> {
                                    'status', c.status,
                                    'file_id', c.file_id,
                                    'description', c.description,
-                                   'chapter_order', cps.chapter_order
+                                   'chapter_order', cps.chapter_order,
+                                   'parent_id', c.parent_id
                                ),
                                'slides', (
                                    SELECT json_agg(slide_data ORDER BY slide_order IS NOT NULL, slide_order, created_at DESC)
@@ -40,6 +41,7 @@ public interface ChapterRepository extends JpaRepository<Chapter, String> {
                                                'description', s.description,
                                                'slide_order', cs.slide_order,
                                                'source_type', s.source_type,
+                                               'parent_id', s.parent_id,
                                                'video_slide', json_build_object(
                                                    'id', v.id,
                                                    'url', v.url,
@@ -114,6 +116,7 @@ public interface ChapterRepository extends JpaRepository<Chapter, String> {
                                                'description', s.description,
                                                'slide_order', cs.slide_order,
                                                'source_type', s.source_type,
+                                               'parent_id', s.parent_id,
                                                'document_slide', json_build_object(
                                                    'id', d.id,
                                                    'title', d.title,
@@ -147,6 +150,7 @@ public interface ChapterRepository extends JpaRepository<Chapter, String> {
                                                'description', s.description,
                                                'slide_order', cs.slide_order,
                                                'source_type', s.source_type,
+                                               'parent_id', s.parent_id,
                                                'question_slide', json_build_object(
                                                    'id', q.id,
                                                    'question_type', q.question_type,
@@ -206,6 +210,7 @@ public interface ChapterRepository extends JpaRepository<Chapter, String> {
                                                'description', s.description,
                                                'slide_order', cs.slide_order,
                                                'source_type', s.source_type,
+                                               'parent_id', s.parent_id,
                                                'assignment_slide', json_build_object(
                                                    'id', a.id,
                                                    'live_date', a.live_date,
@@ -242,6 +247,7 @@ public interface ChapterRepository extends JpaRepository<Chapter, String> {
                                                'description', s.description,
                                                'slide_order', cs.slide_order,
                                                'source_type', s.source_type,
+                                               'parent_id', s.parent_id,
                                                'quiz_slide', json_build_object(
                                                    'id', qz.id,
                                                    'title', qz.title,

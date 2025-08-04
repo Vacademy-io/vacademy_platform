@@ -90,9 +90,12 @@ public class LearnerEnrollRequestService {
             PaymentOption paymentOption,
             PaymentPlan paymentPlan
     ) {
-        String userPlanStatus = paymentOption.isRequireApproval()
-                ? UserPlanStatusEnum.PENDING_FOR_APPROVAL.name()
-                : UserPlanStatusEnum.ACTIVE.name();
+        String userPlanStatus = null;
+        if (paymentOption.getType().equals(PaymentOptionType.SUBSCRIPTION.name()) || paymentOption.getType().equals(PaymentOptionType.ONE_TIME.name())) {
+            userPlanStatus = UserPlanStatusEnum.PENDING_FOR_PAYMENT.name();
+        }else {
+            userPlanStatus = UserPlanStatusEnum.ACTIVE.name();
+        }
 
         return userPlanService.createUserPlan(
                 userId,

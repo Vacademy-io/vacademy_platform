@@ -388,6 +388,12 @@ public class SlideService {
         if (documentSlideDTO.getTotalPages() != null) {
             documentSlide.setTotalPages(documentSlideDTO.getTotalPages());
         }
+        if(documentSlideDTO.getPublishedData() != null && !documentSlideDTO.getPublishedData().isEmpty()) {
+            documentSlide.setPublishedData(documentSlideDTO.getPublishedData());
+        }
+        if (documentSlideDTO.getPublishedDocumentTotalPages() != null) {
+            documentSlide.setPublishedDocumentTotalPages(documentSlideDTO.getPublishedDocumentTotalPages());
+        }
     }
 
     public void handlePublishedVideoSlide(VideoSlide videoSlide, VideoSlideDTO videoSlideDTO) {

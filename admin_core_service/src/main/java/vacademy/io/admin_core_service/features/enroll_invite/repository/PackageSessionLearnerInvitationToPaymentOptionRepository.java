@@ -40,4 +40,7 @@ public interface PackageSessionLearnerInvitationToPaymentOptionRepository extend
     void updateStatusByIds(List<String> ids, String status);
 
     List<PackageSessionLearnerInvitationToPaymentOption> findByEnrollInvite_IdInAndPaymentOption_IdInAndPackageSession_IdInAndStatusIn(List<String>enrollInviteIds,List<String>paymentOptionIds,List<String>packageSessionIds,List<String>status);
+
+    @Query("SELECT p.packageSession.id FROM PackageSessionLearnerInvitationToPaymentOption p WHERE p.enrollInvite = :enrollInvite AND p.status IN :status")
+    List<String> findPackageSessionIdsByEnrollInviteAndStatusIn(@Param("enrollInvite") EnrollInvite enrollInvite, @Param("status") List<String> status);
 }

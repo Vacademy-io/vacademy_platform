@@ -66,4 +66,11 @@ public class PackageSessionEnrollInviteToPaymentOptionService {
         if (ids == null || ids.isEmpty() || status == null) return;
         repository.updateStatusByIds(ids, status);
     }
+
+    public List<String>findPackageSessionsOfEnrollInvite(EnrollInvite enrollInvite){
+        return repository.findPackageSessionIdsByEnrollInviteAndStatusIn(
+                enrollInvite,
+                List.of(StatusEnum.ACTIVE.name())
+        );
+    }
 }

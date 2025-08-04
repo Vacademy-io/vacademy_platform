@@ -23,6 +23,7 @@ import vacademy.io.common.institute.entity.Level;
 import vacademy.io.common.institute.entity.PackageEntity;
 import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.common.institute.entity.session.Session;
+import vacademy.io.common.payment.enums.PaymentGateway;
 
 import java.security.SecureRandom;
 import java.sql.Date;
@@ -67,8 +68,8 @@ public class DefaultEnrollInviteService {
         enrollInvite.setInstituteId(instituteId);
 
         // TODO: vendor id and vendor name
-        enrollInvite.setVendor("Vacademy");
-        enrollInvite.setVendorId("Vacademy");
+        enrollInvite.setVendor(PaymentGateway.STRIPE.name());
+        enrollInvite.setVendorId(PaymentGateway.STRIPE.name());
         enrollInvite.setTag(EnrollInviteTag.DEFAULT.name());
         enrollInvite.setWebPageMetaDataJson(enrollInviteCoursePreviewService.createPreview(packageSession.getId()));
 

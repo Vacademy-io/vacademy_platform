@@ -36,4 +36,22 @@ public class CustomFieldValueService {
             customFieldValuesRepository.saveAll(customFieldValues);
         }
     }
+
+    public void shiftCustomField(String source,String previousSourceId,String newSourceId,String type,String typeId){
+        List<CustomFieldValues>customFieldValues = customFieldValuesRepository.findBySourceTypeAndSourceIdAndTypeAndTypeId(source,
+                previousSourceId,
+                type,typeId);
+        List<CustomFieldValues>shiftedCustomFiledValues = new ArrayList<>();
+        for(CustomFieldValues customFieldValue:customFieldValues){
+            CustomFieldValues newCustomFiledValue = new CustomFieldValues();
+            newCustomFiledValue.setCustomFieldId(customFieldValue.getCustomFieldId());
+            newCustomFiledValue.setSourceType(source);
+            newCustomFiledValue.setSourceId(newSourceId);
+            newCustomFiledValue.setType(type);
+            newCustomFiledValue.setTypeId(typeId);
+            newCustomFiledValue.setValue(customFieldValue.getValue());
+            shiftedCustomFiledValues.add(newCustomFiledValue);
+        }
+        customFieldValuesRepository.saveAll(shiftedCustomFiledValues);
+    }
 }

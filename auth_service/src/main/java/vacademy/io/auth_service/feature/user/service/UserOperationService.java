@@ -9,6 +9,7 @@ import vacademy.io.auth_service.feature.notification.enums.NotificationSource;
 import vacademy.io.auth_service.feature.notification.service.NotificationEmailBody;
 import vacademy.io.auth_service.feature.notification.service.NotificationService;
 import vacademy.io.common.auth.dto.UserCredentials;
+import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.entity.User;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.auth.repository.UserRepository;
@@ -18,6 +19,7 @@ import vacademy.io.common.notification.dto.GenericEmailRequest;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @Service
 public class UserOperationService {
@@ -103,6 +105,18 @@ public class UserOperationService {
         }
 
         return "Email sent successfully";
+    }
+
+    public UserDTO findUserByEmail(String email){
+        Optional<User>optionalUser = userRepository.findFirstByEmailOrderByCreatedAtDesc(email);
+        if (optionalUser.isEmpty()){
+            return null;
+        }
+        User user = optionalUser.get();
+        UserDTO userDTO = new UserDTO(user);
+        userDTO.setUsername(user.getUsername());
+        userDTO.setPassword(user.getPassword());
+        return userDTO;
     }
 
 }

@@ -9,6 +9,7 @@ import vacademy.io.admin_core_service.features.faculty.service.FacultyService;
 import vacademy.io.admin_core_service.features.learner_invitation.dto.AddLearnerInvitationDTO;
 import vacademy.io.admin_core_service.features.learner_invitation.services.LearnerInvitationService;
 import vacademy.io.admin_core_service.features.learner_invitation.util.LearnerInvitationDefaultFormGenerator;
+import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
 import vacademy.io.admin_core_service.features.packages.enums.PackageStatusEnum;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -22,6 +23,7 @@ import vacademy.io.common.institute.entity.session.Session;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -54,6 +56,7 @@ public class PackageSessionService {
     }
 
     public PackageSession updatePackageSession(String packageSessionId,String status,String instituteId,List<AddFacultyToCourseDTO>addFacultyToCourseDTOS){
+        System.out.println(packageSessionId);
         PackageSession packageSession = packageRepository.findById(packageSessionId).get();
         packageSession.setStatus(status);
         packageRepository.save(packageSession);
@@ -77,5 +80,18 @@ public class PackageSessionService {
 
     public List<PackageSession>findAllByIds(List<String>ids){
         return packageRepository.findAllById(ids);
+    }
+
+    public void addInvitedPackageSessionForPackage(PackageEntity packageEntity){
+        Session session = new Session();
+        Level level = new Level();
+        session.setId("INVITED");
+        level.setId("INVITED");
+        PackageSession packageSession = new PackageSession();
+        packageSession.setSession(session);
+        packageSession.setLevel(level);
+        packageSession.setPackageEntity(packageEntity);
+        packageSession.setStatus(PackageSessionStatusEnum.INVITED.name());
+        packageRepository.save(packageSession);
     }
 }

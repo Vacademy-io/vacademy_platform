@@ -1,6 +1,9 @@
 package vacademy.io.admin_core_service.features.live_session.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.common.dto.CustomFieldDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.*;
@@ -104,6 +107,59 @@ public class AttendanceReportService {
                     .collect(Collectors.toList());
         }
     }
+    public Page<StudentAttendanceDTO> getAllByAttendanceFilterRequest(AttendanceFilterRequest filter, Pageable pageable) {
+        String name = (filter.getName() != null && !filter.getName().trim().isEmpty())
+                ? filter.getName().trim()
+                : null;
+        Page<AttendanceReportProjection> flatDataPage =
+                liveSessionParticipantRepository.getAttendanceReportWithFilters(
+                        name,
+                        filter.getStartDate(),
+                        filter.getEndDate(),
+                        filter.getBatchIds()==null?new ArrayList():filter.getBatchIds(),
+                        filter.getLiveSessionIds()==null?new ArrayList():filter.getLiveSessionIds(),
+                        pageable
+                );
+
+        Map<String, StudentAttendanceDTO> groupedData = new LinkedHashMap<>();
+
+        for (AttendanceReportProjection record : flatDataPage.getContent()) {
+            groupedData.computeIfAbsent(record.getStudentId(), id -> {
+                StudentAttendanceDTO student = new StudentAttendanceDTO();
+                student.setStudentId(id);
+                student.setFullName(record.getFullName());
+                student.setEmail(record.getEmail());
+                student.setMobileNumber(record.getMobileNumber());
+                student.setGender(record.getGender());
+                student.setDateOfBirth(record.getDateOfBirth());
+                student.setInstituteEnrollmentNumber(record.getInstituteEnrollmentNumber());
+                student.setEnrollmentStatus(record.getEnrollmentStatus());
+                student.setSessions(new ArrayList<>());
+                return student;
+            });
+
+            AttendanceDetailsDTO details = new AttendanceDetailsDTO();
+            details.setSessionId(record.getSessionId());
+            details.setScheduleId(record.getScheduleId());
+            details.setTitle(record.getTitle());
+            details.setMeetingDate(record.getMeetingDate());
+            details.setStartTime(record.getStartTime());
+            details.setLastEntryTime(record.getLastEntryTime());
+            details.setAttendanceStatus(record.getAttendanceStatus());
+            details.setAttendanceDetails(record.getAttendanceDetails());
+            details.setAttendanceTimestamp(record.getAttendanceTimestamp());
+
+            groupedData.get(record.getStudentId()).getSessions().add(details);
+        }
+
+        return new PageImpl<>(
+                new ArrayList<>(groupedData.values()),
+                pageable,
+                flatDataPage.getTotalElements()
+        );
+    }
+
+
 
     public List<StudentAttendanceDTO> getGroupedAttendanceReport(String batchSessionId , LocalDate startDate , LocalDate endDate) {
         List<AttendanceReportProjection> flatData =

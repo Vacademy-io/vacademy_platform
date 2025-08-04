@@ -17,7 +17,6 @@ import org.springframework.util.StringUtils;
 import vacademy.io.auth_service.feature.auth.constants.AuthConstants;
 import vacademy.io.auth_service.feature.auth.dto.AuthRequestDto;
 import vacademy.io.auth_service.feature.auth.dto.JwtResponseDto;
-import vacademy.io.auth_service.feature.auth.dto.RegisterRequest;
 import vacademy.io.auth_service.feature.auth.enums.ClientNameEnum;
 import vacademy.io.auth_service.feature.auth.service.AuthService;
 import vacademy.io.auth_service.feature.notification.service.NotificationEmailBody;
@@ -26,7 +25,7 @@ import vacademy.io.auth_service.feature.util.UsernameGenerator;
 import vacademy.io.common.auth.dto.RefreshTokenRequestDTO;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollResponseDTO;
-import vacademy.io.common.auth.dto.learner.LearnerSignupDTO;
+import vacademy.io.common.auth.dto.learner.LearnerEnrollRequestDTO;
 import vacademy.io.common.auth.entity.*;
 import vacademy.io.common.auth.enums.UserRoleStatus;
 import vacademy.io.common.auth.repository.RoleRepository;
@@ -65,50 +64,35 @@ public class LearnerAuthManager {
     @Value("${spring.application.name}")
     private String applicationName;
 
-    public JwtResponseDto registerLearner(LearnerSignupDTO learnerSignupDTO) {
-        if (learnerSignupDTO == null) throw new VacademyException("Invalid Request");
+    public JwtResponseDto registerLearner(LearnerEnrollRequestDTO learnerEnrollRequestDTO) {
+        if (learnerEnrollRequestDTO == null) throw new VacademyException("Invalid Request");
 
-        UserDTO userDTO = learnerSignupDTO.getUser();
-        User user = userRepository.findFirstByEmailOrderByCreatedAtDesc(userDTO.getEmail()).orElseGet(() -> createUser(userDTO));
+        UserDTO userDTO = learnerEnrollRequestDTO.getUser();
+        User user = authService.createUser(userDTO,learnerEnrollRequestDTO.getInstituteId());
         userDTO.setId(user.getId());
         userDTO.setUsername(user.getUsername());
-
-        ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
-                applicationName, HttpMethod.POST.name(),
-                adminCoreServiceBaseUrl, AuthConstants.LEARNER_ENROLL_PATH,
-                learnerSignupDTO
-        );
-
-        LearnerEnrollResponseDTO learnerEnrollResponseDTO;
-        try {
-            learnerEnrollResponseDTO = new ObjectMapper().readValue(
-                    response.getBody(), new TypeReference<>() {}
+        if (learnerEnrollRequestDTO.getLearnerPackageSessionEnroll() != null) {
+            ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                    applicationName, HttpMethod.POST.name(),
+                    adminCoreServiceBaseUrl, AuthConstants.LEARNER_ENROLL_PATH,
+                    learnerEnrollRequestDTO
             );
-        } catch (JsonProcessingException e) {
-            throw new VacademyException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to register learner: " + e.getMessage());
+
+            LearnerEnrollResponseDTO learnerEnrollResponseDTO;
+            try {
+                learnerEnrollResponseDTO = new ObjectMapper().readValue(
+                        response.getBody(), new TypeReference<>() {}
+                );
+            } catch (JsonProcessingException e) {
+                throw new VacademyException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to register learner: " + e.getMessage());
+            }
+
         }
-
-        Set<UserRole> userRoleSet = new HashSet<>();
-        List<Role> allRoles = getAllUserRoles(userDTO.getRoles());
-
-        for (Role role : allRoles) {
-            UserRole userRole = new UserRole();
-            userRole.setRole(role);
-            userRole.setUser(user); // ✅ This is the missing line
-            userRole.setInstituteId(learnerSignupDTO.getInstituteId());
-            userRoleSet.add(userRole);
-        }
-
-        user.setRoles(userRoleSet);
-        User newUser = userRepository.save(user);
-        userRoleRepository.saveAll(userRoleSet);
-
-        oAuth2VendorToUserDetailService.verifyEmail(learnerSignupDTO.getSubjectId(), learnerSignupDTO.getVendorId(), user.getEmail());
+        oAuth2VendorToUserDetailService.verifyEmail(learnerEnrollRequestDTO.getSubjectId(), learnerEnrollRequestDTO.getVendorId(), user.getEmail());
 
         RefreshToken refreshToken = refreshTokenService.createRefreshToken(user.getUsername(), "VACADEMY-WEB");
-        sendWelcomeMailToUser(newUser);
 
-        return authService.generateJwtTokenForUser(newUser, refreshToken, new ArrayList<>(userRoleSet));
+        return authService.generateJwtTokenForUser(user, refreshToken, new ArrayList<>(user.getRoles()));
     }
 
     private User createUser(UserDTO userDTO) {
@@ -139,9 +123,6 @@ public class LearnerAuthManager {
         return userRepository.save(user);
     }
 
-    private List<Role> getAllUserRoles(List<String> userRoles) {
-        return roleRepository.findByNameIn(userRoles);
-    }
 
     public void sendWelcomeMailToUser(User user) {
         GenericEmailRequest emailRequest = new GenericEmailRequest();
@@ -166,7 +147,7 @@ public class LearnerAuthManager {
 
         refreshTokenService.deleteAllRefreshToken(user);
 
-        List<UserRole> roles = userRoleRepository.findByUserAndStatusAndRoleName(user, UserRoleStatus.ACTIVE.name(), "STUDENT");
+        List<UserRole> roles = userRoleRepository.findUserRolesByUserIdAndStatusesAndRoleNames(user.getId(), List.of(UserRoleStatus.ACTIVE.name()), AuthConstants.VALID_ROLES_FOR_STUDENT_PORTAL);
         if (roles.isEmpty()) throw new UsernameNotFoundException("Invalid user request!");
 
         List<String> permissions = userPermissionRepository.findByUserId(user.getId()).stream().map(UserPermission::getPermissionId).toList();

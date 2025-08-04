@@ -9,6 +9,7 @@ import org.springframework.stereotype.Repository;
 import vacademy.io.admin_core_service.features.enroll_invite.dto.EnrollInviteWithSessionsProjection;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 
+import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 

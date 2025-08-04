@@ -1,4 +1,4 @@
-package vacademy.io.admin_core_service.features.payments.service;
+package vacademy.io.admin_core_service.features.payments.manager;
 
 import com.stripe.Stripe;
 import com.stripe.exception.StripeException;
@@ -15,17 +15,17 @@ import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
 import vacademy.io.common.payment.dto.PaymentResponseDTO;
 import vacademy.io.common.payment.dto.StripeRequestDTO;
+import vacademy.io.common.payment.enums.PaymentStatusEnum;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 @Service
-public class StripePaymentService implements PaymentServiceStrategy {
+public class StripePaymentManager implements PaymentServiceStrategy {
 
-    private static final Logger logger = LoggerFactory.getLogger(StripePaymentService.class);
+    private static final Logger logger = LoggerFactory.getLogger(StripePaymentManager.class);
 
     @Override
     public Map<String, Object> createCustomer(UserDTO user, PaymentInitiationRequestDTO request, Map<String, Object> paymentGatewaySpecificData) {
@@ -52,7 +52,7 @@ public class StripePaymentService implements PaymentServiceStrategy {
 
     @Override
     public PaymentResponseDTO initiatePayment(UserDTO user, PaymentInitiationRequestDTO request, Map<String, Object> paymentGatewaySpecificData) {
-        logger.info("Starting payment initiation for user: {}", user.getId());
+        logger.info("Initiating Stripe payment for user: {}", user.getId());
 
         try {
             validateRequest(request);
@@ -61,22 +61,22 @@ public class StripePaymentService implements PaymentServiceStrategy {
 
             StripeRequestDTO stripeRequestDTO = request.getStripeRequest();
 
-            logger.debug("Raw request amount: {}", request.getAmount());
             long amountInCents = convertAmountToCents(request.getAmount());
-            logger.debug("Converted amount in cents: {}", amountInCents);
+            logger.debug("Amount in cents: {}", amountInCents);
 
             attachPaymentMethodIfNeeded(stripeRequestDTO.getCustomerId(), stripeRequestDTO.getPaymentMethodId());
 
             createInvoiceItem(stripeRequestDTO, amountInCents, request);
-            Invoice invoice = createAndFinalizeInvoice(stripeRequestDTO, request);
+            Invoice invoice = createAndAutoChargeInvoice(stripeRequestDTO, request);
             System.out.println(invoice);
             return buildPaymentResponse(invoice);
 
         } catch (StripeException e) {
-            logger.error("StripeException during payment initiation: {}", e.getMessage(), e);
+            logger.error("Stripe error during payment initiation: {}", e.getMessage(), e);
             throw new VacademyException("Stripe error: " + e.getMessage());
         }
     }
+
 
     private long convertAmountToCents(double amount) {
         return BigDecimal.valueOf(amount)
@@ -95,36 +95,45 @@ public class StripePaymentService implements PaymentServiceStrategy {
         invoiceItemParams.put("amount", amountInCents);
         invoiceItemParams.put("currency", request.getCurrency().toLowerCase());
         invoiceItemParams.put("description", request.getDescription() != null ? request.getDescription() : "No description");
-
+        invoiceItemParams.put("metadata", Map.of("orderId",request.getOrderId(),"instituteId",request.getInstituteId()));
         logger.debug("Creating invoice item with params: {}", invoiceItemParams);
         InvoiceItem invoiceItem = InvoiceItem.create(invoiceItemParams);
         logger.info("Invoice item created with ID: {}", invoiceItem.getId());
     }
 
-    private Invoice createAndFinalizeInvoice(StripeRequestDTO stripeRequestDTO, PaymentInitiationRequestDTO request) throws StripeException {
+    private Invoice createAndAutoChargeInvoice(StripeRequestDTO stripeRequestDTO, PaymentInitiationRequestDTO request) throws StripeException {
         Map<String, Object> invoiceParams = new HashMap<>();
         invoiceParams.put("customer", stripeRequestDTO.getCustomerId());
-        invoiceParams.put("collection_method", request.isChargeAutomatically() ? "charge_automatically" : "send_invoice");
+        invoiceParams.put("collection_method", "charge_automatically");
         invoiceParams.put("pending_invoice_items_behavior", "include");
-        invoiceParams.put("auto_advance", false); // Turn off auto_advance for manual finalization
+        invoiceParams.put("auto_advance", false);
 
-        if (!request.isChargeAutomatically()) {
-            invoiceParams.put("days_until_due", 7);
-        }
+        // ✅ Add metadata to the invoice itself
+        Map<String, Object> metadata = new HashMap<>();
+        metadata.put("orderId", request.getOrderId());
+        metadata.put("instituteId", request.getInstituteId());
+        invoiceParams.put("metadata", metadata);
 
         if (StringUtils.hasText(stripeRequestDTO.getPaymentMethodId())) {
             invoiceParams.put("default_payment_method", stripeRequestDTO.getPaymentMethodId());
+        } else {
+            throw new VacademyException("Payment method required for automatic payments.");
         }
 
         logger.debug("Creating invoice with params: {}", invoiceParams);
         Invoice invoice = Invoice.create(invoiceParams);
-        logger.info("Draft invoice created: {}", invoice.getId());
 
-        Invoice finalizedInvoice = invoice.finalizeInvoice();
-        logger.info("Invoice finalized: {}", finalizedInvoice.getId());
+        // Manually finalize the invoice
+        invoice = invoice.finalizeInvoice();
 
-        return finalizedInvoice;
+        logger.info("Invoice finalized: {}, hosted_url: {}, pdf: {}", invoice.getId(), invoice.getHostedInvoiceUrl(), invoice.getInvoicePdf());
+
+        return invoice;
     }
+
+
+
+
 
     private void attachPaymentMethodIfNeeded(String customerId, String paymentMethodId) throws StripeException {
         logger.info("Verifying if payment method {} is attached to customer {}", paymentMethodId, customerId);
@@ -155,15 +164,23 @@ public class StripePaymentService implements PaymentServiceStrategy {
         response.put("dueDate", invoice.getDueDate());
         response.put("status", invoice.getStatus());
         response.put("description", invoice.getDescription());
-        response.put("paymentUrl", invoice.getHostedInvoiceUrl());
-        response.put("paymentStatus", invoice.getPaid());
-        response.put("paidAt", invoice.getStatusTransitions().getPaidAt());
+        response.put("paymentUrl", invoice.getHostedInvoiceUrl()); // Include this explicitly
+        System.out.println(invoice);
+        PaymentStatusEnum paymentStatus = invoice.getPaid()
+                ? PaymentStatusEnum.PAID
+                : PaymentStatusEnum.PAYMENT_PENDING;
+        response.put("paymentStatus", paymentStatus.name());
+
+        response.put("paidAt", invoice.getStatusTransitions() != null
+                ? invoice.getStatusTransitions().getPaidAt()
+                : null);
 
         PaymentResponseDTO dto = new PaymentResponseDTO();
         dto.setResponseData(response);
         logger.debug("Built payment response: {}", dto);
         return dto;
     }
+
 
     private void validateRequest(PaymentInitiationRequestDTO request) {
         StripeRequestDTO stripeRequestDTO = request.getStripeRequest();

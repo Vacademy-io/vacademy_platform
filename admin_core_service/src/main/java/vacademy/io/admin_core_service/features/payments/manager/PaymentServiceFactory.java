@@ -1,4 +1,4 @@
-package vacademy.io.admin_core_service.features.payments.service;
+package vacademy.io.admin_core_service.features.payments.manager;
 
 import org.springframework.stereotype.Component;
 import vacademy.io.common.payment.enums.PaymentGateway;
@@ -10,9 +10,9 @@ public class PaymentServiceFactory {
     private final Map<PaymentGateway, PaymentServiceStrategy> strategies;
 
     public PaymentServiceFactory(
-            StripePaymentService stripe,
-            RazorpayPaymentService razorpay,
-            PayPalPaymentService paypal
+            StripePaymentManager stripe,
+            RazorpayPaymentManager razorpay,
+            PayPalPaymentManager paypal
     ) {
         strategies = Map.of(
                 PaymentGateway.STRIPE, stripe,

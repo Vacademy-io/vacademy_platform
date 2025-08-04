@@ -382,5 +382,128 @@ public class NotificationEmailBody {
                 """.formatted(service, service, name, username, password, LEARNER_LOGIN_URL, service, service);
     }
 
+    public static String createCredentialsFoundEmailBody(String service, String name, String username, String password) {
+        return """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Access Your Account - %s</title>
+        <style>
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen-Sans, Ubuntu, Cantarell, sans-serif;
+                margin: 0;
+                padding: 0;
+                background-color: #fafafa;
+                line-height: 1.6;
+            }
+            .container {
+                max-width: 640px;
+                margin: 40px auto;
+                padding: 0 20px;
+            }
+            .card {
+                background: #ffffff;
+                border-radius: 8px;
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+                border: 1px solid #eee;
+            }
+            .header {
+                padding: 32px 40px;
+                border-bottom: 1px solid #F0F0F0;
+            }
+            .content {
+                padding: 40px;
+                color: #444444;
+            }
+            .footer {
+                padding: 24px 40px;
+                background-color: #f8f8f8;
+                border-top: 1px solid #F0F0F0;
+                border-radius: 0 0 8px 8px;
+            }
+            h1 {
+                color: #E67E22;
+                font-size: 24px;
+                margin: 0 0 8px 0;
+                font-weight: 600;
+            }
+            .credentials-box {
+                background: #FDF2E9;
+                border-radius: 6px;
+                padding: 24px;
+                margin: 32px 0;
+            }
+            .credential-item {
+                margin: 12px 0;
+                font-size: 15px;
+            }
+            .credential-label {
+                color: #D35400;
+                font-weight: 500;
+                display: block;
+                margin-bottom: 4px;
+            }
+            .login-button {
+                display: inline-block;
+                padding: 12px 32px;
+                background-color: #E67E22;
+                color: white !important;
+                text-decoration: none;
+                border-radius: 6px;
+                font-weight: 500;
+                transition: background-color 0.2s;
+            }
+            .login-button:hover {
+                background-color: #D35400;
+            }
+            .text-muted {
+                color: #666666;
+                font-size: 14px;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="card">
+                <div class="header">
+                    <h1>Account Found on %s</h1>
+                    <p class="text-muted">We've located your credentials</p>
+                </div>
+                
+                <div class="content">
+                    <p>Dear %s,</p>
+                    <p>We found existing login credentials associated with this email. For your convenience, we've preserved them below so you can continue using %s:</p>
+                    
+                    <div class="credentials-box">
+                        <div class="credential-item">
+                            <span class="credential-label">Username</span>
+                            %s
+                        </div>
+                        <div class="credential-item">
+                            <span class="credential-label">Password</span>
+                            %s
+                        </div>
+                    </div>
+                    
+                    <p style="text-align: center; margin: 32px 0;">
+                        <a href="%s" class="login-button">Continue to %s</a>
+                    </p>
+                    
+                    <p class="text-muted">If you didn’t request this, please ignore the message or reset your password from the login page.</p>
+                </div>
+                
+                <div class="footer">
+                    <p class="text-muted" style="margin: 0;">
+                        Best regards,<br>
+                        <strong>%s Team</strong>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </body>
+    </html>
+    """.formatted(service, service, name, service, username, password, frontendLoginUrl, service, service);
+    }
+
 
 }

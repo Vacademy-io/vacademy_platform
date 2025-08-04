@@ -3,6 +3,8 @@ package vacademy.io.admin_core_service.features.learner.service;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
+import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.service.EnrollInviteService;
 import vacademy.io.admin_core_service.features.learner_payment_option_operation.service.PaymentOptionOperationFactory;
@@ -15,6 +17,7 @@ import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanS
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentOptionService;
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentPlanService;
 import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
+import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollResponseDTO;
 import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollRequestDTO;
@@ -40,10 +43,16 @@ public class LearnerEnrollRequestService {
     @Autowired
     private PaymentPlanService paymentPlanService;
 
+    @Autowired
+    private AuthService authService;
+
     @Transactional
     public LearnerEnrollResponseDTO recordLearnerRequest(LearnerEnrollRequestDTO learnerEnrollRequestDTO) {
         LearnerPackageSessionsEnrollDTO enrollDTO = learnerEnrollRequestDTO.getLearnerPackageSessionEnroll();
-
+        if (!StringUtils.hasText(learnerEnrollRequestDTO.getUser().getId())) {
+            UserDTO user = authService.createUserFromAuthService(learnerEnrollRequestDTO.getUser(), learnerEnrollRequestDTO.getInstituteId());
+            learnerEnrollRequestDTO.setUser(user);
+        }
         EnrollInvite enrollInvite = getValidatedEnrollInvite(enrollDTO.getEnrollInviteId());
         PaymentOption paymentOption = getValidatedPaymentOption(enrollDTO.getPaymentOptionId());
         PaymentPlan paymentPlan = getOptionalPaymentPlan(enrollDTO.getPlanId());

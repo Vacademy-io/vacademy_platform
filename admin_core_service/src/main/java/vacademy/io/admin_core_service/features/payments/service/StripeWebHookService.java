@@ -37,8 +37,6 @@ public class StripeWebHookService {
 
     public ResponseEntity<String> processWebHook(String payload, String sigHeader) {
         log.info("Received Stripe webhook");
-        System.out.println(sigHeader);
-        System.out.println(payload);
         String webhookId = null;
 
         try {

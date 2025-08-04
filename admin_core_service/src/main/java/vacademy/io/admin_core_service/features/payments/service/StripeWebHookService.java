@@ -45,28 +45,34 @@ public class StripeWebHookService {
             webhookId = webHookService.saveWebhook(PaymentGateway.STRIPE.name(), payload);
 
             String instituteId = extractInstituteId(payload);
-            System.out.println("instituteId: " + instituteId);
             if (instituteId == null) {
                 log.warn("Missing or invalid institute_id");
+                if (webhookId != null) {
+                    webHookService.updateWebHookStatus(webhookId, WebHookStatus.FAILED);
+                }
                 return ResponseEntity.status(400).body("Missing or invalid institute_id in metadata");
             }
 
             String webhookSecret = getWebhookSecret(instituteId);
             String apiKey = getApiKey(instituteId);
-            System.out.println(webhookSecret);
             if (webhookSecret == null) {
                 log.warn("Webhook secret not found for institute: {}", instituteId);
+                if (webhookId != null) {
+                    webHookService.updateWebHookStatus(webhookId, WebHookStatus.FAILED);
+                }
                 return ResponseEntity.status(404).body("Unknown institute");
             }
 
             Event event = verifySignature(payload, sigHeader, webhookSecret, instituteId);
             if (event == null) {
+                if (webhookId != null) {
+                    webHookService.updateWebHookStatus(webhookId, WebHookStatus.FAILED);
+                }
                 return ResponseEntity.status(400).body("Invalid signature");
             }
 
-            Invoice invoice = extractInvoiceFromPayload(event,apiKey);
+            Invoice invoice = extractInvoiceFromPayload(event, apiKey);
 
-            // Extract orderId from line item metadata (not top-level invoice metadata)
             String orderId = null;
             if (invoice.getLines() != null &&
                     invoice.getLines().getData() != null &&
@@ -76,6 +82,9 @@ public class StripeWebHookService {
 
             if (orderId == null) {
                 log.warn("Missing orderId in line item metadata");
+                if (webhookId != null) {
+                    webHookService.updateWebHookStatus(webhookId, WebHookStatus.FAILED);
+                }
                 return ResponseEntity.status(400).body("Missing orderId in invoice line item metadata");
             }
 
@@ -89,7 +98,7 @@ public class StripeWebHookService {
                 }
             }
 
-            webHookService.updateWebHook(webhookId, PaymentGateway.STRIPE.name(), event.getType(), orderId);
+            webHookService.updateWebHook(webhookId, payload, orderId, event.getType());
             paymentLogService.updatePaymentLog(orderId, paymentStatus);
             webHookService.updateWebHookStatus(webhookId, WebHookStatus.PROCESSED);
 

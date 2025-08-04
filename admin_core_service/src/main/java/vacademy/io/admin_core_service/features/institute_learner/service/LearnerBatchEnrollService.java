@@ -48,7 +48,7 @@ public class LearnerBatchEnrollService {
     }
 
     public void shiftLearnerFromInvitedToActivePackageSessions(List<String>packageSessionIds, String userId,String enrollInviteId) {
-        List<StudentSessionInstituteGroupMapping>studentSessionInstituteGroupMappings = studentSessionRepository.findByPackageSession_IdInAndUserIdAndStatusIn(
+        List<StudentSessionInstituteGroupMapping>studentSessionInstituteGroupMappings = studentSessionRepository.findByDestinationPackageSession_IdInAndUserIdAndStatusIn(
                 packageSessionIds,userId,List.of(LearnerStatusEnum.INVITED.name()));
         System.out.println("size of student session mappings: "+studentSessionInstituteGroupMappings.size());
         for (StudentSessionInstituteGroupMapping studentSessionInstituteGroupMapping:studentSessionInstituteGroupMappings){

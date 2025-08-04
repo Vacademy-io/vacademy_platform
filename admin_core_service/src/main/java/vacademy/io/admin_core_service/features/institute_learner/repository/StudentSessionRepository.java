@@ -136,5 +136,8 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
             @Param("statusList") List<String> statusList
     );
 
-    List<StudentSessionInstituteGroupMapping> findByPackageSession_IdInAndUserIdAndStatusIn(List<String> packageSessionIds, String userId, List<String> status);
-}
+    List<StudentSessionInstituteGroupMapping> findByDestinationPackageSession_IdInAndUserIdAndStatusIn(
+            List<String> destinationPackageSessionIds,
+            String userId,
+            List<String> status
+    );}

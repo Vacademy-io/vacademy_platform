@@ -253,7 +253,7 @@ export const registerUser = async (userData: RegisterUserRequest): Promise<Regis
 export const getUserDetailsByEmail = async (email: string): Promise<UserDetailsByEmailResponse> => {
   try {
     const response = await axios.post(
-      `${BASE_URL}/auth-service/open/user-details/by-email?emailid=${encodeURIComponent(email)}`,
+      `${BASE_URL}/auth-service/open/user-details/by-email?emailId=${encodeURIComponent(email)}`,
       {},
       {
         headers: {

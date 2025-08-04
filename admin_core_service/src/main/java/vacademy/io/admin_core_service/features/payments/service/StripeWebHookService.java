@@ -52,6 +52,7 @@ public class StripeWebHookService {
             }
 
             String webhookSecret = getWebhookSecret(instituteId);
+            String apiKey = getApiKey(instituteId);
             System.out.println(webhookSecret);
             if (webhookSecret == null) {
                 log.warn("Webhook secret not found for institute: {}", instituteId);
@@ -63,7 +64,7 @@ public class StripeWebHookService {
                 return ResponseEntity.status(400).body("Invalid signature");
             }
 
-            Invoice invoice = extractInvoiceFromPayload(event);
+            Invoice invoice = extractInvoiceFromPayload(event,apiKey);
 
             // Extract orderId from line item metadata (not top-level invoice metadata)
             String orderId = null;
@@ -151,6 +152,12 @@ public class StripeWebHookService {
         return gatewayData != null ? (String) gatewayData.get("webhookSecret") : null;
     }
 
+    private String getApiKey(String instituteId) {
+        Map<String, Object> gatewayData = institutePaymentGatewayMappingService
+                .findInstitutePaymentGatewaySpecifData(PaymentGateway.STRIPE.name(), instituteId);
+        return gatewayData != null ? (String) gatewayData.get("apiKey") : null;
+    }
+
     private Event verifySignature(String payload, String sigHeader, String secret, String instituteId) {
         try {
             Event event = Webhook.constructEvent(payload, sigHeader, secret);
@@ -163,13 +170,16 @@ public class StripeWebHookService {
         }
     }
 
-    private Invoice extractInvoiceFromPayload(Event event) {
+    private Invoice extractInvoiceFromPayload(Event event, String apiKey) {
         if (!event.getType().startsWith("invoice.")) {
             log.warn("Unhandled event type received: {}", event.getType());
             throw new VacademyException("Unhandled event type: " + event.getType());
         }
 
         try {
+            // Set the Stripe API key dynamically for the current institute
+            com.stripe.Stripe.apiKey = apiKey;
+
             JsonNode eventJson = objectMapper.readTree(event.toJson());
             String invoiceId = eventJson.at("/data/object/invoice").asText();
 
@@ -186,9 +196,8 @@ public class StripeWebHookService {
             return invoice;
 
         } catch (Exception e) {
-            e.printStackTrace();
             log.error("Failed to retrieve full invoice from Stripe", e);
-            throw new VacademyException("Failed to retrieve full invoice from Stripe");
+            throw new VacademyException("Failed to retrieve full invoice from Stripe"+e.getMessage());
         }
     }
 }

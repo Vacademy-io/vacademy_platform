@@ -111,19 +111,28 @@ public class AttendanceReportService {
         String name = (filter.getName() != null && !filter.getName().trim().isEmpty())
                 ? filter.getName().trim()
                 : null;
-        Page<AttendanceReportProjection> flatDataPage =
-                liveSessionParticipantRepository.getAttendanceReportWithFilters(
-                        name,
-                        filter.getStartDate(),
-                        filter.getEndDate(),
-                        filter.getBatchIds()==null?new ArrayList():filter.getBatchIds(),
-                        filter.getLiveSessionIds()==null?new ArrayList():filter.getLiveSessionIds(),
-                        pageable
-                );
 
+        List<String> batchIds = filter.getBatchIds() != null ? filter.getBatchIds() : Collections.emptyList();
+        List<String> liveSessionIds = filter.getLiveSessionIds() != null ? filter.getLiveSessionIds() : Collections.emptyList();
+        Page<String> studentIdsPage = liveSessionParticipantRepository.findDistinctStudentIdsWithFilters(
+                name,
+                filter.getStartDate(),
+                filter.getEndDate(),
+                batchIds,
+                batchIds.size(),
+                liveSessionIds,
+                liveSessionIds.size(),
+                pageable
+        );
+
+        if (studentIdsPage.isEmpty()) {
+            return new PageImpl<>(Collections.emptyList(), pageable, 0);
+        }
+        List<AttendanceReportProjection> attendanceRecords = liveSessionParticipantRepository.getAttendanceReportForStudentIds(
+                studentIdsPage.getContent()
+        );
         Map<String, StudentAttendanceDTO> groupedData = new LinkedHashMap<>();
-
-        for (AttendanceReportProjection record : flatDataPage.getContent()) {
+        for (AttendanceReportProjection record : attendanceRecords) {
             groupedData.computeIfAbsent(record.getStudentId(), id -> {
                 StudentAttendanceDTO student = new StudentAttendanceDTO();
                 student.setStudentId(id);
@@ -151,16 +160,12 @@ public class AttendanceReportService {
 
             groupedData.get(record.getStudentId()).getSessions().add(details);
         }
-
         return new PageImpl<>(
                 new ArrayList<>(groupedData.values()),
                 pageable,
-                flatDataPage.getTotalElements()
+                studentIdsPage.getTotalElements()
         );
     }
-
-
-
     public List<StudentAttendanceDTO> getGroupedAttendanceReport(String batchSessionId , LocalDate startDate , LocalDate endDate) {
         List<AttendanceReportProjection> flatData =
                 liveSessionParticipantRepository.getAttendanceReportWithinDateRange(batchSessionId , startDate , endDate);

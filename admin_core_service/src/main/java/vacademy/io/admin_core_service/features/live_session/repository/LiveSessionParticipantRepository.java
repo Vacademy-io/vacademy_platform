@@ -105,78 +105,92 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
             @Param("startDate") LocalDate startDate,
             @Param("endDate") LocalDate endDate
     );
-
     @Query(
             value = """
-        SELECT 
-            s.user_id AS studentId,
-            s.full_name AS fullName,
-            s.email AS email,
-            s.mobile_number AS mobileNumber,
-            s.gender AS gender,
-            s.date_of_birth AS dateOfBirth,
-            m.institute_enrollment_number AS instituteEnrollmentNumber,
-            m.status AS enrollmentStatus,
-            lsl.status AS attendanceStatus,
-            lsl.details AS attendanceDetails,
-            lsl.created_at AS attendanceTimestamp,
-            lsp.session_id AS sessionId,
-            ss.id AS scheduleId,
-            ls.title AS title,
-            ss.meeting_date AS meetingDate,
-            ss.start_time AS startTime,
-            ss.last_entry_time AS lastEntryTime
+        SELECT DISTINCT s.user_id AS studentId
         FROM live_session_participants lsp
         JOIN student_session_institute_group_mapping m
             ON m.package_session_id = lsp.source_id
-            AND lsp.source_type = 'BATCH' 
+            AND lsp.source_type = 'BATCH'
             AND m.status = 'ACTIVE'
-        JOIN student s
-            ON s.user_id = m.user_id
-        JOIN session_schedules ss
-            ON ss.session_id = lsp.session_id
-        JOIN live_session ls
-            ON ls.id = lsp.session_id 
-        LEFT JOIN live_session_logs lsl
-            ON lsl.user_source_id = s.user_id
-            AND lsl.user_source_type = 'USER'
-            AND lsl.session_id = lsp.session_id
-            AND lsl.schedule_id = ss.id
-            AND lsl.log_type = 'ATTENDANCE_RECORDED'
+        JOIN student s ON s.user_id = m.user_id
+        JOIN session_schedules ss ON ss.session_id = lsp.session_id
         WHERE ss.meeting_date BETWEEN :startDate AND :endDate
           AND (:name IS NULL OR LOWER(s.full_name) LIKE LOWER(CONCAT('%', :name, '%')))
-          AND (:batchIds) IS NULL OR lsp.source_id IN (:batchIds)
-          AND (:liveSessionIds) IS NULL OR lsp.session_id IN(:liveSessionIds)
-        ORDER BY LOWER(s.full_name), ss.meeting_date
+          AND (:batchIdsSize = 0 OR lsp.source_id IN (:batchIds))
+          AND (:liveSessionIdsSize = 0 OR lsp.session_id IN (:liveSessionIds))
         """,
             countQuery = """
-        SELECT COUNT(*)
+        SELECT COUNT(DISTINCT s.user_id)
         FROM live_session_participants lsp
         JOIN student_session_institute_group_mapping m
             ON m.package_session_id = lsp.source_id
-            AND lsp.source_type = 'BATCH' 
+            AND lsp.source_type = 'BATCH'
             AND m.status = 'ACTIVE'
-        JOIN student s
-            ON s.user_id = m.user_id
-        JOIN session_schedules ss
-            ON ss.session_id = lsp.session_id
+        JOIN student s ON s.user_id = m.user_id
+        JOIN session_schedules ss ON ss.session_id = lsp.session_id
         WHERE ss.meeting_date BETWEEN :startDate AND :endDate
-          AND (:name) IS NULL OR LOWER(s.full_name) LIKE LOWER(CONCAT('%', :name, '%'))
-          AND (:batchIds) IS NULL OR lsp.source_id IN (:batchIds)
-          AND (:liveSessionIds )IS NULL OR lsp.session_id IN(:liveSessionIds)
+          AND (:name IS NULL OR LOWER(s.full_name) LIKE LOWER(CONCAT('%', :name, '%')))
+          AND (:batchIdsSize = 0 OR lsp.source_id IN (:batchIds))
+          AND (:liveSessionIdsSize = 0 OR lsp.session_id IN (:liveSessionIds))
         """,
             nativeQuery = true
     )
-    Page<AttendanceReportProjection> getAttendanceReportWithFilters(
+    Page<String> findDistinctStudentIdsWithFilters(
             @Param("name") String name,
             @Param("startDate") LocalDate startDate,
             @Param("endDate") LocalDate endDate,
             @Param("batchIds") List<String> batchIds,
+            @Param("batchIdsSize") int batchIdsSize,
             @Param("liveSessionIds") List<String> liveSessionIds,
+            @Param("liveSessionIdsSize") int liveSessionIdsSize,
             Pageable pageable
     );
 
     @Query(value = """
+    SELECT 
+        s.user_id AS studentId,
+        s.full_name AS fullName,
+        s.email AS email,
+        s.mobile_number AS mobileNumber,
+        s.gender AS gender,
+        s.date_of_birth AS dateOfBirth,
+        m.institute_enrollment_number AS instituteEnrollmentNumber,
+        m.status AS enrollmentStatus,
+        lsl.status AS attendanceStatus,
+        lsl.details AS attendanceDetails,
+        lsl.created_at AS attendanceTimestamp,
+        lsp.session_id AS sessionId,
+        ss.id AS scheduleId,
+        ls.title AS title,
+        ss.meeting_date AS meetingDate,
+        ss.start_time AS startTime,
+        ss.last_entry_time AS lastEntryTime
+    FROM live_session_participants lsp
+    JOIN student_session_institute_group_mapping m
+        ON m.package_session_id = lsp.source_id
+        AND lsp.source_type = 'BATCH' 
+        AND m.status = 'ACTIVE'
+    JOIN student s
+        ON s.user_id = m.user_id
+    JOIN session_schedules ss
+        ON ss.session_id = lsp.session_id
+    JOIN live_session ls
+        ON ls.id = lsp.session_id 
+    LEFT JOIN live_session_logs lsl
+        ON lsl.user_source_id = s.user_id
+        AND lsl.user_source_type = 'USER'
+        AND lsl.session_id = lsp.session_id
+        AND lsl.schedule_id = ss.id
+        AND lsl.log_type = 'ATTENDANCE_RECORDED'
+    WHERE s.user_id IN (:studentIds)
+    ORDER BY LOWER(s.full_name), ss.meeting_date
+""",nativeQuery = true)
+    List<AttendanceReportProjection> getAttendanceReportForStudentIds(
+            @Param("studentIds") List<String> studentIds
+    );
+
+  @Query(value = """
     SELECT DISTINCT ON (ss.id, ls.id)
         ss.id AS scheduleId,
         ss.meeting_date AS meetingDate,

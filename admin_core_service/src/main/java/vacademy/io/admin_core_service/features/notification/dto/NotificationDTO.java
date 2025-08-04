@@ -16,3 +16,4 @@ public class NotificationDTO {
     private String sourceId;
     private List<NotificationToUserDTO> users;
 }
+

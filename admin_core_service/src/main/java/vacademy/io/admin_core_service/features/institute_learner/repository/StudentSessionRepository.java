@@ -8,6 +8,7 @@ import org.springframework.data.repository.CrudRepository;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import vacademy.io.admin_core_service.features.institute_learner.dto.LearnerBatchProjection;
+import vacademy.io.admin_core_service.features.institute_learner.dto.UserNameEmailAndMobileNumber;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
 
 import java.util.Date;
@@ -35,6 +36,19 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
             @Param("packageSessionId") String packageSessionId,
             @Param("destinationPackageSessionId") String destinationPackageSessionId
     );
+
+    @Query(value = """
+    SELECT s.full_name AS fullName, 
+           s.email AS email, 
+           s.mobile_number AS mobileNumber
+    FROM student_session_institute_group_mapping ssigm
+    INNER JOIN student s 
+        ON ssigm.user_id = s.user_id
+    WHERE ssigm.package_session_id IN (:packageSessionIds)
+      AND ssigm.status = 'ACTIVE'
+""", nativeQuery = true)
+    List<UserNameEmailAndMobileNumber> findStudentsByPackageSessionIds(@Param("packageSessionIds") List<String> packageSessionIds);
+
 
     @Modifying
     @Transactional

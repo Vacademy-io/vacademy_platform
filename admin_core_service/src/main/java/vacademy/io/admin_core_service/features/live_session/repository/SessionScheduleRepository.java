@@ -8,12 +8,14 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import vacademy.io.admin_core_service.features.live_session.dto.LiveSessionStep1RequestDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.ScheduleDTO;
+import vacademy.io.admin_core_service.features.live_session.entity.ScheduleNotification;
 import vacademy.io.admin_core_service.features.live_session.entity.SessionSchedule;
 import vacademy.io.admin_core_service.features.presentation_mode.learner.dto.LiveSessionDto;
 
 import java.sql.Time;
 import java.sql.Timestamp;
 import java.sql.Date;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -146,4 +148,25 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
         LIMIT 1
     """, nativeQuery = true)
     String findEarliestScheduleIdBySessionId(@Param("sessionId") String sessionId);
+
+    @Query(value = """
+    SELECT 
+        ss.id AS id,
+        ss.session_id AS sessionId,
+        ss.meeting_date AS meetingDate,
+        ss.start_time AS scheduleStartTime
+    FROM session_schedules ss
+    WHERE ss.session_id = :sessionId
+""", nativeQuery = true)
+    List<ScheduleDetailsProjectionBySessionId> findSchedulesBySessionIdForNotification(@Param("sessionId") String sessionId);
+
+    public interface ScheduleDetailsProjectionBySessionId {
+        String getId();
+        String getSessionId();
+        java.sql.Date getMeetingDate();
+        java.sql.Time getScheduleStartTime();
+    }
+
+
 }
+

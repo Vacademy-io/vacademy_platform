@@ -40,7 +40,7 @@ public class AttendanceReport {
     public ResponseEntity<Page<StudentAttendanceDTO>> getAttendanceFilterRequest(@RequestBody AttendanceFilterRequest attendanceFilterRequest, @RequestParam(defaultValue = "0") int page,
                                                                  @RequestParam(defaultValue = "10") int size) {
         Pageable pageable = PageRequest.of(page, size); // page 0, size 10
-        return  new ResponseEntity<>(attendanceReportService.getAllByAttendanceFilterRequest(attendanceFilterRequest, pageable), HttpStatus.OK);
+        return new ResponseEntity<>(attendanceReportService.getAllByAttendanceFilterRequest(attendanceFilterRequest, pageable),HttpStatus.OK);
 
     }
 

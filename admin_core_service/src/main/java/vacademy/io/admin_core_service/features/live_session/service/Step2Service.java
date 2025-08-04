@@ -9,14 +9,21 @@ import vacademy.io.admin_core_service.features.common.entity.CustomFields;
 import vacademy.io.admin_core_service.features.common.entity.InstituteCustomField;
 import vacademy.io.admin_core_service.features.common.repository.InstituteCustomFieldRepository;
 import vacademy.io.admin_core_service.features.common.repository.CustomFieldRepository;
+import vacademy.io.admin_core_service.features.institute_learner.dto.UserNameEmailAndMobileNumber;
+import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
+import vacademy.io.admin_core_service.features.live_session.dto.LiveClassNotification;
 import vacademy.io.admin_core_service.features.live_session.dto.LiveSessionStep2RequestDTO;
 import vacademy.io.admin_core_service.features.live_session.entity.*;
 import vacademy.io.admin_core_service.features.live_session.enums.*;
 import vacademy.io.admin_core_service.features.live_session.repository.*;
+import vacademy.io.admin_core_service.features.notification.dto.NotificationDTO;
+import vacademy.io.admin_core_service.features.notification.dto.NotificationToUserDTO;
+import vacademy.io.admin_core_service.features.notification_service.dto.WhatsappRequest;
+import vacademy.io.admin_core_service.features.notification_service.service.NotificationService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
-import java.util.UUID;
+import java.util.*;
 
 @Service
 public class Step2Service {
@@ -42,6 +49,12 @@ public class Step2Service {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private StudentSessionRepository studentSessionRepository;
+
+    @Autowired
+    private NotificationService notificationService;
+
     public Boolean step2AddService(LiveSessionStep2RequestDTO request, CustomUserDetails user) {
         LiveSession session = getSessionOrThrow(request.getSessionId());
 
@@ -49,11 +62,118 @@ public class Step2Service {
         processNotificationActions(request, session.getId());
         linkParticipants(request);
         processCustomFields(request);
+        sendLiveClassNotifications(request,session);
 
         session.setStatus(LiveSessionStatus.LIVE.name());
         sessionRepository.save(session);
 
         return true;
+    }
+    private void sendLiveClassNotifications(LiveSessionStep2RequestDTO request, LiveSession session) {
+        List<UserNameEmailAndMobileNumber> students = new ArrayList<>();
+
+        // PRIVATE access → fetch only batch students
+        if ("PRIVATE".equalsIgnoreCase(request.getAccessType()) && request.getPackageSessionIds() != null) {
+            students = studentSessionRepository.findStudentsByPackageSessionIds(request.getPackageSessionIds());
+        }
+        // PUBLIC access → fetch all students or handle open join link
+        else if ("PUBLIC".equalsIgnoreCase(request.getAccessType())) {
+            if (request.getPackageSessionIds() != null && !request.getPackageSessionIds().isEmpty()) {
+                students = studentSessionRepository.findStudentsByPackageSessionIds(request.getPackageSessionIds());
+            }
+        }
+
+        if (students.isEmpty()) {
+            return; // No students to notify
+        }
+
+        if (request.getAddedNotificationActions() != null) {
+            for (LiveSessionStep2RequestDTO.NotificationActionDTO action : request.getAddedNotificationActions()) {
+
+                int offsetMinutes = action.getType() == NotificationTypeEnum.BEFORE_LIVE
+                        ? extractMinutes(action.getTime()) : 0;
+
+                String joinLink = session.getDefaultMeetLink();
+                if ("PUBLIC".equalsIgnoreCase(request.getAccessType()) && request.getJoinLink() != null) {
+                    joinLink = request.getJoinLink();
+                }
+
+                // Common placeholders
+                Map<String, String> basePlaceholders = new HashMap<>();
+//                basePlaceholders.put("joinLink", joinLink);
+
+                // ------------ EMAIL NOTIFICATION ------------
+                if (action.getNotifyBy() != null && action.getNotifyBy().isMail()) {
+                    NotificationDTO notificationDTO = new NotificationDTO();
+                    notificationDTO.setBody("Hello {{fullName}}, you have a live class: " + session.getTitle()
+                            + ". Join here: {{joinLink}}");
+                    notificationDTO.setSubject("Live Class Invitation");
+                    notificationDTO.setSource("LIVE_SESSION");
+                    notificationDTO.setNotificationType("EMAIL");
+                    notificationDTO.setSourceId(session.getId());
+
+                    List<NotificationToUserDTO> emailUsers = new ArrayList<>();
+                    for (UserNameEmailAndMobileNumber student : students) {
+                        NotificationToUserDTO userDTO = new NotificationToUserDTO();
+                        userDTO.setUserId(null);
+                        userDTO.setChannelId("tapeshchawle@gmail.com");
+                        Map<String, String> placeholders = new HashMap<>(basePlaceholders);
+                        placeholders.put("fullName", student.getFullName());
+                        placeholders.put("joinLink", joinLink+"/"+userDTO.getUserId());
+                        userDTO.setPlaceholders(placeholders);
+                        emailUsers.add(userDTO);
+                    }
+                    notificationDTO.setUsers(emailUsers);
+
+                    if (action.getType() == NotificationTypeEnum.ON_CREATE) {
+                        notificationService.sendEmailToUsers(notificationDTO);
+                    } else {
+                        scheduleNotification(notificationDTO, offsetMinutes);
+                    }
+                }
+
+                // ------------ WHATSAPP NOTIFICATION ------------
+                if (action.getNotifyBy() != null && action.getNotifyBy().isWhatsapp()) {
+                    WhatsappRequest whatsappRequest = new WhatsappRequest();
+                    whatsappRequest.setTemplateName("live_class_invite"); // Your WhatsApp template name
+                    whatsappRequest.setLanguageCode("en_US");
+                    whatsappRequest.setHeaderType(null);
+                    whatsappRequest.setHeaderParams(null);
+
+                    List<Map<String, Map<String, String>>> bodyParams = new ArrayList<>();
+                    for (UserNameEmailAndMobileNumber student : students) {
+                        Map<String, String> params = new HashMap<>();
+                        params.put("1", student.getFullName());
+                        params.put("2", session.getTitle());
+                        params.put("3", joinLink);
+
+                        Map<String, Map<String, String>> singleUser = new HashMap<>();
+                        singleUser.put("916263442911", params);
+                        bodyParams.add(singleUser);
+                    }
+                    whatsappRequest.setUserDetails(bodyParams);
+
+                    if (action.getType() == NotificationTypeEnum.ON_CREATE) {
+                        notificationService.sendWhatsappToUsers(whatsappRequest);
+                    } else {
+                        scheduleWhatsappNotification(whatsappRequest, offsetMinutes);
+                    }
+                }
+            }
+        }
+    }
+    private void scheduleWhatsappNotification(WhatsappRequest request, int offsetMinutes) {
+        // TODO: Integrate with Quartz / DB cron scheduler
+        // For now, just print scheduled time
+        System.out.println("Scheduled WhatsApp notification in {} minutes for template {}"+offsetMinutes+" "+request.getTemplateName());
+        // Store in schedule_notifications table
+    }
+    private void scheduleNotification(NotificationDTO notificationDTO, int offsetMinutes) {
+        // TODO: Integrate with Quartz / DB cron scheduler
+        // For now, just print scheduled time
+        System.out.println("Notification scheduled for " + offsetMinutes + " minutes before class.");
+        // Store in schedule_notifications table
+
     }
 
     private LiveSession getSessionOrThrow(String sessionId) {
@@ -118,12 +238,6 @@ public class Step2Service {
         notification.setOffsetMinutes(dto.getType() == NotificationTypeEnum.BEFORE_LIVE
                 ? extractMinutes(dto.getTime()) : 0);
     }
-    // TODO : for later
-//    private String resolveChannel(LiveSessionStep2RequestDTO.NotifyBy notifyBy) {
-//        if (notifyBy.isMail()) return NotificationMediaTypeEnum.MAIL.name();
-//        if (notifyBy.isWhatsapp()) return NotificationMediaTypeEnum.WHATSAPP.name();
-//        return NotificationMediaTypeEnum.MAIL.name();
-//    }
 
     private void linkParticipants(LiveSessionStep2RequestDTO request) {
         if (request.getPackageSessionIds() != null) {

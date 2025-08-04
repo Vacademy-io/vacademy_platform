@@ -5,7 +5,14 @@ import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Award, Target, Info, GraduationCap, BookOpen, RotateCcw } from "lucide-react";
+import {
+    Award,
+    Target,
+    Info,
+    GraduationCap,
+    BookOpen,
+    RotateCcw,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { convertInviteCustomFields, safeJsonParse } from "./-utils/helper";
 import { useInstituteQuery } from "@/services/signup-api";
@@ -133,7 +140,6 @@ const EnrollByInvite = () => {
     });
 
     form.watch();
-    console.log(form.getValues());
 
     function onSubmit(values: FormValues) {
         console.log(values);
@@ -174,7 +180,7 @@ const EnrollByInvite = () => {
     if (isLoading || isInstituteLoading) return <DashboardLoader />;
 
     return (
-        <div className="w-full h-full bg-gradient-to-br from-slate-50 to-blue-50 py-8 px-4 sm:px-6 lg:px-8">
+        <div className="w-full h-full bg-gradient-to-br from-slate-50 to-blue-50 py-8 px-4 sm:px-6 lg:px-8 pb-24">
             <div className="max-w-[80%] mx-auto space-y-8">
                 {/* Course Information Card */}
                 <Card className="overflow-hidden shadow-xl border-0 bg-white/80 backdrop-blur-sm w-full">
@@ -312,7 +318,7 @@ const EnrollByInvite = () => {
                         <div className="flex justify-center items-center w-full">
                             <div className="flex justify-center items-start w-full flex-col bg-white rounded-xl p-4 py-0  mx-4 mb-4">
                                 <FormProvider {...form}>
-                                    <form className="w-full flex flex-col gap-6 mt-4 sm:max-h-[70vh] sm:overflow-auto md:max-h-[100vh]">
+                                    <form className="w-full flex flex-col gap-6 mt-4 max-h-full overflow-auto">
                                         {Object.entries(form.getValues()).map(
                                             ([key, value]) =>
                                                 key === "phone_number" ? (
@@ -419,7 +425,7 @@ const EnrollByInvite = () => {
                                                     !form.getValues("full_name")
                                                         .value
                                                 }
-                                                className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl"
+                                                className="w-full md:w-fit bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl"
                                             >
                                                 <GraduationCap className="w-5 h-5 mr-2" />
                                                 Register
@@ -439,6 +445,22 @@ const EnrollByInvite = () => {
                         </div>
                     </CardContent>
                 </Card>
+            </div>
+
+            {/* Fixed bottom container with border */}
+            <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg z-50">
+                <div className="max-w-[80%] mx-auto px-4 sm:px-6 lg:px-8 py-4 md:flex md:justify-center">
+                    <MyButton
+                        type="button"
+                        buttonType="secondary"
+                        scale="large"
+                        layoutVariant="default"
+                        className="w-full md:w-fit text-white font-semibold rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl"
+                    >
+                        <GraduationCap className="w-5 h-5 mr-2" />
+                        Enroll Now
+                    </MyButton>
+                </div>
             </div>
         </div>
     );

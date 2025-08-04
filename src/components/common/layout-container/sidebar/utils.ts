@@ -11,6 +11,7 @@ import {
   CreditCard,
   Headset,
   MonitorPlay,
+  Notepad,
   Password,
   UserCircle,
   UserCircleMinus,
@@ -157,6 +158,11 @@ export async function filterMenuItems(SidebarItemsData: SidebarItemsType[]) {
         icon: MonitorPlay,
         title: "My Classes",
         to: "/study-library/live-class",
+      },
+      {
+        icon: Notepad,
+        title: "Attendance",
+        to: "/learning-centre/attendance",
       },
       {
         icon: UsersThree,

@@ -169,7 +169,7 @@ const EnrollByInvite = () => {
                                 variant="outline"
                                 className="px-3 py-1 text-sm font-medium border-amber-200 text-amber-700"
                             >
-                                {/* Level: {courseData.level} */}
+                                Level:&nbsp;
                                 {getDetailsFromPackageSessionId({
                                     packageSessionId:
                                         inviteData

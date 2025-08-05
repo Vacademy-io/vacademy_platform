@@ -263,7 +263,7 @@ const EnrollByInvite = () => {
                     <ReviewStep
                         courseData={{
                             course: courseData.course,
-                            courseBanner: courseData.courseBanner
+                            courseBanner: courseData.courseBanner,
                         }}
                         selectedPayment={enrollmentData.selectedPayment}
                         registrationData={enrollmentData.registrationData}
@@ -275,7 +275,7 @@ const EnrollByInvite = () => {
                     <PaymentInfoStep
                         courseData={{
                             course: courseData.course,
-                            courseBanner: courseData.courseBanner
+                            courseBanner: courseData.courseBanner,
                         }}
                         selectedPayment={enrollmentData.selectedPayment}
                         paymentInfo={enrollmentData.paymentInfo}
@@ -334,31 +334,27 @@ const EnrollByInvite = () => {
 
             {/* Fixed bottom container with border - Only show in registration step */}
             {currentStep === 0 && (
-                <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg z-50">
-                    <div className="max-w-[80%] mx-auto px-4 sm:px-6 lg:px-8 py-4 md:flex md:justify-center">
-                        <MyButton
-                            type="button"
-                            buttonType="secondary"
-                            scale="large"
-                            layoutVariant="default"
-                            onClick={() => {
-                                const registrationCard =
-                                    document.getElementById(
-                                        "registration-card"
-                                    );
-                                if (registrationCard) {
-                                    registrationCard.scrollIntoView({
-                                        behavior: "smooth",
-                                        block: "start",
-                                    });
-                                }
-                            }}
-                            className="w-full md:w-fit text-white font-semibold rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl"
-                        >
-                            <GraduationCap className="w-5 h-5 mr-2" />
-                            Enroll Now
-                        </MyButton>
-                    </div>
+                <div className="flex items-center justify-center py-4 fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg z-50">
+                    <MyButton
+                        type="button"
+                        buttonType="secondary"
+                        scale="large"
+                        layoutVariant="default"
+                        onClick={() => {
+                            const registrationCard =
+                                document.getElementById("registration-card");
+                            if (registrationCard) {
+                                registrationCard.scrollIntoView({
+                                    behavior: "smooth",
+                                    block: "start",
+                                });
+                            }
+                        }}
+                        className="text-white font-semibold rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl"
+                    >
+                        <GraduationCap className="w-5 h-5 mr-2" />
+                        Enroll Now
+                    </MyButton>
                 </div>
             )}
         </div>

@@ -326,7 +326,10 @@ export const handlePostSignupAuth = async (
   accessToken: string,
   refreshToken: string,
   instituteId: string,
-  navigate: any
+  navigate: any,
+  isModalSignup?: boolean,
+  type?: string,
+  courseId?: string
 ) => {
   try {
     // Import required functions
@@ -353,24 +356,29 @@ export const handlePostSignupAuth = async (
     // Fetch and store institute details
     const instituteDetails = await fetchAndStoreInstituteDetails(instituteId, userId);
 
-    // Try to enroll user in default packages if available
-    if (instituteDetails?.batches_for_sessions?.length > 0) {
-      try {
-        await enrollUserInDefaultPackages(instituteId, userId, instituteDetails.batches_for_sessions);
-      } catch (enrollmentError) {
-        console.warn("Failed to enroll in default packages:", enrollmentError);
-        // Continue with the flow even if enrollment fails
-      }
-    }
-
     // Fetch and store student details
     await fetchAndStoreStudentDetails(instituteId, userId);
 
     // Show success message
     toast.success("Successfully signed up and logged in!");
 
-    // Redirect to dashboard
-    navigate({ to: "/dashboard" });
+    // Determine redirect URL based on context
+    let redirectUrl = "/dashboard";
+    
+    if (type === "courseDetailsPage" && courseId) {
+      redirectUrl = `/study-library/courses/course-details?courseId=${courseId}&selectedTab=ALL`;
+    } else if (type === "courseDetailsPage") {
+      redirectUrl = "/study-library/courses";
+    }
+    
+    // Open in new tab if signup originated from course-related pages or if type is courseDetailsPage
+    if (type === "courseDetailsPage" || (type && type !== "mainSignup")) {
+      window.open(redirectUrl, '_blank');
+    }
+    // Only navigate to dashboard if this is NOT a modal signup (i.e., main signup page)
+    if (!isModalSignup || type === "mainSignup") {
+      navigate({ to: redirectUrl });
+    }
 
   } catch (error) {
     console.error("Error in post-signup authentication:", error);
@@ -379,53 +387,4 @@ export const handlePostSignupAuth = async (
   }
 };
 
-// Function to enroll user in default packages
-export const enrollUserInDefaultPackages = async (
-  instituteId: string,
-  userId: string,
-  availableBatches: any[]
-) => {
-  try {
-    // Filter for active batches with available packages
-    const activeBatches = availableBatches.filter(batch => 
-      batch.status === "ACTIVE" && 
-      batch.package_dto?.is_course_published_to_catalaouge
-    );
-
-    if (activeBatches.length === 0) {
-      console.log("No active packages available for enrollment");
-      return;
-    }
-
-    // Select the first available package for enrollment
-    const defaultBatch = activeBatches[0];
-    const packageSessionId = defaultBatch.id;
-
-    // Prepare enrollment payload
-    const enrollmentPayload = {
-      institute_id: instituteId,
-      package_session_ids: [packageSessionId],
-      plan_id: null, // No specific plan for default enrollment
-      payment_option_id: null, // No payment for default enrollment
-      enroll_invite_id: null, // No invite for default enrollment
-      payment_initiation_request: null, // No payment for default enrollment
-      custom_field_values: []
-    };
-
-    // Import authenticated axios instance
-    const { default: authenticatedAxiosInstance } = await import("@/lib/auth/axiosInstance");
-    
-    // Call enrollment API
-    const response = await authenticatedAxiosInstance.post(
-      `${BASE_URL}/admin-core-service/v1/learner/enroll`,
-      enrollmentPayload
-    );
-
-    console.log("Successfully enrolled in default package:", response.data);
-    return response.data;
-
-  } catch (error) {
-    console.error("Error enrolling in default packages:", error);
-    throw error;
-  }
-}; 
+ 

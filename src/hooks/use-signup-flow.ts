@@ -52,7 +52,7 @@ const initialState: SignupState = {
   isRegistering: false,
 };
 
-export const useSignupFlow = () => {
+export const useSignupFlow = (isModalSignup?: boolean, type?: string, courseId?: string) => {
   const navigate = useNavigate();
   const [state, setState] = useState<SignupState>(initialState);
 
@@ -188,12 +188,15 @@ export const useSignupFlow = () => {
       // Call the registration API
       const response = await registerUser(registrationData);
 
-      // Handle post-signup authentication and redirect to dashboard
+      // Handle post-signup authentication and redirect
       await handlePostSignupAuth(
         response.accessToken,
         response.refreshToken,
         state.selectedInstitute.id,
-        navigate
+        navigate,
+        isModalSignup,
+        type,
+        courseId
       );
     } catch (error) {
       console.error("Registration failed:", error);

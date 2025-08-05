@@ -178,19 +178,6 @@ const EnrollByInvite = () => {
         }));
     };
 
-    const handleEmailChange = (email: string) => {
-        setEnrollmentData((prev) => ({
-            ...prev,
-            registrationData: {
-                ...prev.registrationData,
-                email: {
-                    ...prev.registrationData.email,
-                    value: email,
-                },
-            },
-        }));
-    };
-
     const handleNext = () => {
         if (currentStep < 4) {
             setCurrentStep(currentStep + 1);
@@ -266,24 +253,25 @@ const EnrollByInvite = () => {
                             courseBanner: courseData.courseBanner,
                         }}
                         selectedPayment={enrollmentData.selectedPayment}
-                        registrationData={enrollmentData.registrationData}
-                        onEmailChange={handleEmailChange}
                     />
                 );
             case 3:
                 return (
                     <PaymentInfoStep
-                        courseData={{
-                            course: courseData.course,
-                            courseBanner: courseData.courseBanner,
-                        }}
-                        selectedPayment={enrollmentData.selectedPayment}
                         paymentInfo={enrollmentData.paymentInfo}
                         onPaymentInfoChange={handlePaymentInfoChange}
                     />
                 );
             case 4:
-                return <SuccessStep courseName={courseData.course} />;
+                return (
+                    <SuccessStep
+                        courseName={courseData.course}
+                        approvalRequired={
+                            inviteData?.package_session_to_payment_options[0]
+                                ?.payment_option?.require_approval || false
+                        }
+                    />
+                );
             default:
                 return (
                     <RegistrationStep

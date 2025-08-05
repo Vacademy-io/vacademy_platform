@@ -1,18 +1,8 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { CreditCard, CheckCircle } from "lucide-react";
+import { CreditCard } from "lucide-react";
 import { MyInput } from "@/components/design-system/input";
-import { useState, useRef } from "react";
-import { getCurrencySymbol } from "./payment-selection-step";
-
-interface PaymentOption {
-    id: string;
-    name: string;
-    amount: number;
-    currency: string;
-    description: string;
-    duration: string;
-}
+import { useRef } from "react";
 
 interface PaymentInfo {
     cardholderName: string;
@@ -22,23 +12,15 @@ interface PaymentInfo {
 }
 
 interface PaymentInfoStepProps {
-    courseData: {
-        course: string;
-        courseBanner?: string;
-    };
-    selectedPayment: PaymentOption | null;
     paymentInfo: PaymentInfo;
     onPaymentInfoChange: (field: keyof PaymentInfo, value: string) => void;
 }
 
-const PaymentInfoStep = ({ 
-    courseData, 
-    selectedPayment, 
-    paymentInfo, 
-    onPaymentInfoChange 
+const PaymentInfoStep = ({
+    paymentInfo,
+    onPaymentInfoChange,
 }: PaymentInfoStepProps) => {
     const dateInputRef = useRef<HTMLInputElement>(null);
-    const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
     return (
         <div className="space-y-6">
             {/* Payment Form Card */}
@@ -53,7 +35,8 @@ const PaymentInfoStep = ({
                                 Payment Information
                             </h2>
                             <p className="text-gray-600 text-sm mt-1">
-                                Enter your card details to complete the enrollment
+                                Enter your card details to complete the
+                                enrollment
                             </p>
                         </div>
                     </div>
@@ -65,7 +48,12 @@ const PaymentInfoStep = ({
                             inputType="text"
                             inputPlaceholder="Cardholder Name"
                             input={paymentInfo.cardholderName}
-                            onChangeFunction={(e: any) => onPaymentInfoChange('cardholderName', e.target.value)}
+                            onChangeFunction={(e) =>
+                                onPaymentInfoChange(
+                                    "cardholderName",
+                                    e.target.value
+                                )
+                            }
                             required
                             size="large"
                             label="Cardholder Name"
@@ -75,7 +63,12 @@ const PaymentInfoStep = ({
                             inputType="text"
                             inputPlaceholder="1234 5678 9012 3456"
                             input={paymentInfo.cardNumber}
-                            onChangeFunction={(e: any) => onPaymentInfoChange('cardNumber', e.target.value)}
+                            onChangeFunction={(e) =>
+                                onPaymentInfoChange(
+                                    "cardNumber",
+                                    e.target.value
+                                )
+                            }
                             required
                             size="large"
                             label="Card Number"
@@ -84,43 +77,23 @@ const PaymentInfoStep = ({
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <label className="text-sm font-medium text-gray-700">
-                                    Expiry Date <span className="text-red-500">*</span>
+                                    Expiry Date{" "}
+                                    <span className="text-red-500">*</span>
                                 </label>
                                 <div className="relative">
                                     <input
                                         ref={dateInputRef}
                                         type="text"
-                                        value={paymentInfo.expiryDate || ''}
+                                        value={paymentInfo.expiryDate || ""}
                                         onChange={(e) => {
                                             const value = e.target.value;
                                             // Allow manual typing in MM/YY format
                                             if (value.length <= 5) {
-                                                onPaymentInfoChange('expiryDate', value);
+                                                onPaymentInfoChange(
+                                                    "expiryDate",
+                                                    value
+                                                );
                                             }
-                                        }}
-                                        onFocus={(e) => {
-                                            setIsDatePickerOpen(true);
-                                            // Convert MM/YY to YYYY-MM format for date picker
-                                            if (paymentInfo.expiryDate && paymentInfo.expiryDate.includes('/')) {
-                                                const [month, year] = paymentInfo.expiryDate.split('/');
-                                                const fullYear = `20${year}`;
-                                                e.target.type = 'month';
-                                                e.target.value = `${fullYear}-${month.padStart(2, '0')}`;
-                                            } else {
-                                                e.target.type = 'month';
-                                            }
-                                        }}
-                                        onBlur={(e) => {
-                                            setTimeout(() => {
-                                                setIsDatePickerOpen(false);
-                                                e.target.type = 'text';
-                                                // Format the date as MM/YY when user selects from picker
-                                                if (e.target.value && e.target.value.includes('-')) {
-                                                    const [year, month] = e.target.value.split('-');
-                                                    const formattedDate = `${parseInt(month)}/${year.slice(-2)}`;
-                                                    onPaymentInfoChange('expiryDate', formattedDate);
-                                                }
-                                            }, 200);
                                         }}
                                         placeholder="MM/YY"
                                         required
@@ -136,7 +109,12 @@ const PaymentInfoStep = ({
                                     <input
                                         type="text"
                                         value={paymentInfo.cvv}
-                                        onChange={(e) => onPaymentInfoChange('cvv', e.target.value)}
+                                        onChange={(e) =>
+                                            onPaymentInfoChange(
+                                                "cvv",
+                                                e.target.value
+                                            )
+                                        }
                                         placeholder="123"
                                         required
                                         maxLength={4}
@@ -148,83 +126,8 @@ const PaymentInfoStep = ({
                     </div>
                 </CardContent>
             </Card>
-
-            {/* Order Summary Card */}
-            <Card className="shadow-xl border-0 bg-white/80 backdrop-blur-sm">
-                <CardContent className="p-6 sm:p-8">
-                    <div className="flex items-start gap-2 sm:gap-3 mb-4">
-                        <div className="p-1.5 sm:p-2 bg-green-100 rounded-lg flex-shrink-0">
-                            <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" />
-                        </div>
-                        <div>
-                            <h2 className="text-lg sm:text-xl md:text-2xl font-semibold text-gray-900 leading-tight">
-                                Order Summary
-                            </h2>
-                            <p className="text-gray-600 text-sm mt-1">
-                                Review your order before proceeding to payment
-                            </p>
-                        </div>
-                    </div>
-
-                    <div className="space-y-0">
-                        {/* Course Banner and Name */}
-                        <div className="flex items-center gap-4 pb-5">
-                            {courseData.courseBanner && (
-                                <div className="w-16 h-12 rounded-lg overflow-hidden flex-shrink-0">
-                                    <img
-                                        src={courseData.courseBanner}
-                                        alt="Course Banner"
-                                        className="w-full h-full object-cover"
-                                    />
-                                </div>
-                            )}
-                            <div className="flex-1">
-                                <span>{courseData.course}</span>
-                            </div>
-                        </div>
-
-                        <Separator />
-
-                        {/* Plan and Duration */}
-                        <div className="flex items-center justify-between pt-4">
-                            <div>
-                                <span className="text-gray-600">Plan:</span>
-                            </div>
-                            <div>
-                                <span className="ml-2">
-                                    {selectedPayment?.duration}
-                                </span>
-                            </div>
-                        </div>
-
-  
-
-                        {/* Price */}
-                        <div className="flex items-center justify-between py-4">
-                            <span className="text-gray-600">Price:</span>
-                            <span className="text-gray-900">
-                                {getCurrencySymbol(selectedPayment?.currency || "")}
-                                {selectedPayment?.amount}
-                            </span>
-                        </div>
-
-                        <Separator />
-
-                        {/* Total */}
-                        <div className="flex items-center justify-between py-4">
-                            <span className="text-gray-700 font-bold">
-                                Total:
-                            </span>
-                            <span className="font-bold text-lg text-gray-900">
-                                {getCurrencySymbol(selectedPayment?.currency || "")}
-                                {selectedPayment?.amount}
-                            </span>
-                        </div>
-                    </div>
-                </CardContent>
-            </Card>
         </div>
     );
 };
 
-export default PaymentInfoStep; 
+export default PaymentInfoStep;

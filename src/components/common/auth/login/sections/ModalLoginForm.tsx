@@ -17,6 +17,7 @@ interface ModalLoginFormProps {
     courseId?: string;
     onSwitchToSignup?: () => void;
     onSwitchToForgotPassword?: () => void;
+    onLoginSuccess?: () => void;
 }
 
 export function ModalLoginForm({
@@ -24,15 +25,38 @@ export function ModalLoginForm({
     courseId,
     onSwitchToSignup,
     onSwitchToForgotPassword,
+    onLoginSuccess,
 }: ModalLoginFormProps) {
     const navigate = useNavigate();
     const [isEmailLogin, setIsEmailLogin] = useState(false);
 
     const handleOAuthLogin = (provider: "google" | "github") => {
         try {
+            // Get current page information for redirection after login
+            const currentPath = window.location.pathname;
+            const currentSearch = window.location.search;
+            const currentUrl = `${currentPath}${currentSearch}`;
+            
+            // Determine the appropriate study-library URL based on current page
+            let studyLibraryUrl = "/study-library/courses";
+            
+            if (currentPath.includes("/courses/course-details")) {
+                // Extract courseId from current URL
+                const urlParams = new URLSearchParams(currentSearch);
+                const courseId = urlParams.get("courseId");
+                if (courseId) {
+                    studyLibraryUrl = `/study-library/courses/course-details?courseId=${courseId}&selectedTab=ALL`;
+                }
+            } else if (currentPath.includes("/courses")) {
+                // For courses page, redirect to study-library courses
+                studyLibraryUrl = "/study-library/courses";
+            }
+            
             const stateObj = {
                 from: `${window.location.origin}/login/oauth/learner`,
                 account_type: "login",
+                redirectTo: studyLibraryUrl,
+                currentUrl: currentUrl,
             };
 
             const base64State = btoa(JSON.stringify(stateObj));
@@ -138,6 +162,7 @@ export function ModalLoginForm({
                                 type={type}
                                 courseId={courseId}
                                 onSwitchToSignup={onSwitchToSignup}
+                                onLoginSuccess={onLoginSuccess}
                             />
                         ) : (
                             <UsernameLogin
@@ -146,6 +171,7 @@ export function ModalLoginForm({
                                 courseId={courseId}
                                 onSwitchToSignup={onSwitchToSignup}
                                 onSwitchToForgotPassword={onSwitchToForgotPassword}
+                                onLoginSuccess={onLoginSuccess}
                             />
                         )}
                     </motion.div>

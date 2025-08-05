@@ -9,13 +9,39 @@ interface AuthModalProps {
     courseId?: string;
     trigger: React.ReactNode;
     onModalOpen?: () => void;
+    onLoginSuccess?: () => void;
 }
 
-export function AuthModal({ type, courseId, trigger, onModalOpen }: AuthModalProps) {
+export function AuthModal({ type, courseId, trigger, onModalOpen, onLoginSuccess }: AuthModalProps) {
     const [isOpen, setIsOpen] = useState(false);
     const [currentMode, setCurrentMode] = useState<'login' | 'signup' | 'forgot-password'>('login');
     const [isVisible, setIsVisible] = useState(false);
     const dialogRef = useRef<HTMLDivElement>(null);
+
+    // Determine the current route context for login redirection
+    const getCurrentRouteContext = () => {
+        const currentPath = window.location.pathname;
+        const currentSearch = window.location.search;
+        
+        // If type and courseId are explicitly provided, use them
+        if (type && courseId) {
+            return { type, courseId };
+        }
+        
+        // Otherwise, determine based on current route
+        if (currentPath.includes("/courses/course-details")) {
+            const urlParams = new URLSearchParams(currentSearch);
+            const courseIdFromUrl = urlParams.get("courseId");
+            if (courseIdFromUrl) {
+                return { type: "courseDetailsPage", courseId: courseIdFromUrl };
+            }
+        } else if (currentPath.includes("/courses")) {
+            return { type: "courseDetailsPage", courseId: undefined };
+        }
+        
+        // Default case - no specific redirection
+        return { type: undefined, courseId: undefined };
+    };
 
 
 
@@ -272,16 +298,28 @@ export function AuthModal({ type, courseId, trigger, onModalOpen }: AuthModalPro
                 <div className="mt-8 w-full pb-4">
                     {currentMode === 'login' ? (
                         <ModalLoginForm 
-                            type={type} 
-                            courseId={courseId}
+                            type={getCurrentRouteContext().type} 
+                            courseId={getCurrentRouteContext().courseId}
                             onSwitchToSignup={handleSwitchToSignup}
                             onSwitchToForgotPassword={handleSwitchToForgotPassword}
+                            onLoginSuccess={() => {
+                                if (onLoginSuccess) {
+                                    onLoginSuccess();
+                                }
+                                handleClose();
+                            }}
                         />
                     ) : currentMode === 'signup' ? (
                         <ModalSignUpForm 
-                            type={type} 
-                            courseId={courseId}
+                            type={getCurrentRouteContext().type} 
+                            courseId={getCurrentRouteContext().courseId}
                             onSwitchToLogin={handleSwitchToLogin}
+                            onLoginSuccess={() => {
+                                if (onLoginSuccess) {
+                                    onLoginSuccess();
+                                }
+                                handleClose();
+                            }}
                         />
                     ) : (
                         <ModalForgotPasswordForm 

@@ -53,6 +53,20 @@ const handleOAuthCallback = async (
   const refreshToken = urlParams.get("refreshToken");
   const error = urlParams.get("error");
   const message = urlParams.get("message");
+  const state = urlParams.get("state");
+  
+  // Parse state to get redirect information
+  let redirectTo = "/dashboard";
+  let currentUrl = "";
+  if (state) {
+    try {
+      const stateObj = JSON.parse(atob(state));
+      redirectTo = stateObj.redirectTo || "/dashboard";
+      currentUrl = stateObj.currentUrl || "";
+    } catch (error) {
+      console.error("Error parsing state:", error);
+    }
+  }
 
   if (error) {
     toast.error(decodeURIComponent(message || "Authentication failed."));
@@ -72,7 +86,8 @@ const handleOAuthCallback = async (
         navigate,
         setShowSessionPage,
         setRedirectPath,
-        setPrimaryColor
+        setPrimaryColor,
+        redirectTo
       );
     } catch {
       toast.error("Failed to store authentication tokens");
@@ -89,7 +104,8 @@ const handleSuccessfulLogin = async (
   navigate: ReturnType<typeof useNavigate>,
   setShowSessionPage: (show: boolean) => void,
   setRedirectPath: (redirect: string) => void,
-  setPrimaryColor?: (color: string) => void
+  setPrimaryColor?: (color: string) => void,
+  redirectTo?: string
 ) => {
   try {
     const decodedData = getTokenDecodedData(accessToken);
@@ -112,8 +128,18 @@ const handleSuccessfulLogin = async (
       }
       await fetchAndStoreStudentDetails(instituteId, userId);
 
-      // Skip session selection and go directly to dashboard
-      navigate({ to: "/dashboard" });
+                     // Open study-library page in new tab if login originated from course-related pages
+               if (redirectTo && redirectTo !== "/dashboard" && currentUrl && 
+                   (currentUrl.includes("/courses") || currentUrl.includes("/course-details"))) {
+                 window.open(redirectTo, '_blank');
+               }
+      
+      // Only navigate to dashboard if this is NOT a modal login (i.e., main login page)
+      // Check if the login originated from a course-related page (modal login)
+      const isModalLogin = currentUrl && (currentUrl.includes("/courses") || currentUrl.includes("/course-details"));
+      if (!isModalLogin) {
+        navigate({ to: "/dashboard" });
+      }
     } else {
       navigate({
         to: "/institute-selection",

@@ -41,12 +41,14 @@ export function EmailLogin({
     courseId,
     onSwitchToSignup,
     onEmailVerificationSuccess,
+    onLoginSuccess,
 }: {
     onSwitchToUsername: () => void;
     type?: string;
     courseId?: string;
     onSwitchToSignup?: () => void;
     onEmailVerificationSuccess?: (email: string) => void;
+    onLoginSuccess?: () => void;
 }) {
     const [isOtpSent, setIsOtpSent] = useState(false);
     const [email, setEmail] = useState("");
@@ -165,10 +167,29 @@ export function EmailLogin({
                                 userId
                             );
                             if (status == 200) {
-                                // Redirect to dashboard
-                                navigate({
-                                    to: "/dashboard",
-                                });
+                                // Determine redirect URL based on type and courseId
+                                let redirectUrl = "/dashboard";
+                                
+                                if (type === "courseDetailsPage" && courseId) {
+                                    redirectUrl = `/study-library/courses/course-details?courseId=${courseId}&selectedTab=ALL`;
+                                } else if (type === "courseDetailsPage") {
+                                    redirectUrl = "/study-library/courses";
+                                }
+                                
+                                                                                                   // Open in new tab if login originated from course-related pages or if type is courseDetailsPage
+                                if (type === "courseDetailsPage" || (type && type !== "mainLogin")) {
+                                    window.open(redirectUrl, '_blank');
+                                }
+                                // Only navigate to dashboard if this is NOT a modal login (i.e., main login page)
+                                if (!type || type === "mainLogin") {
+                                    navigate({
+                                        to: "/dashboard",
+                                    });
+                                }
+                                // Call onLoginSuccess callback if provided (for modal login)
+                                if (onLoginSuccess) {
+                                    onLoginSuccess();
+                                }
                             } else if (status == 201) {
                                 navigate({
                                     to:

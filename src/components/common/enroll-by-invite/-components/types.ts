@@ -19,6 +19,7 @@ export interface PaymentOption {
     currency: string;
     description: string;
     duration: string;
+    features: string[];
 }
 
 export interface PaymentInfo {

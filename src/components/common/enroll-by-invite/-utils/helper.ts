@@ -158,3 +158,31 @@ export function convertInviteCustomFields(
         };
     });
 }
+
+export function convertPlansToPaymentOptions(rawPlans: any) {
+    const paymentOption = rawPlans.payment_option;
+    const unit = JSON.parse(paymentOption.payment_option_metadata_json)?.unit;
+    return paymentOption?.payment_plans?.map((plan, index) => {
+        let features: string[];
+
+        try {
+            const parsed = JSON.parse(plan.feature_json);
+            features = Array.isArray(parsed) && parsed.length > 0 ? parsed : []; // fallback
+        } catch {
+            features = []; // fallback
+        }
+
+        return {
+            id: String(index + 1),
+            name: plan.name,
+            amount: plan.actual_price,
+            currency: plan.currency,
+            description: plan.description,
+            duration:
+                unit === "days"
+                    ? plan.validity_in_days + " days"
+                    : Math.floor(plan.validity_in_days / 30) + " months",
+            features,
+        };
+    });
+}

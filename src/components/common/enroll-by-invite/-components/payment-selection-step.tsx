@@ -9,6 +9,7 @@ interface PaymentOption {
     currency: string;
     description: string;
     duration: string;
+    features: string[];
 }
 
 interface PaymentSelectionStepProps {
@@ -17,10 +18,23 @@ interface PaymentSelectionStepProps {
     onPaymentSelect: (payment: PaymentOption) => void;
 }
 
-const PaymentSelectionStep = ({ 
-    paymentOptions, 
-    selectedPayment, 
-    onPaymentSelect 
+const currencySymbols: { [key: string]: string } = {
+    USD: "$",
+    EUR: "€",
+    GBP: "£",
+    INR: "₹",
+    AUD: "A$",
+    CAD: "C$",
+};
+
+export const getCurrencySymbol = (currencyCode: string) => {
+    return currencySymbols[currencyCode] || currencyCode;
+};
+
+const PaymentSelectionStep = ({
+    paymentOptions,
+    selectedPayment,
+    onPaymentSelect,
 }: PaymentSelectionStepProps) => {
     return (
         <Card className="shadow-xl border-0 bg-white/80 backdrop-blur-sm w-full">
@@ -42,37 +56,70 @@ const PaymentSelectionStep = ({
                 <Separator className="mb-6" />
 
                 <div className="grid gap-4">
-                    {paymentOptions.map((payment) => (
-                        <Card
-                            key={payment.id}
-                            className={`cursor-pointer transition-all duration-200 hover:shadow-md ${
-                                selectedPayment?.id === payment.id
-                                    ? 'ring-2 ring-blue-500 bg-blue-50'
-                                    : 'hover:bg-gray-50'
-                            }`}
-                            onClick={() => onPaymentSelect(payment)}
-                        >
-                            <CardContent className="p-4">
-                                <div className="flex items-center justify-between">
-                                    <div className="flex-1">
-                                        <h3 className="font-semibold text-gray-900">{payment.name}</h3>
-                                        <p className="text-sm text-gray-600 mt-1">{payment.description}</p>
-                                        <p className="text-xs text-gray-500 mt-1">Duration: {payment.duration}</p>
+                    {paymentOptions.map((payment) => {
+                        return (
+                            <Card
+                                key={payment.id}
+                                className={`cursor-pointer transition-all duration-200 hover:shadow-md ${
+                                    selectedPayment?.id === payment.id
+                                        ? "ring-2 ring-blue-500 bg-blue-50"
+                                        : "hover:bg-gray-50"
+                                }`}
+                                onClick={() => onPaymentSelect(payment)}
+                            >
+                                <CardContent className="p-6">
+                                    {/* Duration Heading */}
+                                    <div>
+                                        <h3 className="text-xl font-bold text-gray-900">
+                                            {payment.duration} Plan
+                                        </h3>
                                     </div>
-                                    <div className="text-right">
-                                        <div className="text-xl font-bold text-gray-900">
-                                            ${payment.amount}
+
+                                    {/* Price Information */}
+                                    <div>
+                                        <div className=" text-gray-600 text-sm my-1">
+                                            {getCurrencySymbol(
+                                                payment.currency
+                                            )}
+                                            {payment.amount} /{" "}
+                                            {payment.duration}
                                         </div>
-                                        <div className="text-sm text-gray-500">{payment.currency}</div>
                                     </div>
-                                </div>
-                            </CardContent>
-                        </Card>
-                    ))}
+
+                                    {/* Features */}
+                                    {payment.features &&
+                                        payment.features.length > 0 && (
+                                            <div className="space-y-2">
+                                                <h4 className="font-medium text-gray-900 text-sm">
+                                                    Features:
+                                                </h4>
+                                                <ul className="space-y-1">
+                                                    {payment.features.map(
+                                                        (feature, index) => (
+                                                            <li
+                                                                key={index}
+                                                                className="flex items-center gap-2 text-sm text-gray-600"
+                                                            >
+                                                                <span className="text-blue-500">
+                                                                    •
+                                                                </span>
+                                                                <span>
+                                                                    {feature}
+                                                                </span>
+                                                            </li>
+                                                        )
+                                                    )}
+                                                </ul>
+                                            </div>
+                                        )}
+                                </CardContent>
+                            </Card>
+                        );
+                    })}
                 </div>
             </CardContent>
         </Card>
     );
 };
 
-export default PaymentSelectionStep; 
+export default PaymentSelectionStep;

@@ -4,7 +4,11 @@ import { handleGetEnrollInviteData } from "./-services/enroll-invite-services";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { GraduationCap } from "lucide-react";
 import { useEffect, useState } from "react";
-import { convertInviteCustomFields, safeJsonParse } from "./-utils/helper";
+import {
+    convertInviteCustomFields,
+    convertPlansToPaymentOptions,
+    safeJsonParse,
+} from "./-utils/helper";
 import { useInstituteQuery } from "@/services/signup-api";
 import { useInstituteDetailsStore } from "@/stores/study-library/useInstituteDetails";
 import { getDynamicSchema } from "@/routes/register/-utils/helper";
@@ -44,6 +48,7 @@ const EnrollByInvite = () => {
         tags: [],
         targetAudience: "",
     });
+
     const [enrollmentData, setEnrollmentData] = useState<EnrollmentData>({
         registrationData: {},
         selectedPayment: null,
@@ -67,33 +72,9 @@ const EnrollByInvite = () => {
     );
 
     // Mock payment options - replace with actual data from API
-    const paymentOptions: PaymentOption[] = [
-        {
-            id: "1",
-            name: "Full Course Access",
-            amount: 299,
-            currency: "USD",
-            description:
-                "Complete access to all course materials and assessments",
-            duration: "6 months",
-        },
-        {
-            id: "2",
-            name: "Premium Access",
-            amount: 499,
-            currency: "USD",
-            description: "Full access plus 1-on-1 mentoring sessions",
-            duration: "12 months",
-        },
-        {
-            id: "3",
-            name: "Basic Access",
-            amount: 199,
-            currency: "USD",
-            description: "Access to core course materials",
-            duration: "3 months",
-        },
-    ];
+    const paymentOptions: PaymentOption[] = convertPlansToPaymentOptions(
+        inviteData?.package_session_to_payment_options[0]
+    );
 
     const zodSchema = getDynamicSchema(
         convertInviteCustomFields(inviteData?.institute_custom_fields || []) ||

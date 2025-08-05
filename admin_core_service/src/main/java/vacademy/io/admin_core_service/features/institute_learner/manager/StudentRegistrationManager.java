@@ -198,7 +198,7 @@ public class StudentRegistrationManager {
                 }
 
                 if (instituteStudentDetails.getEnrollmentId() != null) {
-                    mapping.setInstituteEnrolledNumber(instituteStudentDetails.getEnrollmentId());
+                    mapping.setInstituteEnrolledNumber(studentSessionInstituteGroupMappingOptional.get().getInstituteEnrolledNumber());
                 }
 
                 if (instituteStudentDetails.getAccessDays() != null) {
@@ -218,7 +218,7 @@ public class StudentRegistrationManager {
                         student.getUserId(),
                         instituteStudentDetails.getEnrollmentDate() == null ? new Date() : instituteStudentDetails.getEnrollmentDate(),
                         instituteStudentDetails.getEnrollmentStatus(),
-                        instituteStudentDetails.getEnrollmentId(),
+                        generateEnrollmentId(),
                         instituteStudentDetails.getGroupId(),
                         instituteStudentDetails.getInstituteId(),
                         makeExpiryDate(

@@ -22,4 +22,5 @@ public class SlideDTO {
     private AssignmentSlideDTO assignmentSlide;
     private QuizSlideDTO quizSlide;
     private Boolean isLoaded = false;
+    private String parentId;
 }

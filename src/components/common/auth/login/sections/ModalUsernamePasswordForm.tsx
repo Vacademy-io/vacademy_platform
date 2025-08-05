@@ -1,58 +1,56 @@
-import { useState } from "react";
-import { MyInput } from "@/components/design-system/input";
-import { loginSchema } from "@/schemas/login/login";
+import React, { useState } from "react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Form, FormControl, FormField, FormItem } from "@/components/ui/form";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { loginUser } from "@/hooks/login/login-button";
-import { TokenKey } from "@/constants/auth/tokens";
-import { useNavigate, useRouterState } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
+import axios from "axios";
+import { Form, FormControl, FormField, FormItem } from "@/components/ui/form";
+import { MyInput } from "@/components/design-system/input";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { motion } from "framer-motion";
 import { User, Lock, RefreshCw, Shield, Eye, EyeOff } from "lucide-react";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
 import { VscError } from "react-icons/vsc";
 
+import { TokenKey } from "@/constants/auth/tokens";
 import {
     getTokenDecodedData,
     setTokenInStorage,
 } from "@/lib/auth/sessionUtility";
+import { loginUser } from "@/hooks/login/login-button";
 import { fetchAndStoreInstituteDetails } from "@/services/fetchAndStoreInstituteDetails";
 import { fetchAndStoreStudentDetails } from "@/services/studentDetails";
-import { useTheme } from "@/providers/theme/theme-provider";
-import { HOLISTIC_INSTITUTE_ID } from "@/constants/urls";
-import { useInstituteFeatureStore } from "@/stores/insititute-feature-store";
+
+const loginSchema = z.object({
+    username: z.string().min(1, "Username is required"),
+    password: z.string().min(1, "Password is required"),
+});
+
 type FormValues = z.infer<typeof loginSchema>;
 
-interface UsernameLoginProps {
+interface ModalUsernameLoginProps {
     onSwitchToEmail: () => void;
     type?: string;
     courseId?: string;
+    onLoginSuccess?: () => void;
 }
-export function UsernameLogin({
+
+export function ModalUsernameLogin({
     onSwitchToEmail,
     type,
     courseId,
     onSwitchToSignup,
     onSwitchToForgotPassword,
-}: UsernameLoginProps & {
+    onLoginSuccess,
+}: ModalUsernameLoginProps & {
     onSwitchToSignup?: () => void;
     onSwitchToForgotPassword?: () => void;
 }) {
     const navigate = useNavigate();
     const [isLoading, setIsLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
-    const { setInstituteId } = useInstituteFeatureStore();
-    /* eslint-disable-next-line */
-
-    const redirect = useRouterState({
-        select: (s) =>
-            (s.location.search as Record<string, any>).redirect ?? "/login/",
-    });
-    const { setPrimaryColor } = useTheme();
 
     const form = useForm<FormValues>({
         resolver: zodResolver(loginSchema),
@@ -60,95 +58,35 @@ export function UsernameLogin({
             username: "",
             password: "",
         },
-        mode: "onTouched",
     });
 
     const mutation = useMutation({
-        mutationFn: (values: FormValues) =>
-            loginUser(values.username, values.password),
+        mutationFn: (data: FormValues) =>
+            loginUser(data.username, data.password),
         onMutate: () => {
             setIsLoading(true);
         },
         onSuccess: async (response) => {
-            if (response) {
+            const { accessToken, refreshToken } = response;
+
+            if (accessToken && refreshToken) {
+                // Tokens are already stored by loginUser function
+
                 try {
-                    // Store tokens in Capacitor Storage
-                    await setTokenInStorage(
-                        TokenKey.accessToken,
-                        response.accessToken
-                    );
-                    await setTokenInStorage(
-                        TokenKey.refreshToken,
-                        response.refreshToken
-                    );
-
-                    // Decode token to get user data
-                    const decodedData = await getTokenDecodedData(
-                        response.accessToken
-                    );
-
-                    // Check authorities in decoded data
+                    const decodedData = getTokenDecodedData(accessToken);
                     const authorities = decodedData?.authorities;
                     const userId = decodedData?.user;
-                    const authorityKeys = authorities
-                        ? Object.keys(authorities)
-                        : [];
+                    const authorityKeys = authorities ? Object.keys(authorities) : [];
 
                     if (authorityKeys.length > 1) {
-                        // Redirect to InstituteSelection if multiple authorities are found
                         navigate({
                             to: "/institute-selection",
-                            search: { redirect: redirect || "/dashboard/" },
-                            state: { type, courseId },
+                            search: { redirect: "/dashboard/" },
                         });
-                    } else {
-                        // Get the single institute ID
-                        const instituteId = authorities
-                            ? Object.keys(authorities)[0]
-                            : undefined;
-
-                        if (instituteId && userId) {
-                            try {
-                                const details =
-                                    await fetchAndStoreInstituteDetails(
-                                        instituteId,
-                                        userId
-                                    );
-                                setInstituteId(instituteId);
-                                if (instituteId === HOLISTIC_INSTITUTE_ID) {
-                                    setPrimaryColor("holistic");
-                                } else {
-                                    setPrimaryColor(
-                                        details?.institute_theme_code ??
-                                            "primary"
-                                    );
-                                }
-                            } catch (error) {
-                                console.error(
-                                    "Error fetching institute details:",
-                                    error
-                                );
-                            }
-                        } else {
-                            console.error(
-                                "Institute ID or User ID is undefined"
-                            );
-                        }
-
-                        if (instituteId && userId) {
-                            try {
-                                await fetchAndStoreStudentDetails(
-                                    instituteId,
-                                    userId
-                                );
-                            } catch {
-                                toast.error("Failed to fetch details");
-                            }
-                        } else {
-                            console.error(
-                                "Institute ID or User ID is undefined"
-                            );
-                        }
+                    } else if (authorityKeys.length === 1) {
+                        const instituteId = authorityKeys[0];
+                        await fetchAndStoreInstituteDetails(instituteId, userId);
+                        await fetchAndStoreStudentDetails(instituteId, userId);
 
                         // Determine redirect URL based on type and courseId
                         let redirectUrl = "/dashboard";
@@ -159,14 +97,21 @@ export function UsernameLogin({
                             redirectUrl = "/study-library/courses";
                         }
                         
-                                                                           // Open in new tab if login originated from course-related pages or if type is courseDetailsPage
+                        // Open in new tab if login originated from course-related pages or if type is courseDetailsPage
                         if (type === "courseDetailsPage" || (type && type !== "mainLogin")) {
                             window.open(redirectUrl, '_blank');
                         }
-                        // Always navigate to dashboard for page login
-                        navigate({
-                            to: "/dashboard",
-                        });
+                        // Only navigate to dashboard if this is NOT a modal login (i.e., main login page)
+                        if (!type || type === "mainLogin") {
+                            navigate({
+                                to: "/dashboard",
+                            });
+                        } else {
+                            // Call onLoginSuccess callback for modal login
+                            if (onLoginSuccess) {
+                                onLoginSuccess();
+                            }
+                        }
                     }
                 } catch (error) {
                     console.error("Error processing decoded data:", error);
@@ -325,12 +270,14 @@ export function UsernameLogin({
                                 type="button"
                                 whileHover={{ scale: 1.02 }}
                                 className="text-xs text-gray-500 hover:text-gray-700 transition-colors duration-200 font-medium"
-                                onClick={onSwitchToForgotPassword || (() => navigate({ to: "/login/forgot-password" }))}
+                                onClick={onSwitchToForgotPassword}
                             >
                                 Forgot password?
                             </motion.button>
                         </div>
                     </motion.div>
+
+
 
                     {/* Login Button */}
                     <motion.div
@@ -370,6 +317,7 @@ export function UsernameLogin({
                             )}
                         </motion.button>
                     </motion.div>
+
                 </form>
             </Form>
 
@@ -395,7 +343,7 @@ export function UsernameLogin({
                     <motion.button
                         type="button"
                         whileHover={{ scale: 1.02 }}
-                        onClick={onSwitchToSignup || (() => navigate({ to: "/signup" }))}
+                        onClick={onSwitchToSignup}
                         className="text-gray-700 hover:text-gray-900 font-medium underline cursor-pointer"
                     >
                         Sign up here
@@ -404,4 +352,4 @@ export function UsernameLogin({
             </motion.div>
         </div>
     );
-}
+} 

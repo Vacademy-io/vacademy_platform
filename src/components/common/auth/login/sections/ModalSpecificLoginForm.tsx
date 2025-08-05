@@ -9,22 +9,24 @@ import {
     Shield,
     ArrowRight,
 } from "lucide-react";
-import { EmailLogin } from "./EmailOtpForm";
-import { UsernameLogin } from "./UsernamePasswordForm";
+import { ModalEmailLogin } from "./ModalEmailOtpForm";
+import { ModalUsernameLogin } from "./ModalUsernamePasswordForm";
 
-interface ModalLoginFormProps {
+interface ModalSpecificLoginFormProps {
     type?: string;
     courseId?: string;
     onSwitchToSignup?: () => void;
     onSwitchToForgotPassword?: () => void;
+    onLoginSuccess?: () => void;
 }
 
-export function ModalLoginForm({
+export function ModalSpecificLoginForm({
     type,
     courseId,
     onSwitchToSignup,
     onSwitchToForgotPassword,
-}: ModalLoginFormProps) {
+    onLoginSuccess,
+}: ModalSpecificLoginFormProps) {
     const navigate = useNavigate();
     const [isEmailLogin, setIsEmailLogin] = useState(false);
 
@@ -55,6 +57,7 @@ export function ModalLoginForm({
                 account_type: "login",
                 redirectTo: studyLibraryUrl,
                 currentUrl: currentUrl,
+                isModalLogin: true, // Flag to indicate this is a modal login
             };
 
             const base64State = btoa(JSON.stringify(stateObj));
@@ -155,19 +158,21 @@ export function ModalLoginForm({
                         transition={{ delay: 1.1 }}
                     >
                         {isEmailLogin ? (
-                            <EmailLogin
+                            <ModalEmailLogin
                                 onSwitchToUsername={() => setIsEmailLogin(false)}
                                 type={type}
                                 courseId={courseId}
                                 onSwitchToSignup={onSwitchToSignup}
+                                onLoginSuccess={onLoginSuccess}
                             />
                         ) : (
-                            <UsernameLogin
+                            <ModalUsernameLogin
                                 onSwitchToEmail={() => setIsEmailLogin(true)}
                                 type={type}
                                 courseId={courseId}
                                 onSwitchToSignup={onSwitchToSignup}
                                 onSwitchToForgotPassword={onSwitchToForgotPassword}
+                                onLoginSuccess={onLoginSuccess}
                             />
                         )}
                     </motion.div>

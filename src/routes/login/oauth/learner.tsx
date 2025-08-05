@@ -58,11 +58,13 @@ const handleOAuthCallback = async (
   // Parse state to get redirect information
   let redirectTo = "/dashboard";
   let currentUrl = "";
+  let isModalLogin = false;
   if (state) {
     try {
       const stateObj = JSON.parse(atob(state));
       redirectTo = stateObj.redirectTo || "/dashboard";
       currentUrl = stateObj.currentUrl || "";
+      isModalLogin = stateObj.isModalLogin || false;
     } catch (error) {
       console.error("Error parsing state:", error);
     }
@@ -87,7 +89,9 @@ const handleOAuthCallback = async (
         setShowSessionPage,
         setRedirectPath,
         setPrimaryColor,
-        redirectTo
+        redirectTo,
+        currentUrl,
+        isModalLogin
       );
     } catch {
       toast.error("Failed to store authentication tokens");
@@ -105,7 +109,9 @@ const handleSuccessfulLogin = async (
   setShowSessionPage: (show: boolean) => void,
   setRedirectPath: (redirect: string) => void,
   setPrimaryColor?: (color: string) => void,
-  redirectTo?: string
+  redirectTo?: string,
+  currentUrl?: string,
+  isModalLogin?: boolean
 ) => {
   try {
     const decodedData = getTokenDecodedData(accessToken);
@@ -135,8 +141,6 @@ const handleSuccessfulLogin = async (
                }
       
       // Only navigate to dashboard if this is NOT a modal login (i.e., main login page)
-      // Check if the login originated from a course-related page (modal login)
-      const isModalLogin = currentUrl && (currentUrl.includes("/courses") || currentUrl.includes("/course-details"));
       if (!isModalLogin) {
         navigate({ to: "/dashboard" });
       }

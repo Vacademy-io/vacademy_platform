@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import { ModalLoginForm } from "@/components/common/auth/login/sections/ModalLoginForm";
+import { ModalSpecificLoginForm } from "@/components/common/auth/login/sections/ModalSpecificLoginForm";
 import { ModalSignUpForm } from "@/components/common/auth/signup/sections/ModalSignUpForm";
 import { ModalForgotPasswordForm } from "@/components/common/auth/login/sections/ModalForgotPasswordForm";
 
@@ -189,6 +189,15 @@ export function AuthModal({ type, courseId, trigger, onModalOpen, onLoginSuccess
         setCurrentMode('forgot-password');
     };
 
+    const handleLoginSuccess = () => {
+        // Close the modal after successful login
+        handleClose();
+        // Call the callback if provided
+        if (onLoginSuccess) {
+            onLoginSuccess();
+        }
+    };
+
     const handleClose = () => {
         setIsVisible(false);
         setTimeout(() => {
@@ -297,29 +306,18 @@ export function AuthModal({ type, courseId, trigger, onModalOpen, onLoginSuccess
                 {/* Content */}
                 <div className="mt-8 w-full pb-4">
                     {currentMode === 'login' ? (
-                        <ModalLoginForm 
+                        <ModalSpecificLoginForm 
                             type={getCurrentRouteContext().type} 
                             courseId={getCurrentRouteContext().courseId}
                             onSwitchToSignup={handleSwitchToSignup}
                             onSwitchToForgotPassword={handleSwitchToForgotPassword}
-                            onLoginSuccess={() => {
-                                if (onLoginSuccess) {
-                                    onLoginSuccess();
-                                }
-                                handleClose();
-                            }}
+                            onLoginSuccess={handleLoginSuccess}
                         />
                     ) : currentMode === 'signup' ? (
                         <ModalSignUpForm 
                             type={getCurrentRouteContext().type} 
                             courseId={getCurrentRouteContext().courseId}
                             onSwitchToLogin={handleSwitchToLogin}
-                            onLoginSuccess={() => {
-                                if (onLoginSuccess) {
-                                    onLoginSuccess();
-                                }
-                                handleClose();
-                            }}
                         />
                     ) : (
                         <ModalForgotPasswordForm 

@@ -699,10 +699,6 @@ export const CourseDetailsPage = () => {
                 <AuthModal
                   type="courseDetailsPage"
                   courseId={searchParams.courseId}
-                  onLoginSuccess={() => {
-                    // Close the modal after successful login
-                    // The modal will close automatically when onLoginSuccess is called
-                  }}
                   trigger={
                     <MyButton
                       type="button"

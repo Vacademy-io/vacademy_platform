@@ -5,6 +5,7 @@ import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { toTitleCase } from "@/lib/utils";
 import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import { Button } from "@/components/ui/button";
 interface Instructor {
   id: string;
   full_name: string;
@@ -186,12 +187,9 @@ const CourseCard: React.FC<CourseCardProps> = ({
           )}
         </div>
 
-        <button
-          className="mt-auto w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors"
-          onClick={handleViewCoureseDetails}
-        >
+        <Button onClick={handleViewCoureseDetails}>
           View {getTerminology(ContentTerms.Course, SystemTerms.Course)}
-        </button>
+        </Button>
       </div>
     </div>
   );

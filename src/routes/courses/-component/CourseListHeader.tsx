@@ -3,6 +3,7 @@ import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { AuthModal } from "@/components/common/auth/modal/AuthModal";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import { Button } from "@/components/ui/button";
 
 const CourseListHeader = ({
   fileId,
@@ -123,27 +124,25 @@ const CourseListHeader = ({
           ))}
         </ul>
         <div className="flex gap-3">
-          <AuthModal 
-            type={type} 
+          <AuthModal
+            type={type}
             courseId={courseId}
             trigger={
-              <button 
-                data-auth-modal-trigger
-                className="px-4 py-2 border border-gray-300 text-black rounded-md hover:bg-gray-100 transition-colors duration-200 text-sm font-medium"
-              >
+              <Button data-auth-modal-trigger variant={"outline"}>
                 Login
-              </button>
+              </Button>
             }
           />
-          <button className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors duration-200 text-sm font-medium">
-            Donate
-          </button>
+          <Button>Donate</Button>
         </div>
       </div>
 
       {/* Mobile Navigation Menu */}
       {isMobileMenuOpen && (
-        <div className="lg:hidden w-full bg-white border-t border-gray-200 py-4 px-4 sm:px-6" style={{ zIndex: 100 }}>
+        <div
+          className="lg:hidden w-full bg-white border-t border-gray-200 py-4 px-4 sm:px-6"
+          style={{ zIndex: 100 }}
+        >
           <ul className="flex flex-col space-y-4 mb-6">
             {navigationItems.map((item) => (
               <li key={item.href}>
@@ -158,22 +157,22 @@ const CourseListHeader = ({
             ))}
           </ul>
           <div className="flex flex-col gap-3">
-            <button
+            <Button
               onClick={() => {
                 closeMobileMenu();
                 // Trigger the desktop AuthModal
-                const desktopLoginButton = document.querySelector('[data-auth-modal-trigger]') as HTMLElement;
+                const desktopLoginButton = document.querySelector(
+                  "[data-auth-modal-trigger]"
+                ) as HTMLElement;
                 if (desktopLoginButton) {
                   desktopLoginButton.click();
                 }
               }}
-              className="w-full px-4 py-3 border border-gray-300 text-black rounded-md hover:bg-gray-100 transition-colors duration-200 text-sm font-medium"
+              variant={"outline"}
             >
               Login
-            </button>
-            <button className="w-full px-4 py-3 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors duration-200 text-sm font-medium">
-              Donate
-            </button>
+            </Button>
+            <Button>Donate</Button>
           </div>
         </div>
       )}

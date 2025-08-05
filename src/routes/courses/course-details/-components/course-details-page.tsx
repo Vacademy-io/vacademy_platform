@@ -1,13 +1,18 @@
 import { Steps } from "@phosphor-icons/react";
 import { useRouter } from "@tanstack/react-router";
 import {
-  ChalkboardTeacher,
   Code,
   File,
-  FileDoc,
   FilePdf,
   PlayCircle,
   Question,
+  Presentation,
+  GameController,
+  Exam,
+  Terminal,
+  ClipboardText,
+  FileDoc,
+  Notebook,
 } from "phosphor-react";
 import { toTitleCase } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -189,7 +194,7 @@ export const CourseDetailsPage = () => {
 
   // ✅ Fetch institute details
   useEffect(() => {
-    const FetchInstituteDetails = async () => {
+    const fetchInstituteDetails = async () => {
       try {
         const response = await axios.get(
           `${urlInstituteDetails}/${searchParams.instituteId}`
@@ -210,7 +215,7 @@ export const CourseDetailsPage = () => {
       }
     };
 
-    FetchInstituteDetails();
+    fetchInstituteDetails();
   }, [searchParams.instituteId, selectedSession, selectedLevel]);
 
   // Only run the query if instituteId is available
@@ -345,7 +350,202 @@ export const CourseDetailsPage = () => {
     enabled: !!packageSessionIds,
   });
 
+  // Custom slide count calculation to handle special document types
+  const processedSlideCounts = useMemo(() => {
+    if (!slideCountQuery.data) return [];
 
+    const counts = slideCountQuery.data as SlideCountType[];
+
+    const processedCounts: {
+      source_type: string;
+      slide_count: number;
+      display_name: string;
+    }[] = [];
+
+    // Create a map to track counts for different types
+    const typeCounts: { [key: string]: number } = {};
+
+    // Track if we have specific document types to avoid duplicates
+    const hasSpecificDocumentTypes = counts.some(
+      (count) =>
+        count.source_type === "JUPYTER_NOTEBOOK" ||
+        count.source_type === "CODE_EDITOR" ||
+        count.source_type === "PRESENTATION" ||
+        count.source_type === "SCRATCH_PROJECT"
+    );
+
+    counts.forEach((count) => {
+      let canonicalType = count.source_type;
+      if (canonicalType === "JUPYTER") canonicalType = "JUPYTER_NOTEBOOK";
+      if (canonicalType === "SCRATCH") canonicalType = "SCRATCH_PROJECT";
+      if (canonicalType === "DOCUMENT") {
+        // Only add DOCUMENT count if we don't have specific document types
+        // This prevents duplicates when we have JUPYTER_NOTEBOOK, CODE_EDITOR, etc.
+        if (!hasSpecificDocumentTypes) {
+          typeCounts["DOCUMENT"] =
+            (typeCounts["DOCUMENT"] || 0) + count.slide_count;
+        }
+      } else {
+        typeCounts[canonicalType] =
+          (typeCounts[canonicalType] || 0) + count.slide_count;
+      }
+    });
+
+    // Convert the map to the required format
+    Object.entries(typeCounts).forEach(([sourceType, slideCount]) => {
+      let displayName = "";
+      switch (sourceType) {
+        case "VIDEO":
+          displayName = "Video slides";
+          break;
+        case "CODE":
+          displayName = "Code slides";
+          break;
+        case "PDF":
+          displayName = "PDF slides";
+          break;
+        case "DOCUMENT":
+          displayName = "DOC slides";
+          break;
+        case "QUESTION":
+          displayName = "Question slides";
+          break;
+        case "ASSIGNMENT":
+          displayName = "Assignment slides";
+          break;
+        case "PRESENTATION":
+          displayName = "Presentation slides";
+          break;
+        case "JUPYTER_NOTEBOOK":
+        case "JUPYTER":
+          displayName = "Jupyter Notebook slides";
+          break;
+        case "SCRATCH_PROJECT":
+        case "SCRATCH":
+          displayName = "Scratch Project slides";
+          break;
+        case "QUIZ":
+          displayName = "Quiz slides";
+          break;
+        case "CODE_EDITOR":
+          displayName = "Code Editor slides";
+          break;
+        default:
+          displayName = `${sourceType} slides`;
+      }
+
+      processedCounts.push({
+        source_type: sourceType,
+        slide_count: slideCount,
+        display_name: displayName,
+      });
+    });
+
+    return processedCounts;
+  }, [slideCountQuery.data]);
+
+  const getSlideTypeIcon = (type: string) => {
+    switch (type) {
+      case "VIDEO":
+        return (
+          <PlayCircle
+            size={16}
+            className="text-blue-600 group-hover/item:scale-110 transition-transform duration-300"
+            weight="duotone"
+          />
+        );
+      case "CODE":
+        return (
+          <Code
+            size={16}
+            className="text-green-600 group-hover/item:scale-110 transition-transform duration-300"
+            weight="duotone"
+          />
+        );
+      case "PDF":
+        return (
+          <FilePdf
+            size={16}
+            className="text-red-600 group-hover/item:scale-110 transition-transform duration-300"
+            weight="duotone"
+          />
+        );
+      case "DOCUMENT":
+        return (
+          <FileDoc
+            size={16}
+            className="text-purple-600 group-hover/item:scale-110 transition-transform duration-300"
+            weight="duotone"
+          />
+        );
+      case "QUESTION":
+        return (
+          <Question
+            size={16}
+            className="text-orange-600 group-hover/item:scale-110 transition-transform duration-300"
+            weight="duotone"
+          />
+        );
+      case "ASSIGNMENT":
+        return (
+          <ClipboardText
+            size={16}
+            className="text-indigo-600 group-hover/item:scale-110 transition-transform duration-300"
+            weight="duotone"
+          />
+        );
+      case "PRESENTATION":
+        return (
+          <Presentation
+            size={16}
+            className="text-cyan-600 group-hover/item:scale-110 transition-transform duration-300"
+            weight="duotone"
+          />
+        );
+      case "JUPYTER_NOTEBOOK":
+      case "JUPYTER":
+        return (
+          <Notebook
+            size={16}
+            className="text-yellow-600 group-hover/item:scale-110 transition-transform duration-300"
+            weight="duotone"
+          />
+        );
+      case "SCRATCH_PROJECT":
+      case "SCRATCH":
+        return (
+          <GameController
+            size={16}
+            className="text-pink-600 group-hover/item:scale-110 transition-transform duration-300"
+            weight="duotone"
+          />
+        );
+      case "QUIZ":
+        return (
+          <Exam
+            size={16}
+            className="text-teal-600 group-hover/item:scale-110 transition-transform duration-300"
+            weight="duotone"
+          />
+        );
+      case "CODE_EDITOR":
+        return (
+          <Terminal
+            size={16}
+            className="text-gray-600 group-hover/item:scale-110 transition-transform duration-300"
+            weight="duotone"
+          />
+        );
+      default:
+        return (
+          <File
+            size={16}
+            className="text-gray-500 group-hover/item:scale-110 transition-transform duration-300"
+            weight="duotone"
+          />
+        );
+    }
+  };
 
   return (
     <>
@@ -605,112 +805,131 @@ export const CourseDetailsPage = () => {
             </div>
 
             {/* Right Column - 1/3 width */}
-            <div className="w-1/3">
+            <div className="w-1/5">
               <div className="sticky top-4 rounded-lg border bg-white p-6 shadow-lg">
                 {/* Course Stats */}
                 <h2 className="mb-4 text-lg font-bold">
                   {form.getValues("courseData").title}
                 </h2>
-                <div className="space-y-4">
-                  {levelOptions[0]?.label !== "default" && (
-                    <div className="flex items-center gap-2">
-                      <Steps size={18} />
-                      <span>
-                        {
-                          levelOptions.find(
-                            (option) => option.value === selectedLevel
-                          )?.label
-                        }
-                      </span>
+
+                <div className="relative">
+                  {/* Header */}
+                  <div className="flex items-center space-x-2 mb-4">
+                    <div className="p-1.5 bg-gradient-to-br from-primary-100 to-primary-200 rounded-lg shadow-sm">
+                      <Steps
+                        size={18}
+                        className="text-primary-600"
+                        weight="duotone"
+                      />
                     </div>
-                  )}
-                  {slideCountQuery.isLoading ? (
-                    <div className="space-y-2">
-                      {[1, 2, 3, 4, 5].map((i) => (
-                        <div
-                          key={i}
-                          className="h-6 w-32 animate-pulse rounded bg-gray-200"
-                        />
-                      ))}
-                    </div>
-                  ) : slideCountQuery.error ? (
-                    <div className="text-sm text-red-500">
-                      Error loading slide counts
-                    </div>
-                  ) : (
-                    <>
-                      {slideCountQuery.data?.map((count: SlideCountType) => (
-                        <div
-                          key={count.source_type}
-                          className="flex items-center gap-2"
-                        >
-                          {count.source_type === "VIDEO" && (
-                            <>
-                              <PlayCircle size={18} />
-                              <span>{count.slide_count} Video slides</span>
-                            </>
-                          )}
-                          {count.source_type === "CODE" && (
-                            <>
-                              <Code size={18} />
-                              <span>{count.slide_count} Code slides</span>
-                            </>
-                          )}
-                          {count.source_type === "PDF" && (
-                            <>
-                              <FilePdf size={18} />
-                              <span>{count.slide_count} PDF slides</span>
-                            </>
-                          )}
-                          {count.source_type === "DOCUMENT" && (
-                            <>
-                              <FileDoc size={18} />
-                              <span>{count.slide_count} Doc slides</span>
-                            </>
-                          )}
-                          {count.source_type === "QUESTION" && (
-                            <>
-                              <Question size={18} />
-                              <span>{count.slide_count} Question slides</span>
-                            </>
-                          )}
-                          {count.source_type === "ASSIGNMENT" && (
-                            <>
-                              <File size={18} />
-                              <span>{count.slide_count} Assignment slides</span>
-                            </>
-                          )}
-                        </div>
-                      ))}
-                      {form.getValues("courseData").instructors.length > 0 && (
-                        <div className="flex items-center gap-2">
-                          <ChalkboardTeacher size={18} />
-                          <span>
-                            {form
-                              .getValues("courseData")
-                              .instructors.map((i) => i.name)
-                              .join(", ")}
+                    <h2 className="text-base font-bold text-gray-900">
+                      {getTerminology(
+                        ContentTerms.Course,
+                        SystemTerms.Course
+                      ).toLocaleLowerCase()}{" "}
+                      Overview
+                    </h2>
+                  </div>
+
+                  {/* Course Stats */}
+                  <div className="space-y-3">
+                    {/* Level Badge */}
+                    {levelOptions.length > 0 &&
+                      selectedLevel &&
+                      levelOptions.find(
+                        (option) => option.value === selectedLevel
+                      )?.label !== "default" && (
+                        <div className="flex items-center justify-between p-2.5 bg-gradient-to-r from-primary-50 to-primary-100 rounded-lg border border-primary-200">
+                          <div className="flex items-center space-x-2">
+                            <Steps
+                              size={16}
+                              className="text-primary-600"
+                              weight="duotone"
+                            />
+                            <span className="text-xs font-medium text-primary-700">
+                              {getTerminology(
+                                ContentTerms.Level,
+                                SystemTerms.Level
+                              ).toLocaleLowerCase()}
+                            </span>
+                          </div>
+                          <span className="text-xs font-bold text-primary-800">
+                            {
+                              levelOptions.find(
+                                (option) => option.value === selectedLevel
+                              )?.label
+                            }
                           </span>
                         </div>
                       )}
-                    </>
-                  )}
+
+                    {/* Slide Counts */}
+                    {slideCountQuery.isLoading ? (
+                      <div className="space-y-2">
+                        {[1, 2, 3, 4, 5].map((i) => (
+                          <div
+                            key={i}
+                            className="flex items-center justify-between p-2.5 bg-gray-50 rounded-lg animate-pulse"
+                          >
+                            <div className="h-3 w-16 bg-gray-200 rounded"></div>
+                            <div className="h-3 w-6 bg-gray-200 rounded"></div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : slideCountQuery.error ? (
+                      <div className="p-2.5 bg-red-50 border border-red-200 rounded-lg">
+                        <p className="text-xs text-red-600 font-medium">
+                          Error loading{" "}
+                          {getTerminology(
+                            ContentTerms.Slides,
+                            SystemTerms.Slides
+                          ).toLocaleLowerCase()}
+                          counts
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {processedSlideCounts.map(
+                          (count: {
+                            source_type: string;
+                            slide_count: number;
+                            display_name: string;
+                          }) => (
+                            <div
+                              key={count.source_type}
+                              className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300 group/item"
+                            >
+                              <div className="flex items-center space-x-2">
+                                {getSlideTypeIcon(count.source_type)}
+                                <span className="text-xs font-medium text-gray-700">
+                                  {count.display_name}
+                                </span>
+                              </div>
+                              <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
+                                {count.slide_count}
+                              </span>
+                            </div>
+                          )
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <AuthModal
+                    type="courseDetailsPage"
+                    courseId={searchParams.courseId}
+                    trigger={
+                      <MyButton
+                        type="button"
+                        scale="large"
+                        buttonType="primary"
+                        layoutVariant="default"
+                        className="mt-4 !min-w-full !w-full"
+                      >
+                        Enroll
+                      </MyButton>
+                    }
+                  />
                 </div>
-                <AuthModal
-                  type="courseDetailsPage"
-                  courseId={searchParams.courseId}
-                  trigger={
-                    <MyButton
-                      type="button"
-                      scale="large"
-                      buttonType="primary"
-                      layoutVariant="default"
-                      className="mt-4 !min-w-full !w-full"
-                    >
-                      Enroll
-                    </MyButton>
-                  }
-                />
               </div>
             </div>
           </div>

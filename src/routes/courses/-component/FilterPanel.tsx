@@ -3,6 +3,7 @@ import { useCatalogStore } from "../-store/catalogStore";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { toTitleCase } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 // Internal reusable component for individual filter sections
 interface FilterSectionProps {
@@ -132,20 +133,20 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-xl font-bold text-gray-800">Filters</h2>
         <div className="flex gap-1">
-          <button
+          <Button
             onClick={clearAllFilters}
             disabled={!hasActiveFilters}
-            className={`text font-semibold px-2 py-1 transition text-primary-500 text-sm mt-[1px]`}
+            className={`px-2 py-1 h-fit transition text-xs mt-[1px]`}
           >
             Clear All
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={onApplyFilters}
             disabled={!hasActiveFilters}
-            className={`text-white text-xs font-semibold px-3 py-1 mt-1 h-fit transition bg-primary-500 rounded-md`}
+            className={`px-2 py-1 h-fit transition text-xs mt-[1px]`}
           >
             Apply
-          </button>
+          </Button>
         </div>
       </div>
 

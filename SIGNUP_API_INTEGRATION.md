@@ -29,11 +29,7 @@ The signup process has been integrated with the backend APIs to provide a seamle
 - **Body**: User registration data including institute details and roles
 - **Response**: Registration success/failure status with access and refresh tokens
 
-### 4. Enroll User in Packages (NEW)
-- **Endpoint**: `POST /admin-core-service/v1/learner/enroll`
-- **Purpose**: Enroll user in default packages after signup
-- **Body**: Enrollment data with package session IDs
-- **Response**: Enrollment success/failure status
+
 
 ## Implementation Files
 
@@ -57,7 +53,6 @@ The signup process has been integrated with the backend APIs to provide a seamle
 4. User fills in registration form
 5. Registration API is called with appropriate roles based on institute settings
 6. **NEW**: User is automatically authenticated and redirected to dashboard of the same institute
-7. **NEW**: User is automatically enrolled in default packages if available
 
 ### Full Signup Page Flow
 1. User accesses signup page directly
@@ -68,7 +63,6 @@ The signup process has been integrated with the backend APIs to provide a seamle
 6. User fills in registration form
 7. Registration API is called with appropriate roles
 8. **NEW**: User is automatically authenticated and redirected to dashboard of the same institute
-9. **NEW**: User is automatically enrolled in default packages if available
 
 ## Post-Signup Authentication
 
@@ -76,9 +70,8 @@ After successful registration, the system now automatically:
 
 1. **Stores tokens**: Access token and refresh token from the registration response
 2. **Fetches institute details**: Stores institute information for the selected institute
-3. **Enrolls in default packages**: Automatically enrolls user in available packages from the institute
-4. **Fetches student details**: Retrieves and stores student information
-5. **Redirects to dashboard**: Automatically navigates to the dashboard of the institute the user signed up for
+3. **Fetches student details**: Retrieves and stores student information
+4. **Redirects to dashboard**: Automatically navigates to the dashboard of the institute the user signed up for
 
 This applies to both scenarios:
 - **New user registration**: After email OTP verification and user details submission

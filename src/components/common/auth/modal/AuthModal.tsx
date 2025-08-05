@@ -10,9 +10,10 @@ interface AuthModalProps {
     trigger: React.ReactNode;
     onModalOpen?: () => void;
     onLoginSuccess?: () => void;
+    onSignupSuccess?: () => void;
 }
 
-export function AuthModal({ type, courseId, trigger, onModalOpen, onLoginSuccess }: AuthModalProps) {
+export function AuthModal({ type, courseId, trigger, onModalOpen, onLoginSuccess, onSignupSuccess }: AuthModalProps) {
     const [isOpen, setIsOpen] = useState(false);
     const [currentMode, setCurrentMode] = useState<'login' | 'signup' | 'forgot-password'>('login');
     const [isVisible, setIsVisible] = useState(false);
@@ -198,6 +199,15 @@ export function AuthModal({ type, courseId, trigger, onModalOpen, onLoginSuccess
         }
     };
 
+    const handleSignupSuccess = () => {
+        // Close the modal after successful signup
+        handleClose();
+        // Call the callback if provided
+        if (onSignupSuccess) {
+            onSignupSuccess();
+        }
+    };
+
     const handleClose = () => {
         setIsVisible(false);
         setTimeout(() => {
@@ -318,6 +328,7 @@ export function AuthModal({ type, courseId, trigger, onModalOpen, onLoginSuccess
                             type={getCurrentRouteContext().type} 
                             courseId={getCurrentRouteContext().courseId}
                             onSwitchToLogin={handleSwitchToLogin}
+                            onSignupSuccess={handleSignupSuccess}
                         />
                     ) : (
                         <ModalForgotPasswordForm 

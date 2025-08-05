@@ -2,7 +2,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { CreditCard } from "lucide-react";
 import { MyInput } from "@/components/design-system/input";
-import { useRef } from "react";
+import { useSuspenseQuery } from "@tanstack/react-query";
+import { handleGetStripeKeys } from "../-services/enroll-invite-services";
 
 interface PaymentInfo {
     cardholderName: string;
@@ -12,15 +13,20 @@ interface PaymentInfo {
 }
 
 interface PaymentInfoStepProps {
+    instituteId: string;
     paymentInfo: PaymentInfo;
     onPaymentInfoChange: (field: keyof PaymentInfo, value: string) => void;
 }
 
 const PaymentInfoStep = ({
+    instituteId,
     paymentInfo,
     onPaymentInfoChange,
 }: PaymentInfoStepProps) => {
-    const dateInputRef = useRef<HTMLInputElement>(null);
+    const { data: stripeKeys } = useSuspenseQuery(
+        handleGetStripeKeys(instituteId)
+    );
+    console.log(stripeKeys);
     return (
         <div className="space-y-6">
             {/* Payment Form Card */}
@@ -82,7 +88,6 @@ const PaymentInfoStep = ({
                                 </label>
                                 <div className="relative">
                                     <input
-                                        ref={dateInputRef}
                                         type="text"
                                         value={paymentInfo.expiryDate || ""}
                                         onChange={(e) => {

@@ -265,6 +265,7 @@ const EnrollByInvite = () => {
             case 3:
                 return (
                     <PaymentInfoStep
+                        instituteId={instituteId}
                         paymentInfo={enrollmentData.paymentInfo}
                         onPaymentInfoChange={handlePaymentInfoChange}
                     />

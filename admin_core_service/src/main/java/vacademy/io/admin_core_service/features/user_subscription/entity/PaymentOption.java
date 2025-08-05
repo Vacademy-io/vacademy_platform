@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.UuidGenerator;
+import org.hibernate.annotations.Where;
 import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentOptionDTO;
 
 import java.time.LocalDate;
@@ -58,6 +59,7 @@ public class PaymentOption {
     // This defines the one-to-many relationship with PaymentPlan
     // mappedBy refers to the field in the PaymentPlan entity that owns the relationship (the foreign key)
     @OneToMany(mappedBy = "paymentOption", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @Where(clause = "status = 'ACTIVE'")
     private List<PaymentPlan> paymentPlans = new ArrayList<>();
 
     public PaymentOption(PaymentOptionDTO paymentOptionDTO) {

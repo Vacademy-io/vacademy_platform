@@ -2,6 +2,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { CreditCard, CheckCircle } from "lucide-react";
 import { MyInput } from "@/components/design-system/input";
+import { useState, useRef, useEffect } from "react";
 
 interface PaymentOption {
     id: string;
@@ -34,6 +35,8 @@ const PaymentInfoStep = ({
     paymentInfo, 
     onPaymentInfoChange 
 }: PaymentInfoStepProps) => {
+    const dateInputRef = useRef<HTMLInputElement>(null);
+    const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
     return (
         <div className="space-y-6">
             {/* Payment Form Card */}
@@ -83,6 +86,7 @@ const PaymentInfoStep = ({
                                 </label>
                                 <div className="relative">
                                     <input
+                                        ref={dateInputRef}
                                         type="text"
                                         value={paymentInfo.expiryDate || ''}
                                         onChange={(e) => {
@@ -93,6 +97,7 @@ const PaymentInfoStep = ({
                                             }
                                         }}
                                         onFocus={(e) => {
+                                            setIsDatePickerOpen(true);
                                             // Convert MM/YY to YYYY-MM format for date picker
                                             if (paymentInfo.expiryDate && paymentInfo.expiryDate.includes('/')) {
                                                 const [month, year] = paymentInfo.expiryDate.split('/');
@@ -104,13 +109,16 @@ const PaymentInfoStep = ({
                                             }
                                         }}
                                         onBlur={(e) => {
-                                            e.target.type = 'text';
-                                            // Format the date as MM/YY when user selects from picker
-                                            if (e.target.value && e.target.value.includes('-')) {
-                                                const [year, month] = e.target.value.split('-');
-                                                const formattedDate = `${parseInt(month)}/${year.slice(-2)}`;
-                                                onPaymentInfoChange('expiryDate', formattedDate);
-                                            }
+                                            setTimeout(() => {
+                                                setIsDatePickerOpen(false);
+                                                e.target.type = 'text';
+                                                // Format the date as MM/YY when user selects from picker
+                                                if (e.target.value && e.target.value.includes('-')) {
+                                                    const [year, month] = e.target.value.split('-');
+                                                    const formattedDate = `${parseInt(month)}/${year.slice(-2)}`;
+                                                    onPaymentInfoChange('expiryDate', formattedDate);
+                                                }
+                                            }, 200);
                                         }}
                                         placeholder="MM/YY"
                                         required

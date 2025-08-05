@@ -41,6 +41,7 @@ import { Route as DashboardNotificationsIndexRouteImport } from './routes/dashbo
 import { Route as CoursesCourseDetailsIndexRouteImport } from './routes/courses/course-details/index'
 import { Route as AssessmentReportsIndexRouteImport } from './routes/assessment/reports/index'
 import { Route as AssessmentExaminationIndexRouteImport } from './routes/assessment/examination/index'
+import { Route as SignupOauthLearnerRouteImport } from './routes/signup/oauth/learner'
 import { Route as LoginOauthLearnerRouteImport } from './routes/login/oauth/learner'
 import { Route as StudyLibraryLiveClassWaitingRoomIndexRouteImport } from './routes/study-library/live-class/waiting-room/index'
 import { Route as StudyLibraryLiveClassEmbedIndexRouteImport } from './routes/study-library/live-class/embed/index'
@@ -225,6 +226,11 @@ const AssessmentExaminationIndexRoute =
     path: '/assessment/examination/',
     getParentRoute: () => rootRouteImport,
   } as any)
+const SignupOauthLearnerRoute = SignupOauthLearnerRouteImport.update({
+  id: '/signup/oauth/learner',
+  path: '/signup/oauth/learner',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginOauthLearnerRoute = LoginOauthLearnerRouteImport.update({
   id: '/login/oauth/learner',
   path: '/login/oauth/learner',
@@ -321,6 +327,7 @@ export interface FileRoutesByFullPath {
   '/terms-and-conditions': typeof TermsAndConditionsIndexRoute
   '/user-profile': typeof UserProfileIndexRoute
   '/login/oauth/learner': typeof LoginOauthLearnerRoute
+  '/signup/oauth/learner': typeof SignupOauthLearnerRoute
   '/assessment/examination': typeof AssessmentExaminationIndexRoute
   '/assessment/reports': typeof AssessmentReportsIndexRoute
   '/courses/course-details': typeof CoursesCourseDetailsIndexRoute
@@ -367,6 +374,7 @@ export interface FileRoutesByTo {
   '/terms-and-conditions': typeof TermsAndConditionsIndexRoute
   '/user-profile': typeof UserProfileIndexRoute
   '/login/oauth/learner': typeof LoginOauthLearnerRoute
+  '/signup/oauth/learner': typeof SignupOauthLearnerRoute
   '/assessment/examination': typeof AssessmentExaminationIndexRoute
   '/assessment/reports': typeof AssessmentReportsIndexRoute
   '/courses/course-details': typeof CoursesCourseDetailsIndexRoute
@@ -414,6 +422,7 @@ export interface FileRoutesById {
   '/terms-and-conditions/': typeof TermsAndConditionsIndexRoute
   '/user-profile/': typeof UserProfileIndexRoute
   '/login/oauth/learner': typeof LoginOauthLearnerRoute
+  '/signup/oauth/learner': typeof SignupOauthLearnerRoute
   '/assessment/examination/': typeof AssessmentExaminationIndexRoute
   '/assessment/reports/': typeof AssessmentReportsIndexRoute
   '/courses/course-details/': typeof CoursesCourseDetailsIndexRoute
@@ -462,6 +471,7 @@ export interface FileRouteTypes {
     | '/terms-and-conditions'
     | '/user-profile'
     | '/login/oauth/learner'
+    | '/signup/oauth/learner'
     | '/assessment/examination'
     | '/assessment/reports'
     | '/courses/course-details'
@@ -508,6 +518,7 @@ export interface FileRouteTypes {
     | '/terms-and-conditions'
     | '/user-profile'
     | '/login/oauth/learner'
+    | '/signup/oauth/learner'
     | '/assessment/examination'
     | '/assessment/reports'
     | '/courses/course-details'
@@ -554,6 +565,7 @@ export interface FileRouteTypes {
     | '/terms-and-conditions/'
     | '/user-profile/'
     | '/login/oauth/learner'
+    | '/signup/oauth/learner'
     | '/assessment/examination/'
     | '/assessment/reports/'
     | '/courses/course-details/'
@@ -601,6 +613,7 @@ export interface RootRouteChildren {
   TermsAndConditionsIndexRoute: typeof TermsAndConditionsIndexRoute
   UserProfileIndexRoute: typeof UserProfileIndexRoute
   LoginOauthLearnerRoute: typeof LoginOauthLearnerRoute
+  SignupOauthLearnerRoute: typeof SignupOauthLearnerRoute
   AssessmentExaminationIndexRoute: typeof AssessmentExaminationIndexRoute
   AssessmentReportsIndexRoute: typeof AssessmentReportsIndexRoute
   CoursesCourseDetailsIndexRoute: typeof CoursesCourseDetailsIndexRoute
@@ -854,6 +867,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AssessmentExaminationIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/signup/oauth/learner': {
+      id: '/signup/oauth/learner'
+      path: '/signup/oauth/learner'
+      fullPath: '/signup/oauth/learner'
+      preLoaderRoute: typeof SignupOauthLearnerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login/oauth/learner': {
       id: '/login/oauth/learner'
       path: '/login/oauth/learner'
@@ -961,6 +981,7 @@ const rootRouteChildren: RootRouteChildren = {
   TermsAndConditionsIndexRoute: TermsAndConditionsIndexRoute,
   UserProfileIndexRoute: UserProfileIndexRoute,
   LoginOauthLearnerRoute: LoginOauthLearnerRoute,
+  SignupOauthLearnerRoute: SignupOauthLearnerRoute,
   AssessmentExaminationIndexRoute: AssessmentExaminationIndexRoute,
   AssessmentReportsIndexRoute: AssessmentReportsIndexRoute,
   CoursesCourseDetailsIndexRoute: CoursesCourseDetailsIndexRoute,

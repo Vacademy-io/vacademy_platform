@@ -6,6 +6,9 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { handleFetchUserRoleDetails } from "../-services/institute-details";
 import { useEffect, useState } from "react";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
+import { Preferences } from "@capacitor/preferences";
+import { TokenKey } from "@/constants/auth/tokens";
+import { setAuthorizationCookie } from "@/lib/auth/sessionUtility";
 
 interface UserRole {
     id: string;
@@ -40,6 +43,39 @@ const HeroSection = ({
             roleNames.includes("STUDENT") && roleNames.includes("TEACHER")
         );
     }, [userRoleDetails]);
+
+    // Auto-set cookies when component mounts
+    useEffect(() => {
+        const setTokensInCookies = async () => {
+            try {
+                // Get tokens from storage
+                const accessToken = await Preferences.get({
+                    key: "accessToken",
+                });
+                const refreshToken = await Preferences.get({
+                    key: "refreshToken",
+                });
+
+                // Set cookies if tokens exist
+                if (accessToken?.value) {
+                    setAuthorizationCookie(
+                        TokenKey.accessToken,
+                        accessToken.value
+                    );
+                }
+                if (refreshToken?.value) {
+                    setAuthorizationCookie(
+                        TokenKey.refreshToken,
+                        refreshToken.value
+                    );
+                }
+            } catch (error) {
+                console.error("❌ Error auto-setting cookies:", error);
+            }
+        };
+
+        setTokensInCookies();
+    }, []); // Run only once when component mounts
 
     if (isLoading) return <DashboardLoader />;
 
@@ -106,9 +142,11 @@ const HeroSection = ({
                 >
                     {allowLeanersToCreateCourses &&
                         hasTeacherAndStudentRole && (
-                            <MyButton onClick={handleNavigate}>
-                                Create Course
-                            </MyButton>
+                            <>
+                                <MyButton onClick={handleNavigate}>
+                                    Create Course
+                                </MyButton>
+                            </>
                         )}
                     <div className="relative group">
                         {/* Floating orb effect */}

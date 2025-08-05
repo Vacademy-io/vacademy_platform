@@ -261,7 +261,10 @@ const EnrollByInvite = () => {
             case 2:
                 return (
                     <ReviewStep
-                        courseData={courseData}
+                        courseData={{
+                            course: courseData.course,
+                            courseBanner: courseData.courseBanner
+                        }}
                         selectedPayment={enrollmentData.selectedPayment}
                         registrationData={enrollmentData.registrationData}
                         onEmailChange={handleEmailChange}
@@ -270,14 +273,17 @@ const EnrollByInvite = () => {
             case 3:
                 return (
                     <PaymentInfoStep
-                        courseData={courseData}
+                        courseData={{
+                            course: courseData.course,
+                            courseBanner: courseData.courseBanner
+                        }}
                         selectedPayment={enrollmentData.selectedPayment}
                         paymentInfo={enrollmentData.paymentInfo}
                         onPaymentInfoChange={handlePaymentInfoChange}
                     />
                 );
             case 4:
-                return <SuccessStep />;
+                return <SuccessStep courseName={courseData.course} />;
             default:
                 return (
                     <RegistrationStep
@@ -294,7 +300,7 @@ const EnrollByInvite = () => {
         <div
             className={`w-full h-auto bg-gradient-to-br from-slate-50 to-blue-50 py-8 px-4 sm:px-6 lg:px-8 pb-24`}
         >
-            <div className="max-w-[80%] mx-auto space-y-8">
+            <div className="md:max-w-[80%] mx-auto space-y-8">
                 {/* Course Information Card - Only show in registration step */}
                 {currentStep === 0 && (
                     <CourseInfoCard

@@ -1,21 +1,12 @@
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import {
-    Award,
-    Target,
-    Info,
-    GraduationCap,
-    BookOpen,
-    RotateCcw,
-} from "lucide-react";
-import { FormProvider, useForm } from "react-hook-form";
+import { GraduationCap, RotateCcw } from "lucide-react";
+import { FormProvider } from "react-hook-form";
 import { FormControl, FormField, FormItem } from "@/components/ui/form";
 import PhoneInputField from "@/components/design-system/phone-input-field";
 import SelectField from "@/components/design-system/select-field";
 import { MyInput } from "@/components/design-system/input";
 import { MyButton } from "@/components/design-system/button";
-import { AssessmentCustomFieldOpenRegistration } from "@/types/assessment-open-registration";
 import { useInstituteDetailsStore } from "@/stores/study-library/useInstituteDetails";
 
 interface FinalCourseData {
@@ -39,11 +30,7 @@ interface RegistrationStepProps {
     form: any;
 }
 
-const RegistrationStep = ({ courseData, inviteData, onSubmit, form }: RegistrationStepProps) => {
-    const { getDetailsFromPackageSessionId } = useInstituteDetailsStore();
-
-
-
+const RegistrationStep = ({ onSubmit, form }: RegistrationStepProps) => {
     return (
         <Card className="overflow-hidden shadow-xl border-0 bg-white/80 backdrop-blur-sm w-full">
             <CardContent className="p-6 sm:p-8">
@@ -81,7 +68,9 @@ const RegistrationStep = ({ courseData, inviteData, onSubmit, form }: Registrati
                                                                 label="Phone Number"
                                                                 placeholder="123 456 7890"
                                                                 name={`${key}.value`}
-                                                                control={form.control}
+                                                                control={
+                                                                    form.control
+                                                                }
                                                                 country="in"
                                                                 required
                                                             />
@@ -97,32 +86,52 @@ const RegistrationStep = ({ courseData, inviteData, onSubmit, form }: Registrati
                                                 render={({ field }) => (
                                                     <FormItem>
                                                         <FormControl>
-                                                            {value.type === "dropdown" ? (
+                                                            {value.type ===
+                                                            "dropdown" ? (
                                                                 <SelectField
-                                                                    label={value.name}
+                                                                    label={
+                                                                        value.name
+                                                                    }
                                                                     name={`${key}.value`}
                                                                     options={
                                                                         value.comma_separated_options?.map(
-                                                                            (option: string, index: number) => ({
+                                                                            (
+                                                                                option: string,
+                                                                                index: number
+                                                                            ) => ({
                                                                                 value: option,
                                                                                 label: option,
                                                                                 _id: index,
                                                                             })
                                                                         ) || []
                                                                     }
-                                                                    control={form.control}
-                                                                    required={value.is_mandatory}
+                                                                    control={
+                                                                        form.control
+                                                                    }
+                                                                    required={
+                                                                        value.is_mandatory
+                                                                    }
                                                                     className="!w-full"
                                                                 />
                                                             ) : (
                                                                 <MyInput
                                                                     inputType="text"
-                                                                    inputPlaceholder={value.name}
-                                                                    input={field.value}
-                                                                    onChangeFunction={field.onChange}
-                                                                    required={value.is_mandatory}
+                                                                    inputPlaceholder={
+                                                                        value.name
+                                                                    }
+                                                                    input={
+                                                                        field.value
+                                                                    }
+                                                                    onChangeFunction={
+                                                                        field.onChange
+                                                                    }
+                                                                    required={
+                                                                        value.is_mandatory
+                                                                    }
                                                                     size="large"
-                                                                    label={value.name}
+                                                                    label={
+                                                                        value.name
+                                                                    }
                                                                     className="!max-w-full !w-full"
                                                                 />
                                                             )}
@@ -138,14 +147,21 @@ const RegistrationStep = ({ courseData, inviteData, onSubmit, form }: Registrati
                                         buttonType="primary"
                                         scale="large"
                                         layoutVariant="default"
-                                        onClick={form.handleSubmit(onSubmit, (err) => console.error(err))}
-                                        disable={Object.entries(form.getValues()).some(
-                                            ([, value]: [string, any]) => value.is_mandatory && !value.value
+                                        onClick={form.handleSubmit(
+                                            onSubmit,
+                                            (err) => console.error(err)
+                                        )}
+                                        disable={Object.entries(
+                                            form.getValues()
+                                        ).some(
+                                            ([, value]: [string, any]) =>
+                                                value.is_mandatory &&
+                                                !value.value
                                         )}
                                         className="w-full md:w-fit bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl"
                                     >
                                         <GraduationCap className="w-5 h-5 mr-2" />
-                                        Continue to Payment
+                                        Register
                                     </MyButton>
                                     <button
                                         type="button"
@@ -165,4 +181,4 @@ const RegistrationStep = ({ courseData, inviteData, onSubmit, form }: Registrati
     );
 };
 
-export default RegistrationStep; 
+export default RegistrationStep;

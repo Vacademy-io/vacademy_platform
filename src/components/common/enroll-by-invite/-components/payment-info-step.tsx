@@ -2,7 +2,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { CreditCard, CheckCircle } from "lucide-react";
 import { MyInput } from "@/components/design-system/input";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
+import { getCurrencySymbol } from "./payment-selection-step";
 
 interface PaymentOption {
     id: string;
@@ -23,6 +24,7 @@ interface PaymentInfo {
 interface PaymentInfoStepProps {
     courseData: {
         course: string;
+        courseBanner?: string;
     };
     selectedPayment: PaymentOption | null;
     paymentInfo: PaymentInfo;
@@ -150,7 +152,7 @@ const PaymentInfoStep = ({
             {/* Order Summary Card */}
             <Card className="shadow-xl border-0 bg-white/80 backdrop-blur-sm">
                 <CardContent className="p-6 sm:p-8">
-                    <div className="flex items-start gap-2 sm:gap-3 mb-6">
+                    <div className="flex items-start gap-2 sm:gap-3 mb-4">
                         <div className="p-1.5 sm:p-2 bg-green-100 rounded-lg flex-shrink-0">
                             <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" />
                         </div>
@@ -159,25 +161,64 @@ const PaymentInfoStep = ({
                                 Order Summary
                             </h2>
                             <p className="text-gray-600 text-sm mt-1">
-                                Final review before payment
+                                Review your order before proceeding to payment
                             </p>
                         </div>
                     </div>
 
-                    <Separator className="mb-6" />
-
-                    <div className="space-y-4">
-                        <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                            <div>
-                                <h3 className="font-semibold text-gray-900">{courseData.course}</h3>
-                                <p className="text-sm text-gray-600">{selectedPayment?.name}</p>
-                            </div>
-                            <div className="text-right">
-                                <div className="text-lg font-bold text-gray-900">
-                                    ${selectedPayment?.amount}
+                    <div className="space-y-0">
+                        {/* Course Banner and Name */}
+                        <div className="flex items-center gap-4 pb-5">
+                            {courseData.courseBanner && (
+                                <div className="w-16 h-12 rounded-lg overflow-hidden flex-shrink-0">
+                                    <img
+                                        src={courseData.courseBanner}
+                                        alt="Course Banner"
+                                        className="w-full h-full object-cover"
+                                    />
                                 </div>
-                                <div className="text-sm text-gray-500">Duration: {selectedPayment?.duration}</div>
+                            )}
+                            <div className="flex-1">
+                                <span>{courseData.course}</span>
                             </div>
+                        </div>
+
+                        <Separator />
+
+                        {/* Plan and Duration */}
+                        <div className="flex items-center justify-between pt-4">
+                            <div>
+                                <span className="text-gray-600">Plan:</span>
+                            </div>
+                            <div>
+                                <span className="ml-2">
+                                    {selectedPayment?.duration}
+                                </span>
+                            </div>
+                        </div>
+
+  
+
+                        {/* Price */}
+                        <div className="flex items-center justify-between py-4">
+                            <span className="text-gray-600">Price:</span>
+                            <span className="text-gray-900">
+                                {getCurrencySymbol(selectedPayment?.currency || "")}
+                                {selectedPayment?.amount}
+                            </span>
+                        </div>
+
+                        <Separator />
+
+                        {/* Total */}
+                        <div className="flex items-center justify-between py-4">
+                            <span className="text-gray-700 font-bold">
+                                Total:
+                            </span>
+                            <span className="font-bold text-lg text-gray-900">
+                                {getCurrencySymbol(selectedPayment?.currency || "")}
+                                {selectedPayment?.amount}
+                            </span>
                         </div>
                     </div>
                 </CardContent>

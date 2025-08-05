@@ -1,7 +1,12 @@
 import { Card, CardContent } from "@/components/ui/card";
-import { CheckCircle, Clock } from "lucide-react";
+import { CheckCircle, AlertTriangle, Mail } from "lucide-react";
+import { MyButton } from "@/components/design-system/button";
 
-const SuccessStep = () => {
+interface SuccessStepProps {
+    courseName: string;
+}
+
+const SuccessStep = ({ courseName }: SuccessStepProps) => {
     return (
         <div className="space-y-6">
             {/* Success Card */}
@@ -16,32 +21,41 @@ const SuccessStep = () => {
                         Enrollment Request Submitted!
                     </h2>
                     <p className="text-gray-600 text-lg mb-6">
-                        Thank you for your enrollment request. We have received your application and will process it shortly.
+                        Thank you for your interest in {courseName}. Your
+                        enrollment request has been submitted successfully.
                     </p>
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                        <p className="text-blue-800 text-sm">
-                            You will receive a confirmation email with further instructions once your enrollment is processed.
-                        </p>
-                    </div>
-                </CardContent>
-            </Card>
 
-            {/* Approval Required Card */}
-            <Card className="shadow-xl border-0 bg-white/80 backdrop-blur-sm">
-                <CardContent className="p-6 sm:p-8">
-                    <div className="flex items-start gap-3">
-                        <div className="p-2 bg-amber-100 rounded-lg flex-shrink-0">
-                            <Clock className="w-6 h-6 text-amber-600" />
+                    {/* Approval Required Sub-card */}
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mt-6">
+                        <div className="flex items-start gap-3">
+                            <div className="p-1.5 bg-amber-100 rounded-lg flex-shrink-0">
+                                <AlertTriangle className="w-5 h-5 text-amber-600" />
+                            </div>
+                            <div className="text-left">
+                                <h3 className="text-base font-semibold text-gray-900 mb-1">
+                                    Approval Required
+                                </h3>
+                                <p className="text-gray-600 text-sm leading-relaxed">
+                                    Your enrollment request is being reviewed by
+                                    our team. You will receive an email
+                                    notification once approved.
+                                </p>
+                            </div>
                         </div>
-                        <div>
-                            <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                                Approval Required
-                            </h3>
-                            <p className="text-gray-600 text-sm leading-relaxed">
-                                Your enrollment request is currently pending approval. This process typically takes 1-2 business days. 
-                                You will be notified via email once your enrollment is approved or if any additional information is required.
-                            </p>
-                        </div>
+                    </div>
+
+                    {/* Check Email Status Button */}
+                    <div className="mt-6">
+                        <MyButton
+                            type="button"
+                            buttonType="secondary"
+                            scale="large"
+                            layoutVariant="default"
+                            className="w-full sm:w-auto text-white font-semibold rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl"
+                        >
+                            <Mail className="w-5 h-5 mr-2" />
+                            Check Email Status
+                        </MyButton>
                     </div>
                 </CardContent>
             </Card>
@@ -49,4 +63,4 @@ const SuccessStep = () => {
     );
 };
 
-export default SuccessStep; 
+export default SuccessStep;

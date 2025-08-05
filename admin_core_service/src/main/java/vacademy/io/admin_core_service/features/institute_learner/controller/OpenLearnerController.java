@@ -22,4 +22,9 @@ public class OpenLearnerController {
 
     }
 
+    @PostMapping("/add-learner")
+    public ResponseEntity<String> addLearner(@RequestBody UserDTO userDTO){
+        return ResponseEntity.ok().body(studentRegistrationManager.addStudent(userDTO));
+    }
+
 }

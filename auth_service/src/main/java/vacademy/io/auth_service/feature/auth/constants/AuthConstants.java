@@ -15,4 +15,6 @@ public class AuthConstants {
     public static final List<String> VALID_ROLES_FOR_ADMIN_PORTAL = List.of("ADMIN","TEACHER","EVALUATOR");
 
     public  static final List<String> VALID_ROLES_FOR_STUDENT_PORTAL = List.of("STUDENT");
+
+    public static final String ADD_LEARNER = "/admin-core-service/institute/open_learner/v1/add-learner";
 }

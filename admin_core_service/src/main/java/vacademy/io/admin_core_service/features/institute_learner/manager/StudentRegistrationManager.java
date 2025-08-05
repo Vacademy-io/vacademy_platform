@@ -378,4 +378,7 @@ public class StudentRegistrationManager {
         return RandomStringUtils.randomNumeric(6);
     }
 
+    public String addStudent(UserDTO userDTO){
+        return createStudentFromRequest(userDTO, null).getId();
+    }
 }

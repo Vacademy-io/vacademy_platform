@@ -87,6 +87,14 @@ public class LearnerAuthManager {
                 throw new VacademyException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to register learner: " + e.getMessage());
             }
 
+        }else{
+            ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                    applicationName, HttpMethod.POST.name(),
+                    adminCoreServiceBaseUrl, AuthConstants.ADD_LEARNER,
+                    userDTO
+            );
+
+           String instituteId = response.getBody();
         }
         oAuth2VendorToUserDetailService.verifyEmail(learnerEnrollRequestDTO.getSubjectId(), learnerEnrollRequestDTO.getVendorId(), user.getEmail());
 

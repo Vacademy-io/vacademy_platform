@@ -1,5 +1,5 @@
 import { Steps } from "@phosphor-icons/react";
-import { useNavigate, useRouter } from "@tanstack/react-router";
+import { useRouter } from "@tanstack/react-router";
 import {
   ChalkboardTeacher,
   Code,
@@ -19,7 +19,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useState, useEffect, useMemo } from "react";
-import { DialogTrigger, Dialog, DialogContent } from "@/components/ui/dialog";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import {
@@ -43,10 +42,6 @@ import axios from "axios";
 import { urlInstituteDetails } from "@/constants/urls";
 import CourseListHeader from "../../-component/CourseListHeader";
 import { MyButton } from "@/components/design-system/button";
-import {
-  getFromStorage,
-  LoginForm,
-} from "@/components/common/auth/login/sections/login-form";
 import { CourseStructureDetails } from "./course-structure-details";
 import { handleGetSlideCountDetails } from "../-services/get-slides-count";
 import {
@@ -54,11 +49,9 @@ import {
   InstituteDetailsType,
 } from "@/types/institute-details/institute-details-interface";
 import { CourseStructureResponse } from "@/types/institute-details/course-details-interface";
-import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
-import { isNullOrEmptyOrUndefined } from "@/lib/utils";
-import { TokenKey } from "@/constants/auth/tokens";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { AuthModal } from "@/components/common/auth/modal/AuthModal";
 
 type SlideType = {
   id: string;
@@ -172,7 +165,6 @@ const mockCourses: Course[] = [
 ];
 
 export const CourseDetailsPage = () => {
-  const navigate = useNavigate();
   const [selectedSession, setSelectedSession] = useState<string>("");
   const [selectedLevel, setSelectedLevel] = useState<string>("");
   const router = useRouter();
@@ -353,23 +345,7 @@ export const CourseDetailsPage = () => {
     enabled: !!packageSessionIds,
   });
 
-  useEffect(() => {
-    const redirectToDashboardIfAuthenticated = async () => {
-      const token = await getTokenFromStorage(TokenKey.accessToken);
-      const studentDetails = await getFromStorage("StudentDetails");
-      const instituteDetails = await getFromStorage("InstituteDetails");
 
-      if (
-        !isNullOrEmptyOrUndefined(token) &&
-        !isNullOrEmptyOrUndefined(studentDetails) &&
-        !isNullOrEmptyOrUndefined(instituteDetails)
-      ) {
-        navigate({ to: "/dashboard" });
-      }
-    };
-
-    redirectToDashboardIfAuthenticated();
-  }, [navigate]);
 
   return (
     <>
@@ -720,8 +696,10 @@ export const CourseDetailsPage = () => {
                     </>
                   )}
                 </div>
-                <Dialog>
-                  <DialogTrigger className="w-full">
+                <AuthModal
+                  type="courseDetailsPage"
+                  courseId={searchParams.courseId}
+                  trigger={
                     <MyButton
                       type="button"
                       scale="large"
@@ -731,14 +709,8 @@ export const CourseDetailsPage = () => {
                     >
                       Enroll
                     </MyButton>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <LoginForm
-                      type="courseDetailsPage"
-                      courseId={searchParams.courseId}
-                    />
-                  </DialogContent>
-                </Dialog>
+                  }
+                />
               </div>
             </div>
           </div>

@@ -26,7 +26,7 @@ import {
     FinalCourseData,
     PaymentOption,
     PaymentInfo,
-    EnrollmentData
+    EnrollmentData,
 } from "./-components";
 
 const EnrollByInvite = () => {
@@ -73,7 +73,8 @@ const EnrollByInvite = () => {
             name: "Full Course Access",
             amount: 299,
             currency: "USD",
-            description: "Complete access to all course materials and assessments",
+            description:
+                "Complete access to all course materials and assessments",
             duration: "6 months",
         },
         {
@@ -169,42 +170,43 @@ const EnrollByInvite = () => {
     form.watch();
 
     function onSubmit(values: FormValues) {
-        setEnrollmentData(prev => ({
+        setEnrollmentData((prev) => ({
             ...prev,
-            registrationData: values
+            registrationData: values,
         }));
         setCurrentStep(1);
     }
 
-
-
     const handlePaymentSelection = (payment: PaymentOption) => {
-        setEnrollmentData(prev => ({
+        setEnrollmentData((prev) => ({
             ...prev,
-            selectedPayment: payment
+            selectedPayment: payment,
         }));
     };
 
-    const handlePaymentInfoChange = (field: keyof PaymentInfo, value: string) => {
-        setEnrollmentData(prev => ({
+    const handlePaymentInfoChange = (
+        field: keyof PaymentInfo,
+        value: string
+    ) => {
+        setEnrollmentData((prev) => ({
             ...prev,
             paymentInfo: {
                 ...prev.paymentInfo,
-                [field]: value
-            }
+                [field]: value,
+            },
         }));
     };
 
     const handleEmailChange = (email: string) => {
-        setEnrollmentData(prev => ({
+        setEnrollmentData((prev) => ({
             ...prev,
             registrationData: {
                 ...prev.registrationData,
                 email: {
                     ...prev.registrationData.email,
-                    value: email
-                }
-            }
+                    value: email,
+                },
+            },
         }));
     };
 
@@ -308,22 +310,24 @@ const EnrollByInvite = () => {
     };
 
     return (
-        <div className="w-full h-full bg-gradient-to-br from-slate-50 to-blue-50 py-8 px-4 sm:px-6 lg:px-8 pb-24">
+        <div
+            className={`w-full h-auto bg-gradient-to-br from-slate-50 to-blue-50 py-8 px-4 sm:px-6 lg:px-8 pb-24`}
+        >
             <div className="max-w-[80%] mx-auto space-y-8">
                 {/* Course Information Card - Only show in registration step */}
                 {currentStep === 0 && (
                     <CourseInfoCard
                         courseData={courseData}
-                        levelName={getDetailsFromPackageSessionId({
-                            packageSessionId:
-                                inviteData
-                                    .package_session_to_payment_options[0]
-                                    .package_session_id,
-                        })?.level.level_name || "-"}
+                        levelName={
+                            getDetailsFromPackageSessionId({
+                                packageSessionId:
+                                    inviteData
+                                        .package_session_to_payment_options[0]
+                                        .package_session_id,
+                            })?.level.level_name || "-"
+                        }
                     />
                 )}
-
-
 
                 {/* Current Step Content */}
                 {renderCurrentStep()}
@@ -351,11 +355,14 @@ const EnrollByInvite = () => {
                             scale="large"
                             layoutVariant="default"
                             onClick={() => {
-                                const registrationCard = document.getElementById('registration-card');
+                                const registrationCard =
+                                    document.getElementById(
+                                        "registration-card"
+                                    );
                                 if (registrationCard) {
-                                    registrationCard.scrollIntoView({ 
-                                        behavior: 'smooth',
-                                        block: 'start'
+                                    registrationCard.scrollIntoView({
+                                        behavior: "smooth",
+                                        block: "start",
                                     });
                                 }
                             }}

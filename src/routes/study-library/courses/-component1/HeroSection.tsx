@@ -8,7 +8,7 @@ import { useEffect, useState } from "react";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { Preferences } from "@capacitor/preferences";
 import { TokenKey } from "@/constants/auth/tokens";
-import { setAuthorizationCookie } from "@/lib/auth/sessionUtility";
+import { getTokenFromCookie, setAuthorizationCookie } from "@/lib/auth/sessionUtility";
 
 interface UserRole {
     id: string;
@@ -35,7 +35,9 @@ const HeroSection = ({
     );
 
     const handleNavigate = () => {
-        window.location.href = "https://dash.vacademy.io/study-library/courses";
+        const accessToken = getTokenFromCookie(TokenKey.accessToken);
+        const refreshToken = getTokenFromCookie(TokenKey.refreshToken);
+        window.location.href = `https://dash.vacademy.io/auth-transfer?accessToken=${accessToken}&refreshToken=${refreshToken}`;
     };
 
     useEffect(() => {

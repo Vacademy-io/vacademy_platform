@@ -241,7 +241,7 @@ public class StudentRegistrationManager {
         try {
             Optional<StudentSessionInstituteGroupMapping> studentSessionInstituteGroupMappingOptional =
                     studentSessionRepository.findTopByPackageSessionIdAndUserIdAndStatusIn(
-                            studentSessionInstituteGroupMapping.getPackageSession().getId(),
+                            destinationPackageSession,
                             studentSessionInstituteGroupMapping.getInstitute().getId(),
                             studentSessionInstituteGroupMapping.getUserId(),
                             List.of(

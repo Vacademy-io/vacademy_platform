@@ -24,6 +24,7 @@ import {
     PaymentSelectionStep,
     ReviewStep,
     PaymentInfoStep,
+    PaymentPendingStep,
     SuccessStep,
     CourseInfoCard,
     NavigationButtons,
@@ -34,7 +35,7 @@ import {
 } from "./-components";
 
 const EnrollByInvite = () => {
-    const [currentStep, setCurrentStep] = useState(0); // 0: Registration, 1: Payment Selection, 2: Review, 3: Payment Details, 4: Success
+    const [currentStep, setCurrentStep] = useState(0); // 0: Registration, 1: Payment Selection, 2: Review, 3: Payment Details, 4: Payment Pending, 5: Success
     const [courseData, setCourseData] = useState<FinalCourseData>({
         aboutCourse: "",
         course: "",
@@ -193,7 +194,13 @@ const EnrollByInvite = () => {
     const handleSubmitEnrollment = () => {
         // Here you would typically submit the enrollment data to your API
         console.log("Submitting enrollment:", enrollmentData);
-        setCurrentStep(4);
+        setCurrentStep(4); // Go to Payment Pending step
+    };
+
+    const handleCompletePayment = () => {
+        // Here you would typically redirect to Stripe or complete payment
+        console.log("Completing payment...");
+        setCurrentStep(5); // Go to Success step
     };
 
     useEffect(() => {
@@ -263,6 +270,14 @@ const EnrollByInvite = () => {
                     />
                 );
             case 4:
+                return (
+                    <PaymentPendingStep
+                        selectedPayment={enrollmentData.selectedPayment}
+                        orderId={`ORD-${Date.now()}`} // Generate a mock order ID
+                        onCompletePayment={handleCompletePayment}
+                    />
+                );
+            case 5:
                 return (
                     <SuccessStep
                         courseName={courseData.course}

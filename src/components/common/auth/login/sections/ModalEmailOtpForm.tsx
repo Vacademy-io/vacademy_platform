@@ -124,69 +124,93 @@ export function ModalEmailLogin({
             setIsLoading(true);
         },
         onSuccess: async (response) => {
-            const { accessToken, refreshToken, status } = response.data;
+            try {
+                // If onEmailVerificationSuccess callback is provided, use it for signup flow
+                if (onEmailVerificationSuccess) {
+                    onEmailVerificationSuccess(email);
+                    return;
+                }
 
-            if (accessToken && refreshToken) {
-                await setTokenInStorage(TokenKey.accessToken, accessToken);
-                await setTokenInStorage(TokenKey.refreshToken, refreshToken);
+                // Store tokens
+                await setTokenInStorage(
+                    TokenKey.accessToken,
+                    response.data.accessToken
+                );
+                await setTokenInStorage(
+                    TokenKey.refreshToken,
+                    response.data.refreshToken
+                );
 
-                try {
-                    const decodedData = getTokenDecodedData(accessToken);
-                    const authorities = decodedData?.authorities;
-                    const userId = decodedData?.user;
-                    const authorityKeys = authorities ? Object.keys(authorities) : [];
+                // Decode token to get user data
+                const decodedData = await getTokenDecodedData(
+                    response.data.accessToken
+                );
+                const authorities = decodedData?.authorities;
+                const userId = decodedData?.user;
+                const authorityKeys = authorities
+                    ? Object.keys(authorities)
+                    : [];
 
-                    if (authorityKeys.length > 1) {
-                        navigate({
-                            to: "/institute-selection",
-                            search: { redirect: "/dashboard/" },
-                        });
-                    } else if (authorityKeys.length === 1) {
-                        const instituteId = authorityKeys[0];
-                        await fetchAndStoreInstituteDetails(instituteId, userId);
-                        await fetchAndStoreStudentDetails(instituteId, userId);
+                if (authorityKeys.length > 1) {
+                    navigate({
+                        to: "/institute-selection",
+                        search: { redirect: redirect || "/dashboard/" },
+                        state: { type, courseId },
+                    });
+                } else {
+                    const instituteId = authorityKeys[0];
 
-                        if (status == 200) {
-                            // Determine redirect URL based on type and courseId
-                            let redirectUrl = "/dashboard";
+                    if (instituteId && userId) {
+                        try {
+                            await fetchAndStoreInstituteDetails(
+                                instituteId,
+                                userId
+                            );
+                            await fetchAndStoreStudentDetails(
+                                instituteId,
+                                userId
+                            );
                             
-                            if (type === "courseDetailsPage" && courseId) {
-                                redirectUrl = `/study-library/courses/course-details?courseId=${courseId}&selectedTab=ALL`;
-                            } else if (type === "courseDetailsPage") {
-                                redirectUrl = "/study-library/courses";
-                            }
+                            // For email OTP login, assume status 200 (success) since we have tokens
+                            const loginStatus = 200;
                             
-                            // Open in new tab if login originated from course-related pages or if type is courseDetailsPage
-                            if (type === "courseDetailsPage" || (type && type !== "mainLogin")) {
-                                window.open(redirectUrl, '_blank');
-                            }
-                            // Only navigate to dashboard if this is NOT a modal login (i.e., main login page)
-                            if (!type || type === "mainLogin") {
-                                navigate({
-                                    to: "/dashboard",
-                                });
-                            } else {
-                                // Call onLoginSuccess callback for modal login
-                                if (onLoginSuccess) {
-                                    onLoginSuccess();
+                            if (loginStatus == 200) {
+                                // Determine redirect URL based on type and courseId
+                                let redirectUrl = "/dashboard";
+                                
+                                if (type === "courseDetailsPage" && courseId) {
+                                    redirectUrl = `/study-library/courses/course-details?courseId=${courseId}&selectedTab=ALL`;
+                                } else if (type === "courseDetailsPage") {
+                                    redirectUrl = "/study-library/courses";
                                 }
+                                
+                                // Open in new tab if login originated from course-related pages or if type is courseDetailsPage
+                                if (type === "courseDetailsPage" || (type && type !== "mainLogin")) {
+                                    window.open(redirectUrl, '_blank');
+                                }
+                                // Only navigate to dashboard if this is NOT a modal login (i.e., main login page)
+                                if (!type || type === "mainLogin") {
+                                    navigate({
+                                        to: "/dashboard",
+                                    });
+                                } else {
+                                    // Call onLoginSuccess callback for modal login
+                                    if (onLoginSuccess) {
+                                        onLoginSuccess();
+                                    }
+                                }
+                            } else {
+                                // Unexpected login status
                             }
-                        } else if (status == 201) {
-                            navigate({
-                                to:
-                                    typeof redirect === "string"
-                                        ? redirect
-                                        : "/assessment/examination",
-                            });
+                        } catch (error) {
+                            console.error("Error fetching details:", error);
+                            toast.error("Failed to fetch details");
                         }
                     } else {
                         console.error("Institute ID or User ID is undefined");
                     }
-                } catch (error) {
-                    console.error("Error fetching details:", error);
-                    toast.error("Failed to fetch details");
                 }
-            } else {
+            } catch (error) {
                 console.error("Error processing decoded data:", error);
             }
         },

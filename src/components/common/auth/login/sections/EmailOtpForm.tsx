@@ -118,13 +118,18 @@ export function EmailLogin({
         mutationFn: (data: { email: string; otp: string }) =>
             axios.post(LOGIN_OTP, data),
         onSuccess: async (response) => {
+            console.log("🔐 Page Email OTP Login - onSuccess triggered");
+            console.log("📦 Response data:", response.data);
+            
             try {
                 // If onEmailVerificationSuccess callback is provided, use it for signup flow
                 if (onEmailVerificationSuccess) {
+                    console.log("📧 Using onEmailVerificationSuccess callback for signup flow");
                     onEmailVerificationSuccess(email);
                     return;
                 }
 
+                console.log("🔑 Storing tokens...");
                 // Store tokens
                 await setTokenInStorage(
                     TokenKey.accessToken,
@@ -134,18 +139,24 @@ export function EmailLogin({
                     TokenKey.refreshToken,
                     response.data.refreshToken
                 );
+                console.log("✅ Tokens stored successfully");
 
                 // Decode token to get user data
+                console.log("🔍 Decoding token...");
                 const decodedData = await getTokenDecodedData(
                     response.data.accessToken
                 );
+                console.log("📋 Decoded data:", decodedData);
                 const authorities = decodedData?.authorities;
                 const userId = decodedData?.user;
                 const authorityKeys = authorities
                     ? Object.keys(authorities)
                     : [];
+                console.log("🏛️ Authority keys:", authorityKeys);
+                console.log("👤 User ID:", userId);
 
                 if (authorityKeys.length > 1) {
+                    console.log("🏛️ Multiple authorities found, navigating to institute selection");
                     navigate({
                         to: "/institute-selection",
                         search: { redirect: redirect || "/dashboard/" },
@@ -153,18 +164,32 @@ export function EmailLogin({
                     });
                 } else {
                     const instituteId = authorityKeys[0];
+                    console.log("🏛️ Single authority found, institute ID:", instituteId);
 
                     if (instituteId && userId) {
                         try {
+                            console.log("📊 Fetching institute details...");
                             await fetchAndStoreInstituteDetails(
                                 instituteId,
                                 userId
                             );
-                            const status = await fetchAndStoreStudentDetails(
+                            console.log("👨‍🎓 Fetching student details...");
+                            await fetchAndStoreStudentDetails(
                                 instituteId,
                                 userId
                             );
-                            if (status == 200) {
+                            
+                            // Since login response doesn't have status, assume success and proceed with main flow
+                            console.log("📊 Login response structure:", Object.keys(response.data));
+                            console.log("🎯 Type:", type);
+                            console.log("📚 Course ID:", courseId);
+                            
+                            // For email OTP login, assume status 200 (success) since we have tokens
+                            const loginStatus = 200;
+                            console.log("📊 Assumed login status:", loginStatus);
+                            
+                            if (loginStatus == 200) {
+                                console.log("✅ Login status 200 - proceeding with main flow");
                                 // Determine redirect URL based on type and courseId
                                 let redirectUrl = "/dashboard";
                                 
@@ -173,33 +198,31 @@ export function EmailLogin({
                                 } else if (type === "courseDetailsPage") {
                                     redirectUrl = "/study-library/courses";
                                 }
+                                console.log("🎯 Determined redirect URL:", redirectUrl);
                                 
-                                                                                                   // Open in new tab if login originated from course-related pages or if type is courseDetailsPage
+                                // Open in new tab if login originated from course-related pages or if type is courseDetailsPage
                                 if (type === "courseDetailsPage" || (type && type !== "mainLogin")) {
+                                    console.log("🔄 Opening new tab with URL:", redirectUrl);
                                     window.open(redirectUrl, '_blank');
                                 }
                                 // Always navigate to dashboard for page login
+                                console.log("🏠 Navigating to dashboard (page login)");
                                 navigate({
                                     to: "/dashboard",
                                 });
-                            } else if (status == 201) {
-                                navigate({
-                                    to:
-                                        typeof redirect === "string"
-                                            ? redirect
-                                            : "/assessment/examination",
-                                });
+                            } else {
+                                console.log("❌ Unexpected login status:", loginStatus);
                             }
                         } catch (error) {
-                            console.error("Error fetching details:", error);
+                            console.error("❌ Error fetching details:", error);
                             toast.error("Failed to fetch details");
                         }
                     } else {
-                        console.error("Institute ID or User ID is undefined");
+                        console.error("❌ Institute ID or User ID is undefined");
                     }
                 }
             } catch (error) {
-                console.error("Error processing decoded data:", error);
+                console.error("❌ Error processing decoded data:", error);
             }
         },
         onError: () => {

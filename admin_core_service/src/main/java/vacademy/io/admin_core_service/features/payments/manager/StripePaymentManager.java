@@ -106,7 +106,7 @@ public class StripePaymentManager implements PaymentServiceStrategy {
         invoiceParams.put("customer", stripeRequestDTO.getCustomerId());
         invoiceParams.put("collection_method", "charge_automatically");
         invoiceParams.put("pending_invoice_items_behavior", "include");
-        invoiceParams.put("auto_advance", false);
+        invoiceParams.put("auto_advance", true);
 
         // ✅ Add metadata to the invoice itself
         Map<String, Object> metadata = new HashMap<>();

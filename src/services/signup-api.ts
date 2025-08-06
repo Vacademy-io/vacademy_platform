@@ -1,5 +1,6 @@
 import axios from "axios";
 import { BASE_URL } from "@/constants/urls";
+import { useInstituteDetailsStore } from "@/stores/study-library/useInstituteDetails";
 
 // Types for API responses
 export interface InstituteSearchResult {
@@ -415,4 +416,22 @@ export const handlePostSignupAuth = async (
         // If there's an error, still redirect to login as fallback
         navigate({ to: "/login" });
     }
+};
+
+export const useInstituteQuery = ({ instituteId }: { instituteId: string }) => {
+    const setInstituteDetails = useInstituteDetailsStore(
+        (state) => state.setInstituteDetails
+    );
+
+    return {
+        queryKey: ["GET_INIT_INSTITUTE", instituteId],
+        queryFn: async () => {
+            const data = await getInstituteDetails(instituteId);
+            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+            // @ts-expect-error
+            setInstituteDetails(data);
+            return data;
+        },
+        staleTime: 3600000,
+    };
 };

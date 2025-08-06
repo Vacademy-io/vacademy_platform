@@ -4,6 +4,7 @@ package vacademy.io.common.auth.entity;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.UuidGenerator;
+import org.hibernate.annotations.Where;
 import vacademy.io.common.auth.dto.UserTopLevelDto;
 
 import java.sql.Timestamp;
@@ -35,8 +36,10 @@ public class User {
     @Column(name = "full_name")
     private String fullName;
 
-    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY) // Adjust mapping as necessary
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @Where(clause = "status IN ('ACTIVE', 'INVITED')")
     private Set<UserRole> roles;
+
 
     @Column(name = "address_line")
     private String addressLine;

@@ -16,19 +16,19 @@ public interface UserRepository extends CrudRepository<User, String> {
     Optional<User> findByUsername(String username);
 
     @Query(value = """
-    SELECT u.* 
-    FROM users u
-    JOIN user_role ur ON ur.user_id = u.id
-    WHERE u.is_root_user = :isRootUser
-      AND u.email = :emailId
-      AND ur.status IN (:userRoleStatuses)
-    ORDER BY u.created_at DESC
+    SELECT u.* FROM users u
+    JOIN user_roles ur ON u.id = ur.user_id
+    JOIN roles r ON r.id = ur.role_id
+    WHERE u.email = :email
+      AND r.status IN (:roleStatus)
+      AND r.name IN (:roleNames)
+    ORDER BY u.updated_at DESC
     LIMIT 1
-""", nativeQuery = true)
-    Optional<User> findMostRecentUserByRootFlagAndRoleStatusNative(
-            @Param("isRootUser") boolean isRootUser,
-            @Param("userRoleStatuses") List<String> userRoleStatuses,
-            @Param("emailId") String emailId
+    """, nativeQuery = true)
+    Optional<User> findMostRecentUserByEmailAndRoleStatusAndRoleNames(
+            @Param("email") String email,
+            @Param("roleStatus") List<String> roleStatus,
+            @Param("roleNames") List<String> roleNames
     );
 
     List<User> findByIdIn(List<String> userIds);

@@ -1,17 +1,10 @@
 import { CardElement } from "@stripe/react-stripe-js";
 
 interface PaymentInfoStepProps {
-    paymentMethodId: string | null;
     error: string | null;
 }
 
-const CheckoutForm = ({
-    paymentMethodId,
-    error,
-}: {
-    paymentMethodId: string | null;
-    error: string | null;
-}) => {
+const CheckoutForm = ({ error }: { error: string | null }) => {
     return (
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
         // @ts-expect-error
@@ -21,16 +14,6 @@ const CheckoutForm = ({
             <div style={styles.cardElementContainer}>
                 <CardElement options={cardElementOptions} />
             </div>
-            {paymentMethodId && (
-                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-                // @ts-expect-error
-                <div style={styles.success}>
-                    <strong>✅ Success!</strong>
-                    <p style={styles.successText}>
-                        Payment Method ID: <code>{paymentMethodId}</code>
-                    </p>
-                </div>
-            )}
             {error && (
                 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
                 // @ts-expect-error
@@ -43,10 +26,10 @@ const CheckoutForm = ({
     );
 };
 
-const PaymentInfoStep = ({ paymentMethodId, error }: PaymentInfoStepProps) => {
+const PaymentInfoStep = ({ error }: PaymentInfoStepProps) => {
     return (
         <div style={styles.wrapper}>
-            <CheckoutForm paymentMethodId={paymentMethodId} error={error} />
+            <CheckoutForm error={error} />
         </div>
     );
 };

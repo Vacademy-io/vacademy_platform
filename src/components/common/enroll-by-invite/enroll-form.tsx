@@ -1,6 +1,9 @@
 import { Route } from "@/routes/learner-invitation-response";
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { handleGetEnrollInviteData } from "./-services/enroll-invite-services";
+import {
+    handleEnrollLearnerForPayment,
+    handleGetEnrollInviteData,
+} from "./-services/enroll-invite-services";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { GraduationCap } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -35,11 +38,12 @@ import {
 import { useElements, useStripe, CardElement } from "@stripe/react-stripe-js";
 
 const EnrollByInvite = () => {
+    const [paymentCompletionResponse, setPaymentCompletionResponse] =
+        useState(null);
     const stripe = useStripe();
     const elements = useElements();
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [paymentMethodId, setPaymentMethodId] = useState(null);
     const [currentStep, setCurrentStep] = useState(0); // 0: Registration, 1: Payment Selection, 2: Review, 3: Payment Details, 4: Payment Pending, 5: Success
     const [courseData, setCourseData] = useState<FinalCourseData>({
         aboutCourse: "",
@@ -67,9 +71,8 @@ const EnrollByInvite = () => {
     });
 
     const { instituteId, inviteCode } = Route.useSearch();
-    const { isLoading: isInstituteLoading } = useSuspenseQuery(
-        useInstituteQuery({ instituteId })
-    );
+    const { data: instituteData, isLoading: isInstituteLoading } =
+        useSuspenseQuery(useInstituteQuery({ instituteId }));
 
     const { getDetailsFromPackageSessionId } = useInstituteDetailsStore();
 
@@ -107,6 +110,7 @@ const EnrollByInvite = () => {
                     defaults: Record<
                         string,
                         {
+                            id: string;
                             name: string;
                             value: string;
                             is_mandatory: boolean;
@@ -124,6 +128,7 @@ const EnrollByInvite = () => {
                             : [];
 
                         defaults[field.field_key] = {
+                            id: field.id,
                             name: field.field_name,
                             value: optionsArray[0] || "",
                             is_mandatory: field.is_mandatory || false,
@@ -132,6 +137,7 @@ const EnrollByInvite = () => {
                         };
                     } else {
                         defaults[field.field_key] = {
+                            id: field.id,
                             name: field.field_name,
                             value: "",
                             is_mandatory: field.is_mandatory || false,
@@ -143,6 +149,7 @@ const EnrollByInvite = () => {
                 {} as Record<
                     string,
                     {
+                        id: string;
                         name: string;
                         value: string;
                         is_mandatory: boolean;
@@ -188,7 +195,6 @@ const EnrollByInvite = () => {
 
         setLoading(true); // Start loading
         setError(null);
-        setPaymentMethodId(null);
 
         const cardElement = elements.getElement(CardElement);
 
@@ -204,18 +210,35 @@ const EnrollByInvite = () => {
             // @ts-expect-error
             setError(error.message);
         } else {
-            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-            // @ts-expect-error
-            setPaymentMethodId(paymentMethod.id);
-            setCurrentStep(4);
+            const paymentResponse = await handleEnrollLearnerForPayment({
+                registrationData: form.getValues(),
+                enrollmentData: enrollmentData,
+                paymentMethodId: paymentMethod.id,
+                instituteId,
+                enrollInviteId: inviteData?.id,
+                payment_option_id:
+                    inviteData?.package_session_to_payment_options[0]
+                        .payment_option.id,
+                package_session_id:
+                    inviteData?.package_session_to_payment_options[0]
+                        ?.package_session_id,
+                allowLearnersToCreateCourses:
+                    JSON.parse(instituteData?.setting)?.setting?.COURSE_SETTING
+                        ?.data?.permissions?.allowLearnersToCreateCourses ||
+                    false,
+            });
+
+            setPaymentCompletionResponse(paymentResponse);
+            setTimeout(() => {
+                if (
+                    paymentResponse?.payment_response?.response_data
+                        ?.paymentStatus === "PAID"
+                ) {
+                    setCurrentStep(5);
+                } else setCurrentStep(4);
+            }, 100);
         }
         setLoading(false); // Stop loading
-    };
-
-    const handleCompletePayment = () => {
-        // Here you would typically redirect to Stripe or complete payment
-        console.log("Completing payment...");
-        setCurrentStep(5); // Go to Success step
     };
 
     useEffect(() => {
@@ -276,18 +299,12 @@ const EnrollByInvite = () => {
                     />
                 );
             case 3:
-                return (
-                    <PaymentInfoStep
-                        paymentMethodId={paymentMethodId}
-                        error={error}
-                    />
-                );
+                return <PaymentInfoStep error={error} />;
             case 4:
                 return (
                     <PaymentPendingStep
+                        paymentCompletionResponse={paymentCompletionResponse!}
                         selectedPayment={enrollmentData.selectedPayment}
-                        orderId={paymentMethodId || ""} // Generate a mock order ID
-                        onCompletePayment={handleCompletePayment}
                     />
                 );
             case 5:

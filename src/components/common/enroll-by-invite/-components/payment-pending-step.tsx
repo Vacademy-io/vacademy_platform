@@ -3,7 +3,48 @@ import { Clock, ArrowRight, ExternalLink } from "lucide-react";
 import { MyButton } from "@/components/design-system/button";
 import { getCurrencySymbol } from "./payment-selection-step";
 
+export interface User {
+    id: string;
+    username: string;
+    email: string;
+    full_name: string;
+    address_line: string | null;
+    city: string | null;
+    region: string | null;
+    pin_code: string | null;
+    mobile_number: string | null;
+    date_of_birth: string | null;
+    gender: string | null;
+    password: string | null;
+    profile_pic_file_id: string | null;
+    roles: string[];
+    root_user: boolean;
+}
+
+export interface PaymentResponse {
+    response_data: ResponseData;
+    order_id: string;
+}
+
+export interface ResponseData {
+    dueDate: string | null;
+    description: string | null;
+    paidAt: number;
+    invoiceId: string;
+    invoice: string; // raw JSON string (from Stripe)
+    paymentUrl: string;
+    invoicePdfUrl: string;
+    paymentStatus: string;
+    status: string;
+}
+
+export interface UserPaymentResponse {
+    user: User;
+    payment_response: PaymentResponse;
+}
+
 interface PaymentPendingStepProps {
+    paymentCompletionResponse: UserPaymentResponse;
     selectedPayment: {
         id: string;
         name: string;
@@ -12,24 +53,31 @@ interface PaymentPendingStepProps {
         description: string;
         duration: string;
     } | null;
-    orderId: string;
-    onCompletePayment: () => void;
 }
 
 const PaymentPendingStep = ({
+    paymentCompletionResponse,
     selectedPayment,
-    orderId,
-    onCompletePayment,
 }: PaymentPendingStepProps) => {
-    const handleCompletePayment = () => {
-        // Handle payment completion - redirect to Stripe
-        console.log("Redirecting to Stripe payment...");
-        onCompletePayment();
+    const handleCompletePayment = (paymentUrl: string) => {
+        if (!paymentUrl) {
+            return;
+        }
+
+        window.open(paymentUrl, "_blank", "noopener,noreferrer");
     };
 
-    const handleViewInvoice = () => {
-        // Handle invoice viewing
-        console.log("Viewing invoice...");
+    const handleViewInvoice = (invoicePdfUrl: string) => {
+        if (!invoicePdfUrl) {
+            return;
+        }
+
+        const link = document.createElement("a");
+        link.href = invoicePdfUrl;
+        link.download = "invoice.pdf"; // You can customize this filename
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     };
 
     return (
@@ -53,16 +101,6 @@ const PaymentPendingStep = ({
             <Card className="shadow-xl border-0 bg-white/80 backdrop-blur-sm">
                 <CardContent className="p-6 sm:p-8">
                     <div className="space-y-4">
-                        {/* Order ID */}
-                        <div className="flex items-center justify-between py-2">
-                            <span className="text-gray-600 font-medium">
-                                Order ID:
-                            </span>
-                            <span className="text-gray-900 font-semibold">
-                                {orderId}
-                            </span>
-                        </div>
-
                         {/* Amount */}
                         <div className="flex items-center justify-between py-2">
                             <span className="text-gray-600 font-medium">
@@ -82,7 +120,10 @@ const PaymentPendingStep = ({
                                 Status:
                             </span>
                             <span className="text-amber-600 font-semibold">
-                                Pending
+                                {
+                                    paymentCompletionResponse?.payment_response
+                                        ?.response_data?.paymentStatus
+                                }
                             </span>
                         </div>
                     </div>
@@ -96,7 +137,12 @@ const PaymentPendingStep = ({
                     buttonType="primary"
                     scale="large"
                     layoutVariant="default"
-                    onClick={handleCompletePayment}
+                    onClick={() =>
+                        handleCompletePayment(
+                            paymentCompletionResponse?.payment_response
+                                ?.response_data?.paymentUrl
+                        )
+                    }
                     className="w-full sm:w-auto bg-primary-500 text-white font-semibold rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl"
                 >
                     Complete Payment
@@ -107,7 +153,12 @@ const PaymentPendingStep = ({
                     buttonType="secondary"
                     scale="large"
                     layoutVariant="default"
-                    onClick={handleViewInvoice}
+                    onClick={() =>
+                        handleViewInvoice(
+                            paymentCompletionResponse?.payment_response
+                                ?.response_data?.invoicePdfUrl
+                        )
+                    }
                     className="w-full sm:w-auto bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl"
                 >
                     View Invoice

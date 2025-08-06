@@ -64,6 +64,42 @@ interface EnrollInviteData {
     custom_field: CustomField;
 }
 
+export interface PackageSessionData {
+    package_session_id: string;
+    id: string;
+    payment_option: PaymentOption;
+    enroll_invite_id: string | null;
+    status: string | null;
+}
+
+export interface PaymentOption {
+    id: string;
+    name: string;
+    status: string;
+    source: string;
+    source_id: string;
+    tag: string | null;
+    type: string;
+    require_approval: boolean;
+    payment_plans: PaymentPlan[];
+    payment_option_metadata_json: string; // You can also parse this into PaymentOptionMetadata if needed
+}
+
+export interface PaymentPlan {
+    id: string;
+    name: string;
+    status: string;
+    validity_in_days: number;
+    actual_price: number;
+    elevated_price: number;
+    currency: string;
+    description: string;
+    tag: string;
+    feature_json: string; // raw stringified array, can be parsed to string[]
+    referral_option: string | null;
+    referral_option_smapping_status: string | null;
+}
+
 export const safeJsonParse = (
     jsonString: string | null | undefined,
     defaultValue: unknown = null
@@ -159,10 +195,10 @@ export function convertInviteCustomFields(
     });
 }
 
-export function convertPlansToPaymentOptions(rawPlans: any) {
+export function convertPlansToPaymentOptions(rawPlans: PackageSessionData) {
     const paymentOption = rawPlans.payment_option;
     const unit = JSON.parse(paymentOption.payment_option_metadata_json)?.unit;
-    return paymentOption?.payment_plans?.map((plan, index) => {
+    return paymentOption?.payment_plans?.map((plan) => {
         let features: string[];
 
         try {
@@ -173,7 +209,7 @@ export function convertPlansToPaymentOptions(rawPlans: any) {
         }
 
         return {
-            id: String(index + 1),
+            id: plan.id,
             name: plan.name,
             amount: plan.actual_price,
             currency: plan.currency,

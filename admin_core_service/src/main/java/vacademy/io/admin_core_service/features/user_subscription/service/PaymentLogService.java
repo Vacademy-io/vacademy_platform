@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentLogDTO;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLog;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentLogStatusEnum;
@@ -85,5 +86,10 @@ public class PaymentLogService {
             logger.info("Payment marked as PAID, triggering applyOperationsOnFirstPayment for userPlan ID={}", paymentLog.getUserPlan().getId());
             userPlanService.applyOperationsOnFirstPayment(paymentLog.getUserPlan());
         }
+    }
+
+    public PaymentLogDTO getPaymentLog(String paymentLogId) {
+        PaymentLog paymentLog = paymentLogRepository.findById(paymentLogId).orElseThrow(() -> new RuntimeException("Payment log not found with ID: " + paymentLogId));
+        return paymentLog.mapToDTO();
     }
 }

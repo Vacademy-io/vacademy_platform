@@ -44,12 +44,18 @@ public class InstituteCustomField {
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Date updatedAt;
 
+    @Column(name = "status", nullable = false)
+    private String status = "ACTIVE";
+
     public InstituteCustomField(InstituteCustomFieldDTO instituteCustomFieldDTO){
         this.id = instituteCustomFieldDTO.getId();
         this.instituteId = instituteCustomFieldDTO.getInstituteId();
         this.customFieldId = instituteCustomFieldDTO.getCustomField().getId();
         this.type = instituteCustomFieldDTO.getType();
         this.typeId = instituteCustomFieldDTO.getTypeId();
+        if (instituteCustomFieldDTO.getStatus() != null) {
+            this.status = instituteCustomFieldDTO.getStatus();
+        }
     }
 }
 

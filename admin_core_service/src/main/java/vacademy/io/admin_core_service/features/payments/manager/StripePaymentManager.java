@@ -177,6 +177,7 @@ public class StripePaymentManager implements PaymentServiceStrategy {
 
         PaymentResponseDTO dto = new PaymentResponseDTO();
         dto.setResponseData(response);
+        dto.setOrderId(invoice.getMetadata().get("orderId") != null ? invoice.getMetadata().get("orderId").toString() : null);
         logger.debug("Built payment response: {}", dto);
         return dto;
     }

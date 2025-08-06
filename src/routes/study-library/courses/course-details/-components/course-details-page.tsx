@@ -48,6 +48,7 @@ import { useQuery } from "@tanstack/react-query";
 import { handleGetSlideCountDetails } from "../-services/get-slides-count";
 import { CourseDetailsRatingsComponent } from "./course-details-ratings-page";
 import { transformApiDataToCourseData } from "../-utils/helper";
+import { VideoPlayer } from "./video-player";
 import { handleGetAllCourseDetails } from "../-services/get-course-details";
 import axios from "axios";
 import { urlInstituteDetails } from "@/constants/urls";
@@ -904,35 +905,9 @@ export const CourseDetailsPage = () => {
                                             className="lg:col-span-2 animate-fade-in-up"
                                             style={{ animationDelay: "0.2s" }}
                                         >
-                                            <div className="relative overflow-hidden rounded-xl shadow-2xl border border-white/20 bg-black/20 backdrop-blur-sm group">
-                                                <div className="relative aspect-video">
-                                                    <video
-                                                        src={
-                                                            form.watch(
-                                                                "courseData"
-                                                            ).courseMediaId
-                                                        }
-                                                        controls
-                                                        controlsList="nodownload noremoteplayback"
-                                                        disablePictureInPicture
-                                                        disableRemotePlayback
-                                                        className="w-full h-full object-cover rounded-xl"
-                                                        onError={(e) => {
-                                                            e.currentTarget.style.display =
-                                                                "none";
-                                                            e.currentTarget.parentElement?.classList.add(
-                                                                "bg-black"
-                                                            );
-                                                        }}
-                                                    >
-                                                        Your browser does not
-                                                        support the video tag.
-                                                    </video>
-                                                </div>
-
-                                                {/* Video overlay gradient */}
-                                                <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent pointer-events-none rounded-xl"></div>
-                                            </div>
+                                            <VideoPlayer 
+                                                src={form.watch("courseData").courseMediaId}
+                                            />
                                         </div>
                                     </div>
                                 ) : (

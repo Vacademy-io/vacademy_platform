@@ -17,12 +17,12 @@ public interface UserRepository extends CrudRepository<User, String> {
 
     @Query(value = """
     SELECT u.* FROM users u
-    JOIN user_roles ur ON u.id = ur.user_id
+    JOIN user_role ur ON u.id = ur.user_id
     JOIN roles r ON r.id = ur.role_id
     WHERE u.email = :email
-      AND r.status IN (:roleStatus)
-      AND r.name IN (:roleNames)
-    ORDER BY u.updated_at DESC
+      AND ur.status IN (:roleStatus)
+      AND r.role_name IN (:roleNames)
+    ORDER BY u.created_at DESC
     LIMIT 1
     """, nativeQuery = true)
     Optional<User> findMostRecentUserByEmailAndRoleStatusAndRoleNames(
@@ -30,7 +30,6 @@ public interface UserRepository extends CrudRepository<User, String> {
             @Param("roleStatus") List<String> roleStatus,
             @Param("roleNames") List<String> roleNames
     );
-
     List<User> findByIdIn(List<String> userIds);
 
     @Modifying

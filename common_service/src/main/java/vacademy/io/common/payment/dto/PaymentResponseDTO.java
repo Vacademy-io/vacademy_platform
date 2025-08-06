@@ -10,4 +10,5 @@ import java.util.Map;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class PaymentResponseDTO {
     public Map<String,Object> responseData;
+    private String orderId;
 }

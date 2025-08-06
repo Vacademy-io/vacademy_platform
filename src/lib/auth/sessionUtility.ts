@@ -7,6 +7,11 @@ import { IAccessToken, TokenKey, Tokens } from "@/constants/auth/tokens";
 import { isNullOrEmptyOrUndefined } from "../utils";
 import Cookies from "js-cookie";
 
+// Set token in cookie with domain support for cross-subdomain access
+export const setAuthorizationCookie = (key: string, token: string): void => {
+    Cookies.set(key, token);
+};
+
 // Get token from cookie
 export const getTokenFromCookie = (tokenKey: string): string | null => {
     return Cookies.get(tokenKey) ?? null;
@@ -151,6 +156,8 @@ const handleSSOLogin = (): boolean => {
             // Set tokens in cookies
             setTokenInStorage(TokenKey.accessToken, accessToken);
             setTokenInStorage(TokenKey.refreshToken, refreshToken);
+            setAuthorizationCookie(TokenKey.accessToken, accessToken);
+            setAuthorizationCookie(TokenKey.refreshToken, refreshToken);
 
             // Clean up URL
             const cleanUrl =

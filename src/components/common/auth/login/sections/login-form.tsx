@@ -170,7 +170,8 @@ export function LoginForm({
         try {
             const stateObj = {
                 from: `${window.location.origin}/login/oauth/learner`,
-                account_type: "",
+                account_type: "login",
+                isModalLogin: false, // Flag to indicate this is a page login
             };
 
             const base64State = btoa(JSON.stringify(stateObj));

@@ -35,10 +35,14 @@ interface ModalSignUpFormProps {
     type?: string;
     courseId?: string;
     onSwitchToLogin?: () => void;
+    onSignupSuccess?: () => void;
 }
 
 export function ModalSignUpForm({
+    type,
+    courseId,
     onSwitchToLogin,
+    onSignupSuccess,
 }: ModalSignUpFormProps) {
     const navigate = useNavigate();
     const [isLoading, setIsLoading] = useState(false);
@@ -122,13 +126,21 @@ export function ModalSignUpForm({
 
             const response = await registerUser(registrationData);
             
-            // Handle post-signup authentication and redirect to dashboard
+            // Handle post-signup authentication and redirect
             await handlePostSignupAuth(
                 response.accessToken,
                 response.refreshToken,
                 selectedInstitute!.id,
-                navigate
+                navigate,
+                true, // isModalSignup
+                type,
+                courseId
             );
+
+            // Call onSignupSuccess callback for modal signup
+            if (onSignupSuccess) {
+                onSignupSuccess();
+            }
         } catch (error: unknown) {
             if (error instanceof Error && error.message === 'USER_NOT_FOUND') {
                 // User doesn't exist, proceed to user details step
@@ -188,13 +200,21 @@ export function ModalSignUpForm({
             // Call the registration API
             const response = await registerUser(registrationData);
 
-            // Handle post-signup authentication and redirect to dashboard
+            // Handle post-signup authentication and redirect
             await handlePostSignupAuth(
                 response.accessToken,
                 response.refreshToken,
                 selectedInstitute.id,
-                navigate
+                navigate,
+                true, // isModalSignup
+                type,
+                courseId
             );
+
+            // Call onSignupSuccess callback for modal signup
+            if (onSignupSuccess) {
+                onSignupSuccess();
+            }
         } catch (error) {
             console.error("Registration failed:", error);
             toast.error("Registration failed. Please try again.");
@@ -210,11 +230,34 @@ export function ModalSignUpForm({
         }
 
         try {
+            // Get current page information for redirection after signup
+            const currentPath = window.location.pathname;
+            const currentSearch = window.location.search;
+            const currentUrl = `${currentPath}${currentSearch}`;
+            
+            // Determine the appropriate study-library URL based on current page
+            let studyLibraryUrl = "/study-library/courses";
+            
+            if (currentPath.includes("/courses/course-details")) {
+                // Extract courseId from current URL
+                const urlParams = new URLSearchParams(currentSearch);
+                const courseId = urlParams.get("courseId");
+                if (courseId) {
+                    studyLibraryUrl = `/study-library/courses/course-details?courseId=${courseId}&selectedTab=ALL`;
+                }
+            } else if (currentPath.includes("/courses")) {
+                // For courses page, redirect to study-library courses
+                studyLibraryUrl = "/study-library/courses";
+            }
+            
             const stateObj = {
                 from: `${window.location.origin}/signup/oauth/learner`,
                 account_type: "signup",
                 institute_id: selectedInstitute.id,
                 institute_name: selectedInstitute.institute_name,
+                redirectTo: studyLibraryUrl,
+                currentUrl: currentUrl,
+                isModalSignup: true, // Flag to indicate this is a modal signup
             };
 
             const base64State = btoa(JSON.stringify(stateObj));

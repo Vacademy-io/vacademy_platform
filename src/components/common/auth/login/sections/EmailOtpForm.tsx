@@ -160,22 +160,34 @@ export function EmailLogin({
                                 instituteId,
                                 userId
                             );
-                            const status = await fetchAndStoreStudentDetails(
+                            await fetchAndStoreStudentDetails(
                                 instituteId,
                                 userId
                             );
-                            if (status == 200) {
-                                // Redirect to dashboard
+                            
+                            // For email OTP login, assume status 200 (success) since we have tokens
+                            const loginStatus = 200;
+                            
+                            if (loginStatus == 200) {
+                                // Determine redirect URL based on type and courseId
+                                let redirectUrl = "/dashboard";
+                                
+                                if (type === "courseDetailsPage" && courseId) {
+                                    redirectUrl = `/study-library/courses/course-details?courseId=${courseId}&selectedTab=ALL`;
+                                } else if (type === "courseDetailsPage") {
+                                    redirectUrl = "/study-library/courses";
+                                }
+                                
+                                // Open in new tab if login originated from course-related pages or if type is courseDetailsPage
+                                if (type === "courseDetailsPage" || (type && type !== "mainLogin")) {
+                                    window.open(redirectUrl, '_blank');
+                                }
+                                // Always navigate to dashboard for page login
                                 navigate({
                                     to: "/dashboard",
                                 });
-                            } else if (status == 201) {
-                                navigate({
-                                    to:
-                                        typeof redirect === "string"
-                                            ? redirect
-                                            : "/assessment/examination",
-                                });
+                            } else {
+                                // Unexpected login status
                             }
                         } catch (error) {
                             console.error("Error fetching details:", error);

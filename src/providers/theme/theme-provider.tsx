@@ -125,7 +125,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       const instituteId = await getInstituteId();
       // Check if institute ID matches and set holistic theme
       if (instituteId === HOLISTIC_INSTITUTE_ID) {
-        console.log("holistic");
         setPrimaryColor("holistic");
         return;
       }

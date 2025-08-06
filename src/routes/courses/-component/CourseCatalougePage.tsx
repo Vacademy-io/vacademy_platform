@@ -17,12 +17,13 @@ import { TokenKey } from "@/constants/auth/tokens.ts";
 import { getFromStorage } from "@/components/common/auth/login/sections/login-form";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils.ts";
 import { getPublicUrl } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/excalidrawUtils.ts";
+import { useTheme } from "@/providers/theme/theme-provider.tsx";
 
 const CourseCatalougePage: React.FC = () => {
   const navigate = useNavigate();
   const { setCourseData, instituteData, setInstituteData, setInstructors } =
     useCatalogStore();
-
+  const { setPrimaryColor } = useTheme();
   const [bannerImage, setBannerImage] = useState("");
   const [bannerText, setBannerText] = useState({
     heading: "",
@@ -108,7 +109,7 @@ const CourseCatalougePage: React.FC = () => {
 
   // ✅ Fetch institute details
   useEffect(() => {
-    const FetchInstituteDetails = async () => {
+    const fetchInstituteDetails = async () => {
       try {
         const response = await axios.get(
           `${urlInstituteDetails}/${instituteId}`,
@@ -125,12 +126,13 @@ const CourseCatalougePage: React.FC = () => {
         setBannerText(parsedBannerText);
         setInstituteData(response.data);
         setBannerImage(bannerImagePublicUrl);
+        setPrimaryColor(response.data.institute_theme_code);
       } catch (error) {
         console.log(error);
       }
     };
 
-    FetchInstituteDetails();
+    fetchInstituteDetails();
   }, [instituteId]);
 
   // ✅ Fetch instructor

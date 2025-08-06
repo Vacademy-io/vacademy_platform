@@ -66,7 +66,7 @@ export function InstituteSignUp({
         updateSelectedRole,
         handleUserRegistration,
         resetState,
-    } = useSignupFlow();
+    } = useSignupFlow(false, type, courseId); // false for main signup page
 
     // Check if institute ID is provided in URL (for modal signup)
     useEffect(() => {
@@ -267,11 +267,34 @@ export function InstituteSignUp({
         }
 
         try {
+            // Get current page information for redirection after signup
+            const currentPath = window.location.pathname;
+            const currentSearch = window.location.search;
+            const currentUrl = `${currentPath}${currentSearch}`;
+            
+            // Determine the appropriate study-library URL based on current page
+            let studyLibraryUrl = "/study-library/courses";
+            
+            if (currentPath.includes("/courses/course-details")) {
+                // Extract courseId from current URL
+                const urlParams = new URLSearchParams(currentSearch);
+                const courseId = urlParams.get("courseId");
+                if (courseId) {
+                    studyLibraryUrl = `/study-library/courses/course-details?courseId=${courseId}&selectedTab=ALL`;
+                }
+            } else if (currentPath.includes("/courses")) {
+                // For courses page, redirect to study-library courses
+                studyLibraryUrl = "/study-library/courses";
+            }
+            
             const stateObj = {
                 from: `${window.location.origin}/signup/oauth/learner`,
                 account_type: "signup",
                 institute_id: state.selectedInstitute.id,
                 institute_name: state.selectedInstitute.institute_name,
+                redirectTo: studyLibraryUrl,
+                currentUrl: currentUrl,
+                isModalSignup: false, // false for main signup page
             };
 
             const base64State = btoa(JSON.stringify(stateObj));

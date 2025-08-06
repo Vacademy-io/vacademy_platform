@@ -200,6 +200,12 @@ importers:
       '@react-pdf-viewer/zoom':
         specifier: ^3.12.0
         version: 3.12.0(pdfjs-dist@3.11.174)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@stripe/react-stripe-js':
+        specifier: ^3.9.0
+        version: 3.9.0(@stripe/stripe-js@7.8.0)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@stripe/stripe-js':
+        specifier: ^7.8.0
+        version: 7.8.0
       '@tanstack/react-query':
         specifier: ^5.62.9
         version: 5.83.0(react@19.1.0)
@@ -2658,6 +2664,17 @@ packages:
     peerDependenciesMeta:
       rollup:
         optional: true
+
+  '@stripe/react-stripe-js@3.9.0':
+    resolution: {integrity: sha512-pN1Re7zUc3m61FFQROok685g3zsBQRzCmZDmTzO8iPU6zhLvu2JnC0LrG0FCzSp6kgGa8AQSzq4rpFSgyhkjKg==}
+    peerDependencies:
+      '@stripe/stripe-js': '>=1.44.1 <8.0.0'
+      react: '>=16.8.0 <20.0.0'
+      react-dom: '>=16.8.0 <20.0.0'
+
+  '@stripe/stripe-js@7.8.0':
+    resolution: {integrity: sha512-DNXRfYUgkZlrniQORbA/wH8CdFRhiBSE0R56gYU0V5vvpJ9WZwvGrz9tBAZmfq2aTgw6SK7mNpmTizGzLWVezw==}
+    engines: {node: '>=12.16'}
 
   '@svgr/babel-plugin-add-jsx-attribute@8.0.0':
     resolution: {integrity: sha512-b9MIk7yhdS1pMCZM8VeNfUlSKVRhsHZNMl5O9SfaX0l0t5wjdgu4IDzGB8bpnGBBOjGST3rRFVsaaEtI4W6f7g==}
@@ -9416,6 +9433,15 @@ snapshots:
       picomatch: 4.0.2
     optionalDependencies:
       rollup: 3.29.5
+
+  '@stripe/react-stripe-js@3.9.0(@stripe/stripe-js@7.8.0)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+    dependencies:
+      '@stripe/stripe-js': 7.8.0
+      prop-types: 15.8.1
+      react: 19.1.0
+      react-dom: 19.1.0(react@19.1.0)
+
+  '@stripe/stripe-js@7.8.0': {}
 
   '@svgr/babel-plugin-add-jsx-attribute@8.0.0(@babel/core@7.28.0)':
     dependencies:

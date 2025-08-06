@@ -77,6 +77,8 @@
     "@react-pdf-viewer/thumbnail": "^3.12.0",
     "@react-pdf-viewer/toolbar": "^3.12.0",
     "@react-pdf-viewer/zoom": "^3.12.0",
+    "@stripe/react-stripe-js": "^3.9.0",
+    "@stripe/stripe-js": "^7.8.0",
     "@tanstack/react-query": "^5.62.9",
     "@tanstack/react-query-devtools": "^5.62.9",
     "@tanstack/react-table": "^8.20.6",

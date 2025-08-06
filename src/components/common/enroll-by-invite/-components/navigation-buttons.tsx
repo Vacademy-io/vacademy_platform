@@ -1,13 +1,5 @@
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { MyButton } from "@/components/design-system/button";
-
-interface PaymentInfo {
-    cardholderName: string;
-    cardNumber: string;
-    expiryDate: string;
-    cvv: string;
-}
-
 interface PaymentOption {
     id: string;
     name: string;
@@ -20,30 +12,23 @@ interface PaymentOption {
 interface NavigationButtonsProps {
     currentStep: number;
     selectedPayment: PaymentOption | null;
-    paymentInfo: PaymentInfo;
     onPrevious: () => void;
     onNext: () => void;
     onSubmitEnrollment: () => void;
+    loading: boolean;
 }
 
 const NavigationButtons = ({
     currentStep,
     selectedPayment,
-    paymentInfo,
     onPrevious,
     onNext,
     onSubmitEnrollment,
+    loading,
 }: NavigationButtonsProps) => {
     const isNextDisabled = () => {
+        if (loading) return true;
         if (currentStep === 1 && !selectedPayment) return true;
-        if (currentStep === 3) {
-            return (
-                !paymentInfo.cardholderName ||
-                !paymentInfo.cardNumber ||
-                !paymentInfo.expiryDate ||
-                !paymentInfo.cvv
-            );
-        }
         return false;
     };
 
@@ -69,7 +54,11 @@ const NavigationButtons = ({
                 disable={isNextDisabled()}
                 className="w-full sm:w-auto flex items-center gap-2 bg-gradient-to-r from-primary-500 to-primary-500 text-white font-medium py-3 px-6 rounded-lg transition-all duration-200 shadow-sm hover:shadow-md"
             >
-                {currentStep === 3 ? "Complete Payment" : "Next"}
+                {loading
+                    ? "loading..."
+                    : currentStep === 3
+                      ? "Complete Payment"
+                      : "Next"}
                 <ArrowRight className="w-4 h-4" />
             </MyButton>
         </div>

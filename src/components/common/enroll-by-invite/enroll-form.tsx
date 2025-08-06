@@ -30,11 +30,16 @@ import {
     NavigationButtons,
     FinalCourseData,
     PaymentOption,
-    PaymentInfo,
     EnrollmentData,
 } from "./-components";
+import { useElements, useStripe, CardElement } from "@stripe/react-stripe-js";
 
 const EnrollByInvite = () => {
+    const stripe = useStripe();
+    const elements = useElements();
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [paymentMethodId, setPaymentMethodId] = useState(null);
     const [currentStep, setCurrentStep] = useState(0); // 0: Registration, 1: Payment Selection, 2: Review, 3: Payment Details, 4: Payment Pending, 5: Success
     const [courseData, setCourseData] = useState<FinalCourseData>({
         aboutCourse: "",
@@ -166,19 +171,6 @@ const EnrollByInvite = () => {
         }));
     };
 
-    const handlePaymentInfoChange = (
-        field: keyof PaymentInfo,
-        value: string
-    ) => {
-        setEnrollmentData((prev) => ({
-            ...prev,
-            paymentInfo: {
-                ...prev.paymentInfo,
-                [field]: value,
-            },
-        }));
-    };
-
     const handleNext = () => {
         if (currentStep < 4) {
             setCurrentStep(currentStep + 1);
@@ -191,10 +183,33 @@ const EnrollByInvite = () => {
         }
     };
 
-    const handleSubmitEnrollment = () => {
-        // Here you would typically submit the enrollment data to your API
-        console.log("Submitting enrollment:", enrollmentData);
-        setCurrentStep(4); // Go to Payment Pending step
+    const handleSubmitEnrollment = async () => {
+        if (!stripe || !elements) return;
+
+        setLoading(true); // Start loading
+        setError(null);
+        setPaymentMethodId(null);
+
+        const cardElement = elements.getElement(CardElement);
+
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-expect-error
+        const { error, paymentMethod } = await stripe.createPaymentMethod({
+            type: "card",
+            card: cardElement,
+        });
+
+        if (error) {
+            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+            // @ts-expect-error
+            setError(error.message);
+        } else {
+            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+            // @ts-expect-error
+            setPaymentMethodId(paymentMethod.id);
+            setCurrentStep(4);
+        }
+        setLoading(false); // Stop loading
     };
 
     const handleCompletePayment = () => {
@@ -231,8 +246,6 @@ const EnrollByInvite = () => {
         loadCourseData();
     }, [inviteData]);
 
-    if (isLoading || isInstituteLoading) return <DashboardLoader />;
-
     const renderCurrentStep = () => {
         switch (currentStep) {
             case 0:
@@ -265,16 +278,15 @@ const EnrollByInvite = () => {
             case 3:
                 return (
                     <PaymentInfoStep
-                        instituteId={instituteId}
-                        paymentInfo={enrollmentData.paymentInfo}
-                        onPaymentInfoChange={handlePaymentInfoChange}
+                        paymentMethodId={paymentMethodId}
+                        error={error}
                     />
                 );
             case 4:
                 return (
                     <PaymentPendingStep
                         selectedPayment={enrollmentData.selectedPayment}
-                        orderId={`ORD-${Date.now()}`} // Generate a mock order ID
+                        orderId={paymentMethodId || ""} // Generate a mock order ID
                         onCompletePayment={handleCompletePayment}
                     />
                 );
@@ -299,6 +311,8 @@ const EnrollByInvite = () => {
                 );
         }
     };
+
+    if (isLoading || isInstituteLoading) return <DashboardLoader />;
 
     return (
         <div
@@ -328,10 +342,10 @@ const EnrollByInvite = () => {
                     <NavigationButtons
                         currentStep={currentStep}
                         selectedPayment={enrollmentData.selectedPayment}
-                        paymentInfo={enrollmentData.paymentInfo}
                         onPrevious={handlePrevious}
                         onNext={handleNext}
                         onSubmitEnrollment={handleSubmitEnrollment}
+                        loading={loading}
                     />
                 )}
             </div>

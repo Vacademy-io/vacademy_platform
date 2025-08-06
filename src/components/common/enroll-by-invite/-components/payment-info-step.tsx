@@ -1,80 +1,29 @@
-import { useState } from "react";
-import { loadStripe } from "@stripe/stripe-js";
-import {
-    Elements,
-    CardElement,
-    useStripe,
-    useElements,
-} from "@stripe/react-stripe-js";
-
-import { useSuspenseQuery } from "@tanstack/react-query";
-import { handleGetStripeKeys } from "../-services/enroll-invite-services";
-
-interface PaymentInfo {
-    cardholderName: string;
-    cardNumber: string;
-    expiryDate: string;
-    cvv: string;
-}
+import { CardElement } from "@stripe/react-stripe-js";
 
 interface PaymentInfoStepProps {
-    instituteId: string;
-    paymentInfo: PaymentInfo;
-    onPaymentInfoChange: (field: keyof PaymentInfo, value: string) => void;
+    paymentMethodId: string | null;
+    error: string | null;
 }
 
-const CheckoutForm = () => {
-    const stripe = useStripe();
-    const elements = useElements();
-    const [paymentMethodId, setPaymentMethodId] = useState(null);
-    const [error, setError] = useState(null);
-    const [loading, setLoading] = useState(false); // Added for loading state
-
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        if (!stripe || !elements) return;
-
-        setLoading(true); // Start loading
-        setError(null);
-        setPaymentMethodId(null);
-
-        const cardElement = elements.getElement(CardElement);
-
-        const { error, paymentMethod } = await stripe.createPaymentMethod({
-            type: "card",
-            card: cardElement,
-        });
-
-        if (error) {
-            console.error(error.message);
-            setError(error.message);
-        } else {
-            console.log("Payment Method:", paymentMethod);
-            setPaymentMethodId(paymentMethod.id);
-        }
-
-        setLoading(false); // Stop loading
-    };
-
+const CheckoutForm = ({
+    paymentMethodId,
+    error,
+}: {
+    paymentMethodId: string | null;
+    error: string | null;
+}) => {
     return (
-        <form onSubmit={handleSubmit} style={styles.form}>
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-expect-error
+        <form style={styles.form}>
             <h2 style={styles.heading}>💳 Secure Payment</h2>
             <p style={styles.subheading}>Enter your card details below.</p>
             <div style={styles.cardElementContainer}>
                 <CardElement options={cardElementOptions} />
             </div>
-            <button
-                type="submit"
-                disabled={!stripe || loading}
-                style={
-                    loading
-                        ? { ...styles.button, ...styles.buttonDisabled }
-                        : styles.button
-                }
-            >
-                {loading ? "Processing..." : "Generate Payment Method ID"}
-            </button>
             {paymentMethodId && (
+                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                // @ts-expect-error
                 <div style={styles.success}>
                     <strong>✅ Success!</strong>
                     <p style={styles.successText}>
@@ -83,6 +32,8 @@ const CheckoutForm = () => {
                 </div>
             )}
             {error && (
+                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                // @ts-expect-error
                 <div style={styles.error}>
                     <strong>❌ Error</strong>
                     <p style={styles.errorText}>{error}</p>
@@ -92,22 +43,10 @@ const CheckoutForm = () => {
     );
 };
 
-const PaymentInfoStep = ({
-    instituteId,
-    paymentInfo,
-    onPaymentInfoChange,
-}: PaymentInfoStepProps) => {
-    const { data: stripeKeys } = useSuspenseQuery(
-        handleGetStripeKeys(instituteId)
-    );
-    // Replace with your own publishable key
-    const stripePromise = loadStripe(stripeKeys.publishableKey);
-
+const PaymentInfoStep = ({ paymentMethodId, error }: PaymentInfoStepProps) => {
     return (
         <div style={styles.wrapper}>
-            <Elements stripe={stripePromise}>
-                <CheckoutForm />
-            </Elements>
+            <CheckoutForm paymentMethodId={paymentMethodId} error={error} />
         </div>
     );
 };

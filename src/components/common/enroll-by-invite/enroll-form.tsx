@@ -210,35 +210,41 @@ const EnrollByInvite = () => {
             // @ts-expect-error
             setError(error.message);
         } else {
-            const paymentResponse = await handleEnrollLearnerForPayment({
-                registrationData: form.getValues(),
-                enrollmentData: enrollmentData,
-                paymentMethodId: paymentMethod.id,
-                instituteId,
-                enrollInviteId: inviteData?.id,
-                payment_option_id:
-                    inviteData?.package_session_to_payment_options[0]
-                        .payment_option.id,
-                package_session_id:
-                    inviteData?.package_session_to_payment_options[0]
-                        ?.package_session_id,
-                allowLearnersToCreateCourses:
-                    JSON.parse(instituteData?.setting)?.setting?.COURSE_SETTING
-                        ?.data?.permissions?.allowLearnersToCreateCourses ||
-                    false,
-            });
-
-            setPaymentCompletionResponse(paymentResponse);
-            setTimeout(() => {
-                if (
-                    paymentResponse?.payment_response?.response_data
-                        ?.paymentStatus === "PAID"
-                ) {
-                    setCurrentStep(5);
-                } else setCurrentStep(4);
-            }, 100);
+            try {
+                const paymentResponse = await handleEnrollLearnerForPayment({
+                    registrationData: form.getValues(),
+                    enrollmentData: enrollmentData,
+                    paymentMethodId: paymentMethod.id,
+                    instituteId,
+                    enrollInviteId: inviteData?.id,
+                    payment_option_id:
+                        inviteData?.package_session_to_payment_options[0]
+                            .payment_option.id,
+                    package_session_id:
+                        inviteData?.package_session_to_payment_options[0]
+                            ?.package_session_id,
+                    allowLearnersToCreateCourses:
+                        JSON.parse(instituteData?.setting)?.setting
+                            ?.COURSE_SETTING?.data?.permissions
+                            ?.allowLearnersToCreateCourses || false,
+                });
+                setPaymentCompletionResponse(paymentResponse);
+                setTimeout(() => {
+                    if (
+                        paymentResponse?.payment_response?.response_data
+                            ?.paymentStatus === "PAID"
+                    ) {
+                        setCurrentStep(5);
+                    } else setCurrentStep(4);
+                }, 100);
+            } catch (err) {
+                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                // @ts-expect-error
+                setError(err?.response?.data?.ex);
+            } finally {
+                setLoading(false);
+            }
         }
-        setLoading(false); // Stop loading
     };
 
     useEffect(() => {

@@ -6,6 +6,7 @@ import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionLearnerInvitationToPaymentOption;
 import vacademy.io.admin_core_service.features.enroll_invite.repository.PackageSessionLearnerInvitationToPaymentOptionRepository;
+import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.Collections;
 import java.util.List;
@@ -72,5 +73,10 @@ public class PackageSessionEnrollInviteToPaymentOptionService {
                 enrollInvite,
                 List.of(StatusEnum.ACTIVE.name())
         );
+    }
+    public PackageSessionLearnerInvitationToPaymentOption updateStatus(String id, String status) {
+        PackageSessionLearnerInvitationToPaymentOption mapping = repository.findById(id).orElseThrow(()->new VacademyException("PackageSessionLearnerInvitationToPaymentOption not found with id: " + id));
+        mapping.setStatus(status);
+        return mapping;
     }
 }

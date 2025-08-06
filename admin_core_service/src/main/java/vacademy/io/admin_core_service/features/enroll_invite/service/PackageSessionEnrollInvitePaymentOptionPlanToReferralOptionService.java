@@ -11,6 +11,7 @@ import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentP
 import vacademy.io.admin_core_service.features.user_subscription.entity.ReferralOption;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 @Service
@@ -44,4 +45,18 @@ public class PackageSessionEnrollInvitePaymentOptionPlanToReferralOptionService 
     public void updateStatusByPackageSessionLearnerInvitationToPaymentOptionIds(List<String>packageSessionLearnerInvitationToPaymentOptionIds, String status) {
         repository.updateStatusByPackageSessionLearnerInvitationToPaymentOptionIds(packageSessionLearnerInvitationToPaymentOptionIds, status);
     }
+
+    public PackageSessionEnrollInvitePaymentOptionPlanToReferralOption addOrUpdatePackageSessionEnrollInvitePaymentOptionPlanToReferralOption(PackageSessionLearnerInvitationToPaymentOption packageSessionLearnerInvitationToPaymentOption,ReferralOption referralOption,PaymentPlan paymentPlan,String mappingStatus){
+        if (Objects.isNull(mappingStatus)){
+            mappingStatus = StatusEnum.ACTIVE.name();
+        }
+        Optional<PackageSessionEnrollInvitePaymentOptionPlanToReferralOption>optionPlanToReferralOption = repository.findByPackageSessionLearnerInvitationToPaymentOptionAndPaymentPlanAndReferralOptionAndStatusIn(packageSessionLearnerInvitationToPaymentOption,paymentPlan,referralOption,List.of(StatusEnum.ACTIVE.name()));
+        if(optionPlanToReferralOption.isPresent()){
+            optionPlanToReferralOption.get().setStatus(mappingStatus);
+            return repository.save(optionPlanToReferralOption.get());
+        }else {
+            return repository.save(new PackageSessionEnrollInvitePaymentOptionPlanToReferralOption(packageSessionLearnerInvitationToPaymentOption, referralOption, paymentPlan, mappingStatus));
+        }
+    }
+
 }

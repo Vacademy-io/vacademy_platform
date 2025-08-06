@@ -22,7 +22,7 @@ public class InstituteCustomFiledService {
     @Autowired
     private CustomFieldRepository customFieldRepository;
 
-    public void addCustomFields(List<InstituteCustomFieldDTO>customFieldDTOs){
+    public void addOrUpdateCustomField(List<InstituteCustomFieldDTO>customFieldDTOs){
         List<InstituteCustomField>instituteCustomFields = new ArrayList<>();
         List<CustomFields>customFields = new ArrayList<>();
         for (InstituteCustomFieldDTO customFieldDTO : customFieldDTOs) {

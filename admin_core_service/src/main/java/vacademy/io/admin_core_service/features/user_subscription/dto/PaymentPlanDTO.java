@@ -20,4 +20,5 @@ public class PaymentPlanDTO {
     private String tag;
     private String featureJson;
     private ReferralOptionDTO referralOption;
+    private String referralOptionSMappingStatus;
 }

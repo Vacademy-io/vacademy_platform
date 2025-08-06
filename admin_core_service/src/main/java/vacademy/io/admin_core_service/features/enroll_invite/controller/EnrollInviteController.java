@@ -72,4 +72,9 @@ public class EnrollInviteController {
     private ResponseEntity<String>updateEnrollInvitePaymentOption(@RequestBody List<UpdateEnrollInvitePackageSessionPaymentOptionDTO> updateEnrollInvitePackageSessionPaymentOptionDTO) {
         return ResponseEntity.ok(enrollInviteService.updatePaymentOptionsForInvites(updateEnrollInvitePackageSessionPaymentOptionDTO));
     }
+
+    @PutMapping("/enroll-invite")
+    public ResponseEntity<String>updateEnrollInvite(@RequestBody EnrollInviteDTO enrollInviteDTO) {
+        return ResponseEntity.ok(enrollInviteService.updateEnrollInvite(enrollInviteDTO));
+    }
 }

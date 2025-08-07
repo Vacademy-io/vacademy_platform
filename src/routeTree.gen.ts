@@ -42,6 +42,7 @@ import { Route as CoursesCourseDetailsIndexRouteImport } from './routes/courses/
 import { Route as AssessmentReportsIndexRouteImport } from './routes/assessment/reports/index'
 import { Route as AssessmentExaminationIndexRouteImport } from './routes/assessment/examination/index'
 import { Route as SignupOauthLearnerRouteImport } from './routes/signup/oauth/learner'
+import { Route as LoginOauthModalLearnerRouteImport } from './routes/login/oauth/modal-learner'
 import { Route as LoginOauthLearnerRouteImport } from './routes/login/oauth/learner'
 import { Route as StudyLibraryLiveClassWaitingRoomIndexRouteImport } from './routes/study-library/live-class/waiting-room/index'
 import { Route as StudyLibraryLiveClassEmbedIndexRouteImport } from './routes/study-library/live-class/embed/index'
@@ -231,6 +232,11 @@ const SignupOauthLearnerRoute = SignupOauthLearnerRouteImport.update({
   path: '/signup/oauth/learner',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LoginOauthModalLearnerRoute = LoginOauthModalLearnerRouteImport.update({
+  id: '/login/oauth/modal-learner',
+  path: '/login/oauth/modal-learner',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginOauthLearnerRoute = LoginOauthLearnerRouteImport.update({
   id: '/login/oauth/learner',
   path: '/login/oauth/learner',
@@ -327,6 +333,7 @@ export interface FileRoutesByFullPath {
   '/terms-and-conditions': typeof TermsAndConditionsIndexRoute
   '/user-profile': typeof UserProfileIndexRoute
   '/login/oauth/learner': typeof LoginOauthLearnerRoute
+  '/login/oauth/modal-learner': typeof LoginOauthModalLearnerRoute
   '/signup/oauth/learner': typeof SignupOauthLearnerRoute
   '/assessment/examination': typeof AssessmentExaminationIndexRoute
   '/assessment/reports': typeof AssessmentReportsIndexRoute
@@ -374,6 +381,7 @@ export interface FileRoutesByTo {
   '/terms-and-conditions': typeof TermsAndConditionsIndexRoute
   '/user-profile': typeof UserProfileIndexRoute
   '/login/oauth/learner': typeof LoginOauthLearnerRoute
+  '/login/oauth/modal-learner': typeof LoginOauthModalLearnerRoute
   '/signup/oauth/learner': typeof SignupOauthLearnerRoute
   '/assessment/examination': typeof AssessmentExaminationIndexRoute
   '/assessment/reports': typeof AssessmentReportsIndexRoute
@@ -422,6 +430,7 @@ export interface FileRoutesById {
   '/terms-and-conditions/': typeof TermsAndConditionsIndexRoute
   '/user-profile/': typeof UserProfileIndexRoute
   '/login/oauth/learner': typeof LoginOauthLearnerRoute
+  '/login/oauth/modal-learner': typeof LoginOauthModalLearnerRoute
   '/signup/oauth/learner': typeof SignupOauthLearnerRoute
   '/assessment/examination/': typeof AssessmentExaminationIndexRoute
   '/assessment/reports/': typeof AssessmentReportsIndexRoute
@@ -471,6 +480,7 @@ export interface FileRouteTypes {
     | '/terms-and-conditions'
     | '/user-profile'
     | '/login/oauth/learner'
+    | '/login/oauth/modal-learner'
     | '/signup/oauth/learner'
     | '/assessment/examination'
     | '/assessment/reports'
@@ -518,6 +528,7 @@ export interface FileRouteTypes {
     | '/terms-and-conditions'
     | '/user-profile'
     | '/login/oauth/learner'
+    | '/login/oauth/modal-learner'
     | '/signup/oauth/learner'
     | '/assessment/examination'
     | '/assessment/reports'
@@ -565,6 +576,7 @@ export interface FileRouteTypes {
     | '/terms-and-conditions/'
     | '/user-profile/'
     | '/login/oauth/learner'
+    | '/login/oauth/modal-learner'
     | '/signup/oauth/learner'
     | '/assessment/examination/'
     | '/assessment/reports/'
@@ -613,6 +625,7 @@ export interface RootRouteChildren {
   TermsAndConditionsIndexRoute: typeof TermsAndConditionsIndexRoute
   UserProfileIndexRoute: typeof UserProfileIndexRoute
   LoginOauthLearnerRoute: typeof LoginOauthLearnerRoute
+  LoginOauthModalLearnerRoute: typeof LoginOauthModalLearnerRoute
   SignupOauthLearnerRoute: typeof SignupOauthLearnerRoute
   AssessmentExaminationIndexRoute: typeof AssessmentExaminationIndexRoute
   AssessmentReportsIndexRoute: typeof AssessmentReportsIndexRoute
@@ -874,6 +887,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SignupOauthLearnerRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/login/oauth/modal-learner': {
+      id: '/login/oauth/modal-learner'
+      path: '/login/oauth/modal-learner'
+      fullPath: '/login/oauth/modal-learner'
+      preLoaderRoute: typeof LoginOauthModalLearnerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login/oauth/learner': {
       id: '/login/oauth/learner'
       path: '/login/oauth/learner'
@@ -981,6 +1001,7 @@ const rootRouteChildren: RootRouteChildren = {
   TermsAndConditionsIndexRoute: TermsAndConditionsIndexRoute,
   UserProfileIndexRoute: UserProfileIndexRoute,
   LoginOauthLearnerRoute: LoginOauthLearnerRoute,
+  LoginOauthModalLearnerRoute: LoginOauthModalLearnerRoute,
   SignupOauthLearnerRoute: SignupOauthLearnerRoute,
   AssessmentExaminationIndexRoute: AssessmentExaminationIndexRoute,
   AssessmentReportsIndexRoute: AssessmentReportsIndexRoute,

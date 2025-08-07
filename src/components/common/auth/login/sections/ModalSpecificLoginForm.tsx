@@ -37,10 +37,12 @@ export function ModalSpecificLoginForm({
             const currentSearch = window.location.search;
             const currentUrl = `${currentPath}${currentSearch}`;
             
-            // Determine the appropriate study-library URL based on current page
+            // Determine the appropriate study-library URL based on current page and type
             let studyLibraryUrl = "/study-library/courses";
             
-            if (currentPath.includes("/courses/course-details")) {
+            if (type === "courseDetailsPage" && courseId) {
+                studyLibraryUrl = `/study-library/courses/course-details?courseId=${courseId}&selectedTab=ALL`;
+            } else if (currentPath.includes("/courses/course-details")) {
                 // Extract courseId from current URL
                 const urlParams = new URLSearchParams(currentSearch);
                 const courseId = urlParams.get("courseId");
@@ -53,11 +55,12 @@ export function ModalSpecificLoginForm({
             }
             
             const stateObj = {
-                from: `${window.location.origin}/login/oauth/learner`,
+                from: `${window.location.origin}/login/oauth/modal-learner`,
                 account_type: "login",
                 redirectTo: studyLibraryUrl,
                 currentUrl: currentUrl,
-                isModalLogin: true, // Flag to indicate this is a modal login
+                type: type, // Pass the type for proper redirection handling
+                courseId: courseId, // Pass the courseId for proper redirection handling
             };
 
             const base64State = btoa(JSON.stringify(stateObj));

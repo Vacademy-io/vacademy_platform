@@ -46,6 +46,20 @@ export function AuthModal({ type, courseId, trigger, onModalOpen, onLoginSuccess
 
 
 
+    // Check for closeModal parameter and close modal if present
+    useEffect(() => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const closeModal = urlParams.get('closeModal');
+        
+        if (closeModal === 'true' && isOpen) {
+            handleClose();
+            // Remove the closeModal parameter from URL
+            const newUrl = new URL(window.location.href);
+            newUrl.searchParams.delete('closeModal');
+            window.history.replaceState({}, '', newUrl.toString());
+        }
+    }, [isOpen]);
+
     // Prevent body scroll when modal is open
     useEffect(() => {
         let scrollY = 0;

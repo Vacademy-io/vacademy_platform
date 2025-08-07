@@ -11,7 +11,6 @@ export { SessionSelectionPage } from './login/sections/SessionSelectionPage';
 export { SignUpForm } from './signup/sections/signup-form';
 
 // Modal Components
-export { ModalLoginForm } from './login/sections/ModalLoginForm';
 export { ModalSignUpForm } from './signup/sections/ModalSignUpForm';
 export { ModalForgotPasswordForm } from './login/sections/ModalForgotPasswordForm';
 

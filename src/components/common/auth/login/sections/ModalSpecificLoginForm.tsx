@@ -41,14 +41,7 @@ export function ModalSpecificLoginForm({
             const urlParams = new URLSearchParams(currentSearch);
             const instituteId = urlParams.get("instituteId");
             
-            console.log("Modal OAuth Login - Current URL info:", {
-                currentPath,
-                currentSearch,
-                currentUrl,
-                instituteId,
-                type,
-                courseId
-            });
+
             
             // Determine the appropriate study-library URL based on current page and type
             let studyLibraryUrl = "/study-library/courses";
@@ -77,7 +70,6 @@ export function ModalSpecificLoginForm({
             
             // Store in sessionStorage
             sessionStorage.setItem('modal_oauth_data', JSON.stringify(modalOAuthData));
-            console.log("Stored modal OAuth data in sessionStorage:", modalOAuthData);
             
             // Create minimal state object
             const stateObj = {
@@ -85,24 +77,23 @@ export function ModalSpecificLoginForm({
                 account_type: "login",
             };
 
-            console.log("Modal OAuth Login - State object:", stateObj);
-
             const stateJson = JSON.stringify(stateObj);
-            console.log("State JSON string:", stateJson);
-            console.log("State JSON length:", stateJson.length);
-            
             const base64State = btoa(stateJson);
-            console.log("Base64 encoded state:", base64State);
-            console.log("Base64 state length:", base64State.length);
-            
             const encodedState = encodeURIComponent(base64State);
-            console.log("URL encoded state:", encodedState);
-            console.log("URL encoded state length:", encodedState.length);
-            
             const loginUrl = `${LOGIN_URL_GOOGLE_GITHUB}/${provider}?state=${encodedState}`;
-            console.log("Final login URL:", loginUrl);
             
-            window.location.href = loginUrl;
+            // Open OAuth flow in new tab to maintain user action context
+            const newWindow = window.open(loginUrl, '_blank');
+            
+            if (newWindow) {
+                // Close the modal since OAuth is happening in new tab
+                if (onLoginSuccess) {
+                    onLoginSuccess();
+                }
+            } else {
+                // Fallback: redirect in current tab if popup is blocked
+                window.location.href = loginUrl;
+            }
         } catch {
             toast.error("Failed to initiate login. Please try again.");
         }

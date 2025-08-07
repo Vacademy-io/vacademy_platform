@@ -83,7 +83,6 @@ export function ModalUsernameLogin({
 
                     // If instituteId is provided, check if user is enrolled in that institute
                     if (instituteId && authorityKeys.includes(instituteId)) {
-                        console.log("User is enrolled in specified institute:", instituteId);
                         // User is enrolled in the specified institute
                         try {
                             await fetchAndStoreInstituteDetails(instituteId, userId);
@@ -118,7 +117,6 @@ export function ModalUsernameLogin({
                             toast.error("Failed to fetch details");
                         }
                     } else if (instituteId && !authorityKeys.includes(instituteId)) {
-                        console.log("User is NOT enrolled in specified institute:", instituteId);
                         // User is not enrolled in the specified institute
                         toast.error("You are not enrolled in this institute.");
                         if (onLoginSuccess) {
@@ -126,7 +124,6 @@ export function ModalUsernameLogin({
                         }
                     } else if (authorityKeys.length > 1) {
                         // No instituteId provided and user has multiple institutes - use first available
-                        console.log("No instituteId provided, using first available institute");
                         const firstInstituteId = authorityKeys[0];
                         
                         try {

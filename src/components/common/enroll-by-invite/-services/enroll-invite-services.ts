@@ -69,7 +69,7 @@ interface EnrollLearnerForPaymentProps {
     >;
     // eslint-disable-next-line
     enrollmentData: any;
-    paymentMethodId: string;
+    paymentMethodId?: string;
     instituteId: string;
     enrollInviteId: string;
     payment_option_id: string;

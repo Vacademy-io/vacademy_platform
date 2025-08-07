@@ -333,13 +333,24 @@ const EnrollByInvite = () => {
                         inviteData?.package_session_to_payment_options[0]
                             ?.payment_option?.payment_plans?.[0];
                     if (defaultPaymentPlan) {
+                        // Get the unit from payment option metadata to format duration correctly
+                        const paymentOptionMetadata = JSON.parse(
+                            inviteData?.package_session_to_payment_options[0]
+                                ?.payment_option?.payment_option_metadata_json || "{}"
+                        );
+                        const unit = paymentOptionMetadata?.unit || "days";
+                        
+                        const duration = unit === "days"
+                            ? `${defaultPaymentPlan.validity_in_days} days`
+                            : `${Math.floor(defaultPaymentPlan.validity_in_days / 30)} months`;
+                        
                         const paymentOption: PaymentOption = {
                             id: defaultPaymentPlan.id,
                             name: defaultPaymentPlan.name,
                             amount: defaultPaymentPlan.actual_price,
                             currency: defaultPaymentPlan.currency,
                             description: defaultPaymentPlan.description,
-                            duration: `${defaultPaymentPlan.validity_in_days} days`,
+                            duration: duration,
                             features: [],
                         };
                         setEnrollmentData((prev) => ({

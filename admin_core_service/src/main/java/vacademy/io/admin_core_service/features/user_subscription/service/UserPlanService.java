@@ -107,7 +107,6 @@ public class UserPlanService {
 
         List<String> packageSessionIds = packageSessionEnrollInviteToPaymentOptionService.findPackageSessionsOfEnrollInvite(enrollInvite);
         logger.debug("Package session IDs resolved for EnrollInvite ID={}: {}", enrollInvite.getId(), packageSessionIds);
-        System.out.println(packageSessionIds);
         learnerBatchEnrollService.shiftLearnerFromInvitedToActivePackageSessions(packageSessionIds, userPlan.getUserId(), enrollInvite.getId());
         userPlan.setStatus(UserPlanStatusEnum.ACTIVE.name());
         userPlanRepository.save(userPlan);

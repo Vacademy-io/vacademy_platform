@@ -9,6 +9,9 @@ import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteSt
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.service.LearnerBatchEnrollService;
 import vacademy.io.admin_core_service.features.notification_service.service.PaymentNotificatonService;
+import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
+import vacademy.io.admin_core_service.features.packages.enums.PackageStatusEnum;
+import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
 import vacademy.io.admin_core_service.features.payments.service.PaymentService;
 import vacademy.io.admin_core_service.features.payments.util.OrderIdGenerator;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
@@ -19,14 +22,13 @@ import vacademy.io.admin_core_service.features.user_subscription.service.Payment
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollResponseDTO;
 import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
+import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
 import vacademy.io.common.payment.dto.PaymentResponseDTO;
 import vacademy.io.common.payment.enums.PaymentGateway;
 
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 
 @Service
@@ -47,6 +49,9 @@ public class DonationPaymentOptionOperation implements PaymentOptionOperationStr
     @Autowired
     private PaymentGatewaySpecificPaymentDetailService paymentGatewaySpecificPaymentDetailService;
 
+    @Autowired
+    private PackageSessionRepository packageSessionRepository;
+
     @Override
     public LearnerEnrollResponseDTO enrollLearnerToBatch(UserDTO userDTO,
                                                          LearnerPackageSessionsEnrollDTO learnerPackageSessionsEnrollDTO,
@@ -58,7 +63,32 @@ public class DonationPaymentOptionOperation implements PaymentOptionOperationStr
         List<InstituteStudentDetails> instituteStudentDetails = new ArrayList<>();
         if (paymentOption.isRequireApproval()){
             String status = LearnerStatusEnum.PENDING_FOR_APPROVAL.name();
-            // to do: find all invited package sessions and pass destination package session id etc
+            for (String packageSessionId : learnerPackageSessionsEnrollDTO.getPackageSessionIds()) {
+                Optional<PackageSession> invitedPackageSession = packageSessionRepository.findInvitedPackageSessionForPackage(
+                        packageSessionId,
+                        "INVITED",  // levelId (placeholder — ensure correct value)
+                        "INVITED",  // sessionId (placeholder — ensure correct value)
+                        List.of(PackageSessionStatusEnum.INVITED.name()),
+                        List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
+                        List.of(PackageStatusEnum.ACTIVE.name())
+                );
+
+                if (invitedPackageSession.isEmpty()) {
+                    throw new VacademyException("Learner cannot be enrolled as there is no invited package session");
+                }
+
+                InstituteStudentDetails detail = new InstituteStudentDetails(
+                        instituteId,
+                        invitedPackageSession.get().getId(),
+                        null,
+                        status,
+                        new Date(),
+                        null,
+                        enrollInvite.getLearnerAccessDays() != null ? enrollInvite.getLearnerAccessDays().toString() : null,
+                        packageSessionId
+                );
+                instituteStudentDetails.add(detail);
+            }
         }else{
             String status = LearnerStatusEnum.ACTIVE.name();
             Integer accessDays = enrollInvite.getLearnerAccessDays();

@@ -47,16 +47,35 @@ public class LearnerBatchEnrollService {
         return createdUser;
     }
 
-    public void shiftLearnerFromInvitedToActivePackageSessions(List<String>packageSessionIds, String userId,String enrollInviteId) {
-        List<StudentSessionInstituteGroupMapping>studentSessionInstituteGroupMappings = studentSessionRepository.findByDestinationPackageSession_IdInAndUserIdAndStatusIn(
-                packageSessionIds,userId,List.of(LearnerStatusEnum.INVITED.name()));
-        System.out.println("size of student session mappings: "+studentSessionInstituteGroupMappings.size());
-        for (StudentSessionInstituteGroupMapping studentSessionInstituteGroupMapping:studentSessionInstituteGroupMappings){
-            if (studentSessionInstituteGroupMapping.getDestinationPackageSession() != null){
-                String newSessionId = studentRegistrationManager.shiftStudentBatch(studentSessionInstituteGroupMapping.getDestinationPackageSession().getId(),studentSessionInstituteGroupMapping,LearnerStatusEnum.ACTIVE.name());
+    public void shiftLearnerFromInvitedToActivePackageSessions(List<String> packageSessionIds, String userId, String enrollInviteId) {
+        shiftLearnerToActiveStatus(packageSessionIds, userId, enrollInviteId, LearnerStatusEnum.INVITED);
+    }
 
-                customFieldValueService.shiftCustomField(CustomFieldValueSourceTypeEnum.STUDENT_SESSION_INSTITUTE_GROUP_MAPPING.name(),
-                        studentSessionInstituteGroupMapping.getId(),newSessionId, CustomFieldTypeEnum.ENROLL_INVITE.name(),enrollInviteId);
+    public void shiftLearnerFromPendingForApprovalToActivePackageSessions(List<String> packageSessionIds, String userId, String enrollInviteId) {
+        shiftLearnerToActiveStatus(packageSessionIds, userId, enrollInviteId, LearnerStatusEnum.PENDING_FOR_APPROVAL);
+    }
+
+    private void shiftLearnerToActiveStatus(List<String> packageSessionIds, String userId, String enrollInviteId, LearnerStatusEnum fromStatus) {
+        List<StudentSessionInstituteGroupMapping> mappings = studentSessionRepository
+                .findByDestinationPackageSession_IdInAndUserIdAndStatusIn(
+                        packageSessionIds, userId, List.of(fromStatus.name())
+                );
+
+        for (StudentSessionInstituteGroupMapping mapping : mappings) {
+            if (mapping.getDestinationPackageSession() != null) {
+                String newSessionId = studentRegistrationManager.shiftStudentBatch(
+                        mapping.getDestinationPackageSession().getId(),
+                        mapping,
+                        LearnerStatusEnum.ACTIVE.name()
+                );
+
+                customFieldValueService.shiftCustomField(
+                        CustomFieldValueSourceTypeEnum.STUDENT_SESSION_INSTITUTE_GROUP_MAPPING.name(),
+                        mapping.getId(),
+                        newSessionId,
+                        CustomFieldTypeEnum.ENROLL_INVITE.name(),
+                        enrollInviteId
+                );
             }
         }
     }

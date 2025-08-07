@@ -312,8 +312,8 @@ const EnrollByInvite = () => {
                         ?.payment_option?.type || "";
                 setPaymentType(paymentTypeValue);
 
-                // If payment type is FREE, automatically set the default payment plan
-                if (paymentTypeValue === "FREE") {
+                // If payment type is FREE or ONE_TIME, automatically set the default payment plan
+                if (paymentTypeValue === "FREE" || paymentTypeValue === "ONE_TIME") {
                     const defaultPaymentPlan =
                         inviteData?.package_session_to_payment_options[0]
                             ?.payment_option?.payment_plans?.[0];

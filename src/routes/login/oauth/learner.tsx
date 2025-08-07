@@ -61,9 +61,12 @@ const handleOAuthCallback = async (
   let isModalLogin = false;
   let type = "";
   let courseId = "";
+  
   if (state) {
     try {
-      const stateObj = JSON.parse(atob(state));
+      // Use a more robust decoding approach
+      const decodedState = decodeURIComponent(escape(atob(state)));
+      const stateObj = JSON.parse(decodedState);
       redirectTo = stateObj.redirectTo || "/dashboard";
       currentUrl = stateObj.currentUrl || "";
       isModalLogin = stateObj.isModalLogin || false;
@@ -73,10 +76,24 @@ const handleOAuthCallback = async (
       console.error("Error parsing state:", error);
     }
   }
+  
+  // For modal login, extract additional parameters from URL
+  if (isModalLogin) {
+    type = urlParams.get("type") || type;
+    courseId = urlParams.get("courseId") || courseId;
+    const currentUrlParam = urlParams.get("currentUrl");
+    if (currentUrlParam) {
+      currentUrl = decodeURIComponent(currentUrlParam);
+    }
+  }
 
   if (error) {
     toast.error(decodeURIComponent(message || "Authentication failed."));
-    navigate({ to: "/login" });
+    if (isModalLogin) {
+      window.history.back();
+    } else {
+      navigate({ to: "/login" });
+    }
     return;
   }
 
@@ -101,11 +118,19 @@ const handleOAuthCallback = async (
       );
     } catch {
       toast.error("Failed to store authentication tokens");
-      navigate({ to: "/login" });
+      if (isModalLogin) {
+        window.history.back();
+      } else {
+        navigate({ to: "/login" });
+      }
     }
   } else {
     toast.error("Missing tokens in redirect URL");
-    navigate({ to: "/login" });
+    if (isModalLogin) {
+      window.history.back();
+    } else {
+      navigate({ to: "/login" });
+    }
   }
 };
 
@@ -183,10 +208,26 @@ const handleSuccessfulLogin = async (
         navigate({ to: "/dashboard" });
       }
     } else {
-      navigate({
-        to: "/institute-selection",
-        search: { redirect: "/dashboard/" },
-      });
+      // For multiple institutes, handle modal vs page login differently
+      if (isModalLogin) {
+        // For modal login with multiple institutes, redirect to modal-learner route
+        // which will handle the modal institute selection
+        const modalParams = new URLSearchParams();
+        modalParams.set('accessToken', accessToken);
+        modalParams.set('refreshToken', refreshToken);
+        if (type) modalParams.set('type', type);
+        if (courseId) modalParams.set('courseId', courseId);
+        if (currentUrl) modalParams.set('currentUrl', encodeURIComponent(currentUrl));
+        
+        const modalUrl = `/login/oauth/modal-learner?${modalParams.toString()}`;
+        window.location.href = modalUrl;
+      } else {
+        // For page login with multiple institutes, use the existing logic
+        navigate({
+          to: "/institute-selection",
+          search: { redirect: "/dashboard/" },
+        });
+      }
     }
   } catch {
     toast.error("Failed to process user data.");

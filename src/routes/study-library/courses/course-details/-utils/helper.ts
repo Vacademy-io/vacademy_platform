@@ -1,5 +1,34 @@
 import { getPublicUrl } from "@/services/upload_file";
 
+// Utility functions for YouTube URL handling
+export function isYouTubeUrl(url: string): boolean {
+    if (!url) return false;
+    return /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+/.test(url);
+}
+
+export function getYouTubeVideoId(url: string): string | null {
+    if (!url) return null;
+    
+    const patterns = [
+        /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/,
+        /youtube\.com\/watch\?.*v=([^&\n?#]+)/,
+    ];
+    
+    for (const pattern of patterns) {
+        const match = url.match(pattern);
+        if (match) return match[1];
+    }
+    
+    return null;
+}
+
+export function convertToYouTubeEmbedUrl(url: string): string {
+    const videoId = getYouTubeVideoId(url);
+    if (!videoId) return url;
+    
+    return `https://www.youtube.com/embed/${videoId}`;
+}
+
 interface SubjectType {
     id: string;
     subject_name: string;
@@ -93,7 +122,10 @@ export const transformApiDataToCourseData = async (
         let courseMediaPreview = "";
         // Only try to get media URL if course_media_id is not empty
         if (apiData.course.course_media_id && apiData.course.course_media_id.trim() !== "") {
-            if (
+            // Check if it's a direct YouTube URL
+            if (isYouTubeUrl(apiData.course.course_media_id)) {
+                courseMediaPreview = apiData.course.course_media_id;
+            } else if (
                 isJson(apiData.course.course_media_id) &&
                 courseMediaImage.type === "youtube"
             ) {

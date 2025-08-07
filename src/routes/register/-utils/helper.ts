@@ -56,6 +56,7 @@ export const getDynamicSchema = (
           : [];
 
         schema[field.field_key] = z.object({
+          id: z.string().optional(),
           name: z.string(),
           value:
             field.is_mandatory && options.length > 0
@@ -69,6 +70,7 @@ export const getDynamicSchema = (
         });
       } else {
         schema[field.field_key] = z.object({
+          id: z.string().optional(),
           name: z.string(),
           value: field.is_mandatory
             ? z.string().min(1, `${field.field_name} is required`)

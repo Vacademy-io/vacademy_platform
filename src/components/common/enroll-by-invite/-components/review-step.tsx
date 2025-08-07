@@ -67,7 +67,11 @@ const ReviewStep = ({ courseData, selectedPayment, paymentType }: ReviewStepProp
                             </div>
                             <div>
                                 <span className="ml-2">
-                                    {paymentType === "FREE" ? "Free Course" : selectedPayment?.duration}
+                                    {paymentType === "FREE" 
+                                        ? "Free Course" 
+                                        : paymentType === "DONATION" 
+                                            ? "Pay What You Want" 
+                                            : selectedPayment?.duration}
                                 </span>
                             </div>
                         </div>

@@ -17,6 +17,7 @@ interface NavigationButtonsProps {
     onSubmitEnrollment: () => void;
     loading: boolean;
     paymentType?: string;
+    donationAmountValid?: boolean;
 }
 
 const NavigationButtons = ({
@@ -27,10 +28,12 @@ const NavigationButtons = ({
     onSubmitEnrollment,
     loading,
     paymentType,
+    donationAmountValid,
 }: NavigationButtonsProps) => {
     const isNextDisabled = () => {
         if (loading) return true;
         if (currentStep === 1 && !selectedPayment) return true;
+        if (currentStep === 1 && paymentType === "DONATION" && !donationAmountValid) return true;
         return false;
     };
 

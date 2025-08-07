@@ -43,6 +43,7 @@ const EnrollByInvite = () => {
     const [paymentType, setPaymentType] = useState<string>("");
     const [paymentCompletionResponse, setPaymentCompletionResponse] =
         useState(null);
+    const [donationAmountValid, setDonationAmountValid] = useState(false);
     const stripe = useStripe();
     const elements = useElements();
     const [loading, setLoading] = useState(false);
@@ -183,6 +184,20 @@ const EnrollByInvite = () => {
         }));
     };
 
+    const handleDonationAmountChange = (amount: number) => {
+        setEnrollmentData((prev) => ({
+            ...prev,
+            selectedPayment: prev.selectedPayment ? {
+                ...prev.selectedPayment,
+                amount: amount,
+            } : null,
+        }));
+    };
+
+    const handleDonationValidationChange = (isValid: boolean) => {
+        setDonationAmountValid(isValid);
+    };
+
     const handleNext = () => {
         if (currentStep < 5) {
             // If payment type is FREE and we're on registration step, skip payment selection
@@ -312,8 +327,8 @@ const EnrollByInvite = () => {
                         ?.payment_option?.type || "";
                 setPaymentType(paymentTypeValue);
 
-                // If payment type is FREE or ONE_TIME, automatically set the default payment plan
-                if (paymentTypeValue === "FREE" || paymentTypeValue === "ONE_TIME") {
+                // If payment type is FREE, ONE_TIME, or DONATION, automatically set the default payment plan
+                if (paymentTypeValue === "FREE" || paymentTypeValue === "ONE_TIME" || paymentTypeValue === "DONATION") {
                     const defaultPaymentPlan =
                         inviteData?.package_session_to_payment_options[0]
                             ?.payment_option?.payment_plans?.[0];
@@ -365,7 +380,7 @@ const EnrollByInvite = () => {
                         form={form}
                     />
                 );
-            case 1:
+            case 1: {
                 // Skip payment selection step for FREE payments
                 if (paymentType === "FREE") {
                     return (
@@ -375,16 +390,41 @@ const EnrollByInvite = () => {
                                 courseBanner: courseData.courseBanner,
                             }}
                             selectedPayment={enrollmentData.selectedPayment}
+                            paymentType={paymentType}
                         />
                     );
                 }
+                
+                // Parse donation metadata for DONATION payment type
+                let donationMetadata = undefined;
+                if (paymentType === "DONATION") {
+                    try {
+                        const metadata = JSON.parse(
+                            inviteData?.package_session_to_payment_options[0]
+                                ?.payment_option?.payment_option_metadata_json || "{}"
+                        );
+                        donationMetadata = {
+                            allowCustomAmount: metadata.donationData?.allowCustomAmount || false,
+                            suggestedAmounts: metadata.donationData?.suggestedAmounts || "",
+                            minimumAmount: metadata.donationData?.minimumAmount || "0",
+                        };
+                    } catch (error) {
+                        console.error("Error parsing donation metadata:", error);
+                    }
+                }
+                
                 return (
                     <PaymentSelectionStep
                         paymentOptions={paymentOptions}
                         selectedPayment={enrollmentData.selectedPayment}
                         onPaymentSelect={handlePaymentSelection}
+                        paymentType={paymentType}
+                        donationMetadata={donationMetadata}
+                        onAmountChange={handleDonationAmountChange}
+                        onValidationChange={handleDonationValidationChange}
                     />
                 );
+            }
             case 2:
                 return (
                     <ReviewStep
@@ -440,10 +480,10 @@ const EnrollByInvite = () => {
                         courseData={courseData}
                         levelName={
                             getDetailsFromPackageSessionId({
-                                packageSessionId:
-                                    inviteData
-                                        .package_session_to_payment_options[0]
-                                        .package_session_id,
+                                    packageSessionId:
+                                        inviteData
+                                            .package_session_to_payment_options[0]
+                                            .package_session_id,
                             })?.level.level_name || "-"
                         }
                     />
@@ -464,6 +504,7 @@ const EnrollByInvite = () => {
                             onSubmitEnrollment={handleSubmitEnrollment}
                             loading={loading}
                             paymentType={paymentType}
+                            donationAmountValid={donationAmountValid}
                         />
                     )}
             </div>
@@ -480,7 +521,7 @@ const EnrollByInvite = () => {
                             const registrationCard =
                                 document.getElementById("registration-card");
                             if (registrationCard) {
-                                registrationCard.scrollIntoView({
+                                registrationCard.scrollIntoView({ 
                                     behavior: "smooth",
                                     block: "start",
                                 });

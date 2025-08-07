@@ -37,7 +37,10 @@ import {
 } from "./-components";
 import { useElements, useStripe, CardElement } from "@stripe/react-stripe-js";
 
+// SUBSCRIPTION, FREE, UPFRONT, DONATION
+
 const EnrollByInvite = () => {
+    const [paymentType, setPaymentType] = useState<string>("");
     const [paymentCompletionResponse, setPaymentCompletionResponse] =
         useState(null);
     const stripe = useStripe();
@@ -168,7 +171,9 @@ const EnrollByInvite = () => {
             ...prev,
             registrationData: values,
         }));
-        setCurrentStep(1);
+        // For FREE payments, go directly to review step (step 2)
+        // For other payment types, go to payment selection step (step 1)
+        setCurrentStep(paymentType === "FREE" ? 2 : 1);
     }
 
     const handlePaymentSelection = (payment: PaymentOption) => {
@@ -179,18 +184,66 @@ const EnrollByInvite = () => {
     };
 
     const handleNext = () => {
-        if (currentStep < 4) {
-            setCurrentStep(currentStep + 1);
+        if (currentStep < 5) {
+            // If payment type is FREE and we're on registration step, skip payment selection
+            if (currentStep === 0 && paymentType === "FREE") {
+                setCurrentStep(2); // Skip to review step
+            } else if (currentStep === 2 && paymentType === "FREE") {
+                setCurrentStep(5); // Skip payment steps and go directly to success
+            } else {
+                setCurrentStep(currentStep + 1);
+            }
         }
     };
 
     const handlePrevious = () => {
         if (currentStep > 0) {
-            setCurrentStep(currentStep - 1);
+            // If payment type is FREE and we're on success step, go back to review
+            if (currentStep === 5 && paymentType === "FREE") {
+                setCurrentStep(2);
+            } else if (currentStep === 2 && paymentType === "FREE") {
+                setCurrentStep(0);
+            } else {
+                setCurrentStep(currentStep - 1);
+            }
         }
     };
 
     const handleSubmitEnrollment = async () => {
+        // For FREE payments, skip payment processing and go directly to success
+        if (paymentType === "FREE") {
+            setLoading(true);
+            try {
+                const paymentResponse = await handleEnrollLearnerForPayment({
+                    registrationData: form.getValues(),
+                    enrollmentData: enrollmentData,
+                    // No paymentMethodId for FREE payments
+                    instituteId,
+                    enrollInviteId: inviteData?.id,
+                    payment_option_id:
+                        inviteData?.package_session_to_payment_options[0]
+                            .payment_option.id,
+                    package_session_id:
+                        inviteData?.package_session_to_payment_options[0]
+                            ?.package_session_id,
+                    allowLearnersToCreateCourses:
+                        JSON.parse(instituteData?.setting)?.setting
+                            ?.COURSE_SETTING?.data?.permissions
+                            ?.allowLearnersToCreateCourses || false,
+                });
+                setPaymentCompletionResponse(paymentResponse);
+                setCurrentStep(5); // Go directly to success for FREE payments
+            } catch (err) {
+                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                // @ts-expect-error
+                setError(err?.response?.data?.ex);
+            } finally {
+                setLoading(false);
+            }
+            return;
+        }
+
+        // For paid payments, process through Stripe
         if (!stripe || !elements) return;
 
         setLoading(true); // Start loading
@@ -254,6 +307,32 @@ const EnrollByInvite = () => {
                     inviteData?.web_page_meta_data_json,
                     {}
                 );
+                const paymentTypeValue =
+                    inviteData?.package_session_to_payment_options[0]
+                        ?.payment_option?.type || "";
+                setPaymentType(paymentTypeValue);
+
+                // If payment type is FREE, automatically set the default payment plan
+                if (paymentTypeValue === "FREE") {
+                    const defaultPaymentPlan =
+                        inviteData?.package_session_to_payment_options[0]
+                            ?.payment_option?.payment_plans?.[0];
+                    if (defaultPaymentPlan) {
+                        const paymentOption: PaymentOption = {
+                            id: defaultPaymentPlan.id,
+                            name: defaultPaymentPlan.name,
+                            amount: defaultPaymentPlan.actual_price,
+                            currency: defaultPaymentPlan.currency,
+                            description: defaultPaymentPlan.description,
+                            duration: `${defaultPaymentPlan.validity_in_days} days`,
+                            features: [],
+                        };
+                        setEnrollmentData((prev) => ({
+                            ...prev,
+                            selectedPayment: paymentOption,
+                        }));
+                    }
+                }
                 setCourseData({
                     aboutCourse: transformedData.aboutCourse,
                     course: transformedData.course,
@@ -287,6 +366,18 @@ const EnrollByInvite = () => {
                     />
                 );
             case 1:
+                // Skip payment selection step for FREE payments
+                if (paymentType === "FREE") {
+                    return (
+                        <ReviewStep
+                            courseData={{
+                                course: courseData.course,
+                                courseBanner: courseData.courseBanner,
+                            }}
+                            selectedPayment={enrollmentData.selectedPayment}
+                        />
+                    );
+                }
                 return (
                     <PaymentSelectionStep
                         paymentOptions={paymentOptions}
@@ -302,6 +393,7 @@ const EnrollByInvite = () => {
                             courseBanner: courseData.courseBanner,
                         }}
                         selectedPayment={enrollmentData.selectedPayment}
+                        paymentType={paymentType}
                     />
                 );
             case 3:
@@ -360,17 +452,20 @@ const EnrollByInvite = () => {
                 {/* Current Step Content */}
                 {renderCurrentStep()}
 
-                {/* Navigation Buttons - Only show for steps 1-3 */}
-                {currentStep > 0 && currentStep < 4 && (
-                    <NavigationButtons
-                        currentStep={currentStep}
-                        selectedPayment={enrollmentData.selectedPayment}
-                        onPrevious={handlePrevious}
-                        onNext={handleNext}
-                        onSubmitEnrollment={handleSubmitEnrollment}
-                        loading={loading}
-                    />
-                )}
+                {/* Navigation Buttons - Show for steps 1-3, but skip step 1 for FREE payments */}
+                {currentStep > 0 &&
+                    currentStep < 4 &&
+                    !(currentStep === 1 && paymentType === "FREE") && (
+                        <NavigationButtons
+                            currentStep={currentStep}
+                            selectedPayment={enrollmentData.selectedPayment}
+                            onPrevious={handlePrevious}
+                            onNext={handleNext}
+                            onSubmitEnrollment={handleSubmitEnrollment}
+                            loading={loading}
+                            paymentType={paymentType}
+                        />
+                    )}
             </div>
 
             {/* Fixed bottom container with border - Only show in registration step */}

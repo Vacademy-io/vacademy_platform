@@ -18,9 +18,10 @@ interface ReviewStepProps {
         courseBanner?: string;
     };
     selectedPayment: PaymentOption | null;
+    paymentType?: string;
 }
 
-const ReviewStep = ({ courseData, selectedPayment }: ReviewStepProps) => {
+const ReviewStep = ({ courseData, selectedPayment, paymentType }: ReviewStepProps) => {
     return (
         <div className="space-y-6">
             {/* Order Summary Card */}
@@ -60,27 +61,29 @@ const ReviewStep = ({ courseData, selectedPayment }: ReviewStepProps) => {
                         <Separator />
 
                         {/* Plan and Duration */}
-                        <div className="flex items-center justify-between pt-4">
+                        <div className="flex items-center justify-between pt-4 pb-4">
                             <div>
                                 <span className="text-gray-600">Plan:</span>
                             </div>
                             <div>
                                 <span className="ml-2">
-                                    {selectedPayment?.duration}
+                                    {paymentType === "FREE" ? "Free Course" : selectedPayment?.duration}
                                 </span>
                             </div>
                         </div>
 
-                        {/* Price */}
-                        <div className="flex items-center justify-between py-4">
-                            <span className="text-gray-600">Price:</span>
-                            <span className="text-gray-900">
-                                {getCurrencySymbol(
-                                    selectedPayment?.currency || ""
-                                )}
-                                {selectedPayment?.amount}
-                            </span>
-                        </div>
+                        {/* Price - Only show for non-FREE plans */}
+                        {paymentType !== "FREE" && (
+                            <div className="flex items-center justify-between py-4">
+                                <span className="text-gray-600">Price:</span>
+                                <span className="text-gray-900">
+                                    {getCurrencySymbol(
+                                        selectedPayment?.currency || ""
+                                    )}
+                                    {selectedPayment?.amount}
+                                </span>
+                            </div>
+                        )}
 
                         <Separator />
 
@@ -90,10 +93,14 @@ const ReviewStep = ({ courseData, selectedPayment }: ReviewStepProps) => {
                                 Total:
                             </span>
                             <span className="font-bold text-lg text-gray-900">
-                                {getCurrencySymbol(
-                                    selectedPayment?.currency || ""
+                                {paymentType === "FREE" ? "Free" : (
+                                    <>
+                                        {getCurrencySymbol(
+                                            selectedPayment?.currency || ""
+                                        )}
+                                        {selectedPayment?.amount}
+                                    </>
                                 )}
-                                {selectedPayment?.amount}
                             </span>
                         </div>
                     </div>

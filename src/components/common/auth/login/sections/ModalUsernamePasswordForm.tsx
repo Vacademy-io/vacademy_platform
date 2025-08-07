@@ -48,6 +48,9 @@ export function ModalUsernameLogin({
     onSwitchToSignup?: () => void;
     onSwitchToForgotPassword?: () => void;
 }) {
+    // Extract instituteId from current URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const instituteId = urlParams.get("instituteId");
     const navigate = useNavigate();
     const [isLoading, setIsLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
@@ -78,18 +81,96 @@ export function ModalUsernameLogin({
                     const userId = decodedData?.user;
                     const authorityKeys = authorities ? Object.keys(authorities) : [];
 
-                    if (authorityKeys.length > 1) {
-                        navigate({
-                            to: "/institute-selection",
-                            search: { redirect: "/dashboard/" },
-                        });
-                    } else if (authorityKeys.length === 1) {
-                        const instituteId = authorityKeys[0];
-                        await fetchAndStoreInstituteDetails(instituteId, userId);
-                        await fetchAndStoreStudentDetails(instituteId, userId);
+                    // If instituteId is provided, check if user is enrolled in that institute
+                    if (instituteId && authorityKeys.includes(instituteId)) {
+                        console.log("User is enrolled in specified institute:", instituteId);
+                        // User is enrolled in the specified institute
+                        try {
+                            await fetchAndStoreInstituteDetails(instituteId, userId);
+                            await fetchAndStoreStudentDetails(instituteId, userId);
 
-                        // Determine redirect URL based on type and courseId
-                        let redirectUrl = "/dashboard";
+                            // Determine redirect URL based on type and courseId
+                            let redirectUrl = "/dashboard";
+                            
+                            if (type === "courseDetailsPage" && courseId) {
+                                redirectUrl = `/study-library/courses/course-details?courseId=${courseId}&selectedTab=ALL`;
+                            } else if (type === "courseDetailsPage") {
+                                redirectUrl = "/study-library/courses";
+                            }
+                            
+                            // Open in new tab if login originated from course-related pages or if type is courseDetailsPage
+                            if (type === "courseDetailsPage" || (type && type !== "mainLogin")) {
+                                window.open(redirectUrl, '_blank');
+                            }
+                            // Only navigate to dashboard if this is NOT a modal login (i.e., main login page)
+                            if (!type || type === "mainLogin") {
+                                navigate({
+                                    to: "/dashboard",
+                                });
+                            } else {
+                                // Call onLoginSuccess callback for modal login
+                                if (onLoginSuccess) {
+                                    onLoginSuccess();
+                                }
+                            }
+                        } catch (error) {
+                            console.error("Error fetching details:", error);
+                            toast.error("Failed to fetch details");
+                        }
+                    } else if (instituteId && !authorityKeys.includes(instituteId)) {
+                        console.log("User is NOT enrolled in specified institute:", instituteId);
+                        // User is not enrolled in the specified institute
+                        toast.error("You are not enrolled in this institute.");
+                        if (onLoginSuccess) {
+                            onLoginSuccess(); // Close modal
+                        }
+                    } else if (authorityKeys.length > 1) {
+                        // No instituteId provided and user has multiple institutes - use first available
+                        console.log("No instituteId provided, using first available institute");
+                        const firstInstituteId = authorityKeys[0];
+                        
+                        try {
+                            await fetchAndStoreInstituteDetails(firstInstituteId, userId);
+                            await fetchAndStoreStudentDetails(firstInstituteId, userId);
+
+                            // Determine redirect URL based on type and courseId
+                            let redirectUrl = "/dashboard";
+                            
+                            if (type === "courseDetailsPage" && courseId) {
+                                redirectUrl = `/study-library/courses/course-details?courseId=${courseId}&selectedTab=ALL`;
+                            } else if (type === "courseDetailsPage") {
+                                redirectUrl = "/study-library/courses";
+                            }
+                            
+                            // Open in new tab if login originated from course-related pages or if type is courseDetailsPage
+                            if (type === "courseDetailsPage" || (type && type !== "mainLogin")) {
+                                window.open(redirectUrl, '_blank');
+                            }
+                            // Only navigate to dashboard if this is NOT a modal login (i.e., main login page)
+                            if (!type || type === "mainLogin") {
+                                navigate({
+                                    to: "/dashboard",
+                                });
+                            } else {
+                                // Call onLoginSuccess callback for modal login
+                                if (onLoginSuccess) {
+                                    onLoginSuccess();
+                                }
+                            }
+                        } catch (error) {
+                            console.error("Error fetching details:", error);
+                            toast.error("Failed to fetch details");
+                        }
+                    } else if (authorityKeys.length === 1) {
+                        // Single institute case
+                        const instituteId = authorityKeys[0];
+                        
+                        try {
+                            await fetchAndStoreInstituteDetails(instituteId, userId);
+                            await fetchAndStoreStudentDetails(instituteId, userId);
+
+                            // Determine redirect URL based on type and courseId
+                            let redirectUrl = "/dashboard";
                         
                         if (type === "courseDetailsPage" && courseId) {
                             redirectUrl = `/study-library/courses/course-details?courseId=${courseId}&selectedTab=ALL`;
@@ -111,6 +192,10 @@ export function ModalUsernameLogin({
                             if (onLoginSuccess) {
                                 onLoginSuccess();
                             }
+                        }
+                        } catch (error) {
+                            console.error("Error fetching details:", error);
+                            toast.error("Failed to fetch details");
                         }
                     }
                 } catch (error) {

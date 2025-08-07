@@ -192,6 +192,15 @@ class PushNotificationService {
         deviceId
       };
 
+      // Check if we're in development mode
+      const isDevelopment = import.meta.env.DEV || window.location.hostname === 'localhost';
+      
+      if (isDevelopment) {
+        // In development, just log the token instead of sending to server
+        console.log('Development mode: Push token would be registered:', tokenData);
+        return;
+      }
+
       // Send to your backend API
       const response = await fetch('/api/push-notifications/register', {
         method: 'POST',

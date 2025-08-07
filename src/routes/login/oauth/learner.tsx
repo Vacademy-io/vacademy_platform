@@ -59,20 +59,41 @@ const handleOAuthCallback = async (
   let redirectTo = "/dashboard";
   let currentUrl = "";
   let isModalLogin = false;
+  let type = "";
+  let courseId = "";
+  
   if (state) {
     try {
-      const stateObj = JSON.parse(atob(state));
+      // Use a more robust decoding approach
+      const decodedState = decodeURIComponent(escape(atob(state)));
+      const stateObj = JSON.parse(decodedState);
       redirectTo = stateObj.redirectTo || "/dashboard";
       currentUrl = stateObj.currentUrl || "";
       isModalLogin = stateObj.isModalLogin || false;
+      type = stateObj.type || "";
+      courseId = stateObj.courseId || "";
     } catch (error) {
       console.error("Error parsing state:", error);
+    }
+  }
+  
+  // For modal login, extract additional parameters from URL
+  if (isModalLogin) {
+    type = urlParams.get("type") || type;
+    courseId = urlParams.get("courseId") || courseId;
+    const currentUrlParam = urlParams.get("currentUrl");
+    if (currentUrlParam) {
+      currentUrl = decodeURIComponent(currentUrlParam);
     }
   }
 
   if (error) {
     toast.error(decodeURIComponent(message || "Authentication failed."));
-    navigate({ to: "/login" });
+    if (isModalLogin) {
+      window.history.back();
+    } else {
+      navigate({ to: "/login" });
+    }
     return;
   }
 
@@ -91,15 +112,25 @@ const handleOAuthCallback = async (
         setPrimaryColor,
         redirectTo,
         currentUrl,
-        isModalLogin
+        isModalLogin,
+        type,
+        courseId
       );
     } catch {
       toast.error("Failed to store authentication tokens");
-      navigate({ to: "/login" });
+      if (isModalLogin) {
+        window.history.back();
+      } else {
+        navigate({ to: "/login" });
+      }
     }
   } else {
     toast.error("Missing tokens in redirect URL");
-    navigate({ to: "/login" });
+    if (isModalLogin) {
+      window.history.back();
+    } else {
+      navigate({ to: "/login" });
+    }
   }
 };
 
@@ -111,7 +142,9 @@ const handleSuccessfulLogin = async (
   setPrimaryColor?: (color: string) => void,
   redirectTo?: string,
   currentUrl?: string,
-  isModalLogin?: boolean
+  isModalLogin?: boolean,
+  type?: string,
+  courseId?: string
 ) => {
   try {
     const decodedData = getTokenDecodedData(accessToken);
@@ -134,21 +167,67 @@ const handleSuccessfulLogin = async (
       }
       await fetchAndStoreStudentDetails(instituteId, userId);
 
-                     // Open study-library page in new tab if login originated from course-related pages
-               if (redirectTo && redirectTo !== "/dashboard" && currentUrl && 
-                   (currentUrl.includes("/courses") || currentUrl.includes("/course-details"))) {
-                 window.open(redirectTo, '_blank');
-               }
-      
-      // Only navigate to dashboard if this is NOT a modal login (i.e., main login page)
-      if (!isModalLogin) {
+      // For modal login flow, handle redirection consistently with username/password flow
+      if (isModalLogin) {
+        // Determine redirect URL based on type and courseId (consistent with username/password flow)
+        let redirectUrl = "/dashboard";
+        
+        if (type === "courseDetailsPage" && courseId) {
+          redirectUrl = `/study-library/courses/course-details?courseId=${courseId}&selectedTab=ALL`;
+        } else if (type === "courseDetailsPage") {
+          redirectUrl = "/study-library/courses";
+        } else if (currentUrl && currentUrl.includes("/courses/course-details")) {
+          // Extract courseId from current URL
+          const urlParams = new URLSearchParams(currentUrl.split('?')[1] || '');
+          const courseId = urlParams.get("courseId");
+          if (courseId) {
+            redirectUrl = `/study-library/courses/course-details?courseId=${courseId}&selectedTab=ALL`;
+          }
+        } else if (currentUrl && currentUrl.includes("/courses")) {
+          redirectUrl = "/study-library/courses";
+        }
+        
+        // Open in new tab for course-related pages (consistent with username/password flow)
+        if (type === "courseDetailsPage" || (type && type !== "mainLogin") || 
+            (currentUrl && (currentUrl.includes("/courses") || currentUrl.includes("/course-details")))) {
+          window.open(redirectUrl, '_blank');
+        }
+        
+        // For modal login, don't navigate to dashboard - just close the modal
+        // The parent component should handle the modal closure via onLoginSuccess callback
+        return;
+      } else {
+        // For non-modal login (main login page), use the existing logic
+        // Open study-library page in new tab if login originated from course-related pages
+        if (redirectTo && redirectTo !== "/dashboard" && currentUrl && 
+            (currentUrl.includes("/courses") || currentUrl.includes("/course-details"))) {
+          window.open(redirectTo, '_blank');
+        }
+        
+        // Navigate to dashboard for main login page
         navigate({ to: "/dashboard" });
       }
     } else {
-      navigate({
-        to: "/institute-selection",
-        search: { redirect: "/dashboard/" },
-      });
+      // For multiple institutes, handle modal vs page login differently
+      if (isModalLogin) {
+        // For modal login with multiple institutes, redirect to modal-learner route
+        // which will handle the modal institute selection
+        const modalParams = new URLSearchParams();
+        modalParams.set('accessToken', accessToken);
+        modalParams.set('refreshToken', refreshToken);
+        if (type) modalParams.set('type', type);
+        if (courseId) modalParams.set('courseId', courseId);
+        if (currentUrl) modalParams.set('currentUrl', encodeURIComponent(currentUrl));
+        
+        const modalUrl = `/login/oauth/modal-learner?${modalParams.toString()}`;
+        window.location.href = modalUrl;
+      } else {
+        // For page login with multiple institutes, use the existing logic
+        navigate({
+          to: "/institute-selection",
+          search: { redirect: "/dashboard/" },
+        });
+      }
     }
   } catch {
     toast.error("Failed to process user data.");

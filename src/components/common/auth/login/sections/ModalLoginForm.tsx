@@ -35,12 +35,26 @@ export function ModalLoginForm({
             const currentSearch = window.location.search;
             const currentUrl = `${currentPath}${currentSearch}`;
             
-            // Determine the appropriate study-library URL based on current page
+            // Extract instituteId from current URL
+            const urlParams = new URLSearchParams(currentSearch);
+            const instituteId = urlParams.get("instituteId");
+            
+            console.log("Modal OAuth Login - Current URL info:", {
+                currentPath,
+                currentSearch,
+                currentUrl,
+                instituteId,
+                type,
+                courseId
+            });
+            
+            // Determine the appropriate study-library URL based on current page and type
             let studyLibraryUrl = "/study-library/courses";
             
-            if (currentPath.includes("/courses/course-details")) {
+            if (type === "courseDetailsPage" && courseId) {
+                studyLibraryUrl = `/study-library/courses/course-details?courseId=${courseId}&selectedTab=ALL`;
+            } else if (currentPath.includes("/courses/course-details")) {
                 // Extract courseId from current URL
-                const urlParams = new URLSearchParams(currentSearch);
                 const courseId = urlParams.get("courseId");
                 if (courseId) {
                     studyLibraryUrl = `/study-library/courses/course-details?courseId=${courseId}&selectedTab=ALL`;
@@ -50,17 +64,42 @@ export function ModalLoginForm({
                 studyLibraryUrl = "/study-library/courses";
             }
             
-            const stateObj = {
-                from: `${window.location.origin}/login/oauth/learner`,
-                account_type: "login",
+            // Store additional data in sessionStorage to reduce state size
+            const modalOAuthData = {
                 redirectTo: studyLibraryUrl,
                 currentUrl: currentUrl,
+                type: type,
+                courseId: courseId,
+                instituteId: instituteId,
+            };
+            
+            // Store in sessionStorage
+            sessionStorage.setItem('modal_oauth_data', JSON.stringify(modalOAuthData));
+            console.log("Stored modal OAuth data in sessionStorage:", modalOAuthData);
+            
+            // Create minimal state object
+            const stateObj = {
+                from: `${window.location.origin}/login/oauth/modal-learner`,
+                account_type: "login",
             };
 
-            const base64State = btoa(JSON.stringify(stateObj));
-            const loginUrl = `${LOGIN_URL_GOOGLE_GITHUB}/${provider}?state=${encodeURIComponent(
-                base64State
-            )}`;
+            console.log("Modal OAuth Login - State object:", stateObj);
+
+            const stateJson = JSON.stringify(stateObj);
+            console.log("State JSON string:", stateJson);
+            console.log("State JSON length:", stateJson.length);
+            
+            const base64State = btoa(stateJson);
+            console.log("Base64 encoded state:", base64State);
+            console.log("Base64 state length:", base64State.length);
+            
+            const encodedState = encodeURIComponent(base64State);
+            console.log("URL encoded state:", encodedState);
+            console.log("URL encoded state length:", encodedState.length);
+            
+            const loginUrl = `${LOGIN_URL_GOOGLE_GITHUB}/${provider}?state=${encodedState}`;
+            console.log("Final login URL:", loginUrl);
+            
             window.location.href = loginUrl;
         } catch {
             toast.error("Failed to initiate login. Please try again.");

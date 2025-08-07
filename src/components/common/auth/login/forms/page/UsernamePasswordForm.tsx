@@ -7,7 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Form, FormControl, FormField, FormItem } from "@/components/ui/form";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { loginUser } from "@/hooks/login/login-button";
+import { loginUser } from "@/components/common/auth/login/hooks/login-button";
 import { TokenKey } from "@/constants/auth/tokens";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { motion } from "framer-motion";

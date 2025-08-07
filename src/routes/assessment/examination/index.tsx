@@ -4,7 +4,7 @@ import { ScheduleTestMainComponent } from "./-components/ScheduleTestMainCompone
 // import { Helmet } from "react-helmet";
 import { TokenKey } from "@/constants/auth/tokens";
 import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
-import { getFromStorage } from "@/components/common/auth/login/sections/login-form";
+import { getFromStorage } from "@/components/common/auth/login/forms/page/login-form";
 
 export const Route = createFileRoute("/assessment/examination/")({
   beforeLoad: async ({ location }) => {

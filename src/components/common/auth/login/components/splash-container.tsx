@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { SplashScreenProps } from "../../../../types/loginTypes";
+import { SplashScreenProps } from "@/types/loginTypes";
 // import { SsdcLogo_Login } from "@/assets/svgs";
 import { useEffect } from "react";
 import Logo from "@/svgs/ssdc-logo.svg"

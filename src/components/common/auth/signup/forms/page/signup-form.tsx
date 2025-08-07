@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { InstituteSignUp } from "./InstituteSignUpForm";
-import { ModalSignUpForm } from "./ModalSignUpForm";
+import { ModalSignUpForm } from "../modal/ModalSignUpForm";
 
 export function SignUpForm({
     type,

@@ -19,7 +19,7 @@ import {
     getTokenDecodedData,
     setTokenInStorage,
 } from "@/lib/auth/sessionUtility";
-import { loginUser } from "@/hooks/login/login-button";
+import { loginUser } from "@/components/common/auth/login/hooks/login-button";
 import { fetchAndStoreInstituteDetails } from "@/services/fetchAndStoreInstituteDetails";
 import { fetchAndStoreStudentDetails } from "@/services/studentDetails";
 

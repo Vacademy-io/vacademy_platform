@@ -33,7 +33,12 @@ const NavigationButtons = ({
     const isNextDisabled = () => {
         if (loading) return true;
         if (currentStep === 1 && !selectedPayment) return true;
-        if (currentStep === 1 && paymentType === "DONATION" && !donationAmountValid) return true;
+        if (
+            currentStep === 1 &&
+            paymentType === "DONATION" &&
+            !donationAmountValid
+        )
+            return true;
         return false;
     };
 
@@ -56,7 +61,8 @@ const NavigationButtons = ({
                 scale="medium"
                 layoutVariant="default"
                 onClick={
-                    currentStep === 3 || (currentStep === 2 && paymentType === "FREE")
+                    currentStep === 3 ||
+                    (currentStep === 2 && paymentType === "FREE")
                         ? onSubmitEnrollment
                         : onNext
                 }
@@ -64,8 +70,9 @@ const NavigationButtons = ({
                 className="w-full sm:w-auto flex items-center gap-2 bg-gradient-to-r from-primary-500 to-primary-500 text-white font-medium py-3 px-6 rounded-lg transition-all duration-200 shadow-sm hover:shadow-md"
             >
                 {loading
-                    ? "loading..."
-                    : currentStep === 3 || (currentStep === 2 && paymentType === "FREE")
+                    ? "Loading"
+                    : currentStep === 3 ||
+                        (currentStep === 2 && paymentType === "FREE")
                       ? "Complete Enrollment"
                       : "Next"}
                 <ArrowRight className="w-4 h-4" />

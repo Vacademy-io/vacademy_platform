@@ -43,8 +43,8 @@ public class LiveSessionController {
             @RequestBody DeleteLiveSessionRequest request,
             @RequestAttribute("user") CustomUserDetails user) {
 
-        getLiveSessionService.deleteLiveSessions(request.getIds(), request.getType());
-        return ResponseEntity.ok("Deleted successfully");
+
+        return ResponseEntity.ok(getLiveSessionService.deleteLiveSessions(request.getIds(), request.getType()));
     }
 
 }

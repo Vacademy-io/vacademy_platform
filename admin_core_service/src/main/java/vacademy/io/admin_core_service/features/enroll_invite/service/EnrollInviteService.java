@@ -72,7 +72,7 @@ public class EnrollInviteService {
                         cf.setTypeId(savedEnrollInvite.getId());
                     })
                     .collect(Collectors.toList());
-            instituteCustomFiledService.addCustomFields(customFieldsToSave);
+            instituteCustomFiledService.addOrUpdateCustomField(customFieldsToSave);
         }
 
         List<PackageSessionLearnerInvitationToPaymentOption> mappingEntities = mappingDTOs.stream()
@@ -92,11 +92,73 @@ public class EnrollInviteService {
             throw new VacademyException("No valid packageSession-paymentOption mappings were provided.");
         }
         packageSessionEnrollInviteToPaymentOptionService.createPackageSessionLearnerInvitationToPaymentOptions(mappingEntities);
-        validateAndSaveReferralOption(mappingEntities, mappingDTOs);
+        validateSaveOrUpdate(mappingEntities, mappingDTOs);
         return savedEnrollInvite.getId();
     }
 
+    @Transactional
+    public String updateEnrollInvite(EnrollInviteDTO enrollInviteDTO) {
+        if (enrollInviteDTO == null) {
+            throw new VacademyException("EnrollInvite payload cannot be null.");
+        }
+        List<PackageSessionToPaymentOptionDTO> mappingDTOs = enrollInviteDTO.getPackageSessionToPaymentOptions();
+        if (CollectionUtils.isEmpty(mappingDTOs)) {
+            throw new VacademyException("Package session to payment options cannot be empty.");
+        }
+
+        EnrollInvite enrollInviteToSave = findById(enrollInviteDTO.getId());
+        updateEnrollInvite(enrollInviteDTO, enrollInviteToSave);
+        final EnrollInvite savedEnrollInvite = repository.save(enrollInviteToSave);
+
+        if (!CollectionUtils.isEmpty(enrollInviteDTO.getInstituteCustomFields())) {
+            List<InstituteCustomFieldDTO> customFieldsToSave = enrollInviteDTO.getInstituteCustomFields().stream()
+                    .filter(Objects::nonNull)
+                    .peek(cf -> {
+                        cf.setType(CustomFieldTypeEnum.ENROLL_INVITE.name());
+                        cf.setTypeId(savedEnrollInvite.getId());
+                    })
+                    .collect(Collectors.toList());
+            instituteCustomFiledService.addOrUpdateCustomField(customFieldsToSave);
+        }
+
+        List<PackageSessionLearnerInvitationToPaymentOption> mappingEntities = mappingDTOs.stream()
+                .filter(Objects::nonNull)
+                .map(dto -> {
+                    if (StringUtils.hasText(dto.getId())){
+                        return packageSessionEnrollInviteToPaymentOptionService.updateStatus(dto.getId(),dto.getStatus());
+                    }else{
+                        validateMappingDTO(dto);
+                        PaymentOption paymentOption = paymentOptionService.findById(dto.getPaymentOption().getId());
+                        PackageSession packageSession = packageSessionService.findById(dto.getPackageSessionId());
+
+                        return new PackageSessionLearnerInvitationToPaymentOption(
+                                savedEnrollInvite, packageSession, paymentOption, StatusEnum.ACTIVE.name()
+                        );
+                    }
+                })
+                .collect(Collectors.toList());
+
+        if (mappingEntities.isEmpty()) {
+            throw new VacademyException("No valid packageSession-paymentOption mappings were provided.");
+        }
+        packageSessionEnrollInviteToPaymentOptionService.createPackageSessionLearnerInvitationToPaymentOptions(mappingEntities);
+        validateSaveOrUpdate(mappingEntities, mappingDTOs);
+        return savedEnrollInvite.getId();
+    }
     // Create and other existing methods...
+
+
+    private void updateEnrollInvite(EnrollInviteDTO enrollInviteDTO,EnrollInvite enrollInvite) {
+        enrollInvite.setCurrency(enrollInviteDTO.getCurrency());
+        enrollInvite.setWebPageMetaDataJson(enrollInviteDTO.getWebPageMetaDataJson());
+        enrollInvite.setVendor(enrollInviteDTO.getVendor());
+        enrollInvite.setEndDate(enrollInviteDTO.getEndDate());
+        enrollInvite.setStartDate(enrollInviteDTO.getStartDate());
+        enrollInvite.setLearnerAccessDays(enrollInviteDTO.getLearnerAccessDays());
+        enrollInvite.setStatus(enrollInviteDTO.getStatus());
+        enrollInvite.setName(enrollInviteDTO.getName());
+        enrollInvite.setVendorId(enrollInviteDTO.getVendorId());
+    }
 
     public Page<EnrollInviteWithSessionsProjection> getEnrollInvitesByInstituteIdAndFilters(String instituteId, EnrollInviteFilterDTO enrollInviteFilterDTO, int pageNo, int pageSize) {
         Sort sortColumns = ListService.createSortObject(enrollInviteFilterDTO.getSortColumns());
@@ -288,7 +350,7 @@ public class EnrollInviteService {
         }
     }
 
-    private void validateAndSaveReferralOption(
+    private void validateSaveOrUpdate(
             List<PackageSessionLearnerInvitationToPaymentOption> savedMappings,
             List<PackageSessionToPaymentOptionDTO> originalDTOs) {
 
@@ -313,12 +375,8 @@ public class EnrollInviteService {
 
                     if (optionalPlan.isPresent() && optionalReferral.isPresent()) {
                         PackageSessionEnrollInvitePaymentOptionPlanToReferralOption childEntity =
-                                new PackageSessionEnrollInvitePaymentOptionPlanToReferralOption(
-                                        persistedParent,
-                                        optionalReferral.get(),
-                                        optionalPlan.get(),
-                                        StatusEnum.ACTIVE.name()
-                                );
+                                packageSessionEnrollInvitePaymentOptionPlanToReferralOptionService
+                                        .addOrUpdatePackageSessionEnrollInvitePaymentOptionPlanToReferralOption(persistedParent, optionalReferral.get(), optionalPlan.get(), planDTO.getReferralOptionSMappingStatus());
                         referralsToSave.add(childEntity);
                     }
                 }
@@ -399,7 +457,7 @@ public class EnrollInviteService {
 
         // Save new payment options and referral options
         packageSessionEnrollInviteToPaymentOptionService.createPackageSessionLearnerInvitationToPaymentOptions(newPaymentOptions);
-        validateAndSaveReferralOption(newPaymentOptions, newPaymentOptionDTOs);
+        validateSaveOrUpdate(newPaymentOptions, newPaymentOptionDTOs);
     }
 
     /**

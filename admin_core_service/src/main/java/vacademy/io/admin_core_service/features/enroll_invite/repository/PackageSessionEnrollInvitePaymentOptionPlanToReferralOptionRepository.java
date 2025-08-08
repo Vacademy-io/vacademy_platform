@@ -8,6 +8,7 @@ import org.springframework.stereotype.Repository;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionEnrollInvitePaymentOptionPlanToReferralOption;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionLearnerInvitationToPaymentOption;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
+import vacademy.io.admin_core_service.features.user_subscription.entity.ReferralOption;
 
 import java.util.List;
 import java.util.Optional;
@@ -45,5 +46,10 @@ public interface PackageSessionEnrollInvitePaymentOptionPlanToReferralOptionRepo
     void updateStatusByPackageSessionLearnerInvitationToPaymentOptionIds(
             @Param("packageSessionLearnerInvitationToPaymentOptionIds") List<String> packageSessionLearnerInvitationToPaymentOptionIds,
             @Param("status") String status);
+
+    Optional<PackageSessionEnrollInvitePaymentOptionPlanToReferralOption> findByPackageSessionLearnerInvitationToPaymentOptionAndPaymentPlanAndReferralOptionAndStatusIn(PackageSessionLearnerInvitationToPaymentOption packageSessionLearnerInvitationToPaymentOption,
+                                                                                                                                                        PaymentPlan paymentPlan,
+                                                                                                                                                        ReferralOption referralOption,
+                                                                                                                                                        List<String> status);
 
 }

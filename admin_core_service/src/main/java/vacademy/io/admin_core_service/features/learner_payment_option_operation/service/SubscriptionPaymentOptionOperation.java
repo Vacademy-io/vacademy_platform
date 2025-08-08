@@ -81,7 +81,6 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
 
         if (learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest() != null) {
             PaymentInitiationRequestDTO paymentInitiationRequestDTO = learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest();
-            paymentInitiationRequestDTO.setCurrency(enrollInvite.getCurrency());
             paymentInitiationRequestDTO.setAmount(paymentPlan.getActualPrice());
             PaymentResponseDTO paymentResponseDTO = paymentService.handlePayment(
                     user,

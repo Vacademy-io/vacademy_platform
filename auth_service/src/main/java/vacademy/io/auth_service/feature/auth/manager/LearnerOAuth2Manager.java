@@ -6,6 +6,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Component;
+import vacademy.io.auth_service.feature.auth.constants.AuthConstants;
 import vacademy.io.auth_service.feature.auth.dto.AuthRequestDto;
 import vacademy.io.auth_service.feature.auth.dto.JwtResponseDto;
 import vacademy.io.auth_service.feature.notification.service.NotificationService;
@@ -43,7 +44,7 @@ public class LearnerOAuth2Manager {
 
 
     public JwtResponseDto loginUserByEmail(String email) {
-        Optional<User> userOptional = userRepository.findMostRecentUserByRootFlagAndRoleStatusNative(false, List.of(UserRoleStatus.ACTIVE.name()), email);
+        Optional<User> userOptional = userRepository.findMostRecentUserByEmailAndRoleStatusAndRoleNames(email,List.of(UserRoleStatus.ACTIVE.name(),UserRoleStatus.INVITED.name()), AuthConstants.VALID_ROLES_FOR_STUDENT_PORTAL);
         if (userOptional.isEmpty()) {
             throw new UsernameNotFoundException("invalid user request..!!");
         }

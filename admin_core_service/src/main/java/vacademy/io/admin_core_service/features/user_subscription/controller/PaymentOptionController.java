@@ -40,4 +40,9 @@ public class PaymentOptionController {
         return ResponseEntity.ok(paymentOptionService.deletePaymentOption(paymentOptionIds,userDetails));
     }
 
+    @PutMapping
+    public ResponseEntity<PaymentOptionDTO> editPaymentOption(@RequestBody PaymentOptionDTO paymentOptionDTO) {
+        return ResponseEntity.ok(paymentOptionService.editPaymentOption(paymentOptionDTO));
+    }
+
 }

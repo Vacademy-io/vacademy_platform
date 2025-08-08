@@ -7,6 +7,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import lombok.*;
 import org.hibernate.annotations.UuidGenerator;
+import vacademy.io.common.auth.dto.UserDTO;
 
 import java.sql.Timestamp;
 import java.util.Date;
@@ -71,4 +72,17 @@ public class Student {
     @Column(name = "face_file_id")
     private String faceFileId;
 
+    public Student(UserDTO userDTO) {
+        this.id = userDTO.getId();
+        this.username = userDTO.getUsername();
+        this.email = userDTO.getEmail();
+        this.fullName = userDTO.getFullName();
+        this.addressLine = userDTO.getAddressLine();
+        this.region = userDTO.getRegion();
+        this.city = userDTO.getCity();
+        this.pinCode = userDTO.getPinCode();
+        this.mobileNumber = userDTO.getMobileNumber();
+        this.dateOfBirth = userDTO.getDateOfBirth();
+        this.gender = userDTO.getGender();
+    }
 }

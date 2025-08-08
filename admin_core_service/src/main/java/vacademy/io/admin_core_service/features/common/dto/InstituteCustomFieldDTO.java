@@ -19,4 +19,6 @@ public class InstituteCustomFieldDTO {
     private String typeId; // session id
 
     private CustomFieldDTO customField;
+
+    private String status;
 }

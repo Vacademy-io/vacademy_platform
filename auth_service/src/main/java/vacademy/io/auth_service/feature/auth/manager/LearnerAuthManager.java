@@ -87,12 +87,20 @@ public class LearnerAuthManager {
                 throw new VacademyException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to register learner: " + e.getMessage());
             }
 
+        }else{
+            ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                    applicationName, HttpMethod.POST.name(),
+                    adminCoreServiceBaseUrl, AuthConstants.ADD_LEARNER,
+                    userDTO
+            );
+
+           String instituteId = response.getBody();
         }
         oAuth2VendorToUserDetailService.verifyEmail(learnerEnrollRequestDTO.getSubjectId(), learnerEnrollRequestDTO.getVendorId(), user.getEmail());
 
         RefreshToken refreshToken = refreshTokenService.createRefreshToken(user.getUsername(), "VACADEMY-WEB");
 
-        return authService.generateJwtTokenForUser(user, refreshToken, new ArrayList<>(user.getRoles()));
+        return authService.generateJwtTokenForUser(user, refreshToken, user.getRoles().stream().toList());
     }
 
     private User createUser(UserDTO userDTO) {
@@ -155,18 +163,21 @@ public class LearnerAuthManager {
         RefreshToken refreshToken = refreshTokenService.createRefreshToken(userName, authRequestDTO.getClientName());
 
         return JwtResponseDto.builder()
-                .accessToken(jwtService.generateToken(user, roles, permissions))
+                .accessToken(jwtService.generateToken(user, user.getRoles().stream().toList(), permissions))
                 .refreshToken(refreshToken.getToken())
                 .build();
     }
 
     public String requestOtp(AuthRequestDto authRequestDTO) {
-        Optional<User> user = authRequestDTO.getClientName() != null &&
-                ClientNameEnum.ADMIN.name().equals(authRequestDTO.getClientName())
-                ? userRepository.findMostRecentUserByRootFlagAndRoleStatusNative(true, List.of(UserRoleStatus.ACTIVE.name()), authRequestDTO.getEmail())
-                : userRepository.findMostRecentUserByRootFlagAndRoleStatusNative(false, List.of(UserRoleStatus.ACTIVE.name()), authRequestDTO.getEmail());
+        Optional<User> user = null;
+        if (authRequestDTO.getClientName() != null && authRequestDTO.getClientName().equals(ClientNameEnum.ADMIN.name())) {
+            user = userRepository.findMostRecentUserByEmailAndRoleStatusAndRoleNames(authRequestDTO.getEmail(), List.of(UserRoleStatus.ACTIVE.name(),UserRoleStatus.INVITED.name()), AuthConstants.VALID_ROLES_FOR_ADMIN_PORTAL);
+        }
+        else{
+            user = userRepository.findMostRecentUserByEmailAndRoleStatusAndRoleNames(authRequestDTO.getEmail(), List.of(UserRoleStatus.ACTIVE.name(),UserRoleStatus.INVITED.name()), AuthConstants.VALID_ROLES_FOR_STUDENT_PORTAL);
+        }
 
-        if (user.isEmpty()) throw new UsernameNotFoundException("Invalid user request!");
+        if (user.isEmpty()) throw new UsernameNotFoundException("User not found!");
 
         notificationService.sendOtp(makeOtp(authRequestDTO.getEmail()));
         return "OTP sent to " + authRequestDTO.getEmail();
@@ -180,8 +191,7 @@ public class LearnerAuthManager {
         );
         if (!isValid) throw new UsernameNotFoundException("Invalid OTP!");
 
-        User user = userRepository.findMostRecentUserByRootFlagAndRoleStatusNative(false, List.of(UserRoleStatus.ACTIVE.name()), authRequestDTO.getEmail())
-                .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
+        User user = userRepository.findMostRecentUserByEmailAndRoleStatusAndRoleNames(authRequestDTO.getEmail(), List.of(UserRoleStatus.ACTIVE.name(),UserRoleStatus.INVITED.name()), AuthConstants.VALID_ROLES_FOR_STUDENT_PORTAL).orElseThrow(()-> new VacademyException("User not found!!!"));
 
         Authentication authentication = authRequestDTO.getInstituteId() == null
                 ? authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(user.getUsername(), user.getPassword()))
@@ -191,12 +201,11 @@ public class LearnerAuthManager {
 
         refreshTokenService.deleteAllRefreshToken(user);
 
-        List<UserRole> roles = userRoleRepository.findByUser(user);
         List<String> permissions = userPermissionRepository.findByUserId(user.getId()).stream().map(UserPermission::getPermissionId).toList();
         RefreshToken refreshToken = refreshTokenService.createRefreshToken(user.getUsername(), authRequestDTO.getClientName());
 
         return JwtResponseDto.builder()
-                .accessToken(jwtService.generateToken(user, roles, permissions))
+                .accessToken(jwtService.generateToken(user, user.getRoles().stream().toList(), permissions))
                 .refreshToken(refreshToken.getToken())
                 .build();
     }
@@ -206,9 +215,8 @@ public class LearnerAuthManager {
                 .map(refreshTokenService::verifyExpiration)
                 .map(RefreshToken::getUserInfo)
                 .map(user -> {
-                    List<UserRole> roles = userRoleRepository.findByUser(user);
                     List<String> permissions = userPermissionRepository.findByUserId(user.getId()).stream().map(UserPermission::getPermissionId).toList();
-                    return JwtResponseDto.builder().accessToken(jwtService.generateToken(user, roles, permissions)).build();
+                    return JwtResponseDto.builder().accessToken(jwtService.generateToken(user, user.getRoles().stream().toList(), permissions)).build();
                 })
                 .orElseThrow(() -> new ExpiredTokenException("Refresh token is expired. Please log in again."));
     }

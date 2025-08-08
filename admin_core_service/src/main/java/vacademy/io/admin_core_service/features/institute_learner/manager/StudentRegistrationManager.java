@@ -198,7 +198,7 @@ public class StudentRegistrationManager {
                 }
 
                 if (instituteStudentDetails.getEnrollmentId() != null) {
-                    mapping.setInstituteEnrolledNumber(instituteStudentDetails.getEnrollmentId());
+                    mapping.setInstituteEnrolledNumber(studentSessionInstituteGroupMappingOptional.get().getInstituteEnrolledNumber());
                 }
 
                 if (instituteStudentDetails.getAccessDays() != null) {
@@ -218,7 +218,7 @@ public class StudentRegistrationManager {
                         student.getUserId(),
                         instituteStudentDetails.getEnrollmentDate() == null ? new Date() : instituteStudentDetails.getEnrollmentDate(),
                         instituteStudentDetails.getEnrollmentStatus(),
-                        instituteStudentDetails.getEnrollmentId(),
+                        generateEnrollmentId(),
                         instituteStudentDetails.getGroupId(),
                         instituteStudentDetails.getInstituteId(),
                         makeExpiryDate(
@@ -241,7 +241,7 @@ public class StudentRegistrationManager {
         try {
             Optional<StudentSessionInstituteGroupMapping> studentSessionInstituteGroupMappingOptional =
                     studentSessionRepository.findTopByPackageSessionIdAndUserIdAndStatusIn(
-                            studentSessionInstituteGroupMapping.getPackageSession().getId(),
+                            destinationPackageSession,
                             studentSessionInstituteGroupMapping.getInstitute().getId(),
                             studentSessionInstituteGroupMapping.getUserId(),
                             List.of(
@@ -378,4 +378,7 @@ public class StudentRegistrationManager {
         return RandomStringUtils.randomNumeric(6);
     }
 
+    public String addStudent(UserDTO userDTO){
+        return createStudentFromRequest(userDTO, null).getId();
+    }
 }

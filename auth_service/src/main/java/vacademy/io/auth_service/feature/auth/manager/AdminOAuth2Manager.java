@@ -54,7 +54,7 @@ public class AdminOAuth2Manager {
 
 
     public JwtResponseDto loginUserByEmail(String email) {
-        Optional<User> userOptional = userRepository.findMostRecentUserByRootFlagAndRoleStatusNative(true, List.of(UserRoleStatus.ACTIVE.name()), email);
+        Optional<User> userOptional = userRepository.findMostRecentUserByEmailAndRoleStatusAndRoleNames(email, List.of(UserRoleStatus.ACTIVE.name(),UserRoleStatus.INVITED.name()), AuthConstants.VALID_ROLES_FOR_ADMIN_PORTAL);
         if (userOptional.isEmpty() || !userOptional.get().isRootUser()) {
             throw new UsernameNotFoundException("invalid user request..!!");
         }

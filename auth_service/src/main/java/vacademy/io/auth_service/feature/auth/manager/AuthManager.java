@@ -165,7 +165,7 @@ public class AuthManager {
 
             RefreshToken refreshToken = refreshTokenService.createRefreshToken(authRequestDTO.getUserName(), authRequestDTO.getClientName());
             List<String>userPermissions = userPermissionRepository.findByUserId(user.getId()).stream().map(UserPermission::getPermissionId).toList();
-            return JwtResponseDto.builder().accessToken(jwtService.generateToken(user, userRoles,userPermissions)).refreshToken(refreshToken.getToken()).build();
+            return JwtResponseDto.builder().accessToken(jwtService.generateToken(user, user.getRoles().stream().toList(),userPermissions)).refreshToken(refreshToken.getToken()).build();
 
         } else {
             throw new UsernameNotFoundException("invalid user request..!!");
@@ -188,10 +188,10 @@ public class AuthManager {
     public String requestOtp(AuthRequestDto authRequestDTO) {
         Optional<User> user = null;
         if (authRequestDTO.getClientName() != null && authRequestDTO.getClientName().equals(ClientNameEnum.ADMIN.name())) {
-            user = userRepository.findMostRecentUserByRootFlagAndRoleStatusNative(true,List.of(UserRoleStatus.ACTIVE.name()),authRequestDTO.getEmail());
+            user = userRepository.findMostRecentUserByEmailAndRoleStatusAndRoleNames(authRequestDTO.getEmail(), List.of(UserRoleStatus.ACTIVE.name(),UserRoleStatus.INVITED.name()), AuthConstants.VALID_ROLES_FOR_ADMIN_PORTAL);
         }
         else{
-            user = userRepository.findMostRecentUserByRootFlagAndRoleStatusNative(false,List.of(UserRoleStatus.ACTIVE.name()),authRequestDTO.getEmail());
+            user = userRepository.findMostRecentUserByEmailAndRoleStatusAndRoleNames(authRequestDTO.getEmail(), List.of(UserRoleStatus.ACTIVE.name(),UserRoleStatus.INVITED.name()), AuthConstants.VALID_ROLES_FOR_STUDENT_PORTAL);
         }
         if (user.isEmpty()) {
             throw new UsernameNotFoundException("invalid user request..!!");
@@ -211,13 +211,18 @@ public class AuthManager {
         validateOtp(authRequestDTO);
         User user = null;
         if (authRequestDTO.getClientName() != null && authRequestDTO.getClientName().equals(ClientNameEnum.ADMIN.name())) {
-            user = userRepository.findMostRecentUserByRootFlagAndRoleStatusNative(true,List.of(UserRoleStatus.ACTIVE.name()),authRequestDTO.getEmail()).orElseThrow(() -> new UsernameNotFoundException("invalid user request..!!"));
+            Optional<User> userOptional = userRepository.findMostRecentUserByEmailAndRoleStatusAndRoleNames(authRequestDTO.getEmail(), List.of(UserRoleStatus.ACTIVE.name(),UserRoleStatus.INVITED.name()), AuthConstants.VALID_ROLES_FOR_ADMIN_PORTAL);
+            if (userOptional.isEmpty()) {
+                throw new VacademyException("invalid user request..!!");
+            }
+            user = userOptional.get();
         }
         else{
-            user = userRepository.findMostRecentUserByRootFlagAndRoleStatusNative(false,List.of(UserRoleStatus.ACTIVE.name()),authRequestDTO.getEmail()).orElseThrow(()-> new UsernameNotFoundException("invalid user request..!!"));
-        }
-        if (!user.isRootUser()){
-            throw new UsernameNotFoundException("invalid user request..!!");
+            Optional<User> userOptional = userRepository.findMostRecentUserByEmailAndRoleStatusAndRoleNames(authRequestDTO.getEmail(), List.of(UserRoleStatus.ACTIVE.name(),UserRoleStatus.INVITED.name()), AuthConstants.VALID_ROLES_FOR_STUDENT_PORTAL);
+            if (userOptional.isEmpty()) {
+                throw new VacademyException("invalid user request..!!");
+            }
+            user = userOptional.get();
         }
         return generateJwtResponse(authRequestDTO, user);
     }
@@ -243,12 +248,10 @@ public class AuthManager {
 
         refreshTokenService.deleteAllRefreshToken(user);
 
-        List<UserRole> userRoles = userRoleRepository.findByUser(user);
-
         RefreshToken refreshToken = refreshTokenService.createRefreshToken(username, authRequestDTO.getClientName());
         List<String>userPermissions = userPermissionRepository.findByUserId(user.getId()).stream().map(UserPermission::getPermissionId).toList();
         return JwtResponseDto.builder()
-                .accessToken(jwtService.generateToken(user, userRoles,userPermissions))
+                .accessToken(jwtService.generateToken(user, user.getRoles().stream().toList(),userPermissions))
                 .refreshToken(refreshToken.getToken())
                 .build();
     }

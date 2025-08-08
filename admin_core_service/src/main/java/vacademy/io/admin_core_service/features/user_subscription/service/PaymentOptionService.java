@@ -7,6 +7,7 @@ import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentOptionDTO;
 import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentOptionFilterDTO;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
+import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
 import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentOptionTag;
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentOptionRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -21,6 +22,8 @@ public class PaymentOptionService {
     @Autowired
     private PaymentOptionRepository paymentOptionRepository;
 
+    @Autowired
+    private PaymentPlanService paymentPlanService;
 
     public boolean savePaymentOption(PaymentOptionDTO paymentOptionDTO){
         PaymentOption paymentOption = new PaymentOption(paymentOptionDTO);
@@ -78,4 +81,17 @@ public class PaymentOptionService {
         paymentOptionRepository.saveAll(paymentOptions);
         return "success";
     }
+
+    public PaymentOptionDTO editPaymentOption(PaymentOptionDTO paymentOptionDTO){
+        PaymentOption paymentOption = findById(paymentOptionDTO.getId());
+        paymentOption.setName(paymentOptionDTO.getName());
+        paymentOption.setType(paymentOptionDTO.getType());
+        paymentOption.setPaymentOptionMetadataJson(paymentOptionDTO.getPaymentOptionMetadataJson());
+        paymentOption.setRequireApproval(paymentOptionDTO.isRequireApproval());
+        List<PaymentPlan>paymentPlans = paymentPlanService.editPaymentPlans(paymentOption.getPaymentPlans(),paymentOptionDTO.getPaymentPlans(),paymentOption);
+        paymentOption.setPaymentPlans(paymentPlans);
+        paymentOptionRepository.save(paymentOption);
+        return paymentOption.mapToPaymentOptionDTO();
+    }
+
 }

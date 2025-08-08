@@ -13,4 +13,6 @@ public class PackageSessionToPaymentOptionDTO {
     private String packageSessionId;
     private String id;
     private PaymentOptionDTO paymentOption;
+    private String enrollInviteId;
+    private String status;
 }

@@ -1,4 +1,4 @@
-import { getPublicUrl } from "@/services/upload_file";
+import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 
 interface CourseMedia {
     type: string; // e.g., 'video', 'image', etc.
@@ -125,46 +125,26 @@ export const transformApiDataToCourseDataForInvite = async (
         if (!fileId) return "";
         if (fileUrlCache[fileId] !== undefined)
             return fileUrlCache[fileId] ?? "";
-        const url = (await getPublicUrl(fileId)) ?? "";
+        const url = (await getPublicUrlWithoutLogin(fileId)) ?? "";
         fileUrlCache[fileId] = url;
         return url;
     }
 
     try {
-        const courseMediaPreview =
-            apiData.courseMedia?.type === "youtube"
-                ? apiData.courseMedia.id
-                : await getUrlOnce(apiData.courseMedia?.id);
-
-        const coursePreviewImageMediaPreview = await getUrlOnce(
-            apiData.coursePreview
-        );
         const courseBannerMediaPreview = await getUrlOnce(apiData.courseBanner);
 
-        console.log("apiData", apiData);
-
         return {
+            aboutCourse: apiData.aboutCourse,
             course: apiData.course,
-            description: apiData.description, // Consider stripping HTML if needed
-            tags: apiData.tags ?? [],
-            imageUrl: "", // Placeholder; update if needed
-            whatYoullLearn: apiData.learningOutcome,
-            whyLearn: apiData.learningOutcome,
-            whoShouldLearn: apiData.targetAudience,
-            aboutTheCourse: apiData.aboutCourse,
-            coursePreviewImageMediaId: apiData.coursePreview,
-            courseBannerMediaId: apiData.courseBanner,
-            courseMediaId: {
-                type: apiData.courseMedia?.type ?? "",
-                id: apiData.courseMedia?.id ?? "",
-            },
-            coursePreviewImageMediaPreview,
-            courseBannerMediaPreview,
-            courseMediaPreview: courseMediaPreview ?? "",
-            showRelatedCourses: apiData.showRelatedCourses,
-            includeInstituteLogo: apiData.includeInstituteLogo,
-            restrictToSameBatch: apiData.restrictToSameBatch,
+            courseBanner: courseBannerMediaPreview,
             customHtml: apiData.customHtml,
+            description: apiData.description,
+            includeInstituteLogo: apiData.includeInstituteLogo,
+            learningOutcome: apiData.learningOutcome,
+            restrictToSameBatch: apiData.restrictToSameBatch,
+            showRelatedCourses: apiData.showRelatedCourses,
+            tags: apiData?.tags ?? [],
+            targetAudience: apiData?.targetAudience ?? "",
         };
     } catch (error) {
         console.error("Error getting public URLs:", error);

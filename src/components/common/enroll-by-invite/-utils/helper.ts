@@ -1,4 +1,4 @@
-import { getPublicUrl, getPublicUrlWithoutLogin } from "@/services/upload_file";
+import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 
 interface CourseMedia {
     type: string; // e.g., 'video', 'image', etc.

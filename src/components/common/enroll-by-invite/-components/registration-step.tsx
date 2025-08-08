@@ -1,13 +1,15 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { GraduationCap, RotateCcw } from "lucide-react";
-import { FormProvider } from "react-hook-form";
+import { FormProvider, UseFormReturn } from "react-hook-form";
 import { FormControl, FormField, FormItem } from "@/components/ui/form";
 import PhoneInputField from "@/components/design-system/phone-input-field";
 import SelectField from "@/components/design-system/select-field";
 import { MyInput } from "@/components/design-system/input";
 import { MyButton } from "@/components/design-system/button";
-interface FinalCourseData {
+
+// Course data interface
+export interface FinalCourseData {
     aboutCourse: string;
     course: string;
     courseBanner: string;
@@ -21,11 +23,56 @@ interface FinalCourseData {
     targetAudience: string;
 }
 
-interface RegistrationStepProps {
+// Form field value interface
+export interface FormFieldValue {
+    id: string;
+    name: string;
+    value: string;
+    is_mandatory: boolean;
+    type: string;
+    comma_separated_options?: string[];
+}
+
+// Form values interface
+export interface FormValues {
+    [key: string]: FormFieldValue;
+}
+
+// Invite data interface
+export interface InviteData {
+    id: string;
+    institute_id: string;
+    type: string;
+    type_id: string;
+    custom_field: {
+        id: string;
+        fieldKey: string;
+        fieldName: string;
+        fieldType: string;
+        defaultValue: string;
+        config: string;
+        formOrder: number;
+        isMandatory: boolean;
+        isFilter: boolean;
+        isSortable: boolean;
+        createdAt: string;
+        updatedAt: string;
+        sessionId: string;
+        liveSessionId: string | null;
+        customFieldValue: string | null;
+    };
+}
+
+// Registration step props interface
+export interface RegistrationStepProps {
+    /** Course data containing all course-related information */
     courseData: FinalCourseData;
-    inviteData: any;
-    onSubmit: (values: any) => void;
-    form: any;
+    /** Invite data containing custom field configurations */
+    inviteData: InviteData | null;
+    /** Callback function called when form is submitted */
+    onSubmit: (values: FormValues) => void;
+    /** React Hook Form instance */
+    form: UseFormReturn<FormValues>;
 }
 
 const RegistrationStep = ({
@@ -61,7 +108,10 @@ const RegistrationStep = ({
                             <FormProvider {...form}>
                                 <form className="w-full flex flex-col gap-6 mt-4 max-h-full overflow-auto">
                                     {Object.entries(form.getValues()).map(
-                                        ([key, value]: [string, any]) =>
+                                        ([key, value]: [
+                                            string,
+                                            FormFieldValue,
+                                        ]) =>
                                             key === "phone_number" ? (
                                                 <FormField
                                                     key={key}
@@ -161,7 +211,10 @@ const RegistrationStep = ({
                                             disable={Object.entries(
                                                 form.getValues()
                                             ).some(
-                                                ([, value]: [string, any]) =>
+                                                ([, value]: [
+                                                    string,
+                                                    FormFieldValue,
+                                                ]) =>
                                                     value.is_mandatory &&
                                                     !value.value
                                             )}
@@ -185,21 +238,23 @@ const RegistrationStep = ({
                     </div>
                 </CardContent>
             </Card>
-            <Card
-                id="registration-card"
-                className="overflow-hidden shadow-xl border-0 bg-white/80 backdrop-blur-sm w-full"
-            >
-                <CardContent className="p-6 sm:p-8">
-                    <div className="flex items-start gap-2 sm:gap-3 mb-6">
-                        <div
-                            className="w-full h-full"
-                            dangerouslySetInnerHTML={{
-                                __html: courseData?.customHtml || "",
-                            }}
-                        />
-                    </div>
-                </CardContent>
-            </Card>
+            {courseData?.customHtml && (
+                <Card
+                    id="registration-card"
+                    className="overflow-hidden shadow-xl border-0 bg-white/80 backdrop-blur-sm w-full"
+                >
+                    <CardContent className="p-6 sm:p-8">
+                        <div className="flex items-start gap-2 sm:gap-3 mb-6">
+                            <div
+                                className="w-full h-full"
+                                dangerouslySetInnerHTML={{
+                                    __html: courseData?.customHtml || "",
+                                }}
+                            />
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
         </>
     );
 };

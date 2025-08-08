@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.live_session.controller;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.admin_core_service.features.live_session.dto.DeleteLiveSessionRequest;
 import vacademy.io.admin_core_service.features.live_session.dto.LiveSessionRequestDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.LiveSessionStep1RequestDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.LiveSessionStep2RequestDTO;
@@ -37,9 +38,13 @@ public class LiveSessionController {
         return ResponseEntity.ok(step2Service.step2AddService(SessionRequest , user));
     }
 
-    @GetMapping("/delete")
-    public void deleteLiveSession(@RequestParam("sessionId") String sessionId, @RequestParam("type") String type,
-                                  @RequestAttribute("user") CustomUserDetails user){
-        getLiveSessionService.deleteLiveSession(sessionId , type);
+    @PostMapping("/delete")
+    public ResponseEntity<?> deleteLiveSessions(
+            @RequestBody DeleteLiveSessionRequest request,
+            @RequestAttribute("user") CustomUserDetails user) {
+
+        getLiveSessionService.deleteLiveSessions(request.getIds(), request.getType());
+        return ResponseEntity.ok("Deleted successfully");
     }
+
 }

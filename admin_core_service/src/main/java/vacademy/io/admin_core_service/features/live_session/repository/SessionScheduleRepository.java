@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.live_session.repository;
 
 import jakarta.transaction.Transactional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -146,4 +147,11 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
         LIMIT 1
     """, nativeQuery = true)
     String findEarliestScheduleIdBySessionId(@Param("sessionId") String sessionId);
+
+    @Modifying
+    @Transactional
+    @Query(value = "UPDATE session_schedules SET status = 'DELETED' WHERE id IN (:ids)", nativeQuery = true)
+    int softDeleteScheduleByIdIn(@Param("ids") List<String> ids);
+
+
 }

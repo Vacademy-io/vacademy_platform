@@ -11,6 +11,7 @@ import {
     convertInviteCustomFields,
     convertPlansToPaymentOptions,
     safeJsonParse,
+    transformApiDataToCourseDataForInvite,
 } from "./-utils/helper";
 import { useInstituteQuery } from "@/services/signup-api";
 import { useInstituteDetailsStore } from "@/stores/study-library/useInstituteDetails";
@@ -369,18 +370,25 @@ const EnrollByInvite = () => {
                         }));
                     }
                 }
+                const transformedJsonData =
+                    await transformApiDataToCourseDataForInvite(
+                        transformedData
+                    );
                 setCourseData({
-                    aboutCourse: transformedData.aboutCourse,
-                    course: transformedData.course,
-                    courseBanner: transformedData.courseBannerBlob,
-                    customHtml: transformedData.customHtml,
-                    description: transformedData.description,
-                    includeInstituteLogo: transformedData.includeInstituteLogo,
-                    learningOutcome: transformedData.learningOutcome,
-                    restrictToSameBatch: transformedData.restrictToSameBatch,
-                    showRelatedCourses: transformedData.transformedData,
-                    tags: transformedData?.tags ?? [],
-                    targetAudience: transformedData?.targetAudience ?? "",
+                    aboutCourse: transformedJsonData?.aboutCourse || "",
+                    course: transformedJsonData?.course || "",
+                    courseBanner: transformedJsonData?.courseBanner || "",
+                    customHtml: transformedJsonData?.customHtml || "",
+                    description: transformedJsonData?.description || "",
+                    includeInstituteLogo:
+                        transformedJsonData?.includeInstituteLogo || false,
+                    learningOutcome: transformedJsonData?.learningOutcome || "",
+                    restrictToSameBatch:
+                        transformedJsonData?.restrictToSameBatch || false,
+                    showRelatedCourses:
+                        transformedJsonData?.showRelatedCourses || false,
+                    tags: transformedJsonData?.tags ?? [],
+                    targetAudience: transformedJsonData?.targetAudience ?? "",
                 });
             } catch (error) {
                 console.error("Error transforming course data:", error);

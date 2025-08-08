@@ -317,7 +317,7 @@ public class StudentRegistrationManager {
     }
 
     private Optional<Student> getExistingStudentByUserNameAndUserId(String username, String userId) {
-        return instituteStudentRepository.findByUsernameAndUserId(username, userId);
+        return instituteStudentRepository.findByUserId(userId);
     }
 
     public InstituteStudentDTO updateAsPerConfig(InstituteStudentDTO instituteStudentDTO, BulkUploadInitRequest bulkUploadInitRequest) {

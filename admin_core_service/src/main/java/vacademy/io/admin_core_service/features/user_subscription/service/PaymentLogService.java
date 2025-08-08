@@ -5,14 +5,21 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
+import vacademy.io.admin_core_service.features.common.util.JsonUtil;
+import vacademy.io.admin_core_service.features.notification_service.service.PaymentNotificatonService;
 import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentLogDTO;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLog;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentLogStatusEnum;
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
+import vacademy.io.common.auth.dto.UserDTO;
+import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
+import vacademy.io.common.payment.dto.PaymentResponseDTO;
 import vacademy.io.common.payment.enums.PaymentStatusEnum;
 
 import java.util.Date;
+import java.util.List;
 
 @Service
 public class PaymentLogService {
@@ -24,6 +31,12 @@ public class PaymentLogService {
 
     @Autowired
     public UserPlanService userPlanService;
+
+    @Autowired
+    public PaymentNotificatonService paymentNotificatonService;
+
+    @Autowired
+    private AuthService authService;
 
     public String createPaymentLog(String userId, double paymentAmount, String vendor, String vendorId, String currency, UserPlan userPlan) {
         logger.info("Creating payment log for userId={}, amount={}, vendor={}, currency={}", userId, paymentAmount, vendor, currency);
@@ -69,7 +82,7 @@ public class PaymentLogService {
     }
 
     @Transactional
-    public void updatePaymentLog(String paymentLogId, String paymentStatus) {
+    public void updatePaymentLog(String paymentLogId, String paymentStatus,String instituteId) {
         logger.info("Transactional update of payment log ID={}, setting paymentStatus={}", paymentLogId, paymentStatus);
 
         PaymentLog paymentLog = paymentLogRepository.findById(paymentLogId).orElseThrow(() -> {
@@ -85,6 +98,10 @@ public class PaymentLogService {
         if (PaymentStatusEnum.PAID.name().equals(paymentStatus)) {
             logger.info("Payment marked as PAID, triggering applyOperationsOnFirstPayment for userPlan ID={}", paymentLog.getUserPlan().getId());
             userPlanService.applyOperationsOnFirstPayment(paymentLog.getUserPlan());
+            PaymentResponseDTO paymentResponseDTO = JsonUtil.fromJson(paymentLog.getPaymentSpecificData(), PaymentResponseDTO.class);
+            PaymentInitiationRequestDTO paymentInitiationRequestDTO = JsonUtil.fromJson(paymentLog.getUserPlan().getJsonPaymentDetails(), PaymentInitiationRequestDTO.class);
+            UserDTO userDTO = authService.getUsersFromAuthServiceByUserIds(List.of(paymentLog.getUserId())).get(0);
+            paymentNotificatonService.sendPaymentConfirmationNotification(instituteId,paymentResponseDTO,paymentInitiationRequestDTO,userDTO);
         }
     }
 

@@ -2,6 +2,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Clock, ArrowRight, ExternalLink } from "lucide-react";
 import { MyButton } from "@/components/design-system/button";
 import { getCurrencySymbol } from "./payment-selection-step";
+import { getPaymentCompletionStatus } from "../-services/enroll-invite-services";
+import { useEffect } from "react";
 
 export interface User {
     id: string;
@@ -44,6 +46,7 @@ export interface UserPaymentResponse {
 }
 
 interface PaymentPendingStepProps {
+    orderId: string;
     paymentCompletionResponse: UserPaymentResponse;
     selectedPayment: {
         id: string;
@@ -53,11 +56,14 @@ interface PaymentPendingStepProps {
         description: string;
         duration: string;
     } | null;
+    setCurrentStep: (step: number) => void;
 }
 
 const PaymentPendingStep = ({
+    orderId,
     paymentCompletionResponse,
     selectedPayment,
+    setCurrentStep,
 }: PaymentPendingStepProps) => {
     const handleCompletePayment = (paymentUrl: string) => {
         if (!paymentUrl) {
@@ -79,6 +85,37 @@ const PaymentPendingStep = ({
         link.click();
         document.body.removeChild(link);
     };
+
+    // Polling effect - checks payment status every 10 seconds
+    useEffect(() => {
+        if (!orderId) return;
+
+        const pollPaymentStatus = async () => {
+            try {
+                const response = await getPaymentCompletionStatus({
+                    paymentLogId: orderId,
+                });
+                if (response?.payment_status === "PAID") {
+                    setCurrentStep(5);
+                    return; // Stop polling once payment is completed
+                }
+            } catch (error) {
+                // Silently handle errors - don't show any UI changes
+                console.error("Payment status check failed:", error);
+            }
+        };
+
+        // Initial check
+        pollPaymentStatus();
+
+        // Set up polling interval (10 seconds)
+        const intervalId = setInterval(pollPaymentStatus, 10000);
+
+        // Cleanup function
+        return () => {
+            clearInterval(intervalId);
+        };
+    }, [orderId, setCurrentStep]);
 
     return (
         <div className="space-y-6">

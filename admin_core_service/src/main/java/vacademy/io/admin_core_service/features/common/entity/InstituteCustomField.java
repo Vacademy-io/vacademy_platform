@@ -36,8 +36,11 @@ public class InstituteCustomField {
     @Column(name = "type", nullable = false)
     private String type; // e.g., "session"
 
-    @Column(name = "type_id", nullable = false)
+    @Column(name = "type_id")
     private String typeId; // session id
+
+    @Column(name = "group_name")
+    private String groupName;
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;
@@ -48,12 +51,13 @@ public class InstituteCustomField {
     @Column(name = "status")
     private String status = "ACTIVE";
 
-    public InstituteCustomField(InstituteCustomFieldDTO instituteCustomFieldDTO){
+    public InstituteCustomField(InstituteCustomFieldDTO instituteCustomFieldDTO) {
         this.id = instituteCustomFieldDTO.getId();
         this.instituteId = instituteCustomFieldDTO.getInstituteId();
         this.customFieldId = instituteCustomFieldDTO.getCustomField().getId();
         this.type = instituteCustomFieldDTO.getType();
         this.typeId = instituteCustomFieldDTO.getTypeId();
+        this.groupName = instituteCustomFieldDTO.getGroupName();
         if (instituteCustomFieldDTO.getStatus() != null) {
             this.status = instituteCustomFieldDTO.getStatus();
         }else{
@@ -61,4 +65,3 @@ public class InstituteCustomField {
         }
     }
 }
-

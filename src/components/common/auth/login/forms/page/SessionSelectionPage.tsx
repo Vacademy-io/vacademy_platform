@@ -7,7 +7,7 @@ import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { getPublicUrl } from "@/services/upload_file";
 import { Session } from "@/types/user/user-detail";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
-import { getTerminology } from "../../../layout-container/sidebar/utils";
+import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { toTitleCase } from "@/lib/utils";
 
 const SessionSelectionPage = () => {

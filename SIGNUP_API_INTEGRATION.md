@@ -37,12 +37,31 @@ The signup process has been integrated with the backend APIs to provide a seamle
 - `src/services/signup-api.ts` - Contains all API functions and TypeScript interfaces
 
 ### Hooks
-- `src/hooks/use-signup-flow.ts` - Custom hook managing signup state and logic
+- `src/components/common/auth/signup/hooks/use-signup-flow.ts` - Custom hook managing signup state and logic
 
 ### Components
-- `src/components/common/auth/signup/sections/InstituteSignUpForm.tsx` - Full signup page with institute search
-- `src/components/common/auth/signup/sections/ModalSignUpForm.tsx` - Modal signup for direct institute access
-- `src/components/common/auth/signup/sections/signup-form.tsx` - Main signup form container
+- `src/components/common/auth/signup/forms/page/InstituteSignUpForm.tsx` - Full signup page with institute search
+- `src/components/common/auth/signup/forms/modal/ModalSignUpForm.tsx` - Modal signup for direct institute access
+- `src/components/common/auth/signup/forms/page/signup-form.tsx` - Main signup form container
+
+### Folder Structure
+The signup components are organized in a clean, logical structure:
+```
+src/components/common/auth/signup/
+├── forms/
+│   ├── page/                    # Page-level signup forms
+│   │   ├── signup-form.tsx      # Main signup form container
+│   │   ├── InstituteSignUpForm.tsx
+│   │   ├── UsernameSignUpForm.tsx
+│   │   ├── EmailSignUpForm.tsx
+│   │   └── SignupEmailOtpForm.tsx
+│   └── modal/                   # Modal signup forms
+│       └── ModalSignUpForm.tsx
+├── hooks/                       # Signup-specific hooks
+│   └── use-signup-flow.ts
+├── components/                  # UI components (empty for now)
+└── stores/                      # State management (empty for now)
+```
 
 ## Flow Description
 

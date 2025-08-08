@@ -10,7 +10,7 @@ import { motion } from "framer-motion";
 import { RefreshCw, Shield } from "lucide-react";
 
 import { Form, FormControl, FormField, FormItem } from "@/components/ui/form";
-import { Heading } from "@/components/common/auth/login/ui/heading";
+import { Heading } from "@/components/common/auth/login/components/heading";
 import { MyButton } from "@/components/design-system/button";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import {

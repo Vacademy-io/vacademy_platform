@@ -1,5 +1,4 @@
-// import { InstituteSelection } from '@/components/common/auth/login/sections/select-institute'
-import { InstituteSelection } from '@/components/common/auth/login/sections/select-institute'
+import { InstituteSelection } from '@/components/common/auth/login/forms/page/select-institute'
 import { createFileRoute } from '@tanstack/react-router'
 
 export const Route = createFileRoute('/institute-selection/')({

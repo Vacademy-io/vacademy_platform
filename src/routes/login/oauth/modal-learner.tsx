@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { setToStorage } from "@/components/common/auth/login/sections/login-form";
+import { setToStorage } from "@/components/common/auth/login/forms/page/login-form";
 import {
   getTokenDecodedData,
   setTokenInStorage,

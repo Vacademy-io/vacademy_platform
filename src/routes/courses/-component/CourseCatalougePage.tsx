@@ -14,7 +14,7 @@ import {
 import CourseListHeader from "./CourseListHeader.tsx";
 import { getTokenFromStorage } from "@/lib/auth/sessionUtility.ts";
 import { TokenKey } from "@/constants/auth/tokens.ts";
-import { getFromStorage } from "@/components/common/auth/login/sections/login-form";
+import { getFromStorage } from "@/components/common/auth/login/forms/page/login-form";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils.ts";
 import { getPublicUrl } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/excalidrawUtils.ts";
 import { useTheme } from "@/providers/theme/theme-provider.tsx";

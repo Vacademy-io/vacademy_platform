@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import { ModalSpecificLoginForm } from "@/components/common/auth/login/sections/ModalSpecificLoginForm";
-import { ModalSignUpForm } from "@/components/common/auth/signup/sections/ModalSignUpForm";
-import { ModalForgotPasswordForm } from "@/components/common/auth/login/sections/ModalForgotPasswordForm";
+import { ModalSpecificLoginForm } from "@/components/common/auth/login/forms/modal/ModalSpecificLoginForm";
+import { ModalSignUpForm } from "@/components/common/auth/signup/forms/modal/ModalSignUpForm";
+import { ModalForgotPasswordForm } from "@/components/common/auth/login/forms/modal/ModalForgotPasswordForm";
 
 interface AuthModalProps {
     type?: string;

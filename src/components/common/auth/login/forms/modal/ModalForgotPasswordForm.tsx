@@ -1,8 +1,8 @@
 import { MyInput } from "@/components/design-system/input";
 import { forgotPasswordSchema } from "@/schemas/login/login";
 import { z } from "zod";
-import { forgotPassword } from "@/hooks/login/send-link-button";
-import { sendResetLink } from "@/hooks/login/reset-link-click";
+import { forgotPassword } from "@/components/common/auth/login/hooks/send-link-button";
+import { sendResetLink } from "@/components/common/auth/login/hooks/reset-link-click";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useForm } from "react-hook-form";

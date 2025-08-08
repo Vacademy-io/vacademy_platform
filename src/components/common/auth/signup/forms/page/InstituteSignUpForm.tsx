@@ -19,7 +19,7 @@ import {
     Loader2,
 } from "lucide-react";
 import { MyInput } from "@/components/design-system/input";
-import { useSignupFlow } from "@/hooks/use-signup-flow";
+import { useSignupFlow } from "@/components/common/auth/signup/hooks/use-signup-flow";
 import { SignupEmailOtpForm } from "./SignupEmailOtpForm";
 import { getUserDetailsByEmail, registerUser, handlePostSignupAuth, type RegisterUserRequest } from "@/services/signup-api";
 

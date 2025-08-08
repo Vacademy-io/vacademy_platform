@@ -1,18 +1,11 @@
 // Auth Modal
 export { AuthModal } from './modal/AuthModal';
 
-// Login Components
-export { LoginForm } from './login/sections/login-form';
-export { ForgotPassword } from './login/sections/forgot-password-form';
-export { InstituteSelection } from './login/sections/select-institute';
-export { SessionSelectionPage } from './login/sections/SessionSelectionPage';
+// Login Components - All exports from organized login structure
+export * from './login';
 
-// Signup Components
-export { SignUpForm } from './signup/sections/signup-form';
-
-// Modal Components
-export { ModalSignUpForm } from './signup/sections/ModalSignUpForm';
-export { ModalForgotPasswordForm } from './login/sections/ModalForgotPasswordForm';
+// Signup Components - All exports from organized signup structure
+export * from './signup';
 
 // Utilities
-export { getFromStorage, setToStorage } from './login/sections/login-form'; 
+export { getFromStorage, setToStorage } from './login/forms/page/login-form'; 

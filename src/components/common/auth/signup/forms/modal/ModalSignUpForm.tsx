@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { MyInput } from "@/components/design-system/input";
 import { getInstituteDetails, parseInstituteSettings, registerUser, getUserDetailsByEmail, handlePostSignupAuth, type InstituteDetails, type RegisterUserRequest } from "@/services/signup-api";
-import { SignupEmailOtpForm } from "./SignupEmailOtpForm";
+import { SignupEmailOtpForm } from "../page/SignupEmailOtpForm";
 
 const userDetailsSchema = z.object({
     fullName: z.string().min(2, "Full name must be at least 2 characters"),

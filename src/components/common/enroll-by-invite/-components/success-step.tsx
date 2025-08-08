@@ -1,13 +1,20 @@
 import { Card, CardContent } from "@/components/ui/card";
-import { CheckCircle, AlertTriangle, Mail } from "lucide-react";
+import { CheckCircle, AlertTriangle } from "lucide-react";
 import { MyButton } from "@/components/design-system/button";
+import { useNavigate } from "@tanstack/react-router";
 
 interface SuccessStepProps {
     courseName: string;
     approvalRequired: boolean;
+    email: string;
 }
 
-const SuccessStep = ({ courseName, approvalRequired }: SuccessStepProps) => {
+const SuccessStep = ({
+    courseName,
+    approvalRequired,
+    email,
+}: SuccessStepProps) => {
+    const navigate = useNavigate();
     return (
         <div className="space-y-6">
             {/* Success Card */}
@@ -23,9 +30,11 @@ const SuccessStep = ({ courseName, approvalRequired }: SuccessStepProps) => {
                     </h2>
                     <p className="text-gray-600 text-lg mb-6">
                         Thank you for your interest in {courseName}. Your
-                        enrollment request has been submitted successfully.
+                        enrollment request has been submitted successfully. Your
+                        login credentials has been sent to your registered email
+                        address <span className="text-blue-500">{email}</span>.
+                        Please log in using the provided email and password
                     </p>
-
                     {/* Approval Required Sub-card */}
                     {approvalRequired && (
                         <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mt-6">
@@ -51,13 +60,15 @@ const SuccessStep = ({ courseName, approvalRequired }: SuccessStepProps) => {
                     <div className="mt-6">
                         <MyButton
                             type="button"
-                            buttonType="secondary"
+                            buttonType="primary"
                             scale="large"
                             layoutVariant="default"
                             className="w-full sm:w-auto text-white font-semibold rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl"
+                            onClick={() => {
+                                navigate({ to: "/login" });
+                            }}
                         >
-                            <Mail className="w-5 h-5 mr-2" />
-                            Check Email Status
+                            Login Now
                         </MyButton>
                     </div>
                 </CardContent>

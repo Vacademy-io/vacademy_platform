@@ -4,6 +4,9 @@ package vacademy.io.common.auth.entity;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.UuidGenerator;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import vacademy.io.common.auth.dto.UserTopLevelDto;
 
 import java.sql.Timestamp;
@@ -30,6 +33,7 @@ public class User {
     private String username;
     @Column(name = "email")
     private String email;
+    @JsonIgnore
     @Column(name = "password_hash")
     private String password;
     @Column(name = "full_name")

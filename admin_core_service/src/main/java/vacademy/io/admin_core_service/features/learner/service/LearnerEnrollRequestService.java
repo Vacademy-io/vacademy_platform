@@ -20,6 +20,7 @@ import vacademy.io.admin_core_service.features.user_subscription.service.UserPla
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollResponseDTO;
 import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
+import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollRequestDTO;
 
 import java.util.Map;
@@ -47,18 +48,15 @@ public class LearnerEnrollRequestService {
     private AuthService authService;
 
     @Transactional
-    public LearnerEnrollResponseDTO recordLearnerRequest(LearnerEnrollRequestDTO learnerEnrollRequestDTO) {
+    public LearnerEnrollResponseDTO recordLearnerRequest(LearnerEnrollRequestDTO learnerEnrollRequestDTO, CustomUserDetails user) {
         LearnerPackageSessionsEnrollDTO enrollDTO = learnerEnrollRequestDTO.getLearnerPackageSessionEnroll();
-        if (!StringUtils.hasText(learnerEnrollRequestDTO.getUser().getId())) {
-            UserDTO user = authService.createUserFromAuthService(learnerEnrollRequestDTO.getUser(), learnerEnrollRequestDTO.getInstituteId());
-            learnerEnrollRequestDTO.setUser(user);
-        }
+    
         EnrollInvite enrollInvite = getValidatedEnrollInvite(enrollDTO.getEnrollInviteId());
         PaymentOption paymentOption = getValidatedPaymentOption(enrollDTO.getPaymentOptionId());
         PaymentPlan paymentPlan = getOptionalPaymentPlan(enrollDTO.getPlanId());
 
         UserPlan userPlan = createUserPlan(
-                learnerEnrollRequestDTO.getUser().getId(),
+                user.getUserId(),
                 enrollDTO,
                 enrollInvite,
                 paymentOption,

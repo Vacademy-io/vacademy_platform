@@ -117,7 +117,6 @@ export const safeJsonParse = (
 export const transformApiDataToCourseDataForInvite = async (
     apiData: CourseDetailsJsonDataForInviteLink
 ) => {
-    console.log(apiData);
     // Local cache for fileId -> publicUrl
     const fileUrlCache: Record<string, string> = {};
 

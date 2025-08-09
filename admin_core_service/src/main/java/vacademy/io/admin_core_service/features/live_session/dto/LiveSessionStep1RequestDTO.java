@@ -33,6 +33,8 @@ public class LiveSessionStep1RequestDTO {
     private Boolean allowRewind;
     private String sessionStreamingServiceType;
 
+    private boolean allowPlayPause; //new added
+
     private List<ScheduleDTO> addedSchedules;
     private List<ScheduleDTO> updatedSchedules;
     private List<String> deletedScheduleIds;
@@ -45,5 +47,9 @@ public class LiveSessionStep1RequestDTO {
         private String startTime;
         private String duration;
         private String link;
+
+        //new added field
+        private String thumbnailFileId;
+        private boolean dailyAttendance;
     }
 }

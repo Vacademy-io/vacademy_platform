@@ -62,15 +62,19 @@ public class Step1Service {
         }
         if (request.getStartTime() != null) session.setStartTime(request.getStartTime());
         if (request.getLastEntryTime() != null) session.setLastEntryTime(request.getLastEntryTime());
-        if(request.getInstituteId() != null) session.setInstituteId(request.getInstituteId());
-        if(request.getBackgroundScoreFileId() != null) session.setBackgroundScoreFileId(request.getBackgroundScoreFileId());
-        if(request.getThumbnailFileId() != null) session.setThumbnailFileId(request.getThumbnailFileId());
-        if(request.getWaitingRoomTime() != null) session.setWaitingRoomTime(request.getWaitingRoomTime());
-        if(request.getLinkType() != null) session.setLinkType(request.getLinkType());
-        if(request.getAllowRewind() != null) session.setAllowRewind(request.getAllowRewind());
-        if(request.getSessionStreamingServiceType() != null) session.setSessionStreamingServiceType(request.getSessionStreamingServiceType());
-        if(request.getJoinLink() != null) session.setRegistrationFormLinkForPublicSessions(request.getJoinLink());
-        if(request.getCoverFileId() != null) session.setCoverFileId(request.getCoverFileId());
+        if (request.getInstituteId() != null) session.setInstituteId(request.getInstituteId());
+        if (request.getBackgroundScoreFileId() != null) session.setBackgroundScoreFileId(request.getBackgroundScoreFileId());
+        if (request.getThumbnailFileId() != null) session.setThumbnailFileId(request.getThumbnailFileId());
+        if (request.getWaitingRoomTime() != null) session.setWaitingRoomTime(request.getWaitingRoomTime());
+        if (request.getLinkType() != null) session.setLinkType(request.getLinkType());
+        if (request.getAllowRewind() != null) session.setAllowRewind(request.getAllowRewind());
+        if (request.getSessionStreamingServiceType() != null) session.setSessionStreamingServiceType(request.getSessionStreamingServiceType());
+        if (request.getJoinLink() != null) session.setRegistrationFormLinkForPublicSessions(request.getJoinLink());
+        if (request.getCoverFileId() != null) session.setCoverFileId(request.getCoverFileId());
+
+        // New Field
+        session.setAllowPlayPause(request.isAllowPlayPause());
+
         session.setCreatedByUserId(user.getUserId());
     }
 
@@ -91,20 +95,21 @@ public class Step1Service {
             LocalDate endDate = LocalDate.parse(request.getSessionEndDate(), DateTimeFormatter.ISO_DATE);
 
             for (LiveSessionStep1RequestDTO.ScheduleDTO dto : request.getAddedSchedules()) {
-                String dayOfWeek = dto.getDay().toUpperCase(); // e.g., "WEDNESDAY"
+                String dayOfWeek = dto.getDay().toUpperCase();
 
-                // Loop through weeks to add recurring schedules on the specified day
                 LocalDate current = getNextOrSameDay(startDate, dayOfWeek);
                 while (!current.isAfter(endDate)) {
                     SessionSchedule schedule = new SessionSchedule();
                     schedule.setSessionId(session.getId());
                     schedule.setRecurrenceType(request.getRecurrenceType());
-                    schedule.setRecurrenceKey(dayOfWeek.toLowerCase()); // for tracking like "wednesday"
+                    schedule.setRecurrenceKey(dayOfWeek.toLowerCase());
                     schedule.setMeetingDate(java.sql.Date.valueOf(current));
                     schedule.setStartTime(Time.valueOf(dto.getStartTime()));
-                    java.time.LocalTime parsedStartTime = java.time.LocalTime.parse(dto.getStartTime());
-                    java.time.LocalTime computedLastEntryTime = parsedStartTime.plusMinutes(Long.parseLong(dto.getDuration()));
+                    schedule.setThumbnailFileId(dto.getThumbnailFileId());
+                    schedule.setDailyAttendance(dto.isDailyAttendance());
 
+                    LocalTime parsedStartTime = LocalTime.parse(dto.getStartTime());
+                    LocalTime computedLastEntryTime = parsedStartTime.plusMinutes(Long.parseLong(dto.getDuration()));
                     schedule.setLastEntryTime(Time.valueOf(computedLastEntryTime));
 
                     schedule.setCustomMeetingLink(dto.getLink() != null ? dto.getLink() : request.getDefaultMeetLink());
@@ -114,12 +119,10 @@ public class Step1Service {
                     schedule.setCustomWaitingRoomMediaId(null);
 
                     scheduleRepository.save(schedule);
-
                     current = current.plusWeeks(1);
                 }
             }
-        }
-        else {
+        } else {
             LocalDate meetingLocalDate = request.getStartTime().toLocalDateTime().toLocalDate();
             LocalTime startLocalTime = request.getStartTime().toLocalDateTime().toLocalTime();
             LocalTime lastEntryLocalTime = request.getLastEntryTime().toLocalDateTime().toLocalTime();
@@ -133,10 +136,11 @@ public class Step1Service {
             schedule.setCustomMeetingLink(request.getDefaultMeetLink());
             schedule.setLinkType(getLinkTypeFromUrl(request.getDefaultMeetLink()));
             schedule.setCustomWaitingRoomMediaId(null);
+            schedule.setThumbnailFileId(request.getThumbnailFileId());
+            schedule.setDailyAttendance(false); // default for single schedule
 
             scheduleRepository.save(schedule);
         }
-
     }
 
     private void handleUpdatedSchedules(LiveSessionStep1RequestDTO request) {
@@ -149,24 +153,20 @@ public class Step1Service {
                 schedule.setStartTime(Time.valueOf(dto.getStartTime()));
                 schedule.setCustomMeetingLink(dto.getLink() != null ? dto.getLink() : request.getDefaultMeetLink());
 
+                // New Fields
+                schedule.setThumbnailFileId(dto.getThumbnailFileId());
+                schedule.setDailyAttendance(dto.isDailyAttendance());
+
                 scheduleRepository.save(schedule);
             }
         }
-    }
-
-    private java.sql.Date parseMeetingDate(String dateStr) {
-        if (dateStr == null || dateStr.isEmpty()) return null;
-        LocalDate date = LocalDate.parse(dateStr, DateTimeFormatter.ISO_DATE);
-        return java.sql.Date.valueOf(date);
     }
 
     public static String getLinkTypeFromUrl(String link) {
         if (link == null || link.isEmpty()) {
             return "UNKNOWN";
         }
-
         String lowerLink = link.toLowerCase();
-
         if (lowerLink.contains("youtube.com") || lowerLink.contains("youtu.be")) {
             return LinkType.YOUTUBE.name();
         } else if (lowerLink.contains("zoom.us") || lowerLink.contains("zoom.com")) {
@@ -181,9 +181,7 @@ public class Step1Service {
     private LocalDate getNextOrSameDay(LocalDate startDate, String dayOfWeekStr) {
         java.time.DayOfWeek targetDay = java.time.DayOfWeek.valueOf(dayOfWeekStr);
         java.time.DayOfWeek startDay = startDate.getDayOfWeek();
-
         int daysToAdd = (targetDay.getValue() - startDay.getValue() + 7) % 7;
         return startDate.plusDays(daysToAdd);
     }
-
 }

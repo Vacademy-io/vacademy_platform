@@ -20,6 +20,7 @@ export interface CourseDetailsJsonDataForInviteLink {
     tags: string[];
     showRelatedCourses: boolean;
     includeInstituteLogo: boolean;
+    instituteLogoFileId: string;
     restrictToSameBatch: boolean;
     customHtml: string;
 }
@@ -116,6 +117,7 @@ export const safeJsonParse = (
 export const transformApiDataToCourseDataForInvite = async (
     apiData: CourseDetailsJsonDataForInviteLink
 ) => {
+    console.log(apiData);
     // Local cache for fileId -> publicUrl
     const fileUrlCache: Record<string, string> = {};
 
@@ -131,12 +133,27 @@ export const transformApiDataToCourseDataForInvite = async (
     }
 
     try {
+        const courseMediaPreview =
+            apiData.courseMedia?.type === "youtube"
+                ? apiData.courseMedia.id
+                : await getUrlOnce(apiData.courseMedia?.id);
+
+        const coursePreviewImageMediaPreview = await getUrlOnce(
+            apiData.coursePreview
+        );
         const courseBannerMediaPreview = await getUrlOnce(apiData.courseBanner);
+        const instituteLogo = await getUrlOnce(apiData.instituteLogoFileId);
 
         return {
             aboutCourse: apiData.aboutCourse,
             course: apiData.course,
             courseBanner: courseBannerMediaPreview,
+            courseMediaId: {
+                type: apiData.courseMedia.type,
+                id: apiData.courseMedia.id,
+            },
+            courseMediaPreview: courseMediaPreview ?? "",
+            coursePreview: coursePreviewImageMediaPreview,
             customHtml: apiData.customHtml,
             description: apiData.description,
             includeInstituteLogo: apiData.includeInstituteLogo,
@@ -145,6 +162,7 @@ export const transformApiDataToCourseDataForInvite = async (
             showRelatedCourses: apiData.showRelatedCourses,
             tags: apiData?.tags ?? [],
             targetAudience: apiData?.targetAudience ?? "",
+            instituteLogo: instituteLogo || "",
         };
     } catch (error) {
         console.error("Error getting public URLs:", error);

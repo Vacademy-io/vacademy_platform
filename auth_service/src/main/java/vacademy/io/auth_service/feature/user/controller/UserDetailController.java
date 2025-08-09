@@ -59,7 +59,7 @@ public class UserDetailController {
         return ResponseEntity.ok(userService.getUserJwtUpdateDetail(userDetails,userId));
     }
 
-    @PutMapping("update-user")
+    @PutMapping("/update-user")
     public ResponseEntity<UserDTO> updateUser(@RequestBody UserDTO userDTO, @RequestParam("userId") String userId) {
         try {
             return ResponseEntity.ok(userService.updateUserDetails(userDTO, userId));

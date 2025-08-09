@@ -5,6 +5,7 @@ import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.common.dto.CustomFieldDTO;
 import vacademy.io.admin_core_service.features.common.dto.InstituteCustomFieldDTO;
 import vacademy.io.admin_core_service.features.common.dto.InstituteCustomFieldDeleteRequestDTO;
+import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteCustomFieldSetupDTO;
 import vacademy.io.admin_core_service.features.common.entity.CustomFields;
 import vacademy.io.admin_core_service.features.common.entity.InstituteCustomField;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
@@ -63,7 +64,8 @@ public class InstituteCustomFiledService {
                 instituteId, type, customFieldId, StatusEnum.DELETED.name());
     }
 
-    public int softDeleteInstituteCustomFieldsBulk(List<InstituteCustomFieldDeleteRequestDTO>requestDTOS,String instituteId) {
+    public int softDeleteInstituteCustomFieldsBulk(List<InstituteCustomFieldDeleteRequestDTO> requestDTOS,
+            String instituteId) {
         if (requestDTOS == null || requestDTOS.isEmpty())
             return 0;
         int total = 0;
@@ -72,6 +74,12 @@ public class InstituteCustomFiledService {
                     instituteId, entry.getType(), entry.getCustomFieldId(), StatusEnum.DELETED.name());
         }
         return total;
+    }
+
+    public List<InstituteCustomFieldSetupDTO> findUniqueActiveCustomFieldsByInstituteId(String instituteId) {
+        List<Object[]> results = instituteCustomFieldRepository
+                .findUniqueActiveCustomFieldsByInstituteId(instituteId, StatusEnum.ACTIVE.name());
+        return results.stream().map(this::convertToInstituteCustomFieldSetupDto).collect(Collectors.toList());
     }
 
     /**
@@ -116,5 +124,23 @@ public class InstituteCustomFiledService {
         instituteDTO.setCustomField(customFieldDTO);
         instituteDTO.setStatus(icf.getStatus());
         return instituteDTO;
+    }
+
+    private InstituteCustomFieldSetupDTO convertToInstituteCustomFieldSetupDto(Object[] result) {
+        InstituteCustomField icf = (InstituteCustomField) result[0];
+        CustomFields cf = (CustomFields) result[1];
+
+        InstituteCustomFieldSetupDTO setupDTO = new InstituteCustomFieldSetupDTO();
+        setupDTO.setCustomFieldId(cf.getId());
+        setupDTO.setFieldKey(cf.getFieldKey());
+        setupDTO.setFieldName(cf.getFieldName());
+        setupDTO.setFieldType(cf.getFieldType());
+        setupDTO.setFormOrder(cf.getFormOrder());
+        setupDTO.setGroupName(icf.getGroupName());
+        setupDTO.setType(icf.getType());
+        setupDTO.setTypeId(icf.getTypeId());
+        setupDTO.setStatus(icf.getStatus());
+
+        return setupDTO;
     }
 }

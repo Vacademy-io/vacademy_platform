@@ -12,6 +12,7 @@ import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.UserTopLevelDto;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.auth.service.UserService;
+import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.List;
 
@@ -57,4 +58,14 @@ public class UserDetailController {
     public ResponseEntity<UserJwtUpdateDetail> getUserJwtUpdateTime(@RequestAttribute("user") CustomUserDetails userDetails,@RequestParam("userId") String userId) {
         return ResponseEntity.ok(userService.getUserJwtUpdateDetail(userDetails,userId));
     }
+
+    @PutMapping("/update-user")
+    public ResponseEntity<UserDTO> updateUser(@RequestBody UserDTO userDTO, @RequestParam("userId") String userId) {
+        try {
+            return ResponseEntity.ok(userService.updateUserDetails(userDTO, userId));
+        } catch (Exception e) {
+            throw new VacademyException(e.getMessage());
+        }
+    }
+    
 }

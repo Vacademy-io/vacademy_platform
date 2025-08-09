@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RestController;
 import vacademy.io.admin_core_service.features.common.dto.InstituteCustomFieldDTO;
 import vacademy.io.admin_core_service.features.common.dto.InstituteCustomFieldDeleteRequestDTO;
 import vacademy.io.admin_core_service.features.common.service.InstituteCustomFiledService;
+import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteCustomFieldSetupDTO;
 
 import java.util.List;
 
@@ -30,9 +31,16 @@ public class InstituteCustomFieldController {
 
     @DeleteMapping
     public ResponseEntity<String> softDeleteInstituteCustomField(
-            @RequestBody List<InstituteCustomFieldDeleteRequestDTO> request,@RequestParam String instituteId) {
+            @RequestBody List<InstituteCustomFieldDeleteRequestDTO> request, @RequestParam String instituteId) {
         int updated = instituteCustomFiledService.softDeleteInstituteCustomFieldsBulk(
-                request,instituteId);
+                request, instituteId);
         return ResponseEntity.ok(updated > 0 ? "success" : "no-op");
+    }
+
+    @GetMapping("/setup")
+    public ResponseEntity<List<InstituteCustomFieldSetupDTO>> getInstituteCustomFieldsSetup(
+            @RequestParam("instituteId") String instituteId) {
+        return ResponseEntity.ok(
+                instituteCustomFiledService.findUniqueActiveCustomFieldsByInstituteId(instituteId));
     }
 }

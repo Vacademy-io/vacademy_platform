@@ -2,9 +2,16 @@ export interface FinalCourseData {
     aboutCourse: string;
     course: string;
     courseBanner: string;
+    courseMedia: string;
+    courseMediaId: {
+        type: string;
+        id: string;
+    };
+    coursePreview: string;
     customHtml: string;
     description: string;
     includeInstituteLogo: boolean;
+    instituteLogo: string;
     learningOutcome: string;
     restrictToSameBatch: boolean;
     showRelatedCourses: boolean;
@@ -30,7 +37,16 @@ export interface PaymentInfo {
 }
 
 export interface EnrollmentData {
-    registrationData: Record<string, { name: string; value: string; is_mandatory: boolean; type: string; comma_separated_options?: string[] }>;
+    registrationData: Record<
+        string,
+        {
+            name: string;
+            value: string;
+            is_mandatory: boolean;
+            type: string;
+            comma_separated_options?: string[];
+        }
+    >;
     selectedPayment: PaymentOption | null;
     paymentInfo: PaymentInfo;
-} 
+}

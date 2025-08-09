@@ -1,20 +1,22 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import {
-    Award,
-    Target,
-    Info,
-    BookOpen,
-} from "lucide-react";
+import { Award, Target, Info, BookOpen } from "lucide-react";
 
 interface FinalCourseData {
     aboutCourse: string;
     course: string;
     courseBanner: string;
+    courseMediaId: {
+        type: string;
+        id: string;
+    };
+    courseMedia: string;
+    coursePreview: string;
     customHtml: string;
     description: string;
     includeInstituteLogo: boolean;
+    instituteLogo: string;
     learningOutcome: string;
     restrictToSameBatch: boolean;
     showRelatedCourses: boolean;
@@ -27,9 +29,27 @@ interface CourseInfoCardProps {
     levelName: string;
 }
 
+// Utility to extract YouTube video ID
+const extractYouTubeVideoId = (url: string): string | null => {
+    const regExp =
+        /^.*(?:youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+    const match = url.match(regExp);
+    return match && match[1] && match[1].length === 11 ? match[1] : null;
+};
+
 const CourseInfoCard = ({ courseData, levelName }: CourseInfoCardProps) => {
     return (
         <Card className="overflow-hidden shadow-xl border-0 bg-white/80 backdrop-blur-sm w-full">
+            {/* Instiute Logo */}
+            {courseData.instituteLogo && (
+                <div className="flex justify-center items-center pt-8 rounded-lg">
+                    <img
+                        src={courseData.instituteLogo}
+                        alt="Institute Logo"
+                        className="size-12 rounded-full"
+                    />
+                </div>
+            )}
             {/* Banner Image */}
             <div className="p-8 rounded-lg !pb-0">
                 {courseData.courseBanner ? (
@@ -55,17 +75,15 @@ const CourseInfoCard = ({ courseData, levelName }: CourseInfoCardProps) => {
                 {/* Tags Row */}
                 {courseData?.tags?.length > 0 && (
                     <div className="flex flex-wrap gap-2 mb-6">
-                        {courseData?.tags?.map(
-                            (tag: string, index: number) => (
-                                <Badge
-                                    key={index}
-                                    variant="secondary"
-                                    className="px-3 py-1 text-sm font-medium bg-blue-100 text-blue-800 hover:bg-blue-200 transition-colors"
-                                >
-                                    {tag}
-                                </Badge>
-                            )
-                        )}
+                        {courseData?.tags?.map((tag: string, index: number) => (
+                            <Badge
+                                key={index}
+                                variant="secondary"
+                                className="px-3 py-1 text-sm font-medium bg-blue-100 text-blue-800 hover:bg-blue-200 transition-colors"
+                            >
+                                {tag}
+                            </Badge>
+                        ))}
                     </div>
                 )}
 
@@ -103,12 +121,20 @@ const CourseInfoCard = ({ courseData, levelName }: CourseInfoCardProps) => {
                             <p
                                 className="text-gray-700 text-sm sm:text-base"
                                 dangerouslySetInnerHTML={{
-                                    __html:
-                                        courseData?.learningOutcome ||
-                                        "",
+                                    __html: courseData?.learningOutcome || "",
                                 }}
                             />
                         </div>
+                    </div>
+                )}
+
+                {courseData.coursePreview && (
+                    <div className="flex justify-center items-center pt-8 rounded-lg">
+                        <img
+                            src={courseData.coursePreview}
+                            alt="Course Preview Image"
+                            className="w-fit"
+                        />
                     </div>
                 )}
 
@@ -131,9 +157,65 @@ const CourseInfoCard = ({ courseData, levelName }: CourseInfoCardProps) => {
                         />
                     </div>
                 )}
+
+                {/* Right side - Video Player - More Compact */}
+                {courseData?.courseMediaId?.id &&
+                    (courseData?.courseMediaId?.type === "youtube" ? (
+                        <div
+                            className={`shrink-0 overflow-hidden rounded-lg shadow-lg`}
+                        >
+                            <div className="relative flex aspect-video items-center justify-center overflow-hidden rounded-lg bg-black">
+                                <iframe
+                                    width="100%"
+                                    height="100%"
+                                    src={`https://www.youtube.com/embed/${extractYouTubeVideoId(courseData?.courseMediaId?.id || "")}`}
+                                    title="YouTube video player"
+                                    frameBorder="0"
+                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                    allowFullScreen
+                                    className="size-full object-contain"
+                                />
+                            </div>
+                        </div>
+                    ) : courseData?.courseMediaId?.type === "video" ? (
+                        <div
+                            className={`shrink-0 overflow-hidden rounded-lg shadow-lg`}
+                        >
+                            <div className="relative aspect-video overflow-hidden rounded-lg bg-black">
+                                <video
+                                    src={courseData?.courseMedia}
+                                    controls
+                                    controlsList="nodownload noremoteplayback"
+                                    disablePictureInPicture
+                                    disableRemotePlayback
+                                    className="size-full object-contain"
+                                    onError={(e) => {
+                                        e.currentTarget.style.display = "none";
+                                        e.currentTarget.parentElement?.classList.add(
+                                            "bg-black"
+                                        );
+                                    }}
+                                >
+                                    Your browser does not support the video tag.
+                                </video>
+                            </div>
+                        </div>
+                    ) : (
+                        <div
+                            className={`shrink-0 overflow-hidden rounded-lg shadow-lg`}
+                        >
+                            <div className="relative aspect-video overflow-hidden rounded-lg bg-black">
+                                <img
+                                    src={courseData?.courseMedia}
+                                    alt="Course Banner"
+                                    className="size-full object-contain"
+                                />
+                            </div>
+                        </div>
+                    ))}
             </CardContent>
         </Card>
     );
 };
 
-export default CourseInfoCard; 
+export default CourseInfoCard;

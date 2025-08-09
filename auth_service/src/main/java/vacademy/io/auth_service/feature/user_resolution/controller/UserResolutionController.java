@@ -32,8 +32,10 @@ public class UserResolutionController {
         try {
             log.info("Getting users by role: {} for institute: {}", roleName, instituteId);
             List<User> users = userResolutionService.getUsersByInstituteAndRole(instituteId, roleName);
-            log.info("Found {} users with role: {} in institute: {}", users.size(), roleName, instituteId);
-            return ResponseEntity.ok(users);
+            // Return a shallow copy to avoid cyclic serialization issues
+            List<User> sanitized = users.stream().map(this::shallowUser).toList();
+            log.info("Found {} users with role: {} in institute: {}", sanitized.size(), roleName, instituteId);
+            return ResponseEntity.ok(sanitized);
             
         } catch (Exception e) {
             log.error("Error getting users by role: {} for institute: {}", roleName, instituteId, e);
@@ -50,12 +52,25 @@ public class UserResolutionController {
         try {
             log.info("Getting {} users by IDs", request.getUserIds().size());
             List<User> users = userResolutionService.getUsersByIds(request.getUserIds());
-            log.info("Found {} users out of {} requested IDs", users.size(), request.getUserIds().size());
-            return ResponseEntity.ok(users);
+            List<User> sanitized = users.stream().map(this::shallowUser).toList();
+            log.info("Found {} users out of {} requested IDs", sanitized.size(), request.getUserIds().size());
+            return ResponseEntity.ok(sanitized);
             
         } catch (Exception e) {
             log.error("Error getting users by IDs", e);
             return ResponseEntity.badRequest().build();
         }
+    }
+
+    private User shallowUser(User u) {
+        if (u == null) return null;
+        User v = new User();
+        try {
+            v.setId(u.getId());
+            v.setEmail(u.getEmail());
+            v.setMobileNumber(u.getMobileNumber());
+            v.setFullName(u.getFullName());
+        } catch (Exception ignore) { }
+        return v;
     }
 }

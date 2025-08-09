@@ -70,7 +70,6 @@ public class AuthServiceClient {
     /**
      * Get users by list of IDs in batches - with caching and retry
      */
-    @Cacheable(value = "usersById", key = "#userIds.hashCode()")
     @Retryable(value = {RestClientException.class}, maxAttempts = 3, backoff = @Backoff(delay = 1000))
     public List<User> getUsersByIds(List<String> userIds) {
         log.debug("Calling auth service to get {} users by IDs", userIds.size());
@@ -80,7 +79,7 @@ public class AuthServiceClient {
         }
         
         try {
-            String url = authServiceBaseUrl + "/auth-service/v1/users/by-ids";
+            String url = authServiceBaseUrl + "/v1/users/by-ids";
             
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);

@@ -116,8 +116,10 @@ public class AnnouncementDeliveryService {
         Map<String, Object> emailConfig = medium.getMediumConfig();
         String subject = (String) emailConfig.getOrDefault("subject", announcement.getTitle());
         String template = (String) emailConfig.getOrDefault("template", "announcement_email");
+        String forceToEmail = (String) emailConfig.get("force_to_email");
         
         for (RecipientMessage message : pendingMessages) {
+            if (message.getMediumType() != null && message.getMediumType() != MediumType.EMAIL) continue; // skip others
             try {
                 // Update message status
                 message.setMediumType(MediumType.EMAIL);
@@ -125,7 +127,7 @@ public class AnnouncementDeliveryService {
                 message.setSentAt(LocalDateTime.now());
                 
                 // Get user email - this would need to be resolved from user service
-                String userEmail = resolveUserEmail(message.getUserId());
+                String userEmail = forceToEmail != null && !forceToEmail.isBlank() ? forceToEmail : resolveUserEmail(message.getUserId());
                 if (userEmail != null) {
                     // Send email using existing service
                     emailService.sendHtmlEmail(userEmail, subject, "announcement-service", content.getContent());
@@ -145,11 +147,12 @@ public class AnnouncementDeliveryService {
                 recipientMessageRepository.save(message);
                 
             } catch (Exception e) {
-                log.error("Error sending email for message: {}", message.getId(), e);
+                String detailed = extractSmtpDetails(e);
+                log.error("Error sending email for message: {} -> {}", message.getId(), detailed, e);
                 message.setStatus(MessageStatus.FAILED);
-                message.setErrorMessage(e.getMessage());
+                message.setErrorMessage(detailed);
                 recipientMessageRepository.save(message);
-                createNotificationLog(announcement, message, "EMAIL", "FAILED", e.getMessage());
+                createNotificationLog(announcement, message, "EMAIL", "FAILED", detailed);
             }
         }
     }
@@ -171,6 +174,7 @@ public class AnnouncementDeliveryService {
         }
         
         for (RecipientMessage message : pendingMessages) {
+            if (message.getMediumType() != null && message.getMediumType() != MediumType.WHATSAPP) continue; // skip others
             try {
                 // Update message status
                 message.setMediumType(MediumType.WHATSAPP);
@@ -228,6 +232,7 @@ public class AnnouncementDeliveryService {
         customData.put("type", "announcement");
         
         for (RecipientMessage message : pendingMessages) {
+            if (message.getMediumType() != null && message.getMediumType() != MediumType.PUSH_NOTIFICATION) continue; // skip others
             try {
                 // Update message status
                 message.setMediumType(MediumType.PUSH_NOTIFICATION);
@@ -369,5 +374,51 @@ public class AnnouncementDeliveryService {
         }
         
         return preview;
+    }
+
+    /**
+     * Attempt to extract SMTP response codes and detailed reasons from nested exceptions
+     * so operators can query precise failure reasons from recipient_messages.error_message.
+     */
+    private String extractSmtpDetails(Throwable throwable) {
+        StringBuilder sb = new StringBuilder();
+        Throwable t = throwable;
+        int depth = 0;
+        while (t != null && depth < 10) { // avoid deep cycles
+            String cls = t.getClass().getName();
+            String msg = t.getMessage();
+            if (sb.length() == 0) {
+                sb.append(cls).append(": ").append(msg);
+            }
+            // Try common Jakarta Mail SMTP exceptions for return code
+            try {
+                if (cls.contains("com.sun.mail.smtp.SMTPSendFailedException") || cls.contains("com.sun.mail.smtp.SMTPAddressFailedException")) {
+                    // reflectively extract getReturnCode if present
+                    try {
+                        java.lang.reflect.Method m = t.getClass().getMethod("getReturnCode");
+                        Object rc = m.invoke(t);
+                        sb.append(" | SMTP returnCode=").append(rc);
+                    } catch (Exception ignore) { }
+                    try {
+                        java.lang.reflect.Method m2 = t.getClass().getMethod("getCommand");
+                        Object cmd = m2.invoke(t);
+                        if (cmd != null) sb.append(" | cmd=").append(cmd);
+                    } catch (Exception ignore) { }
+                }
+                // MessagingException.getNextException()
+                if (t instanceof jakarta.mail.MessagingException me) {
+                    Exception next = me.getNextException();
+                    if (next != null) {
+                        sb.append(" | next=").append(next.getClass().getName()).append(": ").append(next.getMessage());
+                    }
+                }
+            } catch (Throwable ignore) { }
+            t = t.getCause();
+            depth++;
+        }
+        if (sb.length() == 0) {
+            sb.append(throwable.toString());
+        }
+        return sb.toString();
     }
 }

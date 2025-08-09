@@ -5,6 +5,15 @@ interface CourseMedia {
     id: string;
 }
 
+interface PaymentPlansInterface {
+    value: number;
+    unit: string;
+    price: string;
+    features: string[];
+    title: string;
+    newFeature: string;
+}
+
 export interface CourseDetailsJsonDataForInviteLink {
     course: string;
     description: string;
@@ -20,6 +29,7 @@ export interface CourseDetailsJsonDataForInviteLink {
     tags: string[];
     showRelatedCourses: boolean;
     includeInstituteLogo: boolean;
+    includePaymentPlans: boolean;
     instituteLogoFileId: string;
     restrictToSameBatch: boolean;
     customHtml: string;
@@ -156,6 +166,7 @@ export const transformApiDataToCourseDataForInvite = async (
             customHtml: apiData.customHtml,
             description: apiData.description,
             includeInstituteLogo: apiData.includeInstituteLogo,
+            includePaymentPlans: apiData.includePaymentPlans,
             learningOutcome: apiData.learningOutcome,
             restrictToSameBatch: apiData.restrictToSameBatch,
             showRelatedCourses: apiData.showRelatedCourses,
@@ -218,4 +229,64 @@ export function convertPlansToPaymentOptions(rawPlans: PackageSessionData) {
             features,
         };
     });
+}
+
+export function getDefaultPlanFromPaymentsData(item: PaymentOption) {
+    const parsedData = JSON.parse(item.payment_option_metadata_json);
+    if (item.type === "donation") {
+        return {
+            id: item.id,
+            name: item.name,
+            description: "Access to donation plan.",
+            suggestedAmount:
+                parsedData?.donationData?.suggestedAmounts
+                    ?.split(",")
+                    ?.map((x: string) => Number(x.trim())) || [],
+            minAmount: Number(parsedData?.donationData?.minimumAmount) || 0,
+            currency: parsedData?.currency || "",
+            type: item.type,
+        };
+    } else if (
+        item.type === "free" ||
+        item.type === "FREE" ||
+        item.type === "Free"
+    ) {
+        return {
+            id: item.id,
+            name: item.name,
+            description: "Access to free plan.",
+            days: parsedData?.freeData?.validityDays || 0,
+            type: item.type,
+        };
+    } else if (item.type === "upfront") {
+        return {
+            id: item.id,
+            name: item.name,
+            description: "Access to one time payment plan.",
+            price: parsedData?.upfrontData?.fullPrice || "",
+            currency: parsedData?.currency || "",
+            type: item.type,
+        };
+    } else {
+        return {
+            id: item.id,
+            name: item.name,
+            description: "Access to subscription plan.",
+            currency: parsedData?.currency || "",
+            type: item.type,
+            paymentOption:
+                parsedData?.subscriptionData?.customIntervals.map(
+                    (interval: PaymentPlansInterface) => {
+                        return {
+                            value: interval.value || 0,
+                            unit: interval.unit || "",
+                            price: interval.price || "",
+                            features: interval.features || [],
+                            title: interval.title || "",
+                            newFeature: interval.newFeature || "",
+                        };
+                    }
+                ) || [],
+        };
+    }
 }

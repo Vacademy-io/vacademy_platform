@@ -98,8 +98,8 @@ public class AnnouncementController {
             @RequestParam(required = false) String to) {
         try {
             Pageable pageable = PageRequest.of(page, size);
-            java.time.LocalDateTime fromDate = (from != null && !from.isBlank()) ? java.time.LocalDateTime.parse(from) : null;
-            java.time.LocalDateTime toDate = (to != null && !to.isBlank()) ? java.time.LocalDateTime.parse(to) : null;
+            java.time.LocalDateTime fromDate = parseFlexibleDateTime(from);
+            java.time.LocalDateTime toDate = parseFlexibleDateTime(to);
             return ResponseEntity.ok(announcementService.getPlannedAnnouncements(instituteId, fromDate, toDate, pageable));
         } catch (Exception e) {
             log.error("Error getting planned announcements for institute: {}", instituteId, e);
@@ -120,12 +120,31 @@ public class AnnouncementController {
             @RequestParam(required = false) String to) {
         try {
             Pageable pageable = PageRequest.of(page, size);
-            java.time.LocalDateTime fromDate = (from != null && !from.isBlank()) ? java.time.LocalDateTime.parse(from) : null;
-            java.time.LocalDateTime toDate = (to != null && !to.isBlank()) ? java.time.LocalDateTime.parse(to) : null;
+            java.time.LocalDateTime fromDate = parseFlexibleDateTime(from);
+            java.time.LocalDateTime toDate = parseFlexibleDateTime(to);
             return ResponseEntity.ok(announcementService.getPastAnnouncements(instituteId, fromDate, toDate, pageable));
         } catch (Exception e) {
             log.error("Error getting past announcements for institute: {}", instituteId, e);
             return ResponseEntity.badRequest().build();
+        }
+    }
+
+    // Accepts ISO-8601 local (yyyy-MM-dd'T'HH:mm:ss) or offset/Z timestamps (e.g., 2025-08-08T18:30:00Z)
+    private java.time.LocalDateTime parseFlexibleDateTime(String value) {
+        if (value == null || value.isBlank()) return null;
+        try {
+            return java.time.LocalDateTime.parse(value);
+        } catch (java.time.format.DateTimeParseException e1) {
+            try {
+                return java.time.OffsetDateTime.parse(value).toLocalDateTime();
+            } catch (java.time.format.DateTimeParseException e2) {
+                try {
+                    return java.time.Instant.parse(value).atZone(java.time.ZoneOffset.UTC).toLocalDateTime();
+                } catch (java.time.format.DateTimeParseException e3) {
+                    // Re-throw original to keep error context
+                    throw e1;
+                }
+            }
         }
     }
 

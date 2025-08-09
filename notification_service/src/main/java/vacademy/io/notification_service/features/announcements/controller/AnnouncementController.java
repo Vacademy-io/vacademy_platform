@@ -234,17 +234,7 @@ public class AnnouncementController {
     @GetMapping("/{announcementId}/stats")
     public ResponseEntity<AnnouncementResponse.AnnouncementStatsResponse> getAnnouncementStats(@PathVariable String announcementId) {
         try {
-            // This would be implemented in AnnouncementService
-            // For now, returning a placeholder response
-            AnnouncementResponse.AnnouncementStatsResponse stats = new AnnouncementResponse.AnnouncementStatsResponse();
-            stats.setTotalRecipients(0L);
-            stats.setDeliveredCount(0L);
-            stats.setReadCount(0L);
-            stats.setFailedCount(0L);
-            stats.setDeliveryRate(0.0);
-            stats.setReadRate(0.0);
-            
-            return ResponseEntity.ok(stats);
+            return ResponseEntity.ok(announcementService.getAnnouncementStats(announcementId));
         } catch (Exception e) {
             log.error("Error getting announcement stats: {}", announcementId, e);
             return ResponseEntity.badRequest().build();

@@ -25,6 +25,7 @@ public class AnnouncementProcessingService {
 
     private final AnnouncementRepository announcementRepository;
     private final RecipientMessageRepository recipientMessageRepository;
+    private final AnnouncementMediumRepository announcementMediumRepository;
     private final RecipientResolutionService recipientResolutionService;
     private final AnnouncementDeliveryService deliveryService;
     private final AnnouncementEventService eventService;
@@ -147,24 +148,29 @@ public class AnnouncementProcessingService {
             modeTypes = List.of(ModeType.SYSTEM_ALERT);
         }
         
+        // Fetch active mediums once and create per-medium delivery records
+        var activeMediums = announcementMediumRepository.findByAnnouncementIdAndIsActive(announcement.getId(), true);
         for (String userId : userIds) {
             for (ModeType modeType : modeTypes) {
-                // Check if recipient message already exists (avoid duplicates for rescheduled messages)
-                boolean exists = recipientMessageRepository
-                        .findByAnnouncementIdAndStatus(announcement.getId(), MessageStatus.PENDING)
-                        .stream()
-                        .anyMatch(rm -> rm.getUserId().equals(userId) && rm.getModeType().equals(modeType));
-                
-                if (!exists) {
-                    RecipientMessage recipientMessage = new RecipientMessage();
-                    recipientMessage.setAnnouncementId(announcement.getId());
-                    recipientMessage.setUserId(userId);
-                    recipientMessage.setModeType(modeType);
-                    recipientMessage.setStatus(MessageStatus.PENDING);
-                    recipientMessage.setCreatedAt(LocalDateTime.now());
-                    recipientMessage.setUpdatedAt(LocalDateTime.now());
-                    
-                    recipientMessageRepository.save(recipientMessage);
+                for (var medium : activeMediums) {
+                    // Avoid duplicates: check any pending existing for same user+mode+medium
+                    boolean exists = recipientMessageRepository
+                            .findByAnnouncementIdAndStatus(announcement.getId(), MessageStatus.PENDING)
+                            .stream()
+                            .anyMatch(rm -> rm.getUserId().equals(userId)
+                                    && rm.getModeType().equals(modeType)
+                                    && rm.getMediumType() == medium.getMediumType());
+                    if (!exists) {
+                        RecipientMessage recipientMessage = new RecipientMessage();
+                        recipientMessage.setAnnouncementId(announcement.getId());
+                        recipientMessage.setUserId(userId);
+                        recipientMessage.setModeType(modeType);
+                        recipientMessage.setMediumType(medium.getMediumType());
+                        recipientMessage.setStatus(MessageStatus.PENDING);
+                        recipientMessage.setCreatedAt(LocalDateTime.now());
+                        recipientMessage.setUpdatedAt(LocalDateTime.now());
+                        recipientMessageRepository.save(recipientMessage);
+                    }
                 }
             }
         }

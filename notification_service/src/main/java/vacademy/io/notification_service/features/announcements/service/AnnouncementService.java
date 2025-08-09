@@ -487,20 +487,28 @@ public class AnnouncementService {
                 });
         
         // Map stats
+        response.setStats(computeAnnouncementStats(announcement.getId()));
+        
+        return response;
+    }
+
+    @Transactional(readOnly = true)
+    public AnnouncementResponse.AnnouncementStatsResponse getAnnouncementStats(String announcementId) {
+        return computeAnnouncementStats(announcementId);
+    }
+
+    private AnnouncementResponse.AnnouncementStatsResponse computeAnnouncementStats(String announcementId) {
         AnnouncementResponse.AnnouncementStatsResponse stats = new AnnouncementResponse.AnnouncementStatsResponse();
-        
-        // Get recipient message statistics
-        long totalRecipients = recipientMessageRepository.countByAnnouncementId(announcement.getId());
-        long deliveredCount = recipientMessageRepository.countByAnnouncementIdAndStatus(announcement.getId(), MessageStatus.DELIVERED);
-        long readCount = messageInteractionRepository.countByAnnouncementIdAndInteractionType(announcement.getId(), InteractionType.READ);
-        long failedCount = recipientMessageRepository.countByAnnouncementIdAndStatus(announcement.getId(), MessageStatus.FAILED);
-        
+        long totalRecipients = recipientMessageRepository.countByAnnouncementId(announcementId);
+        long deliveredCount = recipientMessageRepository.countByAnnouncementIdAndStatus(announcementId, MessageStatus.DELIVERED);
+        long failedCount = recipientMessageRepository.countByAnnouncementIdAndStatus(announcementId, MessageStatus.FAILED);
+        long readCount = messageInteractionRepository.countByAnnouncementIdAndInteractionType(announcementId, InteractionType.READ);
+
         stats.setTotalRecipients(totalRecipients);
         stats.setDeliveredCount(deliveredCount);
-        stats.setReadCount(readCount);
         stats.setFailedCount(failedCount);
-        
-        // Calculate rates
+        stats.setReadCount(readCount);
+
         if (totalRecipients > 0) {
             stats.setDeliveryRate((double) deliveredCount / totalRecipients * 100);
             stats.setReadRate((double) readCount / totalRecipients * 100);
@@ -508,10 +516,7 @@ public class AnnouncementService {
             stats.setDeliveryRate(0.0);
             stats.setReadRate(0.0);
         }
-        
-        response.setStats(stats);
-        
-        return response;
+        return stats;
     }
 
     private AnnouncementCalendarItem mapToCalendarItem(Announcement a) {

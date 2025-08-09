@@ -1,12 +1,14 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { GraduationCap, RotateCcw } from "lucide-react";
+import { Check, DollarSign, GraduationCap, RotateCcw, X } from "lucide-react";
 import { FormProvider, UseFormReturn } from "react-hook-form";
 import { FormControl, FormField, FormItem } from "@/components/ui/form";
 import PhoneInputField from "@/components/design-system/phone-input-field";
 import SelectField from "@/components/design-system/select-field";
 import { MyInput } from "@/components/design-system/input";
 import { MyButton } from "@/components/design-system/button";
+import { Calendar, CreditCard, Globe } from "phosphor-react";
+import { getDefaultPlanFromPaymentsData } from "../-utils/helper";
 
 // Course data interface
 export interface FinalCourseData {
@@ -16,6 +18,7 @@ export interface FinalCourseData {
     customHtml: string;
     description: string;
     includeInstituteLogo: boolean;
+    includePaymentPlans: boolean;
     learningOutcome: string;
     restrictToSameBatch: boolean;
     showRelatedCourses: boolean;
@@ -31,6 +34,14 @@ export interface FormFieldValue {
     is_mandatory: boolean;
     type: string;
     comma_separated_options?: string[];
+}
+
+interface PaymentOption {
+    features?: string[];
+    title?: string;
+    price?: string;
+    value?: number;
+    unit?: string;
 }
 
 // Form values interface
@@ -75,13 +86,264 @@ export interface RegistrationStepProps {
     form: UseFormReturn<FormValues>;
 }
 
+const currencySymbols: { [key: string]: string } = {
+    USD: "$",
+    EUR: "€",
+    GBP: "£",
+    INR: "₹",
+    AUD: "A$",
+    CAD: "C$",
+};
+
+export const getCurrencySymbol = (currencyCode: string) => {
+    return currencySymbols[currencyCode] || currencyCode;
+};
+
+export const getPaymentPlanIcon = (type: string) => {
+    switch (type) {
+        case "subscription":
+            return <Calendar className="size-5" />;
+        case "upfront":
+            return <DollarSign className="size-5" />;
+        case "free":
+            return <Globe className="size-5" />;
+        default:
+            return <CreditCard className="size-5" />;
+    }
+};
+
+export const getAllUniqueFeatures = (
+    paymentOptions: PaymentOption[]
+): string[] => {
+    const allFeatures = new Set<string>();
+    paymentOptions?.forEach((option) => {
+        option.features?.forEach((feature: string) => {
+            allFeatures.add(feature);
+        });
+    });
+    return Array.from(allFeatures);
+};
+
 const RegistrationStep = ({
     courseData,
+    inviteData,
     onSubmit,
     form,
 }: RegistrationStepProps) => {
+    const planInfo =
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-expect-error
+        inviteData?.package_session_to_payment_options?.[0]?.payment_option;
+    const selectedPlan = getDefaultPlanFromPaymentsData(planInfo);
+    const allFeatures = selectedPlan?.paymentOption
+        ? getAllUniqueFeatures(selectedPlan.paymentOption)
+        : [];
+
     return (
         <>
+            {/* Show selected plan in a card */}
+            {(selectedPlan?.type?.toLowerCase() === "subscription" ||
+                selectedPlan?.type?.toLowerCase() === "upfront" ||
+                selectedPlan?.type?.toLowerCase() === "one_time") &&
+                courseData.includePaymentPlans && (
+                    <Card className="mb-4 flex flex-col gap-0">
+                        <div className="flex flex-col items-start gap-3 p-4">
+                            <div className="flex items-center gap-3">
+                                {getPaymentPlanIcon(selectedPlan?.type || "")}
+                                <div className="flex flex-1 flex-col font-semibold">
+                                    <span>{selectedPlan?.name}</span>
+                                </div>
+                            </div>
+                            {(selectedPlan?.type.toLowerCase() === "one_time" ||
+                                selectedPlan?.type.toLowerCase() ===
+                                    "upfront") && (
+                                <div className="flex flex-col gap-4 pl-8">
+                                    {selectedPlan?.paymentOption && (
+                                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                                            {selectedPlan?.paymentOption?.map(
+                                                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                                                // @ts-expect-error
+                                                (payment, idx) => {
+                                                    return (
+                                                        <Card
+                                                            key={idx}
+                                                            className="border border-gray-200 p-4 transition-colors hover:border-gray-300"
+                                                        >
+                                                            <div className="flex flex-col gap-3">
+                                                                {/* Title */}
+                                                                <h4 className="text-base font-bold text-gray-900">
+                                                                    {
+                                                                        payment.title
+                                                                    }
+                                                                </h4>
+
+                                                                {/* Price with time period inline */}
+                                                                <div className="text-xl font-bold text-primary-500">
+                                                                    {getCurrencySymbol(
+                                                                        selectedPlan?.currency ||
+                                                                            ""
+                                                                    )}
+                                                                    {
+                                                                        payment.price
+                                                                    }
+                                                                    &nbsp;
+                                                                    {payment.value &&
+                                                                        payment.unit && (
+                                                                            <span className="text-sm font-normal text-gray-500">
+                                                                                /
+                                                                                {
+                                                                                    payment.value
+                                                                                }{" "}
+                                                                                {
+                                                                                    payment.unit
+                                                                                }
+                                                                            </span>
+                                                                        )}
+                                                                </div>
+
+                                                                {/* Features */}
+                                                                {allFeatures.length >
+                                                                    0 && (
+                                                                    <div className="space-y-2">
+                                                                        {allFeatures.map(
+                                                                            (
+                                                                                feature,
+                                                                                featureIdx
+                                                                            ) => {
+                                                                                const isIncluded =
+                                                                                    payment.features?.includes(
+                                                                                        feature
+                                                                                    );
+                                                                                return (
+                                                                                    <div
+                                                                                        key={
+                                                                                            featureIdx
+                                                                                        }
+                                                                                        className="flex items-center gap-1.5 text-sm"
+                                                                                    >
+                                                                                        {isIncluded ? (
+                                                                                            <Check className="size-3 shrink-0 text-emerald-500" />
+                                                                                        ) : (
+                                                                                            <X className="size-3 shrink-0 text-gray-400" />
+                                                                                        )}
+                                                                                        <span
+                                                                                            className={`${
+                                                                                                isIncluded
+                                                                                                    ? "text-gray-700"
+                                                                                                    : "text-gray-400 line-through"
+                                                                                            } leading-tight`}
+                                                                                        >
+                                                                                            {
+                                                                                                feature
+                                                                                            }
+                                                                                        </span>
+                                                                                    </div>
+                                                                                );
+                                                                            }
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </Card>
+                                                    );
+                                                }
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                            {selectedPlan?.type.toLowerCase() ===
+                                "subscription" && (
+                                <div className="flex w-fit flex-wrap gap-4 pl-8">
+                                    {selectedPlan?.paymentOption?.map(
+                                        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                                        // @ts-expect-error
+                                        (payment, idx) => {
+                                            return (
+                                                <Card
+                                                    key={idx}
+                                                    className="border border-gray-200 p-8 py-6 transition-colors hover:border-gray-300"
+                                                >
+                                                    <div className="flex flex-col gap-3">
+                                                        {/* Title */}
+                                                        <h4 className="text-xl font-bold text-gray-900">
+                                                            {payment.title}
+                                                        </h4>
+
+                                                        {/* Price with time period inline */}
+                                                        <div className="text-xl font-bold text-primary-500">
+                                                            {getCurrencySymbol(
+                                                                selectedPlan?.currency ||
+                                                                    ""
+                                                            )}
+                                                            {payment.price}
+                                                            &nbsp;
+                                                            {payment.value &&
+                                                                payment.unit && (
+                                                                    <span className="text-sm font-normal text-gray-500">
+                                                                        /
+                                                                        {
+                                                                            payment.value
+                                                                        }{" "}
+                                                                        {
+                                                                            payment.unit
+                                                                        }
+                                                                    </span>
+                                                                )}
+                                                        </div>
+
+                                                        {/* Features */}
+                                                        {allFeatures.length >
+                                                            0 && (
+                                                            <div className="space-y-2">
+                                                                {allFeatures.map(
+                                                                    (
+                                                                        feature,
+                                                                        featureIdx
+                                                                    ) => {
+                                                                        const isIncluded =
+                                                                            payment.features?.includes(
+                                                                                feature
+                                                                            );
+                                                                        return (
+                                                                            <div
+                                                                                key={
+                                                                                    featureIdx
+                                                                                }
+                                                                                className="flex items-center gap-1.5 text-sm"
+                                                                            >
+                                                                                {isIncluded ? (
+                                                                                    <Check className="size-3 shrink-0 text-emerald-500" />
+                                                                                ) : (
+                                                                                    <X className="size-3 shrink-0 text-gray-400" />
+                                                                                )}
+                                                                                <span
+                                                                                    className={`${
+                                                                                        isIncluded
+                                                                                            ? "text-gray-700"
+                                                                                            : "text-gray-400 line-through"
+                                                                                    } leading-tight`}
+                                                                                >
+                                                                                    {
+                                                                                        feature
+                                                                                    }
+                                                                                </span>
+                                                                            </div>
+                                                                        );
+                                                                    }
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </Card>
+                                            );
+                                        }
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </Card>
+                )}
             <Card
                 id="registration-card"
                 className="overflow-hidden shadow-xl border-0 bg-white/80 backdrop-blur-sm w-full"

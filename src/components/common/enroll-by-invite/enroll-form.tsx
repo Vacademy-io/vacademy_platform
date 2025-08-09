@@ -64,6 +64,7 @@ const EnrollByInvite = () => {
         customHtml: "",
         description: "",
         includeInstituteLogo: false,
+        includePaymentPlans: false,
         instituteLogo: "",
         learningOutcome: "",
         restrictToSameBatch: false,
@@ -395,6 +396,8 @@ const EnrollByInvite = () => {
                     description: transformedJsonData?.description || "",
                     includeInstituteLogo:
                         transformedJsonData?.includeInstituteLogo || false,
+                    includePaymentPlans:
+                        transformedJsonData?.includePaymentPlans || false,
                     instituteLogo: transformedJsonData?.instituteLogo || "",
                     learningOutcome: transformedJsonData?.learningOutcome || "",
                     restrictToSameBatch:

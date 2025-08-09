@@ -11,6 +11,7 @@ export interface FinalCourseData {
     customHtml: string;
     description: string;
     includeInstituteLogo: boolean;
+    includePaymentPlans: boolean;
     instituteLogo: string;
     learningOutcome: string;
     restrictToSameBatch: boolean;

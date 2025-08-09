@@ -49,6 +49,13 @@ public class AnnouncementProcessingService {
             Announcement announcement = announcementRepository.findById(announcementId)
                     .orElseThrow(() -> new RuntimeException("Announcement not found: " + announcementId));
             
+            // Block delivery if pending approval or rejected
+            if (announcement.getStatus() == AnnouncementStatus.PENDING_APPROVAL ||
+                announcement.getStatus() == AnnouncementStatus.REJECTED) {
+                log.info("Announcement {} is {}. Skipping delivery.", announcementId, announcement.getStatus());
+                return;
+            }
+
             // Skip if already processed
             if (announcement.getStatus() == AnnouncementStatus.ACTIVE) {
                 log.info("Announcement {} already processed, skipping", announcementId);

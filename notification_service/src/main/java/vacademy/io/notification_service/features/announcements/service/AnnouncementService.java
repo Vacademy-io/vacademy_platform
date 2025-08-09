@@ -71,12 +71,35 @@ public class AnnouncementService {
             // 6. Save mediums
             saveMediums(announcement.getId(), request.getMediums());
             
-            // 7. Handle scheduling
-            if (request.getScheduling() != null) {
-                handleScheduling(announcement.getId(), request.getScheduling());
+            // 7. Approval flow + scheduling
+            boolean approvalRequired = false;
+            try {
+                InstituteAnnouncementSettingsResponse settings = 
+                    instituteSettingsService.getSettingsByInstituteId(request.getInstituteId());
+                approvalRequired = Boolean.TRUE.equals(
+                    settings != null && settings.getSettings() != null && settings.getSettings().getGeneral() != null
+                        ? settings.getSettings().getGeneral().getAnnouncementApprovalRequired()
+                        : Boolean.FALSE
+                ) && (request.getCreatedByRole() == null || !"ADMIN".equalsIgnoreCase(request.getCreatedByRole()));
+            } catch (Exception ex) {
+                log.warn("Unable to resolve institute approval setting, defaulting to not required: {}", ex.getMessage());
+            }
+
+            if (approvalRequired) {
+                announcement.setStatus(AnnouncementStatus.PENDING_APPROVAL);
+                announcementRepository.save(announcement);
+                log.info("Announcement {} set to PENDING_APPROVAL", announcement.getId());
+                // We still persist any provided schedule, but will not activate delivery until approved
+                if (request.getScheduling() != null) {
+                    handleScheduling(announcement.getId(), request.getScheduling());
+                }
             } else {
-                // Process immediately
-                processingService.processAnnouncementDelivery(announcement.getId());
+                // Proceed with immediate or scheduled delivery
+                if (request.getScheduling() != null) {
+                    handleScheduling(announcement.getId(), request.getScheduling());
+                } else {
+                    processingService.processAnnouncementDelivery(announcement.getId());
+                }
             }
             
             log.info("Successfully created announcement with ID: {}", announcement.getId());
@@ -122,6 +145,18 @@ public class AnnouncementService {
                 .map(this::mapToAnnouncementResponse);
     }
 
+    @Transactional(readOnly = true)
+    public Page<AnnouncementCalendarItem> getPlannedAnnouncements(String instituteId, LocalDateTime fromDate, LocalDateTime toDate, Pageable pageable) {
+        return announcementRepository.findPlannedAnnouncements(instituteId, fromDate, toDate, pageable)
+                .map(this::mapToCalendarItem);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<AnnouncementCalendarItem> getPastAnnouncements(String instituteId, LocalDateTime fromDate, LocalDateTime toDate, Pageable pageable) {
+        return announcementRepository.findPastAnnouncements(instituteId, fromDate, toDate, pageable)
+                .map(this::mapToCalendarItem);
+    }
+
     @Transactional
     public AnnouncementResponse updateAnnouncementStatus(String announcementId, AnnouncementStatus status) {
         Announcement announcement = announcementRepository.findById(announcementId)
@@ -132,6 +167,80 @@ public class AnnouncementService {
         announcementRepository.save(announcement);
         
         log.info("Updated announcement {} status to {}", announcementId, status);
+        return mapToAnnouncementResponse(announcement);
+    }
+
+    /**
+     * Submit announcement for approval (moves from DRAFT to PENDING_APPROVAL)
+     */
+    @Transactional
+    public AnnouncementResponse submitForApproval(String announcementId, String submittedByRole) {
+        Announcement announcement = announcementRepository.findById(announcementId)
+                .orElseThrow(() -> new RuntimeException("Announcement not found: " + announcementId));
+
+        if (announcement.getStatus() != AnnouncementStatus.DRAFT && announcement.getStatus() != AnnouncementStatus.REJECTED) {
+            throw new ValidationException("Only DRAFT or REJECTED announcements can be submitted for approval");
+        }
+        if (submittedByRole == null || submittedByRole.isBlank()) {
+            throw new ValidationException("submittedByRole is required");
+        }
+
+        announcement.setStatus(AnnouncementStatus.PENDING_APPROVAL);
+        announcement.setUpdatedAt(LocalDateTime.now());
+        announcementRepository.save(announcement);
+        log.info("Announcement {} submitted for approval by role {}", announcementId, submittedByRole);
+        return mapToAnnouncementResponse(announcement);
+    }
+
+    /**
+     * Approve announcement (ADMIN only) and trigger delivery/scheduling
+     */
+    @Transactional
+    public AnnouncementResponse approveAnnouncement(String announcementId, String approvedByRole) {
+        Announcement announcement = announcementRepository.findById(announcementId)
+                .orElseThrow(() -> new RuntimeException("Announcement not found: " + announcementId));
+
+        if (announcement.getStatus() != AnnouncementStatus.PENDING_APPROVAL) {
+            throw new ValidationException("Only PENDING_APPROVAL announcements can be approved");
+        }
+        if (approvedByRole == null || !"ADMIN".equalsIgnoreCase(approvedByRole)) {
+            throw new ValidationException("Only ADMIN can approve announcements");
+        }
+
+        // After approval, deliver immediately or schedule
+        if (scheduledMessageRepository.findByAnnouncementIdAndIsActive(announcementId, true).isEmpty()) {
+            processingService.processAnnouncementDelivery(announcementId);
+        } else {
+            // If schedule exists, mark status to SCHEDULED and let scheduler fire later
+            announcement.setStatus(AnnouncementStatus.SCHEDULED);
+            announcement.setUpdatedAt(LocalDateTime.now());
+            announcementRepository.save(announcement);
+        }
+
+        log.info("Announcement {} approved by {}", announcementId, approvedByRole);
+        return mapToAnnouncementResponse(announcementRepository.findById(announcementId).orElseThrow());
+    }
+
+    /**
+     * Reject announcement (ADMIN only) with reason (stored as INACTIVE for now)
+     */
+    @Transactional
+    public AnnouncementResponse rejectAnnouncement(String announcementId, String rejectedByRole, String reason) {
+        Announcement announcement = announcementRepository.findById(announcementId)
+                .orElseThrow(() -> new RuntimeException("Announcement not found: " + announcementId));
+
+        if (announcement.getStatus() != AnnouncementStatus.PENDING_APPROVAL) {
+            throw new ValidationException("Only PENDING_APPROVAL announcements can be rejected");
+        }
+        if (rejectedByRole == null || !"ADMIN".equalsIgnoreCase(rejectedByRole)) {
+            throw new ValidationException("Only ADMIN can reject announcements");
+        }
+
+        announcement.setStatus(AnnouncementStatus.REJECTED);
+        announcement.setUpdatedAt(LocalDateTime.now());
+        // Optionally persist reason in a future audit/log table
+        announcementRepository.save(announcement);
+        log.info("Announcement {} rejected by {}. Reason: {}", announcementId, rejectedByRole, reason);
         return mapToAnnouncementResponse(announcement);
     }
 
@@ -403,6 +512,31 @@ public class AnnouncementService {
         response.setStats(stats);
         
         return response;
+    }
+
+    private AnnouncementCalendarItem mapToCalendarItem(Announcement a) {
+        AnnouncementCalendarItem item = new AnnouncementCalendarItem();
+        item.setAnnouncementId(a.getId());
+        item.setTitle(a.getTitle());
+        item.setStatus(a.getStatus());
+        item.setInstituteId(a.getInstituteId());
+        item.setCreatedByRole(a.getCreatedByRole());
+        item.setCreatedAt(a.getCreatedAt());
+        item.setUpdatedAt(a.getUpdatedAt());
+
+        // Modes summary
+        List<ModeType> modeTypes = getModeTypesForAnnouncement(a.getId());
+        item.setModeTypes(modeTypes.stream().map(Enum::name).toList());
+
+        // Scheduling summary (use first active schedule if present)
+        scheduledMessageRepository.findByAnnouncementIdAndIsActive(a.getId(), true).ifPresent(sm -> {
+            item.setScheduleType(sm.getScheduleType());
+            item.setStartDate(sm.getStartDate());
+            item.setEndDate(sm.getEndDate());
+            item.setNextRunTime(sm.getNextRunTime());
+            item.setLastRunTime(sm.getLastRunTime());
+        });
+        return item;
     }
     
     /**

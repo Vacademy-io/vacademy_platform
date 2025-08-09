@@ -86,6 +86,50 @@ public class AnnouncementController {
     }
 
     /**
+     * Planned announcements for calendar view (admin/teacher dashboards)
+     * Optional date filter using from/to (ISO LocalDateTime)
+     */
+    @GetMapping("/institute/{instituteId}/planned")
+    public ResponseEntity<Page<AnnouncementCalendarItem>> getPlannedAnnouncements(
+            @PathVariable String instituteId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String from,
+            @RequestParam(required = false) String to) {
+        try {
+            Pageable pageable = PageRequest.of(page, size);
+            java.time.LocalDateTime fromDate = (from != null && !from.isBlank()) ? java.time.LocalDateTime.parse(from) : null;
+            java.time.LocalDateTime toDate = (to != null && !to.isBlank()) ? java.time.LocalDateTime.parse(to) : null;
+            return ResponseEntity.ok(announcementService.getPlannedAnnouncements(instituteId, fromDate, toDate, pageable));
+        } catch (Exception e) {
+            log.error("Error getting planned announcements for institute: {}", instituteId, e);
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    /**
+     * Past announcements for calendar view (admin/teacher dashboards)
+     * Optional date filter using from/to (ISO LocalDateTime)
+     */
+    @GetMapping("/institute/{instituteId}/past")
+    public ResponseEntity<Page<AnnouncementCalendarItem>> getPastAnnouncements(
+            @PathVariable String instituteId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String from,
+            @RequestParam(required = false) String to) {
+        try {
+            Pageable pageable = PageRequest.of(page, size);
+            java.time.LocalDateTime fromDate = (from != null && !from.isBlank()) ? java.time.LocalDateTime.parse(from) : null;
+            java.time.LocalDateTime toDate = (to != null && !to.isBlank()) ? java.time.LocalDateTime.parse(to) : null;
+            return ResponseEntity.ok(announcementService.getPastAnnouncements(instituteId, fromDate, toDate, pageable));
+        } catch (Exception e) {
+            log.error("Error getting past announcements for institute: {}", instituteId, e);
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    /**
      * Update announcement status
      */
     @PutMapping("/{announcementId}/status")
@@ -120,11 +164,61 @@ public class AnnouncementController {
     }
 
     /**
+     * Submit announcement for approval
+     */
+    @PostMapping("/{announcementId}/submit-approval")
+    public ResponseEntity<AnnouncementResponse> submitForApproval(
+            @PathVariable String announcementId,
+            @RequestParam String submittedByRole) {
+        try {
+            AnnouncementResponse response = announcementService.submitForApproval(announcementId, submittedByRole);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error submitting announcement for approval: {}", announcementId, e);
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    /**
+     * Approve announcement (ADMIN)
+     */
+    @PostMapping("/{announcementId}/approve")
+    public ResponseEntity<AnnouncementResponse> approveAnnouncement(
+            @PathVariable String announcementId,
+            @RequestParam String approvedByRole) {
+        try {
+            AnnouncementResponse response = announcementService.approveAnnouncement(announcementId, approvedByRole);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error approving announcement: {}", announcementId, e);
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    /**
+     * Reject announcement (ADMIN)
+     */
+    @PostMapping("/{announcementId}/reject")
+    public ResponseEntity<AnnouncementResponse> rejectAnnouncement(
+            @PathVariable String announcementId,
+            @RequestParam String rejectedByRole,
+            @RequestParam(required = false) String reason) {
+        try {
+            AnnouncementResponse response = announcementService.rejectAnnouncement(announcementId, rejectedByRole, reason);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error rejecting announcement: {}", announcementId, e);
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    /**
      * Manually trigger announcement delivery (for testing/admin use)
      */
     @PostMapping("/{announcementId}/deliver")
     public ResponseEntity<Map<String, String>> deliverAnnouncement(@PathVariable String announcementId) {
         try {
+            // Guard: delivery will internally be a no-op if pending approval or rejected
             announcementService.processAnnouncementDelivery(announcementId);
             return ResponseEntity.ok(Map.of("message", "Announcement delivery initiated", "announcementId", announcementId));
         } catch (Exception e) {

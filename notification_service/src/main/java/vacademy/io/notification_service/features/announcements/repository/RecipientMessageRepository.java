@@ -81,7 +81,7 @@ public interface RecipientMessageRepository extends JpaRepository<RecipientMessa
     """)
     Page<RecipientMessage> findCommunityMessages(
             @Param("userId") String userId, 
-            @Param("communityType") String communityType, 
+            @Param("communityType") vacademy.io.notification_service.features.announcements.enums.CommunityType communityType, 
             @Param("tag") String tag, 
             Pageable pageable);
 
@@ -107,19 +107,19 @@ public interface RecipientMessageRepository extends JpaRepository<RecipientMessa
     @Query("""
         SELECT rm FROM RecipientMessage rm 
         JOIN Announcement a ON rm.announcementId = a.id 
-        JOIN AnnouncementStream as ON as.announcement.id = a.id 
+        JOIN AnnouncementStream ast ON ast.announcement.id = a.id 
         WHERE rm.userId = :userId 
           AND rm.modeType = 'STREAM' 
-          AND as.isActive = true
-          AND (:packageSessionId IS NULL OR as.packageSessionId = :packageSessionId)
-          AND (:streamType IS NULL OR as.streamType = :streamType)
+          AND ast.isActive = true
+          AND (:packageSessionId IS NULL OR ast.packageSessionId = :packageSessionId)
+          AND (:streamType IS NULL OR ast.streamType = :streamType)
           AND NOT EXISTS (SELECT mi FROM MessageInteraction mi WHERE mi.recipientMessageId = rm.id AND mi.userId = :userId AND mi.interactionType = 'DISMISSED')
         ORDER BY rm.createdAt DESC
     """)
     Page<RecipientMessage> findStreamMessages(
             @Param("userId") String userId, 
             @Param("packageSessionId") String packageSessionId, 
-            @Param("streamType") String streamType, 
+            @Param("streamType") vacademy.io.notification_service.features.announcements.enums.StreamType streamType, 
             Pageable pageable);
 
     /**
@@ -138,7 +138,7 @@ public interface RecipientMessageRepository extends JpaRepository<RecipientMessa
     """)
     Page<RecipientMessage> findSystemAlerts(
             @Param("userId") String userId, 
-            @Param("priority") String priority, 
+            @Param("priority") Integer priority, 
             Pageable pageable);
 
     /**

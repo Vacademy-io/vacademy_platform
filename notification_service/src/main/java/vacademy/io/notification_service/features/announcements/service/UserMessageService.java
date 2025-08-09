@@ -154,7 +154,15 @@ public class UserMessageService {
     @Transactional(readOnly = true)
     public Page<UserMessagesResponse> getCommunityMessages(String userId, String communityType, String tag, Pageable pageable) {
         log.debug("Getting community messages for user: {} with communityType: {}, tag: {}", userId, communityType, tag);
-        return recipientMessageRepository.findCommunityMessages(userId, communityType, tag, pageable)
+        vacademy.io.notification_service.features.announcements.enums.CommunityType enumType = null;
+        if (communityType != null && !communityType.isBlank()) {
+            try {
+                enumType = vacademy.io.notification_service.features.announcements.enums.CommunityType.valueOf(communityType.toUpperCase());
+            } catch (IllegalArgumentException ex) {
+                log.warn("Invalid communityType provided: {}. Ignoring filter.", communityType);
+            }
+        }
+        return recipientMessageRepository.findCommunityMessages(userId, enumType, tag, pageable)
                 .map(this::mapToUserMessagesResponse);
     }
 
@@ -195,14 +203,30 @@ public class UserMessageService {
     @Transactional(readOnly = true)
     public Page<UserMessagesResponse> getStreamMessages(String userId, String packageSessionId, String streamType, Pageable pageable) {
         log.debug("Getting stream messages for user: {} with packageSessionId: {}, streamType: {}", userId, packageSessionId, streamType);
-        return recipientMessageRepository.findStreamMessages(userId, packageSessionId, streamType, pageable)
+        vacademy.io.notification_service.features.announcements.enums.StreamType enumType = null;
+        if (streamType != null && !streamType.isBlank()) {
+            try {
+                enumType = vacademy.io.notification_service.features.announcements.enums.StreamType.valueOf(streamType.toUpperCase());
+            } catch (IllegalArgumentException ex) {
+                log.warn("Invalid streamType provided: {}. Ignoring filter.", streamType);
+            }
+        }
+        return recipientMessageRepository.findStreamMessages(userId, packageSessionId, enumType, pageable)
                 .map(this::mapToUserMessagesResponse);
     }
 
     @Transactional(readOnly = true)
     public Page<UserMessagesResponse> getSystemAlerts(String userId, String priority, Pageable pageable) {
         log.debug("Getting system alerts for user: {} with priority: {}", userId, priority);
-        return recipientMessageRepository.findSystemAlerts(userId, priority, pageable)
+        Integer intPriority = null;
+        if (priority != null && !priority.isBlank()) {
+            try {
+                intPriority = Integer.valueOf(priority);
+            } catch (NumberFormatException ex) {
+                log.warn("Invalid priority provided: {}. Ignoring filter.", priority);
+            }
+        }
+        return recipientMessageRepository.findSystemAlerts(userId, intPriority, pageable)
                 .map(this::mapToUserMessagesResponse);
     }
 

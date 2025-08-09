@@ -173,6 +173,24 @@ Base path: `/notification-service/v1/announcements`
     curl "$BASE/notification-service/v1/announcements/institute/$INSTITUTE_ID?page=0&size=20&status=ACTIVE"
     ```
 
+- Planned Announcements (calendar view)
+  - Method: GET
+  - Path: `/notification-service/v1/announcements/institute/{instituteId}/planned?page=0&size=20&from=2025-08-01T00:00:00&to=2025-08-31T23:59:59`
+  - Notes: `from`/`to` are optional ISO datetimes; returns items with schedule info.
+  - Curl:
+    ```bash
+    curl "$BASE/notification-service/v1/announcements/institute/$INSTITUTE_ID/planned?page=0&size=20&from=2025-08-01T00:00:00&to=2025-08-31T23:59:59"
+    ```
+
+- Past Announcements (calendar view)
+  - Method: GET
+  - Path: `/notification-service/v1/announcements/institute/{instituteId}/past?page=0&size=20&from=2025-07-01T00:00:00&to=2025-07-31T23:59:59`
+  - Notes: `from`/`to` are optional ISO datetimes; includes delivered/expired/rejected.
+  - Curl:
+    ```bash
+    curl "$BASE/notification-service/v1/announcements/institute/$INSTITUTE_ID/past?page=0&size=20&from=2025-07-01T00:00:00&to=2025-07-31T23:59:59"
+    ```
+
 - Update Announcement Status
   - Method: PUT
   - Path: `/notification-service/v1/announcements/{announcementId}/status`
@@ -206,6 +224,33 @@ Base path: `/notification-service/v1/announcements`
   - Curl:
     ```bash
     curl "$BASE/notification-service/v1/announcements/$ANNOUNCEMENT_ID/stats"
+    ```
+
+- Submit For Approval
+  - Method: POST
+  - Path: `/notification-service/v1/announcements/{announcementId}/submit-approval?submittedByRole={ROLE}`
+  - Notes: Moves status from DRAFT/REJECTED → PENDING_APPROVAL if institute requires approval and role isn’t ADMIN.
+  - Curl:
+    ```bash
+    curl -X POST "$BASE/notification-service/v1/announcements/$ANNOUNCEMENT_ID/submit-approval?submittedByRole=TEACHER"
+    ```
+
+- Approve Announcement
+  - Method: POST
+  - Path: `/notification-service/v1/announcements/{announcementId}/approve?approvedByRole=ADMIN`
+  - Notes: Only ADMIN. If a schedule exists, sets status to SCHEDULED; otherwise triggers immediate delivery.
+  - Curl:
+    ```bash
+    curl -X POST "$BASE/notification-service/v1/announcements/$ANNOUNCEMENT_ID/approve?approvedByRole=ADMIN"
+    ```
+
+- Reject Announcement
+  - Method: POST
+  - Path: `/notification-service/v1/announcements/{announcementId}/reject?rejectedByRole=ADMIN&reason={reason}`
+  - Notes: Only ADMIN. Sets status to REJECTED.
+  - Curl:
+    ```bash
+    curl -X POST "$BASE/notification-service/v1/announcements/$ANNOUNCEMENT_ID/reject?rejectedByRole=ADMIN&reason=Insufficient%20details"
     ```
 
 ### CreateAnnouncementRequest (schema)

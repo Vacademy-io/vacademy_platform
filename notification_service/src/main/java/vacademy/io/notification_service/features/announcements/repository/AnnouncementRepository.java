@@ -30,4 +30,43 @@ public interface AnnouncementRepository extends JpaRepository<Announcement, Stri
     
     @Query("SELECT a FROM Announcement a JOIN a.scheduledMessages sm WHERE sm.isActive = true AND sm.nextRunTime <= :currentTime")
     List<Announcement> findScheduledAnnouncementsToProcess(@Param("currentTime") LocalDateTime currentTime);
+
+    // Planned announcements (DRAFT/PENDING_APPROVAL/SCHEDULED having active schedules within optional range)
+    @Query("""
+        SELECT a FROM Announcement a
+        WHERE a.instituteId = :instituteId
+          AND a.status IN (vacademy.io.notification_service.features.announcements.enums.AnnouncementStatus.PENDING_APPROVAL,
+                           vacademy.io.notification_service.features.announcements.enums.AnnouncementStatus.SCHEDULED,
+                           vacademy.io.notification_service.features.announcements.enums.AnnouncementStatus.DRAFT)
+          AND EXISTS (
+              SELECT sm FROM ScheduledMessage sm
+              WHERE sm.announcement.id = a.id AND sm.isActive = true
+                AND (COALESCE(sm.nextRunTime, sm.startDate, sm.endDate) >= COALESCE(:fromDate, COALESCE(sm.nextRunTime, sm.startDate, sm.endDate)))
+                AND (COALESCE(sm.nextRunTime, sm.startDate, sm.endDate) <= COALESCE(:toDate, COALESCE(sm.nextRunTime, sm.startDate, sm.endDate)))
+          )
+        ORDER BY a.createdAt DESC
+    """)
+    Page<Announcement> findPlannedAnnouncements(
+            @Param("instituteId") String instituteId,
+            @Param("fromDate") LocalDateTime fromDate,
+            @Param("toDate") LocalDateTime toDate,
+            Pageable pageable);
+
+    // Past announcements (already delivered/expired/rejected) within optional createdAt range
+    @Query("""
+        SELECT a FROM Announcement a
+        WHERE a.instituteId = :instituteId
+          AND a.status IN (vacademy.io.notification_service.features.announcements.enums.AnnouncementStatus.ACTIVE,
+                           vacademy.io.notification_service.features.announcements.enums.AnnouncementStatus.INACTIVE,
+                           vacademy.io.notification_service.features.announcements.enums.AnnouncementStatus.EXPIRED,
+                           vacademy.io.notification_service.features.announcements.enums.AnnouncementStatus.REJECTED)
+          AND a.createdAt >= COALESCE(:fromDate, a.createdAt)
+          AND a.createdAt <= COALESCE(:toDate, a.createdAt)
+        ORDER BY a.createdAt DESC
+    """)
+    Page<Announcement> findPastAnnouncements(
+            @Param("instituteId") String instituteId,
+            @Param("fromDate") LocalDateTime fromDate,
+            @Param("toDate") LocalDateTime toDate,
+            Pageable pageable);
 }

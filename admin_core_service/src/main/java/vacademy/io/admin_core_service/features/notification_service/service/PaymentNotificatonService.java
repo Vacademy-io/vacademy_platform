@@ -13,6 +13,8 @@ import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
 import vacademy.io.common.payment.dto.PaymentResponseDTO;
 
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 
@@ -58,6 +60,38 @@ public class PaymentNotificatonService {
         return true;
     }
 
+    public boolean sendPaymentConfirmationNotification(
+            String instituteId,
+            PaymentResponseDTO paymentResponseDTO,
+            PaymentInitiationRequestDTO paymentInitiationRequestDTO,
+            UserDTO userDTO
+    ) {
+        if (instituteId == null || paymentResponseDTO == null || paymentInitiationRequestDTO == null || userDTO == null) {
+            return false; // Invalid input
+        }
+
+        Institute institute = instituteService.findById(instituteId);
+        if (institute == null || userDTO.getEmail() == null) return false;
+
+        // Build the email body using the payment confirmation template
+        String emailBody = buildPaymentConfirmationEmailBody(institute, userDTO, paymentInitiationRequestDTO, paymentResponseDTO);
+        if (emailBody == null) return false;
+
+        NotificationDTO notificationDTO = new NotificationDTO();
+        notificationDTO.setBody(emailBody);
+        notificationDTO.setNotificationType(CommunicationType.EMAIL.name());
+        notificationDTO.setSubject("Payment Confirmation from " + institute.getInstituteName());
+
+        NotificationToUserDTO notificationToUserDTO = new NotificationToUserDTO();
+        notificationToUserDTO.setUserId(userDTO.getId());
+        notificationToUserDTO.setChannelId(userDTO.getEmail());
+        notificationToUserDTO.setPlaceholders(Map.of());
+        notificationDTO.setUsers(List.of(notificationToUserDTO));
+        notificationService.sendEmailToUsers(notificationDTO);
+        return true;
+    }
+
+
     private String buildInvoiceEmailBody(
             Institute institute,
             UserDTO userDTO,
@@ -85,6 +119,45 @@ public class PaymentNotificatonService {
                 dueDate,
                 paymentUrl,
                 invoicePdfUrl,
+                safe(institute.getAddress()),
+                institute.getInstituteThemeCode()
+        );
+    }
+
+    /**
+     * Builds the HTML for the payment confirmation email.
+     */
+    private String buildPaymentConfirmationEmailBody(
+            Institute institute,
+            UserDTO userDTO,
+            PaymentInitiationRequestDTO requestDTO,
+            PaymentResponseDTO responseDTO
+    ) {
+        if (institute == null || requestDTO == null || responseDTO == null || userDTO == null) return null;
+
+        Map<String, Object> responseData = responseDTO.getResponseData();
+        if (responseData == null) return null;
+
+        // Extract data needed for the confirmation email
+        String invoiceId = safeCastToString(responseData.get("invoiceId"));
+        String receiptPdfUrl = safeCastToString(responseData.get("receiptPdfUrl"));
+        String instituteLogoUrl = mediaService.getFileUrlById(institute.getLogoFileId());
+
+        // Default to today's date if not provided in the response
+        String paymentDate = responseData.containsKey("paymentDate") ?
+                safeCastToString(responseData.get("paymentDate")) :
+                LocalDate.now().format(DateTimeFormatter.ofPattern("dd MMM yyyy"));
+
+        // Call the static method from your EmailTemplates class
+        return StripeInvoiceEmailBody.getPaymentConfirmationEmailBody(
+                safe(institute.getInstituteName()),
+                safe(instituteLogoUrl),
+                safe(userDTO.getFullName()),
+                safe(requestDTO.getAmount()).toString(),
+                safe(requestDTO.getCurrency()),
+                invoiceId,
+                paymentDate,
+                receiptPdfUrl,
                 safe(institute.getAddress()),
                 institute.getInstituteThemeCode()
         );

@@ -218,12 +218,21 @@ public class GetLiveSessionService {
                 .toList();
     }
 
-    public void deleteLiveSession(String sessionId, String type) {
-        if (Objects.equals(type, "session"))
-            sessionRepository.softDeleteLiveSessionById(sessionId);
-        else if (Objects.equals(type, "schedule"))
-            scheduleRepository.deleteById(sessionId);
+    public String deleteLiveSessions(List<String> ids, String type) {
+        if (ids == null || ids.isEmpty()) {
+            return "Id can't be empty";
+        }
 
+        if (Objects.equals(type, "session")) {
+            String sessionId=ids.get(0);
+            sessionRepository.softDeleteLiveSessionById(sessionId);
+            scheduleRepository.softDeleteScheduleBySessionId(sessionId);
+        } else if (Objects.equals(type, "schedule")) {
+            scheduleRepository.softDeleteScheduleByIdIn(ids);
+        }
+        return type+" is deleted";
     }
+
+
 
 }

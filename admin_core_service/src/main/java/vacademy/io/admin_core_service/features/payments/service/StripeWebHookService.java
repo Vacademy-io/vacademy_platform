@@ -84,7 +84,7 @@ public class StripeWebHookService {
             }
 
             webHookService.updateWebHook(webhookId, payload, orderId, event.getType());
-            paymentLogService.updatePaymentLog(orderId, paymentStatus);
+            paymentLogService.updatePaymentLog(orderId, paymentStatus,instituteId);
             webHookService.updateWebHookStatus(webhookId, WebHookStatus.PROCESSED,null);
 
             return ResponseEntity.ok("Webhook processed successfully");

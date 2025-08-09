@@ -46,4 +46,13 @@ public interface InstituteCustomFieldRepository extends JpaRepository<InstituteC
                         @Param("customFieldId") String customFieldId,
                         @Param("status") String status);
 
+        @Query("SELECT DISTINCT icf, cf FROM InstituteCustomField icf, CustomFields cf " +
+                        "WHERE cf.id = icf.customFieldId " +
+                        "AND icf.instituteId = :instituteId " +
+                        "AND icf.status = :status " +
+                        "ORDER BY cf.formOrder ASC")
+        List<Object[]> findUniqueActiveCustomFieldsByInstituteId(
+                        @Param("instituteId") String instituteId,
+                        @Param("status") String status);
+
 }

@@ -52,6 +52,9 @@ public class LearnerService {
             student.setParentToMotherMobileNumber(learnerDetailsEditDTO.getParentsMobileNumber());
         if (StringUtils.hasText(learnerDetailsEditDTO.getParentsEmail()))
             student.setParentsEmail(learnerDetailsEditDTO.getParentsEmail());
+        if (StringUtils.hasText(learnerDetailsEditDTO.getUserName())){
+            student.setUsername(learnerDetailsEditDTO.getUserName());
+        }
         student.setFaceFileId(learnerDetailsEditDTO.getFaceFileId());
         instituteStudentRepository.save(student);
         UserDTO userDTO = new UserDTO();
@@ -60,6 +63,7 @@ public class LearnerService {
         userDTO.setEmail(learnerDetailsEditDTO.getEmail());
         userDTO.setMobileNumber(learnerDetailsEditDTO.getContactNumber());
         userDTO.setProfilePicFileId(learnerDetailsEditDTO.getFaceFileId());
+        userDTO.setUsername(learnerDetailsEditDTO.getUserName());
         authService.updateUser(userDTO, learnerDetailsEditDTO.getUserId());
         return "success";
     }

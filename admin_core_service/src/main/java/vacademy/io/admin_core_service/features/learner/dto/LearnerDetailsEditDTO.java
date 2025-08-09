@@ -21,4 +21,6 @@ public class LearnerDetailsEditDTO {
     private String parentsMobileNumber;
     private String parentsEmail;
     private String faceFileId;
+    private String userName;
+    private String password;
 }

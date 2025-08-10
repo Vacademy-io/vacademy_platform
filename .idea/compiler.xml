@@ -13,6 +13,7 @@
         <module name="common_service" />
         <module name="media_service" />
         <module name="community_service" />
+        <module name="scheduler_service" />
         <module name="admin_core_service" />
       </profile>
     </annotationProcessing>
@@ -34,6 +35,7 @@
       <module name="media_service" options="-parameters" />
       <module name="media_service (2)" options="-parameters" />
       <module name="notification_service" options="-parameters" />
+      <module name="scheduler_service" options="-parameters" />
       <module name="student_service (1)" options="-parameters" />
       <module name="student_service (2)" options="-parameters" />
     </option>

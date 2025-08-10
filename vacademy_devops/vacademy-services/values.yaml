@@ -31,6 +31,11 @@ services:
     image:
       repository: public.ecr.aws/e0x1f4p4/notification-service/notification-service-repo
       tag: latest
+  scheduler_service:
+    port: 8077
+    image:
+      repository: public.ecr.aws/e0x1f4p4/scheduler-service/scheduler-service-repo
+      tag: latest
 
 environment:
   stage: stage

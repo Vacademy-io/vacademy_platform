@@ -52,4 +52,6 @@ public class LiveSession {
 
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Date updatedAt;
+
+    private boolean allowPlayPause;
 }

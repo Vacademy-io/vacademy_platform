@@ -43,6 +43,11 @@ public class SessionSchedule {
 
     private String status;
 
+    @Column(name="thumbnail_file_id")
+    private String thumbnailFileId;
+    @Column(name="daily_attendance")
+    private boolean dailyAttendance;
+
     // Getters, Setters, etc.
 }
 

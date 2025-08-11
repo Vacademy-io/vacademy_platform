@@ -1,5 +1,5 @@
 import { Steps } from "@phosphor-icons/react";
-import { useRouter } from "@tanstack/react-router";
+import { useNavigate, useRouter } from "@tanstack/react-router";
 import {
     Code,
     File,
@@ -14,7 +14,7 @@ import {
     FileDoc,
     Notebook,
 } from "phosphor-react";
-import { toTitleCase } from "@/lib/utils";
+import { isNullOrEmptyOrUndefined, toTitleCase } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
     Select,
@@ -58,6 +58,9 @@ import { CourseStructureResponse } from "@/types/institute-details/course-detail
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { AuthModal } from "@/components/common/auth/modal/AuthModal";
+import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
+import { TokenKey } from "@/constants/auth/tokens";
+import { Preferences } from "@capacitor/preferences";
 
 type SlideType = {
     id: string;
@@ -171,6 +174,7 @@ const mockCourses: Course[] = [
 ];
 
 export const CourseDetailsPage = () => {
+    const navigate = useNavigate();
     const [selectedSession, setSelectedSession] = useState<string>("");
     const [selectedLevel, setSelectedLevel] = useState<string>("");
     const router = useRouter();
@@ -551,6 +555,34 @@ export const CourseDetailsPage = () => {
         }
     };
 
+    useEffect(() => {
+        const redirectToDashboardIfAuthenticated = async () => {
+            const token = await getTokenFromStorage(TokenKey.accessToken);
+            const studentDetails = await Preferences.get({
+                key: "StudentDetails",
+            });
+            const instituteDetails = await Preferences.get({
+                key: "InstituteDetails",
+            });
+
+            if (
+                !isNullOrEmptyOrUndefined(token) &&
+                !isNullOrEmptyOrUndefined(studentDetails) &&
+                !isNullOrEmptyOrUndefined(instituteDetails)
+            ) {
+                navigate({
+                    to: "/study-library/courses/course-details",
+                    search: {
+                        courseId: searchParams.courseId || "",
+                    },
+                    replace: true,
+                });
+            }
+        };
+
+        redirectToDashboardIfAuthenticated();
+    }, [navigate]);
+
     return (
         <>
             <div className="flex min-h-screen flex-col bg-white w-full">
@@ -829,15 +861,17 @@ export const CourseDetailsPage = () => {
                                             {/* Slide Counts */}
                                             {slideCountQuery.isLoading ? (
                                                 <div className="space-y-2">
-                                                    {[1, 2, 3, 4, 5].map((i) => (
-                                                        <div
-                                                            key={i}
-                                                            className="flex items-center justify-between p-2 sm:p-2.5 bg-gray-50 rounded-lg animate-pulse"
-                                                        >
-                                                            <div className="h-3 w-16 bg-gray-200 rounded"></div>
-                                                            <div className="h-3 w-6 bg-gray-200 rounded"></div>
-                                                        </div>
-                                                    ))}
+                                                    {[1, 2, 3, 4, 5].map(
+                                                        (i) => (
+                                                            <div
+                                                                key={i}
+                                                                className="flex items-center justify-between p-2 sm:p-2.5 bg-gray-50 rounded-lg animate-pulse"
+                                                            >
+                                                                <div className="h-3 w-16 bg-gray-200 rounded"></div>
+                                                                <div className="h-3 w-6 bg-gray-200 rounded"></div>
+                                                            </div>
+                                                        )
+                                                    )}
                                                 </div>
                                             ) : slideCountQuery.error ? (
                                                 <div className="p-2 sm:p-2.5 bg-red-50 border border-red-200 rounded-lg">

@@ -5,6 +5,10 @@ import { handleGetInstituteIdBySubdomain } from "./-services/courses-services";
 import { useEffect } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import RootNotFoundComponent from "@/components/core/default-not-found";
+import { Preferences } from "@capacitor/preferences";
+import { isNullOrEmptyOrUndefined } from "@/lib/utils";
+import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
+import { TokenKey } from "@/constants/auth/tokens";
 
 export const Route = createFileRoute("/courses/")({
     component: CoursesContainerComponent,
@@ -51,6 +55,28 @@ function CoursesContainerComponent() {
             });
         }
     }, [apiResult, isLoading, search, navigate, shouldFetchInstituteId]);
+
+    useEffect(() => {
+        const redirectToDashboardIfAuthenticated = async () => {
+            const token = await getTokenFromStorage(TokenKey.accessToken);
+            const studentDetails = await Preferences.get({
+                key: "StudentDetails",
+            });
+            const instituteDetails = await Preferences.get({
+                key: "InstituteDetails",
+            });
+
+            if (
+                !isNullOrEmptyOrUndefined(token) &&
+                !isNullOrEmptyOrUndefined(studentDetails) &&
+                !isNullOrEmptyOrUndefined(instituteDetails)
+            ) {
+                navigate({ to: "/study-library/courses" });
+            }
+        };
+
+        redirectToDashboardIfAuthenticated();
+    }, [navigate]);
 
     if (shouldFetchInstituteId && apiResult === "Data not found") {
         return <RootNotFoundComponent />;

@@ -20,7 +20,6 @@ import vacademy.io.admin_core_service.features.user_subscription.service.UserPla
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollResponseDTO;
 import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
-import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollRequestDTO;
 
 import java.util.Map;
@@ -48,54 +47,57 @@ public class LearnerEnrollRequestService {
     private AuthService authService;
 
     @Transactional
-    public LearnerEnrollResponseDTO recordLearnerRequest(LearnerEnrollRequestDTO learnerEnrollRequestDTO, CustomUserDetails user) {
+    public LearnerEnrollResponseDTO recordLearnerRequest(LearnerEnrollRequestDTO learnerEnrollRequestDTO) {
         LearnerPackageSessionsEnrollDTO enrollDTO = learnerEnrollRequestDTO.getLearnerPackageSessionEnroll();
-    
+        if (!StringUtils.hasText(learnerEnrollRequestDTO.getUser().getId())) {
+            UserDTO user = authService.createUserFromAuthService(learnerEnrollRequestDTO.getUser(), learnerEnrollRequestDTO.getInstituteId());
+            learnerEnrollRequestDTO.setUser(user);
+        }
         EnrollInvite enrollInvite = getValidatedEnrollInvite(enrollDTO.getEnrollInviteId());
         PaymentOption paymentOption = getValidatedPaymentOption(enrollDTO.getPaymentOptionId());
         PaymentPlan paymentPlan = getOptionalPaymentPlan(enrollDTO.getPlanId());
 
         UserPlan userPlan = createUserPlan(
-                user.getUserId(),
-                enrollDTO,
-                enrollInvite,
-                paymentOption,
-                paymentPlan
+            learnerEnrollRequestDTO.getUser().getId(),
+            enrollDTO,
+            enrollInvite,
+            paymentOption,
+            paymentPlan
         );
 
         return enrollLearnerToBatch(
-                learnerEnrollRequestDTO,
-                enrollDTO,
-                enrollInvite,
-                paymentOption,
-                userPlan
+            learnerEnrollRequestDTO,
+            enrollDTO,
+            enrollInvite,
+            paymentOption,
+            userPlan
         );
     }
 
     private EnrollInvite getValidatedEnrollInvite(String enrollInviteId) {
         return Optional.ofNullable(enrollInviteId)
-                .map(enrollInviteService::findById)
-                .orElseThrow(() -> new IllegalArgumentException("Enroll Invite ID is required."));
+            .map(enrollInviteService::findById)
+            .orElseThrow(() -> new IllegalArgumentException("Enroll Invite ID is required."));
     }
 
     private PaymentOption getValidatedPaymentOption(String paymentOptionId) {
         return Optional.ofNullable(paymentOptionId)
-                .map(paymentOptionService::findById)
-                .orElseThrow(() -> new IllegalArgumentException("Payment Option ID is required."));
+            .map(paymentOptionService::findById)
+            .orElseThrow(() -> new IllegalArgumentException("Payment Option ID is required."));
     }
 
     private PaymentPlan getOptionalPaymentPlan(String planId) {
         return Optional.ofNullable(planId)
-                .flatMap(paymentPlanService::findById)
-                .orElse(null); // It's okay if there's no plan
+            .flatMap(paymentPlanService::findById)
+            .orElse(null); // It's okay if there's no plan
     }
 
     private UserPlan createUserPlan(
-            String userId,
-            LearnerPackageSessionsEnrollDTO enrollDTO,
-            EnrollInvite enrollInvite,
-            PaymentOption paymentOption,
-            PaymentPlan paymentPlan
+        String userId,
+        LearnerPackageSessionsEnrollDTO enrollDTO,
+        EnrollInvite enrollInvite,
+        PaymentOption paymentOption,
+        PaymentPlan paymentPlan
     ) {
         String userPlanStatus = null;
         if (paymentOption.getType().equals(PaymentOptionType.SUBSCRIPTION.name()) || paymentOption.getType().equals(PaymentOptionType.ONE_TIME.name())) {
@@ -105,34 +107,34 @@ public class LearnerEnrollRequestService {
         }
 
         return userPlanService.createUserPlan(
-                userId,
-                paymentPlan,
-                null, // coupon can be handled later if needed
-                enrollInvite,
-                paymentOption,
-                enrollDTO.getPaymentInitiationRequest(),
-                userPlanStatus
+            userId,
+            paymentPlan,
+            null, // coupon can be handled later if needed
+            enrollInvite,
+            paymentOption,
+            enrollDTO.getPaymentInitiationRequest(),
+            userPlanStatus
         );
     }
 
     private LearnerEnrollResponseDTO enrollLearnerToBatch(
-            LearnerEnrollRequestDTO learnerEnrollRequestDTO,
-            LearnerPackageSessionsEnrollDTO enrollDTO,
-            EnrollInvite enrollInvite,
-            PaymentOption paymentOption,
-            UserPlan userPlan
+        LearnerEnrollRequestDTO learnerEnrollRequestDTO,
+        LearnerPackageSessionsEnrollDTO enrollDTO,
+        EnrollInvite enrollInvite,
+        PaymentOption paymentOption,
+        UserPlan userPlan
     ) {
         PaymentOptionOperationStrategy strategy = paymentOptionOperationFactory
-                .getStrategy(PaymentOptionType.fromString(paymentOption.getType()));
+            .getStrategy(PaymentOptionType.fromString(paymentOption.getType()));
 
         return strategy.enrollLearnerToBatch(
-                learnerEnrollRequestDTO.getUser(),
-                enrollDTO,
-                learnerEnrollRequestDTO.getInstituteId(),
-                enrollInvite,
-                paymentOption,
-                userPlan,
-                Map.of() // optional extra data
+            learnerEnrollRequestDTO.getUser(),
+            enrollDTO,
+            learnerEnrollRequestDTO.getInstituteId(),
+            enrollInvite,
+            paymentOption,
+            userPlan,
+            Map.of() // optional extra data
         );
     }
 }

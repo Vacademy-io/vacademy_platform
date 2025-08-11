@@ -53,6 +53,7 @@ public class ApplicationSecurityConfig {
             "/admin-core-service/live-session/mark-guest-attendance",
             "/admin-core-service/course/ai/v1/**",
             "/admin-core-service/payments/webhook/callback/**",
+             "/admin-core-service/v1/learner/enroll",
             
             // User Resolution APIs for notification service - OPEN for internal communication
             "/admin-core-service/v1/faculty/by-package-sessions",

@@ -902,11 +902,14 @@ export const CourseDetailsPage = () => {
 
                                         {/* Right side - Video Player (2/5) */}
                                         <div
-                                            className="lg:col-span-2 animate-fade-in-up"
+                                            className="hidden lg:block lg:col-span-2 animate-fade-in-up"
                                             style={{ animationDelay: "0.2s" }}
                                         >
-                                            <VideoPlayer 
-                                                src={form.watch("courseData").courseMediaId}
+                                            <VideoPlayer
+                                                src={
+                                                    form.watch("courseData")
+                                                        .courseMediaId
+                                                }
                                             />
                                         </div>
                                     </div>
@@ -965,6 +968,17 @@ export const CourseDetailsPage = () => {
                         </div>
                     </div>
                 </div>
+
+                {/* Video Player for non-lg screens */}
+                {form.watch("courseData").courseMediaId && (
+                    <div className="lg:hidden relative z-10 max-w-[350px] px-3 sm:px-4 py-4">
+                        <div className="bg-white/80 backdrop-blur-sm border border-gray-200/60 rounded-xl shadow-sm p-3 sm:p-4">
+                            <VideoPlayer
+                                src={form.watch("courseData").courseMediaId}
+                            />
+                        </div>
+                    </div>
+                )}
 
                 {/* Main Content Container */}
                 <div className="relative z-10 max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 py-4 lg:py-6">

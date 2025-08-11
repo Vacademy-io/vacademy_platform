@@ -24,7 +24,6 @@ export const getInstituteIdBySubdomain = async ({
         url: GET_SUBDOMAIN_OR_INSTITUTEID,
         params: {
             subdomain,
-            instituteId: "",
         },
     });
     return response?.data;

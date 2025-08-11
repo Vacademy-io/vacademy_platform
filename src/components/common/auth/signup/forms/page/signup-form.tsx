@@ -23,9 +23,14 @@ export function SignUpForm({
     const search = useSearch({ from: "/signup/" });
     
     // Use search parameters if not provided as props
-    const finalType = type || (search as { type?: string; courseId?: string }).type;
-    const finalCourseId = courseId || (search as { type?: string; courseId?: string }).courseId;
+    const finalType = type || (search as { type?: string; courseId?: string; openModal?: string; fromOAuth?: string; instituteId?: string }).type;
+    const finalCourseId = courseId || (search as { type?: string; courseId?: string; openModal?: string; fromOAuth?: string; instituteId?: string }).courseId;
+    const openModal = (search as { openModal?: string; fromOAuth?: string; instituteId?: string }).openModal === "true";
+    const fromOAuth = (search as { fromOAuth?: string }).fromOAuth === "true";
+    const instituteId = (search as { instituteId?: string }).instituteId;
 
+    // If coming from OAuth with openModal flag, force modal signup
+    const shouldShowModal = finalType || openModal || fromOAuth;
 
 
     return (
@@ -195,7 +200,7 @@ export function SignUpForm({
                             className={`bg-white/90 backdrop-blur-xl rounded-xl ${finalType ? "" : "shadow-xl border border-gray-200/50 p-6 lg:p-8 xl:p-10"}  `}
                         >
                             {/* Compact Header - Only show for modal signup */}
-                            {finalType && (
+                            {shouldShowModal && (
                                 <motion.div
                                     initial={{ y: 10, opacity: 0 }}
                                     animate={{ y: 0, opacity: 1 }}
@@ -211,18 +216,17 @@ export function SignUpForm({
                                 </motion.div>
                             )}
 
-
-
                             {/* Form Content */}
                             <motion.div
                                 initial={{ y: 10, opacity: 0 }}
                                 animate={{ y: 0, opacity: 1 }}
                                 transition={{ delay: 1.1 }}
                             >
-                                {finalType ? (
+                                {shouldShowModal ? (
                                     <ModalSignUpForm
                                         type={finalType}
                                         courseId={finalCourseId}
+                                        instituteId={instituteId}
                                         onSwitchToLogin={() => navigate({ to: "/login" })}
                                     />
                                 ) : (

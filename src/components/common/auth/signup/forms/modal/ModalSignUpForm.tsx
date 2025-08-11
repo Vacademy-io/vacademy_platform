@@ -34,6 +34,7 @@ type UserDetailsValues = z.infer<typeof userDetailsSchema>;
 interface ModalSignUpFormProps {
     type?: string;
     courseId?: string;
+    instituteId?: string;
     onSwitchToLogin?: () => void;
     onSignupSuccess?: () => void;
 }
@@ -41,6 +42,7 @@ interface ModalSignUpFormProps {
 export function ModalSignUpForm({
     type,
     courseId,
+    instituteId: propInstituteId,
     onSwitchToLogin,
     onSignupSuccess,
 }: ModalSignUpFormProps) {
@@ -64,7 +66,10 @@ export function ModalSignUpForm({
 
     // Get URL parameters for institute ID
     const urlParams = new URLSearchParams(window.location.search);
-    const instituteId = urlParams.get('instituteId');
+    const urlInstituteId = urlParams.get('instituteId');
+    
+    // Use prop instituteId if provided, otherwise use URL parameter
+    const instituteId = propInstituteId || urlInstituteId;
 
     // Fetch institute details when component mounts (for modal signup)
     useEffect(() => {
@@ -251,12 +256,14 @@ export function ModalSignUpForm({
             }
             
             const stateObj = {
-                from: `${window.location.origin}/signup/oauth/learner`,
+                from: `${window.location.origin}/signup/oauth/modal-learner`,
                 account_type: "signup",
                 institute_id: selectedInstitute.id,
                 institute_name: selectedInstitute.institute_name,
                 redirectTo: studyLibraryUrl,
                 currentUrl: currentUrl,
+                type: type, // Include type from props
+                courseId: courseId, // Include courseId from props
                 isModalSignup: true, // Flag to indicate this is a modal signup
             };
 
@@ -264,7 +271,19 @@ export function ModalSignUpForm({
             const signupUrl = `${LOGIN_URL_GOOGLE_GITHUB}/${provider}?state=${encodeURIComponent(
                 base64State
             )}`;
-            window.location.href = signupUrl;
+            
+            // Open OAuth flow in new tab to maintain user action context
+            const newWindow = window.open(signupUrl, '_blank');
+            
+            if (newWindow) {
+                // Close the modal since OAuth is happening in new tab
+                if (onSignupSuccess) {
+                    onSignupSuccess();
+                }
+            } else {
+                // Fallback: redirect in current tab if popup is blocked
+                window.location.href = signupUrl;
+            }
         } catch {
             toast.error("Failed to initiate signup. Please try again.");
         }

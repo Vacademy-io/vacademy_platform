@@ -26,25 +26,71 @@ export function AuthModal({ type, courseId, trigger, onModalOpen, onLoginSuccess
         
         // If type and courseId are explicitly provided, use them
         if (type && courseId) {
-            return { type, courseId };
+            return { type, courseId, instituteId: undefined };
         }
+        
+        // Extract parameters from URL
+        const urlParams = new URLSearchParams(currentSearch);
+        const urlType = urlParams.get('type');
+        const urlCourseId = urlParams.get('courseId');
+        const urlInstituteId = urlParams.get('instituteId');
         
         // Otherwise, determine based on current route
         if (currentPath.includes("/courses/course-details")) {
-            const urlParams = new URLSearchParams(currentSearch);
             const courseIdFromUrl = urlParams.get("courseId");
             if (courseIdFromUrl) {
-                return { type: "courseDetailsPage", courseId: courseIdFromUrl };
+                return { 
+                    type: urlType || "courseDetailsPage", 
+                    courseId: courseIdFromUrl,
+                    instituteId: urlInstituteId || undefined
+                };
             }
         } else if (currentPath.includes("/courses")) {
-            return { type: "courseDetailsPage", courseId: undefined };
+            return { 
+                type: urlType || "courseDetailsPage", 
+                courseId: urlCourseId || undefined,
+                instituteId: urlInstituteId || undefined
+            };
         }
         
-        // Default case - no specific redirection
-        return { type: undefined, courseId: undefined };
+        // Default case - use URL parameters if available
+        return { 
+            type: urlType || undefined, 
+            courseId: urlCourseId || undefined,
+            instituteId: urlInstituteId || undefined
+        };
     };
 
+    // Listen for postMessage from OAuth tab to switch to signup modal
+    useEffect(() => {
+        const handleMessage = (event: MessageEvent) => {
+            // Only accept messages from the same origin
+            if (event.origin !== window.location.origin) return;
+            
+            const { action, type: oauthType, courseId: oauthCourseId, instituteId, fromOAuth } = event.data;
+            
+            if (action === 'openSignupModal' && fromOAuth) {
+                // Update the modal context with OAuth parameters
+                const newUrl = new URL(window.location.href);
+                if (oauthType) newUrl.searchParams.set('type', oauthType);
+                if (oauthCourseId) newUrl.searchParams.set('courseId', oauthCourseId);
+                if (instituteId) newUrl.searchParams.set('instituteId', instituteId);
+                newUrl.searchParams.set('fromOAuth', 'true');
+                window.history.replaceState({}, '', newUrl.toString());
+                
+                // Switch to signup mode
+                setCurrentMode('signup');
+                
+                // Ensure modal is open
+                if (!isOpen) {
+                    setIsOpen(true);
+                }
+            }
+        };
 
+        window.addEventListener('message', handleMessage);
+        return () => window.removeEventListener('message', handleMessage);
+    }, [isOpen]);
 
     // Check for closeModal parameter and close modal if present
     useEffect(() => {
@@ -341,6 +387,7 @@ export function AuthModal({ type, courseId, trigger, onModalOpen, onLoginSuccess
                         <ModalSignUpForm 
                             type={getCurrentRouteContext().type} 
                             courseId={getCurrentRouteContext().courseId}
+                            instituteId={getCurrentRouteContext().instituteId}
                             onSwitchToLogin={handleSwitchToLogin}
                             onSignupSuccess={handleSignupSuccess}
                         />

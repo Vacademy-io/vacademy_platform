@@ -63,6 +63,8 @@ const handleOAuthCallback = async (
   let currentUrl = "";
   let isModalSignup = false;
   let instituteId = "";
+  let type = "";
+  let courseId = "";
   if (state) {
     try {
       const stateObj = JSON.parse(atob(state));
@@ -70,14 +72,31 @@ const handleOAuthCallback = async (
       currentUrl = stateObj.currentUrl || "";
       isModalSignup = stateObj.isModalSignup || false;
       instituteId = stateObj.institute_id || "";
+      type = stateObj.type || "";
+      courseId = stateObj.courseId || "";
     } catch (error) {
       console.error("Error parsing state:", error);
     }
   }
 
   if (error) {
-    toast.error(decodeURIComponent(message || "Authentication failed."));
-    navigate({ to: "/login" });
+    // For OAuth signup errors, provide a more helpful message
+    const errorMessage = message ? decodeURIComponent(message) : "Authentication failed. Please try again.";
+    toast.error(errorMessage);
+    
+    if (isModalSignup) {
+      // For modal signup, redirect back to the original page
+      window.history.back();
+    } else {
+      // For page signup, redirect to signup page with parameters
+      const signupUrl = new URL(window.location.origin + "/signup");
+      if (type) signupUrl.searchParams.set("type", type);
+      if (courseId) signupUrl.searchParams.set("courseId", courseId);
+      if (instituteId) signupUrl.searchParams.set("instituteId", instituteId);
+      signupUrl.searchParams.set("fromOAuth", "true");
+      
+      navigate({ to: signupUrl.pathname + signupUrl.search });
+    }
     return;
   }
 
@@ -97,7 +116,9 @@ const handleOAuthCallback = async (
         redirectTo,
         currentUrl,
         isModalSignup,
-        instituteId
+        instituteId,
+        type,
+        courseId
       );
     } catch {
       toast.error("Failed to store authentication tokens");
@@ -118,7 +139,9 @@ const handleSuccessfulSignup = async (
   redirectTo?: string,
   currentUrl?: string,
   isModalSignup?: boolean,
-  instituteId?: string
+  instituteId?: string,
+  type?: string,
+  courseId?: string
 ) => {
   try {
     const decodedData = getTokenDecodedData(accessToken);
@@ -146,13 +169,19 @@ const handleSuccessfulSignup = async (
       
       if (redirectTo && redirectTo !== "/dashboard") {
         finalRedirectUrl = redirectTo;
-      } else if (currentUrl && (currentUrl.includes("/courses") || currentUrl.includes("/course-details"))) {
+      } else if (type === "courseDetailsPage" && courseId) {
+        // If signup has specific type and courseId, use them
+        finalRedirectUrl = `/study-library/courses/course-details?courseId=${courseId}&selectedTab=ALL`;
+      } else if (type === "courseDetailsPage") {
+        // If signup has courseDetailsPage type but no courseId
+        finalRedirectUrl = "/study-library/courses";
+      } else if (currentUrl && (currentUrl.includes("/courses/course-details") || currentUrl.includes("/courses"))) {
         // If signup originated from course-related pages, redirect to study-library
         if (currentUrl.includes("/course-details")) {
-          const urlParams = new URLSearchParams(window.location.search);
-          const courseId = urlParams.get("courseId");
-          if (courseId) {
-            finalRedirectUrl = `/study-library/courses/course-details?courseId=${courseId}&selectedTab=ALL`;
+          const urlParams = new URLSearchParams(currentUrl.split('?')[1] || '');
+          const extractedCourseId = urlParams.get("courseId");
+          if (extractedCourseId) {
+            finalRedirectUrl = `/study-library/courses/course-details?courseId=${extractedCourseId}&selectedTab=ALL`;
           } else {
             finalRedirectUrl = "/study-library/courses";
           }
@@ -161,8 +190,15 @@ const handleSuccessfulSignup = async (
         }
       }
 
-      // Open study-library page in new tab if signup originated from course-related pages
-      if (finalRedirectUrl !== "/dashboard" && currentUrl && 
+      // For modal signup, open in new tab if it's course-related
+      if (isModalSignup && (type === "courseDetailsPage" || finalRedirectUrl !== "/dashboard")) {
+        window.open(finalRedirectUrl, '_blank');
+        // For modal signup, don't navigate - just close the modal
+        return;
+      }
+      
+      // Open study-library page in new tab if signup originated from course-related pages (for page signup)
+      if (!isModalSignup && finalRedirectUrl !== "/dashboard" && currentUrl && 
           (currentUrl.includes("/courses") || currentUrl.includes("/course-details"))) {
         window.open(finalRedirectUrl, '_blank');
       }

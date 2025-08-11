@@ -561,7 +561,7 @@ export const CourseDetailsPage = () => {
                     courseId={searchParams.courseId || ""}
                 />
                 {/* Top Banner */}
-                <div className="relative h-[200px] sm:h-[250px] md:h-[300px]">
+                <div className="relative min-h-[200px] sm:min-h-[250px] md:min-h-[300px]">
                     {/* Transparent black overlay */}
                     {form.watch("courseData").courseBannerMediaId ? (
                         <div className="pointer-events-none absolute inset-0 z-10 bg-black/50" />

@@ -1017,35 +1017,48 @@ export const CourseDetailsPage = () => {
                                     {sessionOptions &&
                                     sessionOptions.length > 0 ? (
                                         <div>
-                                            {/* Preview notice for ALL tab */}
-                                            {selectedTab === "ALL" && (
-                                                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                                                    <div className="flex items-center space-x-2">
-                                                        <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                                                        <span className="text-sm font-medium text-blue-800">
-                                                            {getTerminology(
-                                                                ContentTerms.Course,
-                                                                SystemTerms.Course
-                                                            )}{" "}
-                                                            Preview Mode
-                                                        </span>
-                                                    </div>
-                                                    <p className="text-xs text-blue-700 mt-1">
-                                                        Browse{" "}
-                                                        {getTerminology(
-                                                            ContentTerms.Course,
-                                                            SystemTerms.Course
-                                                        ).toLocaleLowerCase()}{" "}
-                                                        structure. Enroll to
-                                                        access{" "}
-                                                        {getTerminology(
-                                                            ContentTerms.Slides,
-                                                            SystemTerms.Slides
-                                                        ).toLocaleLowerCase()}
-                                                        s and materials.
-                                                    </p>
-                                                </div>
-                                            )}
+                                            {/* Preview notice for ALL tab - only show if user is not enrolled */}
+                                            {selectedTab === "ALL" && (() => {
+                                                // Check if user is enrolled in this course
+                                                const isEnrolledInCourse = enrolledSessions.some(enrolledSession => {
+                                                    return enrolledSession.package_dto.id === searchParams.courseId;
+                                                });
+
+                                                // Only show preview mode message if user is NOT enrolled
+                                                if (!isEnrolledInCourse) {
+                                                    return (
+                                                        <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                                            <div className="flex items-center space-x-2">
+                                                                <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                                                                <span className="text-sm font-medium text-blue-800">
+                                                                    {getTerminology(
+                                                                        ContentTerms.Course,
+                                                                        SystemTerms.Course
+                                                                    )}{" "}
+                                                                    Preview Mode
+                                                                </span>
+                                                            </div>
+                                                            <p className="text-xs text-blue-700 mt-1">
+                                                                Browse{" "}
+                                                                {getTerminology(
+                                                                    ContentTerms.Course,
+                                                                    SystemTerms.Course
+                                                                ).toLocaleLowerCase()}{" "}
+                                                                structure. Enroll to
+                                                                access{" "}
+                                                                {getTerminology(
+                                                                    ContentTerms.Slides,
+                                                                    SystemTerms.Slides
+                                                                ).toLocaleLowerCase()}
+                                                                s and materials.
+                                                            </p>
+                                                        </div>
+                                                    );
+                                                }
+
+                                                // If user is enrolled, don't show preview mode message
+                                                return null;
+                                            })()}
 
                                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 lg:gap-4">
                                                 {/* Session Selector */}
@@ -1211,19 +1224,22 @@ export const CourseDetailsPage = () => {
                                 className="animate-fade-in-up"
                                 style={{ animationDelay: "0.2s" }}
                             >
-                                <CourseStructureDetails
-                                    selectedSession={selectedSession}
-                                    selectedLevel={selectedLevel}
-                                    courseStructure={form.getValues(
-                                        "courseData.courseStructure"
-                                    )}
-                                    courseData={form.getValues()}
-                                    packageSessionId={
-                                        packageSessionIdForCurrentLevel || ""
-                                    }
-                                    selectedTab={selectedTab}
-                                    updateModuleStats={updateModuleStats}
-                                />
+                                                            <CourseStructureDetails
+                                selectedSession={selectedSession}
+                                selectedLevel={selectedLevel}
+                                courseStructure={form.getValues(
+                                    "courseData.courseStructure"
+                                )}
+                                courseData={form.getValues()}
+                                packageSessionId={
+                                    packageSessionIdForCurrentLevel || ""
+                                }
+                                selectedTab={selectedTab}
+                                updateModuleStats={updateModuleStats}
+                                isEnrolledInCourse={enrolledSessions.some(enrolledSession => 
+                                    enrolledSession.package_dto.id === searchParams.courseId
+                                )}
+                            />
                             </div>
 
                             {/* Content Sections */}
@@ -1662,23 +1678,40 @@ export const CourseDetailsPage = () => {
                                                 </div>
                                             )}
                                         </div>
-                                        {/* Only show enroll button for ALL tab (catalog view) */}
-                                        {selectedTab === "ALL" && (
-                                            <MyButton
-                                                type="button"
-                                                scale="large"
-                                                buttonType="primary"
-                                                layoutVariant="default"
-                                                className="mt-2 !min-w-full !w-full text-xs h-8"
-                                                onClick={() =>
-                                                    setEnrollmentDialogOpen(
-                                                        true
-                                                    )
-                                                }
-                                            >
-                                                Enroll
-                                            </MyButton>
-                                        )}
+                                                                                {/* Only show enroll button for ALL tab when user is not enrolled */}
+                                        {selectedTab === "ALL" && (() => {
+                                            // Only show enrollment options if session and level are selected
+                                            if (!selectedSession || !selectedLevel) {
+                                                return null; // Don't show anything if session/level not selected
+                                            }
+
+                                            // Check if user is already enrolled in this course
+                                            const isAlreadyEnrolled = enrolledSessions.some(enrolledSession => {
+                                                // Check if the enrolled session matches the current course
+                                                // The package_dto.id represents the course/package ID
+                                                return enrolledSession.package_dto.id === searchParams.courseId && 
+                                                       enrolledSession.session.id === selectedSession && 
+                                                       enrolledSession.level.id === selectedLevel;
+                                            });
+
+                                            // Only show enroll button if not already enrolled
+                                            return !isAlreadyEnrolled ? (
+                                                <MyButton
+                                                    type="button"
+                                                    scale="large"
+                                                    buttonType="primary"
+                                                    layoutVariant="default"
+                                                    className="mt-2 !min-w-full !w-full text-xs h-8"
+                                                    onClick={() =>
+                                                        setEnrollmentDialogOpen(
+                                                            true
+                                                        )
+                                                    }
+                                                >
+                                                    Enroll
+                                                </MyButton>
+                                            ) : null; // Don't show anything if already enrolled
+                                        })()}
                                     </div>
                                 </div>
                             </div>

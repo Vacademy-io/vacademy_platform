@@ -3,6 +3,17 @@ import { Button } from "@/components/ui/button";
 import { ThumbsUp, ThumbsDown, Trash } from "phosphor-react";
 import { StarRatingComponent } from "@/components/common/star-rating-component";
 import { ReviewItemProps } from "./types";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { useState } from "react";
 
 // Helper function to format time ago
 function timeAgo(dateString: string) {
@@ -19,6 +30,7 @@ function timeAgo(dateString: string) {
 export function ReviewItem({
     review,
     avatarUrl,
+    currentUserId,
     onLike,
     onDislike,
     onDelete,
@@ -26,6 +38,17 @@ export function ReviewItem({
     variant = 'default'
 }: ReviewItemProps) {
     const isCompact = variant === 'compact';
+    const canDelete = currentUserId && review.user.id === currentUserId;
+    const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+
+    const handleDeleteClick = () => {
+        setShowDeleteDialog(true);
+    };
+
+    const handleConfirmDelete = () => {
+        onDelete(review.id);
+        setShowDeleteDialog(false);
+    };
 
     if (isCompact) {
         return (
@@ -106,113 +129,139 @@ export function ReviewItem({
 
     // Default variant (full review card)
     return (
-        <div className="relative bg-white/80 backdrop-blur-sm border border-gray-200/60 rounded-xl shadow-sm hover:shadow-lg transition-all duration-500 p-3 sm:p-4 group/review overflow-hidden">
-            {/* Background gradient overlay */}
-            <div className="absolute inset-0 bg-gradient-to-br from-primary-500/5 to-transparent opacity-0 group-hover/review:opacity-100 transition-opacity duration-500 rounded-xl"></div>
+        <>
+            <div className="relative bg-white/80 backdrop-blur-sm border border-gray-200/60 rounded-xl shadow-sm hover:shadow-lg transition-all duration-500 p-3 sm:p-4 group/review overflow-hidden">
+                {/* Background gradient overlay */}
+                <div className="absolute inset-0 bg-gradient-to-br from-primary-500/5 to-transparent opacity-0 group-hover/review:opacity-100 transition-opacity duration-500 rounded-xl"></div>
 
-            {/* Floating orb effect */}
-            <div className="absolute top-0 right-0 w-10 h-10 bg-primary-100/20 rounded-full blur-2xl opacity-0 group-hover/review:opacity-100 transition-opacity duration-700 -translate-y-1 translate-x-3"></div>
+                {/* Floating orb effect */}
+                <div className="absolute top-0 right-0 w-10 h-10 bg-primary-100/20 rounded-full blur-2xl opacity-0 group-hover/review:opacity-100 transition-opacity duration-700 -translate-y-1 translate-x-3"></div>
 
-            <div className="relative">
-                {/* User Info */}
-                <div className="flex items-center space-x-3 mb-3">
-                    <Avatar className="w-10 h-10 border-2 border-white shadow-lg">
-                        {avatarUrl ? (
-                            <AvatarImage
-                                src={avatarUrl}
-                                alt={review.user.name}
-                                onError={(e) => {
-                                    e.currentTarget.style.display = 'none';
-                                    e.currentTarget.nextElementSibling?.classList.remove('hidden');
-                                }}
-                            />
-                        ) : null}
-                        <AvatarFallback className="bg-gradient-to-br from-primary-500 to-primary-600 text-white font-semibold">
-                            {review.user.name
-                                .split(" ")
-                                .map((n) => n[0])
-                                .join("")
-                                .slice(0, 2)
-                                .toUpperCase()}
-                        </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 min-w-0">
-                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-2">
-                            <div>
-                                <h4 className="text-sm font-semibold text-gray-900 truncate">
-                                    {review.user.name}
-                                </h4>
-                                <p className="text-xs text-gray-500 flex items-center space-x-1">
-                                    <span>
-                                        {timeAgo(review.createdAt)}
-                                    </span>
-                                </p>
-                            </div>
-                            <div className="flex items-center space-x-1.5">
-                                <StarRatingComponent
-                                    score={review.rating * 20}
-                                    starColor={true}
+                <div className="relative">
+                    {/* User Info */}
+                    <div className="flex items-center space-x-3 mb-3">
+                        <Avatar className="w-10 h-10 border-2 border-white shadow-lg">
+                            {avatarUrl ? (
+                                <AvatarImage
+                                    src={avatarUrl}
+                                    alt={review.user.name}
+                                    onError={(e) => {
+                                        e.currentTarget.style.display = 'none';
+                                        e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                                    }}
                                 />
+                            ) : null}
+                            <AvatarFallback className="bg-gradient-to-br from-primary-500 to-primary-600 text-white font-semibold">
+                                {review.user.name
+                                    .split(" ")
+                                    .map((n) => n[0])
+                                    .join("")
+                                    .slice(0, 2)
+                                    .toUpperCase()}
+                            </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-2">
+                                <div>
+                                    <h4 className="text-sm font-semibold text-gray-900 truncate">
+                                        {review.user.name}
+                                    </h4>
+                                    <p className="text-xs text-gray-500 flex items-center space-x-1">
+                                        <span>
+                                            {timeAgo(review.createdAt)}
+                                        </span>
+                                    </p>
+                                </div>
+                                <div className="flex items-center space-x-1.5">
+                                    <StarRatingComponent
+                                        score={review.rating * 20}
+                                        starColor={true}
+                                    />
+                                </div>
                             </div>
                         </div>
                     </div>
+
+                    {/* Review Content */}
+                    {review.description && review.description !== "No review text provided" && (
+                        <div className="mb-3">
+                            <p className="text-gray-700 leading-relaxed text-xs sm:text-sm">
+                                {review.description}
+                            </p>
+                        </div>
+                    )}
+
+                    {/* Action Buttons */}
+                    {showActions && (
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-1 sm:space-x-2">
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="flex items-center space-x-1.5 text-gray-500 hover:text-success-600 hover:bg-success-50 transition-all duration-300 rounded-lg px-2.5 py-1"
+                                    onClick={() => onLike(review.id)}
+                                >
+                                    <ThumbsUp size={14} weight="duotone" />
+                                    <span className="text-xs font-medium">
+                                        {review.likes}
+                                    </span>
+                                </Button>
+
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="flex items-center space-x-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 transition-all duration-300 rounded-lg px-2.5 py-1"
+                                    onClick={() => onDislike(review.id)}
+                                >
+                                    <ThumbsDown size={14} weight="duotone" />
+                                    <span className="text-xs font-medium">
+                                        {review.dislikes}
+                                    </span>
+                                </Button>
+                            </div>
+
+                            {/* Only show delete button if current user is the review creator */}
+                            {canDelete && (
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="flex items-center space-x-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 transition-all duration-300 rounded-lg px-2.5 py-1"
+                                    onClick={handleDeleteClick}
+                                >
+                                    <Trash size={14} weight="duotone" />
+                                    <span className="text-xs font-medium">
+                                        Delete
+                                    </span>
+                                </Button>
+                            )}
+                        </div>
+                    )}
                 </div>
 
-                {/* Review Content */}
-                {review.description && review.description !== "No review text provided" && (
-                    <div className="mb-3">
-                        <p className="text-gray-700 leading-relaxed text-xs sm:text-sm">
-                            {review.description}
-                        </p>
-                    </div>
-                )}
-
-                {/* Action Buttons */}
-                {showActions && (
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-1 sm:space-x-2">
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                className="flex items-center space-x-1.5 text-gray-500 hover:text-success-600 hover:bg-success-50 transition-all duration-300 rounded-lg px-2.5 py-1"
-                                onClick={() => onLike(review.id)}
-                            >
-                                <ThumbsUp size={14} weight="duotone" />
-                                <span className="text-xs font-medium">
-                                    {review.likes}
-                                </span>
-                            </Button>
-
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                className="flex items-center space-x-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 transition-all duration-300 rounded-lg px-2.5 py-1"
-                                onClick={() => onDislike(review.id)}
-                            >
-                                <ThumbsDown size={14} weight="duotone" />
-                                <span className="text-xs font-medium">
-                                    {review.dislikes}
-                                </span>
-                            </Button>
-                        </div>
-
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            className="flex items-center space-x-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 transition-all duration-300 rounded-lg px-2.5 py-1"
-                            onClick={() => onDelete(review.id)}
-                        >
-                            <Trash size={14} weight="duotone" />
-                            <span className="text-xs font-medium">
-                                Delete
-                            </span>
-                        </Button>
-                    </div>
-                )}
+                {/* Progress indicator */}
+                <div className="absolute bottom-0 left-0 h-0.5 bg-gradient-to-r from-primary-400 to-primary-600 w-0 group-hover/review:w-full transition-all duration-700 ease-out rounded-b-xl"></div>
             </div>
 
-            {/* Progress indicator */}
-            <div className="absolute bottom-0 left-0 h-0.5 bg-gradient-to-r from-primary-400 to-primary-600 w-0 group-hover/review:w-full transition-all duration-700 ease-out rounded-b-xl"></div>
-        </div>
+            {/* Delete Confirmation Dialog */}
+            <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Delete Review</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Are you sure you want to delete this review? This action cannot be undone.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction 
+                            onClick={handleConfirmDelete}
+                            className="bg-red-500 text-white hover:bg-red-600"
+                        >
+                            Delete
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+        </>
     );
 } 

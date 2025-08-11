@@ -77,6 +77,7 @@ export const CourseStructureDetails = ({
     courseData,
     packageSessionId,
     selectedTab,
+    isEnrolledInCourse,
 }: {
     selectedSession: string;
     selectedLevel: string;
@@ -84,6 +85,7 @@ export const CourseStructureDetails = ({
     courseData: CourseDetailsFormValues;
     packageSessionId: string;
     selectedTab: string;
+    isEnrolledInCourse?: boolean;
 }) => {
     const router = useRouter();
     const searchParams = router.state.location.search;
@@ -109,8 +111,8 @@ export const CourseStructureDetails = ({
         chapterId: string,
         slideId: string
     ) => {
-        // Only allow navigation for enrolled courses (PROGRESS/COMPLETED tabs)
-        if (selectedTab === "PROGRESS" || selectedTab === "COMPLETED") {
+        // Allow navigation if user is enrolled in the course OR if it's PROGRESS/COMPLETED tabs
+        if (isEnrolledInCourse || selectedTab === "PROGRESS" || selectedTab === "COMPLETED") {
             navigateTo(
                 `/study-library/courses/course-details/subjects/modules/chapters/slides`,
                 {
@@ -122,7 +124,21 @@ export const CourseStructureDetails = ({
                 }
             );
         }
-        // For ALL tab, do nothing (view-only mode)
+        // For ALL tab when not enrolled, do nothing (view-only mode)
+    };
+
+    // Helper function to determine if slides should be clickable
+    const isSlideClickable = () => {
+        return isEnrolledInCourse || selectedTab === "PROGRESS" || selectedTab === "COMPLETED";
+    };
+
+    // Helper function to get slide styling based on clickability
+    const getSlideStyling = () => {
+        if (isSlideClickable()) {
+            return "group flex cursor-pointer items-center gap-1.5 px-2 py-1 text-xs text-neutral-500 rounded hover:bg-gradient-to-r hover:from-amber-50/60 hover:to-orange-50/40 hover:border-amber-200/40 border border-transparent transition-all duration-200";
+        } else {
+            return "group flex items-center gap-1.5 px-2 py-1 text-xs text-neutral-400 rounded bg-neutral-50/50 border border-transparent";
+        }
     };
 
     const getSlidesWithChapterId = async (chapterId: string) => {
@@ -558,8 +574,8 @@ export const CourseStructureDetails = ({
                                                                                                                 key={
                                                                                                                     slide.id
                                                                                                                 }
-                                                                                                                className="group flex cursor-pointer items-center gap-1.5 px-2 py-1 text-xs text-neutral-500 rounded hover:bg-gradient-to-r hover:from-amber-50/60 hover:to-orange-50/40 hover:border-amber-200/40 border border-transparent transition-all duration-200"
-                                                                                                                onClick={() => {
+                                                                                                                className={getSlideStyling()}
+                                                                                                                onClick={isSlideClickable() ? () => {
                                                                                                                     handleSlideNavigation(
                                                                                                                         subject.id,
                                                                                                                         mod
@@ -568,7 +584,7 @@ export const CourseStructureDetails = ({
                                                                                                                         ch.id,
                                                                                                                         slide.id
                                                                                                                     );
-                                                                                                                }}
+                                                                                                                } : undefined}
                                                                                                             >
                                                                                                                 <span className="w-5 shrink-0 text-center font-mono text-neutral-400 bg-neutral-100 rounded px-0.5 text-xs">
                                                                                                                     S
@@ -803,8 +819,8 @@ export const CourseStructureDetails = ({
                                                                                                         key={
                                                                                                             slide.id
                                                                                                         }
-                                                                                                        className="group flex cursor-pointer items-center gap-1.5 px-2 py-1 text-xs text-neutral-500 rounded hover:bg-gradient-to-r hover:from-amber-50/60 hover:to-orange-50/40 hover:border-amber-200/40 border border-transparent transition-all duration-200"
-                                                                                                        onClick={() => {
+                                                                                                        className={getSlideStyling()}
+                                                                                                        onClick={isSlideClickable() ? () => {
                                                                                                             handleSlideNavigation(
                                                                                                                 subject.id,
                                                                                                                 mod
@@ -813,7 +829,7 @@ export const CourseStructureDetails = ({
                                                                                                                 ch.id,
                                                                                                                 slide.id
                                                                                                             );
-                                                                                                        }}
+                                                                                                        } : undefined}
                                                                                                     >
                                                                                                         <span className="w-5 shrink-0 text-center font-mono text-neutral-400 bg-neutral-100 rounded px-0.5 text-xs">
                                                                                                             S
@@ -999,8 +1015,8 @@ export const CourseStructureDetails = ({
                                                                                                         key={
                                                                                                             slide.id
                                                                                                         }
-                                                                                                        className="group flex cursor-pointer items-center gap-1.5 px-2 py-1 text-xs text-neutral-500 rounded hover:bg-gradient-to-r hover:from-amber-50/60 hover:to-orange-50/40 hover:border-amber-200/40 border border-transparent transition-all duration-200"
-                                                                                                        onClick={() => {
+                                                                                                        className={getSlideStyling()}
+                                                                                                        onClick={isSlideClickable() ? () => {
                                                                                                             handleSlideNavigation(
                                                                                                                 subject.id,
                                                                                                                 mod
@@ -1009,7 +1025,7 @@ export const CourseStructureDetails = ({
                                                                                                                 ch.id,
                                                                                                                 slide.id
                                                                                                             );
-                                                                                                        }}
+                                                                                                        } : undefined}
                                                                                                     >
                                                                                                         <span className="w-5 shrink-0 text-center font-mono text-neutral-400 bg-neutral-100 rounded px-0.5 text-xs">
                                                                                                             S

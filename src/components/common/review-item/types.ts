@@ -20,6 +20,7 @@ export interface Rating {
 export interface Review {
     id: string;
     user: {
+        id: string; // Add user ID to track ownership
         name: string;
         avatarUrl: string;
     };
@@ -33,6 +34,7 @@ export interface Review {
 export interface ReviewItemProps {
     review: Review;
     avatarUrl?: string;
+    currentUserId?: string | null; // Add current user ID to check ownership
     onLike: (reviewId: string) => void;
     onDislike: (reviewId: string) => void;
     onDelete: (reviewId: string) => void;

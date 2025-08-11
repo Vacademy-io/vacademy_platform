@@ -45,57 +45,68 @@ public class SlideService {
 
     @Transactional
     public String addOrUpdateDocumentSlide(AddDocumentSlideDTO addDocumentSlideDTO,
-                                           String chapterId,
-                                           String moduleId,
-                                           String subjectId,
-                                           String packageSessionId,
-                                           String instituteId) {
+            String chapterId,
+            String moduleId,
+            String subjectId,
+            String packageSessionId,
+            String instituteId) {
         String slideId = addDocumentSlideDTO.getId();
         if (addDocumentSlideDTO.isNewSlide()) {
             return addDocumentSlide(addDocumentSlideDTO, chapterId, instituteId);
-        }else{
+        } else {
             chapterToSlidesRepository.findByChapterIdAndSlideId(chapterId, addDocumentSlideDTO.getId())
                     .map(chapterToSlides -> {
-                        updateChapterToSlides(addDocumentSlideDTO.getSlideOrder(), addDocumentSlideDTO.getStatus(), chapterToSlides);
-                        updateSlide(addDocumentSlideDTO.getDescription(), addDocumentSlideDTO.getTitle(), addDocumentSlideDTO.getImageFileId(), addDocumentSlideDTO.getStatus(), chapterToSlides.getSlide());
+                        updateChapterToSlides(addDocumentSlideDTO.getSlideOrder(), addDocumentSlideDTO.getStatus(),
+                                chapterToSlides);
+                        updateSlide(addDocumentSlideDTO.getDescription(), addDocumentSlideDTO.getTitle(),
+                                addDocumentSlideDTO.getImageFileId(), addDocumentSlideDTO.getStatus(),
+                                chapterToSlides.getSlide());
                         updateDocument(addDocumentSlideDTO.getDocumentSlide(), addDocumentSlideDTO.getStatus());
-                        notifyIfPublished(addDocumentSlideDTO.getStatus(), addDocumentSlideDTO.isNotify(), instituteId, chapterToSlides);
+                        notifyIfPublished(addDocumentSlideDTO.getStatus(), addDocumentSlideDTO.isNotify(), instituteId,
+                                chapterToSlides);
                         return "Slide updated successfully";
                     })
                     .orElseGet(() -> addDocumentSlide(addDocumentSlideDTO, chapterId, instituteId));
         }
-        learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE",slideId,SlideTypeEnum.DOCUMENT.name(),chapterId,moduleId,subjectId,packageSessionId);
+        learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId, SlideTypeEnum.DOCUMENT.name(),
+                chapterId, moduleId, subjectId, packageSessionId);
         return slideId;
     }
 
     @Transactional
     public String addOrUpdateVideoSlide(AddVideoSlideDTO addVideoSlideDTO,
-                                        String chapterId,
-                                        String moduleId,
-                                        String subjectId,
-                                        String packageSessionId,
-                                        String instituteId) {
+            String chapterId,
+            String moduleId,
+            String subjectId,
+            String packageSessionId,
+            String instituteId) {
         String slideId = addVideoSlideDTO.getId();
         if (addVideoSlideDTO.isNewSlide()) {
             return addVideoSlide(addVideoSlideDTO, chapterId, instituteId);
-        }else{
+        } else {
             chapterToSlidesRepository.findByChapterIdAndSlideId(chapterId, addVideoSlideDTO.getId())
                     .map(chapterToSlides -> {
-                        updateChapterToSlides(addVideoSlideDTO.getSlideOrder(), addVideoSlideDTO.getStatus(), chapterToSlides);
-                        updateSlide(addVideoSlideDTO.getDescription(), addVideoSlideDTO.getTitle(), addVideoSlideDTO.getImageFileId(), addVideoSlideDTO.getStatus(), chapterToSlides.getSlide());
+                        updateChapterToSlides(addVideoSlideDTO.getSlideOrder(), addVideoSlideDTO.getStatus(),
+                                chapterToSlides);
+                        updateSlide(addVideoSlideDTO.getDescription(), addVideoSlideDTO.getTitle(),
+                                addVideoSlideDTO.getImageFileId(), addVideoSlideDTO.getStatus(),
+                                chapterToSlides.getSlide());
                         updateVideoSlide(addVideoSlideDTO.getVideoSlide(), addVideoSlideDTO.getStatus());
-                        notifyIfPublished(addVideoSlideDTO.getStatus(), addVideoSlideDTO.isNotify(), instituteId, chapterToSlides);
+                        notifyIfPublished(addVideoSlideDTO.getStatus(), addVideoSlideDTO.isNotify(), instituteId,
+                                chapterToSlides);
                         return "Slide updated successfully";
                     })
                     .orElseGet(() -> addVideoSlide(addVideoSlideDTO, chapterId, instituteId));
         }
-        learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE",slideId,SlideTypeEnum.VIDEO.name(),chapterId,moduleId,subjectId,packageSessionId);
+        learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId, SlideTypeEnum.VIDEO.name(),
+                chapterId, moduleId, subjectId, packageSessionId);
         return slideId;
     }
 
     private void notifyIfPublished(String status, boolean notify, String instituteId, ChapterToSlides chapterToSlides) {
         if (SlideStatus.PUBLISHED.name().equals(status) && notify) {
-            slideNotificationService.sendNotificationForAddingSlide(instituteId, chapterToSlides.getChapter(), chapterToSlides.getSlide());
+            slideNotificationService.sendNotificationForAddingSlide(instituteId, chapterToSlides.getChapter(),
+                    chapterToSlides.getSlide());
         }
     }
 
@@ -122,7 +133,8 @@ public class SlideService {
 
         Optional.ofNullable(documentSlideDTO.getType()).filter(t -> !t.isEmpty()).ifPresent(documentSlide::setType);
         Optional.ofNullable(documentSlideDTO.getTitle()).filter(t -> !t.isEmpty()).ifPresent(documentSlide::setTitle);
-        Optional.ofNullable(documentSlideDTO.getCoverFileId()).filter(c -> !c.isEmpty()).ifPresent(documentSlide::setCoverFileId);
+        Optional.ofNullable(documentSlideDTO.getCoverFileId()).filter(c -> !c.isEmpty())
+                .ifPresent(documentSlide::setCoverFileId);
         if (status.equalsIgnoreCase(SlideStatus.PUBLISHED.name())) {
             handlePublishedDocumentSlide(documentSlide, documentSlideDTO);
         } else if (status.equalsIgnoreCase(SlideStatus.DRAFT.name())) {
@@ -136,31 +148,40 @@ public class SlideService {
     public String addDocumentSlide(AddDocumentSlideDTO addDocumentSlideDTO, String chapterId, String instituteId) {
         Chapter chapter = chapterRepository.findById(chapterId)
                 .orElseThrow(() -> new VacademyException("Chapter not found"));
-        DocumentSlide documentSlide = documentSlideRepository.save(new DocumentSlide(addDocumentSlideDTO.getDocumentSlide(), addDocumentSlideDTO.getStatus()));
-        Slide slide = slideRepository.save(new Slide(addDocumentSlideDTO, documentSlide.getId(), SlideTypeEnum.DOCUMENT.name(), addDocumentSlideDTO.getStatus()));
-        ChapterToSlides chapterToSlides = chapterToSlidesRepository.save(new ChapterToSlides(chapter, slide, addDocumentSlideDTO.getSlideOrder(), addDocumentSlideDTO.getStatus()));
-        notifyIfPublished(addDocumentSlideDTO.getStatus(), addDocumentSlideDTO.isNotify(), instituteId, chapterToSlides);
+        DocumentSlide documentSlide = documentSlideRepository
+                .save(new DocumentSlide(addDocumentSlideDTO.getDocumentSlide(), addDocumentSlideDTO.getStatus()));
+        Slide slide = slideRepository.save(new Slide(addDocumentSlideDTO, documentSlide.getId(),
+                SlideTypeEnum.DOCUMENT.name(), addDocumentSlideDTO.getStatus()));
+        ChapterToSlides chapterToSlides = chapterToSlidesRepository.save(new ChapterToSlides(chapter, slide,
+                addDocumentSlideDTO.getSlideOrder(), addDocumentSlideDTO.getStatus()));
+        notifyIfPublished(addDocumentSlideDTO.getStatus(), addDocumentSlideDTO.isNotify(), instituteId,
+                chapterToSlides);
         return slide.getId();
     }
 
     public String addVideoSlide(AddVideoSlideDTO addVideoSlideDTO, String chapterId, String instituteId) {
         Chapter chapter = chapterRepository.findById(chapterId)
                 .orElseThrow(() -> new VacademyException("Chapter not found"));
-        VideoSlide videoSlide = videoSlideRepository.save(new VideoSlide(addVideoSlideDTO.getVideoSlide(), addVideoSlideDTO.getStatus()));
-        Slide slide = slideRepository.save(new Slide(addVideoSlideDTO, videoSlide.getId(), SlideTypeEnum.VIDEO.name(), addVideoSlideDTO.getStatus()));
-        ChapterToSlides chapterToSlides = chapterToSlidesRepository.save(new ChapterToSlides(chapter, slide, addVideoSlideDTO.getSlideOrder(), addVideoSlideDTO.getStatus()));
+        VideoSlide videoSlide = videoSlideRepository
+                .save(new VideoSlide(addVideoSlideDTO.getVideoSlide(), addVideoSlideDTO.getStatus()));
+        Slide slide = slideRepository.save(new Slide(addVideoSlideDTO, videoSlide.getId(), SlideTypeEnum.VIDEO.name(),
+                addVideoSlideDTO.getStatus()));
+        ChapterToSlides chapterToSlides = chapterToSlidesRepository.save(
+                new ChapterToSlides(chapter, slide, addVideoSlideDTO.getSlideOrder(), addVideoSlideDTO.getStatus()));
         notifyIfPublished(addVideoSlideDTO.getStatus(), addVideoSlideDTO.isNotify(), instituteId, chapterToSlides);
         return slide.getId();
     }
 
     public List<SlideDetailProjection> getSlidesByChapterId(String chapterId, CustomUserDetails user) {
-        return slideRepository.findSlideDetailsByChapterId(chapterId, List.of(SlideStatus.PUBLISHED.name(), SlideStatus.DRAFT.name(), SlideStatus.UNSYNC.name()));
+        return slideRepository.findSlideDetailsByChapterId(chapterId,
+                List.of(SlideStatus.PUBLISHED.name(), SlideStatus.DRAFT.name(), SlideStatus.UNSYNC.name()));
     }
 
     public void updateVideoSlide(VideoSlideDTO videoSlideDTO, String status) {
         VideoSlide videoSlide = videoSlideRepository.findById(videoSlideDTO.getId())
                 .orElseThrow(() -> new VacademyException("Video slide not found"));
-        Optional.ofNullable(videoSlideDTO.getDescription()).filter(d -> !d.trim().isEmpty()).ifPresent(videoSlide::setDescription);
+        Optional.ofNullable(videoSlideDTO.getDescription()).filter(d -> !d.trim().isEmpty())
+                .ifPresent(videoSlide::setDescription);
         Optional.ofNullable(videoSlideDTO.getTitle()).filter(t -> !t.trim().isEmpty()).ifPresent(videoSlide::setTitle);
         if (StringUtils.hasText(videoSlideDTO.getUrl())) {
             videoSlide.setUrl(videoSlideDTO.getUrl());
@@ -198,7 +219,8 @@ public class SlideService {
     }
 
     @Transactional
-    public String updateSlideOrder(List<UpdateSlideOrderDTO> updateSlideOrderDTOs, String chapterId, CustomUserDetails user) {
+    public String updateSlideOrder(List<UpdateSlideOrderDTO> updateSlideOrderDTOs, String chapterId,
+            CustomUserDetails user) {
         List<String> slideIds = extractDistinctSlideIds(updateSlideOrderDTOs);
         List<ChapterToSlides> chapterToSlides = fetchMappings(chapterId, slideIds);
         Map<String, UpdateSlideOrderDTO> updateMap = mapUpdates(updateSlideOrderDTOs);
@@ -230,15 +252,15 @@ public class SlideService {
 
     @Transactional
     public String copySlide(String slideId,
-                            String oldChapterId,
-                            String oldModuleId,
-                            String oldSubjectId,
-                            String oldPackageSessionId,
-                            String newChapterId,
-                            String newModuleId,
-                            String newSubjectId,
-                            String newPackageSessionId,
-                            CustomUserDetails user) {
+            String oldChapterId,
+            String oldModuleId,
+            String oldSubjectId,
+            String oldPackageSessionId,
+            String newChapterId,
+            String newModuleId,
+            String newSubjectId,
+            String newPackageSessionId,
+            CustomUserDetails user) {
         Slide slide = getSlideById(slideId);
         Chapter chapter = getChapterById(newChapterId);
 
@@ -251,40 +273,49 @@ public class SlideService {
 
         chapterToSlidesRepository.save(new ChapterToSlides(chapter, newSlide, null, SlideStatus.DRAFT.name()));
         if (slide.getSourceType().equalsIgnoreCase(SlideTypeEnum.DOCUMENT.name())) {
-            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE",slideId,SlideTypeEnum.DOCUMENT.name(), oldChapterId,oldModuleId,oldSubjectId,oldPackageSessionId);
-            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE",slideId,SlideTypeEnum.DOCUMENT.name(),newChapterId,newModuleId,newSubjectId,newPackageSessionId);
-        }else if (slide.getSourceType().equalsIgnoreCase(SlideTypeEnum.VIDEO.name())) {
-            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE",slideId,SlideTypeEnum.VIDEO.name(),oldChapterId,oldModuleId,oldSubjectId,oldPackageSessionId);
-            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE",slideId,SlideTypeEnum.VIDEO.name(),newChapterId,newModuleId,newSubjectId,newPackageSessionId);
+            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId, SlideTypeEnum.DOCUMENT.name(),
+                    oldChapterId, oldModuleId, oldSubjectId, oldPackageSessionId);
+            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId, SlideTypeEnum.DOCUMENT.name(),
+                    newChapterId, newModuleId, newSubjectId, newPackageSessionId);
+        } else if (slide.getSourceType().equalsIgnoreCase(SlideTypeEnum.VIDEO.name())) {
+            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId, SlideTypeEnum.VIDEO.name(),
+                    oldChapterId, oldModuleId, oldSubjectId, oldPackageSessionId);
+            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId, SlideTypeEnum.VIDEO.name(),
+                    newChapterId, newModuleId, newSubjectId, newPackageSessionId);
         }
         return "Slide copied successfully.";
     }
 
     @Transactional
     public String moveSlide(String slideId,
-                            String oldChapterId,
-                            String oldModuleId,
-                            String oldSubjectId,
-                            String oldPackageSessionId,
-                            String newChapterId,
-                            String newModuleId,
-                            String newSubjectId,
-                            String newPackageSessionId,
-                            CustomUserDetails user) {
+            String oldChapterId,
+            String oldModuleId,
+            String oldSubjectId,
+            String oldPackageSessionId,
+            String newChapterId,
+            String newModuleId,
+            String newSubjectId,
+            String newPackageSessionId,
+            CustomUserDetails user) {
         ChapterToSlides existingMapping = getChapterToSlides(oldChapterId, slideId);
         Chapter newChapter = getChapterById(newChapterId);
 
-        ChapterToSlides newMapping = new ChapterToSlides(newChapter, existingMapping.getSlide(), null, existingMapping.getStatus());
+        ChapterToSlides newMapping = new ChapterToSlides(newChapter, existingMapping.getSlide(), null,
+                existingMapping.getStatus());
         chapterToSlidesRepository.save(newMapping);
 
         deleteMapping(slideId, oldChapterId);
         Slide slide = existingMapping.getSlide();
         if (slide.getSourceType().equalsIgnoreCase(SlideTypeEnum.DOCUMENT.name())) {
-            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE",slideId,SlideTypeEnum.DOCUMENT.name(), oldChapterId,oldModuleId,oldSubjectId,oldPackageSessionId);
-            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE",slideId,SlideTypeEnum.DOCUMENT.name(),newChapterId,newModuleId,newSubjectId,newPackageSessionId);
-        }else if (slide.getSourceType().equalsIgnoreCase(SlideTypeEnum.VIDEO.name())) {
-            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE",slideId,SlideTypeEnum.VIDEO.name(),oldChapterId,oldModuleId,oldSubjectId,oldPackageSessionId);
-            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE",slideId,SlideTypeEnum.VIDEO.name(),newChapterId,newModuleId,newSubjectId,newPackageSessionId);
+            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId, SlideTypeEnum.DOCUMENT.name(),
+                    oldChapterId, oldModuleId, oldSubjectId, oldPackageSessionId);
+            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId, SlideTypeEnum.DOCUMENT.name(),
+                    newChapterId, newModuleId, newSubjectId, newPackageSessionId);
+        } else if (slide.getSourceType().equalsIgnoreCase(SlideTypeEnum.VIDEO.name())) {
+            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId, SlideTypeEnum.VIDEO.name(),
+                    oldChapterId, oldModuleId, oldSubjectId, oldPackageSessionId);
+            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId, SlideTypeEnum.VIDEO.name(),
+                    newChapterId, newModuleId, newSubjectId, newPackageSessionId);
         }
         return "Slide moved successfully.";
     }
@@ -359,7 +390,8 @@ public class SlideService {
     }
 
     public void handlePublishedDocumentSlide(DocumentSlide documentSlide, DocumentSlideDTO documentSlideDTO) {
-        if (documentSlideDTO != null && documentSlideDTO.getPublishedData() != null && documentSlideDTO.getPublishedData().trim().length() > 0) {
+        if (documentSlideDTO != null && documentSlideDTO.getPublishedData() != null
+                && documentSlideDTO.getPublishedData().trim().length() > 0) {
             documentSlide.setPublishedData(documentSlideDTO.getPublishedData());
             documentSlide.setPublishedDocumentTotalPages(documentSlideDTO.getPublishedDocumentTotalPages());
         } else {
@@ -388,7 +420,7 @@ public class SlideService {
         if (documentSlideDTO.getTotalPages() != null) {
             documentSlide.setTotalPages(documentSlideDTO.getTotalPages());
         }
-        if(documentSlideDTO.getPublishedData() != null && !documentSlideDTO.getPublishedData().isEmpty()) {
+        if (documentSlideDTO.getPublishedData() != null && !documentSlideDTO.getPublishedData().isEmpty()) {
             documentSlide.setPublishedData(documentSlideDTO.getPublishedData());
         }
         if (documentSlideDTO.getPublishedDocumentTotalPages() != null) {
@@ -397,7 +429,8 @@ public class SlideService {
     }
 
     public void handlePublishedVideoSlide(VideoSlide videoSlide, VideoSlideDTO videoSlideDTO) {
-        if (videoSlide != null && videoSlideDTO.getPublishedUrl() != null && videoSlideDTO.getPublishedUrl().trim().length() > 0) {
+        if (videoSlide != null && videoSlideDTO.getPublishedUrl() != null
+                && videoSlideDTO.getPublishedUrl().trim().length() > 0) {
             videoSlide.setPublishedUrl(videoSlideDTO.getPublishedUrl());
             videoSlide.setPublishedVideoLengthInMillis(videoSlide.getPublishedVideoLengthInMillis());
         } else {
@@ -433,7 +466,8 @@ public class SlideService {
         List<Slide> newSlides = new ArrayList<>();
         List<ChapterToSlides> newChapterToSlides = new ArrayList<>();
 
-        // First, create new Slide instances and persist them before using them in ChapterToSlides
+        // First, create new Slide instances and persist them before using them in
+        // ChapterToSlides
         for (ChapterToSlides chapterToSlide : chapterToSlides) {
             Slide slide = chapterToSlide.getSlide();
             Slide newSlide = new Slide();
@@ -466,7 +500,7 @@ public class SlideService {
                     newDocumentSlide.setCoverFileId(documentSlide.getCoverFileId());
                     newDocumentSlide.setPublishedDocumentTotalPages(documentSlide.getPublishedDocumentTotalPages());
                     newDocumentSlide.setId(UUID.randomUUID().toString());
-                    newDocumentSlide = documentSlideRepository.save(newDocumentSlide);  // Save first
+                    newDocumentSlide = documentSlideRepository.save(newDocumentSlide); // Save first
                     newSlide.setSourceId(newDocumentSlide.getId()); // Now set reference
                 }
             } else {
@@ -484,14 +518,16 @@ public class SlideService {
             }
 
             // Ensure the Slide object is fully persisted before creating ChapterToSlides
-            newChapterToSlides.add(new ChapterToSlides(newChapter, newSlide, chapterToSlides.get(i).getSlideOrder(), chapterToSlides.get(i).getStatus()));
+            newChapterToSlides.add(new ChapterToSlides(newChapter, newSlide, chapterToSlides.get(i).getSlideOrder(),
+                    chapterToSlides.get(i).getStatus()));
         }
 
         // Now save ChapterToSlides
         chapterToSlidesRepository.saveAll(newChapterToSlides);
     }
 
-    public Slide saveSlide(String slideId, String sourceId, String sourceType, String status, String title, String description, String imageFileId, Integer slideOrder, String chapterId) {
+    public Slide saveSlide(String slideId, String sourceId, String sourceType, String status, String title,
+            String description, String imageFileId, Integer slideOrder, String chapterId) {
         Slide slide = new Slide();
         slide.setId(slideId);
         slide.setSourceId(sourceId);
@@ -509,12 +545,15 @@ public class SlideService {
     }
 
     public void saveChapterSlideMapping(String chapterId, Slide slide, Integer slideOrder, String status) {
-        Chapter chapter = chapterRepository.findById(chapterId).orElseThrow(() -> new VacademyException("Chapter not found"));
-        ChapterToSlides chapterToSlides = chapterToSlidesRepository.save(new ChapterToSlides(chapter, slide, slideOrder, status));
+        Chapter chapter = chapterRepository.findById(chapterId)
+                .orElseThrow(() -> new VacademyException("Chapter not found"));
+        ChapterToSlides chapterToSlides = chapterToSlidesRepository
+                .save(new ChapterToSlides(chapter, slide, slideOrder, status));
     }
 
     public void updateChapterToSlideMapping(String chapterId, String slideId, Integer slideOrder, String status) {
-        ChapterToSlides chapterToSlides = chapterToSlidesRepository.findByChapterIdAndSlideId(chapterId, slideId).orElseThrow(() -> new VacademyException("Chapter to slide mapping not found!!!"));
+        ChapterToSlides chapterToSlides = chapterToSlidesRepository.findByChapterIdAndSlideId(chapterId, slideId)
+                .orElseThrow(() -> new VacademyException("Chapter to slide mapping not found!!!"));
         if (slideOrder != null) {
             chapterToSlides.setSlideOrder(slideOrder);
         }
@@ -524,8 +563,8 @@ public class SlideService {
         chapterToSlidesRepository.save(chapterToSlides);
     }
 
-
-    public Slide updateSlide(String slideId, String status, String title, String description, String imageFileId, Integer slideOrder, String chapterId,String packageSessionId,String moduleId,String subjectId) {
+    public Slide updateSlide(String slideId, String status, String title, String description, String imageFileId,
+            Integer slideOrder, String chapterId, String packageSessionId, String moduleId, String subjectId) {
 
         Slide slide = slideRepository.findById(slideId).orElseThrow(() -> new VacademyException("Slide not found!!!"));
 
@@ -549,7 +588,8 @@ public class SlideService {
         }
         slide = slideRepository.save(slide);
         updateChapterToSlideMapping(chapterId, slide.getId(), slideOrder, status);
-        learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE",slide.getId(),slide.getSourceType(),chapterId,moduleId,subjectId,packageSessionId);
+        learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slide.getId(), slide.getSourceType(),
+                chapterId, moduleId, subjectId, packageSessionId);
         return slide;
     }
 
@@ -571,15 +611,15 @@ public class SlideService {
             return List.of();
         }
         try {
-            return objectMapper.readValue(jsonSlides, new TypeReference<List<SlideDTO>>() {});
+            return objectMapper.readValue(jsonSlides, new TypeReference<List<SlideDTO>>() {
+            });
         } catch (Exception e) {
             throw new VacademyException("Unable to map to SlideDTO list: " + e.getMessage());
         }
     }
 
     public List<SlideTypeReadTimeProjection> getSlideCountsBySourceType(
-            String sessionId
-    ) {
+            String sessionId) {
         return slideRepository.getSlideReadTimeSummaryBySourceType(
                 sessionId,
                 ValidStatusListConstants.ACTIVE_SUBJECTS,
@@ -588,15 +628,11 @@ public class SlideService {
                 ValidStatusListConstants.VALID_SLIDE_STATUSES,
                 ValidStatusListConstants.ACTIVE_CHAPTERS,
                 ValidStatusListConstants.VALID_QUESTION_STATUSES,
-                ValidStatusListConstants.VALID_QUESTION_STATUSES
-        );
+                ValidStatusListConstants.VALID_QUESTION_STATUSES);
     }
 
-
-
     public List<SlideTypeReadTimeProjection> getSlideCountsBySourceTypeForLearner(
-            String sessionId
-    ) {
+            String sessionId) {
         return slideRepository.getSlideReadTimeSummaryBySourceTypeForLearner(
                 sessionId,
                 ValidStatusListConstants.ACTIVE_SUBJECTS,
@@ -605,7 +641,6 @@ public class SlideService {
                 ValidStatusListConstants.VALID_LEARNER_STATUSES,
                 ValidStatusListConstants.ACTIVE_CHAPTERS,
                 ValidStatusListConstants.VALID_SLIDE_STATUSES_FOR_LEARNER,
-                ValidStatusListConstants.VALID_QUESTION_STATUSES
-        );
+                ValidStatusListConstants.VALID_QUESTION_STATUSES);
     }
 }

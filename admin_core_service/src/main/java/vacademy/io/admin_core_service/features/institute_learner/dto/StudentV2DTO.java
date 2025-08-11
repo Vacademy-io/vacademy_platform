@@ -3,6 +3,8 @@ package vacademy.io.admin_core_service.features.institute_learner.dto;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.Data;
+import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentPlanDTO;
+import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentOptionDTO;
 
 import java.util.Date;
 import java.util.Map;
@@ -43,6 +45,11 @@ public class StudentV2DTO {
     private String instituteId;
     private String groupId;
     private String status;
+
+    // New fields for payment information
+    private PaymentPlanDTO paymentPlan;
+    private PaymentOptionDTO paymentOption;
+    private String destinationPackageSessionId;
 
     // Custom fields as Map<customFieldId, value>
     private Map<String, String> customFields;

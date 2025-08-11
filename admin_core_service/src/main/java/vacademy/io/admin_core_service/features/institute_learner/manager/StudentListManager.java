@@ -13,16 +13,19 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
+import vacademy.io.admin_core_service.features.common.util.JsonUtil;
 import vacademy.io.admin_core_service.features.institute_learner.constants.StudentConstants;
 import vacademy.io.admin_core_service.features.institute_learner.dto.StudentBasicDetailsDTO;
 import vacademy.io.admin_core_service.features.institute_learner.dto.StudentDTO;
 import vacademy.io.admin_core_service.features.institute_learner.dto.StudentV2DTO;
 import vacademy.io.admin_core_service.features.common.dto.CustomFieldValueMap;
+import vacademy.io.admin_core_service.features.institute_learner.dto.projection.StudentListV2Projection;
+import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentPlanDTO;
+import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentOptionDTO;
 import vacademy.io.admin_core_service.features.institute_learner.dto.student_list_dto.AllStudentResponse;
 import vacademy.io.admin_core_service.features.institute_learner.dto.student_list_dto.AllStudentV2Response;
 import vacademy.io.admin_core_service.features.institute_learner.dto.student_list_dto.StudentListFilter;
 import vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository;
-import vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository.StudentListV2Projection;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
 import vacademy.io.admin_core_service.features.institute_learner.service.StudentFilterService;
 import vacademy.io.common.auth.dto.UserCredentials;
@@ -34,6 +37,8 @@ import vacademy.io.common.exceptions.VacademyException;
 
 import java.sql.Timestamp;
 import java.util.*;
+import java.util.stream.Collectors;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 
 @Component
@@ -97,125 +102,168 @@ public class StudentListManager {
     public ResponseEntity<AllStudentV2Response> getLinkedStudentsV2(CustomUserDetails user,
             StudentListFilter studentListFilter, int pageNo, int pageSize) {
 
-        Sort thisSort = ListService.createSortObject(studentListFilter.getSortColumns());
-        Pageable pageable = PageRequest.of(pageNo, pageSize, thisSort);
+        Pageable pageable = createPageable(studentListFilter, pageNo, pageSize);
+        Page<StudentListV2Projection> page = fetchStudentPage(studentListFilter, pageable);
+        List<StudentV2DTO> content = page != null ? mapProjectionsToDTOs(page.getContent()) : new ArrayList<>();
 
-        Page<StudentListV2Projection> page = null;
+        if (!content.isEmpty()) {
+            enrichWithUserCredentials(content);
+        }
 
-        if (StringUtils.hasText(studentListFilter.getName())) {
-            page = instituteStudentRepository.getAllStudentV2WithSearchRaw(
-                    studentListFilter.getName(),
-                    studentListFilter.getInstituteIds(),
-                    studentListFilter.getStatuses(),
-                    studentListFilter.getPaymentStatuses(),
+        return ResponseEntity.ok(buildResponse(content, page, pageSize));
+    }
+
+    private Pageable createPageable(StudentListFilter filter, int pageNo, int pageSize) {
+        Sort sort = ListService.createSortObject(filter.getSortColumns());
+        return PageRequest.of(pageNo, pageSize, sort);
+    }
+
+    private Page<StudentListV2Projection> fetchStudentPage(StudentListFilter filter, Pageable pageable) {
+        if (StringUtils.hasText(filter.getName())) {
+            return instituteStudentRepository.getAllStudentV2WithSearchRaw(
+                    filter.getName(),
+                    filter.getInstituteIds(),
+                    filter.getStatuses(),
+                    filter.getDestinationPackageSessionIds(),
+                    filter.getPaymentStatuses(),
                     List.of(StatusEnum.ACTIVE.name()),
                     pageable);
         }
 
-        if (Objects.isNull(page) && !studentListFilter.getInstituteIds().isEmpty()) {
-            page = instituteStudentRepository.getAllStudentV2WithFilterRaw(
-                    studentListFilter.getStatuses(),
-                    studentListFilter.getGender(),
-                    studentListFilter.getInstituteIds(),
-                    studentListFilter.getGroupIds(),
-                    studentListFilter.getPackageSessionIds(),
-                    studentListFilter.getPaymentStatuses(),
+        if (!filter.getInstituteIds().isEmpty()) {
+            return instituteStudentRepository.getAllStudentV2WithFilterRaw(
+                    filter.getStatuses(),
+                    filter.getGender(),
+                    filter.getInstituteIds(),
+                    filter.getGroupIds(),
+                    filter.getPackageSessionIds(),
+                    filter.getDestinationPackageSessionIds(),
+                    filter.getPaymentStatuses(),
                     List.of(StatusEnum.ACTIVE.name()),
                     pageable);
         }
 
-        List<StudentV2DTO> content = new ArrayList<>();
-        if (page != null) {
-            for (StudentListV2Projection p : page.getContent()) {
-                StudentV2DTO dto = new StudentV2DTO();
-                dto.setId(p.getId());
-                dto.setUserId(p.getUserId());
-                dto.setUsername(p.getUsername());
-                dto.setEmail(p.getEmail());
-                dto.setFullName(p.getFullName());
-                dto.setAddressLine(p.getAddressLine());
-                dto.setRegion(p.getRegion());
-                dto.setCity(p.getCity());
-                dto.setPinCode(p.getPinCode());
-                dto.setMobileNumber(p.getPhone());
+        return null;
+    }
 
-                dto.setDateOfBirth(parseTimestamp(p.getDateOfBirth()));
-                dto.setGender(p.getGender());
-                dto.setFathersName(p.getFathersName());
-                dto.setMothersName(p.getMothersName());
-                dto.setParentsMobileNumber(p.getParentsMobileNumber());
-                dto.setParentsEmail(p.getParentsEmail());
-                dto.setLinkedInstituteName(p.getLinkedInstituteName());
-                dto.setCreatedAt(parseTimestamp(p.getCreatedAt()));
-                dto.setUpdatedAt(parseTimestamp(p.getUpdatedAt()));
-                dto.setFaceFileId(p.getFaceFileId());
-                dto.setExpiryDate(parseTimestamp(p.getExpiryDate()));
-                dto.setParentsToMotherMobileNumber(p.getParentsToMotherMobileNumber());
-                dto.setParentsToMotherEmail(p.getParentsToMotherEmail());
+    private List<StudentV2DTO> mapProjectionsToDTOs(List<StudentListV2Projection> projections) {
+        List<StudentV2DTO> dtos = new ArrayList<>();
+        ObjectMapper mapper = new ObjectMapper();
 
-                dto.setPaymentStatus(p.getPaymentStatus());
-                dto.setPackageSessionId(p.getPackageSessionId());
-                dto.setAccessDays(p.getAccessDays());
-                dto.setInstituteEnrollmentNumber(p.getInstituteEnrollmentNumber());
-                dto.setInstituteId(p.getInstituteId());
-                dto.setGroupId(p.getGroupId());
-                dto.setStatus(p.getStatus());
+        for (StudentListV2Projection p : projections) {
+            StudentV2DTO dto = new StudentV2DTO();
 
-                try {
-                    if (p.getCustomFieldsJson() != null && !p.getCustomFieldsJson().equals("[]")) {
-                        List<CustomFieldValueMap> customFieldsList = new ObjectMapper().readValue(
-                                p.getCustomFieldsJson(),
-                                new TypeReference<List<CustomFieldValueMap>>() {
-                                });
-                        Map<String, String> customFieldsMap = new HashMap<>();
-                        for (CustomFieldValueMap cf : customFieldsList) {
-                            customFieldsMap.put(cf.getCustomFieldId(), cf.getValue());
-                        }
-                        dto.setCustomFields(customFieldsMap);
-                    } else {
-                        dto.setCustomFields(new HashMap<>());
-                    }
-                } catch (JsonProcessingException e) {
-                    dto.setCustomFields(new HashMap<>());
-                }
+            dto.setId(p.getId());
+            dto.setUserId(p.getUserId());
+            dto.setUsername(p.getUsername());
+            dto.setEmail(p.getEmail());
+            dto.setFullName(p.getFullName());
+            dto.setAddressLine(p.getAddressLine());
+            dto.setRegion(p.getRegion());
+            dto.setCity(p.getCity());
+            dto.setPinCode(p.getPinCode());
+            dto.setMobileNumber(p.getPhone());
 
-                content.add(dto);
+            dto.setDateOfBirth(parseTimestamp(p.getDateOfBirth()));
+            dto.setGender(p.getGender());
+            dto.setFathersName(p.getFathersName());
+            dto.setMothersName(p.getMothersName());
+            dto.setParentsMobileNumber(p.getParentsMobileNumber());
+            dto.setParentsEmail(p.getParentsEmail());
+            dto.setLinkedInstituteName(p.getLinkedInstituteName());
+            dto.setCreatedAt(parseTimestamp(p.getCreatedAt()));
+            dto.setUpdatedAt(parseTimestamp(p.getUpdatedAt()));
+            dto.setFaceFileId(p.getFaceFileId());
+            dto.setExpiryDate(parseTimestamp(p.getExpiryDate()));
+            dto.setParentsToMotherMobileNumber(p.getParentsToMotherMobileNumber());
+            dto.setParentsToMotherEmail(p.getParentsToMotherEmail());
+
+            dto.setPaymentStatus(p.getPaymentStatus());
+            dto.setPackageSessionId(p.getPackageSessionId());
+            dto.setAccessDays(p.getAccessDays());
+            dto.setInstituteEnrollmentNumber(p.getInstituteEnrollmentNumber());
+            dto.setInstituteId(p.getInstituteId());
+            dto.setGroupId(p.getGroupId());
+            dto.setStatus(p.getStatus());
+
+            dto.setDestinationPackageSessionId(p.getDestinationPackageSessionId());
+
+            dto.setPaymentPlan(JsonUtil.fromJson(p.getPaymentPlanJson(), PaymentPlanDTO.class));
+            dto.setPaymentOption(JsonUtil.fromJson(p.getPaymentOptionJson(), PaymentOptionDTO.class));
+            dto.setCustomFields(parseCustomFields(mapper, p.getCustomFieldsJson()));
+
+            dtos.add(dto);
+        }
+
+        return dtos;
+    }
+
+    private <T> T parseJsonSafe(ObjectMapper mapper, String json, Class<T> clazz) {
+        if (json == null || json.trim().isEmpty())
+            return null;
+        try {
+            return mapper.readValue(json, clazz);
+        } catch (JsonProcessingException e) {
+            // Log error if needed
+            return null;
+        }
+    }
+
+    private Map<String, String> parseCustomFields(ObjectMapper mapper, String json) {
+        if (json == null || json.equals("[]"))
+            return new HashMap<>();
+        try {
+            List<CustomFieldValueMap> list = mapper.readValue(json, new TypeReference<List<CustomFieldValueMap>>() {
+            });
+            Map<String, String> map = new HashMap<>();
+            for (CustomFieldValueMap cf : list) {
+                map.put(cf.getCustomFieldId(), cf.getValue());
             }
+            return map;
+        } catch (JsonProcessingException e) {
+            return new HashMap<>();
+        }
+    }
 
-            List<String> userIds = content.stream()
-                    .map(StudentV2DTO::getUserId)
-                    .filter(Objects::nonNull)
-                    .toList();
-            List<UserCredentials> creds = getUsersCredentialFromAuthService(userIds);
-            Map<String, UserCredentials> map = new HashMap<>();
-            for (UserCredentials c : creds) {
-                map.put(c.getUserId(), c);
-            }
-            for (StudentV2DTO dto : content) {
-                UserCredentials c = map.get(dto.getUserId());
-                if (c != null)
-                    dto.setPassword(c.getPassword());
-            }
+    private void enrichWithUserCredentials(List<StudentV2DTO> dtos) {
+        List<String> userIds = dtos.stream()
+                .map(StudentV2DTO::getUserId)
+                .filter(Objects::nonNull)
+                .toList();
 
-            AllStudentV2Response resp = AllStudentV2Response.builder()
+        List<UserCredentials> creds = getUsersCredentialFromAuthService(userIds);
+        Map<String, UserCredentials> credsMap = creds.stream()
+                .collect(Collectors.toMap(UserCredentials::getUserId, c -> c));
+
+        for (StudentV2DTO dto : dtos) {
+            UserCredentials c = credsMap.get(dto.getUserId());
+            if (c != null) {
+                dto.setPassword(c.getPassword());
+            }
+        }
+    }
+
+    private AllStudentV2Response buildResponse(List<StudentV2DTO> content, Page<StudentListV2Projection> page,
+            int pageSize) {
+        if (page == null) {
+            return AllStudentV2Response.builder()
                     .content(content)
-                    .pageNo(page.getNumber())
-                    .pageSize(page.getSize())
-                    .totalElements(page.getTotalElements())
-                    .totalPages(page.getTotalPages())
-                    .last(page.isLast())
+                    .pageNo(0)
+                    .pageSize(pageSize)
+                    .totalElements(0)
+                    .totalPages(0)
+                    .last(true)
                     .build();
-            return ResponseEntity.ok(resp);
         }
 
-        return ResponseEntity.ok(AllStudentV2Response.builder()
+        return AllStudentV2Response.builder()
                 .content(content)
-                .pageNo(0)
-                .pageSize(pageSize)
-                .totalElements(0)
-                .totalPages(0)
-                .last(true)
-                .build());
+                .pageNo(page.getNumber())
+                .pageSize(page.getSize())
+                .totalElements(page.getTotalElements())
+                .totalPages(page.getTotalPages())
+                .last(page.isLast())
+                .build();
     }
 
     private Date parseTimestamp(String ts) {

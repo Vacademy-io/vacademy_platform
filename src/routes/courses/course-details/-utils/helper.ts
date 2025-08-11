@@ -232,34 +232,39 @@ export function getSubjectDetails(
 export function getIdByLevelAndSession(
     data: BatchForSessionType[],
     sessionId: string,
-    levelId: string
+    levelId: string,
+    courseId: string
 ) {
     const match = data?.find(
-        (item) => item.level?.id === levelId && item.session?.id === sessionId
+        (item) =>
+            item.level?.id === levelId &&
+            item.session?.id === sessionId &&
+            item.package_dto?.id === courseId
     );
 
+    console.log("match", match);
     return match?.id || "";
 }
 
 export function getYouTubeVideoId(url: string): string | null {
     if (!url) return null;
-    
+
     const patterns = [
         /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/,
         /youtube\.com\/watch\?.*v=([^&\n?#]+)/,
     ];
-    
+
     for (const pattern of patterns) {
         const match = url.match(pattern);
         if (match) return match[1];
     }
-    
+
     return null;
 }
 
 export function convertToYouTubeEmbedUrl(url: string): string {
     const videoId = getYouTubeVideoId(url);
     if (!videoId) return url;
-    
+
     return `https://www.youtube.com/embed/${videoId}`;
 }

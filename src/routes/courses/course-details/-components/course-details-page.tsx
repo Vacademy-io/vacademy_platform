@@ -561,7 +561,7 @@ export const CourseDetailsPage = () => {
                     courseId={searchParams.courseId || ""}
                 />
                 {/* Top Banner */}
-                <div className="relative h-[300px]">
+                <div className="relative min-h-[200px] sm:min-h-[250px] md:min-h-[300px]">
                     {/* Transparent black overlay */}
                     {form.watch("courseData").courseBannerMediaId ? (
                         <div className="pointer-events-none absolute inset-0 z-10 bg-black/50" />
@@ -589,31 +589,31 @@ export const CourseDetailsPage = () => {
                     )}
                     {/* Primary color overlay with 70% opacity */}
                     <div
-                        className={`container relative z-20 mx-auto px-4 py-12 ${
+                        className={`relative z-20 px-8 py-6 sm:py-8 md:py-12 ${
                             !form.watch("courseData").courseBannerMediaId
                                 ? "text-black"
                                 : "text-white"
                         }`}
                     >
-                        <div className="flex items-start justify-between gap-8">
+                        <div className="flex flex-col lg:flex-row items-start justify-between gap-4 lg:gap-8">
                             {/* Left side - Title and Description */}
-                            <div className="max-w-2xl">
+                            <div className="w-full lg:max-w-2xl">
                                 {!form.watch("courseData").title ? (
                                     <div className="space-y-4">
-                                        <div className="h-8 w-32 animate-pulse rounded bg-white/20" />
-                                        <div className="h-12 w-3/4 animate-pulse rounded bg-white/20" />
-                                        <div className="h-4 w-full animate-pulse rounded bg-white/20" />
-                                        <div className="h-4 w-2/3 animate-pulse rounded bg-white/20" />
+                                        <div className="h-6 sm:h-8 w-24 sm:w-32 animate-pulse rounded bg-white/20" />
+                                        <div className="h-8 sm:h-12 w-full sm:w-3/4 animate-pulse rounded bg-white/20" />
+                                        <div className="h-3 sm:h-4 w-full animate-pulse rounded bg-white/20" />
+                                        <div className="h-3 sm:h-4 w-2/3 animate-pulse rounded bg-white/20" />
                                     </div>
                                 ) : (
                                     <>
-                                        <div className="mb-4 flex gap-2">
+                                        <div className="mb-3 sm:mb-4 flex flex-wrap gap-2">
                                             {form
                                                 .getValues("courseData")
                                                 .tags.map((tag, index) => (
                                                     <span
                                                         key={index}
-                                                        className={`rounded-full px-3 py-1 text-sm ${
+                                                        className={`rounded-full px-2 sm:px-3 py-1 text-xs sm:text-sm ${
                                                             !form.watch(
                                                                 "courseData"
                                                             )
@@ -626,11 +626,11 @@ export const CourseDetailsPage = () => {
                                                     </span>
                                                 ))}
                                         </div>
-                                        <h1 className="mb-4 text-4xl font-bold">
+                                        <h1 className="mb-3 sm:mb-4 text-2xl sm:text-3xl md:text-4xl font-bold leading-tight">
                                             {form.getValues("courseData").title}
                                         </h1>
                                         <p
-                                            className="text-lg opacity-90"
+                                            className="text-base sm:text-lg opacity-90 leading-relaxed"
                                             dangerouslySetInnerHTML={{
                                                 __html:
                                                     form.getValues("courseData")
@@ -643,34 +643,52 @@ export const CourseDetailsPage = () => {
 
                             {/* Right side - Video Player */}
                             {form.watch("courseData").courseMediaId && (
-                                <VideoPlayer
-                                    src={form.watch("courseData").courseMediaId}
-                                    className="!w-[370px]"
-                                />
+                                <div className="hidden lg:block w-full lg:w-auto mt-4 lg:mt-0">
+                                    <VideoPlayer
+                                        src={
+                                            form.watch("courseData")
+                                                .courseMediaId
+                                        }
+                                        className="!w-full sm:!w-[320px] md:!w-[370px] lg:!w-[370px]"
+                                    />
+                                </div>
                             )}
                         </div>
                     </div>
                 </div>
                 {/* Main Content */}
-                <div className="container mx-auto px-4 py-8">
-                    <div className="flex gap-8">
-                        {/* Left Column - 2/3 width */}
-                        <div className="w-2/3 grow">
+                <div className="px-12 py-6 sm:py-8">
+                    <div className="flex flex-col lg:flex-row gap-6 lg:gap-8">
+                        {/* Left Column - Full width on mobile, 2/3 on larger screens */}
+                        <div className="w-full lg:w-2/3 lg:grow">
                             {/* Session and Level Selectors */}
-                            <div className="container mx-auto px-0 pb-6">
-                                <div className="flex items-center gap-6">
+                            <div className=" px-0 pb-4 sm:pb-6">
+                                {/* Video Player for smaller screens - positioned above levels */}
+                                {form.watch("courseData").courseMediaId && (
+                                    <div className="mb-6 lg:hidden flex items-start">
+                                        <VideoPlayer
+                                            src={
+                                                form.watch("courseData")
+                                                    .courseMediaId
+                                            }
+                                            className="!w-full max-w-sm"
+                                        />
+                                    </div>
+                                )}
+
+                                <div className="flex flex-col sm:flex-row items-start gap-4 sm:gap-6">
                                     {/* Session Dropdown Logic */}
                                     {sessionOptions.length === 1 &&
                                     sessionOptions[0].label ===
                                         "default" ? null : sessionOptions.length ===
                                       1 ? (
-                                        <div className="flex flex-col gap-2">
+                                        <div className="flex flex-col gap-2 w-full sm:w-auto">
                                             <label className="text-sm font-medium">
                                                 {sessionOptions[0]?.label}
                                             </label>
                                         </div>
                                     ) : sessionOptions.length > 1 ? (
-                                        <div className="flex flex-col gap-2">
+                                        <div className="flex flex-col gap-2 w-full sm:w-auto">
                                             <label className="text-sm font-medium">
                                                 Session
                                             </label>
@@ -680,7 +698,7 @@ export const CourseDetailsPage = () => {
                                                     handleSessionChange
                                                 }
                                             >
-                                                <SelectTrigger className="w-48">
+                                                <SelectTrigger className="w-full sm:w-48">
                                                     <SelectValue placeholder="Select Session" />
                                                 </SelectTrigger>
                                                 <SelectContent>
@@ -706,13 +724,13 @@ export const CourseDetailsPage = () => {
                                     levelOptions[0].label ===
                                         "default" ? null : levelOptions.length ===
                                       1 ? (
-                                        <div className="flex flex-col gap-2">
+                                        <div className="flex flex-col gap-2 w-full sm:w-auto">
                                             <label className="text-sm font-medium">
                                                 {/* {levelOptions[0]?.label} */}
                                             </label>
                                         </div>
                                     ) : levelOptions.length > 1 ? (
-                                        <div className="flex flex-col gap-2">
+                                        <div className="flex flex-col gap-2 w-full sm:w-auto">
                                             <label className="text-sm font-medium">
                                                 Level
                                             </label>
@@ -723,7 +741,7 @@ export const CourseDetailsPage = () => {
                                                 }
                                                 disabled={!selectedSession}
                                             >
-                                                <SelectTrigger className="w-48">
+                                                <SelectTrigger className="w-full sm:w-48">
                                                     <SelectValue placeholder="Select Level" />
                                                 </SelectTrigger>
                                                 <SelectContent>
@@ -745,6 +763,146 @@ export const CourseDetailsPage = () => {
                                     ) : null}
                                 </div>
                             </div>
+                            {/* Enroll Button Card - shown above CourseStructureDetails for smaller screens */}
+                            <div className="lg:hidden mb-6">
+                                <div className="w-full max-w-[350px] rounded-lg border bg-white p-4 sm:p-6 shadow-lg">
+                                    {/* Course Stats */}
+                                    <h2 className="mb-3 sm:mb-4 text-base sm:text-lg font-bold line-clamp-2">
+                                        {form.getValues("courseData").title}
+                                    </h2>
+
+                                    <div className="relative">
+                                        {/* Header */}
+                                        <div className="flex items-center space-x-2 mb-3 sm:mb-4">
+                                            <div className="p-1.5 bg-gradient-to-br from-primary-100 to-primary-200 rounded-lg shadow-sm">
+                                                <Steps
+                                                    size={16}
+                                                    className="text-primary-600"
+                                                    weight="duotone"
+                                                />
+                                            </div>
+                                            <h2 className="text-sm sm:text-base font-bold text-gray-900">
+                                                {getTerminology(
+                                                    ContentTerms.Course,
+                                                    SystemTerms.Course
+                                                ).toLocaleLowerCase()}{" "}
+                                                Overview
+                                            </h2>
+                                        </div>
+
+                                        {/* Course Stats */}
+                                        <div className="space-y-2 sm:space-y-3">
+                                            {/* Level Badge */}
+                                            {levelOptions.length > 0 &&
+                                                selectedLevel &&
+                                                levelOptions.find(
+                                                    (option) =>
+                                                        option.value ===
+                                                        selectedLevel
+                                                )?.label !== "default" && (
+                                                    <div className="flex items-center justify-between p-2 sm:p-2.5 bg-gradient-to-r from-primary-50 to-primary-100 rounded-lg border border-primary-200">
+                                                        <div className="flex items-center space-x-2">
+                                                            <Steps
+                                                                size={14}
+                                                                className="text-primary-600"
+                                                                weight="duotone"
+                                                            />
+                                                            <span className="text-xs font-medium text-primary-700">
+                                                                {getTerminology(
+                                                                    ContentTerms.Level,
+                                                                    SystemTerms.Level
+                                                                ).toLocaleLowerCase()}
+                                                            </span>
+                                                        </div>
+                                                        <span className="text-xs font-bold text-primary-800">
+                                                            {
+                                                                levelOptions.find(
+                                                                    (option) =>
+                                                                        option.value ===
+                                                                        selectedLevel
+                                                                )?.label
+                                                            }
+                                                        </span>
+                                                    </div>
+                                                )}
+
+                                            {/* Slide Counts */}
+                                            {slideCountQuery.isLoading ? (
+                                                <div className="space-y-2">
+                                                    {[1, 2, 3, 4, 5].map((i) => (
+                                                        <div
+                                                            key={i}
+                                                            className="flex items-center justify-between p-2 sm:p-2.5 bg-gray-50 rounded-lg animate-pulse"
+                                                        >
+                                                            <div className="h-3 w-16 bg-gray-200 rounded"></div>
+                                                            <div className="h-3 w-6 bg-gray-200 rounded"></div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            ) : slideCountQuery.error ? (
+                                                <div className="p-2 sm:p-2.5 bg-red-50 border border-red-200 rounded-lg">
+                                                    <p className="text-xs text-red-600 font-medium">
+                                                        Error loading{" "}
+                                                        {getTerminology(
+                                                            ContentTerms.Slides,
+                                                            SystemTerms.Slides
+                                                        ).toLocaleLowerCase()}
+                                                        counts
+                                                    </p>
+                                                </div>
+                                            ) : (
+                                                <div className="space-y-2">
+                                                    {processedSlideCounts.map(
+                                                        (count: {
+                                                            source_type: string;
+                                                            slide_count: number;
+                                                            display_name: string;
+                                                        }) => (
+                                                            <div
+                                                                key={
+                                                                    count.source_type
+                                                                }
+                                                                className="flex items-center justify-between p-2 sm:p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300 group/item"
+                                                            >
+                                                                <div className="flex items-center space-x-2 min-w-0 flex-1">
+                                                                    {getSlideTypeIcon(
+                                                                        count.source_type
+                                                                    )}
+                                                                    <span className="text-xs font-medium text-gray-700 truncate">
+                                                                        {
+                                                                            count.display_name
+                                                                        }
+                                                                    </span>
+                                                                </div>
+                                                                <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm flex-shrink-0 ml-2">
+                                                                    {
+                                                                        count.slide_count
+                                                                    }
+                                                                </span>
+                                                            </div>
+                                                        )
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                        <AuthModal
+                                            type="courseDetailsPage"
+                                            courseId={searchParams.courseId}
+                                            trigger={
+                                                <MyButton
+                                                    type="button"
+                                                    scale="large"
+                                                    buttonType="primary"
+                                                    layoutVariant="default"
+                                                    className="mt-3 sm:mt-4 !min-w-full !w-full"
+                                                >
+                                                    Enroll
+                                                </MyButton>
+                                            }
+                                        />
+                                    </div>
+                                </div>
+                            </div>
                             <CourseStructureDetails
                                 selectedSession={selectedSession}
                                 selectedLevel={selectedLevel}
@@ -759,12 +917,13 @@ export const CourseDetailsPage = () => {
 
                             {/* What You'll Learn Section */}
                             {form.getValues("courseData").whatYoullLearn && (
-                                <div className="mb-8">
-                                    <h2 className="mb-4 text-2xl font-bold">
+                                <div className="mb-6 sm:mb-8">
+                                    <h2 className="mb-3 sm:mb-4 text-xl sm:text-2xl font-bold">
                                         What you&apos;ll learn?
                                     </h2>
                                     <div className="rounded-lg">
                                         <p
+                                            className="text-sm sm:text-base leading-relaxed"
                                             dangerouslySetInnerHTML={{
                                                 __html:
                                                     form.getValues("courseData")
@@ -777,12 +936,13 @@ export const CourseDetailsPage = () => {
 
                             {/* About Content Section */}
                             {form.getValues("courseData").aboutTheCourse && (
-                                <div className="mb-8">
-                                    <h2 className="mb-4 text-2xl font-bold">
+                                <div className="mb-6 sm:mb-8">
+                                    <h2 className="mb-3 sm:mb-4 text-xl sm:text-2xl font-bold">
                                         About this course
                                     </h2>
                                     <div className="rounded-lg">
                                         <p
+                                            className="text-sm sm:text-base leading-relaxed"
                                             dangerouslySetInnerHTML={{
                                                 __html:
                                                     form.getValues("courseData")
@@ -795,12 +955,13 @@ export const CourseDetailsPage = () => {
 
                             {/* Who Should Join Section */}
                             {form.getValues("courseData").whoShouldLearn && (
-                                <div className="mb-8">
-                                    <h2 className="mb-4 text-2xl font-bold">
+                                <div className="mb-6 sm:mb-8">
+                                    <h2 className="mb-3 sm:mb-4 text-xl sm:text-2xl font-bold">
                                         Who should join?
                                     </h2>
                                     <div className="rounded-lg">
                                         <p
+                                            className="text-sm sm:text-base leading-relaxed"
                                             dangerouslySetInnerHTML={{
                                                 __html:
                                                     form.getValues("courseData")
@@ -815,60 +976,64 @@ export const CourseDetailsPage = () => {
                             {form.getValues("courseData").instructors &&
                                 form.getValues("courseData").instructors
                                     .length > 0 && (
-                                    <div className="mb-8">
-                                        <h2 className="mb-4 text-2xl font-bold">
+                                    <div className="mb-6 sm:mb-8">
+                                        <h2 className="mb-3 sm:mb-4 text-xl sm:text-2xl font-bold">
                                             Instructors
                                         </h2>
-                                        {form
-                                            .getValues("courseData")
-                                            .instructors.map(
-                                                (instructor, index) => (
-                                                    <div
-                                                        key={index}
-                                                        className="flex gap-4 rounded-lg bg-gray-50 p-4"
-                                                    >
-                                                        <Avatar className="size-8">
-                                                            <AvatarImage
-                                                                src=""
-                                                                alt={
-                                                                    instructor.email
+                                        <div className="space-y-3 sm:space-y-4">
+                                            {form
+                                                .getValues("courseData")
+                                                .instructors.map(
+                                                    (instructor, index) => (
+                                                        <div
+                                                            key={index}
+                                                            className="flex gap-3 sm:gap-4 rounded-lg bg-gray-50 p-3 sm:p-4"
+                                                        >
+                                                            <Avatar className="size-6 sm:size-8 flex-shrink-0">
+                                                                <AvatarImage
+                                                                    src=""
+                                                                    alt={
+                                                                        instructor.email
+                                                                    }
+                                                                />
+                                                                <AvatarFallback className="bg-[#3B82F6] text-xs font-medium text-white">
+                                                                    {getInitials(
+                                                                        instructor.email
+                                                                    )}
+                                                                </AvatarFallback>
+                                                            </Avatar>
+                                                            <h3 className="text-base sm:text-lg font-medium">
+                                                                {
+                                                                    instructor.name
                                                                 }
-                                                            />
-                                                            <AvatarFallback className="bg-[#3B82F6] text-xs font-medium text-white">
-                                                                {getInitials(
-                                                                    instructor.email
-                                                                )}
-                                                            </AvatarFallback>
-                                                        </Avatar>
-                                                        <h3 className="text-lg">
-                                                            {instructor.name}
-                                                        </h3>
-                                                    </div>
-                                                )
-                                            )}
+                                                            </h3>
+                                                        </div>
+                                                    )
+                                                )}
+                                        </div>
                                     </div>
                                 )}
                         </div>
 
-                        {/* Right Column - 1/3 width */}
-                        <div className="w-1/5">
-                            <div className="sticky top-4 rounded-lg border bg-white p-6 shadow-lg">
+                        {/* Right Column - Full width on mobile, 1/3 on larger screens */}
+                        <div className="hidden lg:block max-w-[350px] lg:w-1/3 lg:max-w-sm mb-12">
+                            <div className="sticky top-4 rounded-lg border bg-white p-4 sm:p-6 shadow-lg">
                                 {/* Course Stats */}
-                                <h2 className="mb-4 text-lg font-bold">
+                                <h2 className="mb-3 sm:mb-4 text-base sm:text-lg font-bold line-clamp-2">
                                     {form.getValues("courseData").title}
                                 </h2>
 
                                 <div className="relative">
                                     {/* Header */}
-                                    <div className="flex items-center space-x-2 mb-4">
+                                    <div className="flex items-center space-x-2 mb-3 sm:mb-4">
                                         <div className="p-1.5 bg-gradient-to-br from-primary-100 to-primary-200 rounded-lg shadow-sm">
                                             <Steps
-                                                size={18}
+                                                size={16}
                                                 className="text-primary-600"
                                                 weight="duotone"
                                             />
                                         </div>
-                                        <h2 className="text-base font-bold text-gray-900">
+                                        <h2 className="text-sm sm:text-base font-bold text-gray-900">
                                             {getTerminology(
                                                 ContentTerms.Course,
                                                 SystemTerms.Course
@@ -878,7 +1043,7 @@ export const CourseDetailsPage = () => {
                                     </div>
 
                                     {/* Course Stats */}
-                                    <div className="space-y-3">
+                                    <div className="space-y-2 sm:space-y-3">
                                         {/* Level Badge */}
                                         {levelOptions.length > 0 &&
                                             selectedLevel &&
@@ -887,10 +1052,10 @@ export const CourseDetailsPage = () => {
                                                     option.value ===
                                                     selectedLevel
                                             )?.label !== "default" && (
-                                                <div className="flex items-center justify-between p-2.5 bg-gradient-to-r from-primary-50 to-primary-100 rounded-lg border border-primary-200">
+                                                <div className="flex items-center justify-between p-2 sm:p-2.5 bg-gradient-to-r from-primary-50 to-primary-100 rounded-lg border border-primary-200">
                                                     <div className="flex items-center space-x-2">
                                                         <Steps
-                                                            size={16}
+                                                            size={14}
                                                             className="text-primary-600"
                                                             weight="duotone"
                                                         />
@@ -919,7 +1084,7 @@ export const CourseDetailsPage = () => {
                                                 {[1, 2, 3, 4, 5].map((i) => (
                                                     <div
                                                         key={i}
-                                                        className="flex items-center justify-between p-2.5 bg-gray-50 rounded-lg animate-pulse"
+                                                        className="flex items-center justify-between p-2 sm:p-2.5 bg-gray-50 rounded-lg animate-pulse"
                                                     >
                                                         <div className="h-3 w-16 bg-gray-200 rounded"></div>
                                                         <div className="h-3 w-6 bg-gray-200 rounded"></div>
@@ -927,7 +1092,7 @@ export const CourseDetailsPage = () => {
                                                 ))}
                                             </div>
                                         ) : slideCountQuery.error ? (
-                                            <div className="p-2.5 bg-red-50 border border-red-200 rounded-lg">
+                                            <div className="p-2 sm:p-2.5 bg-red-50 border border-red-200 rounded-lg">
                                                 <p className="text-xs text-red-600 font-medium">
                                                     Error loading{" "}
                                                     {getTerminology(
@@ -949,19 +1114,19 @@ export const CourseDetailsPage = () => {
                                                             key={
                                                                 count.source_type
                                                             }
-                                                            className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300 group/item"
+                                                            className="flex items-center justify-between p-2 sm:p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300 group/item"
                                                         >
-                                                            <div className="flex items-center space-x-2">
+                                                            <div className="flex items-center space-x-2 min-w-0 flex-1">
                                                                 {getSlideTypeIcon(
                                                                     count.source_type
                                                                 )}
-                                                                <span className="text-xs font-medium text-gray-700">
+                                                                <span className="text-xs font-medium text-gray-700 truncate">
                                                                     {
                                                                         count.display_name
                                                                     }
                                                                 </span>
                                                             </div>
-                                                            <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
+                                                            <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm flex-shrink-0 ml-2">
                                                                 {
                                                                     count.slide_count
                                                                 }
@@ -981,7 +1146,7 @@ export const CourseDetailsPage = () => {
                                                 scale="large"
                                                 buttonType="primary"
                                                 layoutVariant="default"
-                                                className="mt-4 !min-w-full !w-full"
+                                                className="mt-3 sm:mt-4 !min-w-full !w-full"
                                             >
                                                 Enroll
                                             </MyButton>

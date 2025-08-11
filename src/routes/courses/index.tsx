@@ -9,6 +9,7 @@ import { Preferences } from "@capacitor/preferences";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
 import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
+import { DashboardLoader } from "@/components/core/dashboard-loader";
 
 export const Route = createFileRoute("/courses/")({
     component: CoursesContainerComponent,
@@ -77,6 +78,8 @@ function CoursesContainerComponent() {
 
         redirectToDashboardIfAuthenticated();
     }, [navigate]);
+
+    if (isLoading) return <DashboardLoader />;
 
     if (shouldFetchInstituteId && apiResult === "Data not found") {
         return <RootNotFoundComponent />;

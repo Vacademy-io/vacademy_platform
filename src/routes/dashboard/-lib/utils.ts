@@ -28,15 +28,21 @@ export const fetchStaticData = async (
     setHomeworkAssigned: (count: number) => void,
     setData?: (data: DashbaordResponse) => void
 ) => {
-    const instituteId = await getInstituteId();
     const userData = await fetchUserData();
+    if (!userData) {
+        console.error("No user data found");
+        return;
+    }
+    
     const first_name = userData.full_name.split(" ")[0];
     const institute_id = userData.institute_id;
     const batch_id = userData.package_session_id;
     const params = { instituteId: institute_id, packageSessionId: batch_id };
     setUsername(first_name);
 
-    const response1 = await fetchStudentDetails(instituteId || "", userData.id);
+    // Use the institute_id from user data instead of getInstituteId()
+    const response1 = await fetchStudentDetails(institute_id, userData.id);
+    
     const packageSessionIds = response1?.data?.map(
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
         // @ts-expect-error
@@ -110,11 +116,22 @@ export const fetchLast7DaysProgress = async ({
     end_date: string;
 }): Promise<UserActivityArray> => {
     try {
-        const instituteId = await getInstituteId();
-        const url = GET_LAST_7_DAYS_PROGRESS;
         const { student } = await getStoredDetails();
+        if (!student) {
+            console.error("No student details found");
+            return [];
+        }
+        
+        // Use the institute_id from stored student details instead of getInstituteId()
+        const instituteId = student.institute_id;
+        if (!instituteId) {
+            console.error("No institute ID found in student details");
+            return [];
+        }
+        
+        const url = GET_LAST_7_DAYS_PROGRESS;
         const response1 = await fetchStudentDetails(
-            instituteId || "",
+            instituteId,
             student.id
         );
         const packageSessionIds = response1?.data?.map(

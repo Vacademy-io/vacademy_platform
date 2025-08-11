@@ -41,68 +41,129 @@ export default function ProfilePage() {
       try {
         const { value } = await Preferences.get({ key: "sessionList" });
 
-        if (!value) {
-          console.log("No data found in Preferences with key 'sessionList'");
-          return;
-        }
+        if (value) {
+          try {
+            // Parse the JSON data
+            const parsedData = JSON.parse(value);
 
-        try {
-          // Parse the JSON data
-          const parsedData = JSON.parse(value);
-          console.log("Parsed course details:", parsedData);
-
-          // Initialize course details with defaults
-          let courseDetails = {
-            packageName: "N/A",
-            sessionName: "N/A",
-            levelName: "N/A",
-            startDate: "N/A",
-            status: "N/A",
-          };
-
-          // Check if parsedData is an array or object
-          if (Array.isArray(parsedData) && parsedData.length > 0) {
-            const course = parsedData[0]; // Take the first course if it's an array
-
-            courseDetails = {
-              packageName: toTitleCase(
-                course.package_dto?.package_name || "N/A"
-              ),
-              sessionName: toTitleCase(course.session?.session_name || "N/A"),
-              levelName: toTitleCase(course.level?.level_name || "N/A"),
-              startDate: course.session?.start_date || "N/A",
-              status: course.status || "N/A",
+            // Initialize course details with defaults
+            let courseDetails = {
+              packageName: "N/A",
+              sessionName: "N/A",
+              levelName: "N/A",
+              startDate: "N/A",
+              status: "N/A",
             };
-          } else if (typeof parsedData === "object" && parsedData !== null) {
-            // Handle if parsedData is a single course object
-            const course = parsedData;
 
-            courseDetails = {
-              packageName: toTitleCase(
-                course.package_dto?.package_name || "N/A"
-              ),
-              sessionName: toTitleCase(course.session?.session_name || "N/A"),
-              levelName: toTitleCase(course.level?.level_name || "N/A"),
-              startDate: course.session?.start_date || "N/A",
-              status: course.status || "N/A",
-            };
+            // Check if parsedData is an array or object
+            if (Array.isArray(parsedData) && parsedData.length > 0) {
+              const course = parsedData[0]; // Take the first course if it's an array
+
+              courseDetails = {
+                packageName: toTitleCase(
+                  course.package_dto?.package_name || "N/A"
+                ),
+                sessionName: toTitleCase(course.session?.session_name || "N/A"),
+                levelName: toTitleCase(course.level?.level_name || "N/A"),
+                startDate: course.session?.start_date || "N/A",
+                status: course.status || "N/A",
+              };
+            } else if (typeof parsedData === "object" && parsedData !== null) {
+              // Handle if parsedData is a single course object
+              const course = parsedData;
+
+              courseDetails = {
+                packageName: toTitleCase(
+                  course.package_dto?.package_name || "N/A"
+                ),
+                sessionName: toTitleCase(course.session?.session_name || "N/A"),
+                levelName: toTitleCase(course.level?.level_name || "N/A"),
+                startDate: course.session?.start_date || "N/A",
+                status: course.status || "N/A",
+              };
+            }
+
+            // Set the course details to state
+            setCourseDetails(courseDetails);
+          } catch (parseError) {
+            console.error("Error parsing JSON from Preferences:", parseError);
+            // Set default course details if parsing fails
+            setCourseDetails({
+              packageName: "N/A",
+              sessionName: "N/A",
+              levelName: "N/A",
+              startDate: "N/A",
+              status: "N/A",
+            });
           }
-
-          // Set the course details to state
-          setCourseDetails(courseDetails);
-        } catch (parseError) {
-          console.error("Error parsing JSON from Preferences:", parseError);
+        } else {
+          // Try to get fallback data from institute batches
+          try {
+            const { value: fallbackValue } = await Preferences.get({ key: "instituteBatchesForSessions" });
+            
+            if (fallbackValue) {
+              const fallbackData = JSON.parse(fallbackValue);
+              
+              if (Array.isArray(fallbackData) && fallbackData.length > 0) {
+                const fallbackCourse = fallbackData[0];
+                const fallbackCourseDetails = {
+                  packageName: toTitleCase(
+                    fallbackCourse.package_dto?.package_name || "N/A"
+                  ),
+                  sessionName: toTitleCase(fallbackCourse.session?.session_name || "N/A"),
+                  levelName: toTitleCase(fallbackCourse.level?.level_name || "N/A"),
+                  startDate: fallbackCourse.session?.start_date || "N/A",
+                  status: fallbackCourse.status || "N/A",
+                };
+                setCourseDetails(fallbackCourseDetails);
+              } else {
+                // Set default course details if no fallback data
+                setCourseDetails({
+                  packageName: "N/A",
+                  sessionName: "N/A",
+                  levelName: "N/A",
+                  startDate: "N/A",
+                  status: "N/A",
+                });
+              }
+            } else {
+              // Set default course details if no fallback data
+              setCourseDetails({
+                packageName: "N/A",
+                sessionName: "N/A",
+                levelName: "N/A",
+                startDate: "N/A",
+                status: "N/A",
+              });
+            }
+          } catch (fallbackError) {
+            console.error("Error getting fallback data:", fallbackError);
+            // Set default course details if fallback fails
+            setCourseDetails({
+              packageName: "N/A",
+              sessionName: "N/A",
+              levelName: "N/A",
+              startDate: "N/A",
+              status: "N/A",
+            });
+          }
         }
       } catch (error) {
         console.error("Error fetching course data from Preferences:", error);
+        // Set default course details if error occurs
+        setCourseDetails({
+          packageName: "N/A",
+          sessionName: "N/A",
+          levelName: "N/A",
+          startDate: "N/A",
+          status: "N/A",
+        });
       }
 
       try {
-        console.log("Fetching student data from Preferences...");
         const { value } = await Preferences.get({ key: "StudentDetails" });
 
         if (!value) {
-          console.log("No data found in Preferences with key 'StudentDetails'");
           setIsLoading(false);
           return;
         }
@@ -110,13 +171,11 @@ export default function ProfilePage() {
         try {
           // Parse the JSON data
           const parsedData = JSON.parse(value);
-          console.log("Parsed student details:", parsedData);
 
           // Handle both array and object formats
           let studentDetails: Student;
           if (Array.isArray(parsedData)) {
             if (parsedData.length === 0) {
-              console.log("Student details array is empty");
               setIsLoading(false);
               return;
             }
@@ -128,7 +187,9 @@ export default function ProfilePage() {
             setIsLoading(false);
             return;
           }
+          
           setStudentData(studentDetails);
+          
           if (studentDetails.face_file_id) {
             try {
               const institute_logo = await getPublicUrl(

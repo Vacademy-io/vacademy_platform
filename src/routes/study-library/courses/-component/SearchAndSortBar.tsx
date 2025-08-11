@@ -29,10 +29,10 @@ const SearchAndSortBar: React.FC<SearchAndSortBarProps> = ({
   };
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4 mb-4">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+    <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-3 sm:p-4 mb-3 sm:mb-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         {/* Search Section */}
-        <div className="flex-1 max-w-lg">
+        <div className="flex-1 min-w-0">
           <div className="relative">
             <Search
               size={18}
@@ -54,17 +54,17 @@ const SearchAndSortBar: React.FC<SearchAndSortBarProps> = ({
         </div>
 
         {/* Sort Section */}
-        <div className="flex items-center space-x-3">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 min-w-0">
           <label className="text-sm font-medium text-gray-700 whitespace-nowrap">
             Sort by:
           </label>
-          <div className="relative">
+          <div className="relative w-full sm:w-auto">
             <select
               value={sortOption}
               onChange={(e: ChangeEvent<HTMLSelectElement>) =>
                 onSortChange(e.target.value)
               }
-              className="appearance-none bg-gray-50 border border-gray-200 rounded-md px-3 py-2.5 pr-8 text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-colors cursor-pointer min-w-[140px]"
+              className="appearance-none bg-gray-50 border border-gray-200 rounded-md px-3 py-2.5 pr-8 text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-colors cursor-pointer w-full sm:min-w-[140px]"
             >
               <option value="Newest">Newest First</option>
               <option value="Oldest">Oldest First</option>

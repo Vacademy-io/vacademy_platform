@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useCatalogStore } from "../-store/catalogStore";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { handleFetchInstituteDetails } from "../-services/institute-details";
-import { Filter, Check, ChevronDown, ChevronUp, X } from 'lucide-react';
+import { Filter, Check, ChevronDown, ChevronUp, X, Menu } from 'lucide-react';
 import { toTitleCase } from "@/lib/utils";
 
 // Internal reusable component for individual filter sections
@@ -141,6 +141,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
     instructorsDisabled = false,
 }) => {
     const { instructor } = useCatalogStore();
+    const [isMobileExpanded, setIsMobileExpanded] = useState(false);
 
     const { data: instituteData, isLoading } = useSuspenseQuery(
         handleFetchInstituteDetails()
@@ -193,76 +194,101 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
     }
 
     return (
-        <div className="bg-white border border-gray-200 rounded-lg shadow-sm sticky top-4">
-            {/* Header */}
-            <div className="p-4 border-b border-gray-200">
-                <div className="flex items-center justify-between">
+        <div className="bg-white border border-gray-200 rounded-lg shadow-sm lg:sticky lg:top-4">
+            {/* Mobile Header - Only visible on mobile */}
+            <div className="lg:hidden p-3 border-b border-gray-200">
+                <button
+                    onClick={() => setIsMobileExpanded(!isMobileExpanded)}
+                    className="w-full flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                >
                     <div className="flex items-center space-x-2">
                         <Filter size={18} className="text-gray-600" />
-                        <h2 className="text-lg font-semibold text-gray-900">Filters</h2>
+                        <span className="text-sm font-semibold text-gray-900">Filters</span>
+                        {hasActiveFilters && (
+                            <span className="bg-primary-100 text-primary-700 text-xs font-medium px-2 py-1 rounded-full">
+                                {selectedLevels.length + selectedTags.length + selectedInstructors.length}
+                            </span>
+                        )}
+                    </div>
+                    <ChevronDown 
+                        size={16} 
+                        className={`text-gray-500 transition-transform ${isMobileExpanded ? 'rotate-180' : ''}`} 
+                    />
+                </button>
+            </div>
+
+            {/* Filter Content - Hidden on mobile when collapsed */}
+            <div className={`lg:block ${isMobileExpanded ? 'block' : 'hidden'}`}>
+                {/* Desktop Header */}
+                <div className="hidden lg:block p-4 border-b border-gray-200">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2">
+                            <Filter size={18} className="text-gray-600" />
+                            <h2 className="text-lg font-semibold text-gray-900">Filters</h2>
+                        </div>
+                        {hasActiveFilters && (
+                            <button
+                                onClick={clearAllFilters}
+                                className="flex items-center space-x-1 text-sm text-gray-500 hover:text-gray-700"
+                            >
+                                <X size={14} />
+                                <span>Clear All</span>
+                            </button>
+                        )}
                     </div>
                     {hasActiveFilters && (
-                        <button
-                            onClick={clearAllFilters}
-                            className="flex items-center space-x-1 text-sm text-gray-500 hover:text-gray-700"
-                        >
-                            <X size={14} />
-                            <span>Clear All</span>
-                        </button>
+                        <p className="text-sm text-primary-600 mt-1">
+                            {selectedLevels.length + selectedTags.length + selectedInstructors.length} filter(s) applied
+                        </p>
                     )}
                 </div>
-                {hasActiveFilters && (
-                    <p className="text-sm text-primary-600 mt-1">
-                        {selectedLevels.length + selectedTags.length + selectedInstructors.length} filter(s) applied
-                    </p>
-                )}
-            </div>
 
-            {/* Filter Content */}
-            <div className="p-4 max-h-96 overflow-y-auto">
-                <FilterSection
-                    title="Level"
-                    items={levels}
-                    selectedItems={selectedLevels}
-                    handleChange={onLevelChange}
-                    disabled={levelsDisabled || levels.length === 0}
-                />
+                {/* Filter Content */}
+                <div className="p-3 sm:p-4 max-h-96 overflow-y-auto">
+                    <FilterSection
+                        title="Level"
+                        items={levels}
+                        selectedItems={selectedLevels}
+                        handleChange={onLevelChange}
+                        disabled={levelsDisabled || levels.length === 0}
+                    />
 
-                <FilterSection
-                    title="Topics"
-                    items={tags}
-                    selectedItems={selectedTags}
-                    handleChange={onTagChange}
-                    disabled={tagsDisabled || tags.length === 0}
-                />
+                    <FilterSection
+                        title="Topics"
+                        items={tags}
+                        selectedItems={selectedTags}
+                        handleChange={onTagChange}
+                        disabled={tagsDisabled || tags.length === 0}
+                    />
 
-                <FilterSection
-                    title="Instructors"
-                    items={instructors}
-                    selectedItems={selectedInstructors}
-                    handleChange={onInstructorChange}
-                    disabled={instructorsDisabled || instructors.length === 0}
-                />
-            </div>
+                    <FilterSection
+                        title="Instructors"
+                        items={instructors}
+                        selectedItems={selectedInstructors}
+                        handleChange={onInstructorChange}
+                        disabled={instructorsDisabled || instructors.length === 0}
+                    />
+                </div>
 
-            {/* Apply Button - Always Visible */}
-            <div className="p-4 border-t border-gray-200 bg-gray-50">
-                <button
-                    onClick={onApplyFilters}
-                    disabled={!hasActiveFilters}
-                    className={`w-full py-2.5 px-4 text-sm font-medium rounded-md transition-colors ${
-                        hasActiveFilters
-                            ? "bg-primary-600 text-white hover:bg-primary-700 shadow-sm"
-                            : "bg-gray-200 text-gray-400 cursor-not-allowed"
-                    }`}
-                >
-                    Apply Filters
-                    {hasActiveFilters && (
-                        <span className="ml-2 bg-primary-700 text-xs px-2 py-1 rounded-full">
-                            {selectedLevels.length + selectedTags.length + selectedInstructors.length}
-                        </span>
-                    )}
-                </button>
+                {/* Apply Button - Always Visible */}
+                <div className="p-3 sm:p-4 border-t border-gray-200 bg-gray-50">
+                    <button
+                        onClick={onApplyFilters}
+                        disabled={!hasActiveFilters}
+                        className={`w-full py-2.5 px-4 text-sm font-medium rounded-md transition-colors ${
+                            hasActiveFilters
+                                ? "bg-primary-600 text-white hover:bg-primary-700 shadow-sm"
+                                : "bg-gray-200 text-gray-400 cursor-not-allowed"
+                        }`}
+                    >
+                        Apply Filters
+                        {hasActiveFilters && (
+                            <span className="ml-2 bg-primary-700 text-xs px-2 py-1 rounded-full">
+                                {selectedLevels.length + selectedTags.length + selectedInstructors.length}
+                            </span>
+                        )}
+                    </button>
+                </div>
             </div>
         </div>
     );

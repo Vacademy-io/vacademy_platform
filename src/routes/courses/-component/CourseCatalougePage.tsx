@@ -18,6 +18,7 @@ import { getFromStorage } from "@/components/common/auth/login/forms/page/login-
 import { isNullOrEmptyOrUndefined } from "@/lib/utils.ts";
 import { getPublicUrl } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/excalidrawUtils.ts";
 import { useTheme } from "@/providers/theme/theme-provider.tsx";
+import { DashboardLoader } from "@/components/core/dashboard-loader";
 
 const CourseCatalougePage: React.FC = () => {
     const navigate = useNavigate();
@@ -75,8 +76,11 @@ const CourseCatalougePage: React.FC = () => {
     };
 
     useEffect(() => {
-        fetchPackages(searchTerm);
-    }, [searchTerm, sortOption]);
+        // Only fetch packages when instituteId is available
+        if (instituteId) {
+            fetchPackages(searchTerm);
+        }
+    }, [searchTerm, sortOption, instituteId]);
 
     const handleApplyFilters = async () => {
         try {
@@ -109,8 +113,10 @@ const CourseCatalougePage: React.FC = () => {
         }
     };
 
-    // ✅ Fetch institute details
+    // ✅ Fetch institute details - only when instituteId is available
     useEffect(() => {
+        if (!instituteId) return; // 🚫 Prevent calling API without instituteId
+
         const fetchInstituteDetails = async () => {
             try {
                 const response = await axios.get(
@@ -139,9 +145,9 @@ const CourseCatalougePage: React.FC = () => {
         fetchInstituteDetails();
     }, [instituteId]);
 
-    // ✅ Fetch instructor
+    // ✅ Fetch instructor - only when instituteId is available
     useEffect(() => {
-        if (!instituteId) return; // 🚫 Prevent calling API with undefined ID
+        if (!instituteId) return; // 🚫 Prevent calling API without instituteId
 
         const fetchInstructor = async () => {
             try {
@@ -193,6 +199,11 @@ const CourseCatalougePage: React.FC = () => {
 
         redirectToDashboardIfAuthenticated();
     }, [navigate]);
+
+    // Show loading state if instituteId is not available yet
+    if (!instituteId) {
+        return <DashboardLoader />;
+    }
 
     return (
         <div>

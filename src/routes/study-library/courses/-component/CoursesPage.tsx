@@ -103,11 +103,11 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
     return (
         <div ref={scrollRef} className="bg-gray-50 min-h-screen">
             <div
-                className={`flex ${showFilters ? "gap-6" : ""} p-4 max-w-7xl mx-auto`}
+                className={`flex flex-col lg:flex-row ${showFilters ? "gap-4 lg:gap-6" : ""} p-2 sm:p-4 max-w-7xl mx-auto`}
             >
                 {/* Sidebar - Only show if showFilters is true */}
                 {showFilters && (
-                    <div className="w-80 flex-shrink-0">
+                    <div className="w-full lg:w-80 lg:flex-shrink-0 order-1">
                         <FilterPanel
                             selectedLevels={selectedLevels}
                             onLevelChange={(id) =>
@@ -136,7 +136,7 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                 )}
 
                 {/* Main Content Area */}
-                <div className="flex-1 min-w-0">
+                <div className="flex-1 min-w-0 order-2">
                     <SearchAndSortBar
                         searchTerm={searchTerm}
                         onSearchChange={onSearchChange}
@@ -145,11 +145,11 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                     />
 
                     {courseData.content.length === 0 ? (
-                        <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-8 text-center">
-                            <div className="w-16 h-16 bg-gray-100 rounded-lg mx-auto mb-4 flex items-center justify-center">
-                                <Search size={24} className="text-gray-400" />
+                        <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-6 sm:p-8 text-center">
+                            <div className="w-12 h-12 sm:w-16 sm:h-16 bg-gray-100 rounded-lg mx-auto mb-3 sm:mb-4 flex items-center justify-center">
+                                <Search size={20} className="text-gray-400 sm:w-6 sm:h-6" />
                             </div>
-                            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                            <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-2">
                                 No{" "}
                                 {getTerminology(
                                     ContentTerms.Course,
@@ -164,10 +164,10 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                             </p>
                         </div>
                     ) : (
-                        <div className="space-y-4">
+                        <div className="space-y-3 sm:space-y-4">
                             {/* Results Summary */}
-                            <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
-                                <div className="flex items-center justify-between">
+                            <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-3 sm:p-4">
+                                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                                     <div className="flex items-center space-x-3">
                                         <div className="p-2 bg-primary-100 rounded-lg">
                                             <Grid
@@ -190,7 +190,7 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                                             </p>
                                         </div>
                                     </div>
-                                    <div className="text-xs text-gray-500">
+                                    <div className="text-xs text-gray-500 text-center sm:text-right">
                                         Showing {courseData.numberOfElements} of{" "}
                                         {courseData.totalElements} results
                                     </div>
@@ -198,7 +198,7 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                             </div>
 
                             {/* Course Grid */}
-                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-2 gap-3 sm:gap-4">
                                 {courseData.content.map((course, index) => {
                                     return (
                                         <CourseCard
@@ -250,7 +250,7 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
 
                             {/* Pagination */}
                             {courseData.totalPages > 1 && (
-                                <div className="flex justify-center mt-6">
+                                <div className="flex justify-center mt-4 sm:mt-6">
                                     <MyPagination
                                         currentPage={courseData.number + 1}
                                         totalPages={courseData.totalPages}

@@ -86,8 +86,9 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
 
   return (
     <div ref={scrollRef}>
-      <div className="flex flex-col lg:flex-row p-4 lg:p-8 bg-gray-50 min-h-screen">
-        <div className="w-full lg:w-1/4 lg:pr-8 mb-8 lg:mb-0">
+      <div className="flex flex-col lg:flex-row p-2 sm:p-4 lg:p-8 bg-gray-50 min-h-screen">
+        {/* Filter Panel - Full width on mobile, sidebar on desktop */}
+        <div className="w-full lg:w-1/4 lg:pr-8 mb-6 lg:mb-0 order-1">
           <div className="lg:sticky lg:top-8">
             <FilterPanel
               selectedLevels={selectedLevels}
@@ -108,7 +109,8 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
           </div>
         </div>
 
-        <div className="w-full lg:w-3/4">
+        {/* Main Content Area */}
+        <div className="w-full lg:w-3/4 order-2">
           <SearchAndSortBar
             searchTerm={searchTerm}
             onSearchChange={onSearchChange}
@@ -117,9 +119,21 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
           />
 
           {courseData.length === 0 ? (
-            <p className="text-gray-500 text-center">No courses available</p>
+            <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-6 sm:p-8 text-center">
+              <div className="w-12 h-12 sm:w-16 sm:h-16 bg-gray-100 rounded-lg mx-auto mb-3 sm:mb-4 flex items-center justify-center">
+                <svg className="w-6 h-6 sm:w-8 sm:h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.172 16.172a4 4 0 015.656 0M9 12h6m-6-4h6m2 5.291A7.962 7.962 0 0112 15c-3.314 0-6-2.686-6-6s2.686-6 6-6 6 2.686 6 6-1.5 4.5-3.5 5.291" />
+                </svg>
+              </div>
+              <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-2">
+                No courses available
+              </h3>
+              <p className="text-gray-600 text-sm max-w-md mx-auto">
+                Try adjusting your search criteria or check back later for new courses.
+              </p>
+            </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-1 lg:grid-cols-2 gap-6 h-fit">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4 sm:gap-6 h-fit">
               {paginatedCourses.map((course, index) => {
                 return (
                   <CourseCard

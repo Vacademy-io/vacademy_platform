@@ -202,7 +202,7 @@ const CourseCatalougePage: React.FC = () => {
                 type="coursesPage"
             />
 
-            <div className="relative h-[370px]">
+            <div className="relative h-[250px] sm:h-[300px] lg:h-[370px]">
                 {/* Transparent blue overlay */}
                 {instituteData?.cover_image_file_id ? (
                     <div className="pointer-events-none absolute inset-0 z-10 bg-blue-900/50" />
@@ -226,24 +226,24 @@ const CourseCatalougePage: React.FC = () => {
                         />
                     </div>
                 )}
-                <div className={`w-full px-8 relative z-20  h-full flex`}>
-                    <div className=" flex items-start justify-between gap-8">
+                <div className="w-full px-4 sm:px-6 lg:px-8 relative z-20 h-full flex">
+                    <div className="flex items-start justify-between gap-4 sm:gap-6 lg:gap-8 w-full">
                         {/* Left side - Title and Description */}
                         <div className="max-w-2xl my-auto flex flex-col justify-center text-white">
                             {!instituteData?.cover_text_json ? (
-                                <div className="space-y-4">
-                                    <div className="h-8 w-32 animate-pulse rounded bg-white/20" />
-                                    <div className="h-12 w-3/4 animate-pulse rounded bg-white/20" />
-                                    <div className="h-4 w-full animate-pulse rounded bg-white/20" />
-                                    <div className="h-4 w-2/3 animate-pulse rounded bg-white/20" />
+                                <div className="space-y-3 sm:space-y-4">
+                                    <div className="h-6 sm:h-8 w-24 sm:w-32 animate-pulse rounded bg-white/20" />
+                                    <div className="h-8 sm:h-12 w-3/4 animate-pulse rounded bg-white/20" />
+                                    <div className="h-3 sm:h-4 w-full animate-pulse rounded bg-white/20" />
+                                    <div className="h-3 sm:h-4 w-2/3 animate-pulse rounded bg-white/20" />
                                 </div>
                             ) : (
                                 <>
-                                    <h1 className="mb-4 text-4xl font-bold">
+                                    <h1 className="mb-3 sm:mb-4 text-2xl sm:text-3xl lg:text-4xl font-bold">
                                         {bannerText.heading}
                                     </h1>
                                     <p
-                                        className="text-lg opacity-90"
+                                        className="text-base sm:text-lg opacity-90"
                                         dangerouslySetInnerHTML={{
                                             __html: bannerText.description,
                                         }}

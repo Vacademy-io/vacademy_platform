@@ -277,7 +277,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                         disabled={!hasActiveFilters}
                         className={`w-full py-2.5 px-4 text-sm font-medium rounded-md transition-colors ${
                             hasActiveFilters
-                                ? "bg-primary-600 text-white hover:bg-primary-700 shadow-sm"
+                                ? "bg-primary-500 text-white hover:bg-primary-700 shadow-sm"
                                 : "bg-gray-200 text-gray-400 cursor-not-allowed"
                         }`}
                     >

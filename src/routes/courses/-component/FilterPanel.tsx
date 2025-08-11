@@ -4,6 +4,7 @@ import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { toTitleCase } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Filter, ChevronDown, ChevronUp } from "lucide-react";
 
 // Internal reusable component for individual filter sections
 interface FilterSectionProps {
@@ -28,8 +29,8 @@ const FilterSection: React.FC<FilterSectionProps> = ({
     canExpand && !isExpanded ? items.slice(0, initialDisplayCount) : items;
 
   return (
-    <div className="mb-6">
-      <h3 className="text-lg font-semibold text-gray-700 mb-3">{title}</h3>
+    <div className="mb-4 sm:mb-6">
+      <h3 className="text-base sm:text-lg font-semibold text-gray-700 mb-2 sm:mb-3">{title}</h3>
       <div className="space-y-2">
         {items.length === 0 && !disabled && (
           <p className="text-sm text-gray-500">
@@ -55,7 +56,7 @@ const FilterSection: React.FC<FilterSectionProps> = ({
               onChange={() => handleChange(item.id)}
               disabled={disabled}
             />
-            {item.name}
+            <span className="text-sm sm:text-base">{item.name}</span>
           </label>
         ))}
       </div>
@@ -64,13 +65,23 @@ const FilterSection: React.FC<FilterSectionProps> = ({
         <button
           onClick={() => setIsExpanded(!isExpanded)}
           disabled={disabled}
-          className={`text-sm mt-2 ${
+          className={`text-sm mt-2 flex items-center gap-1 ${
             disabled
               ? "text-gray-400 cursor-not-allowed"
               : "text-blue-600 hover:text-blue-800"
           }`}
         >
-          {isExpanded ? "Show Less" : "Show More"}
+          {isExpanded ? (
+            <>
+              Show Less
+              <ChevronUp size={14} />
+            </>
+          ) : (
+            <>
+              Show More
+              <ChevronDown size={14} />
+            </>
+          )}
         </button>
       )}
     </div>
@@ -106,6 +117,8 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
   instructorsDisabled = false,
 }) => {
   const { instructor, instituteData } = useCatalogStore();
+  const [isMobileExpanded, setIsMobileExpanded] = useState(false);
+  
   const hasActiveFilters =
     selectedLevels.length > 0 ||
     selectedTags.length > 0 ||
@@ -129,50 +142,97 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
   }));
 
   return (
-    <div className="bg-white p-6 rounded-lg shadow">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-xl font-bold text-gray-800">Filters</h2>
-        <div className="flex gap-1">
-          <Button
-            onClick={clearAllFilters}
-            disabled={!hasActiveFilters}
-            className={`px-2 py-1 h-fit transition text-xs mt-[1px]`}
-          >
-            Clear All
-          </Button>
-          <Button
-            onClick={onApplyFilters}
-            disabled={!hasActiveFilters}
-            className={`px-2 py-1 h-fit transition text-xs mt-[1px]`}
-          >
-            Apply
-          </Button>
-        </div>
+    <div className="bg-white p-4 sm:p-6 rounded-lg shadow">
+      {/* Mobile Header - Only visible on mobile */}
+      <div className="lg:hidden mb-4">
+        <button
+          onClick={() => setIsMobileExpanded(!isMobileExpanded)}
+          className="w-full flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+        >
+          <div className="flex items-center space-x-2">
+            <Filter size={18} className="text-gray-600" />
+            <span className="text-sm font-semibold text-gray-900">Filters</span>
+            {hasActiveFilters && (
+              <span className="bg-blue-100 text-blue-700 text-xs font-medium px-2 py-1 rounded-full">
+                {selectedLevels.length + selectedTags.length + selectedInstructors.length}
+              </span>
+            )}
+          </div>
+          <ChevronDown 
+            size={16} 
+            className={`text-gray-500 transition-transform ${isMobileExpanded ? 'rotate-180' : ''}`} 
+          />
+        </button>
       </div>
 
-      <FilterSection
-        title={getTerminology(ContentTerms.Level, SystemTerms.Level)}
-        items={levels}
-        selectedItems={selectedLevels}
-        handleChange={onLevelChange}
-        disabled={levelsDisabled || levels.length === 0}
-      />
+      {/* Filter Content - Hidden on mobile when collapsed */}
+      <div className={`lg:block ${isMobileExpanded ? 'block' : 'hidden'}`}>
+        {/* Desktop Header */}
+        <div className="hidden lg:flex justify-between items-center mb-6">
+          <h2 className="text-xl font-bold text-gray-800">Filters</h2>
+          <div className="flex gap-1">
+            <Button
+              onClick={clearAllFilters}
+              disabled={!hasActiveFilters}
+              className={`px-2 py-1 h-fit transition text-xs mt-[1px]`}
+            >
+              Clear All
+            </Button>
+            <Button
+              onClick={onApplyFilters}
+              disabled={!hasActiveFilters}
+              className={`px-2 py-1 h-fit transition text-xs mt-[1px]`}
+            >
+              Apply
+            </Button>
+          </div>
+        </div>
 
-      <FilterSection
-        title="Popular Topics"
-        items={tags}
-        selectedItems={selectedTags}
-        handleChange={onTagChange}
-        disabled={tagsDisabled || tags.length === 0}
-      />
+        {/* Mobile Header */}
+        <div className="lg:hidden flex justify-between items-center mb-4">
+          <h2 className="text-lg font-bold text-gray-800">Filters</h2>
+          <div className="flex gap-1">
+            <Button
+              onClick={clearAllFilters}
+              disabled={!hasActiveFilters}
+              className={`px-2 py-1 h-fit transition text-xs mt-[1px]`}
+            >
+              Clear All
+            </Button>
+            <Button
+              onClick={onApplyFilters}
+              disabled={!hasActiveFilters}
+              className={`px-2 py-1 h-fit transition text-xs mt-[1px]`}
+            >
+              Apply
+            </Button>
+          </div>
+        </div>
 
-      <FilterSection
-        title="Authors"
-        items={instructors}
-        selectedItems={selectedInstructors}
-        handleChange={onInstructorChange}
-        disabled={instructorsDisabled || instructors.length === 0}
-      />
+        <FilterSection
+          title={getTerminology(ContentTerms.Level, SystemTerms.Level)}
+          items={levels}
+          selectedItems={selectedLevels}
+          handleChange={onLevelChange}
+          disabled={levelsDisabled || levels.length === 0}
+        />
+
+        <FilterSection
+          title="Popular Topics"
+          items={tags}
+          selectedItems={selectedTags}
+          handleChange={onTagChange}
+          disabled={tagsDisabled || tags.length === 0}
+        />
+
+        <FilterSection
+          title="Authors"
+          items={instructors}
+          selectedItems={selectedInstructors}
+          handleChange={onInstructorChange}
+          disabled={instructorsDisabled || instructors.length === 0}
+        />
+      </div>
     </div>
   );
 };

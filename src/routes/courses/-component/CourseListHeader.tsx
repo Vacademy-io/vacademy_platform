@@ -57,10 +57,10 @@ const CourseListHeader = ({
   ];
 
   return (
-    <nav className="min-h-[80px] bg-white py-4 px-4 sm:px-6 lg:px-10 flex flex-col lg:flex-row justify-between items-center shadow-sm relative">
+    <nav className="min-h-[70px] sm:min-h-[80px] bg-white py-3 sm:py-4 px-3 sm:px-4 lg:px-10 flex flex-col lg:flex-row justify-between items-center shadow-sm relative">
       {/* Logo Section */}
-      <div className="flex items-center justify-between w-full lg:w-auto mb-4 lg:mb-0">
-        <div className="flex items-center relative h-8 sm:h-10 w-20 sm:w-24">
+      <div className="flex items-center justify-between w-full lg:w-auto mb-3 sm:mb-4 lg:mb-0">
+        <div className="flex items-center relative h-6 sm:h-8 lg:h-10 w-16 sm:w-20 lg:w-24">
           {logoLoading && (
             <div
               className="absolute inset-0 bg-gray-200 rounded-md border border-gray-200 flex items-center justify-center text-gray-400 text-xs"
@@ -81,11 +81,11 @@ const CourseListHeader = ({
         {/* Mobile Menu Button */}
         <button
           onClick={toggleMobileMenu}
-          className="lg:hidden p-2 rounded-md hover:bg-gray-100 transition-colors"
+          className="lg:hidden p-1.5 sm:p-2 rounded-md hover:bg-gray-100 transition-colors"
           aria-label="Toggle mobile menu"
         >
           <svg
-            className="w-6 h-6"
+            className="w-5 h-5 sm:w-6 sm:h-6"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -110,8 +110,8 @@ const CourseListHeader = ({
       </div>
 
       {/* Desktop Navigation */}
-      <div className="hidden lg:flex lg:flex-row items-center gap-8">
-        <ul className="flex items-center gap-6 text-gray-800">
+      <div className="hidden lg:flex lg:flex-row items-center gap-6 lg:gap-8">
+        <ul className="flex items-center gap-4 lg:gap-6 text-gray-800">
           {navigationItems.map((item) => (
             <li key={item.href}>
               <a
@@ -123,40 +123,40 @@ const CourseListHeader = ({
             </li>
           ))}
         </ul>
-        <div className="flex gap-3">
+        <div className="flex gap-2 lg:gap-3">
           <AuthModal
             type={type}
             courseId={courseId}
             trigger={
-              <Button data-auth-modal-trigger variant={"outline"}>
+              <Button data-auth-modal-trigger variant={"outline"} size="sm" className="text-xs sm:text-sm">
                 Login
               </Button>
             }
           />
-          <Button>Donate</Button>
+          <Button size="sm" className="text-xs sm:text-sm">Donate</Button>
         </div>
       </div>
 
       {/* Mobile Navigation Menu */}
       {isMobileMenuOpen && (
         <div
-          className="lg:hidden w-full bg-white border-t border-gray-200 py-4 px-4 sm:px-6"
+          className="lg:hidden w-full bg-white border-t border-gray-200 py-4 px-3 sm:px-4"
           style={{ zIndex: 100 }}
         >
-          <ul className="flex flex-col space-y-4 mb-6">
+          <ul className="flex flex-col space-y-3 sm:space-y-4 mb-4 sm:mb-6">
             {navigationItems.map((item) => (
               <li key={item.href}>
                 <a
                   href={item.href}
                   onClick={closeMobileMenu}
-                  className="block hover:text-blue-600 transition-colors duration-200 text-gray-800 font-medium"
+                  className="block hover:text-blue-600 transition-colors duration-200 text-gray-800 font-medium text-sm sm:text-base"
                 >
                   {item.label}
                 </a>
               </li>
             ))}
           </ul>
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-2 sm:gap-3">
             <Button
               onClick={() => {
                 closeMobileMenu();
@@ -169,10 +169,12 @@ const CourseListHeader = ({
                 }
               }}
               variant={"outline"}
+              size="sm"
+              className="text-xs sm:text-sm"
             >
               Login
             </Button>
-            <Button>Donate</Button>
+            <Button size="sm" className="text-xs sm:text-sm">Donate</Button>
           </div>
         </div>
       )}

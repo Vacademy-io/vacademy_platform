@@ -194,15 +194,6 @@ const ContinueLearningCard = ({
 
   return (
     <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-gray-50/80 via-white to-primary-50/30 shadow-sm hover:shadow-lg transition-all duration-500 continue-learning-card">
-      {/* Animated background pattern - Simplified for mobile performance */}
-      <div className="absolute inset-0 opacity-5 hidden sm:block">
-        <div className="absolute top-0 left-1/4 w-20 h-20 sm:w-32 sm:h-32 bg-primary-300 rounded-full blur-3xl animate-gentle-pulse"></div>
-        <div
-          className="absolute bottom-1/4 right-1/4 w-24 h-24 sm:w-40 sm:h-40 bg-primary-200 rounded-full blur-3xl animate-gentle-pulse"
-          style={{ animationDelay: "1s" }}
-        ></div>
-      </div>
-
       <CardHeader className="pb-2 sm:pb-3 md:pb-4 px-3 sm:px-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 md:gap-4">
           <div className="flex items-center space-x-2 sm:space-x-3 min-w-0">
@@ -277,7 +268,7 @@ const ContinueLearningCard = ({
           buttonType="primary"
           scale="medium"
           onClick={() => data.slides[0] && onResumeClick(data.slides[0])}
-          className="w-full min-h-[44px]"
+          className="w-full min-h-[44px] cursor-pointer"
         >
           <Play weight="duotone" size={14} className="mr-2" />
           <span className="text-xs sm:text-sm md:text-base">
@@ -635,15 +626,10 @@ export function DashboardComponent() {
             </div>
 
             {/* Enhanced Continue Learning Section */}
-            <div
-              className="animate-fade-in-up"
-              style={{ animationDelay: "0.4s" }}
-            >
-              <ContinueLearningCard
-                data={data}
-                onResumeClick={handleResumeClick}
-              />
-            </div>
+            <ContinueLearningCard
+              data={data}
+              onResumeClick={handleResumeClick}
+            />
 
             {/* Enhanced Analytics Section */}
             <div

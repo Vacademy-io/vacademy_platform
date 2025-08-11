@@ -38,6 +38,8 @@ import { getSubjectDetails } from "@/routes/courses/course-details/-utils/helper
 import { useRouter } from "@tanstack/react-router";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
+import { CODE_CIRCLE_INSTITUTE_ID } from "@/constants/urls";
+import { getInstituteId } from "@/constants/helper";
 
 export interface Chapter {
     id: string;
@@ -96,6 +98,7 @@ export const CourseStructureDetails = ({
     const { setNavHeading } = useNavHeadingStore();
 
     const [studyLibraryData, setStudyLibraryData] = useState<SubjectType[]>([]);
+    const [filteredTabs, setFilteredTabs] = useState(tabs);
 
     const [selectedStructureTab, setSelectedStructureTab] = useState<string>(
         TabType.OUTLINE
@@ -1263,6 +1266,23 @@ export const CourseStructureDetails = ({
     };
 
     useEffect(() => {
+        const filterTabsForInstitute = async () => {
+            const instituteId = await getInstituteId();
+            
+            if (instituteId === CODE_CIRCLE_INSTITUTE_ID) {
+                // For code circle, show only OUTLINE tab
+                const codeCircleTabs = tabs.filter(tab => tab.value === TabType.OUTLINE);
+                setFilteredTabs(codeCircleTabs);
+            } else {
+                // For other institutes, show all tabs
+                setFilteredTabs(tabs);
+            }
+        };
+
+        filterTabsForInstitute();
+    }, []);
+
+    useEffect(() => {
         const loadModules = async () => {
             // Ensure packageSessionId is available before making API calls
             if (!packageSessionId) {
@@ -1396,7 +1416,7 @@ export const CourseStructureDetails = ({
                     className="w-full overflow-scroll"
                 >
                     <TabsList className="h-auto border-b border-neutral-200/80 bg-transparent p-0">
-                        {tabs.map((tab) => (
+                        {filteredTabs.map((tab) => (
                             <TabsTrigger
                                 key={tab.value}
                                 value={tab.value}

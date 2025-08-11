@@ -33,11 +33,13 @@ public class AssignmentSlideQuestion {
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Timestamp updatedAt;
 
-    public AssignmentSlideQuestion() {}
+    public AssignmentSlideQuestion() {
+    }
 
-    public AssignmentSlideQuestion(AssignmentSlideQuestionDTO dto,AssignmentSlide assignmentSlide) {
+    public AssignmentSlideQuestion(AssignmentSlideQuestionDTO dto, AssignmentSlide assignmentSlide) {
         this.id = dto.getId();
-        if (dto.getTextData() != null) this.textData = new RichTextData(dto.getTextData());
+        if (dto.getTextData() != null)
+            this.textData = new RichTextData(dto.getTextData());
         this.questionOrder = dto.getQuestionOrder();
         this.status = dto.getStatus();
         this.assignmentSlide = assignmentSlide;

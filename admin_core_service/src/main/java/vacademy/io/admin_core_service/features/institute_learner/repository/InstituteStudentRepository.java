@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.CrudRepository;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import vacademy.io.admin_core_service.features.institute_learner.dto.projection.StudentListV2Projection;
 import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
 
 import java.util.List;
@@ -13,70 +14,6 @@ import java.util.Optional;
 
 @Repository
 public interface InstituteStudentRepository extends CrudRepository<Student, String> {
-
-    public interface StudentListV2Projection {
-        String getFullName();
-
-        String getEmail();
-
-        String getUsername();
-
-        String getPhone();
-
-        String getPackageSessionId();
-
-        Integer getAccessDays();
-
-        String getPaymentStatus();
-
-        String getCustomFieldsJson();
-
-        String getUserId();
-
-        String getId();
-
-        String getAddressLine();
-
-        String getRegion();
-
-        String getCity();
-
-        String getPinCode();
-
-        String getDateOfBirth();
-
-        String getGender();
-
-        String getFathersName();
-
-        String getMothersName();
-
-        String getParentsMobileNumber();
-
-        String getParentsEmail();
-
-        String getLinkedInstituteName();
-
-        String getCreatedAt();
-
-        String getUpdatedAt();
-
-        String getFaceFileId();
-
-        String getExpiryDate();
-
-        String getParentsToMotherMobileNumber();
-
-        String getParentsToMotherEmail();
-
-        String getInstituteEnrollmentNumber();
-
-        String getInstituteId();
-
-        String getGroupId();
-
-        String getStatus();
-    }
 
     @Query(value = "SELECT DISTINCT s.* FROM student s LEFT JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id "
             +
@@ -300,7 +237,10 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                 ssigm.institute_enrollment_number AS "instituteEnrollmentNumber",
                 ssigm.institute_id AS "instituteId",
                 ssigm.group_id AS "groupId",
-                ssigm.status AS "status"
+                ssigm.status AS "status",
+                up.plan_json AS "paymentPlanJson",
+                up.payment_option_json AS "paymentOptionJson",
+                ssigm.destination_package_session_id AS "destinationPackageSessionId"
             FROM student s
             JOIN student_session_institute_group_mapping ssigm
                 ON s.user_id = ssigm.user_id
@@ -330,6 +270,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
               AND (:#{#instituteIds == null || #instituteIds.isEmpty()} = true OR ssigm.institute_id IN (:instituteIds))
               AND (:#{#groupIds == null || #groupIds.isEmpty()} = true OR ssigm.group_id IN (:groupIds))
               AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR ssigm.package_session_id IN (:packageSessionIds))
+              AND (:#{#destinationPackageSessionIds == null || #destinationPackageSessionIds.isEmpty()} = true OR ssigm.destination_package_session_id IN (:destinationPackageSessionIds))
               AND (:#{#paymentStatuses == null || #paymentStatuses.isEmpty()} = true OR last_pl.payment_status IN (:paymentStatuses))
             GROUP BY s.id, s.username, s.full_name, s.email, s.mobile_number,
                      ssigm.package_session_id, ssigm.enrolled_date, ssigm.expiry_date,
@@ -338,7 +279,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                      s.parents_mobile_number, s.parents_email, s.linked_institute_name,
                      s.created_at, s.updated_at, s.face_file_id, s.parents_to_mother_mobile_number,
                      s.parents_to_mother_email, ssigm.institute_enrollment_number,
-                     ssigm.institute_id, ssigm.group_id, ssigm.status
+                     ssigm.institute_id, ssigm.group_id, ssigm.status, up.plan_json, up.payment_option_json, ssigm.destination_package_session_id
             """, countQuery = """
             SELECT COUNT(DISTINCT s.id)
             FROM student s
@@ -369,6 +310,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             @Param("instituteIds") List<String> instituteIds,
             @Param("groupIds") List<String> groupIds,
             @Param("packageSessionIds") List<String> packageSessionIds,
+            @Param("destinationPackageSessionIds") List<String> destinationPackageSessionIds,
             @Param("paymentStatuses") List<String> paymentStatuses,
             @Param("customFieldStatus") List<String> customFieldStatus,
             Pageable pageable);
@@ -414,7 +356,10 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                 ssigm.institute_enrollment_number AS "instituteEnrollmentNumber",
                 ssigm.institute_id AS "instituteId",
                 ssigm.group_id AS "groupId",
-                ssigm.status AS "status"
+                ssigm.status AS "status",
+                up.plan_json AS "paymentPlanJson",
+                up.payment_option_json AS "paymentOptionJson",
+                ssigm.destination_package_session_id AS "destinationPackageSessionId"
             FROM student s
             JOIN student_session_institute_group_mapping ssigm
                 ON s.user_id = ssigm.user_id
@@ -449,6 +394,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             )
               AND (:instituteIds IS NULL OR ssigm.institute_id IN (:instituteIds))
               AND (:statuses IS NULL OR ssigm.status IN (:statuses))
+              AND (:destinationPackageSessionIds IS NULL OR ssigm.destination_package_session_id IN (:destinationPackageSessionIds))
               AND (:paymentStatuses IS NULL OR last_pl.payment_status IN (:paymentStatuses))
             GROUP BY s.id, s.username, s.full_name, s.email, s.mobile_number,
                      ssigm.package_session_id, ssigm.enrolled_date, ssigm.expiry_date,
@@ -457,7 +403,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                      s.parents_mobile_number, s.parents_email, s.linked_institute_name,
                      s.created_at, s.updated_at, s.face_file_id, s.parents_to_mother_mobile_number,
                      s.parents_to_mother_email, ssigm.institute_enrollment_number,
-                     ssigm.institute_id, ssigm.group_id, ssigm.status
+                     ssigm.institute_id, ssigm.group_id, ssigm.status, up.plan_json, up.payment_option_json, ssigm.destination_package_session_id
             """, countQuery = """
             SELECT COUNT(DISTINCT s.id)
             FROM student s
@@ -491,6 +437,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             @Param("name") String name,
             @Param("instituteIds") List<String> instituteIds,
             @Param("statuses") List<String> statuses,
+            @Param("destinationPackageSessionIds") List<String> destinationPackageSessionIds,
             @Param("paymentStatuses") List<String> paymentStatuses,
             @Param("customFieldStatus") List<String> customFieldStatus,
             Pageable pageable);

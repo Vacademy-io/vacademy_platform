@@ -20,8 +20,10 @@ public class JsonUtil {
         }
     }
 
-    // ✅ Parse JSON string to an object of given class
     public static <T> T fromJson(String json, Class<T> clazz) {
+        if (json == null) {
+            return null;
+        }
         try {
             return objectMapper.readValue(json, clazz);
         } catch (JsonProcessingException e) {

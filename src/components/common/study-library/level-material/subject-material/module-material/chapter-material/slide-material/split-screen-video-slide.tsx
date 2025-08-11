@@ -13,6 +13,7 @@ import { DotsSixVertical } from "@phosphor-icons/react";
 interface SplitScreenVideoSlideProps {
   videoSlide: {
     source_type: string;
+    id: string;
     published_url?: string;
     url?: string;
     embedded_type?: "CODE" | "SCRATCH" | "JUPYTER";
@@ -84,14 +85,25 @@ export const SplitScreenVideoSlide: React.FC<SplitScreenVideoSlideProps> = ({
 
     switch (videoSlide.embedded_type) {
       case "CODE":
-        return <CodeEditorSlide published_data={videoSlide.embedded_data} />;
+        return (
+          <CodeEditorSlide
+            published_data={videoSlide.embedded_data}
+            documentId={videoSlide.id}
+          />
+        );
       case "JUPYTER":
         return (
-          <JupyterNotebookSlide published_data={videoSlide.embedded_data} />
+          <JupyterNotebookSlide
+            published_data={videoSlide.embedded_data}
+            documentId={videoSlide.id}
+          />
         );
       case "SCRATCH":
         return (
-          <ScratchProjectSlide published_data={videoSlide.embedded_data} />
+          <ScratchProjectSlide
+            published_data={videoSlide.embedded_data}
+            documentId={videoSlide.id}
+          />
         );
       default:
         return (
@@ -183,9 +195,9 @@ export const SplitScreenVideoSlide: React.FC<SplitScreenVideoSlideProps> = ({
             {/* Left Panel - Embedded Content (Top on mobile, Left on desktop) */}
             <div
               className="relative overflow-hidden lg:border-r border-neutral-200"
-              style={{ 
-                width: window.innerWidth >= 1024 ? `${leftWidth}%` : '100%',
-                height: window.innerWidth >= 1024 ? '100%' : '50%'
+              style={{
+                width: window.innerWidth >= 1024 ? `${leftWidth}%` : "100%",
+                height: window.innerWidth >= 1024 ? "100%" : "50%",
               }}
             >
               <div className="h-full">{renderEmbeddedSlide()}</div>
@@ -212,9 +224,10 @@ export const SplitScreenVideoSlide: React.FC<SplitScreenVideoSlideProps> = ({
             {/* Right Panel - Video (Bottom on mobile, Right on desktop) */}
             <div
               className="relative overflow-hidden"
-              style={{ 
-                width: window.innerWidth >= 1024 ? `${100 - leftWidth}%` : '100%',
-                height: window.innerWidth >= 1024 ? '100%' : '50%'
+              style={{
+                width:
+                  window.innerWidth >= 1024 ? `${100 - leftWidth}%` : "100%",
+                height: window.innerWidth >= 1024 ? "100%" : "50%",
               }}
             >
               <div className="h-full p-2">

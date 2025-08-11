@@ -52,7 +52,6 @@ const handleOAuthCallback = async (
   const accessToken = urlParams.get("accessToken");
   const refreshToken = urlParams.get("refreshToken");
   const error = urlParams.get("error");
-  const message = urlParams.get("message");
   const state = urlParams.get("state");
   
   // Parse state to get redirect information
@@ -72,8 +71,8 @@ const handleOAuthCallback = async (
       isModalLogin = stateObj.isModalLogin || false;
       type = stateObj.type || "";
       courseId = stateObj.courseId || "";
-    } catch (error) {
-      console.error("Error parsing state:", error);
+    } catch {
+      // Error parsing state - continue with default values
     }
   }
   
@@ -92,7 +91,13 @@ const handleOAuthCallback = async (
     if (isModalLogin) {
       window.history.back();
     } else {
-      navigate({ to: "/login" });
+      // Redirect to signup page with parameters instead of just signup page for failed OAuth
+      const signupUrl = new URL(window.location.origin + "/signup");
+      if (type) signupUrl.searchParams.set("type", type);
+      if (courseId) signupUrl.searchParams.set("courseId", courseId);
+      signupUrl.searchParams.set("fromOAuth", "true");
+      
+      navigate({ to: signupUrl.pathname + signupUrl.search });
     }
     return;
   }
@@ -106,6 +111,7 @@ const handleOAuthCallback = async (
 
       await handleSuccessfulLogin(
         accessToken,
+        refreshToken,
         navigate,
         setShowSessionPage,
         setRedirectPath,
@@ -121,7 +127,13 @@ const handleOAuthCallback = async (
       if (isModalLogin) {
         window.history.back();
       } else {
-        navigate({ to: "/login" });
+        // Redirect to signup page with parameters when token storage fails
+        const signupUrl = new URL(window.location.origin + "/signup");
+        if (type) signupUrl.searchParams.set("type", type);
+        if (courseId) signupUrl.searchParams.set("courseId", courseId);
+        signupUrl.searchParams.set("fromOAuth", "true");
+        
+        navigate({ to: signupUrl.pathname + signupUrl.search });
       }
     }
   } else {
@@ -129,13 +141,20 @@ const handleOAuthCallback = async (
     if (isModalLogin) {
       window.history.back();
     } else {
-      navigate({ to: "/login" });
+      // Redirect to signup page with parameters when tokens are missing
+      const signupUrl = new URL(window.location.origin + "/signup");
+      if (type) signupUrl.searchParams.set("type", type);
+      if (courseId) signupUrl.searchParams.set("courseId", courseId);
+      signupUrl.searchParams.set("fromOAuth", "true");
+      
+      navigate({ to: signupUrl.pathname + signupUrl.search });
     }
   }
 };
 
 const handleSuccessfulLogin = async (
   accessToken: string,
+  refreshToken: string,
   navigate: ReturnType<typeof useNavigate>,
   setShowSessionPage: (show: boolean) => void,
   setRedirectPath: (redirect: string) => void,

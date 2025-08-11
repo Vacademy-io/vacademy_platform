@@ -40,7 +40,6 @@ const handleModalOAuthCallback = async (
   const accessToken = urlParams.get("accessToken");
   const refreshToken = urlParams.get("refreshToken");
   const error = urlParams.get("error");
-  const message = urlParams.get("message");
   const state = urlParams.get("state");
   
   // Parse state to get redirect information
@@ -93,7 +92,49 @@ const handleModalOAuthCallback = async (
 
   if (error) {
     toast.error("We couldn't find an account with these details. Please create an account before logging in.");
-    window.history.back();
+    
+    // For modal login, close this tab and send message to parent tab to open signup modal
+    try {
+      // Try to send message to parent tab to open signup modal
+      if (window.opener && !window.opener.closed) {
+        // Send message to parent tab with signup parameters
+        const signupData = {
+          action: 'openSignupModal',
+          type: type || '',
+          courseId: courseId || '',
+          instituteId: instituteId || '',
+          fromOAuth: true
+        };
+        
+        window.opener.postMessage(signupData, window.location.origin);
+        
+        // Close this tab after sending message
+        setTimeout(() => {
+          window.close();
+        }, 100);
+      } else {
+        // Fallback: redirect to signup page with parameters
+        const signupUrl = new URL(window.location.origin + "/signup");
+        signupUrl.searchParams.set("openModal", "true");
+        signupUrl.searchParams.set("type", type || "");
+        signupUrl.searchParams.set("courseId", courseId || "");
+        signupUrl.searchParams.set("instituteId", instituteId || "");
+        signupUrl.searchParams.set("fromOAuth", "true");
+        
+        window.location.href = signupUrl.toString();
+      }
+    } catch (error) {
+      console.error("Error communicating with parent tab:", error);
+      // Fallback: redirect to signup page
+      const signupUrl = new URL(window.location.origin + "/signup");
+      signupUrl.searchParams.set("openModal", "true");
+      signupUrl.searchParams.set("type", type || "");
+      signupUrl.searchParams.set("courseId", courseId || "");
+      signupUrl.searchParams.set("instituteId", instituteId || "");
+      signupUrl.searchParams.set("fromOAuth", "true");
+      
+      window.location.href = signupUrl.toString();
+    }
     return;
   }
 

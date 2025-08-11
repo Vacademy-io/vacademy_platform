@@ -72,6 +72,7 @@ export function InstituteSelection() {
                     return toast.error("Invalid token  Please login again");
 
                 const instituteIds = Object.keys(authorities);
+                
                 const instituteList = await Promise.all(
                     instituteIds.map(async (instituteId) => {
                         try {
@@ -85,7 +86,7 @@ export function InstituteSelection() {
                                 label: data?.institute_name || instituteId,
                                 value: instituteId,
                             };
-                        } catch {
+                        } catch (error) {
                             return {
                                 label: instituteId,
                                 value: instituteId,
@@ -95,7 +96,7 @@ export function InstituteSelection() {
                 );
 
                 setDropdownList(instituteList);
-            } catch {
+            } catch (error) {
                 toast.error("Failed to fetch institutes");
             } finally {
                 setIsLoadingInstitutes(false);
@@ -115,7 +116,7 @@ export function InstituteSelection() {
                 key: "selectedInstituteId",
                 value: data.instituteId,
             });
-
+            
             const userId = await getTokenFromStorage(TokenKey.accessToken)
                 .then(getTokenDecodedData)
                 .then((data) => data?.user);
@@ -124,7 +125,7 @@ export function InstituteSelection() {
                 toast.error("User not found");
                 return;
             }
-
+            
             // Step 1: Fetch and store InstituteDetails
             await fetchAndStoreInstituteDetails(data.instituteId, userId);
 
@@ -134,7 +135,7 @@ export function InstituteSelection() {
             });
             if (!instituteRaw)
                 throw new Error("No InstituteDetails found after storing.");
-
+            
             // Step 3: Fetch and store student details using updated institute data
             await fetchAndStoreStudentDetails(data.instituteId, userId);
 
@@ -152,7 +153,6 @@ export function InstituteSelection() {
             // Skip session selection and go directly to dashboard
             navigate({ to: "/dashboard" });
         } catch (error) {
-            console.error("❌ Error submitting form:", error);
             toast.error("Submission failed");
         } finally {
             setIsSubmitting(false);

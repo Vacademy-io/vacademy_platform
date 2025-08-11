@@ -92,7 +92,7 @@ const handleModalOAuthCallback = async (
   }
 
   if (error) {
-    toast.error(decodeURIComponent(message || "Authentication failed."));
+    toast.error("We couldn't find an account with these details. Please create an account before logging in.");
     window.history.back();
     return;
   }

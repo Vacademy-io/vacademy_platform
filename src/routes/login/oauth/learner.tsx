@@ -88,7 +88,7 @@ const handleOAuthCallback = async (
   }
 
   if (error) {
-    toast.error(decodeURIComponent(message || "Authentication failed."));
+    toast.error("We couldn't find an account with these details. Please create an account before logging in.");
     if (isModalLogin) {
       window.history.back();
     } else {

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
     Sidebar,
     SidebarContent,
@@ -12,16 +12,15 @@ import {
     sideBarStateType,
 } from "../../../../types/layout-container-types";
 import { SidebarItem } from "./sidebar-item";
-import {
-    SidebarItemsData,
-    HamBurgerSidebarItemsData,
-    filterMenuItems,
-    filterHamburgerMenuItems,
-} from "./utils";
+import { HamBurgerSidebarItemsData, filterHamburgerMenuItems } from "./utils";
 import "./scrollbarStyle.css";
 import useStore from "./useSidebar";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
 import { useNavigate } from "@tanstack/react-router";
+import { getStudentDisplaySettings } from "@/services/student-display-settings";
+import type { StudentSidebarTabConfig } from "@/types/student-display-settings";
+import { House, BookOpen, NotePencil, Scroll } from "@phosphor-icons/react";
+import type { SidebarItemsType, subItemsType } from "../../../../types/layout-container-types";
 
 export const MySidebar = ({
     sidebarComponent,
@@ -33,31 +32,93 @@ export const MySidebar = ({
     const { sideBarState, instituteName, instituteLogoFileUrl } = useStore();
 
     const [filteredSidebarItems, setFilteredSidebarItems] =
-        useState(SidebarItemsData);
+        useState<SidebarItemsType[]>([]);
     const [filteredHamburgerItems, setFilteredHamburgerItems] = useState(
         HamBurgerSidebarItemsData
     );
+    const [hideSidebar, setHideSidebar] = useState<boolean>(false);
+
+    const iconByTabId: Record<string, unknown> = useMemo(
+        () => ({
+            dashboard: House,
+            "learning-center": BookOpen,
+            homework: NotePencil,
+            "assessment-center": Scroll,
+        }),
+        []
+    );
+
+    const defaultRouteByTabId: Record<string, string> = useMemo(
+        () => ({
+            dashboard: "/dashboard",
+            referral: "/referral",
+            attendance: "/learning-centre/attendance",
+        }),
+        []
+    );
+
+    const labelByTabId: Record<string, string> = useMemo(
+        () => ({
+            dashboard: "Dashboard",
+            "learning-center": "Learning Center",
+            homework: "Homework",
+            "assessment-center": "Assessment Centre",
+            referral: "Referral",
+            attendance: "Attendance",
+        }),
+        []
+    );
+
+    const transformTabsToSidebarItems = (tabs: StudentSidebarTabConfig[]): SidebarItemsType[] => {
+        return tabs
+            .filter((t) => t.visible !== false)
+            .map<SidebarItemsType>((t) => {
+                const hasSubTabs = (t.subTabs || []).some((s) => s.visible !== false);
+                const subItems: subItemsType[] | undefined = hasSubTabs
+                    ? (t.subTabs || [])
+                          .filter((s) => s.visible !== false)
+                          .map((s) => ({
+                              subItem: s.label || s.id,
+                              subItemLink: s.route || "/",
+                          }))
+                    : undefined;
+                return {
+                    icon: iconByTabId[t.id] || House,
+                    title: t.label || labelByTabId[t.id] || t.id,
+                    to: subItems ? undefined : t.route || defaultRouteByTabId[t.id] || "/",
+                    subItems,
+                } as SidebarItemsType;
+            });
+    };
 
     useEffect(() => {
-        if (sideBarState === sideBarStateType.DEFAULT) {
-            filterMenuItems(SidebarItemsData).then((data) => {
-                console.log(data);
-                setFilteredSidebarItems(data);
-            });
-        } else if (sideBarState === sideBarStateType.HAMBURGER) {
+        // Load display settings and compute sidebar items
+        getStudentDisplaySettings(false).then((settings) => {
+            const shouldHide = settings?.sidebar?.visible === false;
+            setHideSidebar(!!shouldHide);
+            const tabs = (settings?.sidebar?.tabs || []).slice();
+            setFilteredSidebarItems(transformTabsToSidebarItems(tabs));
+        });
+
+        if (sideBarState === sideBarStateType.HAMBURGER) {
             filterHamburgerMenuItems(HamBurgerSidebarItemsData).then((data) => {
                 setFilteredHamburgerItems(data);
             });
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [sideBarState]);
 
     const isExpanded = state === "expanded";
 
+    if (hideSidebar && !sidebarComponent) {
+        return null;
+    }
+
     return (
         <Sidebar side="left" collapsible="icon">
-            <SidebarContent className="sidebar-content flex flex-col bg-white border-r border-gray-200 py-4 transition-all duration-300 ease-in-out">
+            <SidebarContent className="sidebar-content flex flex-col bg-white border-r border-gray-200 py-3 transition-all duration-200 ease-in-out">
                 <SidebarHeader
-                    className={`flex items-center px-3 pb-4 mb-4 border-b border-gray-100 transition-all duration-300 ${
+                    className={`flex items-center px-3 pb-3 mb-3 border-b border-gray-100 transition-all duration-200 ${
                         isExpanded
                             ? "flex-row gap-2 justify-start"
                             : "flex-col gap-1 justify-center"
@@ -66,7 +127,7 @@ export const MySidebar = ({
                     <div className="relative">
                         {!isNullOrEmptyOrUndefined(instituteLogoFileUrl) ? (
                             <img
-                                className={`object-cover shadow-sm border border-gray-200 transition-all duration-300 ${
+                                className={`object-cover shadow-sm border border-gray-200 transition-all duration-200 ${
                                     isExpanded
                                         ? "w-8 h-8 rounded-md"
                                         : "w-7 h-7 rounded-md"
@@ -76,7 +137,7 @@ export const MySidebar = ({
                             />
                         ) : (
                             <div
-                                className={`bg-primary-50 border border-primary-200 rounded-md flex items-center justify-center transition-all duration-300 ${
+                                className={`bg-primary-50 border border-primary-200 rounded-md flex items-center justify-center transition-all duration-200 ${
                                     isExpanded ? "w-8 h-8" : "w-7 h-7"
                                 }`}
                             >
@@ -105,7 +166,7 @@ export const MySidebar = ({
                 </SidebarHeader>
 
                 <SidebarMenu
-                    className={`flex flex-col space-y-1 flex-1 transition-all duration-300 ${
+                    className={`flex flex-col space-y-1 flex-1 transition-all duration-200 ${
                         isExpanded ? "items-stretch" : "items-center"
                     }`}
                 >
@@ -127,9 +188,9 @@ export const MySidebar = ({
                                   >
                                       <SidebarItem
                                           icon={obj.icon}
-                                          subItems={obj.subItems}
+                                          subItems={obj.subItems as { subItem: string; subItemLink: string }[] | undefined}
                                           title={obj.title}
-                                          to={obj.to}
+                                          to={(obj.to || "/") as string}
                                       />
                                   </SidebarMenuItem>
                               ));

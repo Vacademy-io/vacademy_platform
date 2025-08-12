@@ -4,12 +4,12 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { useNavigate, useRouterState } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import axios from "axios";
 import { Form, FormControl, FormField, FormItem } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { MyInput } from "@/components/design-system/input";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { Mail, ArrowLeft, RefreshCw, Shield, CheckCircle2 } from "lucide-react";
 
 import { TokenKey } from "@/constants/auth/tokens";
@@ -61,10 +61,10 @@ export function ModalEmailLogin({
     const otpInputRefs = useRef<(HTMLInputElement | null)[]>([]);
     const [isLoading, setIsLoading] = useState(false);
 
-    const redirect = useRouterState({
-        select: (s) =>
-            (s.location.search as Record<string, any>).redirect ?? "/login/",
-    });
+    // const redirect = useRouterState({
+    //     select: (s) =>
+    //         (s.location.search as Record<string, unknown>).redirect ?? "/login/",
+    // });
 
     const emailForm = useForm<EmailFormValues>({
         resolver: zodResolver(emailSchema),
@@ -100,7 +100,7 @@ export function ModalEmailLogin({
     });
 
     const sendOtpMutation = useMutation({
-        mutationFn: (email: string) => axios.post(REQUEST_OTP, { email }),
+        mutationFn: (emailParam: string) => axios.post(REQUEST_OTP, { email: emailParam }),
         onMutate: () => {
             setIsLoading(true);
         },
@@ -158,8 +158,8 @@ export function ModalEmailLogin({
                 if (instituteId && authorityKeys.includes(instituteId)) {
                     // User is enrolled in the specified institute
                     try {
-                        await fetchAndStoreInstituteDetails(instituteId, userId);
-                        await fetchAndStoreStudentDetails(instituteId, userId);
+                        await fetchAndStoreInstituteDetails(instituteId as string, userId as string);
+                        await fetchAndStoreStudentDetails(instituteId as string, userId as string);
                         
                         // For email OTP login, assume status 200 (success) since we have tokens
                         const loginStatus = 200;
@@ -205,8 +205,8 @@ export function ModalEmailLogin({
                     const firstInstituteId = authorityKeys[0];
                     
                     try {
-                        await fetchAndStoreInstituteDetails(firstInstituteId, userId);
-                        await fetchAndStoreStudentDetails(firstInstituteId, userId);
+                        await fetchAndStoreInstituteDetails(firstInstituteId as string, userId as string);
+                        await fetchAndStoreStudentDetails(firstInstituteId as string, userId as string);
                         
                         // For email OTP login, assume status 200 (success) since we have tokens
                         const loginStatus = 200;
@@ -387,7 +387,7 @@ export function ModalEmailLogin({
 
     if (isOtpSent) {
         return (
-            <div className="space-y-6">
+            <div className="space-y-4">
                 {/* Compact OTP Header */}
                 <motion.div
                     initial={{ y: 10, opacity: 0 }}
@@ -403,7 +403,7 @@ export function ModalEmailLogin({
                             type: "spring",
                             stiffness: 200,
                         }}
-                        className="w-12 h-12 bg-gray-100 rounded-xl mx-auto flex items-center justify-center"
+                        className="w-12 h-12 bg-gray-100 rounded-md mx-auto flex items-center justify-center"
                     >
                         <Mail className="w-6 h-6 text-gray-700" />
                     </motion.div>
@@ -418,7 +418,7 @@ export function ModalEmailLogin({
                             initial={{ scale: 0.9, opacity: 0 }}
                             animate={{ scale: 1, opacity: 1 }}
                             transition={{ delay: 0.3 }}
-                            className="inline-flex items-center space-x-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1"
+                            className="inline-flex items-center space-x-2 bg-gray-50 border border-gray-200 rounded-md px-3 py-1"
                         >
                             <CheckCircle2 className="w-3 h-3 text-gray-600" />
                             <span className="text-sm font-medium text-gray-800">

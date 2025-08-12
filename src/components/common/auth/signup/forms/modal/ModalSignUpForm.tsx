@@ -336,7 +336,7 @@ export function ModalSignUpForm({
                         animate={{ opacity: 1, x: 0 }}
                         exit={{ opacity: 0, x: 30 }}
                         transition={{ duration: 0.3 }}
-                        className="space-y-6"
+                        className="space-y-4"
                     >
 
 
@@ -382,7 +382,7 @@ export function ModalSignUpForm({
                             <motion.button
                                 whileHover={{ scale: 1.01 }}
                                 whileTap={{ scale: 0.99 }}
-                                className="w-full flex items-center justify-center gap-3 px-4 py-3 border border-gray-200 rounded-lg bg-white/80 backdrop-blur-sm text-gray-700 font-medium hover:bg-white hover:border-gray-300 hover:shadow-md transition-all duration-200 group"
+                               className="w-full flex items-center justify-center gap-3 px-4 py-3 border border-gray-200 rounded-md bg-white text-gray-700 font-medium hover:bg-gray-50 hover:border-gray-300 hover:shadow-sm transition-all duration-200 group"
                                 onClick={() => handleOAuthSignUp("google")}
                                 type="button"
                                 disabled={isLoading}
@@ -396,7 +396,7 @@ export function ModalSignUpForm({
                             <motion.button
                                 whileHover={{ scale: 1.01 }}
                                 whileTap={{ scale: 0.99 }}
-                                className="w-full flex items-center justify-center gap-3 px-4 py-3 border border-gray-200 rounded-lg bg-white/80 backdrop-blur-sm text-gray-700 font-medium hover:bg-white hover:border-gray-300 hover:shadow-md transition-all duration-200 group"
+                               className="w-full flex items-center justify-center gap-3 px-4 py-3 border border-gray-200 rounded-md bg-white text-gray-700 font-medium hover:bg-gray-50 hover:border-gray-300 hover:shadow-sm transition-all duration-200 group"
                                 onClick={() => handleOAuthSignUp("github")}
                                 type="button"
                                 disabled={isLoading}
@@ -432,7 +432,7 @@ export function ModalSignUpForm({
                                 initial={{ y: 10, opacity: 0 }}
                                 animate={{ y: 0, opacity: 1 }}
                                 transition={{ delay: 0.4 }}
-                                className="p-4 bg-blue-50 border border-blue-200 rounded-lg"
+                                className="p-3 bg-blue-50 border border-blue-200 rounded-md"
                             >
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center space-x-3">
@@ -465,7 +465,7 @@ export function ModalSignUpForm({
                             transition={{ delay: 0.5 }}
                         >
                             <Form {...userDetailsForm}>
-                                <form onSubmit={userDetailsForm.handleSubmit(handleUserDetailsSubmit)} className="space-y-4">
+                                <form onSubmit={userDetailsForm.handleSubmit(handleUserDetailsSubmit)} className="space-y-3">
                                     {/* Full Name Field */}
                                     <FormField
                                         control={userDetailsForm.control}
@@ -582,7 +582,7 @@ export function ModalSignUpForm({
                                         whileHover={{ scale: 1.01 }}
                                         whileTap={{ scale: 0.99 }}
                                         disabled={isLoading}
-                                        className="w-full bg-gray-900 hover:bg-black text-white font-medium py-3 px-4 rounded-lg transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                                        className="w-full bg-gray-900 hover:bg-black text-white font-medium py-2.5 px-4 rounded-md transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                         <div className="flex items-center justify-center space-x-2">
                                             {isLoading ? (

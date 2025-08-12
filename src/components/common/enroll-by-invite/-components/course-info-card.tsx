@@ -39,7 +39,7 @@ const extractYouTubeVideoId = (url: string): string | null => {
 
 const CourseInfoCard = ({ courseData, levelName }: CourseInfoCardProps) => {
     return (
-        <Card className="overflow-hidden shadow-xl border-0 bg-white/80 backdrop-blur-sm w-full">
+        <Card className="overflow-hidden shadow-lg border bg-white w-full">
             {/* Instiute Logo */}
             {courseData.instituteLogo && (
                 <div className="flex justify-center items-center pt-8 rounded-lg">
@@ -51,9 +51,9 @@ const CourseInfoCard = ({ courseData, levelName }: CourseInfoCardProps) => {
                 </div>
             )}
             {/* Banner Image */}
-            <div className="p-8 rounded-lg !pb-0">
+            <div className="p-6 rounded-md !pb-0">
                 {courseData.courseBanner ? (
-                    <div className="rounded-xl relative h-32 sm:h-56 lg:h-72 w-full overflow-hidden">
+                    <div className="rounded-lg relative h-32 sm:h-56 lg:h-72 w-full overflow-hidden">
                         <img
                             src={courseData.courseBanner}
                             alt="Course Banner"
@@ -61,10 +61,10 @@ const CourseInfoCard = ({ courseData, levelName }: CourseInfoCardProps) => {
                         />
                     </div>
                 ) : (
-                    <div className="rounded-xl relative h-32 sm:h-56 lg:h-72 w-full overflow-hidden bg-primary-500"></div>
+                    <div className="rounded-lg relative h-32 sm:h-56 lg:h-72 w-full overflow-hidden bg-primary-500"></div>
                 )}
             </div>
-            <CardContent className="p-6 sm:p-8">
+            <CardContent className="p-5 sm:p-6">
                 {/* Course Name */}
                 <div className="flex items-start gap-2 sm:gap-3 mb-4">
                     <BookOpen className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 flex-shrink-0 mt-0.5" />

@@ -412,7 +412,7 @@ export function EmailLogin({
                                     type: "spring",
                                     stiffness: 200,
                                 }}
-                                className="w-12 h-12 bg-gray-100 rounded-xl mx-auto flex items-center justify-center"
+                               className="w-12 h-12 bg-gray-100 rounded-md mx-auto flex items-center justify-center"
                             >
                                 <Mail className="w-6 h-6 text-gray-700" />
                             </motion.div>

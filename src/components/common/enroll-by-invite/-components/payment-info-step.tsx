@@ -6,7 +6,7 @@ interface PaymentInfoStepProps {
 const CheckoutForm = ({ error }: { error: string | null }) => {
     return (
         <div className="w-full max-w-md mx-auto">
-            <div className="bg-white/95 backdrop-blur-sm rounded-2xl border-2 border-white/20 p-8 text-center">
+            <div className="bg-white rounded-md border border-gray-200 p-6 text-center">
                 <h2 className="text-2xl font-bold text-gray-800 mb-2">
                     💳 Secure Payment
                 </h2>

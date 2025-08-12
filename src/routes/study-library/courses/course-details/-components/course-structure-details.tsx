@@ -1,5 +1,5 @@
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { PullToRefreshWrapper } from "@/components/design-system/pull-to-refresh";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toTitleCase } from "@/lib/utils";
@@ -35,11 +35,15 @@ import {
 import { getIcon } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/chapter-sidebar-slides";
 import { CourseDetailsFormValues } from "./course-details-schema";
 import { getSubjectDetails } from "@/routes/courses/course-details/-utils/helper";
+import { getPublicUrl } from "@/services/upload_file";
+// import { getPublicUrl } from "@/services/upload_file";
 import { useRouter } from "@tanstack/react-router";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
-import { CODE_CIRCLE_INSTITUTE_ID } from "@/constants/urls";
-import { getInstituteId } from "@/constants/helper";
+// import { CODE_CIRCLE_INSTITUTE_ID } from "@/constants/urls";
+// import { getInstituteId } from "@/constants/helper";
+import { getStudentDisplaySettings } from "@/services/student-display-settings";
+import type { StudentCourseDetailsTabId } from "@/types/student-display-settings";
 
 export interface Chapter {
     id: string;
@@ -98,15 +102,99 @@ export const CourseStructureDetails = ({
     const { setNavHeading } = useNavHeadingStore();
 
     const [studyLibraryData, setStudyLibraryData] = useState<SubjectType[]>([]);
-    const [filteredTabs, setFilteredTabs] = useState(tabs);
+    type LocalTab = { label: string; value: string };
+    const [filteredTabs, setFilteredTabs] = useState<LocalTab[]>([]);
 
     const [selectedStructureTab, setSelectedStructureTab] = useState<string>(
         TabType.OUTLINE
     );
     const handleTabChange = (value: string) => setSelectedStructureTab(value);
+    // Enforce Course Details tabs (visibility/order/default) from settings
+    useEffect(() => {
+        const mapSettingIdToValue = (
+            id: StudentCourseDetailsTabId
+        ): typeof TabType[keyof typeof TabType] => {
+            switch (id) {
+                case "OUTLINE":
+                    return TabType.OUTLINE;
+                case "CONTENT_STRUCTURE":
+                    return TabType.CONTENT_STRUCTURE;
+                case "TEACHERS":
+                    return TabType.TEACHERS;
+                case "ASSESSMENTS":
+                    return TabType.ASSESSMENT;
+                default:
+                    return TabType.OUTLINE;
+            }
+        };
+
+        getStudentDisplaySettings(false).then((settings) => {
+            const tabsSetting = settings?.courseDetails?.tabs || [];
+            const ordered = tabsSetting
+                .filter((t) => t.visible !== false)
+                .sort((a, b) => (a.order || 0) - (b.order || 0))
+                .map((t) => ({
+                    label: t.label || tabs.find((x) => x.value === mapSettingIdToValue(t.id))?.label || t.id,
+                    value: mapSettingIdToValue(t.id),
+                }));
+
+            // Debug logs for visibility enforcement
+            console.group('[Course Details Settings] Visible tabs resolved');
+            console.log('Raw settings tabs:', settings?.courseDetails?.tabs);
+            console.log('Mapped & ordered visible tabs:', ordered);
+            console.groupEnd();
+            // Fallback: ensure CONTENT_STRUCTURE appears if visible in settings but mapping missed
+            const hasContentStructureSetting = tabsSetting.some((t) => t.id === 'CONTENT_STRUCTURE' && t.visible !== false);
+            const hasContentStructureMapped = ordered.some((t) => t.value === TabType.CONTENT_STRUCTURE);
+            const finalTabs = [...ordered];
+            if (hasContentStructureSetting && !hasContentStructureMapped) {
+                finalTabs.push({ label: 'Content Structure', value: TabType.CONTENT_STRUCTURE });
+            }
+            console.log('[Course Details Settings] finalTabs to render:', finalTabs);
+            if (finalTabs.length) setFilteredTabs(finalTabs as typeof tabs);
+
+            const defaultTabId = settings?.courseDetails?.defaultTab || "OUTLINE";
+            const defaultValue = mapSettingIdToValue(defaultTabId);
+            const isDefaultVisible = ordered.some((t) => t.value === defaultValue);
+            const firstVisible = (ordered[0]?.value as string) || TabType.OUTLINE;
+            const resolvedDefault = isDefaultVisible ? (defaultValue as string) : firstVisible;
+            console.log('[Course Details Settings] Default tab resolved:', {
+                configuredDefault: defaultTabId,
+                mappedDefault: defaultValue,
+                isDefaultVisible,
+                finalDefault: resolvedDefault,
+            });
+            setSelectedStructureTab(resolvedDefault);
+        });
+    }, []);
+
+    useEffect(() => {
+        console.log('[Course Details UI] filteredTabs changed:', filteredTabs);
+        console.log('[Course Details UI] selectedStructureTab:', selectedStructureTab);
+    }, [filteredTabs, selectedStructureTab]);
+
+    const renderTabs = useMemo(() => {
+        const priorityOrder = [TabType.OUTLINE, TabType.CONTENT_STRUCTURE];
+        const byValue = new Map(filteredTabs.map((t) => [t.value, t]));
+        const prioritized = priorityOrder
+            .filter((v) => byValue.has(v))
+            .map((v) => byValue.get(v)!) as { label: string; value: string }[];
+        const rest = filteredTabs.filter(
+            (t) => !priorityOrder.includes(t.value as TabType)
+        );
+        const finalArr = [...prioritized, ...rest];
+        console.log('[Course Details UI] renderTabs:', finalArr);
+        return finalArr;
+    }, [filteredTabs]);
     const [subjectModulesMap, setSubjectModulesMap] =
         useState<SubjectModulesMap>({});
     const [slidesMap, setSlidesMap] = useState<Record<string, Slide[]>>({});
+    // Drill-down state for Content Structure tab
+    const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
+    const [selectedModuleId, setSelectedModuleId] = useState<string | null>(null);
+    const [selectedChapterId, setSelectedChapterId] = useState<string | null>(null);
+    const [thumbUrlById, setThumbUrlById] = useState<Record<string, string>>({});
+// const [thumbUrlById, setThumbUrlById] = useState<Record<string, string>>({});
 
     const handleSlideNavigation = (
         subjectId: string,
@@ -376,7 +464,7 @@ export const CourseStructureDetails = ({
                                                         className="shrink-0 text-neutral-500 group-hover:text-primary-600 transition-colors"
                                                     />
                                                 )}
-                                                <div className="flex items-center justify-center w-6 h-6 rounded-full bg-gradient-to-br from-primary-500 to-primary-600 text-white text-xs font-bold shrink-0">
+                                               <div className="flex items-center justify-center w-6 h-6 rounded-md bg-gradient-to-br from-primary-500 to-primary-600 text-white text-xs font-bold shrink-0">
                                                     {isSubjectOpen ? (
                                                         <FolderOpen size={12} />
                                                     ) : (
@@ -1231,10 +1319,114 @@ export const CourseStructureDetails = ({
                 </div>
             </div>
         ),
+        [TabType.CONTENT_STRUCTURE]: (
+            <div className="space-y-4">
+                <div className="flex items-center justify-between border-b border-neutral-200 pb-3">
+                    <div className="flex items-center gap-2">
+                        <PresentationChart size={18} className="text-primary-600" />
+                        <span className="text-sm font-medium text-neutral-700">Content Structure</span>
+                    </div>
+                </div>
+                {/* Drill-down folder UI */}
+                {/* Breadcrumbs */}
+                <div className="flex items-center gap-2 text-sm text-neutral-600 mb-2">
+                    <button type="button" className={`hover:text-primary-600 ${!selectedSubjectId && !selectedModuleId && !selectedChapterId ? "font-semibold text-primary-700" : ""}`} onClick={() => { setSelectedSubjectId(null); setSelectedModuleId(null); setSelectedChapterId(null); }}>Subjects</button>
+                    {(selectedSubjectId) && <span className="text-neutral-400">/</span>}
+                    {(selectedSubjectId) && (
+                        <button type="button" className={`hover:text-primary-600 ${selectedSubjectId && !selectedModuleId ? "font-semibold text-primary-700" : ""}`} onClick={() => { setSelectedModuleId(null); setSelectedChapterId(null); }}>Modules</button>
+                    )}
+                    {(selectedModuleId) && <span className="text-neutral-400">/</span>}
+                    {(selectedModuleId) && (
+                        <button type="button" className={`hover:text-primary-600 ${selectedModuleId && !selectedChapterId ? "font-semibold text-primary-700" : ""}`} onClick={() => { setSelectedChapterId(null); }}>Chapters</button>
+                    )}
+                    {(selectedChapterId) && <span className="text-neutral-400">/</span>}
+                    {(selectedChapterId) && (
+                        <span className="font-semibold text-primary-700">Slides</span>
+                    )}
+                </div>
+                {/* Starting depth adapts to courseStructure; if preselected IDs exist, skips to that depth */}
+                {!selectedSubjectId && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {studyLibraryData?.map((subject) => (
+                            <div key={subject.id} className="rounded-md border border-neutral-200 bg-white p-3 shadow-sm hover:shadow cursor-pointer" onClick={() => { setSelectedSubjectId(subject.id); }}>
+                                <div className="flex items-center gap-3">
+                                    <div className="w-12 h-12 rounded-md bg-neutral-100 flex items-center justify-center overflow-hidden">
+                                        <Folder size={20} className="text-neutral-500" />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <div className="text-sm font-medium text-neutral-800 truncate" title={toTitleCase(subject.subject_name)}>{toTitleCase(subject.subject_name)}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+                {/* Modules */}
+                {selectedSubjectId && !selectedModuleId && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {(subjectModulesMap[selectedSubjectId] || []).map((m) => (
+                            <div key={m.module.id} className="rounded-md border border-neutral-200 bg-white p-3 shadow-sm hover:shadow cursor-pointer" onClick={() => { setSelectedModuleId(m.module.id); }}>
+                                <div className="flex items-center gap-3">
+                                    <div className="w-12 h-12 rounded-md bg-neutral-100 flex items-center justify-center overflow-hidden">
+                                        <Folder size={20} className="text-neutral-500" />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <div className="text-sm font-medium text-neutral-800 truncate" title={m.module.module_name}>{m.module.module_name}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+                {/* Chapters */}
+                {selectedSubjectId && selectedModuleId && !selectedChapterId && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {(subjectModulesMap[selectedSubjectId] || [])
+                            .filter((m) => m.module.id === selectedModuleId)
+                            .flatMap((m) => m.chapters)
+                            .map((ch) => (
+                                <div key={ch.id} className="rounded-md border border-neutral-200 bg-white p-3 shadow-sm hover:shadow cursor-pointer" onClick={async () => { setSelectedChapterId(ch.id); await getSlidesWithChapterId(ch.id); }}>
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-12 h-12 rounded-md bg-neutral-100 flex items-center justify-center overflow-hidden">
+                                            <FileText size={18} className="text-neutral-500" />
+                                        </div>
+                                        <div className="min-w-0">
+                                            <div className="text-sm font-medium text-neutral-800 truncate" title={ch.chapter_name}>{ch.chapter_name}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                    </div>
+                )}
+                {/* Slides */}
+                {selectedChapterId && (
+                    <div className="space-y-1">
+                        {(slidesMap[selectedChapterId] || []).map((sl) => (
+                            <div
+                                key={sl.id}
+                                className={getSlideStyling()}
+                                onClick={() =>
+                                    isSlideClickable() &&
+                                    handleSlideNavigation(
+                                        selectedSubjectId || "",
+                                        selectedModuleId || "",
+                                        selectedChapterId,
+                                        sl.id
+                                    )
+                                }
+                            >
+                                {getIcon(sl)}
+                                <span className="truncate">{sl.title}</span>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+        ),
         [TabType.TEACHERS]: (
-            <div className="rounded-lg bg-gradient-to-br from-white to-neutral-50/50 border border-neutral-200 p-6 text-sm text-neutral-600">
+            <div className="rounded-md bg-gradient-to-br from-white to-neutral-50/50 border border-neutral-200 p-5 text-sm text-neutral-600">
                 <div className="flex items-center gap-3 mb-3">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
+                   <div className="w-8 h-8 rounded-md bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
                         <span className="text-white text-xs font-bold">T</span>
                     </div>
                     <span className="font-medium text-neutral-700">
@@ -1249,9 +1441,9 @@ export const CourseStructureDetails = ({
             </div>
         ),
         [TabType.ASSESSMENT]: (
-            <div className="rounded-lg bg-gradient-to-br from-white to-neutral-50/50 border border-neutral-200 p-6 text-sm text-neutral-600">
+            <div className="rounded-md bg-gradient-to-br from-white to-neutral-50/50 border border-neutral-200 p-5 text-sm text-neutral-600">
                 <div className="flex items-center gap-3 mb-3">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center">
+                   <div className="w-8 h-8 rounded-md bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center">
                         <span className="text-white text-xs font-bold">A</span>
                     </div>
                     <span className="font-medium text-neutral-700">
@@ -1265,22 +1457,7 @@ export const CourseStructureDetails = ({
         ),
     };
 
-    useEffect(() => {
-        const filterTabsForInstitute = async () => {
-            const instituteId = await getInstituteId();
-            
-            if (instituteId === CODE_CIRCLE_INSTITUTE_ID) {
-                // For code circle, show only OUTLINE tab
-                const codeCircleTabs = tabs.filter(tab => tab.value === TabType.OUTLINE);
-                setFilteredTabs(codeCircleTabs);
-            } else {
-                // For other institutes, show all tabs
-                setFilteredTabs(tabs);
-            }
-        };
-
-        filterTabsForInstitute();
-    }, []);
+    // Removed institute-based override so settings decide visible tabs exclusively
 
     useEffect(() => {
         const loadModules = async () => {
@@ -1391,13 +1568,91 @@ export const CourseStructureDetails = ({
     }, [selectedSession, selectedLevel, packageSessionId]);
 
     useEffect(() => {
-        const studyLibraryData = getSubjectDetails(
+    const studyLibraryData = getSubjectDetails(
             courseData,
             selectedSession,
             selectedLevel
         );
         setStudyLibraryData(studyLibraryData);
     }, [selectedSession, selectedLevel]);
+
+    // Prefetch thumbnails for modules/chapters when at their depth
+    useEffect(() => {
+        const prefetch = async () => {
+            if (selectedSubjectId && !selectedModuleId) {
+                const mods = subjectModulesMap[selectedSubjectId] || [];
+                for (const m of mods) {
+                    let fileId: string | undefined;
+                    if (m && m.module && typeof m.module === 'object' && 'thumbnail_id' in m.module) {
+                        fileId = (m.module as { thumbnail_id?: string }).thumbnail_id;
+                    }
+                    const key = `module:${m.module.id}`;
+                    if (fileId && !thumbUrlById[key]) {
+                        try {
+                            const url = await getPublicUrl(fileId);
+                            setThumbUrlById((prev) => ({ ...prev, [key]: url }));
+                        } catch (err) {
+                            console.debug('prefetch module thumbnail failed', err);
+                        }
+                    }
+                }
+            }
+            if (selectedSubjectId && selectedModuleId && !selectedChapterId) {
+                const mods = subjectModulesMap[selectedSubjectId] || [];
+                const mod = mods.find((mm) => mm.module.id === selectedModuleId);
+                for (const ch of mod?.chapters || []) {
+                    const fileId = ch.file_id as string | undefined;
+                    const key = `chapter:${ch.id}`;
+                    if (fileId && !thumbUrlById[key]) {
+                        try {
+                            const url = await getPublicUrl(fileId);
+                            setThumbUrlById((prev) => ({ ...prev, [key]: url }));
+                        } catch (err) {
+                            console.debug('prefetch chapter thumbnail failed', err);
+                        }
+                    }
+                }
+            }
+        };
+        prefetch();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedSubjectId, selectedModuleId, selectedChapterId, subjectModulesMap]);
+
+  // Ensure Content Structure starts at correct depth based on courseStructure once data is ready
+  useEffect(() => {
+    // Do not override if user already drilled in
+    if (selectedSubjectId || selectedModuleId || selectedChapterId) return;
+    const subjects = studyLibraryData || [];
+    if (subjects.length === 0) return;
+
+    // Helper to pick first module/chapters safely
+    const firstSubjectId = subjects[0]?.id;
+    const modules = firstSubjectId ? (subjectModulesMap[firstSubjectId] || []) : [];
+    const firstModuleId = modules[0]?.module.id;
+    const firstChapterId = modules[0]?.chapters[0]?.id;
+
+    console.log('[ContentStructure] init depth', { courseStructure, firstSubjectId, firstModuleId, firstChapterId });
+
+    if (courseStructure >= 5) {
+      // subjects at top level - nothing to preselect
+      return;
+    }
+    if (courseStructure === 4 && firstSubjectId) {
+      setSelectedSubjectId(firstSubjectId);
+      return;
+    }
+    if (courseStructure === 3 && firstSubjectId && firstModuleId) {
+      setSelectedSubjectId(firstSubjectId);
+      setSelectedModuleId(firstModuleId);
+      return;
+    }
+    if (courseStructure === 2 && firstSubjectId && firstModuleId && firstChapterId) {
+      setSelectedSubjectId(firstSubjectId);
+      setSelectedModuleId(firstModuleId);
+      setSelectedChapterId(firstChapterId);
+      getSlidesWithChapterId(firstChapterId);
+    }
+  }, [courseStructure, studyLibraryData, subjectModulesMap, selectedSubjectId, selectedModuleId, selectedChapterId, getSlidesWithChapterId]);
 
     useEffect(() => {
         setNavHeading(
@@ -1413,14 +1668,14 @@ export const CourseStructureDetails = ({
                 <Tabs
                     value={selectedStructureTab}
                     onValueChange={handleTabChange}
-                    className="w-full overflow-scroll"
+                    className="w-full"
                 >
-                    <TabsList className="h-auto border-b border-neutral-200/80 bg-transparent p-0">
-                        {filteredTabs.map((tab) => (
+                    <TabsList className="h-auto border-b border-neutral-200/80 bg-transparent p-0 flex flex-row flex-wrap items-center justify-start gap-2 overflow-x-auto w-full">
+                        {renderTabs.map((tab: { label: string; value: string }) => (
                             <TabsTrigger
                                 key={tab.value}
                                 value={tab.value}
-                                className={`data-[state=active]:text-primary data-[state=active]:border-primary hover:text-primary -mb-px px-3 
+                                className={`inline-flex items-center data-[state=active]:text-primary data-[state=active]:border-primary hover:text-primary -mb-px px-3 whitespace-nowrap 
                                 py-2 text-sm font-medium transition-all duration-200 
                                 hover:bg-gradient-to-r hover:from-primary-50/60 hover:to-blue-50/40 focus-visible:ring-2 focus-visible:ring-primary-300 focus-visible:ring-offset-1
                                 data-[state=active]:rounded-t-lg data-[state=active]:border-b-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-white data-[state=active]:to-primary-50/30 data-[state=inactive]:text-neutral-500 data-[state=inactive]:hover:rounded-t-lg`}

@@ -303,7 +303,7 @@ importers:
         specifier: ^1.4.1
         version: 1.4.1(react@19.1.0)
       pyodide:
-        specifier: ^0.28.0
+        specifier: 0.28.0
         version: 0.28.0
       react-date-range:
         specifier: ^2.0.1

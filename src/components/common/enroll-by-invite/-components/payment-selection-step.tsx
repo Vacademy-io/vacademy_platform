@@ -381,8 +381,8 @@ const PaymentSelectionStep = ({
     };
 
     return (
-        <Card className="shadow-xl border-0 bg-white/80 backdrop-blur-sm w-full">
-            <CardContent className="p-6 sm:p-8">
+        <Card className="shadow-lg border bg-white w-full">
+            <CardContent className="p-5 sm:p-6">
                 {renderDonationSection()}
                 {renderRegularPaymentOptions()}
             </CardContent>

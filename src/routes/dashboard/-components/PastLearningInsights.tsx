@@ -1,4 +1,4 @@
-import { DashboardLoader } from "@/components/core/dashboard-loader";
+// import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { usePastLearningInsights } from "../-hooks/usePastLearningInsights";
 import { LineChartComponent } from "./LineChartComponent";
 import { StudentProgressTable } from "./StudentProgressTable";
@@ -7,6 +7,7 @@ import { getStoredDetails } from "@/routes/assessment/examination/-utils.ts/useF
 import { UserActivityArray } from "../-types/dashboard-data-types";
 import { formatTimeFromMillis } from "@/helpers/formatTimeFromMiliseconds";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { H2 } from "@/components/design-system/typography";
 import { Badge } from "@/components/ui/badge";
 import { BarChart3, Clock, Zap, Target, Award, TrendingUp } from "lucide-react";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
@@ -14,9 +15,9 @@ import { getTerminology } from "@/components/common/layout-container/sidebar/uti
 
 // Enhanced Loading Skeleton
 const AnalyticsLoadingSkeleton = () => (
-  <div className="space-y-4 sm:space-y-6">
+  <div className="space-y-4 sm:space-y-5">
     {/* Header Skeleton */}
-    <div className="bg-white/80 backdrop-blur-sm border border-gray-200/60 rounded-xl sm:rounded-2xl p-4 sm:p-6 animate-pulse">
+    <div className="bg-white border border-gray-200 rounded-md sm:rounded-lg p-4 sm:p-5 animate-pulse">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
         <div className="flex items-center space-x-3">
           <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gray-200 rounded-lg sm:rounded-xl"></div>
@@ -30,17 +31,17 @@ const AnalyticsLoadingSkeleton = () => (
     </div>
 
     {/* Chart Skeleton */}
-    <div className="bg-white/80 backdrop-blur-sm border border-gray-200/60 rounded-xl sm:rounded-2xl p-4 sm:p-6 animate-pulse">
+    <div className="bg-white border border-gray-200 rounded-md sm:rounded-lg p-4 sm:p-5 animate-pulse">
       <div className="w-32 h-5 sm:w-40 sm:h-6 bg-gray-200 rounded mb-3 sm:mb-4"></div>
       <div className="w-full h-48 sm:h-64 bg-gray-200 rounded-lg sm:rounded-xl"></div>
     </div>
 
     {/* Table Skeleton */}
-    <div className="bg-white/80 backdrop-blur-sm border border-gray-200/60 rounded-xl sm:rounded-2xl animate-pulse">
-      <div className="p-4 sm:p-6 border-b border-gray-200">
+    <div className="bg-white border border-gray-200 rounded-md sm:rounded-lg animate-pulse">
+      <div className="p-4 sm:p-5 border-b border-gray-200">
         <div className="w-36 h-5 sm:w-48 sm:h-6 bg-gray-200 rounded"></div>
       </div>
-      <div className="p-4 sm:p-6 space-y-3 sm:space-y-4">
+      <div className="p-4 sm:p-5 space-y-3 sm:space-y-4">
         {[1, 2, 3, 4].map((i) => (
           <div key={i} className="flex justify-between items-center">
             <div className="w-16 h-3 sm:w-20 sm:h-4 bg-gray-200 rounded"></div>
@@ -66,24 +67,24 @@ const StatsCard = ({
 }: {
   title: string;
   value: string;
-  icon: any;
+  icon: React.ComponentType<{ size?: number | string; className?: string }>; 
   trend?: string;
   trendColor?: string;
   description: string;
   gradient: string;
 }) => (
-  <Card className="relative overflow-hidden border-0 bg-white/80 backdrop-blur-sm shadow-sm hover:shadow-lg transition-all duration-500 group">
+  <Card className="relative overflow-hidden bg-white shadow-sm hover:shadow-md transition-all duration-300 group">
     {/* Background gradient overlay */}
     <div
-      className={`absolute inset-0 bg-gradient-to-br ${gradient} opacity-0 group-hover:opacity-100 transition-opacity duration-500`}
+      className={`absolute inset-0 bg-gradient-to-br ${gradient} opacity-0 group-hover:opacity-100 transition-opacity duration-300`}
     ></div>
 
-    <CardContent className="relative p-4 sm:p-6">
+    <CardContent className="relative p-4 sm:p-5">
       {/* Floating orb effect */}
       <div className="absolute top-0 right-0 w-12 h-12 sm:w-16 sm:h-16 bg-primary-100/20 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-700 -translate-y-1 sm:-translate-y-2 translate-x-1 sm:translate-x-2"></div>
 
       <div className="flex items-center justify-between mb-3 sm:mb-4">
-        <div className="p-2 sm:p-3 bg-gradient-to-br from-primary-50 to-primary-100 rounded-lg sm:rounded-xl text-primary-600 group-hover:scale-110 transition-transform duration-300">
+      <div className="p-2 sm:p-3 bg-gradient-to-br from-primary-50 to-primary-100 rounded-md sm:rounded-lg text-primary-600 group-hover:scale-110 transition-transform duration-300">
           <Icon size={18} className="sm:w-5 sm:h-5" />
         </div>
         {trend && (
@@ -106,7 +107,7 @@ const StatsCard = ({
       </div>
 
       {/* Progress indicator */}
-      <div className="absolute bottom-0 left-0 h-0.5 bg-gradient-to-r from-primary-400 to-primary-600 w-0 group-hover:w-full transition-all duration-700 ease-out"></div>
+      <div className="absolute bottom-0 left-0 h-0.5 bg-gradient-to-r from-primary-400 to-primary-600 w-0 group-hover:w-full transition-all duration-500 ease-out"></div>
     </CardContent>
   </Card>
 );
@@ -177,9 +178,9 @@ export const PastLearningInsights = () => {
   if (isPending) return <AnalyticsLoadingSkeleton />;
 
   return (
-    <div className="space-y-4 sm:space-y-6 animate-fade-in-up">
+  <div className="space-y-3 sm:space-y-4 animate-fade-in-up">
       {/* Enhanced Header Section */}
-      <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-white/90 via-primary-50/30 to-white/80 shadow-sm hover:shadow-lg transition-all duration-500 group">
+      <Card className="relative overflow-hidden bg-gradient-to-br from-white/90 via-primary-50/30 to-white/80 shadow-sm hover:shadow-md transition-all duration-300 group">
         {/* Animated background pattern */}
         <div className="absolute inset-0 opacity-5">
           <div className="absolute top-0 left-1/3 w-20 h-20 sm:w-32 sm:h-32 bg-primary-300 rounded-full blur-3xl animate-gentle-pulse"></div>
@@ -189,19 +190,17 @@ export const PastLearningInsights = () => {
           ></div>
         </div>
 
-        <CardHeader className="relative pb-4 sm:pb-6">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 lg:gap-6">
+        <CardHeader className="relative pb-3 sm:pb-5">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 lg:gap-5">
             <div className="flex flex-col sm:flex-row sm:items-center space-y-3 sm:space-y-0 sm:space-x-4">
-              <div className="p-2 sm:p-3 bg-gradient-to-br from-primary-100 to-primary-200 rounded-xl sm:rounded-2xl shadow-sm flex-shrink-0">
+              <div className="p-2 sm:p-3 bg-gradient-to-br from-primary-100 to-primary-200 rounded-md sm:rounded-lg shadow-sm flex-shrink-0">
                 <TrendingUp
                   size={24}
                   className="text-primary-600 sm:w-7 sm:h-7"
                 />
               </div>
               <div className="min-w-0">
-                <CardTitle className="text-xl sm:text-2xl font-bold text-gray-900 tracking-tight">
-                  Learning Analytics
-                </CardTitle>
+                <H2 className="tracking-tight">Learning Analytics</H2>
                 <p className="text-sm sm:text-base text-gray-600 mt-1 flex items-center space-x-2">
                   <BarChart3
                     size={14}
@@ -223,7 +222,7 @@ export const PastLearningInsights = () => {
       </Card>
 
       {/* Enhanced Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
         <StatsCard
           title="Average Study Time"
           value={avgTimeSpent}
@@ -260,11 +259,11 @@ export const PastLearningInsights = () => {
       </div>
 
       {/* Enhanced Chart Section */}
-      <Card className="relative overflow-hidden border-0 bg-white/80 backdrop-blur-sm shadow-sm hover:shadow-lg transition-all duration-500">
-        <CardHeader className="border-b border-gray-100/80 pb-3 sm:pb-4">
+      <Card className="relative overflow-hidden bg-white shadow-sm hover:shadow-md transition-all duration-300">
+        <CardHeader className="border-b border-gray-100 pb-2.5 sm:pb-3.5">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
             <div className="flex items-center space-x-3">
-              <div className="p-2 bg-gradient-to-br from-primary-100 to-primary-200 rounded-lg">
+              <div className="p-2 bg-gradient-to-br from-primary-100 to-primary-200 rounded-md">
                 <BarChart3 size={18} className="text-primary-600" />
               </div>
               <div className="min-w-0">
@@ -284,17 +283,17 @@ export const PastLearningInsights = () => {
             </Badge>
           </div>
         </CardHeader>
-        <CardContent className="p-4 sm:p-6">
+        <CardContent className="p-3.5 sm:p-4.5">
           <LineChartComponent userActivity={userActivity} />
         </CardContent>
       </Card>
 
       {/* Enhanced Table Section */}
-      <Card className="relative overflow-hidden border-0 bg-white/80 backdrop-blur-sm shadow-sm hover:shadow-lg transition-all duration-500">
-        <CardHeader className="border-b border-gray-100/80 bg-gradient-to-r from-gray-50/80 to-primary-50/20 pb-3 sm:pb-4">
+      <Card className="relative overflow-hidden bg-white shadow-sm hover:shadow-md transition-all duration-300">
+        <CardHeader className="border-b border-gray-100 bg-gradient-to-r from-gray-50 to-primary-50/20 pb-2.5 sm:pb-3.5">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
             <div className="flex items-center space-x-3">
-              <div className="p-2 bg-gradient-to-br from-gray-100 to-gray-200 rounded-lg">
+              <div className="p-2 bg-gradient-to-br from-gray-100 to-gray-200 rounded-md">
                 <Target size={18} className="text-gray-600" />
               </div>
               <div className="min-w-0">
@@ -316,7 +315,7 @@ export const PastLearningInsights = () => {
         </CardHeader>
 
         <CardContent className="p-0">
-          <div className="p-4 sm:p-6">
+          <div className="p-3.5 sm:p-4.5">
             <StudentProgressTable userActivity={userActivity} />
           </div>
         </CardContent>

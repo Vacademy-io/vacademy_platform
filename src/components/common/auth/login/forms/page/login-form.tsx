@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useInstituteFeatureStore } from "@/stores/insititute-feature-store";
+import { getStudentDisplaySettings } from "@/services/student-display-settings";
 
 export const getFromStorage = async (key: string) => {
     const result = await Preferences.get({ key });
@@ -140,8 +141,25 @@ export function LoginForm({
                     toast.error("Invalid user data received");
                 }
 
-                // Always redirect to dashboard, regardless of course enrollment
-                navigate({ to: "/dashboard" });
+                // Refresh and use Student Display Settings post-login route
+                try {
+                    const settings = await getStudentDisplaySettings(true);
+                    const redirectRoute = settings?.postLoginRedirectRoute || "/dashboard";
+
+                    console.group("[Post-Login Redirect | Username/Password]");
+                    console.log("Fetched settings:", settings);
+                    console.log("Resolved redirectRoute:", redirectRoute);
+                    console.groupEnd();
+
+                    if (/^https?:\/\//.test(redirectRoute)) {
+                        window.location.assign(redirectRoute);
+                    } else {
+                        navigate({ to: redirectRoute as never });
+                    }
+                } catch (e) {
+                    console.error("[Post-Login Redirect] Falling back to /dashboard due to error:", e);
+                    navigate({ to: "/dashboard" });
+                }
             }
         } catch {
             toast.error("Failed to process user data");
@@ -362,7 +380,7 @@ export function LoginForm({
                                     animate={{ scale: 1, opacity: 1 }}
                                     transition={{ delay: 0.6 + index * 0.05 }}
                                     whileHover={{ scale: 1.02 }}
-                                    className="group p-3 rounded-lg bg-white/60 backdrop-blur-sm border border-gray-200/50 hover:bg-white/80 transition-all duration-200"
+                                    className="group p-3 rounded-md bg-white border border-gray-200 hover:bg-gray-50 transition-colors duration-200"
                                 >
                                     <feature.icon className="w-6 h-6 text-gray-700 mb-2 group-hover:scale-105 transition-transform duration-200" />
                                     <h3 className="font-semibold text-gray-900 mb-1 text-sm">
@@ -399,7 +417,7 @@ export function LoginForm({
                     initial={{ x: 50, opacity: 0 }}
                     animate={{ x: 0, opacity: 1 }}
                     transition={{ duration: 0.6, ease: "easeOut", delay: 0.1 }}
-                    className={`w-full ${type ? "p-4 bg-white" : "lg:w-1/2 xl:w-1/2  p-4 lg:p-8 xl:p-12 "}  flex items-center justify-center`}
+                    className={`w-full ${type ? "p-4 bg-white" : "lg:w-1/2 xl:w-1/2  p-4 lg:p-6 xl:p-8 "}  flex items-center justify-center`}
                 >
                     <div className="w-full max-w-lg xl:max-w-xl">
                         {/* Compact Login Card */}
@@ -407,7 +425,7 @@ export function LoginForm({
                             initial={{ y: 20, opacity: 0, scale: 0.98 }}
                             animate={{ y: 0, opacity: 1, scale: 1 }}
                             transition={{ delay: 0.3, duration: 0.4 }}
-                            className={`bg-white/90 backdrop-blur-xl rounded-xl ${type ? "" : "shadow-xl border border-gray-200/50 p-6 lg:p-8 xl:p-10"}  `}
+                            className={`bg-white rounded-md ${type ? "" : "shadow-md border border-gray-200 p-5 lg:p-6 xl:p-8"}  `}
                         >
                             {/* Compact Header */}
                             <motion.div
@@ -416,7 +434,7 @@ export function LoginForm({
                                 transition={{ delay: 0.5 }}
                                 className="text-center mb-6"
                             >
-                                <h2 className="text-xl lg:text-2xl font-bold text-gray-900 mb-2">
+                                <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-2">
                                     Welcome Back
                                 </h2>
                                 <p className="text-gray-600 text-sm">
@@ -434,7 +452,7 @@ export function LoginForm({
                                 <motion.button
                                     whileHover={{ scale: 1.01 }}
                                     whileTap={{ scale: 0.99 }}
-                                    className="w-full flex items-center justify-center gap-3 px-4 py-3 border border-gray-200 rounded-lg bg-white/80 backdrop-blur-sm text-gray-700 font-medium hover:bg-white hover:border-gray-300 hover:shadow-md transition-all duration-200 group"
+                                    className="w-full flex items-center justify-center gap-3 px-4 py-3 border border-gray-200 rounded-md bg-white text-gray-700 font-medium hover:bg-gray-50 hover:border-gray-300 hover:shadow-sm transition-all duration-200 group"
                                     onClick={() => handleOAuthLogin("google")}
                                     type="button"
                                 >
@@ -447,7 +465,7 @@ export function LoginForm({
                                 <motion.button
                                     whileHover={{ scale: 1.01 }}
                                     whileTap={{ scale: 0.99 }}
-                                    className="w-full flex items-center justify-center gap-3 px-4 py-3 border border-gray-200 rounded-lg bg-white/80 backdrop-blur-sm text-gray-700 font-medium hover:bg-white hover:border-gray-300 hover:shadow-md transition-all duration-200 group"
+                                    className="w-full flex items-center justify-center gap-3 px-4 py-3 border border-gray-200 rounded-md bg-white text-gray-700 font-medium hover:bg-gray-50 hover:border-gray-300 hover:shadow-sm transition-all duration-200 group"
                                     onClick={() => handleOAuthLogin("github")}
                                     type="button"
                                 >

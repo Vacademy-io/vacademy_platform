@@ -148,10 +148,9 @@ export const Route = createRootRouteWithContext<{
             if (subdomain === "code-circle") {
                 throw redirect({
                     to: "/courses",
-                    search: { instituteId: "" },
                 });
             }
-            
+
             throw redirect({
                 to: "/login",
             });
@@ -170,7 +169,6 @@ export const Route = createRootRouteWithContext<{
             if (subdomain === "code-circle") {
                 throw redirect({
                     to: "/courses",
-                    search: { instituteId: "" },
                 });
             }
 

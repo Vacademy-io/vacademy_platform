@@ -61,6 +61,9 @@ import { AuthModal } from "@/components/common/auth/modal/AuthModal";
 import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
 import { Preferences } from "@capacitor/preferences";
+import { getSubdomain } from "@/helpers/helper";
+import { handleGetInstituteIdBySubdomain } from "../../-services/courses-services";
+import { DashboardLoader } from "@/components/core/dashboard-loader";
 
 type SlideType = {
     id: string;
@@ -179,6 +182,17 @@ export const CourseDetailsPage = () => {
     const [selectedLevel, setSelectedLevel] = useState<string>("");
     const router = useRouter();
     const searchParams = router.state.location.search;
+    const subdomain = getSubdomain(window.location.hostname);
+
+    // Get instituteId from API using subdomain
+    const { data: instituteIdFromApi, isLoading: isLoadingInstituteId } =
+        useSuspenseQuery(
+            handleGetInstituteIdBySubdomain({
+                subdomain: subdomain || "",
+            })
+        );
+
+    const instituteId = instituteIdFromApi;
 
     const [
         packageSessionIdForCurrentLevel,
@@ -201,10 +215,12 @@ export const CourseDetailsPage = () => {
 
     // ✅ Fetch institute details
     useEffect(() => {
+        if (!instituteId) return; // Don't fetch if instituteId is not available
+
         const fetchInstituteDetails = async () => {
             try {
                 const response = await axios.get(
-                    `${urlInstituteDetails}/${searchParams.instituteId}`
+                    `${urlInstituteDetails}/${instituteId}`
                 );
                 setPackageSessionIds(
                     findIdByPackageId(response.data.batches_for_sessions)
@@ -214,7 +230,8 @@ export const CourseDetailsPage = () => {
                     getIdByLevelAndSession(
                         response?.data?.batches_for_sessions,
                         selectedSession,
-                        selectedLevel
+                        selectedLevel,
+                        searchParams?.courseId || ""
                     )
                 );
             } catch (error) {
@@ -223,14 +240,15 @@ export const CourseDetailsPage = () => {
         };
 
         fetchInstituteDetails();
-    }, [searchParams.instituteId, selectedSession, selectedLevel]);
+    }, [instituteId, selectedSession, selectedLevel]);
 
     // Only run the query if instituteId is available
-    const { data: studyLibraryData } = useSuspenseQuery(
-        handleGetAllCourseDetails({
-            instituteId: searchParams.instituteId || "",
-        })
-    );
+    const { data: studyLibraryData } = useQuery({
+        ...handleGetAllCourseDetails({
+            instituteId: instituteId || "",
+        }),
+        enabled: !!instituteId, // Only run query when instituteId is available
+    });
 
     const courseDetailsData = useMemo(() => {
         return studyLibraryData?.find(
@@ -582,6 +600,11 @@ export const CourseDetailsPage = () => {
 
         redirectToDashboardIfAuthenticated();
     }, [navigate]);
+
+    // Show loading while getting instituteId
+    if (isLoadingInstituteId || !instituteId) {
+        return <DashboardLoader />;
+    }
 
     return (
         <>

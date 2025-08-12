@@ -5,7 +5,7 @@ import SupportersSection from "./SupportersSection.tsx";
 import CoursesPage from "./CoursesPage.tsx";
 import { useCatalogStore } from "../-store/catalogStore.ts";
 import axios from "axios";
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import {
     urlInstituteDetails,
     urlCourseDetails,
@@ -24,7 +24,11 @@ import {
 } from "@/components/common/auth/modal/AuthModal.tsx";
 import { Preferences } from "@capacitor/preferences";
 
-const CourseCatalougePage: React.FC = () => {
+interface CourseCatalougePageProps {
+    instituteId: string;
+}
+
+const CourseCatalougePage: React.FC<CourseCatalougePageProps> = ({ instituteId }) => {
     const navigate = useNavigate();
     const { setCourseData, instituteData, setInstituteData, setInstructors } =
         useCatalogStore();
@@ -42,8 +46,6 @@ const CourseCatalougePage: React.FC = () => {
     const [selectedInstructors, setSelectedInstructors] = useState<string[]>(
         []
     );
-
-    const { instituteId } = useSearch({ from: "/courses/" });
 
     // Ref for auto-login modal
     const autoLoginModalRef = useRef<AuthModalRef | null>(null);
@@ -308,6 +310,7 @@ const CourseCatalougePage: React.FC = () => {
                     setSelectedInstructors([]);
                     fetchPackages();
                 }}
+                instituteId={instituteId}
             />
             <InstructorCTASection />
             <SupportersSection />

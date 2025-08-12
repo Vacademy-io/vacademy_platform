@@ -366,7 +366,7 @@ const RegistrationStep = ({
                     <Separator className="mb-6" />
 
                     <div className="flex justify-center items-center w-full">
-                        <div className="flex justify-center items-start w-full flex-col bg-white rounded-xl p-4 py-0 mx-4 mb-4">
+                        <div className="flex justify-center items-start w-full flex-col bg-white rounded-xl py-0 mb-4">
                             <FormProvider {...form}>
                                 <form className="w-full flex flex-col gap-6 mt-4 max-h-full overflow-auto">
                                     {Object.entries(form.getValues()).map(

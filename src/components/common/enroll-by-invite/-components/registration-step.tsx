@@ -157,7 +157,7 @@ const RegistrationStep = ({
                             {(selectedPlan?.type.toLowerCase() === "one_time" ||
                                 selectedPlan?.type.toLowerCase() ===
                                     "upfront") && (
-                                <div className="flex flex-col gap-4">
+                                <div className="flex w-full flex-wrap gap-4">
                                     {selectedPlan?.paymentOption && (
                                         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
                                             {selectedPlan?.paymentOption?.map(
@@ -254,7 +254,7 @@ const RegistrationStep = ({
                             )}
                             {selectedPlan?.type.toLowerCase() ===
                                 "subscription" && (
-                                <div className="flex w-fit flex-wrap gap-4">
+                                <div className="flex w-full flex-wrap gap-4">
                                     {selectedPlan?.paymentOption?.map(
                                         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
                                         // @ts-expect-error

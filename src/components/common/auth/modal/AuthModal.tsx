@@ -11,10 +11,13 @@ interface AuthModalProps {
     onModalOpen?: () => void;
     onLoginSuccess?: () => void;
     onSignupSuccess?: () => void;
+    isOpen?: boolean;
+    onClose?: () => void;
 }
 
-export function AuthModal({ type, courseId, trigger, onModalOpen, onLoginSuccess, onSignupSuccess }: AuthModalProps) {
-    const [isOpen, setIsOpen] = useState(false);
+export function AuthModal({ type, courseId, trigger, onModalOpen, onLoginSuccess, onSignupSuccess, isOpen: externalIsOpen, onClose }: AuthModalProps) {
+    const [internalIsOpen, setInternalIsOpen] = useState(false);
+    const isOpen = externalIsOpen !== undefined ? externalIsOpen : internalIsOpen;
     const [currentMode, setCurrentMode] = useState<'login' | 'signup' | 'forgot-password'>('login');
     const [isVisible, setIsVisible] = useState(false);
     const dialogRef = useRef<HTMLDivElement>(null);
@@ -83,7 +86,11 @@ export function AuthModal({ type, courseId, trigger, onModalOpen, onLoginSuccess
                 
                 // Ensure modal is open
                 if (!isOpen) {
-                    setIsOpen(true);
+                    if (externalIsOpen !== undefined) {
+                        onClose?.();
+                    } else {
+                        setInternalIsOpen(true);
+                    }
                 }
             }
         };
@@ -271,7 +278,11 @@ export function AuthModal({ type, courseId, trigger, onModalOpen, onLoginSuccess
     const handleClose = () => {
         setIsVisible(false);
         setTimeout(() => {
-            setIsOpen(false);
+            if (externalIsOpen !== undefined) {
+                onClose?.();
+            } else {
+                setInternalIsOpen(false);
+            }
             // Reset to login mode when closing
             setCurrentMode('login');
         }, 200);

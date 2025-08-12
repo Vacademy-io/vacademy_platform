@@ -21,7 +21,6 @@ function RouteComponent() {
         if (subdomain === "code-circle") {
             navigate({
                 to: "/courses",
-                search: { instituteId: "" },
             });
         } else {
             navigate({

@@ -122,10 +122,16 @@ const removeTokensAndLogout = async (): Promise<void> => {
     await removeTokenFromStorage(TokenKey.accessToken);
     await removeTokenFromStorage(TokenKey.refreshToken);
 
-    // Remove institute ID
-    await removeInstituteIdFromStorage();
-    // remove all the items from storage
-    await Storage.clear();
+    // Don't remove institute ID - keep it for comparison in courses
+    // await removeInstituteIdFromStorage();
+    
+    // Remove all other items from storage except InstituteId
+    const keys = await Storage.keys();
+    for (const key of keys.keys) {
+        if (key !== "InstituteId") {
+            await Storage.remove({ key });
+        }
+    }
 
     // Redirect to login or handle logout logic
     console.log("User logged out.");

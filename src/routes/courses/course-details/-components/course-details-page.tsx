@@ -62,7 +62,7 @@ import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
 import { Preferences } from "@capacitor/preferences";
 import { getSubdomain } from "@/helpers/helper";
-import { handleGetInstituteIdBySubdomain } from "../../-services/courses-services";
+import { handleGetInstituteIdWithLocalStorageCheck } from "../../-services/courses-services";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 
 type SlideType = {
@@ -187,7 +187,7 @@ export const CourseDetailsPage = () => {
     // Get instituteId from API using subdomain
     const { data: instituteIdFromApi, isLoading: isLoadingInstituteId } =
         useSuspenseQuery(
-            handleGetInstituteIdBySubdomain({
+            handleGetInstituteIdWithLocalStorageCheck({
                 subdomain: subdomain || "",
             })
         );

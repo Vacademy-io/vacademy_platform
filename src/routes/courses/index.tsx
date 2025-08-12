@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import CourseCatalougePage from "./-component/CourseCatalougePage";
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { handleGetInstituteIdBySubdomain } from "./-services/courses-services";
+import { handleGetInstituteIdWithLocalStorageCheck } from "./-services/courses-services";
 import { useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import RootNotFoundComponent from "@/components/core/default-not-found";
@@ -23,9 +23,9 @@ function CoursesContainerComponent() {
     const navigate = useNavigate();
     const subdomain = getSubdomain(window.location.hostname);
 
-    // Always call the hook to get instituteId from API
+    // Use the new function that checks localStorage first, then compares with API result
     const { data: apiResult, isLoading } = useSuspenseQuery(
-        handleGetInstituteIdBySubdomain({
+        handleGetInstituteIdWithLocalStorageCheck({
             subdomain: subdomain || "",
         })
     );
@@ -54,6 +54,7 @@ function CoursesContainerComponent() {
 
     if (isLoading) return <DashboardLoader />;
 
+    // If we couldn't get any instituteId (neither from API nor localStorage), show not found
     if (apiResult === "Data not found") {
         return <RootNotFoundComponent />;
     }

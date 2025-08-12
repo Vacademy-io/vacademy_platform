@@ -1,5 +1,5 @@
 import { Steps } from "@phosphor-icons/react";
-import { useRouter } from "@tanstack/react-router";
+import { useNavigate, useRouter } from "@tanstack/react-router";
 import {
     ChalkboardTeacher,
     Code,
@@ -214,6 +214,7 @@ interface EnrolledSession {
 }
 
 export const CourseDetailsPage = () => {
+    const navigate = useNavigate();
     const { setNavHeading } = useNavHeadingStore();
 
     useEffect(() => {

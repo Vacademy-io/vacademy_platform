@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, forwardRef, useImperativeHandle } from "react";
 import { createPortal } from "react-dom";
 import { ModalSpecificLoginForm } from "@/components/common/auth/login/forms/modal/ModalSpecificLoginForm";
 import { ModalSignUpForm } from "@/components/common/auth/signup/forms/modal/ModalSignUpForm";
@@ -11,16 +11,32 @@ interface AuthModalProps {
     onModalOpen?: () => void;
     onLoginSuccess?: () => void;
     onSignupSuccess?: () => void;
-    isOpen?: boolean;
-    onClose?: () => void;
 }
 
-export function AuthModal({ type, courseId, trigger, onModalOpen, onLoginSuccess, onSignupSuccess, isOpen: externalIsOpen, onClose }: AuthModalProps) {
+export interface AuthModalRef {
+    setIsOpen: (open: boolean) => void;
+}
+
+export const AuthModal = forwardRef<AuthModalRef, AuthModalProps>(({ 
+    type, 
+    courseId, 
+    trigger, 
+    onModalOpen, 
+    onLoginSuccess, 
+    onSignupSuccess
+}, ref) => {
     const [internalIsOpen, setInternalIsOpen] = useState(false);
-    const isOpen = externalIsOpen !== undefined ? externalIsOpen : internalIsOpen;
+    const isOpen = internalIsOpen;
     const [currentMode, setCurrentMode] = useState<'login' | 'signup' | 'forgot-password'>('login');
     const [isVisible, setIsVisible] = useState(false);
     const dialogRef = useRef<HTMLDivElement>(null);
+
+    // Expose setIsOpen method to parent component
+    useImperativeHandle(ref, () => ({
+        setIsOpen: (open: boolean) => {
+            setInternalIsOpen(open);
+        }
+    }), []);
 
     // Determine the current route context for login redirection
     const getCurrentRouteContext = () => {
@@ -86,11 +102,7 @@ export function AuthModal({ type, courseId, trigger, onModalOpen, onLoginSuccess
                 
                 // Ensure modal is open
                 if (!isOpen) {
-                    if (externalIsOpen !== undefined) {
-                        onClose?.();
-                    } else {
-                        setInternalIsOpen(true);
-                    }
+                    setInternalIsOpen(true);
                 }
             }
         };
@@ -278,11 +290,7 @@ export function AuthModal({ type, courseId, trigger, onModalOpen, onLoginSuccess
     const handleClose = () => {
         setIsVisible(false);
         setTimeout(() => {
-            if (externalIsOpen !== undefined) {
-                onClose?.();
-            } else {
-                setInternalIsOpen(false);
-            }
+            setInternalIsOpen(false);
             // Reset to login mode when closing
             setCurrentMode('login');
         }, 200);
@@ -298,7 +306,7 @@ export function AuthModal({ type, courseId, trigger, onModalOpen, onLoginSuccess
         return <div onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            setIsOpen(true);
+            setInternalIsOpen(true);
             // Call the optional callback when modal opens, but delay it slightly
             if (onModalOpen) {
                 setTimeout(() => {
@@ -413,4 +421,4 @@ export function AuthModal({ type, courseId, trigger, onModalOpen, onLoginSuccess
     );
 
     return createPortal(modalContent, document.body);
-} 
+}); 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Footer from "./Footer.tsx";
 import InstructorCTASection from "./InstructorCTASection.tsx";
 import SupportersSection from "./SupportersSection.tsx";
@@ -19,7 +19,8 @@ import { isNullOrEmptyOrUndefined } from "@/lib/utils.ts";
 import { getPublicUrl } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/excalidrawUtils.ts";
 import { useTheme } from "@/providers/theme/theme-provider.tsx";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
-import { AuthModal } from "@/components/common/auth/modal/AuthModal.tsx";
+import { AuthModal, AuthModalRef } from "@/components/common/auth/modal/AuthModal.tsx";
+
 
 const CourseCatalougePage: React.FC = () => {
     const navigate = useNavigate();
@@ -42,8 +43,8 @@ const CourseCatalougePage: React.FC = () => {
 
     const { instituteId } = useSearch({ from: "/courses/" });
     
-    // State for auto-login modal
-    const [showAutoLoginModal, setShowAutoLoginModal] = useState(false);
+    // Ref for auto-login modal
+    const autoLoginModalRef = useRef<AuthModalRef | null>(null);
 
     //api call to store the courses details
 
@@ -209,8 +210,10 @@ const CourseCatalougePage: React.FC = () => {
         if (!instituteId) return;
 
         const timer = setTimeout(() => {
-            // Show modal automatically after 1 second when instituteId is present
-            setShowAutoLoginModal(true);
+            // Programmatically open the auto-login modal after 1 second
+            if (autoLoginModalRef.current) {
+                autoLoginModalRef.current.setIsOpen(true);
+            }
         }, 1000); // 1 second delay
 
         return () => clearTimeout(timer);
@@ -303,17 +306,24 @@ const CourseCatalougePage: React.FC = () => {
             <InstructorCTASection />
             <SupportersSection />
             <Footer />
-            {showAutoLoginModal && (
-                <AuthModal
-                    type="coursesPage"
-                    courseId={undefined}
-                    trigger={<div />}
-                    isOpen={showAutoLoginModal}
-                    onClose={() => setShowAutoLoginModal(false)}
-                    onLoginSuccess={() => setShowAutoLoginModal(false)}
-                    onSignupSuccess={() => setShowAutoLoginModal(false)}
-                />
-            )}
+            
+            {/* Auto-login modal - separate from the manual login button */}
+            <AuthModal
+                ref={autoLoginModalRef}
+                type="coursesPage"
+                courseId={undefined}
+                trigger={<div style={{ display: 'none' }} />}
+                onLoginSuccess={() => {
+                    if (autoLoginModalRef.current) {
+                        autoLoginModalRef.current.setIsOpen(false);
+                    }
+                }}
+                onSignupSuccess={() => {
+                    if (autoLoginModalRef.current) {
+                        autoLoginModalRef.current.setIsOpen(false);
+                    }
+                }}
+            />
         </div>
     );
 };

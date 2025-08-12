@@ -401,10 +401,19 @@ export function CourseDetailsRatingsComponent({
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!searchParams.courseId) return;
+        
+        // Ensure rating is selected
+        if (!selectedRating) {
+            toast.error("Please select a rating before submitting", {
+                className: "error-toast",
+                duration: 2000,
+            });
+            return;
+        }
 
         setSubmitting(true);
         handleSubmitRatingMutation.mutate({
-            rating: selectedRating || 0,
+            rating: selectedRating,
             desc: feedbackText.trim(),
             source_id: packageSessionId || "",
         });
@@ -457,40 +466,47 @@ export function CourseDetailsRatingsComponent({
                         rows={3}
                         className="resize-none"
                     />
-                    <div className="flex items-center gap-2">
-                        {[1, 2, 3, 4, 5].map((star) => (
-                            <button
-                                type="button"
-                                key={star}
-                                onClick={() => handleStarClick(star)}
-                                className="focus:outline-none"
-                            >
-                                <Star
-                                    size={28}
-                                    weight={
-                                        selectedRating && selectedRating >= star
-                                            ? "fill"
-                                            : "regular"
-                                    }
-                                    className={
-                                        selectedRating && selectedRating >= star
-                                            ? "text-yellow-400"
-                                            : "text-gray-300"
-                                    }
-                                />
-                            </button>
-                        ))}
-                        <span className="ml-2 text-sm text-neutral-500">
-                            {selectedRating
-                                ? `${selectedRating} Star${selectedRating > 1 ? "s" : ""}`
-                                : ""}
-                        </span>
+                    <label className="font-semibold text-neutral-700">
+                        Rating <span className="text-red-500">*</span>
+                    </label>
+                    <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                            {[1, 2, 3, 4, 5].map((star) => (
+                                <button
+                                    type="button"
+                                    key={star}
+                                    onClick={() => handleStarClick(star)}
+                                    className="focus:outline-none"
+                                >
+                                    <Star
+                                        size={28}
+                                        weight={
+                                            selectedRating && selectedRating >= star
+                                                ? "fill"
+                                                : "regular"
+                                        }
+                                        className={
+                                            selectedRating && selectedRating >= star
+                                                ? "text-yellow-400"
+                                                : "text-gray-300"
+                                        }
+                                    />
+                                </button>
+                            ))}
+                            <span className="ml-2 text-sm text-neutral-500">
+                                {selectedRating
+                                    ? `${selectedRating} Star${selectedRating > 1 ? "s" : ""}`
+                                    : ""}
+                            </span>
+                        </div>
+
                     </div>
                     <MyButton
                         type="button"
+                        buttonType="primary"
                         disable={
                             submitting ||
-                            (!selectedRating && !feedbackText.trim())
+                            !selectedRating
                         }
                         className="w-fit"
                         onClick={handleSubmit}

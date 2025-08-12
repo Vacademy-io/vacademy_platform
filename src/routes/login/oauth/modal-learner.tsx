@@ -111,7 +111,7 @@ const handleModalOAuthCallback = async (
         // Close this tab after sending message
         setTimeout(() => {
           window.close();
-        }, 100);
+        }, 200);
       } else {
         // Fallback: redirect to signup page with parameters
         const signupUrl = new URL(window.location.origin + "/signup");

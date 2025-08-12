@@ -23,6 +23,7 @@ interface CoursesPageProps {
 
   clearAllFilters: () => void;
   onApplyFilters: () => void;
+  instituteId: string;
 }
 
 const CoursesPage: React.FC<CoursesPageProps> = ({
@@ -38,6 +39,7 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
   setSelectedInstructors,
   clearAllFilters,
   onApplyFilters,
+  instituteId,
 }) => {
   const { courseData } = useCatalogStore();
   const fallbackDescription =
@@ -167,6 +169,7 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                             .map((tag: string) => tag.trim())
                     }
                     previewImageUrl={course.course_preview_image_media_id}
+                    instituteId={instituteId}
                   />
                 );
               })}

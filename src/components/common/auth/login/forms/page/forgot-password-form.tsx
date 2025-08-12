@@ -9,16 +9,52 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Form, FormControl, FormField, FormItem } from "@/components/ui/form";
 import { useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Mail, ArrowLeft, Key, Shield, CheckCircle, RefreshCw } from "lucide-react";
+import { Mail, ArrowLeft, Key, Shield, CheckCircle, RefreshCw, ArrowRight } from "lucide-react";
+import { useTheme } from "@/providers/theme/theme-provider";
+import { useInstituteFeatureStore } from "@/stores/insititute-feature-store";
+import { HOLISTIC_INSTITUTE_ID } from "@/constants/urls";
 
 type FormValues = z.infer<typeof forgotPasswordSchema>;
 
 export function ForgotPassword() {
   const navigate = useNavigate();
+  const { setPrimaryColor } = useTheme();
+  const { setInstituteId } = useInstituteFeatureStore();
   const [isLoading, setIsLoading] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
+
+  // Initialize theme based on institute (similar to login form)
+  useEffect(() => {
+    const initializeTheme = async () => {
+      try {
+        // Check if we have institute details in localStorage
+        const instituteDetails = localStorage.getItem("InstituteDetails");
+        const studentDetails = localStorage.getItem("StudentDetails");
+        
+        if (instituteDetails && studentDetails) {
+          const parsedInstituteDetails = JSON.parse(instituteDetails);
+          const parsedStudentDetails = JSON.parse(studentDetails);
+          
+          if (parsedInstituteDetails.institute_id && parsedStudentDetails.user_id) {
+            setInstituteId(parsedInstituteDetails.institute_id);
+            
+            // Set theme based on institute
+            if (parsedInstituteDetails.institute_id === HOLISTIC_INSTITUTE_ID) {
+              setPrimaryColor("holistic");
+            } else {
+              setPrimaryColor(parsedInstituteDetails.institute_theme_code ?? "#E67E22");
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Error initializing theme:", error);
+      }
+    };
+
+    initializeTheme();
+  }, [setPrimaryColor, setInstituteId]);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(forgotPasswordSchema),
@@ -94,16 +130,131 @@ export function ForgotPassword() {
         }}
         className="absolute top-20 left-20 w-48 h-48 bg-gradient-to-br from-gray-200/10 to-gray-300/10 rounded-full blur-3xl"
       />
+      <motion.div
+        animate={{
+          x: [0, -20, 0],
+          y: [0, 10, 0],
+          rotate: [0, -2, 0],
+        }}
+        transition={{
+          duration: 15,
+          repeat: Infinity,
+          ease: "easeInOut",
+          delay: 3,
+        }}
+        className="absolute bottom-20 right-20 w-64 h-64 bg-gradient-to-br from-gray-300/10 to-gray-400/10 rounded-full blur-3xl"
+      />
 
-      <div className="flex min-h-screen items-center justify-center p-4">
-        <motion.div 
-          initial={{ opacity: 0, y: 20, scale: 0.98 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          transition={{ duration: 0.4 }}
-          className="w-full max-w-md"
+      <div className="flex min-h-screen">
+        {/* Left Side - Branding & Features */}
+        <motion.div
+          initial={{ x: -50, opacity: 0 }}
+          animate={{ x: 0, opacity: 1 }}
+          transition={{ duration: 0.6, ease: "easeOut" }}
+          className="hidden lg:flex lg:w-1/2 xl:w-1/2 flex-col justify-center px-8 xl:px-16"
         >
+          {/* Main Heading */}
+          <motion.div
+            initial={{ y: 20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.2 }}
+            className="mb-8"
+          >
+            <h1 className="text-4xl xl:text-5xl font-bold text-gray-900 mb-4 leading-tight">
+              Reset Your
+              <span className="bg-gradient-to-r from-gray-700 to-gray-900 bg-clip-text text-transparent">
+                {" "}
+                Password
+              </span>
+              <br />
+              Securely
+            </h1>
+            <p className="text-lg text-gray-600 leading-relaxed max-w-lg">
+              Don't worry! We'll help you get back to your learning journey with secure password recovery.
+            </p>
+          </motion.div>
+
+          {/* Features Grid */}
+          <motion.div
+            initial={{ y: 20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.4 }}
+            className="grid grid-cols-2 gap-4 mb-8"
+          >
+            {[
+              {
+                icon: Shield,
+                title: "Secure Recovery",
+                desc: "Enterprise-grade security",
+              },
+              {
+                icon: Mail,
+                title: "Email Verification",
+                desc: "Instant delivery to your inbox",
+              },
+              {
+                icon: Key,
+                title: "Quick Access",
+                desc: "Get back to learning fast",
+              },
+              {
+                icon: CheckCircle,
+                title: "Verified Process",
+                desc: "Trusted by thousands of learners",
+              },
+            ].map((feature, index) => (
+              <motion.div
+                key={feature.title}
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ delay: 0.6 + index * 0.05 }}
+                whileHover={{ scale: 1.02 }}
+                className="group p-3 rounded-lg bg-white/60 backdrop-blur-sm border border-gray-200/50 hover:bg-white/80 transition-all duration-200"
+              >
+                <feature.icon className="w-6 h-6 text-gray-700 mb-2 group-hover:scale-105 transition-transform duration-200" />
+                <h3 className="font-semibold text-gray-900 mb-1 text-sm">
+                  {feature.title}
+                </h3>
+                <p className="text-xs text-gray-600">
+                  {feature.desc}
+                </p>
+              </motion.div>
+            ))}
+          </motion.div>
+
+          {/* Trust Indicators */}
+          <motion.div
+            initial={{ y: 20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.8 }}
+            className="flex items-center space-x-6 text-sm text-gray-500"
+          >
+            <div className="flex items-center space-x-2">
+              <Shield className="w-4 h-4" />
+              <span>ISO 27001 Certified</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <CheckCircle className="w-4 h-4" />
+              <span>99.9% Uptime</span>
+            </div>
+          </motion.div>
+        </motion.div>
+
+        {/* Right Side - Forgot Password Form */}
+        <motion.div 
+          initial={{ x: 50, opacity: 0 }}
+          animate={{ x: 0, opacity: 1 }}
+          transition={{ duration: 0.6, ease: "easeOut", delay: 0.1 }}
+          className="w-full lg:w-1/2 xl:w-1/2 p-4 lg:p-8 xl:p-12 flex items-center justify-center"
+        >
+          <div className="w-full max-w-lg xl:max-w-xl">
           {/* Main Card */}
-          <div className="bg-white/90 backdrop-blur-xl rounded-xl shadow-xl border border-gray-200/50 p-6 lg:p-7">
+            <motion.div
+              initial={{ y: 20, opacity: 0, scale: 0.98 }}
+              animate={{ y: 0, opacity: 1, scale: 1 }}
+              transition={{ delay: 0.3, duration: 0.4 }}
+              className="bg-white/90 backdrop-blur-xl rounded-xl shadow-xl border border-gray-200/50 p-6 lg:p-8 xl:p-10"
+            >
             {/* Back Button */}
             <motion.button
               initial={{ opacity: 0, x: -20 }}
@@ -195,12 +346,13 @@ export function ForgotPassword() {
                             >
                               <RefreshCw className="w-4 h-4" />
                             </motion.div>
-                            <span className="text-sm">Sending...</span>
+                              <span>Sending...</span>
                           </div>
                         ) : (
                           <div className="flex items-center justify-center space-x-2">
                             <Mail className="w-4 h-4" />
-                            <span className="text-sm">Send Credentials</span>
+                              <span>Send Credentials</span>
+                              <ArrowRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
                           </div>
                         )}
                       </motion.button>
@@ -282,7 +434,8 @@ export function ForgotPassword() {
                     >
                       <div className="flex items-center justify-center space-x-2">
                         <ArrowLeft className="w-4 h-4" />
-                        <span className="text-sm">Back to Login</span>
+                          <span>Back to Login</span>
+                          <ArrowRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
                       </div>
                     </motion.button>
                     
@@ -310,7 +463,7 @@ export function ForgotPassword() {
                 </motion.div>
               )}
             </AnimatePresence>
-          </div>
+            </motion.div>
 
           {/* Footer */}
           <motion.div 
@@ -326,6 +479,7 @@ export function ForgotPassword() {
               </a>
             </p>
           </motion.div>
+          </div>
         </motion.div>
       </div>
     </div>

@@ -145,8 +145,8 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                     />
 
                     {courseData.content.length === 0 ? (
-                        <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-6 sm:p-8 text-center">
-                            <div className="w-12 h-12 sm:w-16 sm:h-16 bg-gray-100 rounded-lg mx-auto mb-3 sm:mb-4 flex items-center justify-center">
+                        <div className="bg-white border border-gray-200 rounded-md shadow-sm p-5 sm:p-6 text-center">
+                            <div className="w-12 h-12 sm:w-16 sm:h-16 bg-gray-100 rounded-md mx-auto mb-3 sm:mb-4 flex items-center justify-center">
                                 <Search size={20} className="text-gray-400 sm:w-6 sm:h-6" />
                             </div>
                             <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-2">
@@ -166,10 +166,10 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                     ) : (
                         <div className="space-y-3 sm:space-y-4">
                             {/* Results Summary */}
-                            <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-3 sm:p-4">
+                            <div className="bg-white border border-gray-200 rounded-md shadow-sm p-3 sm:p-4">
                                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                                     <div className="flex items-center space-x-3">
-                                        <div className="p-2 bg-primary-100 rounded-lg">
+                                        <div className="p-2 bg-primary-100 rounded-md">
                                             <Grid
                                                 size={16}
                                                 className="text-primary-600"

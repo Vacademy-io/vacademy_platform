@@ -17,7 +17,7 @@ export function NotificationList() {
     fetch();
   }, []);
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50/80 via-white to-primary-50/30 p-6 relative overflow-hidden">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-primary-50/20 p-3 sm:p-5 relative overflow-hidden">
       {/* Animated Background Elements */}
       <div className="absolute top-0 left-1/4 w-72 h-72 bg-gradient-to-br from-primary-100/30 to-transparent rounded-full blur-3xl animate-pulse"></div>
       <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-gradient-to-br from-slate-100/40 to-transparent rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
@@ -25,19 +25,19 @@ export function NotificationList() {
       <div className="max-w-4xl mx-auto relative z-10">
         <Tabs defaultValue="General" className="w-full">
           {/* Enhanced Header */}
-          <div className="mb-10 animate-fade-in-down">
-            <div className="text-center mb-6">
-              <h1 className="text-3xl font-bold text-slate-900 mb-2 tracking-tight">
+          <div className="mb-6 animate-fade-in-down">
+            <div className="text-center mb-4">
+              <h1 className="text-2xl font-bold text-slate-900 mb-2 tracking-tight">
                 Notifications
               </h1>
-              <p className="text-base text-slate-600 font-medium">
+              <p className="text-sm text-slate-600">
                 Stay updated with your latest activities and announcements
               </p>
             </div>
             
-            <TabsList className="bg-gradient-to-r from-white/90 to-slate-50/90 backdrop-blur-xl rounded-2xl p-1.5 w-fit mx-auto shadow-lg border border-slate-200/50">
+            <TabsList className="bg-gradient-to-r from-white to-slate-50 rounded-md p-1 w-fit mx-auto shadow border border-slate-200">
               <TabsTrigger
-                className="rounded-xl px-6 py-3 font-medium text-slate-600 transition-all duration-500 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary-500 data-[state=active]:to-primary-600 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-primary-200/50 data-[state=active]:transform data-[state=active]:scale-105 hover:bg-slate-100/50 relative overflow-hidden group"
+                className="rounded-md px-4 py-2 text-sm font-medium text-slate-600 transition-colors data-[state=active]:bg-primary-600 data-[state=active]:text-white hover:bg-slate-100 relative overflow-hidden group"
                 value="General"
               >
                 <span className="relative z-10 flex items-center gap-2">
@@ -49,7 +49,7 @@ export function NotificationList() {
                 <div className="absolute inset-0 bg-gradient-to-r from-primary-400 to-primary-500 opacity-0 group-hover:opacity-10 transition-opacity duration-300"></div>
               </TabsTrigger>
               <TabsTrigger
-                className="rounded-xl px-6 py-3 font-medium text-slate-600 transition-all duration-500 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary-500 data-[state=active]:to-primary-600 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-primary-200/50 data-[state=active]:transform data-[state=active]:scale-105 hover:bg-slate-100/50 relative overflow-hidden group"
+                className="rounded-md px-4 py-2 text-sm font-medium text-slate-600 transition-colors data-[state=active]:bg-primary-600 data-[state=active]:text-white hover:bg-slate-100 relative overflow-hidden group"
                 value="Announcement"
               >
                 <span className="relative z-10 flex items-center gap-2">
@@ -65,11 +65,11 @@ export function NotificationList() {
 
           {/* Enhanced General Notifications */}
           <TabsContent 
-            className="grid gap-5 animate-fade-in-up opacity-0" 
+            className="grid gap-4 animate-fade-in-up opacity-0" 
             value="General"
             style={{animationDelay: '0.2s', animationFillMode: 'forwards'}}
           >
-            <div className="space-y-5">
+            <div className="space-y-4">
               <div className="animate-slide-in-left" style={{animationDelay: '0.1s'}}>
               <NotifcationCard
                 title="New Assessment Assigned!"
@@ -99,11 +99,11 @@ export function NotificationList() {
 
           {/* Enhanced Announcements */}
           <TabsContent 
-            className="grid gap-5 animate-fade-in-up opacity-0" 
+            className="grid gap-4 animate-fade-in-up opacity-0" 
             value="Announcement"
             style={{animationDelay: '0.2s', animationFillMode: 'forwards'}}
           >
-            <div className="space-y-5">
+            <div className="space-y-4">
               <div className="animate-slide-in-left" style={{animationDelay: '0.1s'}}>
               <NotifcationCard
                 title="School Holiday Notice"

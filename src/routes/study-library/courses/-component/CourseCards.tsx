@@ -100,20 +100,20 @@ const CourseCard: React.FC<CourseCardProps> = ({
   };
 
   return (
-    <div className="group relative overflow-hidden bg-white/80 backdrop-blur-sm border border-gray-200/60 rounded-xl sm:rounded-2xl shadow-sm hover:shadow-2xl transition-all duration-500 hover:scale-[1.02] flex flex-col w-full max-w-full animate-fade-in-up">
+    <div className="group relative overflow-hidden bg-white border border-gray-200 rounded-md sm:rounded-lg shadow-sm hover:shadow-md transition-all duration-200 hover:-translate-y-0.5 flex flex-col w-full max-w-full animate-fade-in-up">
       {/* Background gradient overlay */}
-      <div className="absolute inset-0 bg-gradient-to-br from-primary-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-xl sm:rounded-2xl"></div>
+      <div className="absolute inset-0 bg-gradient-to-br from-primary-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md sm:rounded-lg"></div>
 
       {/* Floating orb effects */}
       <div className="absolute top-0 right-0 w-12 h-12 sm:w-16 sm:h-16 bg-primary-100/20 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-700 -translate-y-2 translate-x-4"></div>
 
       {/* Image Container - Only show if there's an image or loading */}
       {(loadingImage || courseImageUrl) && (
-        <div className="relative w-full h-40 sm:h-48 lg:h-52 bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center overflow-hidden rounded-t-xl sm:rounded-t-2xl">
+        <div className="relative w-full h-40 sm:h-48 lg:h-52 bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center overflow-hidden rounded-t-md sm:rounded-t-lg">
           {/* Play overlay on hover */}
           {courseImageUrl && (
-            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
-              <div className="bg-white/90 backdrop-blur-sm rounded-full p-2 sm:p-3 transform scale-0 group-hover:scale-100 transition-transform duration-300">
+            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center">
+              <div className="bg-white rounded-full p-2 sm:p-3 transform scale-0 group-hover:scale-100 transition-transform duration-200">
                 <Play size={20} className="text-primary-600 ml-0.5 sm:ml-1" />
               </div>
             </div>
@@ -139,7 +139,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
         </div>
       )}
 
-      <div className="relative p-3 sm:p-4 lg:p-6 flex flex-col flex-grow">
+      <div className="relative p-3 sm:p-4 lg:p-5 flex flex-col flex-grow">
         {/* Header with title and level badge */}
         <div className="flex justify-between items-start mb-2 sm:mb-3 lg:mb-4 gap-2">
           <h3
@@ -149,7 +149,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
             {toTitleCase(package_name)}
           </h3>
           <span
-            className={`text-xs font-bold px-2 sm:px-3 py-1 sm:py-1.5 rounded-full shadow-sm border ${getLevelColor()} flex-shrink-0 transition-all duration-300 group-hover:scale-105`}
+            className={`text-xs font-bold px-2 sm:px-3 py-1 sm:py-1.5 rounded-md shadow-sm border ${getLevelColor()} flex-shrink-0 transition-all duration-200`}
           >
             {toTitleCase(level_name)}
           </span>
@@ -165,7 +165,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
 
         {/* Instructor section */}
         {instructors.length > 0 && (
-          <div className="flex items-center mb-3 sm:mb-4 lg:mb-5 p-2 sm:p-3 bg-gray-50/80 rounded-lg sm:rounded-xl border border-gray-100 group-hover:bg-primary-50/50 transition-colors duration-300">
+          <div className="flex items-center mb-3 sm:mb-4 lg:mb-5 p-2 sm:p-3 bg-gray-50/80 rounded-md sm:rounded-lg border border-gray-100 group-hover:bg-primary-50/50 transition-colors duration-200">
             <div className="flex items-center space-x-2 sm:space-x-3 flex-1 min-w-0">
               <div className="relative flex-shrink-0">
                 <img
@@ -200,13 +200,13 @@ const CourseCard: React.FC<CourseCardProps> = ({
               {tags.slice(0, 3).map((tag) => (
                 <span
                   key={tag}
-                  className="text-xs bg-gradient-to-r from-primary-50 to-primary-100 text-primary-700 border border-primary-200 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full font-medium hover:from-primary-100 hover:to-primary-200 transition-all duration-300 transform hover:scale-105"
+                  className="text-xs bg-gradient-to-r from-primary-50 to-primary-100 text-primary-700 border border-primary-200 px-2 sm:px-3 py-1 sm:py-1.5 rounded-md font-medium"
                 >
                   {tag}
                 </span>
               ))}
               {tags && tags.length > 3 && (
-                <span className="text-xs bg-gradient-to-r from-gray-50 to-gray-100 text-gray-600 border border-gray-200 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full font-medium">
+                <span className="text-xs bg-gradient-to-r from-gray-50 to-gray-100 text-gray-600 border border-gray-200 px-2 sm:px-3 py-1 sm:py-1.5 rounded-md font-medium">
                   +{tags.length - 3} more
                 </span>
               )}
@@ -219,7 +219,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
         </div>
 
         {/* Rating and stats section */}
-        <div className="flex items-center justify-between mb-3 sm:mb-4 lg:mb-6 p-2 sm:p-3 bg-gradient-to-r from-gray-50/80 to-primary-50/30 rounded-lg sm:rounded-xl border border-gray-100 group-hover:from-primary-50/80 group-hover:to-primary-100/50 transition-all duration-300">
+        <div className="flex items-center justify-between mb-3 sm:mb-4 lg:mb-5 p-2 sm:p-3 bg-gradient-to-r from-gray-50/80 to-primary-50/30 rounded-md sm:rounded-lg border border-gray-100 group-hover:from-primary-50/80 group-hover:to-primary-100/50 transition-all duration-200">
           <div className="flex items-center space-x-2">
             <div className="flex items-center space-x-1">
               {[...Array(5)].map((_, i) => (
@@ -265,7 +265,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
         
         {/* Action button */}
         <button
-          className="relative mt-auto w-full overflow-hidden bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 text-white py-2.5 sm:py-3 px-3 sm:px-4 rounded-lg sm:rounded-xl font-semibold text-sm transition-all duration-300 transform hover:scale-[1.02] hover:shadow-lg group/btn flex items-center justify-center space-x-2"
+          className="relative mt-auto w-full overflow-hidden bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 text-white py-2.5 sm:py-3 px-3 sm:px-4 rounded-md sm:rounded-lg font-semibold text-sm transition-all duration-200 group/btn flex items-center justify-center space-x-2"
           onClick={() => handleViewCoureseDetails(courseId)}
         >
           {/* Shimmer effect */}
@@ -285,7 +285,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
         </button>
 
         {/* Progress indicator */}
-        <div className="absolute bottom-0 left-0 h-1 bg-gradient-to-r from-primary-400 to-primary-600 w-0 group-hover:w-full transition-all duration-700 ease-out rounded-b-xl sm:rounded-b-2xl"></div>
+        <div className="absolute bottom-0 left-0 h-1 bg-gradient-to-r from-primary-400 to-primary-600 w-0 group-hover:w-full transition-all duration-500 ease-out rounded-b-md sm:rounded-b-lg"></div>
       </div>
     </div>
   );

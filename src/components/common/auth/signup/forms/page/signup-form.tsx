@@ -134,7 +134,7 @@ export function SignUpForm({
                                     animate={{ scale: 1, opacity: 1 }}
                                     transition={{ delay: 0.6 + index * 0.05 }}
                                     whileHover={{ scale: 1.02 }}
-                                    className="group p-3 rounded-lg bg-white/60 backdrop-blur-sm border border-gray-200/50 hover:bg-white/80 transition-all duration-200"
+                                    className="group p-3 rounded-md bg-white border border-gray-200 hover:bg-gray-50 transition-colors duration-200"
                                 >
                                     <feature.icon className="w-6 h-6 text-gray-700 mb-2 group-hover:scale-105 transition-transform duration-200" />
                                     <h3 className="font-semibold text-gray-900 mb-1 text-sm">
@@ -166,7 +166,7 @@ export function SignUpForm({
                             </div>
                             
                             {/* Social Proof */}
-                            <div className="bg-white/60 backdrop-blur-sm border border-gray-200/50 rounded-lg p-4">
+                            <div className="bg-white border border-gray-200 rounded-md p-4">
                                 <div className="flex items-center space-x-2 mb-2">
                                     <div className="flex">
                                         {[1, 2, 3, 4, 5].map((star) => (
@@ -189,7 +189,7 @@ export function SignUpForm({
                     initial={{ x: 50, opacity: 0 }}
                     animate={{ x: 0, opacity: 1 }}
                     transition={{ duration: 0.6, ease: "easeOut", delay: 0.1 }}
-                    className={`w-full ${type ? "p-4 bg-white" : "lg:w-1/2 xl:w-1/2  p-4 lg:p-8 xl:p-12 "}  flex items-center justify-center`}
+                    className={`w-full ${type ? "p-4 bg-white" : "lg:w-1/2 xl:w-1/2  p-4 lg:p-6 xl:p-8 "}  flex items-center justify-center`}
                 >
                     <div className="w-full max-w-lg xl:max-w-xl">
                         {/* Compact Sign Up Card */}
@@ -197,7 +197,7 @@ export function SignUpForm({
                             initial={{ y: 20, opacity: 0, scale: 0.98 }}
                             animate={{ y: 0, opacity: 1, scale: 1 }}
                             transition={{ delay: 0.3, duration: 0.4 }}
-                            className={`bg-white/90 backdrop-blur-xl rounded-xl ${finalType ? "" : "shadow-xl border border-gray-200/50 p-6 lg:p-8 xl:p-10"}  `}
+                            className={`bg-white rounded-md ${finalType ? "" : "shadow-md border border-gray-200 p-5 lg:p-6 xl:p-8"}  `}
                         >
                             {/* Compact Header - Only show for modal signup */}
                             {shouldShowModal && (
@@ -243,7 +243,7 @@ export function SignUpForm({
                                 initial={{ y: 10, opacity: 0 }}
                                 animate={{ y: 0, opacity: 1 }}
                                 transition={{ delay: 1.3 }}
-                                className="mt-6 p-3 bg-gray-50/80 border border-gray-200/60 rounded-lg"
+                                className="mt-6 p-3 bg-gray-50/80 border border-gray-200/60 rounded-md"
                             >
                                 <div className="flex items-start space-x-2">
                                     <CheckCircle className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />

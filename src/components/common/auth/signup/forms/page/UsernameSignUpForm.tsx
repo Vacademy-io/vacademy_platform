@@ -88,7 +88,7 @@ export function UsernameSignUp({
     }
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-4">
             <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                     {/* Full Name Field */}
@@ -298,7 +298,7 @@ export function UsernameSignUp({
                             disabled={isLoading}
                             whileHover={{ scale: 1.01 }}
                             whileTap={{ scale: 0.99 }}
-                            className="w-full bg-gray-900 hover:bg-black text-white font-medium py-3 px-4 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md"
+                            className="w-full bg-gray-900 hover:bg-black text-white font-medium py-2.5 px-4 rounded-md transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md"
                         >
                             {isLoading ? (
                                 <div className="flex items-center justify-center space-x-2">

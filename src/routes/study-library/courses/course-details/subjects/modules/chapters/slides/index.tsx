@@ -26,6 +26,7 @@ import { MyButton } from "@/components/design-system/button";
 import { FiEdit } from "react-icons/fi";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { getStudentDisplaySettings } from "@/services/student-display-settings";
 
 interface ChapterSearchParams {
   courseId: string;
@@ -126,30 +127,44 @@ function Slides() {
     setSubjectName(getSubjectName(subjectId, studyLibraryData) || "");
   }, [modulesWithChaptersData, studyLibraryData]);
 
+  const [showLearningPath, setShowLearningPath] = useState(true);
+  const [feedbackVisible, setFeedbackVisible] = useState(true);
+
+  // Load Student Display Settings for slides view
+  useEffect(() => {
+    getStudentDisplaySettings(false).then((s) => {
+      setShowLearningPath(s?.courseDetails?.slidesView?.showLearningPath ?? true);
+      setFeedbackVisible(s?.courseDetails?.slidesView?.feedbackVisible ?? true);
+    });
+  }, []);
+
   const SidebarComponent = (
     <div className="relative w-full max-w-full h-full">
       <div className="relative h-full bg-gradient-to-br from-gray-50/80 via-white to-primary-50/20">
         {/* Header */}
-        <div className="absolute top-0 left-0 right-0 z-20 bg-white/80 backdrop-blur-sm border-b border-gray-200/60 shadow-sm">
+        <div className="absolute top-0 left-0 right-0 z-20 bg-white border-b border-gray-200 shadow-sm" id="slides-side-header">
           <div
             className={`${
               open ? "px-2 sm:px-3 md:px-4" : "px-1 sm:px-2 md:px-3"
             } py-2 sm:py-3`}
           >
             <div className="relative group overflow-hidden animate-fade-in-down">
-              <div className="flex items-center space-x-1 sm:space-x-2 mb-1 sm:mb-2">
-                <div className="p-0.5 sm:p-1 bg-gradient-to-br from-primary-100 to-primary-200 rounded-lg shadow-sm">
-                  <BookOpen
-                    size={12}
-                    className="sm:w-3.5 sm:h-3.5 text-primary-600"
-                    weight="duotone"
-                  />
+              {showLearningPath && (
+                <div className="flex items-center space-x-1 sm:space-x-2 mb-1 sm:mb-2">
+          <div className="p-0.5 sm:p-1 bg-gradient-to-br from-primary-100 to-primary-200 rounded-md shadow-sm">
+                    <BookOpen
+                      size={12}
+                      className="sm:w-3.5 sm:h-3.5 text-primary-600"
+                      weight="duotone"
+                    />
+                  </div>
+                  <span className="text-xs font-semibold text-gray-700">
+                    Learning Path
+                  </span>
                 </div>
-                <span className="text-xs font-semibold text-gray-700">
-                  Learning Path
-                </span>
-              </div>
-              <div className="flex flex-wrap items-center gap-0.5 sm:gap-1 text-gray-600">
+              )}
+              {showLearningPath && (
+              <div className="flex flex-wrap items-center gap-0.5 sm:gap-1 text-gray-600" id="slides-breadcrumb-row">
                 <button
                   className={`text-xs font-medium hover:text-primary-600 ${
                     open ? "block" : "hidden sm:block"
@@ -182,13 +197,14 @@ function Slides() {
                     : truncatedChapterName}
                 </span>
               </div>
+              )}
             </div>
           </div>
         </div>
 
         {/* Section Title */}
-        <div className="absolute top-[70px] sm:top-[85px] left-0 right-0 z-20 flex items-center space-x-1 sm:space-x-2 p-2 sm:p-3 md:p-4 border-b border-gray-200/60 bg-gradient-to-r from-gray-50/80 to-white/80">
-          <div className="p-1 sm:p-1.5 bg-gradient-to-br from-primary-100 to-primary-200 rounded-lg shadow-sm">
+        <div className={`absolute ${showLearningPath ? "top-[70px] sm:top-[85px]" : "top-[10px] sm:top-[12px]"} left-0 right-0 z-20 flex items-center space-x-1 sm:space-x-2 p-2 sm:p-3 md:p-4 border-b border-gray-200/60 bg-gradient-to-r from-gray-50/80 to-white/80`}>
+          <div className="p-1 sm:p-1.5 bg-gradient-to-br from-primary-100 to-primary-200 rounded-md shadow-sm">
             <GraduationCap
               size={14}
               className="sm:w-4 sm:h-4 text-primary-600"
@@ -213,8 +229,8 @@ function Slides() {
         </div>
 
         {/* Scrollable Slides List */}
-        <div className="absolute top-[145px] bottom-[85px] left-0 right-0 overflow-y-auto">
-          <div className="relative bg-white/80 backdrop-blur-sm transition-all duration-500 group min-h-full">
+        <div className={`absolute ${showLearningPath ? "top-[145px]" : "top-[70px]"} bottom-[85px] left-0 right-0 overflow-y-auto`}>
+         <div className="relative bg-white transition-all duration-300 group min-h-full">
             <div className="relative p-3 sm:p-4 animate-fade-in-up">
               <ChapterSidebarSlides />
             </div>
@@ -223,9 +239,10 @@ function Slides() {
 
         {/* Feedback + Progress */}
         {slides && slides.length > 0 && (
-          <div className="absolute bottom-0 left-0 right-0 z-20 bg-white/80 backdrop-blur-sm border-t border-gray-200/60 shadow-sm">
+         <div className="absolute bottom-0 left-0 right-0 z-20 bg-white border-t border-gray-200 shadow-sm">
             <div className={`${open ? "px-3 sm:px-4" : "px-2 sm:px-3"} pt-3`}>
               {/* Feedback Button */}
+              {feedbackVisible && (
               <MyButton
                 buttonType="text"
                 scale="medium"
@@ -266,9 +283,10 @@ function Slides() {
                 <FiEdit className="w-4 h-4" />
                 <span className="text-sm">Feedback</span>
               </MyButton>
+              )}
 
               {/* Progress */}
-              <div className="relative p-3 border border-gray-200/60 rounded-lg shadow-sm animate-fade-in-up">
+              <div className="relative p-3 border border-gray-200/60 rounded-md shadow-sm animate-fade-in-up">
                 <div className="relative flex items-center justify-between">
                   <div className="flex items-center space-x-2">
                     <div className="w-2 h-2 bg-primary-500 rounded-full animate-pulse" />
@@ -373,6 +391,28 @@ function Slides() {
   useEffect(() => {
     setNavHeading(heading);
   }, [subjectName, moduleName, chapterName]);
+
+  // Enforce display settings in slides side view
+  useEffect(() => {
+    getStudentDisplaySettings(false).then((s) => {
+      const showLearningPath = s?.courseDetails?.slidesView?.showLearningPath ?? true;
+      const feedbackVisible = s?.courseDetails?.slidesView?.feedbackVisible ?? true;
+
+      const breadcrumbRow = document.getElementById("slides-breadcrumb-row");
+      if (breadcrumbRow) {
+        breadcrumbRow.style.display = showLearningPath ? "flex" : "none";
+      }
+      const feedbackButtons = document.querySelectorAll<HTMLButtonElement>("button:has(> span:text('Feedback'))");
+      // Fallback: hide the first MyButton in footer if selector unsupported
+      const footer = document.getElementById("slides-side-footer");
+      if (!feedbackVisible) {
+        // hide feedback section by skipping setting activeItem to feedback and hiding button
+        if (feedbackButtons && feedbackButtons.length) {
+          feedbackButtons.forEach((b) => (b.style.display = "none"));
+        }
+      }
+    });
+  }, []);
 
   return (
     <LayoutContainer

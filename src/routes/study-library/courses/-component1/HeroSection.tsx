@@ -1,3 +1,4 @@
+import { H1 } from "@/components/design-system/typography";
 import { BookOpen } from "phosphor-react";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
@@ -118,12 +119,12 @@ const HeroSection = ({
                         </div>
 
                         {/* Main Heading */}
-                        <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-gray-900 mb-2 sm:mb-3 tracking-tight leading-tight">
+                        <H1 className="mb-2 sm:mb-3">
                             Explore & Discover
                             <span className="block bg-gradient-to-r from-primary-600 to-primary-500 bg-clip-text text-transparent">
                                 Premium Courses
                             </span>
-                        </h1>
+                        </H1>
 
                         {/* Single Description */}
                         <div className="mb-3 sm:mb-4">
@@ -154,7 +155,7 @@ const HeroSection = ({
                         {/* Floating orb effect */}
                         <div className="absolute -top-1 -right-1 sm:-top-2 sm:-right-2 w-4 h-4 sm:w-6 sm:h-6 md:w-8 md:h-8 bg-primary-100/30 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
 
-                        <div className="relative bg-white/80 backdrop-blur-sm border border-gray-200/60 rounded-lg sm:rounded-xl p-2 sm:p-3 shadow-lg hover:shadow-xl transition-all duration-500 hover:scale-105">
+                        <div className="relative bg-white border border-gray-200 rounded-md p-2 sm:p-3 shadow-sm hover:shadow-md transition-all duration-300 hover:scale-[1.02]">
                             <img
                                 src="/images/Group.png"
                                 alt="Illustration of diverse people learning"

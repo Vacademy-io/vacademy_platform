@@ -206,7 +206,7 @@ export function SignupEmailOtpForm({
     };
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-4">
             {!isOtpSent ? (
                 <motion.div
                     initial={{ opacity: 0, y: 20 }}
@@ -227,7 +227,7 @@ export function SignupEmailOtpForm({
                     </div>
 
                     <Form {...emailForm}>
-                        <form onSubmit={emailForm.handleSubmit(onEmailSubmit)} className="space-y-4">
+                        <form onSubmit={emailForm.handleSubmit(onEmailSubmit)} className="space-y-3">
                             <FormField
                                 control={emailForm.control}
                                 name="email"
@@ -258,7 +258,7 @@ export function SignupEmailOtpForm({
                                 whileHover={{ scale: 1.01 }}
                                 whileTap={{ scale: 0.99 }}
                                 disabled={isLoading}
-                                className="w-full bg-gray-900 hover:bg-black text-white font-medium py-3 px-4 rounded-lg transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="w-full bg-gray-900 hover:bg-black text-white font-medium py-2.5 px-4 rounded-md transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 <div className="flex items-center justify-center space-x-2">
                                     {isLoading ? (
@@ -301,7 +301,7 @@ export function SignupEmailOtpForm({
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.3 }}
-                    className="space-y-4"
+                    className="space-y-3"
                 >
                     <div className="text-center space-y-2">
                         <div className="flex justify-center mb-2">
@@ -387,7 +387,7 @@ export function SignupEmailOtpForm({
                                 whileHover={{ scale: 1.01 }}
                                 whileTap={{ scale: 0.99 }}
                                 disabled={verifyOtpMutation.isPending}
-                                className="w-full bg-gray-900 hover:bg-black text-white font-medium py-3 px-4 rounded-lg transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="w-full bg-gray-900 hover:bg-black text-white font-medium py-2.5 px-4 rounded-md transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 <div className="flex items-center justify-center space-x-2">
                                     {verifyOtpMutation.isPending ? (

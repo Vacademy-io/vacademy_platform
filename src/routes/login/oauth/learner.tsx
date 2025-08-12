@@ -15,6 +15,7 @@ import { fetchAndStoreStudentDetails } from "@/services/studentDetails";
 import { useTheme } from "@/providers/theme/theme-provider";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { createFileRoute } from "@tanstack/react-router";
+import { getStudentDisplaySettings } from "@/services/student-display-settings";
 
 export const Route = createFileRoute("/login/oauth/learner")({
   component: OAuthRedirectHandler,
@@ -223,8 +224,25 @@ const handleSuccessfulLogin = async (
           window.open(redirectTo, '_blank');
         }
         
-        // Navigate to dashboard for main login page
-        navigate({ to: "/dashboard" });
+        // Navigate using Student Display Settings post-login route (force refresh)
+        try {
+          const settings = await getStudentDisplaySettings(true);
+          const redirectRoute = settings?.postLoginRedirectRoute || "/dashboard";
+
+          console.group("[Post-Login Redirect | OAuth]");
+          console.log("Fetched settings:", settings);
+          console.log("Resolved redirectRoute:", redirectRoute);
+          console.groupEnd();
+
+          if (/^https?:\/\//.test(redirectRoute)) {
+            window.location.assign(redirectRoute);
+          } else {
+            navigate({ to: redirectRoute as any });
+          }
+        } catch (e) {
+          console.error("[Post-Login Redirect | OAuth] Falling back to /dashboard due to error:", e);
+          navigate({ to: "/dashboard" });
+        }
       }
     } else {
       // For multiple institutes, handle modal vs page login differently
@@ -353,7 +371,7 @@ function InlineSessionSelectionPage({ redirect }: { redirect: string }) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-red-50 via-white to-rose-50 flex items-center justify-center p-4">
         <div className="text-center space-y-4 max-w-md mx-auto">
-          <div className="w-20 h-20 bg-gradient-to-br from-red-500 to-rose-600 rounded-2xl mx-auto flex items-center justify-center shadow-lg">
+          <div className="w-20 h-20 bg-gradient-to-br from-red-500 to-rose-600 rounded-md mx-auto flex items-center justify-center shadow-lg">
             <svg
               className="w-10 h-10 text-white"
               fill="none"

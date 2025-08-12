@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -10,16 +10,14 @@ import { useNavigate } from "@tanstack/react-router";
 import { 
     Mail, 
     RefreshCw, 
-    Shield, 
     ArrowLeft, 
     User, 
-    Lock,
     Eye,
     EyeOff,
     CheckCircle
 } from "lucide-react";
 import { MyInput } from "@/components/design-system/input";
-import { VscError } from "react-icons/vsc";
+//
 
 const emailSchema = z.object({
     email: z.string().email("Please enter a valid email address"),
@@ -44,11 +42,8 @@ interface EmailSignUpProps {
     courseId?: string;
 }
 
-export function EmailSignUp({
-    onSwitchToUsername,
-    type,
-    courseId,
-}: EmailSignUpProps) {
+export function EmailSignUp({ onSwitchToUsername }: EmailSignUpProps) {
+    const navigate = useNavigate();
     const [isOtpSent, setIsOtpSent] = useState(false);
     const [email, setEmail] = useState("");
     const [timer, setTimer] = useState(0);
@@ -88,7 +83,8 @@ export function EmailSignUp({
     };
 
     const sendOtpMutation = useMutation({
-        mutationFn: async (email: string) => {
+        mutationFn: async (emailParam: string) => {
+            void emailParam;
             // Simulate API call for sending OTP
             await new Promise((resolve) => setTimeout(resolve, 1000));
             return { success: true };
@@ -104,7 +100,8 @@ export function EmailSignUp({
     });
 
     const verifyOtpMutation = useMutation({
-        mutationFn: async (otp: string) => {
+        mutationFn: async (otpParam: string) => {
+            void otpParam;
             // Simulate API call for verifying OTP
             await new Promise((resolve) => setTimeout(resolve, 1000));
             return { success: true };
@@ -174,7 +171,7 @@ export function EmailSignUp({
     };
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-4">
             <AnimatePresence mode="wait">
                 {!isOtpSent ? (
                     <motion.div
@@ -183,7 +180,7 @@ export function EmailSignUp({
                         animate={{ opacity: 1, x: 0 }}
                         exit={{ opacity: 0, x: 30 }}
                         transition={{ duration: 0.2 }}
-                        className="space-y-5"
+                        className="space-y-4"
                     >
                         <Form {...emailForm}>
                             <form onSubmit={emailForm.handleSubmit(onEmailSubmit)} className="space-y-4">
@@ -209,7 +206,6 @@ export function EmailSignUp({
                                                             error={
                                                                 emailForm.formState.errors.fullName?.message
                                                             }
-                                                            {...field}
                                                             className="w-full transition-all duration-200 border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pr-10"
                                                             input={field.value}
                                                             onChangeFunction={field.onChange}
@@ -244,7 +240,6 @@ export function EmailSignUp({
                                                             error={
                                                                 emailForm.formState.errors.email?.message
                                                             }
-                                                            {...field}
                                                             className="w-full transition-all duration-200 border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pr-10"
                                                             input={field.value}
                                                             onChangeFunction={field.onChange}
@@ -279,7 +274,6 @@ export function EmailSignUp({
                                                             error={
                                                                 emailForm.formState.errors.password?.message
                                                             }
-                                                            {...field}
                                                             className="w-full transition-all duration-200 border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pr-10"
                                                             input={field.value}
                                                             onChangeFunction={field.onChange}
@@ -324,7 +318,6 @@ export function EmailSignUp({
                                                             error={
                                                                 emailForm.formState.errors.confirmPassword?.message
                                                             }
-                                                            {...field}
                                                             className="w-full transition-all duration-200 border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pr-10"
                                                             input={field.value}
                                                             onChangeFunction={field.onChange}
@@ -358,7 +351,7 @@ export function EmailSignUp({
                                         disabled={sendOtpMutation.isPending}
                                         whileHover={{ scale: 1.01 }}
                                         whileTap={{ scale: 0.99 }}
-                                        className="w-full bg-gray-900 hover:bg-black text-white font-medium py-3 px-4 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md"
+                className="w-full bg-gray-900 hover:bg-black text-white font-medium py-2.5 px-4 rounded-md transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md"
                                     >
                                         {sendOtpMutation.isPending ? (
                                             <div className="flex items-center justify-center space-x-2">
@@ -396,7 +389,7 @@ export function EmailSignUp({
                         animate={{ opacity: 1, x: 0 }}
                         exit={{ opacity: 0, x: -30 }}
                         transition={{ duration: 0.2 }}
-                        className="space-y-5"
+                        className="space-y-4"
                     >
                         {/* Compact OTP Header */}
                         <motion.div
@@ -413,7 +406,7 @@ export function EmailSignUp({
                                     type: "spring",
                                     stiffness: 200,
                                 }}
-                                className="w-12 h-12 bg-gray-100 rounded-xl mx-auto flex items-center justify-center"
+                               className="w-12 h-12 bg-gray-100 rounded-md mx-auto flex items-center justify-center"
                             >
                                 <Mail className="w-6 h-6 text-gray-700" />
                             </motion.div>
@@ -451,14 +444,14 @@ export function EmailSignUp({
                                                     animate={{ scale: 1, opacity: 1 }}
                                                     transition={{ delay: 0.4 + index * 0.05 }}
                                                 >
-                                                    <input
+                                                     <input
                                                         type="text"
                                                         maxLength={1}
-                                                        className="w-12 h-12 text-center text-lg font-semibold border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-gray-900 transition-all duration-200 bg-white"
-                                                        onPaste={handleOtpPaste}
-                                                        onChange={(e) => handleOtpChange(e.target, index)}
+                                                         className="w-12 h-12 text-center text-lg font-semibold border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-gray-900 transition-all duration-200 bg-white"
+                                                         onPaste={handleOtpPaste}
                                                         onKeyDown={(e) => handleOtpKeyDown(e, index)}
                                                         {...otpForm.register(`otp.${index}`)}
+                                                         onChange={(e) => handleOtpChange(e.target, index)}
                                                     />
                                                 </motion.div>
                                             ))}
@@ -476,7 +469,7 @@ export function EmailSignUp({
                                             disabled={verifyOtpMutation.isPending}
                                             whileHover={{ scale: 1.01 }}
                                             whileTap={{ scale: 0.99 }}
-                                            className="w-full bg-gray-900 hover:bg-black text-white font-medium py-3 px-4 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md"
+                                            className="w-full bg-gray-900 hover:bg-black text-white font-medium py-2.5 px-4 rounded-md transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md"
                                         >
                                             {verifyOtpMutation.isPending ? (
                                                 <div className="flex items-center justify-center space-x-2">

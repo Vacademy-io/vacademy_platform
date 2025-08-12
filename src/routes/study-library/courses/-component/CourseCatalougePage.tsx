@@ -16,6 +16,8 @@ import { CoursePackageResponse } from "@/types/course-catalog/course-catalog-lis
 import { ContentTerms, SystemTerms } from "@/types/naming-settings.ts";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils.ts";
 import { Preferences } from "@capacitor/preferences";
+import { getStudentDisplaySettings } from "@/services/student-display-settings";
+import type { StudentAllCoursesTabId } from "@/types/student-display-settings";
 
 const CourseCatalougePage: React.FC = () => {
     const [allowLeanersToCreateCourses, setAllowLeanersToCreateCourses] =
@@ -23,6 +25,11 @@ const CourseCatalougePage: React.FC = () => {
 
     const { setInstituteData, setInstructors } = useCatalogStore();
     const [selectedTab, setSelectedTab] = useState("PROGRESS");
+    const [visibleTabs, setVisibleTabs] = useState<{ value: "ALL" | "PROGRESS" | "COMPLETED"; label?: string }[]>([
+        { value: "PROGRESS", label: "In Progress" },
+        { value: "COMPLETED", label: "Completed" },
+        { value: "ALL", label: `All ${getTerminology(ContentTerms.Course, SystemTerms.Course)}s` },
+    ]);
     const [allCourses, setAllCourses] = useState<CoursePackageResponse>({
         content: [],
         empty: false,
@@ -193,6 +200,38 @@ const CourseCatalougePage: React.FC = () => {
         selectedInstructors,
     ]);
 
+    // Enforce Student Display Settings: visible/order tabs and default tab
+    useEffect(() => {
+        const mapSettingIdToValue = (id: StudentAllCoursesTabId): "ALL" | "PROGRESS" | "COMPLETED" => {
+            switch (id) {
+                case "AllCourses":
+                    return "ALL";
+                case "InProgress":
+                    return "PROGRESS";
+                case "Completed":
+                    return "COMPLETED";
+                default:
+                    return "PROGRESS";
+            }
+        };
+
+        getStudentDisplaySettings(false).then((settings) => {
+            const tabs = settings?.allCourses?.tabs || [];
+            const ordered = tabs
+                .filter((t) => t.visible !== false)
+                .sort((a, b) => (a.order || 0) - (b.order || 0))
+                .map((t) => ({ value: mapSettingIdToValue(t.id), label: t.label }));
+            if (ordered.length) setVisibleTabs(ordered);
+
+            // Determine default tab from settings; ensure it's visible
+            const defaultVal = mapSettingIdToValue(settings?.allCourses?.defaultTab || "InProgress");
+            const isDefaultVisible = ordered.some((t) => t.value === defaultVal);
+            const firstVisible = ordered[0]?.value || "PROGRESS";
+            const toSet = isDefaultVisible ? defaultVal : firstVisible;
+            setSelectedTab(toSet);
+        });
+    }, []);
+
     // ✅ Fetch institute details
     useEffect(() => {
         const fetchInstituteDetails = async () => {
@@ -279,46 +318,39 @@ const CourseCatalougePage: React.FC = () => {
             />
 
             {/* Main Content Container */}
-            <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6">
+            <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-5">
                 <Tabs
                     value={selectedTab}
                     onValueChange={setSelectedTab}
                     className="w-full"
                 >
                     {/* Tab Navigation */}
-                    <div className="bg-white border border-gray-200 rounded-lg shadow-sm mb-4">
+                    <div className="bg-white border border-gray-200 rounded-md shadow-sm mb-4">
                         <div className="p-3 sm:p-4">
                             <TabsList className="bg-gray-50 justify-start p-1 w-full grid grid-cols-3 gap-1 sm:w-auto sm:flex sm:flex-row">
-                                {allCourses.content.length > 0 && (
+                                {visibleTabs.map((t) => (
                                     <TabsTrigger
-                                        value="ALL"
+                                        key={t.value}
+                                        value={t.value}
                                         className="flex-1 sm:flex-none px-2 sm:px-4 py-2 text-xs sm:text-sm font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm"
                                     >
-                                        All{" "}
-                                        {getTerminology(
-                                            ContentTerms.Course,
-                                            SystemTerms.Course
-                                        )}
-                                        s
+                                        {t.label ||
+                                            (t.value === "ALL"
+                                                ? `All ${getTerminology(
+                                                      ContentTerms.Course,
+                                                      SystemTerms.Course
+                                                  )}s`
+                                                : t.value === "PROGRESS"
+                                                ? "In Progress"
+                                                : "Completed")}
                                     </TabsTrigger>
-                                )}
-                                <TabsTrigger
-                                    value="PROGRESS"
-                                    className="flex-1 sm:flex-none px-2 sm:px-4 py-2 text-xs sm:text-sm font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm"
-                                >
-                                    In Progress
-                                </TabsTrigger>
-                                <TabsTrigger
-                                    value="COMPLETED"
-                                    className="flex-1 sm:flex-none px-2 sm:px-4 py-2 text-xs sm:text-sm font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm"
-                                >
-                                    Completed
-                                </TabsTrigger>
+                                ))}
                             </TabsList>
                         </div>
                     </div>
 
                     {/* Tab Content */}
+                    {visibleTabs.some((t) => t.value === "ALL") && (
                     <TabsContent value="ALL" className="m-0">
                         <CoursesPage
                             courseData={allCourses}
@@ -340,6 +372,8 @@ const CourseCatalougePage: React.FC = () => {
                             selectedTab={selectedTab}
                         />
                     </TabsContent>
+                    )}
+                    {visibleTabs.some((t) => t.value === "PROGRESS") && (
                     <TabsContent value="PROGRESS" className="m-0">
                         <CoursesPage
                             courseData={progressCourses}
@@ -361,6 +395,8 @@ const CourseCatalougePage: React.FC = () => {
                             selectedTab={selectedTab}
                         />
                     </TabsContent>
+                    )}
+                    {visibleTabs.some((t) => t.value === "COMPLETED") && (
                     <TabsContent value="COMPLETED" className="m-0">
                         <CoursesPage
                             courseData={completedCourses}
@@ -382,6 +418,7 @@ const CourseCatalougePage: React.FC = () => {
                             selectedTab={selectedTab}
                         />
                     </TabsContent>
+                    )}
                 </Tabs>
             </div>
         </div>

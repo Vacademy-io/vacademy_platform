@@ -103,7 +103,7 @@ export function ForgotPassword() {
           className="w-full max-w-md"
         >
           {/* Main Card */}
-          <div className="bg-white/90 backdrop-blur-xl rounded-xl shadow-xl border border-gray-200/50 p-6 lg:p-7">
+        <div className="bg-white rounded-md shadow-md border border-gray-200 p-5 lg:p-6">
             {/* Back Button */}
             <motion.button
               initial={{ opacity: 0, x: -20 }}

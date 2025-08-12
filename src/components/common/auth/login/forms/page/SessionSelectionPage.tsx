@@ -183,7 +183,7 @@ const SessionSelectionPage = () => {
     <div className="min-h-screen w-full bg-gradient-to-br from-emerald-50 via-white to-teal-50 p-4">
       <div className="w-full px-4">
         <div className="text-center space-y-4 mb-10">
-          <div className="w-20 h-20 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl mx-auto flex items-center justify-center shadow-lg">
+        <div className="w-20 h-20 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-md mx-auto flex items-center justify-center shadow-md">
             <svg
               className="w-10 h-10 text-white"
               fill="none"
@@ -214,7 +214,7 @@ const SessionSelectionPage = () => {
 
         {sessionList.length === 0 ? (
           <div className="flex justify-center items-center h-[60vh]">
-            <div className="glass-card rounded-2xl p-8 shadow-xl max-w-md w-full text-center">
+            <div className="bg-white rounded-md p-6 shadow-lg border border-gray-200 max-w-md w-full text-center">
               <div className="w-16 h-16 bg-gray-100 rounded-full mx-auto mb-4 flex items-center justify-center">
                 <svg
                   className="w-8 h-8 text-gray-400"
@@ -246,14 +246,14 @@ const SessionSelectionPage = () => {
           </div>
         ) : (
           <div className="w-full flex justify-center">
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-6 w-full">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4 w-full">
               {sessionList.map((session) => (
                 <div
                   key={session.id}
                   className="group cursor-pointer transition-all duration-300 hover:scale-[1.02]"
                   onClick={() => handleSessionSelect(session)}
                 >
-                  <Card className="glass-card border-2 shadow-lg hover:shadow-xl border-gray-200 hover:border-emerald-300">
+                  <Card className="border shadow-sm hover:shadow-md border-gray-200 hover:border-emerald-300 rounded-md">
                     <div className="relative h-36 overflow-hidden rounded-t-lg">
                       {imageUrls[session.id] ? (
                         <img

@@ -18,8 +18,8 @@ const SuccessStep = ({
     return (
         <div className="space-y-6">
             {/* Success Card */}
-            <Card className="shadow-xl border-0 bg-white/80 backdrop-blur-sm">
-                <CardContent className="p-6 sm:p-8 text-center">
+            <Card className="shadow-lg border bg-white">
+                <CardContent className="p-5 sm:p-6 text-center">
                     <div className="flex items-center justify-center mb-6">
                         <div className="p-3 bg-green-100 rounded-full">
                             <CheckCircle className="w-12 h-12 text-green-600" />

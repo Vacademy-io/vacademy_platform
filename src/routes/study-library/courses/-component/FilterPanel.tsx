@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useCatalogStore } from "../-store/catalogStore";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { handleFetchInstituteDetails } from "../-services/institute-details";
-import { Filter, Check, ChevronDown, ChevronUp, X, Menu } from 'lucide-react';
+import { Filter, Check, ChevronDown, ChevronUp, X } from 'lucide-react';
 import { toTitleCase } from "@/lib/utils";
 
 // Internal reusable component for individual filter sections
@@ -33,7 +33,7 @@ const FilterSection: React.FC<FilterSectionProps> = ({
             <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
                 {selectedItems.length > 0 && (
-                    <span className="bg-primary-100 text-primary-700 text-xs font-medium px-2 py-1 rounded-full">
+                    <span className="bg-primary-100 text-primary-700 text-xs font-medium px-2 py-1 rounded-md">
                         {selectedItems.length}
                     </span>
                 )}
@@ -152,7 +152,8 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
         selectedTags.length > 0 ||
         selectedInstructors.length > 0;
 
-    const levels = (instituteData?.levels || []).map((level: any) => ({
+    type LevelItem = { id: string; level_name?: string };
+    const levels = (instituteData?.levels || []).map((level: LevelItem) => ({
         id: level.id,
         name: toTitleCase(level.level_name || "Unnamed Level"),
     }));
@@ -162,7 +163,8 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
         name: tag,
     }));
 
-    const instructors = (instructor || []).map((inst: any) => ({
+    type InstructorItem = { id: string; full_name?: string; username?: string };
+    const instructors = (instructor || []).map((inst: InstructorItem) => ({
         id: inst.id,
         name: inst.full_name || inst.username || "Unnamed Instructor",
     }));
@@ -205,7 +207,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                         <Filter size={18} className="text-gray-600" />
                         <span className="text-sm font-semibold text-gray-900">Filters</span>
                         {hasActiveFilters && (
-                            <span className="bg-primary-100 text-primary-700 text-xs font-medium px-2 py-1 rounded-full">
+                            <span className="bg-primary-100 text-primary-700 text-xs font-medium px-2 py-1 rounded-md">
                                 {selectedLevels.length + selectedTags.length + selectedInstructors.length}
                             </span>
                         )}
@@ -283,7 +285,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                     >
                         Apply Filters
                         {hasActiveFilters && (
-                            <span className="ml-2 bg-primary-700 text-xs px-2 py-1 rounded-full">
+                            <span className="ml-2 bg-primary-700 text-xs px-2 py-1 rounded-md">
                                 {selectedLevels.length + selectedTags.length + selectedInstructors.length}
                             </span>
                         )}

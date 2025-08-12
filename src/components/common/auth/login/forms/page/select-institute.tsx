@@ -180,7 +180,7 @@ export function InstituteSelection() {
                 transition={{ duration: 0.4 }}
                 className="w-full max-w-md"
             >
-                <div className="bg-white/90 backdrop-blur-xl rounded-xl shadow-xl border border-gray-200/50 p-6 lg:p-7">
+                <div className="bg-white rounded-md shadow-md border border-gray-200 p-5 lg:p-6">
                     <div className="text-center mb-6">
                         <div className="w-12 h-12 bg-gray-900 rounded-lg mx-auto flex items-center justify-center mb-4">
                             <svg
@@ -207,7 +207,7 @@ export function InstituteSelection() {
                     <Form {...form}>
                         <form
                             onSubmit={form.handleSubmit(onSubmit)}
-                            className="space-y-6"
+                            className="space-y-4"
                         >
                             <FormField
                                 control={form.control}
@@ -219,10 +219,10 @@ export function InstituteSelection() {
                                                 value={field.value || undefined}
                                                 onValueChange={field.onChange}
                                             >
-                                                <SelectTrigger className="w-full bg-white/80 backdrop-blur-md border border-gray-300 text-gray-700 focus:ring-1 focus:ring-gray-900 rounded-lg px-4 py-3 text-sm">
+                                                <SelectTrigger className="w-full bg-white border border-gray-300 text-gray-700 focus:ring-1 focus:ring-gray-900 rounded-md px-3.5 py-2.5 text-sm">
                                                     <SelectValue placeholder="Select your institute" />
                                                 </SelectTrigger>
-                                                <SelectContent className="bg-white text-sm rounded-lg shadow-md">
+                                                <SelectContent className="bg-white text-sm rounded-md shadow-md">
                                                     {dropdownList.map(
                                                         (item) => (
                                                             <SelectItem
@@ -248,7 +248,7 @@ export function InstituteSelection() {
                                 disabled={isSubmitting}
                                 whileHover={{ scale: 1.01 }}
                                 whileTap={{ scale: 0.99 }}
-                                className="w-full bg-gray-900 hover:bg-black text-white font-medium py-3 px-4 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md"
+                                className="w-full bg-gray-900 hover:bg-black text-white font-medium py-2.5 px-3.5 rounded-md transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md"
                             >
                                 {isSubmitting ? (
                                     <div className="flex items-center justify-center space-x-2">
@@ -303,7 +303,7 @@ export function InstituteSelection() {
                         transition={{ delay: 0.8 }}
                         className="mt-6 grid grid-cols-2 gap-4 text-sm text-gray-700"
                     >
-                        <div className="text-center p-4 glass-card rounded-xl hover-lift">
+                        <div className="text-center p-4 bg-white border rounded-md">
                             <div className="w-10 h-10 bg-gray-100 rounded-lg mx-auto mb-3 flex items-center justify-center">
                                 <svg
                                     xmlns="http://www.w3.org/2000/svg"
@@ -332,7 +332,7 @@ export function InstituteSelection() {
                                 Access multiple institutes
                             </p>
                         </div>
-                        <div className="text-center p-4 glass-card rounded-xl hover-lift">
+                        <div className="text-center p-4 bg-white border rounded-md">
                             <div className="w-10 h-10 bg-gray-100 rounded-lg mx-auto mb-3 flex items-center justify-center">
                                 <svg
                                     className="w-5 h-5 text-black-600"

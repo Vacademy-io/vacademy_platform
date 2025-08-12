@@ -320,7 +320,7 @@ export const AuthModal = forwardRef<AuthModalRef, AuthModalProps>(({
         <div
             className={`fixed inset-0 z-[99999] flex items-center justify-center p-2 sm:p-4 transition-all duration-200 modal-backdrop ${
                 isVisible
-                    ? 'bg-gray-200 bg-opacity-50 backdrop-blur'
+                    ? 'bg-gray-200 bg-opacity-50'
                     : 'bg-opacity-0'
             }`}
             style={{
@@ -345,7 +345,7 @@ export const AuthModal = forwardRef<AuthModalRef, AuthModalProps>(({
         >
             <div
                 ref={dialogRef}
-                className={`relative bg-white rounded-2xl border-2 border-gray-200 shadow-2xl transition-all duration-200 transform ${
+                className={`relative bg-white rounded-md border border-gray-200 shadow-xl transition-all duration-200 transform ${
                     isVisible
                         ? 'scale-100 opacity-100 translate-y-0'
                         : 'scale-95 opacity-0 translate-y-4'

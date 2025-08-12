@@ -55,7 +55,7 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
     const performanceStatus = getPerformanceStatus();
 
     return (
-        <div className="space-y-4 sm:space-y-6">
+        <div className="space-y-3 sm:space-y-5">
             {/* Enhanced Header with Performance Metrics */}
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 sm:gap-4">
                 <div className="flex items-center space-x-3">

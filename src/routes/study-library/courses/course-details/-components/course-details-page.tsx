@@ -858,7 +858,7 @@ export const CourseDetailsPage = () => {
                                                                         key={
                                                                             index
                                                                         }
-                                                                        className="bg-white/20 backdrop-blur-sm border border-white/30 text-white px-2.5 py-1 rounded-full text-xs font-medium hover:bg-white/30 transition-all duration-300"
+                                   className="bg-white/20 border border-white/30 text-white px-2.5 py-1 rounded-md text-xs font-medium hover:bg-white/30 transition-all duration-200"
                                                                     >
                                                                         {tag}
                                                                     </span>
@@ -923,7 +923,7 @@ export const CourseDetailsPage = () => {
                                                             (tag, index) => (
                                                                 <span
                                                                     key={index}
-                                                                    className="bg-white/20 backdrop-blur-sm border border-white/30 text-white px-3 py-1.5 rounded-full text-sm font-medium hover:bg-white/30 transition-all duration-300"
+                                                                   className="bg-white/20 border border-white/30 text-white px-3 py-1.5 rounded-md text-sm font-medium hover:bg-white/30 transition-all duration-200"
                                                                 >
                                                                     {tag}
                                                                 </span>
@@ -962,7 +962,7 @@ export const CourseDetailsPage = () => {
                 {/* Video Player for non-lg screens */}
                 {form.watch("courseData").courseMediaId && (
                     <div className="lg:hidden relative z-10 max-w-[350px] px-3 sm:px-4 py-4">
-                        <div className="bg-white/80 backdrop-blur-sm border border-gray-200/60 rounded-xl shadow-sm p-3 sm:p-4">
+                       <div className="bg-white border border-gray-200 rounded-md shadow-sm p-3 sm:p-4">
                             <VideoPlayer
                                 src={form.watch("courseData").courseMediaId}
                             />
@@ -977,18 +977,18 @@ export const CourseDetailsPage = () => {
                         <div className="xl:col-span-3 space-y-4 lg:space-y-6">
                             {/* Enhanced Session and Level Selectors */}
                             <div
-                                className="relative bg-white/80 backdrop-blur-sm border border-gray-200/60 rounded-xl shadow-sm hover:shadow-lg transition-all duration-500 p-3 sm:p-4 group animate-fade-in-up"
+                               className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-200 p-3 sm:p-4 group animate-fade-in-up"
                                 style={{ animationDelay: "0.1s" }}
                             >
                                 {/* Background gradient overlay */}
-                                <div className="absolute inset-0 bg-gradient-to-br from-primary-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-xl"></div>
+                                <div className="absolute inset-0 bg-gradient-to-br from-primary-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
 
                                 {/* Floating orb effect */}
                                 <div className="absolute top-0 right-0 w-12 h-12 bg-primary-100/20 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-700 -translate-y-1 translate-x-3"></div>
 
                                 <div className="relative">
                                     <div className="flex items-center space-x-2 mb-3">
-                                        <div className="p-1.5 bg-gradient-to-br from-primary-100 to-primary-200 rounded-lg shadow-sm">
+                                        <div className="p-1.5 bg-gradient-to-br from-primary-100 to-primary-200 rounded-md shadow-sm">
                                             <GraduationCap
                                                 size={18}
                                                 className="text-primary-600"
@@ -1030,7 +1030,7 @@ export const CourseDetailsPage = () => {
                                                         return (
                                                             <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                                                                 <div className="flex items-center space-x-2">
-                                                                    <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                                    <div className="w-2 h-2 bg-blue-500 rounded-sm"></div>
                                                                     <span className="text-sm font-medium text-blue-800">
                                                                         {getTerminology(
                                                                             ContentTerms.Course,
@@ -1182,7 +1182,7 @@ export const CourseDetailsPage = () => {
                                     ) : (
                                         <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
                                             <div className="flex items-center space-x-2">
-                                                <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
+                                                <div className="w-2 h-2 bg-yellow-500 rounded-sm"></div>
                                                 <span className="text-sm font-medium text-yellow-800">
                                                     {selectedTab === "ALL"
                                                         ? `No ${getTerminology(
@@ -1254,10 +1254,10 @@ export const CourseDetailsPage = () => {
                                 {form.getValues("courseData")
                                     .whatYoullLearn && (
                                     <div
-                                        className="relative bg-white/80 backdrop-blur-sm border border-gray-200/60 rounded-xl shadow-sm hover:shadow-lg transition-all duration-500 p-3 sm:p-4 group animate-fade-in-up"
+                                       className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
                                         style={{ animationDelay: "0.3s" }}
                                     >
-                                        <div className="absolute inset-0 bg-gradient-to-br from-success-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-xl"></div>
+                                       <div className="absolute inset-0 bg-gradient-to-br from-success-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
                                         <div className="relative">
                                             <div className="flex items-center space-x-2 mb-3">
                                                 <div className="p-1.5 bg-gradient-to-br from-success-100 to-success-200 rounded-lg shadow-sm">
@@ -1288,10 +1288,10 @@ export const CourseDetailsPage = () => {
                                 {form.getValues("courseData")
                                     .aboutTheCourse && (
                                     <div
-                                        className="relative bg-white/80 backdrop-blur-sm border border-gray-200/60 rounded-xl shadow-sm hover:shadow-lg transition-all duration-500 p-3 sm:p-4 group animate-fade-in-up"
+                                       className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
                                         style={{ animationDelay: "0.4s" }}
                                     >
-                                        <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-xl"></div>
+                                       <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
                                         <div className="relative">
                                             <div className="flex items-center space-x-2 mb-3">
                                                 <div className="p-1.5 bg-gradient-to-br from-blue-100 to-blue-200 rounded-lg shadow-sm">
@@ -1326,10 +1326,10 @@ export const CourseDetailsPage = () => {
                                 {form.getValues("courseData")
                                     .whoShouldLearn && (
                                     <div
-                                        className="relative bg-white/80 backdrop-blur-sm border border-gray-200/60 rounded-xl shadow-sm hover:shadow-lg transition-all duration-500 p-3 sm:p-4 group animate-fade-in-up"
+                                       className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
                                         style={{ animationDelay: "0.5s" }}
                                     >
-                                        <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-xl"></div>
+                                       <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
                                         <div className="relative">
                                             <div className="flex items-center space-x-2 mb-3">
                                                 <div className="p-1.5 bg-gradient-to-br from-purple-100 to-purple-200 rounded-lg shadow-sm">
@@ -1361,10 +1361,10 @@ export const CourseDetailsPage = () => {
                                     form.getValues("courseData").instructors
                                         .length > 0 && (
                                         <div
-                                            className="relative bg-white/80 backdrop-blur-sm border border-gray-200/60 rounded-xl shadow-sm hover:shadow-lg transition-all duration-500 p-3 sm:p-4 group animate-fade-in-up"
+                                           className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
                                             style={{ animationDelay: "0.6s" }}
                                         >
-                                            <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-xl"></div>
+                                            <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
                                             <div className="relative">
                                                 <div className="flex items-center space-x-2 mb-3">
                                                     <div className="p-1.5 bg-gradient-to-br from-orange-100 to-orange-200 rounded-lg shadow-sm">
@@ -1433,11 +1433,11 @@ export const CourseDetailsPage = () => {
                         <div className="xl:col-span-1">
                             <div className="sticky top-4 space-y-4">
                                 <div
-                                    className="relative bg-white/80 backdrop-blur-sm border border-gray-200/60 rounded-xl shadow-sm hover:shadow-lg transition-all duration-500 p-3 sm:p-4 group animate-fade-in-up"
+                                   className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
                                     style={{ animationDelay: "0.7s" }}
                                 >
                                     {/* Background gradient overlay */}
-                                    <div className="absolute inset-0 bg-gradient-to-br from-primary-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-xl"></div>
+                                   <div className="absolute inset-0 bg-gradient-to-br from-primary-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
 
                                     {/* Floating orb effect */}
                                     <div className="absolute top-0 right-0 w-12 h-12 bg-primary-100/20 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-700 -translate-y-1 translate-x-3"></div>

@@ -11,7 +11,7 @@ module.exports = {
 	theme: {
 	  container: {
 		  center: true,
-		  padding: '2rem',
+		  padding: '1rem',
 		  screens: {
 			  'xs': '350px',
 			  'md-tablets': '769px', 
@@ -209,8 +209,10 @@ module.exports = {
 		  },
 		  borderRadius: {
 			  lg: 'var(--radius)',
-			  md: 'calc(var(--radius) - 2px)',
-			  sm: 'calc(var(--radius) - 4px)'
+			  md: 'calc(var(--radius))',
+			  sm: 'calc(var(--radius) - 2px)',
+			  xl: 'calc(var(--radius) + 2px)',
+			  '2xl': 'calc(var(--radius) + 4px)'
 		  },
 		  keyframes: {
 			  'accordion-down': {

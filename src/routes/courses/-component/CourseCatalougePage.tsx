@@ -205,10 +205,8 @@ const CourseCatalougePage: React.FC = () => {
         redirectToDashboardIfAuthenticated();
     }, [navigate]);
 
-    // Auto-login modal effect - show modal 1 second after page load when instituteId is present
+    // Auto-login modal effect - show modal 1 second after page load
     useEffect(() => {
-        if (!instituteId) return;
-
         const timer = setTimeout(() => {
             // Programmatically open the auto-login modal after 1 second
             if (autoLoginModalRef.current) {
@@ -217,7 +215,7 @@ const CourseCatalougePage: React.FC = () => {
         }, 1000); // 1 second delay
 
         return () => clearTimeout(timer);
-    }, [instituteId]);
+    }, []);
 
     // Show loading state if instituteId is not available yet
     if (!instituteId) {

@@ -1,5 +1,5 @@
 import { Steps } from "@phosphor-icons/react";
-import { useRouter } from "@tanstack/react-router";
+import { useNavigate, useRouter } from "@tanstack/react-router";
 import {
     ChalkboardTeacher,
     Code,
@@ -48,6 +48,7 @@ import { useQuery } from "@tanstack/react-query";
 import { handleGetSlideCountDetails } from "../-services/get-slides-count";
 import { CourseDetailsRatingsComponent } from "./course-details-ratings-page";
 import { transformApiDataToCourseData } from "../-utils/helper";
+import { VideoPlayer } from "./video-player";
 import { handleGetAllCourseDetails } from "../-services/get-course-details";
 import axios from "axios";
 import { urlInstituteDetails } from "@/constants/urls";
@@ -128,10 +129,10 @@ type SlideCountType = {
 const mockCourses: Course[] = [
     {
         id: "1",
-    title: `2-Level ${getTerminology(
-      ContentTerms.Course,
-      SystemTerms.Course
-    )} Structure`,
+        title: `2-Level ${getTerminology(
+            ContentTerms.Course,
+            SystemTerms.Course
+        )} Structure`,
         level: 2,
         structure: {
             courseName: "Introduction to Web Development",
@@ -140,10 +141,10 @@ const mockCourses: Course[] = [
     },
     {
         id: "2",
-    title: `3-Level ${getTerminology(
-      ContentTerms.Course,
-      SystemTerms.Course
-    )} Structure`,
+        title: `3-Level ${getTerminology(
+            ContentTerms.Course,
+            SystemTerms.Course
+        )} Structure`,
         level: 3,
         structure: {
             courseName: "Frontend Fundamentals",
@@ -152,10 +153,10 @@ const mockCourses: Course[] = [
     },
     {
         id: "3",
-    title: `4-Level ${getTerminology(
-      ContentTerms.Course,
-      SystemTerms.Course
-    )} Structure`,
+        title: `4-Level ${getTerminology(
+            ContentTerms.Course,
+            SystemTerms.Course
+        )} Structure`,
         level: 4,
         structure: {
             courseName: "Full-Stack JavaScript Development Mastery",
@@ -164,10 +165,10 @@ const mockCourses: Course[] = [
     },
     {
         id: "4",
-    title: `5-Level ${getTerminology(
-      ContentTerms.Course,
-      SystemTerms.Course
-    )} Structure`,
+        title: `5-Level ${getTerminology(
+            ContentTerms.Course,
+            SystemTerms.Course
+        )} Structure`,
         level: 5,
         structure: {
             courseName: "Advanced Software Engineering Principles",
@@ -182,37 +183,38 @@ const heading = (
             onClick={() => window.history.back()}
             className="cursor-pointer"
         />
-    <h1 className="text-lg ml-2">
-      {getTerminology(ContentTerms.Course, SystemTerms.Course)} Details
-    </h1>
+        <h1 className="text-lg ml-2">
+            {getTerminology(ContentTerms.Course, SystemTerms.Course)} Details
+        </h1>
     </div>
 );
 
 // Add a type for enrolled session - matches BatchForSessionType structure
 interface EnrolledSession {
     id: string;
-  session: {
-    id: string;
-    session_name: string;
-    status: string;
-    start_date: string;
-  };
-  level: {
-    id: string;
-    level_name: string;
-    duration_in_days: number | null;
-    thumbnail_id: string | null;
-  };
+    session: {
+        id: string;
+        session_name: string;
+        status: string;
+        start_date: string;
+    };
+    level: {
+        id: string;
+        level_name: string;
+        duration_in_days: number | null;
+        thumbnail_id: string | null;
+    };
     start_time: string | null;
     status: string;
-  package_dto: {
-    id: string;
-    package_name: string;
-    thumbnail_id?: string | null;
-  };
+    package_dto: {
+        id: string;
+        package_name: string;
+        thumbnail_id?: string | null;
+    };
 }
 
 export const CourseDetailsPage = () => {
+    const navigate = useNavigate();
     const { setNavHeading } = useNavHeadingStore();
 
     useEffect(() => {
@@ -224,9 +226,9 @@ export const CourseDetailsPage = () => {
     const router = useRouter();
     const searchParams = router.state.location.search;
     const [instituteId, setInstituteId] = useState<string | null>(null);
-  const [enrolledSessions, setEnrolledSessions] = useState<EnrolledSession[]>(
-    []
-  );
+    const [enrolledSessions, setEnrolledSessions] = useState<EnrolledSession[]>(
+        []
+    );
 
     // Get selectedTab from route params, default to "ALL" if not provided
     const selectedTab = searchParams.selectedTab || "ALL";
@@ -245,7 +247,9 @@ export const CourseDetailsPage = () => {
             if (sessionListResult.value) {
                 const sessionList = JSON.parse(sessionListResult.value);
                 setEnrolledSessions(
-                    Array.isArray(sessionList) ? sessionList as EnrolledSession[] : [sessionList as EnrolledSession]
+                    Array.isArray(sessionList)
+                        ? (sessionList as EnrolledSession[])
+                        : [sessionList as EnrolledSession]
                 );
             }
 
@@ -267,31 +271,32 @@ export const CourseDetailsPage = () => {
         fetchInstituteAndUserId();
     }, []);
 
-  const [packageSessionIdForCurrentLevel, setPackageSessionIdForCurrentLevel] =
-    useState<string | null>(null);
+    const [
+        packageSessionIdForCurrentLevel,
+        setPackageSessionIdForCurrentLevel,
+    ] = useState<string | null>(null);
 
     // ✅ Fetch institute details
     useEffect(() => {
-        const FetchInstituteDetails = async () => {
+        const fetchInstituteDetails = async () => {
             const instituteId = await getInstituteId();
             try {
                 const response = await axios.get(
                     `${urlInstituteDetails}/${instituteId}`
                 );
                 const packageSessionId = getIdByLevelAndSession(
-                        response.data.batches_for_sessions,
-                        selectedSession,
-                        selectedLevel
+                    response.data.batches_for_sessions,
+                    selectedSession,
+                    selectedLevel,
+                    searchParams.courseId || ""
                 );
-                console.log("Setting packageSessionId:", packageSessionId, "for session:", selectedSession, "level:", selectedLevel);
-                console.log("Available batches:", response.data.batches_for_sessions);
                 setPackageSessionIdForCurrentLevel(packageSessionId);
             } catch (error) {
                 console.log(error);
             }
         };
 
-        FetchInstituteDetails();
+        fetchInstituteDetails();
     }, [instituteId, selectedSession, selectedLevel]);
 
     // Only run the query if instituteId is available
@@ -405,9 +410,9 @@ export const CourseDetailsPage = () => {
                 let enrolledLevelIds: string[] = [];
                 if (enrolledSession) {
                     // Extract level ID from enrolled session
-          enrolledLevelIds = [enrolledSession.level.id].filter(
-            Boolean
-          ) as string[];
+                    enrolledLevelIds = [enrolledSession.level.id].filter(
+                        Boolean
+                    ) as string[];
                 }
 
                 // Filter levels based on enrollment
@@ -416,15 +421,17 @@ export const CourseDetailsPage = () => {
                 );
 
                 // If no enrolled levels found, show all levels as fallback
-        if (
-          filteredLevels.length === 0 &&
-          selectedSessionData.levelDetails.length > 0
-        ) {
-                    newLevelOptions = selectedSessionData.levelDetails.map((level) => ({
-                        _id: level.id,
-                        value: level.id,
-                        label: level.name,
-                    }));
+                if (
+                    filteredLevels.length === 0 &&
+                    selectedSessionData.levelDetails.length > 0
+                ) {
+                    newLevelOptions = selectedSessionData.levelDetails.map(
+                        (level) => ({
+                            _id: level.id,
+                            value: level.id,
+                            label: level.name,
+                        })
+                    );
                 } else {
                     newLevelOptions = filteredLevels.map((level) => ({
                         _id: level.id,
@@ -434,11 +441,13 @@ export const CourseDetailsPage = () => {
                 }
             } else {
                 // For ALL tab, show all levels
-        newLevelOptions = selectedSessionData.levelDetails.map((level) => ({
+                newLevelOptions = selectedSessionData.levelDetails.map(
+                    (level) => ({
                         _id: level.id,
                         value: level.id,
                         label: level.name,
-        }));
+                    })
+                );
             }
 
             setLevelOptions(newLevelOptions);
@@ -473,9 +482,8 @@ export const CourseDetailsPage = () => {
         const loadCourseData = async () => {
             if (courseDetailsData?.course) {
                 try {
-          const transformedData = await transformApiDataToCourseData(
-            courseDetailsData
-          );
+                    const transformedData =
+                        await transformApiDataToCourseData(courseDetailsData);
                     if (transformedData) {
                         form.reset({
                             courseData: transformedData,
@@ -498,11 +506,11 @@ export const CourseDetailsPage = () => {
             selectedSession,
             selectedLevel
         );
-        
+
         let totalModules = 0;
         let totalChapters = 0;
         const totalSubjects = currentSubjects.length;
-        
+
         // Calculate modules and chapters for non-depth-5 courses
         if (form.getValues("courseData.courseStructure") !== 5) {
             currentSubjects.forEach((subject) => {
@@ -516,11 +524,11 @@ export const CourseDetailsPage = () => {
                 }
             });
         }
-        
+
         setModuleStats({
             totalModules,
             totalChapters,
-            totalSubjects
+            totalSubjects,
         });
     }, [selectedSession, selectedLevel, form.watch("courseData")]);
 
@@ -533,28 +541,28 @@ export const CourseDetailsPage = () => {
     // Custom slide count calculation to handle special document types
     const processedSlideCounts = useMemo(() => {
         if (!slideCountQuery.data) return [];
-        
+
         const counts = slideCountQuery.data as SlideCountType[];
 
-    const processedCounts: {
-      source_type: string;
-      slide_count: number;
-      display_name: string;
-    }[] = [];
-        
+        const processedCounts: {
+            source_type: string;
+            slide_count: number;
+            display_name: string;
+        }[] = [];
+
         // Create a map to track counts for different types
         const typeCounts: { [key: string]: number } = {};
-        
+
         // Track if we have specific document types to avoid duplicates
-    const hasSpecificDocumentTypes = counts.some(
-      (count) =>
-            count.source_type === "JUPYTER_NOTEBOOK" || 
-            count.source_type === "CODE_EDITOR" || 
-            count.source_type === "PRESENTATION" ||
-            count.source_type === "SCRATCH_PROJECT"
+        const hasSpecificDocumentTypes = counts.some(
+            (count) =>
+                count.source_type === "JUPYTER_NOTEBOOK" ||
+                count.source_type === "CODE_EDITOR" ||
+                count.source_type === "PRESENTATION" ||
+                count.source_type === "SCRATCH_PROJECT"
         );
-        
-    counts.forEach((count) => {
+
+        counts.forEach((count) => {
             let canonicalType = count.source_type;
             if (canonicalType === "JUPYTER") canonicalType = "JUPYTER_NOTEBOOK";
             if (canonicalType === "SCRATCH") canonicalType = "SCRATCH_PROJECT";
@@ -562,15 +570,15 @@ export const CourseDetailsPage = () => {
                 // Only add DOCUMENT count if we don't have specific document types
                 // This prevents duplicates when we have JUPYTER_NOTEBOOK, CODE_EDITOR, etc.
                 if (!hasSpecificDocumentTypes) {
-          typeCounts["DOCUMENT"] =
-            (typeCounts["DOCUMENT"] || 0) + count.slide_count;
+                    typeCounts["DOCUMENT"] =
+                        (typeCounts["DOCUMENT"] || 0) + count.slide_count;
                 }
             } else {
-        typeCounts[canonicalType] =
-          (typeCounts[canonicalType] || 0) + count.slide_count;
+                typeCounts[canonicalType] =
+                    (typeCounts[canonicalType] || 0) + count.slide_count;
             }
         });
-        
+
         // Convert the map to the required format
         Object.entries(typeCounts).forEach(([sourceType, slideCount]) => {
             let displayName = "";
@@ -613,14 +621,14 @@ export const CourseDetailsPage = () => {
                 default:
                     displayName = `${sourceType} slides`;
             }
-            
+
             processedCounts.push({
                 source_type: sourceType,
                 slide_count: slideCount,
-        display_name: displayName,
+                display_name: displayName,
             });
         });
-        
+
         return processedCounts;
     }, [slideCountQuery.data]);
 
@@ -630,15 +638,17 @@ export const CourseDetailsPage = () => {
     const [moduleStats, setModuleStats] = useState({
         totalModules: 0,
         totalChapters: 0,
-        totalSubjects: 0
+        totalSubjects: 0,
     });
 
     // Function to update module statistics for depth 5 courses
-    const updateModuleStats = (modulesData: Record<string, Array<{ chapters?: Array<unknown> }>>) => {
+    const updateModuleStats = (
+        modulesData: Record<string, Array<{ chapters?: Array<unknown> }>>
+    ) => {
         if (form.getValues("courseData.courseStructure") === 5) {
             let totalModules = 0;
             let totalChapters = 0;
-            
+
             Object.values(modulesData).forEach((modules) => {
                 totalModules += modules.length;
                 modules.forEach((module) => {
@@ -647,11 +657,11 @@ export const CourseDetailsPage = () => {
                     }
                 });
             });
-            
-            setModuleStats(prev => ({
+
+            setModuleStats((prev) => ({
                 ...prev,
                 totalModules,
-                totalChapters
+                totalChapters,
             }));
         }
     };
@@ -659,103 +669,103 @@ export const CourseDetailsPage = () => {
     const getSlideTypeIcon = (type: string) => {
         switch (type) {
             case "VIDEO":
-        return (
-          <PlayCircle
-            size={16}
-            className="text-blue-600 group-hover/item:scale-110 transition-transform duration-300"
-            weight="duotone"
-          />
-        );
+                return (
+                    <PlayCircle
+                        size={16}
+                        className="text-blue-600 group-hover/item:scale-110 transition-transform duration-300"
+                        weight="duotone"
+                    />
+                );
             case "CODE":
-        return (
-          <Code
-            size={16}
-            className="text-green-600 group-hover/item:scale-110 transition-transform duration-300"
-            weight="duotone"
-          />
-        );
+                return (
+                    <Code
+                        size={16}
+                        className="text-green-600 group-hover/item:scale-110 transition-transform duration-300"
+                        weight="duotone"
+                    />
+                );
             case "PDF":
-        return (
-          <FilePdf
-            size={16}
-            className="text-red-600 group-hover/item:scale-110 transition-transform duration-300"
-            weight="duotone"
-          />
-        );
+                return (
+                    <FilePdf
+                        size={16}
+                        className="text-red-600 group-hover/item:scale-110 transition-transform duration-300"
+                        weight="duotone"
+                    />
+                );
             case "DOCUMENT":
-        return (
-          <FileDoc
-            size={16}
-            className="text-purple-600 group-hover/item:scale-110 transition-transform duration-300"
-            weight="duotone"
-          />
-        );
+                return (
+                    <FileDoc
+                        size={16}
+                        className="text-purple-600 group-hover/item:scale-110 transition-transform duration-300"
+                        weight="duotone"
+                    />
+                );
             case "QUESTION":
-        return (
-          <Question
-            size={16}
-            className="text-orange-600 group-hover/item:scale-110 transition-transform duration-300"
-            weight="duotone"
-          />
-        );
+                return (
+                    <Question
+                        size={16}
+                        className="text-orange-600 group-hover/item:scale-110 transition-transform duration-300"
+                        weight="duotone"
+                    />
+                );
             case "ASSIGNMENT":
-        return (
-          <ClipboardText
-            size={16}
-            className="text-indigo-600 group-hover/item:scale-110 transition-transform duration-300"
-            weight="duotone"
-          />
-        );
+                return (
+                    <ClipboardText
+                        size={16}
+                        className="text-indigo-600 group-hover/item:scale-110 transition-transform duration-300"
+                        weight="duotone"
+                    />
+                );
             case "PRESENTATION":
-        return (
-          <Presentation
-            size={16}
-            className="text-cyan-600 group-hover/item:scale-110 transition-transform duration-300"
-            weight="duotone"
-          />
-        );
+                return (
+                    <Presentation
+                        size={16}
+                        className="text-cyan-600 group-hover/item:scale-110 transition-transform duration-300"
+                        weight="duotone"
+                    />
+                );
             case "JUPYTER_NOTEBOOK":
             case "JUPYTER":
-        return (
-          <Notebook
-            size={16}
-            className="text-yellow-600 group-hover/item:scale-110 transition-transform duration-300"
-            weight="duotone"
-          />
-        );
+                return (
+                    <Notebook
+                        size={16}
+                        className="text-yellow-600 group-hover/item:scale-110 transition-transform duration-300"
+                        weight="duotone"
+                    />
+                );
             case "SCRATCH_PROJECT":
             case "SCRATCH":
-        return (
-          <GameController
-            size={16}
-            className="text-pink-600 group-hover/item:scale-110 transition-transform duration-300"
-            weight="duotone"
-          />
-        );
+                return (
+                    <GameController
+                        size={16}
+                        className="text-pink-600 group-hover/item:scale-110 transition-transform duration-300"
+                        weight="duotone"
+                    />
+                );
             case "QUIZ":
-        return (
-          <Exam
-            size={16}
-            className="text-teal-600 group-hover/item:scale-110 transition-transform duration-300"
-            weight="duotone"
-          />
-        );
+                return (
+                    <Exam
+                        size={16}
+                        className="text-teal-600 group-hover/item:scale-110 transition-transform duration-300"
+                        weight="duotone"
+                    />
+                );
             case "CODE_EDITOR":
-        return (
-          <Terminal
-            size={16}
-            className="text-gray-600 group-hover/item:scale-110 transition-transform duration-300"
-            weight="duotone"
-          />
-        );
+                return (
+                    <Terminal
+                        size={16}
+                        className="text-gray-600 group-hover/item:scale-110 transition-transform duration-300"
+                        weight="duotone"
+                    />
+                );
             default:
-        return (
-          <File
-            size={16}
-            className="text-gray-500 group-hover/item:scale-110 transition-transform duration-300"
-            weight="duotone"
-          />
-        );
+                return (
+                    <File
+                        size={16}
+                        className="text-gray-500 group-hover/item:scale-110 transition-transform duration-300"
+                        weight="duotone"
+                    />
+                );
         }
     };
 
@@ -790,7 +800,10 @@ export const CourseDetailsPage = () => {
                         ) : (
                             <div className="absolute inset-0 z-0">
                                 <img
-                  src={form.watch("courseData").courseBannerMediaId}
+                                    src={
+                                        form.watch("courseData")
+                                            .courseBannerMediaId
+                                    }
                                     alt="Course Banner"
                                     className="w-full h-full object-cover"
                                     onError={(e) => {
@@ -833,20 +846,33 @@ export const CourseDetailsPage = () => {
                                                     {/* Tags */}
                                                     <div className="mb-2 sm:mb-3 flex flex-wrap gap-1.5">
                                                         {form
-                              .getValues("courseData")
-                              .tags.map((tag, index) => (
+                                                            .getValues(
+                                                                "courseData"
+                                                            )
+                                                            .tags.map(
+                                                                (
+                                                                    tag,
+                                                                    index
+                                                                ) => (
                                                                     <span
-                                  key={index}
+                                                                        key={
+                                                                            index
+                                                                        }
                                                                         className="bg-white/20 backdrop-blur-sm border border-white/30 text-white px-2.5 py-1 rounded-full text-xs font-medium hover:bg-white/30 transition-all duration-300"
                                                                     >
                                                                         {tag}
                                                                     </span>
-                              ))}
+                                                                )
+                                                            )}
                                                     </div>
 
                                                     {/* Title */}
                                                     <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold mb-2 sm:mb-3 leading-tight">
-                                                        {toTitleCase(form.getValues("courseData").title)}
+                                                        {toTitleCase(
+                                                            form.getValues(
+                                                                "courseData"
+                                                            ).title
+                                                        )}
                                                     </h1>
 
                                                     {/* Description */}
@@ -854,7 +880,10 @@ export const CourseDetailsPage = () => {
                                                         className="text-sm sm:text-base opacity-90 leading-relaxed line-clamp-2"
                                                         dangerouslySetInnerHTML={{
                                                             __html:
-                                form.getValues("courseData").description || "",
+                                                                form.getValues(
+                                                                    "courseData"
+                                                                ).description ||
+                                                                "",
                                                         }}
                                                     />
                                                 </>
@@ -863,32 +892,15 @@ export const CourseDetailsPage = () => {
 
                                         {/* Right side - Video Player (2/5) */}
                                         <div
-                                            className="lg:col-span-2 animate-fade-in-up"
+                                            className="hidden lg:block lg:col-span-2 animate-fade-in-up"
                                             style={{ animationDelay: "0.2s" }}
                                         >
-                                            <div className="relative overflow-hidden rounded-xl shadow-2xl border border-white/20 bg-black/20 backdrop-blur-sm group">
-                                                <div className="relative aspect-video">
-                                                    <video
-                            src={form.watch("courseData").courseMediaId}
-                                                        controls
-                                                        controlsList="nodownload noremoteplayback"
-                                                        disablePictureInPicture
-                                                        disableRemotePlayback
-                                                        className="w-full h-full object-cover rounded-xl"
-                                                        onError={(e) => {
-                              e.currentTarget.style.display = "none";
-                                                            e.currentTarget.parentElement?.classList.add(
-                                                                "bg-black"
-                                                            );
-                                                        }}
-                                                    >
-                            Your browser does not support the video tag.
-                                                    </video>
-                                                </div>
-
-                                                {/* Video overlay gradient */}
-                                                <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent pointer-events-none rounded-xl"></div>
-                                            </div>
+                                            <VideoPlayer
+                                                src={
+                                                    form.watch("courseData")
+                                                        .courseMediaId
+                                                }
+                                            />
                                         </div>
                                     </div>
                                 ) : (
@@ -907,19 +919,25 @@ export const CourseDetailsPage = () => {
                                                 <div className="mb-3 sm:mb-4 flex flex-wrap gap-2 justify-center">
                                                     {form
                                                         .getValues("courseData")
-                            .tags.map((tag, index) => (
+                                                        .tags.map(
+                                                            (tag, index) => (
                                                                 <span
                                                                     key={index}
                                                                     className="bg-white/20 backdrop-blur-sm border border-white/30 text-white px-3 py-1.5 rounded-full text-sm font-medium hover:bg-white/30 transition-all duration-300"
                                                                 >
                                                                     {tag}
                                                                 </span>
-                            ))}
+                                                            )
+                                                        )}
                                                 </div>
 
                                                 {/* Title */}
                                                 <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-3 sm:mb-4 leading-tight">
-                                                    {toTitleCase(form.getValues("courseData").title)}
+                                                    {toTitleCase(
+                                                        form.getValues(
+                                                            "courseData"
+                                                        ).title
+                                                    )}
                                                 </h1>
 
                                                 {/* Description */}
@@ -927,7 +945,9 @@ export const CourseDetailsPage = () => {
                                                     className="text-base sm:text-lg opacity-90 leading-relaxed line-clamp-3 max-w-3xl mx-auto"
                                                     dangerouslySetInnerHTML={{
                                                         __html:
-                              form.getValues("courseData").description || "",
+                                                            form.getValues(
+                                                                "courseData"
+                                                            ).description || "",
                                                     }}
                                                 />
                                             </div>
@@ -938,6 +958,17 @@ export const CourseDetailsPage = () => {
                         </div>
                     </div>
                 </div>
+
+                {/* Video Player for non-lg screens */}
+                {form.watch("courseData").courseMediaId && (
+                    <div className="lg:hidden relative z-10 max-w-[350px] px-3 sm:px-4 py-4">
+                        <div className="bg-white/80 backdrop-blur-sm border border-gray-200/60 rounded-xl shadow-sm p-3 sm:p-4">
+                            <VideoPlayer
+                                src={form.watch("courseData").courseMediaId}
+                            />
+                        </div>
+                    </div>
+                )}
 
                 {/* Main Content Container */}
                 <div className="relative z-10 max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 py-4 lg:py-6">
@@ -965,113 +996,187 @@ export const CourseDetailsPage = () => {
                                             />
                                         </div>
                                         <h3 className="text-base font-bold text-gray-900">
-                      {getTerminology(ContentTerms.Course, SystemTerms.Course)}
-                      Configuration
+                                            {getTerminology(
+                                                ContentTerms.Course,
+                                                SystemTerms.Course
+                                            )}{" "}
+                                            Configuration
                                         </h3>
                                     </div>
 
-                  {sessionOptions && sessionOptions.length > 0 ? (
+                                    {sessionOptions &&
+                                    sessionOptions.length > 0 ? (
                                         <div>
-                                            {/* Preview notice for ALL tab */}
-                                            {selectedTab === "ALL" && (
-                                                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                                                    <div className="flex items-center space-x-2">
-                                                        <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                                                        <span className="text-sm font-medium text-blue-800">
-                              {getTerminology(
-                                ContentTerms.Course,
-                                SystemTerms.Course
-                              )}{" "}
-                              Preview Mode
-                                                        </span>
-                                                    </div>
-                                                    <p className="text-xs text-blue-700 mt-1">
-                            Browse{" "}
-                            {getTerminology(
-                              ContentTerms.Course,
-                              SystemTerms.Course
-                            ).toLocaleLowerCase()}{" "}
-                            structure. Enroll to access{" "}
-                            {getTerminology(
-                              ContentTerms.Slides,
-                              SystemTerms.Slides
-                            ).toLocaleLowerCase()}
-                            s and materials.
-                                                    </p>
-                                                </div>
-                                            )}
+                                            {/* Preview notice for ALL tab - only show if user is not enrolled */}
+                                            {selectedTab === "ALL" &&
+                                                (() => {
+                                                    // Check if user is enrolled in this course
+                                                    const isEnrolledInCourse =
+                                                        enrolledSessions.some(
+                                                            (
+                                                                enrolledSession
+                                                            ) => {
+                                                                return (
+                                                                    enrolledSession
+                                                                        .package_dto
+                                                                        .id ===
+                                                                    searchParams.courseId
+                                                                );
+                                                            }
+                                                        );
+
+                                                    // Only show preview mode message if user is NOT enrolled
+                                                    if (!isEnrolledInCourse) {
+                                                        return (
+                                                            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                                                <div className="flex items-center space-x-2">
+                                                                    <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                                                                    <span className="text-sm font-medium text-blue-800">
+                                                                        {getTerminology(
+                                                                            ContentTerms.Course,
+                                                                            SystemTerms.Course
+                                                                        )}{" "}
+                                                                        Preview
+                                                                        Mode
+                                                                    </span>
+                                                                </div>
+                                                                <p className="text-xs text-blue-700 mt-1">
+                                                                    Browse{" "}
+                                                                    {getTerminology(
+                                                                        ContentTerms.Course,
+                                                                        SystemTerms.Course
+                                                                    ).toLocaleLowerCase()}{" "}
+                                                                    structure.
+                                                                    Enroll to
+                                                                    access{" "}
+                                                                    {getTerminology(
+                                                                        ContentTerms.Slides,
+                                                                        SystemTerms.Slides
+                                                                    ).toLocaleLowerCase()}
+                                                                    s and
+                                                                    materials.
+                                                                </p>
+                                                            </div>
+                                                        );
+                                                    }
+
+                                                    // If user is enrolled, don't show preview mode message
+                                                    return null;
+                                                })()}
 
                                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 lg:gap-4">
                                                 {/* Session Selector */}
-                        {sessionOptions &&
-                          sessionOptions.length > 0 &&
+                                                {sessionOptions &&
+                                                    sessionOptions.length > 0 &&
                                                     // Hide if only one and label is 'default'
-                          (sessionOptions.length === 1 &&
-                          sessionOptions[0].label ===
-                            "default" ? null : sessionOptions.length === 1 ? (
+                                                    (sessionOptions.length ===
+                                                        1 &&
+                                                    sessionOptions[0].label ===
+                                                        "default" ? null : sessionOptions.length ===
+                                                      1 ? (
                                                         <div className="p-2.5 bg-gray-50/80 rounded-lg border border-gray-200">
                                                             <span className="text-sm font-medium text-gray-900">
-                                                                {sessionOptions[0]?.label}
+                                                                {
+                                                                    sessionOptions[0]
+                                                                        ?.label
+                                                                }
                                                             </span>
                                                         </div>
-                                                    ) : sessionOptions.length > 1 ? (
+                                                    ) : sessionOptions.length >
+                                                      1 ? (
                                                         <div className="flex flex-col gap-2">
                                                             <Select
-                                                                value={selectedSession}
-                                                                onValueChange={handleSessionChange}
+                                                                value={
+                                                                    selectedSession
+                                                                }
+                                                                onValueChange={
+                                                                    handleSessionChange
+                                                                }
                                                             >
                                                                 <SelectTrigger>
                                                                     <SelectValue placeholder="Select Session" />
                                                                 </SelectTrigger>
                                                                 <SelectContent>
-                                                                    {sessionOptions.map((option) => (
-                                                                        <SelectItem
-                                                                            key={option._id}
-                                                                            value={option.value}
-                                                                        >
-                                                                            {option.label}
-                                                                        </SelectItem>
-                                                                    ))}
+                                                                    {sessionOptions.map(
+                                                                        (
+                                                                            option
+                                                                        ) => (
+                                                                            <SelectItem
+                                                                                key={
+                                                                                    option._id
+                                                                                }
+                                                                                value={
+                                                                                    option.value
+                                                                                }
+                                                                            >
+                                                                                {
+                                                                                    option.label
+                                                                                }
+                                                                            </SelectItem>
+                                                                        )
+                                                                    )}
                                                                 </SelectContent>
                                                             </Select>
                                                         </div>
-                          ) : null)}
+                                                    ) : null)}
 
                                                 {/* Level Selector */}
-                        {levelOptions &&
-                          levelOptions.length > 0 &&
+                                                {levelOptions &&
+                                                    levelOptions.length > 0 &&
                                                     // Hide if only one and label is 'default'
-                          (levelOptions.length === 1 &&
-                          levelOptions[0].label ===
-                            "default" ? null : levelOptions.length === 1 ? (
+                                                    (levelOptions.length ===
+                                                        1 &&
+                                                    levelOptions[0].label ===
+                                                        "default" ? null : levelOptions.length ===
+                                                      1 ? (
                                                         <div className="p-2.5 bg-gray-50/80 rounded-lg border border-gray-200">
                                                             <span className="text-sm font-medium text-gray-900">
-                                                                {levelOptions[0]?.label}
+                                                                {
+                                                                    levelOptions[0]
+                                                                        ?.label
+                                                                }
                                                             </span>
                                                         </div>
-                                                    ) : levelOptions.length > 1 ? (
+                                                    ) : levelOptions.length >
+                                                      1 ? (
                                                         <div className="flex flex-col gap-2">
                                                             <Select
-                                                                value={selectedLevel}
-                                                                onValueChange={handleLevelChange}
-                                                                disabled={!selectedSession}
+                                                                value={
+                                                                    selectedLevel
+                                                                }
+                                                                onValueChange={
+                                                                    handleLevelChange
+                                                                }
+                                                                disabled={
+                                                                    !selectedSession
+                                                                }
                                                             >
                                                                 <SelectTrigger>
                                                                     <SelectValue placeholder="Select Level" />
                                                                 </SelectTrigger>
                                                                 <SelectContent>
-                                                                    {levelOptions.map((option) => (
-                                                                        <SelectItem
-                                                                            key={option._id}
-                                                                            value={option.value}
-                                                                        >
-                                                                            {option.label}
-                                                                        </SelectItem>
-                                                                    ))}
+                                                                    {levelOptions.map(
+                                                                        (
+                                                                            option
+                                                                        ) => (
+                                                                            <SelectItem
+                                                                                key={
+                                                                                    option._id
+                                                                                }
+                                                                                value={
+                                                                                    option.value
+                                                                                }
+                                                                            >
+                                                                                {
+                                                                                    option.label
+                                                                                }
+                                                                            </SelectItem>
+                                                                        )
+                                                                    )}
                                                                 </SelectContent>
                                                             </Select>
                                                         </div>
-                          ) : null)}
+                                                    ) : null)}
                                             </div>
                                         </div>
                                     ) : (
@@ -1080,39 +1185,39 @@ export const CourseDetailsPage = () => {
                                                 <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
                                                 <span className="text-sm font-medium text-yellow-800">
                                                     {selectedTab === "ALL"
-                            ? `No ${getTerminology(
-                                ContentTerms.Session,
-                                SystemTerms.Session
-                              ).toLocaleLowerCase()} available for this ${getTerminology(
-                                ContentTerms.Course,
-                                SystemTerms.Course
-                              ).toLocaleLowerCase()}`
-                            : `You are not enrolled in any ${getTerminology(
-                                ContentTerms.Session,
-                                SystemTerms.Session
-                              ).toLocaleLowerCase()} for this ${getTerminology(
-                                ContentTerms.Course,
-                                SystemTerms.Course
-                              ).toLocaleLowerCase()}`}
+                                                        ? `No ${getTerminology(
+                                                              ContentTerms.Session,
+                                                              SystemTerms.Session
+                                                          ).toLocaleLowerCase()} available for this ${getTerminology(
+                                                              ContentTerms.Course,
+                                                              SystemTerms.Course
+                                                          ).toLocaleLowerCase()}`
+                                                        : `You are not enrolled in any ${getTerminology(
+                                                              ContentTerms.Session,
+                                                              SystemTerms.Session
+                                                          ).toLocaleLowerCase()} for this ${getTerminology(
+                                                              ContentTerms.Course,
+                                                              SystemTerms.Course
+                                                          ).toLocaleLowerCase()}`}
                                                 </span>
                                             </div>
                                             <p className="text-xs text-yellow-700 mt-1">
                                                 {selectedTab === "ALL"
-                          ? `This ${getTerminology(
-                              ContentTerms.Course,
-                              SystemTerms.Course
-                            ).toLocaleLowerCase()} may not have any active ${getTerminology(
-                              ContentTerms.Session,
-                              SystemTerms.Session
-                            ).toLocaleLowerCase()}s configured.`
-                          : `Please contact your ${getTerminology(
-                              RoleTerms.Teacher,
-                              SystemTerms.Teacher
-                            ).toLocaleLowerCase()} or ${getTerminology(
-                              RoleTerms.Admin,
-                              SystemTerms.Admin
-                            ).toLocaleLowerCase()} to get enrolled.`}
-                      </p>
+                                                    ? `This ${getTerminology(
+                                                          ContentTerms.Course,
+                                                          SystemTerms.Course
+                                                      ).toLocaleLowerCase()} may not have any active ${getTerminology(
+                                                          ContentTerms.Session,
+                                                          SystemTerms.Session
+                                                      ).toLocaleLowerCase()}s configured.`
+                                                    : `Please contact your ${getTerminology(
+                                                          RoleTerms.Teacher,
+                                                          SystemTerms.Teacher
+                                                      ).toLocaleLowerCase()} or ${getTerminology(
+                                                          RoleTerms.Admin,
+                                                          SystemTerms.Admin
+                                                      ).toLocaleLowerCase()} to get enrolled.`}
+                                            </p>
                                         </div>
                                     )}
                                 </div>
@@ -1126,18 +1231,28 @@ export const CourseDetailsPage = () => {
                                 <CourseStructureDetails
                                     selectedSession={selectedSession}
                                     selectedLevel={selectedLevel}
-                  courseStructure={form.getValues("courseData.courseStructure")}
+                                    courseStructure={form.getValues(
+                                        "courseData.courseStructure"
+                                    )}
                                     courseData={form.getValues()}
-                  packageSessionId={packageSessionIdForCurrentLevel || ""}
+                                    packageSessionId={
+                                        packageSessionIdForCurrentLevel || ""
+                                    }
                                     selectedTab={selectedTab}
-                  updateModuleStats={updateModuleStats}
+                                    updateModuleStats={updateModuleStats}
+                                    isEnrolledInCourse={enrolledSessions.some(
+                                        (enrolledSession) =>
+                                            enrolledSession.package_dto.id ===
+                                            searchParams.courseId
+                                    )}
                                 />
                             </div>
 
                             {/* Content Sections */}
                             <div className="space-y-4">
                                 {/* What You'll Learn Section */}
-                {form.getValues("courseData").whatYoullLearn && (
+                                {form.getValues("courseData")
+                                    .whatYoullLearn && (
                                     <div
                                         className="relative bg-white/80 backdrop-blur-sm border border-gray-200/60 rounded-xl shadow-sm hover:shadow-lg transition-all duration-500 p-3 sm:p-4 group animate-fade-in-up"
                                         style={{ animationDelay: "0.3s" }}
@@ -1160,7 +1275,9 @@ export const CourseDetailsPage = () => {
                                                 className="text-sm text-gray-600 leading-relaxed"
                                                 dangerouslySetInnerHTML={{
                                                     __html:
-                            form.getValues("courseData").whatYoullLearn || "",
+                                                        form.getValues(
+                                                            "courseData"
+                                                        ).whatYoullLearn || "",
                                                 }}
                                             />
                                         </div>
@@ -1168,7 +1285,8 @@ export const CourseDetailsPage = () => {
                                 )}
 
                                 {/* About Course Section */}
-                {form.getValues("courseData").aboutTheCourse && (
+                                {form.getValues("courseData")
+                                    .aboutTheCourse && (
                                     <div
                                         className="relative bg-white/80 backdrop-blur-sm border border-gray-200/60 rounded-xl shadow-sm hover:shadow-lg transition-all duration-500 p-3 sm:p-4 group animate-fade-in-up"
                                         style={{ animationDelay: "0.4s" }}
@@ -1184,18 +1302,20 @@ export const CourseDetailsPage = () => {
                                                     />
                                                 </div>
                                                 <h2 className="text-base font-bold text-gray-900">
-                          About this{" "}
-                          {getTerminology(
-                            ContentTerms.Course,
-                            SystemTerms.Course
-                          ).toLocaleLowerCase()}
+                                                    About this{" "}
+                                                    {getTerminology(
+                                                        ContentTerms.Course,
+                                                        SystemTerms.Course
+                                                    ).toLocaleLowerCase()}
                                                 </h2>
                                             </div>
                                             <div
                                                 className="text-sm text-gray-600 leading-relaxed"
                                                 dangerouslySetInnerHTML={{
                                                     __html:
-                            form.getValues("courseData").aboutTheCourse || "",
+                                                        form.getValues(
+                                                            "courseData"
+                                                        ).aboutTheCourse || "",
                                                 }}
                                             />
                                         </div>
@@ -1203,7 +1323,8 @@ export const CourseDetailsPage = () => {
                                 )}
 
                                 {/* Who Should Join Section */}
-                {form.getValues("courseData").whoShouldLearn && (
+                                {form.getValues("courseData")
+                                    .whoShouldLearn && (
                                     <div
                                         className="relative bg-white/80 backdrop-blur-sm border border-gray-200/60 rounded-xl shadow-sm hover:shadow-lg transition-all duration-500 p-3 sm:p-4 group animate-fade-in-up"
                                         style={{ animationDelay: "0.5s" }}
@@ -1226,7 +1347,9 @@ export const CourseDetailsPage = () => {
                                                 className="text-sm text-gray-600 leading-relaxed"
                                                 dangerouslySetInnerHTML={{
                                                     __html:
-                            form.getValues("courseData").whoShouldLearn || "",
+                                                        form.getValues(
+                                                            "courseData"
+                                                        ).whoShouldLearn || "",
                                                 }}
                                             />
                                         </div>
@@ -1235,7 +1358,8 @@ export const CourseDetailsPage = () => {
 
                                 {/* Instructors Section */}
                                 {form.getValues("courseData").instructors &&
-                  form.getValues("courseData").instructors.length > 0 && (
+                                    form.getValues("courseData").instructors
+                                        .length > 0 && (
                                         <div
                                             className="relative bg-white/80 backdrop-blur-sm border border-gray-200/60 rounded-xl shadow-sm hover:shadow-lg transition-all duration-500 p-3 sm:p-4 group animate-fade-in-up"
                                             style={{ animationDelay: "0.6s" }}
@@ -1251,37 +1375,53 @@ export const CourseDetailsPage = () => {
                                                         />
                                                     </div>
                                                     <h2 className="text-base font-bold text-gray-900">
-                            {getTerminology(
-                              RoleTerms.Teacher,
-                              SystemTerms.Teacher
-                            ).toLocaleLowerCase()}
-                            s
+                                                        {getTerminology(
+                                                            RoleTerms.Teacher,
+                                                            SystemTerms.Teacher
+                                                        ).toLocaleLowerCase()}
+                                                        s
                                                     </h2>
                                                 </div>
                                                 <div className="space-y-2">
                                                     {form
                                                         .getValues("courseData")
-                            .instructors.map((instructor, index) => (
+                                                        .instructors.map(
+                                                            (
+                                                                instructor,
+                                                                index
+                                                            ) => (
                                                                 <div
                                                                     key={index}
                                                                     className="flex items-center gap-3 p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300"
                                                                 >
                                                                     <Avatar className="w-8 h-8 border-2 border-white shadow-sm">
-                                  <AvatarImage src="" alt={instructor.email} />
+                                                                        <AvatarImage
+                                                                            src=""
+                                                                            alt={
+                                                                                instructor.email
+                                                                            }
+                                                                        />
                                                                         <AvatarFallback className="bg-gradient-to-br from-primary-500 to-primary-600 text-white text-xs font-semibold">
-                                    {getInitials(instructor.email)}
+                                                                            {getInitials(
+                                                                                instructor.email
+                                                                            )}
                                                                         </AvatarFallback>
                                                                     </Avatar>
                                                                     <div>
                                                                         <h3 className="text-sm font-semibold text-gray-900">
-                                    {instructor.name}
+                                                                            {
+                                                                                instructor.name
+                                                                            }
                                                                         </h3>
                                                                         <p className="text-xs text-gray-600">
-                                    {instructor.email}
+                                                                            {
+                                                                                instructor.email
+                                                                            }
                                                                         </p>
                                                                     </div>
                                                                 </div>
-                            ))}
+                                                            )
+                                                        )}
                                                 </div>
                                             </div>
                                         </div>
@@ -1313,11 +1453,11 @@ export const CourseDetailsPage = () => {
                                                 />
                                             </div>
                                             <h2 className="text-base font-bold text-gray-900">
-                        {getTerminology(
-                          ContentTerms.Course,
-                          SystemTerms.Course
-                        ).toLocaleLowerCase()}
-                        Overview
+                                                {getTerminology(
+                                                    ContentTerms.Course,
+                                                    SystemTerms.Course
+                                                ).toLocaleLowerCase()}{" "}
+                                                Overview
                                             </h2>
                                         </div>
 
@@ -1326,9 +1466,11 @@ export const CourseDetailsPage = () => {
                                             {/* Level Badge */}
                                             {levelOptions.length > 0 &&
                                                 selectedLevel &&
-                        levelOptions.find(
-                          (option) => option.value === selectedLevel
-                        )?.label !== "default" && (
+                                                levelOptions.find(
+                                                    (option) =>
+                                                        option.value ===
+                                                        selectedLevel
+                                                )?.label !== "default" && (
                                                     <div className="flex items-center justify-between p-2.5 bg-gradient-to-r from-primary-50 to-primary-100 rounded-lg border border-primary-200">
                                                         <div className="flex items-center space-x-2">
                                                             <Steps
@@ -1337,16 +1479,18 @@ export const CourseDetailsPage = () => {
                                                                 weight="duotone"
                                                             />
                                                             <span className="text-xs font-medium text-primary-700">
-                                {getTerminology(
-                                  ContentTerms.Level,
-                                  SystemTerms.Level
-                                ).toLocaleLowerCase()}
+                                                                {getTerminology(
+                                                                    ContentTerms.Level,
+                                                                    SystemTerms.Level
+                                                                ).toLocaleLowerCase()}
                                                             </span>
                                                         </div>
                                                         <span className="text-xs font-bold text-primary-800">
                                                             {
                                                                 levelOptions.find(
-                                  (option) => option.value === selectedLevel
+                                                                    (option) =>
+                                                                        option.value ===
+                                                                        selectedLevel
                                                                 )?.label
                                                             }
                                                         </span>
@@ -1356,7 +1500,8 @@ export const CourseDetailsPage = () => {
                                             {/* Slide Counts */}
                                             {slideCountQuery.isLoading ? (
                                                 <div className="space-y-2">
-                          {[1, 2, 3, 4, 5].map((i) => (
+                                                    {[1, 2, 3, 4, 5].map(
+                                                        (i) => (
                                                             <div
                                                                 key={i}
                                                                 className="flex items-center justify-between p-2.5 bg-gray-50 rounded-lg animate-pulse"
@@ -1364,113 +1509,150 @@ export const CourseDetailsPage = () => {
                                                                 <div className="h-3 w-16 bg-gray-200 rounded"></div>
                                                                 <div className="h-3 w-6 bg-gray-200 rounded"></div>
                                                             </div>
-                          ))}
+                                                        )
+                                                    )}
                                                 </div>
                                             ) : slideCountQuery.error ? (
                                                 <div className="p-2.5 bg-red-50 border border-red-200 rounded-lg">
                                                     <p className="text-xs text-red-600 font-medium">
-                            Error loading{" "}
-                            {getTerminology(
-                              ContentTerms.Slides,
-                              SystemTerms.Slides
-                            ).toLocaleLowerCase()}
+                                                        Error loading{" "}
+                                                        {getTerminology(
+                                                            ContentTerms.Slides,
+                                                            SystemTerms.Slides
+                                                        ).toLocaleLowerCase()}
                                                         counts
                                                     </p>
                                                 </div>
                                             ) : (
                                                 <div className="space-y-2">
                                                     {processedSlideCounts.map(
-                            (count: {
-                              source_type: string;
-                              slide_count: number;
-                              display_name: string;
-                            }) => (
-                              <div
-                                key={count.source_type}
+                                                        (count: {
+                                                            source_type: string;
+                                                            slide_count: number;
+                                                            display_name: string;
+                                                        }) => (
+                                                            <div
+                                                                key={
+                                                                    count.source_type
+                                                                }
                                                                 className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300 group/item"
                                                             >
                                                                 <div className="flex items-center space-x-2">
-                                                                    {getSlideTypeIcon(count.source_type)}
+                                                                    {getSlideTypeIcon(
+                                                                        count.source_type
+                                                                    )}
                                                                     <span className="text-xs font-medium text-gray-700">
-                                                                        {count.display_name}
+                                                                        {
+                                                                            count.display_name
+                                                                        }
                                                                     </span>
                                                                 </div>
                                                                 <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
-                                  {count.slide_count}
+                                                                    {
+                                                                        count.slide_count
+                                                                    }
                                                                 </span>
                                                             </div>
                                                         )
                                                     )}
 
                                                     {/* Module Statistics */}
-                          {(() => {
-                            const currentSubjects = getSubjectDetails(
-                              form.getValues(),
-                              selectedSession,
-                              selectedLevel
-                            );
-                            
-                            return (
-                              <>
-                                {/* Total Modules */}
-                                {moduleStats.totalModules > 0 && (
-                                  <div className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300 group/item">
-                                    <div className="flex items-center space-x-2">
-                                      <FileText
-                                        size={16}
-                                        className="text-blue-600 group-hover/item:scale-110 transition-transform duration-300"
-                                        weight="duotone"
-                                      />
-                                      <span className="text-xs font-medium text-gray-700">
-                                        {getTerminology(ContentTerms.Modules, SystemTerms.Modules)}
-                                      </span>
-                                    </div>
-                                    <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
-                                      {moduleStats.totalModules}
-                                    </span>
-                                  </div>
-                                )}
+                                                    {(() => {
+                                                        const currentSubjects =
+                                                            getSubjectDetails(
+                                                                form.getValues(),
+                                                                selectedSession,
+                                                                selectedLevel
+                                                            );
 
-                                {/* Total Chapters */}
-                                {moduleStats.totalChapters > 0 && (
-                                  <div className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300 group/item">
-                                    <div className="flex items-center space-x-2">
-                                      <PresentationChart
-                                        size={16}
-                                        className="text-green-600 group-hover/item:scale-110 transition-transform duration-300"
-                                        weight="duotone"
-                                      />
-                                      <span className="text-xs font-medium text-gray-700">
-                                        {getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)}
-                                      </span>
-                                    </div>
-                                    <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
-                                      {moduleStats.totalChapters}
-                                    </span>
-                                  </div>
-                                )}
+                                                        return (
+                                                            <>
+                                                                {/* Total Modules */}
+                                                                {moduleStats.totalModules >
+                                                                    0 && (
+                                                                    <div className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300 group/item">
+                                                                        <div className="flex items-center space-x-2">
+                                                                            <FileText
+                                                                                size={
+                                                                                    16
+                                                                                }
+                                                                                className="text-blue-600 group-hover/item:scale-110 transition-transform duration-300"
+                                                                                weight="duotone"
+                                                                            />
+                                                                            <span className="text-xs font-medium text-gray-700">
+                                                                                {getTerminology(
+                                                                                    ContentTerms.Modules,
+                                                                                    SystemTerms.Modules
+                                                                                )}
+                                                                            </span>
+                                                                        </div>
+                                                                        <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
+                                                                            {
+                                                                                moduleStats.totalModules
+                                                                            }
+                                                                        </span>
+                                                                    </div>
+                                                                )}
 
-                                {/* Total Subjects (for depth 5) */}
-                                {form.getValues("courseData.courseStructure") === 5 && currentSubjects.length > 0 && (
-                                  <div className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300 group/item">
-                                    <div className="flex items-center space-x-2">
-                                      <Folder
-                                        size={16}
-                                        className="text-purple-600 group-hover/item:scale-110 transition-transform duration-300"
-                                        weight="duotone"
-                                      />
-                                      <span className="text-xs font-medium text-gray-700">
-                                        {getTerminology(ContentTerms.Subjects, SystemTerms.Subjects)}
-                                      </span>
-                                    </div>
-                                    <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
-                                      {currentSubjects.length}
-                                    </span>
-                                  </div>
-                                )}
-                              </>
-                            );
-                          })()}
+                                                                {/* Total Chapters */}
+                                                                {moduleStats.totalChapters >
+                                                                    0 && (
+                                                                    <div className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300 group/item">
+                                                                        <div className="flex items-center space-x-2">
+                                                                            <PresentationChart
+                                                                                size={
+                                                                                    16
+                                                                                }
+                                                                                className="text-green-600 group-hover/item:scale-110 transition-transform duration-300"
+                                                                                weight="duotone"
+                                                                            />
+                                                                            <span className="text-xs font-medium text-gray-700">
+                                                                                {getTerminology(
+                                                                                    ContentTerms.Chapters,
+                                                                                    SystemTerms.Chapters
+                                                                                )}
+                                                                            </span>
+                                                                        </div>
+                                                                        <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
+                                                                            {
+                                                                                moduleStats.totalChapters
+                                                                            }
+                                                                        </span>
+                                                                    </div>
+                                                                )}
+
+                                                                {/* Total Subjects (for depth 5) */}
+                                                                {form.getValues(
+                                                                    "courseData.courseStructure"
+                                                                ) === 5 &&
+                                                                    currentSubjects.length >
+                                                                        0 && (
+                                                                        <div className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300 group/item">
+                                                                            <div className="flex items-center space-x-2">
+                                                                                <Folder
+                                                                                    size={
+                                                                                        16
+                                                                                    }
+                                                                                    className="text-purple-600 group-hover/item:scale-110 transition-transform duration-300"
+                                                                                    weight="duotone"
+                                                                                />
+                                                                                <span className="text-xs font-medium text-gray-700">
+                                                                                    {getTerminology(
+                                                                                        ContentTerms.Subjects,
+                                                                                        SystemTerms.Subjects
+                                                                                    )}
+                                                                                </span>
+                                                                            </div>
+                                                                            <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
+                                                                                {
+                                                                                    currentSubjects.length
+                                                                                }
+                                                                            </span>
+                                                                        </div>
+                                                                    )}
+                                                            </>
+                                                        );
+                                                    })()}
 
                                                     {/* Instructors Count */}
                                                     {form.getValues(
@@ -1502,21 +1684,58 @@ export const CourseDetailsPage = () => {
                                                 </div>
                                             )}
                                         </div>
-                                        {/* Only show enroll button for ALL tab (catalog view) */}
-                                        {selectedTab === "ALL" && (
-                                            <MyButton
-                                                type="button"
-                                                scale="large"
-                                                buttonType="primary"
-                                                layoutVariant="default"
-                                                className="mt-2 !min-w-full !w-full text-xs h-8"
-                                                onClick={() =>
-                                                    setEnrollmentDialogOpen(true)
+                                        {/* Only show enroll button for ALL tab when user is not enrolled */}
+                                        {selectedTab === "ALL" &&
+                                            (() => {
+                                                // Only show enrollment options if session and level are selected
+                                                if (
+                                                    !selectedSession ||
+                                                    !selectedLevel
+                                                ) {
+                                                    return null; // Don't show anything if session/level not selected
                                                 }
-                                            >
-                                                Enroll
-                                            </MyButton>
-                                        )}
+
+                                                // Check if user is already enrolled in this course
+                                                const isAlreadyEnrolled =
+                                                    enrolledSessions.some(
+                                                        (enrolledSession) => {
+                                                            // Check if the enrolled session matches the current course
+                                                            // The package_dto.id represents the course/package ID
+                                                            return (
+                                                                enrolledSession
+                                                                    .package_dto
+                                                                    .id ===
+                                                                    searchParams.courseId &&
+                                                                enrolledSession
+                                                                    .session
+                                                                    .id ===
+                                                                    selectedSession &&
+                                                                enrolledSession
+                                                                    .level
+                                                                    .id ===
+                                                                    selectedLevel
+                                                            );
+                                                        }
+                                                    );
+
+                                                // Only show enroll button if not already enrolled
+                                                return !isAlreadyEnrolled ? (
+                                                    <MyButton
+                                                        type="button"
+                                                        scale="large"
+                                                        buttonType="primary"
+                                                        layoutVariant="default"
+                                                        className="mt-2 !min-w-full !w-full text-xs h-8"
+                                                        onClick={() =>
+                                                            setEnrollmentDialogOpen(
+                                                                true
+                                                            )
+                                                        }
+                                                    >
+                                                        Enroll
+                                                    </MyButton>
+                                                ) : null; // Don't show anything if already enrolled
+                                            })()}
                                     </div>
                                 </div>
                             </div>

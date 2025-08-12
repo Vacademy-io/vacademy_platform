@@ -111,11 +111,13 @@ const CourseCatalougePage: React.FC = () => {
             setData(response.data);
         } catch (error) {
             console.log(error);
-            
+
             // If enrolled courses fail, try to fetch available courses for the "ALL" tab
             if (tabType === "ALL") {
                 try {
-                    const { urlCourseDetails } = await import("@/constants/urls");
+                    const { urlCourseDetails } = await import(
+                        "@/constants/urls"
+                    );
                     const instituteId = await getInstituteId();
                     const response = await authenticatedAxiosInstance.post(
                         urlCourseDetails,
@@ -150,7 +152,10 @@ const CourseCatalougePage: React.FC = () => {
                     );
                     setData(response.data);
                 } catch (fallbackError) {
-                    console.log("Fallback to available courses also failed:", fallbackError);
+                    console.log(
+                        "Fallback to available courses also failed:",
+                        fallbackError
+                    );
                 }
             }
         }
@@ -190,7 +195,7 @@ const CourseCatalougePage: React.FC = () => {
 
     // ✅ Fetch institute details
     useEffect(() => {
-        const FetchInstituteDetails = async () => {
+        const fetchInstituteDetails = async () => {
             try {
                 const userId = await getUserId();
                 const instituteId = await getInstituteId();
@@ -206,7 +211,7 @@ const CourseCatalougePage: React.FC = () => {
             }
         };
 
-        FetchInstituteDetails();
+        fetchInstituteDetails();
     }, []);
 
     // ✅ Fetch instructor
@@ -274,7 +279,7 @@ const CourseCatalougePage: React.FC = () => {
             />
 
             {/* Main Content Container */}
-            <div className="max-w-7xl mx-auto p-4">
+            <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6">
                 <Tabs
                     value={selectedTab}
                     onValueChange={setSelectedTab}
@@ -282,12 +287,12 @@ const CourseCatalougePage: React.FC = () => {
                 >
                     {/* Tab Navigation */}
                     <div className="bg-white border border-gray-200 rounded-lg shadow-sm mb-4">
-                        <div className="p-4">
-                            <TabsList className="bg-gray-50 p-1 w-full sm:w-auto">
+                        <div className="p-3 sm:p-4">
+                            <TabsList className="bg-gray-50 justify-start p-1 w-full grid grid-cols-3 gap-1 sm:w-auto sm:flex sm:flex-row">
                                 {allCourses.content.length > 0 && (
                                     <TabsTrigger
                                         value="ALL"
-                                        className="flex-1 sm:flex-none px-4 py-2 text-sm font-medium"
+                                        className="flex-1 sm:flex-none px-2 sm:px-4 py-2 text-xs sm:text-sm font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm"
                                     >
                                         All{" "}
                                         {getTerminology(
@@ -299,13 +304,13 @@ const CourseCatalougePage: React.FC = () => {
                                 )}
                                 <TabsTrigger
                                     value="PROGRESS"
-                                    className="flex-1 sm:flex-none px-4 py-2 text-sm font-medium"
+                                    className="flex-1 sm:flex-none px-2 sm:px-4 py-2 text-xs sm:text-sm font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm"
                                 >
                                     In Progress
                                 </TabsTrigger>
                                 <TabsTrigger
                                     value="COMPLETED"
-                                    className="flex-1 sm:flex-none px-4 py-2 text-sm font-medium"
+                                    className="flex-1 sm:flex-none px-2 sm:px-4 py-2 text-xs sm:text-sm font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm"
                                 >
                                     Completed
                                 </TabsTrigger>

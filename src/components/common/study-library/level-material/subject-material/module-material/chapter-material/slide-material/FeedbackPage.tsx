@@ -72,8 +72,8 @@ export default function FeedbackPage() {
       return;
     }
 
-    if (!rating || !comments.trim()) {
-      await MySwal.fire("Incomplete", "Please select a rating and write a comment.", "warning");
+    if (!rating) {
+      await MySwal.fire("Incomplete", "Please select a rating.", "warning");
       return;
     }
 
@@ -145,7 +145,6 @@ export default function FeedbackPage() {
             onChange={(e) => setComments(e.target.value)}
             placeholder="We’d love to hear about your experience! What did you enjoy? What could be improved?"
             className="w-full min-h-[150px] p-4 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-200 resize-none"
-            required
           />
         </div>
 

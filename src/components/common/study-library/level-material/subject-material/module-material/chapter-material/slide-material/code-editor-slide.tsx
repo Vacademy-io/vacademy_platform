@@ -489,7 +489,7 @@ export const CodeEditorSlide: React.FC<CodeEditorSlideProps> = ({
       const data = JSON.parse(published_data) as CodeEditorData;
 
       const initialLanguage =
-        (data.language as keyof typeof DEFAULT_CODE_SAMPLES) || "python";
+        (data.language as keyof typeof DEFAULT_CODE_SAMPLES) ?? "python";
 
       // Priority logic for code content:
       // 1. New allLanguagesData structure (if exists and has content)

@@ -1,23 +1,129 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, forwardRef, useImperativeHandle } from "react";
 import { createPortal } from "react-dom";
-import { ModalLoginForm } from "@/components/common/auth/login/sections/ModalLoginForm";
-import { ModalSignUpForm } from "@/components/common/auth/signup/sections/ModalSignUpForm";
-import { ModalForgotPasswordForm } from "@/components/common/auth/login/sections/ModalForgotPasswordForm";
+import { ModalSpecificLoginForm } from "@/components/common/auth/login/forms/modal/ModalSpecificLoginForm";
+import { ModalSignUpForm } from "@/components/common/auth/signup/forms/modal/ModalSignUpForm";
+import { ModalForgotPasswordForm } from "@/components/common/auth/login/forms/modal/ModalForgotPasswordForm";
 
 interface AuthModalProps {
     type?: string;
     courseId?: string;
     trigger: React.ReactNode;
     onModalOpen?: () => void;
+    onLoginSuccess?: () => void;
+    onSignupSuccess?: () => void;
 }
 
-export function AuthModal({ type, courseId, trigger, onModalOpen }: AuthModalProps) {
-    const [isOpen, setIsOpen] = useState(false);
+export interface AuthModalRef {
+    setIsOpen: (open: boolean) => void;
+}
+
+export const AuthModal = forwardRef<AuthModalRef, AuthModalProps>(({ 
+    type, 
+    courseId, 
+    trigger, 
+    onModalOpen, 
+    onLoginSuccess, 
+    onSignupSuccess
+}, ref) => {
+    const [internalIsOpen, setInternalIsOpen] = useState(false);
+    const isOpen = internalIsOpen;
     const [currentMode, setCurrentMode] = useState<'login' | 'signup' | 'forgot-password'>('login');
     const [isVisible, setIsVisible] = useState(false);
     const dialogRef = useRef<HTMLDivElement>(null);
 
+    // Expose setIsOpen method to parent component
+    useImperativeHandle(ref, () => ({
+        setIsOpen: (open: boolean) => {
+            setInternalIsOpen(open);
+        }
+    }), []);
 
+    // Determine the current route context for login redirection
+    const getCurrentRouteContext = () => {
+        const currentPath = window.location.pathname;
+        const currentSearch = window.location.search;
+        
+        // If type and courseId are explicitly provided, use them
+        if (type && courseId) {
+            return { type, courseId, instituteId: undefined };
+        }
+        
+        // Extract parameters from URL
+        const urlParams = new URLSearchParams(currentSearch);
+        const urlType = urlParams.get('type');
+        const urlCourseId = urlParams.get('courseId');
+        const urlInstituteId = urlParams.get('instituteId');
+        
+        // Otherwise, determine based on current route
+        if (currentPath.includes("/courses/course-details")) {
+            const courseIdFromUrl = urlParams.get("courseId");
+            if (courseIdFromUrl) {
+                return { 
+                    type: urlType || "courseDetailsPage", 
+                    courseId: courseIdFromUrl,
+                    instituteId: urlInstituteId || undefined
+                };
+            }
+        } else if (currentPath.includes("/courses")) {
+            return { 
+                type: urlType || "courseDetailsPage", 
+                courseId: urlCourseId || undefined,
+                instituteId: urlInstituteId || undefined
+            };
+        }
+        
+        // Default case - use URL parameters if available
+        return { 
+            type: urlType || undefined, 
+            courseId: urlCourseId || undefined,
+            instituteId: urlInstituteId || undefined
+        };
+    };
+
+    // Listen for postMessage from OAuth tab to switch to signup modal
+    useEffect(() => {
+        const handleMessage = (event: MessageEvent) => {
+            // Only accept messages from the same origin
+            if (event.origin !== window.location.origin) return;
+            
+            const { action, type: oauthType, courseId: oauthCourseId, instituteId, fromOAuth } = event.data;
+            
+            if (action === 'openSignupModal' && fromOAuth) {
+                // Update the modal context with OAuth parameters
+                const newUrl = new URL(window.location.href);
+                if (oauthType) newUrl.searchParams.set('type', oauthType);
+                if (oauthCourseId) newUrl.searchParams.set('courseId', oauthCourseId);
+                if (instituteId) newUrl.searchParams.set('instituteId', instituteId);
+                newUrl.searchParams.set('fromOAuth', 'true');
+                window.history.replaceState({}, '', newUrl.toString());
+                
+                // Switch to signup mode
+                setCurrentMode('signup');
+                
+                // Ensure modal is open
+                if (!isOpen) {
+                    setInternalIsOpen(true);
+                }
+            }
+        };
+
+        window.addEventListener('message', handleMessage);
+        return () => window.removeEventListener('message', handleMessage);
+    }, [isOpen]);
+
+    // Check for closeModal parameter and close modal if present
+    useEffect(() => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const closeModal = urlParams.get('closeModal');
+        
+        if (closeModal === 'true' && isOpen) {
+            handleClose();
+            // Remove the closeModal parameter from URL
+            const newUrl = new URL(window.location.href);
+            newUrl.searchParams.delete('closeModal');
+            window.history.replaceState({}, '', newUrl.toString());
+        }
+    }, [isOpen]);
 
     // Prevent body scroll when modal is open
     useEffect(() => {
@@ -163,10 +269,28 @@ export function AuthModal({ type, courseId, trigger, onModalOpen }: AuthModalPro
         setCurrentMode('forgot-password');
     };
 
+    const handleLoginSuccess = () => {
+        // Close the modal after successful login
+        handleClose();
+        // Call the callback if provided
+        if (onLoginSuccess) {
+            onLoginSuccess();
+        }
+    };
+
+    const handleSignupSuccess = () => {
+        // Close the modal after successful signup
+        handleClose();
+        // Call the callback if provided
+        if (onSignupSuccess) {
+            onSignupSuccess();
+        }
+    };
+
     const handleClose = () => {
         setIsVisible(false);
         setTimeout(() => {
-            setIsOpen(false);
+            setInternalIsOpen(false);
             // Reset to login mode when closing
             setCurrentMode('login');
         }, 200);
@@ -182,7 +306,7 @@ export function AuthModal({ type, courseId, trigger, onModalOpen }: AuthModalPro
         return <div onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            setIsOpen(true);
+            setInternalIsOpen(true);
             // Call the optional callback when modal opens, but delay it slightly
             if (onModalOpen) {
                 setTimeout(() => {
@@ -271,17 +395,20 @@ export function AuthModal({ type, courseId, trigger, onModalOpen }: AuthModalPro
                 {/* Content */}
                 <div className="mt-8 w-full pb-4">
                     {currentMode === 'login' ? (
-                        <ModalLoginForm 
-                            type={type} 
-                            courseId={courseId}
+                        <ModalSpecificLoginForm 
+                            type={getCurrentRouteContext().type} 
+                            courseId={getCurrentRouteContext().courseId}
                             onSwitchToSignup={handleSwitchToSignup}
                             onSwitchToForgotPassword={handleSwitchToForgotPassword}
+                            onLoginSuccess={handleLoginSuccess}
                         />
                     ) : currentMode === 'signup' ? (
                         <ModalSignUpForm 
-                            type={type} 
-                            courseId={courseId}
+                            type={getCurrentRouteContext().type} 
+                            courseId={getCurrentRouteContext().courseId}
+                            instituteId={getCurrentRouteContext().instituteId}
                             onSwitchToLogin={handleSwitchToLogin}
+                            onSignupSuccess={handleSignupSuccess}
                         />
                     ) : (
                         <ModalForgotPasswordForm 
@@ -294,4 +421,4 @@ export function AuthModal({ type, courseId, trigger, onModalOpen }: AuthModalPro
     );
 
     return createPortal(modalContent, document.body);
-} 
+}); 

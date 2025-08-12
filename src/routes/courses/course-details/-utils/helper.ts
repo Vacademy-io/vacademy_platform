@@ -1,6 +1,12 @@
-import { getPublicUrl } from "@/services/upload_file";
+import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { CourseDetailsFormValues } from "../-components/course-details-schema";
 import { BatchForSessionType } from "@/types/institute-details/institute-details-interface";
+
+// Utility functions for YouTube URL handling
+export function isYouTubeUrl(url: string): boolean {
+    if (!url) return false;
+    return /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+/.test(url);
+}
 
 interface SubjectType {
     id: string;
@@ -64,12 +70,21 @@ const tryGetPublicUrl = async (
 ): Promise<string> => {
     if (!mediaId) return "";
     try {
-        const url = await getPublicUrl(mediaId);
+        const url = await getPublicUrlWithoutLogin(mediaId);
         return url || "";
     } catch {
         return "";
     }
 };
+
+function isJson(str: string): boolean {
+    try {
+        const parsed = JSON.parse(str);
+        return typeof parsed === "object" && parsed !== null;
+    } catch {
+        return false;
+    }
+}
 
 export const transformApiDataToCourseData = async (
     apiData: CourseWithSessionsType
@@ -77,19 +92,58 @@ export const transformApiDataToCourseData = async (
     if (!apiData) return null;
 
     try {
-        const [coursePreviewImageMediaId, courseBannerMediaId, courseMediaId] =
+        const courseMediaImage = isJson(apiData.course.course_media_id)
+            ? JSON.parse(apiData.course.course_media_id)
+            : apiData.course.course_media_id;
+
+        const [coursePreviewImageMediaId, courseBannerMediaId] =
             await Promise.all([
                 tryGetPublicUrl(apiData.course.course_preview_image_media_id),
                 tryGetPublicUrl(apiData.course.course_banner_media_id),
-                tryGetPublicUrl(apiData.course.course_media_id),
             ]);
+
+        let courseMediaPreview = "";
+        // Only try to get media URL if course_media_id is not empty
+        if (
+            apiData.course.course_media_id &&
+            apiData.course.course_media_id.trim() !== ""
+        ) {
+            // Check if it's a direct YouTube URL
+            if (isYouTubeUrl(apiData.course.course_media_id)) {
+                courseMediaPreview = apiData.course.course_media_id;
+            } else if (
+                isJson(apiData.course.course_media_id) &&
+                courseMediaImage.type === "youtube"
+            ) {
+                courseMediaPreview = courseMediaImage.id || "";
+            } else {
+                const mediaId = isJson(apiData.course.course_media_id)
+                    ? courseMediaImage.id
+                    : apiData.course.course_media_id;
+
+                // Only call getPublicUrl if mediaId is not empty
+                if (mediaId && mediaId.trim() !== "") {
+                    courseMediaPreview =
+                        await getPublicUrlWithoutLogin(mediaId);
+                }
+            }
+        }
+
+        // PATCH: handle tags as string or array
+        let tags: string[] = [];
+        if (Array.isArray(apiData.course.tags)) {
+            tags = apiData.course.tags;
+        } else if (typeof apiData.course.tags === "string") {
+            tags = apiData.course.tags
+                .split(",")
+                .map((tag: string) => tag.trim());
+        }
 
         return {
             id: apiData.course.id,
             title: apiData.course.package_name,
             description: apiData.course.course_html_description || "", // Remove HTML tags
-            tags:
-                apiData.course.tags?.split(",").map((tag) => tag.trim()) || [],
+            tags,
             imageUrl: coursePreviewImageMediaId || "", // Use the preview image as the main image
             courseStructure: apiData.course.course_depth,
             whatYoullLearn: apiData.course.why_learn,
@@ -102,7 +156,7 @@ export const transformApiDataToCourseData = async (
                 apiData.course.is_course_published_to_catalaouge,
             coursePreviewImageMediaId,
             courseBannerMediaId,
-            courseMediaId,
+            courseMediaId: courseMediaPreview,
             courseHtmlDescription: apiData.course.course_html_description,
             instructors: [], // This should be populated from your API if available
             sessions: apiData.sessions.map((session) => ({
@@ -178,11 +232,39 @@ export function getSubjectDetails(
 export function getIdByLevelAndSession(
     data: BatchForSessionType[],
     sessionId: string,
-    levelId: string
+    levelId: string,
+    courseId: string
 ) {
     const match = data?.find(
-        (item) => item.level?.id === levelId && item.session?.id === sessionId
+        (item) =>
+            item.level?.id === levelId &&
+            item.session?.id === sessionId &&
+            item.package_dto?.id === courseId
     );
 
+    console.log("match", match);
     return match?.id || "";
+}
+
+export function getYouTubeVideoId(url: string): string | null {
+    if (!url) return null;
+
+    const patterns = [
+        /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/,
+        /youtube\.com\/watch\?.*v=([^&\n?#]+)/,
+    ];
+
+    for (const pattern of patterns) {
+        const match = url.match(pattern);
+        if (match) return match[1];
+    }
+
+    return null;
+}
+
+export function convertToYouTubeEmbedUrl(url: string): string {
+    const videoId = getYouTubeVideoId(url);
+    if (!videoId) return url;
+
+    return `https://www.youtube.com/embed/${videoId}`;
 }

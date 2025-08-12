@@ -213,6 +213,15 @@ export async function filterHamburgerMenuItems(
         to: "/delete-user",
       },
     ];
+  } else if (instituteId === CODE_CIRCLE_INSTITUTE_ID) {
+    // For code circle institute, show only logout button
+    return [
+      {
+        icon: SignOut,
+        title: "Log Out",
+        to: "/logout",
+      },
+    ];
   } else {
     // For other institutes, exclude the 3 specific options
     return HamBurgerSidebarItemsData.filter(

@@ -7,6 +7,11 @@ import { IAccessToken, TokenKey, Tokens } from "@/constants/auth/tokens";
 import { isNullOrEmptyOrUndefined } from "../utils";
 import Cookies from "js-cookie";
 
+// Set token in cookie with domain support for cross-subdomain access
+export const setAuthorizationCookie = (key: string, token: string): void => {
+    Cookies.set(key, token);
+};
+
 // Get token from cookie
 export const getTokenFromCookie = (tokenKey: string): string | null => {
     return Cookies.get(tokenKey) ?? null;
@@ -117,10 +122,16 @@ const removeTokensAndLogout = async (): Promise<void> => {
     await removeTokenFromStorage(TokenKey.accessToken);
     await removeTokenFromStorage(TokenKey.refreshToken);
 
-    // Remove institute ID
-    await removeInstituteIdFromStorage();
-    // remove all the items from storage
-    await Storage.clear();
+    // Don't remove institute ID - keep it for comparison in courses
+    // await removeInstituteIdFromStorage();
+    
+    // Remove all other items from storage except InstituteId
+    const keys = await Storage.keys();
+    for (const key of keys.keys) {
+        if (key !== "InstituteId") {
+            await Storage.remove({ key });
+        }
+    }
 
     // Redirect to login or handle logout logic
     console.log("User logged out.");
@@ -151,6 +162,8 @@ const handleSSOLogin = (): boolean => {
             // Set tokens in cookies
             setTokenInStorage(TokenKey.accessToken, accessToken);
             setTokenInStorage(TokenKey.refreshToken, refreshToken);
+            setAuthorizationCookie(TokenKey.accessToken, accessToken);
+            setAuthorizationCookie(TokenKey.refreshToken, refreshToken);
 
             // Clean up URL
             const cleanUrl =

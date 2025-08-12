@@ -1,4 +1,3 @@
-import { Button } from "@/components/ui/button";
 import {
     Star,
     ChatCircle,
@@ -27,6 +26,7 @@ import { MyButton } from "@/components/design-system/button";
 import { Textarea } from "@/components/ui/textarea";
 import { getPublicUrl } from "@/services/upload_file";
 import { ReviewItem, type Review } from "@/components/common/review-item";
+import { getUserId } from "@/constants/getUserId";
 
 
 // Types for API Response
@@ -61,6 +61,7 @@ const transformRatingToReview = (rating: Rating): Review => {
     return {
         id: rating.id,
         user: {
+            id: rating.user.id, // Include user ID for ownership check
             name: rating.user.full_name || rating.user.username,
             avatarUrl: rating.user.profile_pic_file_id || "",
         },
@@ -72,16 +73,7 @@ const transformRatingToReview = (rating: Rating): Review => {
     };
 };
 
-function timeAgo(dateString: string) {
-    const now = new Date();
-    const date = new Date(dateString);
-    const diff = Math.floor((now.getTime() - date.getTime()) / 1000);
-    if (diff < 60) return `${diff}s ago`;
-    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-    if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`;
-    return date.toLocaleDateString();
-}
+
 
 export function CourseDetailsRatingsComponent({
     packageSessionId,
@@ -92,6 +84,22 @@ export function CourseDetailsRatingsComponent({
     const searchParams = router.state.location.search;
     const queryClient = useQueryClient();
     const [page, setPage] = useState(0);
+    const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+    // Get current user ID on component mount
+    useEffect(() => {
+        const fetchCurrentUserId = async () => {
+            try {
+                const userId = await getUserId();
+                setCurrentUserId(userId);
+            } catch (error) {
+                console.error("Failed to get current user ID:", error);
+                setCurrentUserId(null);
+            }
+        };
+
+        fetchCurrentUserId();
+    }, []);
 
     const { data: ratingData, isLoading } = useSuspenseQuery<PaginatedResponse>(
         handleGetRatingDetails({
@@ -136,7 +144,7 @@ export function CourseDetailsRatingsComponent({
                     // Mark this review as fetched
                     fetchedUrlsRef.current.add(review.id);
                     return { reviewId: review.id, url };
-                } catch (error) {
+                } catch {
                     // Mark this review as fetched even if it failed
                     fetchedUrlsRef.current.add(review.id);
                     return { reviewId: review.id, url: "" };
@@ -201,7 +209,7 @@ export function CourseDetailsRatingsComponent({
             // Revert optimistic updates on error
             queryClient.setQueryData(
                 ["GET_ALL_USER_COURSE_RATINGS", page, 10, { source_id: packageSessionId || "", source_type: "PACKAGE_SESSION" }],
-                (oldData: any) => {
+                (oldData: PaginatedResponse | undefined) => {
                     if (!oldData) return oldData;
                     
                     // Find the original review to revert changes
@@ -210,7 +218,7 @@ export function CourseDetailsRatingsComponent({
 
                     return {
                         ...oldData,
-                        content: oldData.content.map((rating: any) => 
+                        content: oldData.content.map((rating: Rating) => 
                             rating.id === variables.id 
                                 ? { 
                                     ...rating, 
@@ -255,24 +263,20 @@ export function CourseDetailsRatingsComponent({
     const handleLike = (reviewId: string) => {
         const review = reviews.find(r => r.id === reviewId);
         if (review) {
-            // Optimistically update the UI
-            const updatedReviews = reviews.map(r => 
-                r.id === reviewId 
-                    ? { ...r, likes: r.likes + 1 }
-                    : r
-            );
-            
             // Update the query cache optimistically
             queryClient.setQueryData(
                 ["GET_ALL_USER_COURSE_RATINGS", page, 10, { source_id: packageSessionId || "", source_type: "PACKAGE_SESSION" }],
-                (oldData: any) => ({
-                    ...oldData,
-                    content: oldData.content.map((rating: any) => 
-                        rating.id === reviewId 
-                            ? { ...rating, likes: rating.likes + 1 }
-                            : rating
-                    )
-                })
+                (oldData: PaginatedResponse | undefined) => {
+                    if (!oldData) return oldData;
+                    return {
+                        ...oldData,
+                        content: oldData.content.map((rating: Rating) => 
+                            rating.id === reviewId 
+                                ? { ...rating, likes: rating.likes + 1 }
+                                : rating
+                        )
+                    };
+                }
             );
 
             handleUpdateRatingMutation.mutate({
@@ -290,24 +294,20 @@ export function CourseDetailsRatingsComponent({
     const handleDislike = (reviewId: string) => {
         const review = reviews.find(r => r.id === reviewId);
         if (review) {
-            // Optimistically update the UI
-            const updatedReviews = reviews.map(r => 
-                r.id === reviewId 
-                    ? { ...r, dislikes: r.dislikes + 1 }
-                    : r
-            );
-            
             // Update the query cache optimistically
             queryClient.setQueryData(
                 ["GET_ALL_USER_COURSE_RATINGS", page, 10, { source_id: packageSessionId || "", source_type: "PACKAGE_SESSION" }],
-                (oldData: any) => ({
-                    ...oldData,
-                    content: oldData.content.map((rating: any) => 
-                        rating.id === reviewId 
-                            ? { ...rating, dislikes: rating.dislikes + 1 }
-                            : rating
-                    )
-                })
+                (oldData: PaginatedResponse | undefined) => {
+                    if (!oldData) return oldData;
+                    return {
+                        ...oldData,
+                        content: oldData.content.map((rating: Rating) => 
+                            rating.id === reviewId 
+                                ? { ...rating, dislikes: rating.dislikes + 1 }
+                                : rating
+                        )
+                    };
+                }
             );
 
             handleUpdateRatingMutation.mutate({
@@ -325,17 +325,17 @@ export function CourseDetailsRatingsComponent({
     const handleDelete = (reviewId: string) => {
         const review = reviews.find(r => r.id === reviewId);
         if (review) {
-            // Optimistically update the UI
-            const updatedReviews = reviews.filter(r => r.id !== reviewId);
-            
             // Update the query cache optimistically
             queryClient.setQueryData(
                 ["GET_ALL_USER_COURSE_RATINGS", page, 10, { source_id: packageSessionId || "", source_type: "PACKAGE_SESSION" }],
-                (oldData: any) => ({
-                    ...oldData,
-                    content: oldData.content.filter((rating: any) => rating.id !== reviewId),
-                    totalElements: oldData.totalElements - 1
-                })
+                (oldData: PaginatedResponse | undefined) => {
+                    if (!oldData) return oldData;
+                    return {
+                        ...oldData,
+                        content: oldData.content.filter((rating: Rating) => rating.id !== reviewId),
+                        totalElements: oldData.totalElements - 1
+                    };
+                }
             );
 
             handleUpdateRatingMutation.mutate({
@@ -401,10 +401,19 @@ export function CourseDetailsRatingsComponent({
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!searchParams.courseId) return;
+        
+        // Ensure rating is selected
+        if (!selectedRating) {
+            toast.error("Please select a rating before submitting", {
+                className: "error-toast",
+                duration: 2000,
+            });
+            return;
+        }
 
         setSubmitting(true);
         handleSubmitRatingMutation.mutate({
-            rating: selectedRating || 0,
+            rating: selectedRating,
             desc: feedbackText.trim(),
             source_id: packageSessionId || "",
         });
@@ -457,40 +466,47 @@ export function CourseDetailsRatingsComponent({
                         rows={3}
                         className="resize-none"
                     />
-                    <div className="flex items-center gap-2">
-                        {[1, 2, 3, 4, 5].map((star) => (
-                            <button
-                                type="button"
-                                key={star}
-                                onClick={() => handleStarClick(star)}
-                                className="focus:outline-none"
-                            >
-                                <Star
-                                    size={28}
-                                    weight={
-                                        selectedRating && selectedRating >= star
-                                            ? "fill"
-                                            : "regular"
-                                    }
-                                    className={
-                                        selectedRating && selectedRating >= star
-                                            ? "text-yellow-400"
-                                            : "text-gray-300"
-                                    }
-                                />
-                            </button>
-                        ))}
-                        <span className="ml-2 text-sm text-neutral-500">
-                            {selectedRating
-                                ? `${selectedRating} Star${selectedRating > 1 ? "s" : ""}`
-                                : ""}
-                        </span>
+                    <label className="font-semibold text-neutral-700">
+                        Rating <span className="text-red-500">*</span>
+                    </label>
+                    <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                            {[1, 2, 3, 4, 5].map((star) => (
+                                <button
+                                    type="button"
+                                    key={star}
+                                    onClick={() => handleStarClick(star)}
+                                    className="focus:outline-none"
+                                >
+                                    <Star
+                                        size={28}
+                                        weight={
+                                            selectedRating && selectedRating >= star
+                                                ? "fill"
+                                                : "regular"
+                                        }
+                                        className={
+                                            selectedRating && selectedRating >= star
+                                                ? "text-yellow-400"
+                                                : "text-gray-300"
+                                        }
+                                    />
+                                </button>
+                            ))}
+                            <span className="ml-2 text-sm text-neutral-500">
+                                {selectedRating
+                                    ? `${selectedRating} Star${selectedRating > 1 ? "s" : ""}`
+                                    : ""}
+                            </span>
+                        </div>
+
                     </div>
                     <MyButton
                         type="button"
+                        buttonType="primary"
                         disable={
                             submitting ||
-                            (!selectedRating && !feedbackText.trim())
+                            !selectedRating
                         }
                         className="w-fit"
                         onClick={handleSubmit}
@@ -662,6 +678,7 @@ export function CourseDetailsRatingsComponent({
                                     onDelete={handleDelete}
                                     showActions={true}
                                     variant="default"
+                                    currentUserId={currentUserId}
                                 />
                             </div>
                         ))

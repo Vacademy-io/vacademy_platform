@@ -8,22 +8,12 @@ export const fetchStudentDetails = async (
     instituteId: string,
     userId: string
 ) => {
-    console.log("📡 Calling fetchStudentDetails with:", {
-        instituteId,
-        userId,
-    });
-
     const response = await authenticatedAxiosInstance({
         method: "GET",
         url: STUDENT_DETAIL,
         params: { instituteId, userId },
     });
 
-    console.log(
-        "📥 Received student details API response:",
-        response.status,
-        response.data
-    );
     return response;
 };
 
@@ -32,8 +22,6 @@ export const getStudentDetails = (instituteId?: string, userId?: string) => {
     return {
         queryKey: ["STUDENT_DETAILS", instituteId, userId],
         queryFn: async () => {
-            console.log("🔁 queryFn triggered");
-
             if (!instituteId || !userId) {
                 console.warn("⚠️ Institute ID or User ID missing");
                 throw new Error("Institute ID and User ID are required");
@@ -65,9 +53,15 @@ export const fetchAndStoreStudentDetails = async (
             });
 
             if (students.length > 0) {
+                // Ensure the stored student data has the correct institute_id
+                const studentData = {
+                    ...students[0],
+                    institute_id: instituteId // Override with the selected institute ID
+                };
+                
                 await Preferences.set({
                     key: "StudentDetails",
-                    value: JSON.stringify(students[0]),
+                    value: JSON.stringify(studentData),
                 });
             }
 
@@ -84,32 +78,47 @@ export const fetchAndStoreStudentDetails = async (
                 throw new Error("No batches found in institute details!");
 
             const packageSessionIds = students.map((s) => s.package_session_id);
+            
             const matchedSessions = institute.batches_for_sessions.filter(
                 (batch: Batch) => packageSessionIds.includes(batch.id)
             );
 
+            // Store the matched sessions
             await Preferences.set({
                 key: "sessionList",
                 value: JSON.stringify(matchedSessions),
             });
 
+            // Also store the institute batches for sessions as a fallback
+            // This ensures the profile page can still display basic institute information
+            await Preferences.set({
+                key: "instituteBatchesForSessions",
+                value: JSON.stringify(institute.batches_for_sessions),
+            });
+
             await storeMappedSessions();
         } else if (response.status === 201) {
             const student: Student = response.data[0];
+            
+            // Ensure the stored student data has the correct institute_id
+            const studentData = {
+                ...student,
+                institute_id: instituteId // Override with the selected institute ID
+            };
 
             await Preferences.set({
                 key: "StudentDetails",
-                value: JSON.stringify(student),
+                value: JSON.stringify(studentData),
             });
             await Preferences.set({
                 key: "students",
-                value: JSON.stringify([student]),
+                value: JSON.stringify([studentData]),
             });
         }
 
         return response.status;
     } catch (error) {
-        console.error("❌ Failed to fetch and store student details:", error);
+        console.error("Failed to fetch and store student details:", error);
         throw error;
     }
 };

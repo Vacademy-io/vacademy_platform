@@ -1,6 +1,7 @@
 import { getInstituteId } from "@/constants/helper";
 import { GET_SUBDOMAIN_OR_INSTITUTEID } from "@/constants/urls";
 import axios from "axios";
+import { Preferences } from "@capacitor/preferences";
 
 export const fetchCourseDetails = async (courseId: string) => {
     const instituteId = getInstituteId();
@@ -24,11 +25,11 @@ export const getInstituteIdBySubdomain = async ({
         url: GET_SUBDOMAIN_OR_INSTITUTEID,
         params: {
             subdomain,
-            instituteId: "",
         },
     });
     return response?.data;
 };
+
 export const handleGetInstituteIdBySubdomain = ({
     subdomain,
 }: {
@@ -37,6 +38,65 @@ export const handleGetInstituteIdBySubdomain = ({
     return {
         queryKey: ["GET_INSTITUTEID_OR_SUBDOMAIN", subdomain],
         queryFn: () => getInstituteIdBySubdomain({ subdomain }),
+        staleTime: 60 * 60 * 1000,
+    };
+};
+
+// New function to handle instituteId logic with localStorage comparison
+export const getInstituteIdWithLocalStorageCheck = async (subdomain: string) => {
+    try {
+        // First, try to get instituteId from localStorage
+        const localStorageInstituteId = await Preferences.get({ key: "InstituteId" });
+        const storedInstituteId = localStorageInstituteId?.value;
+
+        // Get instituteId from API
+        const apiResult = await getInstituteIdBySubdomain({ subdomain });
+
+        // If API returns "Data not found", use localStorage instituteId
+        if (apiResult === "Data not found") {
+            return storedInstituteId || null;
+        }
+
+        // If we get instituteId from API and it matches localStorage, use it
+        if (storedInstituteId && apiResult === storedInstituteId) {
+            return apiResult;
+        }
+
+        // If we get instituteId from API but it doesn't match localStorage, use API result
+        if (apiResult && apiResult !== storedInstituteId) {
+            return apiResult;
+        }
+
+        // If no API result but we have localStorage, use localStorage
+        if (!apiResult && storedInstituteId) {
+            return storedInstituteId;
+        }
+
+        // Default fallback
+        const finalResult = apiResult || storedInstituteId || null;
+        return finalResult;
+    } catch (error) {
+        console.error("Error in getInstituteIdWithLocalStorageCheck:", error);
+        // Fallback to localStorage if API fails
+        try {
+            const localStorageInstituteId = await Preferences.get({ key: "InstituteId" });
+            return localStorageInstituteId?.value || null;
+        } catch (localStorageError) {
+            console.error("Error accessing localStorage:", localStorageError);
+            return null;
+        }
+    }
+};
+
+// React Query hook for the new instituteId logic
+export const handleGetInstituteIdWithLocalStorageCheck = ({
+    subdomain,
+}: {
+    subdomain: string;
+}) => {
+    return {
+        queryKey: ["GET_INSTITUTEID_WITH_LOCALSTORAGE_CHECK", subdomain],
+        queryFn: () => getInstituteIdWithLocalStorageCheck(subdomain),
         staleTime: 60 * 60 * 1000,
     };
 };

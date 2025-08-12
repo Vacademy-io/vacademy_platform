@@ -39,10 +39,28 @@ export function extractDateTime(utcDate: string) {
 }
 
 export async function getInstituteId() {
-  const accessToken = await getTokenFromStorage(TokenKey.accessToken);
-  const data = accessToken ? await getTokenDecodedData(accessToken) : null;
-  const INSTITUTE_ID = data && Object.keys(data.authorities)[0];
-  return INSTITUTE_ID;
+  try {
+    // First, check if user has selected a specific institute
+    const { Preferences } = await import("@capacitor/preferences");
+    const selectedInstitute = await Preferences.get({ key: "selectedInstituteId" });
+    
+    if (selectedInstitute.value) {
+      return selectedInstitute.value;
+    }
+    
+    // Fallback to first institute from authorities if no selection made
+    const accessToken = await getTokenFromStorage(TokenKey.accessToken);
+    const data = accessToken ? await getTokenDecodedData(accessToken) : null;
+    const INSTITUTE_ID = data && Object.keys(data.authorities)[0];
+    return INSTITUTE_ID;
+  } catch (error) {
+    console.error("Error getting institute ID:", error);
+    // Fallback to first institute from authorities
+    const accessToken = await getTokenFromStorage(TokenKey.accessToken);
+    const data = accessToken ? await getTokenDecodedData(accessToken) : null;
+    const INSTITUTE_ID = data && Object.keys(data.authorities)[0];
+    return INSTITUTE_ID;
+  }
 }
 
 interface Subject {

@@ -14,10 +14,11 @@ import {
 import { getStoredDetails } from "@/routes/assessment/examination/-utils.ts/useFetchAssessment";
 import { fetchStudentDetails } from "@/services/studentDetails";
 import { getInstituteId } from "@/constants/helper";
+import { safeJsonParse } from "@/utils/safe-json-parse";
 
 export const fetchUserData = async () => {
     const studentData = await Preferences.get({ key: "StudentDetails" });
-    const userData = studentData.value ? JSON.parse(studentData.value) : null;
+    const userData = safeJsonParse(studentData.value);
     return userData;
 };
 
@@ -30,7 +31,16 @@ export const fetchStaticData = async (
 ) => {
     const instituteId = await getInstituteId();
     const userData = await fetchUserData();
-    const first_name = userData.full_name.split(" ")[0];
+    
+    if (!userData) {
+        console.error("No user data found");
+        setUsername(null);
+        setTestAssigned(0);
+        setHomeworkAssigned(0);
+        return;
+    }
+
+    const first_name = userData.full_name?.split(" ")[0] || "User";
     const institute_id = userData.institute_id;
     const batch_id = userData.package_session_id;
     const params = { instituteId: institute_id, packageSessionId: batch_id };

@@ -157,7 +157,7 @@ const RegistrationStep = ({
                             {(selectedPlan?.type.toLowerCase() === "one_time" ||
                                 selectedPlan?.type.toLowerCase() ===
                                     "upfront") && (
-                                <div className="flex flex-col gap-4 pl-8">
+                                <div className="flex flex-col gap-4">
                                     {selectedPlan?.paymentOption && (
                                         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
                                             {selectedPlan?.paymentOption?.map(
@@ -167,7 +167,7 @@ const RegistrationStep = ({
                                                     return (
                                                         <Card
                                                             key={idx}
-                                                            className="border border-gray-200 p-4 transition-colors hover:border-gray-300"
+                                                            className="w-full border border-gray-200 p-4 transition-colors hover:border-gray-300"
                                                         >
                                                             <div className="flex flex-col gap-3">
                                                                 {/* Title */}
@@ -254,7 +254,7 @@ const RegistrationStep = ({
                             )}
                             {selectedPlan?.type.toLowerCase() ===
                                 "subscription" && (
-                                <div className="flex w-fit flex-wrap gap-4 pl-8">
+                                <div className="flex w-fit flex-wrap gap-4">
                                     {selectedPlan?.paymentOption?.map(
                                         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
                                         // @ts-expect-error
@@ -262,7 +262,7 @@ const RegistrationStep = ({
                                             return (
                                                 <Card
                                                     key={idx}
-                                                    className="border border-gray-200 p-8 py-6 transition-colors hover:border-gray-300"
+                                                    className="w-full border border-gray-200 p-8 py-6 transition-colors hover:border-gray-300"
                                                 >
                                                     <div className="flex flex-col gap-3">
                                                         {/* Title */}

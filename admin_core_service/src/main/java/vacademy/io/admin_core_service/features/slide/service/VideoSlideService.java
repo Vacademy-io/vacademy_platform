@@ -384,10 +384,6 @@ public class VideoSlideService {
         if (StringUtils.hasText(dto.getSourceType())) {
             videoSlide.setSourceType(dto.getSourceType());
         }
-
-        if (StringUtils.hasText(dto.getEmbeddedData())){
-            videoSlide.setEmbeddedData(dto.getEmbeddedData());
-        }
         if (StringUtils.hasText(dto.getEmbeddedType())){
             videoSlide.setEmbeddedType(dto.getEmbeddedType());
         }

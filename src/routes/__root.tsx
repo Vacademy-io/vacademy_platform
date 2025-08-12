@@ -22,6 +22,7 @@ import { useInstituteFeatureStore } from "@/stores/insititute-feature-store";
 import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
+import { getSubdomain } from "@/helpers/helper";
 
 // Define public routes that don't require authentication
 const PUBLIC_ROUTES = [
@@ -142,6 +143,15 @@ export const Route = createRootRouteWithContext<{
     beforeLoad: async ({ location }) => {
         // Handle root path redirect
         if (location.pathname === "/") {
+            // Special case: if subdomain is "code-circle", redirect to courses instead of login
+            const subdomain = getSubdomain(window.location.hostname);
+            if (subdomain === "code-circle") {
+                throw redirect({
+                    to: "/courses",
+                    search: { instituteId: "" },
+                });
+            }
+            
             throw redirect({
                 to: "/login",
             });
@@ -155,6 +165,15 @@ export const Route = createRootRouteWithContext<{
         // Check authentication for all other routes
         const authenticated = await isAuthenticated();
         if (!authenticated) {
+            // Special case: if subdomain is "code-circle", redirect to courses instead of login
+            const subdomain = getSubdomain(window.location.hostname);
+            if (subdomain === "code-circle") {
+                throw redirect({
+                    to: "/courses",
+                    search: { instituteId: "" },
+                });
+            }
+
             // Store the current path as redirect URL for after login
             const redirectUrl = location.pathname + location.search;
             throw redirect({

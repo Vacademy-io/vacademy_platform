@@ -10,6 +10,7 @@ import { isNullOrEmptyOrUndefined } from "@/lib/utils";
 import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
+import { getSubdomain } from "@/helpers/helper";
 
 export const Route = createFileRoute("/courses/")({
     component: CoursesContainerComponent,
@@ -19,15 +20,6 @@ export const Route = createFileRoute("/courses/")({
         };
     },
 });
-
-function getSubdomain(hostname: string) {
-    // e.g. learner.vacademy.io => learner
-    const parts = hostname.split(".");
-    if (parts.length >= 3) {
-        return parts[0];
-    }
-    return null;
-}
 
 function CoursesContainerComponent() {
     const navigate = useNavigate();

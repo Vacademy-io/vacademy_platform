@@ -19,6 +19,7 @@ import { isNullOrEmptyOrUndefined } from "@/lib/utils.ts";
 import { getPublicUrl } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/excalidrawUtils.ts";
 import { useTheme } from "@/providers/theme/theme-provider.tsx";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
+import { AuthModal } from "@/components/common/auth/modal/AuthModal.tsx";
 
 const CourseCatalougePage: React.FC = () => {
     const navigate = useNavigate();
@@ -40,6 +41,9 @@ const CourseCatalougePage: React.FC = () => {
     );
 
     const { instituteId } = useSearch({ from: "/courses/" });
+    
+    // State for auto-login modal
+    const [showAutoLoginModal, setShowAutoLoginModal] = useState(false);
 
     //api call to store the courses details
 
@@ -200,6 +204,18 @@ const CourseCatalougePage: React.FC = () => {
         redirectToDashboardIfAuthenticated();
     }, [navigate]);
 
+    // Auto-login modal effect - show modal 1 second after page load when instituteId is present
+    useEffect(() => {
+        if (!instituteId) return;
+
+        const timer = setTimeout(() => {
+            // Show modal automatically after 1 second when instituteId is present
+            setShowAutoLoginModal(true);
+        }, 1000); // 1 second delay
+
+        return () => clearTimeout(timer);
+    }, [instituteId]);
+
     // Show loading state if instituteId is not available yet
     if (!instituteId) {
         return <DashboardLoader />;
@@ -287,6 +303,17 @@ const CourseCatalougePage: React.FC = () => {
             <InstructorCTASection />
             <SupportersSection />
             <Footer />
+            {showAutoLoginModal && (
+                <AuthModal
+                    type="coursesPage"
+                    courseId={undefined}
+                    trigger={<div />}
+                    isOpen={showAutoLoginModal}
+                    onClose={() => setShowAutoLoginModal(false)}
+                    onLoginSuccess={() => setShowAutoLoginModal(false)}
+                    onSignupSuccess={() => setShowAutoLoginModal(false)}
+                />
+            )}
         </div>
     );
 };

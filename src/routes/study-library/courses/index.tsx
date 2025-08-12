@@ -5,23 +5,22 @@ import { useEffect } from "react";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
-
 export const Route = createFileRoute("/study-library/courses/")({
-  component: RouteComponent,
+    component: RouteComponent,
 });
 
 function RouteComponent() {
-  const { setNavHeading } = useNavHeadingStore();
+    const { setNavHeading } = useNavHeadingStore();
 
-  useEffect(() => {
-    setNavHeading(
-      `${getTerminology(ContentTerms.Course, SystemTerms.Course)}s`
+    useEffect(() => {
+        setNavHeading(
+            `${getTerminology(ContentTerms.Course, SystemTerms.Course)}s`
+        );
+    }, []);
+
+    return (
+        <LayoutContainer>
+            <CourseCatalougePage />
+        </LayoutContainer>
     );
-  }, []);
-
-  return (
-    <LayoutContainer>
-      <CourseCatalougePage />
-    </LayoutContainer>
-  );
 }

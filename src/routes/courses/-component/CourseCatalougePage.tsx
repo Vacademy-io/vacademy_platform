@@ -14,13 +14,15 @@ import {
 import CourseListHeader from "./CourseListHeader.tsx";
 import { getTokenFromStorage } from "@/lib/auth/sessionUtility.ts";
 import { TokenKey } from "@/constants/auth/tokens.ts";
-import { getFromStorage } from "@/components/common/auth/login/forms/page/login-form";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils.ts";
 import { getPublicUrl } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/excalidrawUtils.ts";
 import { useTheme } from "@/providers/theme/theme-provider.tsx";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
-import { AuthModal, AuthModalRef } from "@/components/common/auth/modal/AuthModal.tsx";
-
+import {
+    AuthModal,
+    AuthModalRef,
+} from "@/components/common/auth/modal/AuthModal.tsx";
+import { Preferences } from "@capacitor/preferences";
 
 const CourseCatalougePage: React.FC = () => {
     const navigate = useNavigate();
@@ -42,7 +44,7 @@ const CourseCatalougePage: React.FC = () => {
     );
 
     const { instituteId } = useSearch({ from: "/courses/" });
-    
+
     // Ref for auto-login modal
     const autoLoginModalRef = useRef<AuthModalRef | null>(null);
 
@@ -190,15 +192,21 @@ const CourseCatalougePage: React.FC = () => {
     useEffect(() => {
         const redirectToDashboardIfAuthenticated = async () => {
             const token = await getTokenFromStorage(TokenKey.accessToken);
-            const studentDetails = await getFromStorage("StudentDetails");
-            const instituteDetails = await getFromStorage("InstituteDetails");
+            const studentDetails = await Preferences.get({
+                key: "StudentDetails",
+            });
+            const instituteDetails = await Preferences.get({
+                key: "InstituteDetails",
+            });
 
             if (
                 !isNullOrEmptyOrUndefined(token) &&
                 !isNullOrEmptyOrUndefined(studentDetails) &&
                 !isNullOrEmptyOrUndefined(instituteDetails)
             ) {
-                navigate({ to: "/dashboard" });
+                navigate({
+                    to: "/study-library/courses",
+                });
             }
         };
 
@@ -304,13 +312,13 @@ const CourseCatalougePage: React.FC = () => {
             <InstructorCTASection />
             <SupportersSection />
             <Footer />
-            
+
             {/* Auto-login modal - separate from the manual login button */}
             <AuthModal
                 ref={autoLoginModalRef}
                 type="coursesPage"
                 courseId={undefined}
-                trigger={<div style={{ display: 'none' }} />}
+                trigger={<div style={{ display: "none" }} />}
                 onLoginSuccess={() => {
                     if (autoLoginModalRef.current) {
                         autoLoginModalRef.current.setIsOpen(false);

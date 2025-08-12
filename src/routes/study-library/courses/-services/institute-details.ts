@@ -28,11 +28,23 @@ export const handleFetchInstituteDetails = () => {
 export const fetchUserRolesDetails = async () => {
     const instituteId = await getInstituteIdSync();
     const StudentDetails = await Preferences.get({ key: "StudentDetails" });
+    
+    let userId = "";
+    if (StudentDetails.value) {
+        try {
+            const parsedDetails = JSON.parse(StudentDetails.value);
+            userId = parsedDetails?.user_id || "";
+        } catch (error) {
+            console.error("Error parsing StudentDetails:", error);
+            userId = "";
+        }
+    }
+    
     const response = await authenticatedAxiosInstance({
         method: "GET",
         url: GET_USER_ROLES_DETAILS,
         params: {
-            userId: JSON.parse(StudentDetails.value || "")?.user_id || "",
+            userId,
             instituteId,
         },
     });

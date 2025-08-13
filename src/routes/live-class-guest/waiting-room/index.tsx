@@ -242,7 +242,7 @@ function GuestWaitingRoomComponent() {
           <img
             src={thumbnail}
             alt="Session Thumbnail"
-            className="w-full max-h-[300px] rounded-lg object-contain bg-red-50"
+            className="w-full max-h-[300px] rounded-lg object-contain bg-gray-50"
           />
         )}
         {sessionDetails && (

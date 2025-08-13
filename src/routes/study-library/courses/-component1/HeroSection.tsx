@@ -9,7 +9,10 @@ import { useEffect, useState } from "react";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { Preferences } from "@capacitor/preferences";
 import { TokenKey } from "@/constants/auth/tokens";
-import { getTokenFromCookie, setAuthorizationCookie } from "@/lib/auth/sessionUtility";
+import {
+    getTokenFromCookie,
+    setAuthorizationCookie,
+} from "@/lib/auth/sessionUtility";
 
 interface UserRole {
     id: string;
@@ -119,9 +122,7 @@ const HeroSection = ({
                         </div>
 
                         {/* Main Heading */}
-                        <H1 className="mb-1 sm:mb-2">
-                            Explore & Discover
-                        </H1>
+                        <H1 className="mb-1 sm:mb-2">Explore & Discover</H1>
 
                         {/* Single Description */}
                         <div className="mb-0.5 sm:mb-1">
@@ -136,18 +137,22 @@ const HeroSection = ({
                 {/* Image Section */}
                 <div
                     className={`w-full lg:w-1/3 flex items-center justify-center p-0.5 sm:p-1 animate-fade-in-up ${
-                        allowLeanersToCreateCourses ? "gap-2 sm:gap-3 flex-col" : ""
+                        allowLeanersToCreateCourses
+                            ? "gap-2 sm:gap-3 flex-col"
+                            : ""
                     }`}
                     style={{ animationDelay: "0.4s" }}
                 >
-                    {allowLeanersToCreateCourses &&
-                        hasTeacherAndStudentRole && (
-                            <>
-                                <MyButton onClick={handleNavigate} className="w-full sm:w-auto">
-                                    Create Course
-                                </MyButton>
-                            </>
-                        )}
+                    {hasTeacherAndStudentRole && (
+                        <>
+                            <MyButton
+                                onClick={handleNavigate}
+                                className="w-full sm:w-auto"
+                            >
+                                Create Course
+                            </MyButton>
+                        </>
+                    )}
                     <div className="relative group">
                         {/* Floating orb effect */}
                         <div className="absolute -top-1 -right-1 sm:-top-2 sm:-right-2 w-4 h-4 sm:w-6 sm:h-6 md:w-8 md:h-8 bg-primary-100/30 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>

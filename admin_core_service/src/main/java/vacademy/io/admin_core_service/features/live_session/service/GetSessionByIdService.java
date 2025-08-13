@@ -231,6 +231,9 @@ public class GetSessionByIdService {
                         .scheduleLastEntryTime(p.getScheduleLastEntryTime())
                         .customMeetingLink(p.getCustomMeetingLink())
                         .customWaitingRoomMediaId(p.getCustomWaitingRoomMediaId())
+                        .thumbnailFileId(p.getThumbnailFileId())                  // session-level
+                        .scheduleThumbnailFileId(p.getScheduleThumbnailFileId()) // schedule-level
+                        .allowPlayPause(p.getAllowPlayPause())
                         .build())
                 .orElseThrow(() -> new EntityNotFoundException("Schedule not found"));
     }

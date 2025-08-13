@@ -14,6 +14,7 @@ import {
     CheckCircle,
     ArrowRight,
     Loader2,
+    Shield,
 } from "lucide-react";
 import { MyInput } from "@/components/design-system/input";
 import { getInstituteDetails, parseInstituteSettings, registerUser, getUserDetailsByEmail, handlePostSignupAuth, type InstituteDetails, type RegisterUserRequest } from "@/services/signup-api";
@@ -338,23 +339,6 @@ export function ModalSignUpForm({
                         transition={{ duration: 0.3 }}
                         className="space-y-6"
                     >
-
-
-                        {/* Email Verification using SignupEmailOtpForm component */}
-                        <SignupEmailOtpForm
-                            onUserDetailsCheck={handleUserDetailsCheck}
-                            onSwitchToLogin={onSwitchToLogin}
-                        />
-                    </motion.div>
-                ) : (
-                    <motion.div
-                        key="details"
-                        initial={{ opacity: 0, x: 30 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -30 }}
-                        transition={{ duration: 0.3 }}
-                        className="space-y-6"
-                    >
                         {/* Header */}
                         <motion.div
                             initial={{ y: 10, opacity: 0 }}
@@ -372,12 +356,12 @@ export function ModalSignUpForm({
                             </div>
                         </motion.div>
 
-                        {/* OAuth Buttons */}
+                        {/* OAuth Buttons on Step One (Modal) */}
                         <motion.div
                             initial={{ y: 10, opacity: 0 }}
                             animate={{ y: 0, opacity: 1 }}
                             transition={{ delay: 0.2 }}
-                            className="space-y-2 mb-6"
+                            className="space-y-2"
                         >
                             <motion.button
                                 whileHover={{ scale: 1.01 }}
@@ -414,7 +398,7 @@ export function ModalSignUpForm({
                             initial={{ width: 0, opacity: 0 }}
                             animate={{ width: "100%", opacity: 1 }}
                             transition={{ delay: 0.3, duration: 0.3 }}
-                            className="relative my-5"
+                            className="relative"
                         >
                             <div className="absolute inset-0 flex items-center">
                                 <div className="w-full border-t border-gray-200" />
@@ -423,6 +407,91 @@ export function ModalSignUpForm({
                                 <span className="bg-white px-3 py-1 text-gray-500 font-medium rounded-full border border-gray-200">
                                     or continue with email
                                 </span>
+                            </div>
+                        </motion.div>
+
+                        {/* Email Verification using SignupEmailOtpForm component */}
+                        <SignupEmailOtpForm
+                            onUserDetailsCheck={handleUserDetailsCheck}
+                            onSwitchToLogin={onSwitchToLogin}
+                        />
+
+                        {/* Security Notice */}
+                        <motion.div
+                            initial={{ y: 10, opacity: 0 }}
+                            animate={{ y: 0, opacity: 1 }}
+                            transition={{ delay: 0.6 }}
+                            className="mt-4 p-3 bg-gray-50/80 border border-gray-200/60 rounded-lg"
+                        >
+                            <div className="flex items-start space-x-2">
+                                <Shield className="w-4 h-4 text-gray-600 mt-0.5 flex-shrink-0" />
+                                <div>
+                                    <p className="text-xs font-medium text-gray-800 mb-1">
+                                        Secure Signup
+                                    </p>
+                                    <p className="text-xs text-gray-600">
+                                        Your data is protected with enterprise-grade encryption.
+                                    </p>
+                                </div>
+                            </div>
+                        </motion.div>
+
+                        {/* Terms Agreement - also show on step one */}
+                        <motion.div
+                            initial={{ y: 10, opacity: 0 }}
+                            animate={{ y: 0, opacity: 1 }}
+                            transition={{ delay: 0.8 }}
+                            className="text-center text-xs text-gray-600"
+                        >
+                            <p>
+                                By creating an account, you agree to our{" "}
+                                <motion.button
+                                    type="button"
+                                    whileHover={{ scale: 1.02 }}
+                                    onClick={() =>
+                                        navigate({
+                                            to: "/terms-and-conditions",
+                                        })
+                                    }
+                                    className="text-gray-800 hover:text-gray-900 font-medium underline cursor-pointer"
+                                >
+                                    Terms of Service
+                                </motion.button>{" "}
+                                and{" "}
+                                <motion.button
+                                    type="button"
+                                    whileHover={{ scale: 1.02 }}
+                                    onClick={() => navigate({ to: "/privacy-policy" })}
+                                    className="text-gray-800 hover:text-gray-900 font-medium underline cursor-pointer"
+                                >
+                                    Privacy Policy
+                                </motion.button>
+                            </p>
+                        </motion.div>
+                    </motion.div>
+                ) : (
+                    <motion.div
+                        key="details"
+                        initial={{ opacity: 0, x: 30 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: -30 }}
+                        transition={{ duration: 0.3 }}
+                        className="space-y-6"
+                    >
+                        {/* Header */}
+                        <motion.div
+                            initial={{ y: 10, opacity: 0 }}
+                            animate={{ y: 0, opacity: 1 }}
+                            transition={{ delay: 0.1 }}
+                            className="text-center space-y-3"
+                        >
+                            <div className="space-y-1">
+                                <h3 className="text-lg font-semibold text-gray-900">
+                                    Complete Your Profile
+                                </h3>
+                                <p className="text-sm text-gray-600">
+                                    Fill in your details to complete registration
+                                </p>
                             </div>
                         </motion.div>
 
@@ -621,41 +690,6 @@ export function ModalSignUpForm({
                             >
                                 Sign in here
                             </motion.button>
-                        </motion.div>
-
-                        {/* Terms Agreement */}
-                        <motion.div
-                            initial={{ y: 10, opacity: 0 }}
-                            animate={{ y: 0, opacity: 1 }}
-                            transition={{ delay: 1.0 }}
-                            className="text-center text-xs text-gray-600"
-                        >
-                            <p>
-                                By creating an account, you agree to our{" "}
-                                <motion.button
-                                    type="button"
-                                    whileHover={{ scale: 1.02 }}
-                                    onClick={() =>
-                                        navigate({
-                                            to: "/terms-and-conditions",
-                                        })
-                                    }
-                                    className="text-gray-800 hover:text-gray-900 font-medium underline cursor-pointer"
-                                >
-                                    Terms of Service
-                                </motion.button>{" "}
-                                and{" "}
-                                <motion.button
-                                    type="button"
-                                    whileHover={{ scale: 1.02 }}
-                                    onClick={() =>
-                                        navigate({ to: "/privacy-policy" })
-                                    }
-                                    className="text-gray-800 hover:text-gray-900 font-medium underline cursor-pointer"
-                                >
-                                    Privacy Policy
-                                </motion.button>
-                            </p>
                         </motion.div>
                     </motion.div>
                 )}

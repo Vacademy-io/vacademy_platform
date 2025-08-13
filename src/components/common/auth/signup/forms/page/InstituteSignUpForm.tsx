@@ -56,7 +56,6 @@ export function InstituteSignUp({
     const [currentStep, setCurrentStep] = useState<"selection" | "email" | "details">("selection");
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const [verifiedEmail, setVerifiedEmail] = useState("");
-    const [userExists, setUserExists] = useState(false); // New state for user existence
     
     // Use the signup flow hook
     const {
@@ -478,13 +477,10 @@ export function InstituteSignUp({
                         >
                             <div className="space-y-1">
                                 <h3 className="text-lg font-semibold text-gray-900">
-                                    {userExists ? "Welcome Back" : "Create Your Account"}
+                                    Create Your Account
                                 </h3>
                                 <p className="text-sm text-gray-600">
-                                    {userExists 
-                                        ? "Sign in to continue your learning journey" 
-                                        : "Join our learning community and start your journey"
-                                    }
+                                    Join our learning community and start your journey
                                 </p>
                             </div>
                         </motion.div>
@@ -576,7 +572,6 @@ export function InstituteSignUp({
                         <SignupEmailOtpForm
                             onUserDetailsCheck={handleUserDetailsCheck}
                             onSwitchToLogin={onSwitchToLogin}
-                            onUserExistsChange={(exists) => setUserExists(exists)}
                         />
 
                         {/* Terms Agreement - also show on step one */}
@@ -630,13 +625,10 @@ export function InstituteSignUp({
                         >
                             <div className="space-y-1">
                                 <h3 className="text-lg font-semibold text-gray-900">
-                                    {userExists ? "Complete Your Profile" : "Complete Your Profile"}
+                                    Create Your Account
                                 </h3>
                                 <p className="text-sm text-gray-600">
-                                    {userExists 
-                                        ? "Fill in your details to complete sign in" 
-                                        : "Fill in your details to complete registration"
-                                    }
+                                    Join our learning community and start your journey
                                 </p>
                             </div>
                         </motion.div>

@@ -79,7 +79,7 @@ public class AuthServiceClient {
         }
         
         try {
-            String url = authServiceBaseUrl + "/v1/users/by-ids";
+            String url = authServiceBaseUrl + "/auth-service/v1/users/by-ids";
             
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
